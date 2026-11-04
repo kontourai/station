@@ -1,0 +1,7 @@
+{
+  "revision": "57ffc22dca4beeaeb0e23cee15056247d54eb0c8",
+
+  "notes": [
+    {"path":"packages/connect/README.md","note":"Change adds forgetConnection to ConnectionsContext and routes the manager's Forget through it; README describes core/React surface and storage/transport custody, none of which changed. stationProfileStorage change narrows the native forget refusal; README makes no claim about it.","inputs":["packages/connect/README.md","packages/connect/src/react/ConnectionManagerModalContent.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

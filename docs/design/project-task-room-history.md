@@ -91,12 +91,22 @@ The invited-share projection still excludes output feedback.
 Human messages may also carry bounded `TaskRoomAttachment` descriptors. The
 first attachment-bearing append activates version 4 in the same transaction;
 migration 023 adds a separate permanent marker and rejects v2/v3 writers after
-activation. Current readers accept mixed v2/v3/v4 history. Descriptors participate
+activation. Current readers accept mixed v2/v3/v4/v5 history. Descriptors participate
 in proposal identity and integrity checks; image bytes live in the separate
 [Task asset store](../../src-server/services/projects/task-room-attachments.ts).
 Byte retention can expire while descriptors remain in history. See
 [Task images and files](task-room-agent-requests.md#images-and-files) for scope,
 retention and client/server compatibility.
+
+A member principal or structured mentions select v5. The
+[member format migration](../../src-server/domain/migrations/028-project-task-room-members.ts)
+persists its per-room marker and a v5 writer fence in the same transaction as
+the first v5 record. The marker survives pruning and restart; later records
+remain v5 and older writers are refused. Existing records keep their bytes.
+The stored member principal carries the resolved principal and Device IDs, not
+an authorization grant. The personal room runtime separately checks the
+current share, membership revision and transport before effects and delivery.
+The ordinary message HTTP route does not yet accept structured mentions.
 
 Inputs and stored projections use an incremental JSON byte counter that
 includes syntax and escaping without allocating the serialized payload. Body,
@@ -177,9 +187,16 @@ until restart and logs a warning with the error, database path and recovery
 action.
 
 Background follower and search-backfill writes yield between contention
-attempts instead of busy-waiting on the main thread. Every other main-thread
-writer remains synchronous, including constructor migrations, foreground/provider event and
-Session updates, command/turn/delivery receipts and checkpoints, adoption and
+attempts instead of busy-waiting on the main thread. Observed provider-event
+publication also uses immediate write attempts and a yielding availability
+probe before retries, preserving the same event identity and bounded retry
+budget. This lets a room worker receive authorization while holding its write
+transaction. The image-reply overlap regression in
+`task-room-conversation-module.test.ts` exercises this ordering through the
+continuation route and checks durable room history.
+
+Other main-thread writers remain synchronous, including constructor migrations,
+foreground event and Session updates, command/turn/delivery receipts and checkpoints, adoption and
 recovery/credential ledgers, native/voice run transitions, attachment quota and
 reference writes, operational-event journals, conversation history and lineage,
 steer inputs, native session bindings, declared outputs, Session work-item

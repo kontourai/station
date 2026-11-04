@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { builtinWorkspacePaneName } from './builtinWorkspacePaneCanonical';
@@ -50,6 +51,7 @@ import type {
   WorkspacePaneOperationalEventSink,
 } from './workspacePaneOperationalEvents';
 import './WorkspacePaneHost.css';
+import { useRequiredSlotRecoveryInstances } from './requiredSlotRecovery';
 import { paneCloseConfirmationProps } from './workspacePaneCloseConfirmation';
 
 type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless' | 'dock';
@@ -121,9 +123,12 @@ export interface WorkspacePaneHostTreeProps {
   /**
    * The host's persistence standing, for a caller that draws the host
    * chromeless and so owns where a read-only or contended state is said.
+   * `takeOver` is stable; while the status is 'contended' it takes the
+   * views over from the other tab ("Use here", #4407).
    */
   onPersistenceStatusChange?(
     status: 'owned' | 'contended' | 'unavailable',
+    takeOver: () => void,
   ): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
   operationalEventContext?(
@@ -258,15 +263,28 @@ export function WorkspacePaneHostTree({
   const persistenceStatusSink = useRef(onPersistenceStatusChange);
   persistenceStatusSink.current = onPersistenceStatusChange;
   useEffect(() => {
-    persistenceStatusSink.current?.(controller.persistenceStatus);
-  }, [controller.persistenceStatus]);
+    persistenceStatusSink.current?.(
+      controller.persistenceStatus,
+      controller.takeOver,
+    );
+  }, [controller.persistenceStatus, controller.takeOver]);
   const { state, closeConfirmation } = controller;
+  useRequiredSlotRecoveryInstances(state.document.instances);
   const persistenceNotice =
     controller.persistenceStatus === 'owned'
       ? 'Workspace pane changes are saved in this tab.'
       : controller.persistenceStatus === 'contended'
         ? 'Workspace changes are open in another tab. This tab is read-only.'
         : 'Workspace changes cannot be saved right now. This tab is read-only.';
+  const useHereAction =
+    controller.persistenceStatus === 'contended' ? (
+      <>
+        {' '}
+        <Button variant="ghost" size="sm" onClick={controller.takeOver}>
+          Use here
+        </Button>
+      </>
+    ) : null;
   const paneById = new Map(
     state.document.instances.map((pane) => [pane.instanceId, pane]),
   );
@@ -538,6 +556,7 @@ export function WorkspacePaneHostTree({
         >
           <p className="workspace-pane-host__persistence" role="status">
             {persistenceNotice}
+            {useHereAction}
           </p>
           <WorkspacePaneHostTabs
             group={{
@@ -586,6 +605,7 @@ export function WorkspacePaneHostTree({
       <section className="workspace-pane-host" aria-label="Workspace panes">
         <p className="workspace-pane-host__persistence" role="status">
           {persistenceNotice}
+          {useHereAction}
         </p>
         {state.document.maximizedInstanceId ? (
           <WorkspacePaneHostTabs

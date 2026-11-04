@@ -1,0 +1,24 @@
+.project-working-configuration pre,
+.project-working-configuration p,
+.project-working-configuration label {
+  overflow-wrap: anywhere;
+}
+.project-working-configuration pre {
+  white-space: pre-wrap;
+}
+.project-working-configuration textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.project-working-configuration label.project-working-configuration__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+}
+.project-working-configuration fieldset {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-3);
+  min-width: 0;
+}

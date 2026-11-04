@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Only the skill and ACP reads are stubbed. The MCP prompt listing goes
+// Skill, ACP and preview reads are stubbed. The MCP prompt listing goes
 // through the real `useAgentMcpPromptsQuery`, so the menu reads the cache
 // entry the list query owns.
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
@@ -17,6 +17,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     agentMcpPromptsQueryKey: actual.agentMcpPromptsQueryKey,
     useAgentMcpPromptsQuery: actual.useAgentMcpPromptsQuery,
     useSkillsQuery: () => ({ data: [] }),
+    useFeaturePreviewsQuery: () => ({ data: [] }),
     useProviderCommandsQuery: () => ({ data: [] }),
   };
 });

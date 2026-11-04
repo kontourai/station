@@ -96,6 +96,22 @@ export interface AwaitingApprovalAcknowledgement {
 }
 
 export interface CodexSessionRecord extends CodexUsageLimitState {
+  boundToolHandler?: (params: unknown, rpcKey: string) => Promise<unknown>;
+  boundChannelClosed?: boolean;
+  boundChannelCurrent?: () => boolean;
+  closeBoundTools?: () => Promise<void>;
+  boundToolApprovals?: Map<
+    string,
+    {
+      resolve: (allowed: boolean) => void;
+      turnId: string;
+      rpcKey: string;
+      toolName: string;
+    }
+  >;
+  cancelledBoundTurns?: Set<string>;
+  activeBoundRequests?: Set<string>;
+  cancelledBoundRequests?: Set<string>;
   preparedResumeBindingKey?: string;
   externalThreadId: string;
   codexThreadId: string;
@@ -222,6 +238,12 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
   childWork?: CodexChildWorkState;
+  /**
+   * The absolute `CODEX_HOME` this session's app-server was spawned under,
+   * where Codex writes every thread's rollout (a child's included). Absent
+   * when the home was not an absolute path, so no transcript is offered.
+   */
+  codexHome?: string;
   /**
    * #2486 review: single-flight guard for the parent's own `turn/interrupt`.
    * `stopProviderTask` (per-child) and `interruptTurn`'s cascade (plain

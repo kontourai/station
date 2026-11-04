@@ -83,6 +83,10 @@ async function open(home: string, rotate = false) {
     // The fixture uses a real environment credential; this adapter does not
     // stand in for browser enrollment or independent-human membership proof.
     requestAuthority: {
+      isCurrent: (request) =>
+        security.verifyOperatorCredential(
+          request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '',
+        ),
       resolve: async (request) =>
         security.verifyOperatorCredential(
           request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '',
@@ -162,8 +166,21 @@ async function seed(home: string, workspace: string) {
     throw new Error('Expected the committed edit to report revision evidence');
   expect(edited).toMatchObject({
     kind: 'committed',
-    revisionEvidence: { kind: 'linked' },
+    revisionEvidence: { kind: 'unavailable' },
   });
+  const original = await source.runtime.readPlanForReview(
+    task.id,
+    source.request,
+  );
+  if (original.kind !== 'available') throw new Error('Expected original plan');
+  expect(
+    await source.runtime.freezeDocumentRevision({
+      taskId: task.id,
+      documentId: original.documentId,
+      workingRevision: original.revision,
+      beforeCommit: () => true,
+    }),
+  ).toBe(true);
   const history = parseProjectTaskRoomBrowserHistory(
     await source.runtime.history({
       taskId: task.id,
@@ -207,7 +224,10 @@ async function seed(home: string, workspace: string) {
       intentId: later.intentId,
       intentDigest: later.digest,
     }),
-  ).toMatchObject({ kind: 'committed', revisionEvidence: { kind: 'linked' } });
+  ).toMatchObject({
+    kind: 'committed',
+    revisionEvidence: { kind: 'unavailable' },
+  });
   const finalHistory = parseProjectTaskRoomBrowserHistory(
     await source.runtime.history({
       taskId: task.id,
@@ -344,7 +364,7 @@ for (const removeEvidenceKey of [false, true]) {
       text: seeded.receipt.settled.text,
       revisionEvidence: removeEvidenceKey
         ? { kind: 'unavailable' }
-        : seeded.receipt.settled.revisionEvidence,
+        : { kind: 'linked', revisionId: seeded.revision.stableId },
     });
     expect(
       parseProjectTaskRoomBrowserHistory(

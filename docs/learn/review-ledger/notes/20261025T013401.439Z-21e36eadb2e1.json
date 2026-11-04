@@ -1,0 +1,7 @@
+{
+  "revision": "9163ee6767ef4a9add94e5f0788e88dcff2555d6",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Added the part 2a description (fail-closed plugin-trust.json store, pre-effect decision with provenance from this install's own verification, last-step record write, start-time and pre-install grandfathered migration with marker, record survives uninstall, no renderer change before d2) and the 2b/2c split; checked against the new store, recording and migration modules and the transaction wiring.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust.ts","src-server/services/plugins/plugin-sigstore-verifier.ts","src-server/services/plugins/plugin-install-trust-store.ts","src-server/services/plugins/plugin-install-trust-recording.ts","src-server/services/plugins/plugin-install-trust-migration.ts"]}
+  ]
+}

@@ -134,6 +134,88 @@ export interface RegistryItem {
   icon?: string;
   /** Same-origin, output-only URL for signature-validated local raster art. */
   iconUrl?: string;
+  /** Present on entries read from an MCP subregistry (#3483). */
+  mcpServer?: RegistryMcpServerListing;
+}
+
+/**
+ * How a person authorizes an MCP server's remote endpoint.
+ * - `dcr`: OAuth with dynamic client registration, which Station's tool
+ *   server OAuth flow performs today.
+ * - `pre-registered-required`: OAuth whose authorization server has no
+ *   registration endpoint, so the operator must bring a client.
+ * - `token`: a secret request header such as a bearer token.
+ * - `none`: the endpoint answers without authorization.
+ * - `unknown`: the source does not say; only Station curation records this.
+ */
+export type RegistryMcpAuthMode =
+  | 'dcr'
+  | 'pre-registered-required'
+  | 'token'
+  | 'none'
+  | 'unknown';
+
+/**
+ * - `qualified`: Station checked the endpoint and authorization mode against
+ *   the live server, and its connect flow can be used today.
+ * - `setup-required`: checked and addable, but sign-in needs an OAuth client
+ *   the person registers with the provider, a path Station's check did not
+ *   complete.
+ * - `blocked`: Station checked the entry, but cannot deliver it yet; the
+ *   reasons are in `unavailable`.
+ * - `unqualified`: Station has not checked the entry. Every entry from a
+ *   source other than Station's bundled curation is unqualified, whatever
+ *   the source claims about itself.
+ */
+export type RegistryMcpQualificationState =
+  | 'qualified'
+  | 'setup-required'
+  | 'blocked'
+  | 'unqualified';
+
+export interface RegistryMcpServerListing {
+  /** Reverse-DNS server name from server.json, exactly as published. */
+  name: string;
+  version: string;
+  /** The server.json schema revision the entry was parsed against. */
+  schema: string;
+  /** The remote Station would connect to; absent when none is usable. */
+  remote?: { transport: 'streamable-http'; url: string };
+  authMode: RegistryMcpAuthMode;
+  qualification: {
+    state: RegistryMcpQualificationState;
+    /** What Station checked, in plain language. */
+    summary?: string;
+    checkedAt?: string;
+  };
+  /** Vendor launch stage when it is not generally available. */
+  launchStage?: 'preview' | 'developer-preview';
+  /**
+   * `untrusted`: the server returns content written by others, such as
+   * email. Added servers carry it as `ToolDef.contentTrust`, which the
+   * person can change; see docs/design/mcp-subregistry-curation.md.
+   */
+  contentTrust?: 'untrusted';
+  /** Station's curation trusts this server's read-only tool hints. */
+  trustReadOnlyHints?: boolean;
+  websiteUrl?: string;
+  /** Why Add is refused. Empty means the entry can be added. */
+  unavailable: string[];
+}
+
+/** Read state of one MCP subregistry source. */
+export interface RegistryMcpSourceStatus {
+  id: string;
+  displayName: string;
+  /** `station`: the bundled curation. `configured`: an operator-set URL. */
+  origin: 'station' | 'configured';
+  /** Where entries came from; `bundled` never goes stale. */
+  freshness: 'bundled' | 'live' | 'stale' | 'none';
+  fetchedAt: string | null;
+  checkedAt: string | null;
+  lastError: string | null;
+  serverCount: number;
+  refused: { name: string; reasons: string[] }[];
 }
 
 /**

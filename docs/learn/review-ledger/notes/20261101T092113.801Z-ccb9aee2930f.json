@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Searched this document for claims about the changed behavior Changed sources: a fresh home may hold the archive CLI's own state/<channel>/instances records (#4381); start now restarts an instance whose core server is dead instead of reporting it running (#4002), and a failed start names the connect error, the logged cause and the log path (#4382); an empty .git placeholder no longer turns a signed archive into a checkout; a gitfile or a .git with HEAD still does (#4380). No remaining claim here contradicts them.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/prebuilt-archive.ts","packages/shared/src/station-home-schema.ts"]}
+  ]
+}

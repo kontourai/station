@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Catch-up boundary/replay claim re-checked: unchanged by the seed reader. No prose change.","inputs":["docs/architecture.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "revision": "c4dfdb4c4f6b2b3558f7b6c9b589497d0907d045",
+
+  "notes": [
+    {"path":"docs/design/plugin-authority-model.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/design/plugin-authority-model.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/guides/android-build.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/guides/desktop-build.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/guides/desktop-tray.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate; its web-path paragraph ('Each stylesheet's deadline starts at its plugin's turn, not at its download') still describes it.","inputs":["docs/guides/plugins.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/reference/sdk.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["docs/reference/shared.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"examples/elevenlabs-voice/README.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["examples/elevenlabs-voice/README.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"examples/shared-providers/README.md","note":"PluginRegistry.ts delta: the prefetched stylesheet's turn-relative deadline is now an AbortSignal.timeout issued when its plugin's turn reads it (was a setTimeout with the same 8 s value); download, serial execution order, registration reads and desktop/isolated paths are unchanged. This document's claims about plugin loading remain accurate.","inputs":["examples/shared-providers/README.md","src-ui/src/core/PluginRegistry.ts"]}
+  ]
+}

@@ -1,11 +1,17 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { _setApiBase } from '../api';
 import {
   captureMobileDevice,
+  fetchDeviceAgentReveals,
   fetchMobileDeviceInventory,
   MobileDeviceRequestError,
 } from '../mobile-device';
+import { fetchTaskDeviceCaptureSessions } from '../query-domains/taskReview';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  _setApiBase('');
+});
 const selected = {
   hostId: 'local',
   platform: 'android' as const,
@@ -52,6 +58,48 @@ test('device client uses the selected Station base and exact capture target', as
     method: 'POST',
     body: '{}',
   });
+});
+
+test('capture includes the active Project for a shared device', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(Response.json({ success: true, data: frame }));
+  vi.stubGlobal('fetch', fetch);
+  await captureMobileDevice(
+    'https://station.test',
+    selected,
+    undefined,
+    'project-one',
+  );
+  expect(String(fetch.mock.calls[0]?.[0])).toBe(
+    'https://station.test/api/mobile-devices/hosts/local/devices/android/emulator-5584/capture?projectSlug=project-one',
+  );
+});
+
+test('Task Device session listing refuses a mismatched host-qualified identity', async () => {
+  _setApiBase('https://station.test');
+  const row = {
+    hostId: 'ssh-123456abcdef',
+    sessionId: 'session',
+    sourceSessionId: 'local:session',
+    platform: 'ios',
+    deviceId: 'device',
+    surfaceId: 'surface',
+    name: 'iPhone',
+    runtime: 'iOS',
+    openedAt: '2026-01-01T00:00:00Z',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ success: true, data: { sessions: [row] } }),
+      ),
+  );
+  await expect(
+    fetchTaskDeviceCaptureSessions('task', 'project'),
+  ).rejects.toThrow('Invalid Device capture sessions.');
 });
 
 test.each([
@@ -251,4 +299,48 @@ test('the operator device host client surfaces typed refusals', async () => {
   await expect(
     checkDeviceSshHost('https://station.test', 'local'),
   ).rejects.toBeInstanceOf(DeviceHostRequestError);
+});
+
+test('reveal transport validates bounded session intents before a caller can compose a pane', async () => {
+  const session = {
+    ...selected,
+    sessionId: '11111111-2222-4333-8444-555555555555',
+    surfaceId: 'device:local:android:emulator-5584',
+    name: 'Android',
+    runtime: 'Android 35',
+    openedAt: '2026-10-23T00:00:00.000Z',
+  };
+  const intent = { intentId: '22222222-2222-4333-8444-555555555555', session };
+  let reveals: unknown = [intent];
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json({ success: true, data: { reveals } }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  expect(
+    await fetchDeviceAgentReveals(
+      'https://station.test',
+      'alpha',
+      'conversation',
+      {},
+    ),
+  ).toEqual([intent]);
+  expect(String(fetch.mock.calls[0]?.[0])).toBe(
+    'https://station.test/api/mobile-devices/agent-reveals?projectSlug=alpha&conversationId=conversation',
+  );
+  for (const malformed of [
+    Array(201).fill(intent),
+    [{ ...intent, intentId: '../path' }],
+    [{ ...intent, session: { ...session, hostId: '../host' } }],
+    [{ ...intent, session: { ...session, sessionId: 'invalid' } }],
+  ]) {
+    reveals = malformed;
+    await expect(
+      fetchDeviceAgentReveals(
+        'https://station.test',
+        'alpha',
+        'conversation',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(MobileDeviceRequestError);
+  }
 });

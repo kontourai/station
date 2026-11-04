@@ -1,0 +1,7 @@
+{
+  "revision": "e93f21d3050f26498ef5d68ef83e472aa829f200",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Follow-on review of the API reference update-route note (install trust migration first, 503 plugin-trust-records-unavailable); this guide's host/tenant ownership claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

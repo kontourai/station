@@ -171,7 +171,7 @@ export function WorkflowPlanInspectorContent({
         <ConfirmModal
           isOpen={confirmOpen}
           title="Add a delivery flow?"
-          message="This scaffolds a starter .flow/ layout in the project workspace (it writes files to your project). You can edit or remove it afterwards."
+          message="Writes a starter .flow/ folder to your project."
           confirmLabel="Add flow"
           onConfirm={() => {
             setConfirmOpen(false);
@@ -214,7 +214,7 @@ export function ReadinessInspectorContent({
               label="Set up readiness"
               docsUrl={VERITAS_DOCS_URL}
               command={result?.command ?? 'npx veritas init --non-interactive'}
-              commandNote="The Veritas CLI is not installed in this workspace yet, so Station cannot run the setup for you. Copy the command below into a terminal in this project — it downloads the CLI and scaffolds a .veritas/ directory (it writes files to your project)."
+              commandNote="The Veritas CLI isn't installed here. Run this in the project; it downloads the CLI and writes a .veritas/ folder."
             />
           ) : (
             <SetupCta
@@ -231,7 +231,7 @@ export function ReadinessInspectorContent({
       <ConfirmModal
         isOpen={confirmOpen}
         title="Set up merge readiness?"
-        message="This runs `veritas init` in the project workspace, creating a .veritas/ directory (it writes files to your project). You can edit or remove it afterwards."
+        message="Runs `veritas init`, which writes a .veritas/ folder to your project."
         confirmLabel="Set up"
         onConfirm={() => {
           setConfirmOpen(false);

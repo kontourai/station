@@ -1,0 +1,85 @@
+{
+  "path": "docs/guides/agent-efficiency.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Source review of bounded Project/Task context, credential-local tool disclosure, owner-backed learning, context compaction, durable supervision and separate usage/retail evidence.",
+
+  "limits": "Source and focused fixtures only. Final combined checks, owner package publication, installed/native/provider behavior, live billing or savings, human usability and credential-free repair publication require separate evidence. This record does not close the wider onboarding, supervision, tool-authority or Automations epics.",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/user/settings.md",
+
+    "packages/contracts/src/learning-review.ts",
+
+    "packages/contracts/src/conversation-context-boundary.ts",
+
+    "src-server/runtime/learning-review-runtime.ts",
+
+    "src-server/runtime/context-efficiency-runtime.ts",
+
+    "src-server/runtime/project-working-configuration-runtime.ts",
+
+    "src-server/runtime/automation-actions-runtime.ts",
+
+    "src-server/services/projects/task-brief.ts",
+
+    "src-server/services/projects/task-brief-source.ts",
+
+    "src-server/services/orchestration/context-compaction.ts",
+
+    "src-server/services/orchestration/task-question-wake.ts",
+
+    "src-server/tools/station-control-disclosure.ts",
+
+    "src-server/routes/mcp/station-control-mcp-route.ts",
+
+    "src-server/analytics/bearing-usage-pricing-snapshot-capture.ts",
+
+    "src-server/analytics/reviewed-tariff-config.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-ui/src/slashCommands/builtins.ts",
+
+    "scripts/qualify-isolated-repair.mjs",
+
+    "package.json#/scripts/qualify:isolated-repair",
+
+    "package.json#/scripts/qualify:isolated-repair:prepare",
+
+    "packages/contracts/src/isolated-repair.ts",
+
+    "packages/contracts/src/qualification-repair-policy.mjs",
+
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/automation/repair-source.ts",
+
+    "src-server/services/automation/repair-store.ts",
+
+    "src-server/services/automation/repair-worker.mjs",
+
+    "src-server/services/automation/repair-credentials.mjs",
+
+    "src-server/services/automation/repair-publisher.ts",
+
+    "src-server/routes/operations/repairs.ts",
+
+    "src-server/services/automation/__tests__/repair-controller.test.ts",
+
+    "src-server/services/automation/__tests__/repair-worker.test.ts",
+
+    "src-server/services/automation/__tests__/repair-publisher.test.ts"
+  ],
+
+  "checks": [
+    "Traced the operator entry points to current source/storage/authority and model/inbox dispatch owners. Confirmed off-by-default previews and the independent source, activation, effect, retail and billing boundaries.",
+
+    "Focused tool/authority suites passed264 tests after named fixture corrections; learning/tariff/analytics caller suites passed41 tests before later queued source changes. Other source changes retain their own pending/failure evidence; no aggregate completion claim."
+  ]
+}

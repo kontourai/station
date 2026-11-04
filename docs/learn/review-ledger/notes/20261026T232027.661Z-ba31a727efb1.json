@@ -1,0 +1,69 @@
+{
+  "revision": "bfd8e076be21b9127346196750bebd38560b5786",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the SettingsView.tsx change: it renders the new About section on its own About page. Existing sections, rows, deep-link handling and the claims here are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","vite.config.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the SettingsView.tsx change: it renders the new About section on its own About page. Existing sections, rows, deep-link handling and the claims here are unchanged. Checked the settings-catalog.ts change: it adds the about section and three informational rows, appended last. No existing section, row id or scope changed. Checked the settings-pages.ts change: an About page is added after Advanced. Existing pages are unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked the settings-catalog.ts change: it adds the about section and three informational rows, appended last. No existing section, row id or scope changed.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/guides/android-build.md","vite.config.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/guides/connections.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/guides/desktop-build.md","vite.config.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/guides/desktop-tray.md","vite.config.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the docs/user/settings.md change: it adds an About section only. The Feature previews and Developer tools text this document relies on is unchanged.","inputs":["docs/guides/feature-previews.md","src-server/services/feature-previews/feature-preview-registry.ts","docs/user/settings.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/guides/knowledge.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/guides/release-channel-ports.md","vite.config.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/guides/starter-work.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the vitest-resource-manifest.mjs change: one new child-process test (vite-third-party-licenses.test.ts) is classified beside vite-ui-assets.test.ts. No lane, policy or command described here changed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked the vite.config.ts change: it only adds a build plugin that emits third-party-licenses.json beside index.html. Dev server, ports, build outputs, CSP and native build steps described here are unchanged.","inputs":["docs/reference/outside-agent-oauth.md","vite.config.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the regenerated settings registry: it adds three informational About rows (app-version, open-source-licenses, legal) under view=about. The deep-link format and healing rules described here still hold. Checked the SettingsView.tsx change: it renders the new About section on its own About page. Existing sections, rows, deep-link handling and the claims here are unchanged.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the SettingsView.tsx change: it renders the new About section on its own About page. Existing sections, rows, deep-link handling and the claims here are unchanged.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["docs/user/getting-started.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the new About section against AboutSection.tsx, settings-pages.ts and settings-catalog.ts: version, channel and commit; Build details and Diagnostics links; bundled package licenses generated at build time, unavailable on a development server; privacy policy, license and support links. Other sections unchanged.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Checked the page-layout.css change: it only adds a zero-specificity 12px gap above content a PageRow places under its label and description. No routes, labels, controls or behaviour this document describes changed.","inputs":["examples/knowledge-library/README.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked the vitest-resource-manifest.mjs change: one new child-process test (vite-third-party-licenses.test.ts) is classified beside vite-ui-assets.test.ts. No lane, policy or command described here changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the vitest-resource-manifest.mjs change: one new child-process test (vite-third-party-licenses.test.ts) is classified beside vite-ui-assets.test.ts. No lane, policy or command described here changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Checked the page-layout.css change against this capture: spacing only (a 12px gap above extra PageRow content). The captured content and controls are unchanged; not re-captured.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/views/page-layout.css"]}
+  ]
+}

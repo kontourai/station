@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked connection event invalidation and captured authority through the extracted listener and shared transport; connection management and sign-in flows are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

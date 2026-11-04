@@ -18,9 +18,13 @@
  * offline detector — this is an additional subscriber to the same shared
  * per-connection coordinator, not a second poller.
  */
-import { useConnectionStatus } from '@kontourai/station-connect';
+import {
+  useConnectionStatus,
+  useConnections,
+} from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { invalidatePersistedQueries } from '../lib/queryPersistence';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 
@@ -31,7 +35,9 @@ export function useQueryCacheReconnectSync(): void {
     pollInterval: 10_000,
   });
   const queryClient = useQueryClient();
+  const { activeConnection } = useConnections();
   const isRestoring = useIsRestoring();
+  const { reobserve } = useAuthorityPersistence();
   // #2319: `null` until the first observation, NOT the status at mount. App
   // mounts beneath the authority gate, which only verifies after the server
   // has answered, so the shared connection coordinator is usually already
@@ -41,6 +47,10 @@ export function useQueryCacheReconnectSync(): void {
   // invalidated. `useOutboundQueueFlush` handles the same shape with its own
   // on-mount pass.
   const previousStatusRef = useRef<typeof status | null>(null);
+  const previousBootRef = useRef({
+    connectionId: activeConnection?.id,
+    bootId: activeConnection?.lastBootId,
+  });
 
   useEffect(() => {
     // Invalidating during the persisted-cache restore reaches an empty cache,
@@ -50,6 +60,25 @@ export function useQueryCacheReconnectSync(): void {
     if (isRestoring) return;
     const previousStatus = previousStatusRef.current;
     previousStatusRef.current = status;
+    const previousBoot = previousBootRef.current;
+    const currentBoot = {
+      connectionId: activeConnection?.id,
+      bootId: activeConnection?.lastBootId,
+    };
+    previousBootRef.current = currentBoot;
+    const bootChanged =
+      previousBoot.connectionId === currentBoot.connectionId &&
+      !!previousBoot.bootId &&
+      !!currentBoot.bootId &&
+      previousBoot.bootId !== currentBoot.bootId;
+    if (
+      status === 'connected' &&
+      (previousStatus !== 'connected' || bootChanged)
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: ['scheduler', 'conversation-target-capability'],
+      });
+    }
     if (previousStatus !== 'connected' && status === 'connected') {
       void invalidatePersistedQueries(queryClient);
       // archive#3069 — recover queries that FAILED during the outage, whatever
@@ -79,6 +108,21 @@ export function useQueryCacheReconnectSync(): void {
       void queryClient.refetchQueries({
         predicate: (query) => query.state.status === 'error',
       });
+      // The authority observation itself lives on the bootstrap client above
+      // this tree. While it is failed (this tree is then the unverified
+      // fallback), a reconnect this tree saw re-reads it, so a route-only
+      // outage recovers into the verified workspace without an app restart.
+      // Never on mount: the failed read that mounted this tree is current,
+      // and re-reading it unmounts the tree behind the access check, which
+      // remounts it connected and re-reads again, without end.
+      if (previousStatus !== null) reobserve?.();
     }
-  }, [status, isRestoring, queryClient]);
+  }, [
+    status,
+    isRestoring,
+    queryClient,
+    reobserve,
+    activeConnection?.id,
+    activeConnection?.lastBootId,
+  ]);
 }

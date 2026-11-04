@@ -1,0 +1,7 @@
+{
+  "revision": "9ad004634153c7e413d799d37c79a1a61128aa90",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the test-only replay fixture delta against room runtime and worker composition: only reader construction moves after completed canonical seeding. The same 10,000 operations, SQLite persistence, delta revision and beyond-retention gap assertions remain. Production worker failure/refusal, authority, history and agent-request contracts are unchanged; no prose change needed. Local runtime suite: 60 passed; hosted qualification pending.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"]}
+  ]
+}

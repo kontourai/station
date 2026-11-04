@@ -25,7 +25,15 @@ export type SettingValueDescriptor =
   | { kind: 'string'; minLength?: number; maxLength?: number; pattern?: string }
   | { kind: 'boolean' }
   | { kind: 'number'; min?: number; max?: number; integer?: boolean }
-  | { kind: 'enum'; values: readonly string[] }
+  | {
+      kind: 'enum';
+      values: readonly string[];
+      /**
+       * User-facing words per value (#4390). A value without one renders as
+       * itself; stored values never change.
+       */
+      labels?: Readonly<Record<string, string>>;
+    }
   /**
    * Structured objects/arrays. Validated by `schemas/app.schema.json` at
    * save time; the sanitizer accepts any value shape for these keys and
@@ -388,6 +396,56 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'Terminal sessions Station opens for you start in this shell instead of the host default.',
     description: 'Shell used when Station spawns a terminal session.',
   }),
+  // Terminal history retention (#3994). The server reads these through
+  // `resolveTerminalRetention`; the defaults below are the values it applies.
+  defineSetting({
+    key: 'terminalHistoryEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Keep terminal history',
+    help: 'New terminals write their output to disk, so it survives a restart.',
+    description:
+      'When off, new terminals keep only recent output in memory and write nothing to disk.',
+    defaultValue: true,
+  }),
+  defineSetting({
+    key: 'terminalHistoryDirectory',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4096 },
+    label: 'Terminal history location',
+    help: 'Terminal history is stored in this directory, and ended terminals’ history moves here.',
+    description:
+      'Absolute local directory for terminal history. Leave empty for terminal-journals in the Station home.',
+    placeholder: '<Station home>/terminal-journals',
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxAgeDays',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, max: 3650, integer: true },
+    label: 'Terminal history maximum age',
+    help: 'History of terminals that ended more than this many days ago is deleted.',
+    description: 'Days to keep the history of an ended terminal, 1 to 3650.',
+    defaultValue: 30,
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxTerminalMiB',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, max: 1024, integer: true },
+    label: 'Maximum history per terminal',
+    help: 'Each terminal keeps at most this many MiB of history; the oldest output goes first.',
+    description: 'MiB of history each terminal keeps, from 1 MiB to 1 GiB.',
+    defaultValue: 16,
+  }),
+  defineSetting({
+    key: 'terminalHistoryMaxTotalMiB',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 16, max: 1048576, integer: true },
+    label: 'Maximum total history',
+    help: 'All terminals together keep at most this many MiB; the oldest ended terminals go first.',
+    description:
+      'MiB of history all terminals keep together, from 16 MiB to 1 TiB, and at least the per-terminal maximum.',
+    defaultValue: 1024,
+  }),
   defineSetting({
     key: 'mobileDeviceHubUrl',
     scope: 'station',
@@ -526,6 +584,19 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineSetting({
+    key: 'claudeArtifactsEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Claude Code artifacts',
+    help: 'Claude Code sessions can publish HTML and Markdown files as shareable Claude artifact pages.',
+    // Read at each Claude session start (station-runtime.ts `getArtifactsEnabled`
+    // → claude-adapter.ts `buildOptions`), which sets CLAUDE_CODE_ARTIFACT to
+    // 1 or 0; running sessions keep the value they started with.
+    description:
+      'Turn on the Artifact tool for new Claude Code sessions. It publishes pages to claude.ai and needs a claude.ai subscription login; API-key, Bedrock and Vertex logins do not get it.',
+    defaultValue: false,
+  }),
+  defineSetting({
     key: 'distributionProfile',
     scope: 'station',
     descriptor: { kind: 'composite' },
@@ -539,14 +610,39 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.',
+    // #4402: the runtime framework's name is not product vocabulary.
+    help: 'Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.',
     description:
-      'Fallback step limit for VoltAgent runs when the Agent has no maxSteps or guardrails.maxSteps override. Strands and native engines do not apply this setting.',
+      'Fallback step limit for runs on Station’s own engine when the Agent sets no step limit of its own. Claude Code, Codex and other engines do not apply this setting.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10
     // (schemas/app.schema.json corrected to match in this same slice).
     defaultValue: 200,
+  }),
+  defineSetting({
+    key: 'checkoutStaleAfterCommits',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after commits',
+    help: 'The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.',
+    description:
+      'Commits behind its upstream branch at which a Project’s checkout reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_COMMITS.
+    defaultValue: 50,
+  }),
+  defineSetting({
+    key: 'checkoutStaleAfterDays',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after days',
+    help: 'The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.',
+    description:
+      'Days a Project’s checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_DAYS.
+    defaultValue: 3,
   }),
   defineSetting({
     key: 'defaultMaxOutputTokens',
@@ -578,6 +674,16 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 14,
   }),
   defineSetting({
+    key: 'titleModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Chat title model',
+    help: 'Choose the model that names a chat after its first reply.',
+    // #4266: read by `resolveTitleModel` (chat-title-generation.ts).
+    description:
+      'When empty, no model sees the chat and it is named from its first message.',
+  }),
+  defineSetting({
     key: 'defaultWorkspaceIsolation',
     scope: 'station',
     descriptor: { kind: 'enum', values: ['shared', 'worktree'] },
@@ -596,6 +702,25 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 'shared',
   }),
   defineSetting({
+    key: 'noProjectChatFolder',
+    scope: 'station',
+    // `NO_PROJECT_CHAT_FOLDERS` in `config.ts`, restated as a literal for the
+    // schema-parity test (see defaultApprovalMode below).
+    descriptor: {
+      kind: 'enum',
+      values: ['private', 'home'],
+      labels: { private: 'Private folder', home: 'Home folder' },
+    },
+    label: 'Chats without a project',
+    help: 'A new chat with no project runs in a private folder of its own, or in your home folder.',
+    // #4389: read by `OrchestrationService` at a new conversation's first
+    // start (`no-project-chat-folder.ts`); a chat that already ran keeps its
+    // folder.
+    description:
+      'Private folder gives each new chat its own folder in Station’s data. Existing chats keep their folder. A sandboxed Codex chat never runs in the home folder.',
+    defaultValue: 'private',
+  }),
+  defineSetting({
     key: 'defaultApprovalMode',
     scope: 'station',
     // The canonical list is `APPROVAL_MODES` in `provider.ts`; it is restated
@@ -605,6 +730,14 @@ export const APP_SETTINGS_REGISTRY = [
     descriptor: {
       kind: 'enum',
       values: ['connection-default', 'ask', 'auto', 'never'],
+      // The same words as the composer's approval picker
+      // (`APPROVAL_MODE_OPTIONS`), never the raw ids (#4390).
+      labels: {
+        'connection-default': 'Default',
+        ask: 'Ask first',
+        auto: 'Auto',
+        never: 'Never ask (full access)',
+      },
     },
     label: 'Default approval mode',
     help: 'New chats start in this approval posture unless the chat or its Agent names its own.',

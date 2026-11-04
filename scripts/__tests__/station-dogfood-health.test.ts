@@ -24,7 +24,6 @@ import { inspectProcessFingerprint as recordProcessFingerprint } from '../../pac
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { attachVoiceWebSocket } from '../../src-server/routes/operations/voice.js';
-import { TerminalWebSocketServer } from '../../src-server/services/terminal/terminal-ws-server.js';
 import {
   assertListenerOwnership,
   inspectProcessFingerprints,
@@ -95,10 +94,10 @@ function waitForWebSocketServer(server: WebSocketServer): Promise<void> {
 }
 
 /**
- * A healthy Station listens on FOUR consecutive ports from `serverPort`:
- * api, terminal (+1), voice (+2) and consent (+3). `assertListenerOwnership`
- * requires all four, so a fixture that reserves three leaves the consent port
- * to whatever else on the host happens to hold it (station#3754).
+ * A healthy Station listens on `serverPort`, voice (+2) and consent (+3);
+ * nothing listens on +1. `assertListenerOwnership` requires all three, so a
+ * fixture reserves the whole block rather than leave the consent port to
+ * whatever else on the host happens to hold it (station#3754).
  */
 async function reserveConsecutivePorts(count = 4): Promise<number> {
   let lastError: unknown;
@@ -629,12 +628,6 @@ describe('dogfood authenticated health', () => {
     });
     await listenNodeServer(api, apiPort);
     closers.push(() => closeServer(api));
-    const terminal = new TerminalWebSocketServer({
-      subscribe: () => () => {},
-      close: () => {},
-    } as any).start(apiPort + 1, '127.0.0.1');
-    closers.push(() => closeServer(terminal));
-    await waitForWebSocketServer(terminal);
     const voice = attachVoiceWebSocket(
       apiPort + 2,
       { createSession: () => undefined, getActiveCount: () => 0 } as any,
@@ -644,11 +637,9 @@ describe('dogfood authenticated health', () => {
     closers.push(() => closeServer(voice));
     await waitForWebSocketServer(voice);
     const websocketPaths: string[] = [];
-    for (const server of [terminal, voice]) {
-      server.on('connection', (_socket, request) =>
-        websocketPaths.push(request.url ?? ''),
-      );
-    }
+    voice.on('connection', (_socket, request) =>
+      websocketPaths.push(request.url ?? ''),
+    );
     // The consent listener (serverPort + 3). Health checks it by listener
     // OWNERSHIP only — no protocol probe — so a plain server owned by this
     // process is the whole contract. Without it `listeners` and its
@@ -683,7 +674,7 @@ describe('dogfood authenticated health', () => {
       failedChecks: [],
     });
     expect(apiPaths).toEqual(['/api/system/identity']);
-    expect(websocketPaths).toEqual(['/__station/health', '/__station/health']);
+    expect(websocketPaths).toEqual(['/__station/health']);
     writeFileSync(
       state,
       JSON.stringify({
@@ -698,7 +689,6 @@ describe('dogfood authenticated health', () => {
     });
     await expect(probeDogfoodHealth(state)).resolves.toMatchObject({
       checks: expect.arrayContaining([
-        expect.objectContaining({ name: 'terminal', healthy: true }),
         expect.objectContaining({ name: 'voice', healthy: true }),
       ]),
     });
@@ -741,7 +731,7 @@ describe('dogfood authenticated health', () => {
     timeout: SOCKET_INTEGRATION_TEST_TIMEOUT_MS,
   }, async () => {
     // The rejection path for the fifth port. Everything else about this
-    // instance is well-formed — api, terminal, voice and ui all listen under
+    // instance is well-formed — api, voice and ui all listen under
     // this process — and ONLY the consent listener at serverPort + 3 is
     // absent. Without this, nothing proved the prober REQUIRES consent:
     // deleting that entry from `assertListenerOwnership` left the whole file
@@ -756,12 +746,6 @@ describe('dogfood authenticated health', () => {
     const api = createServer((_req, res) => res.end(JSON.stringify(identity)));
     await listenNodeServer(api, apiPort);
     closers.push(() => closeServer(api));
-    const terminal = new TerminalWebSocketServer({
-      subscribe: () => () => {},
-      close: () => {},
-    } as any).start(apiPort + 1, '127.0.0.1');
-    closers.push(() => closeServer(terminal));
-    await waitForWebSocketServer(terminal);
     const voice = attachVoiceWebSocket(
       apiPort + 2,
       { createSession: () => undefined, getActiveCount: () => 0 } as any,
@@ -807,77 +791,81 @@ describe('dogfood authenticated health', () => {
     ).toMatch(/consent listener ownership mismatch/);
     // The surfaces that ARE up must not be blamed for it.
     expect(health.failedChecks).not.toContain('api');
-    expect(health.failedChecks).not.toContain('terminal');
     expect(health.failedChecks).not.toContain('voice');
     expect(health.failedChecks).not.toContain('ui');
   });
 
-  it('rejects non-101 and hung websocket upgrades under one shared deadline', {
-    timeout: SOCKET_INTEGRATION_TEST_TIMEOUT_MS,
-  }, async () => {
-    const identity = {
-      instanceId: 'phone',
-      sha: 'a'.repeat(40),
-      bootId: '11111111-1111-4111-8111-111111111111',
-    };
-    const apiPort = await reserveConsecutivePorts();
-    const api = createServer((_req, res) => res.end(JSON.stringify(identity)));
-    await listenNodeServer(api, apiPort);
-    closers.push(() => closeServer(api));
-    const heldSockets = new Set<Socket>();
-    const terminal = createTcpServer((socket) => {
-      heldSockets.add(socket);
-      socket.once('close', () => heldSockets.delete(socket));
-    });
-    await listenNodeServer(terminal, apiPort + 1);
-    closers.push(async () => {
-      for (const socket of heldSockets) socket.destroy();
-      await closeServer(terminal);
-    });
-    const voice = createServer();
-    voice.on('upgrade', (_request, socket) => {
-      socket.end(
-        'HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n',
+  it.each([
+    ['a hung', undefined],
+    ['a non-101', 'upgrade rejected with HTTP 403'],
+  ] as const)(
+    'rejects %s websocket upgrade within the shared deadline',
+    async (_label, rejection) => {
+      const identity = {
+        instanceId: 'phone',
+        sha: 'a'.repeat(40),
+        bootId: '11111111-1111-4111-8111-111111111111',
+      };
+      const apiPort = await reserveConsecutivePorts();
+      const api = createServer((_req, res) =>
+        res.end(JSON.stringify(identity)),
       );
-    });
-    await listenNodeServer(voice, apiPort + 2);
-    closers.push(() => closeServer(voice));
-    const consent = createServer((_req, res) => res.end('{}'));
-    await listenNodeServer(consent, apiPort + 3);
-    closers.push(() => closeServer(consent));
-    const ui = createServer((_req, res) => res.end(JSON.stringify(identity)));
-    await listenNodeServer(ui, 0);
-    closers.push(() => closeServer(ui));
-    const root = mkdtempSync(join(tmpdir(), 'station-health-deadline-'));
-    const state = join(root, 'phone.json');
-    writeFileSync(
-      state,
-      JSON.stringify({
-        ...identity,
-        build: { sha: identity.sha },
-        serverPid: process.pid,
-        serverFingerprint: currentProcessFingerprint(),
-        uiPid: process.pid,
-        uiFingerprint: currentProcessFingerprint(),
-        serverPort: apiPort,
-        uiPort: (ui.address() as { port: number }).port,
-        host: '127.0.0.1',
-      }),
-      { mode: 0o600 },
-    );
-    const started = Date.now();
-    await expect(
-      probeDogfoodHealth(state, { timeoutMs: 2500 }),
-    ).resolves.toMatchObject({
-      healthy: false,
-      failedChecks: expect.arrayContaining(['terminal', 'voice']),
-      checks: expect.arrayContaining([
-        expect.objectContaining({
-          name: 'voice',
-          reason: 'upgrade rejected with HTTP 403',
+      await listenNodeServer(api, apiPort);
+      closers.push(() => closeServer(api));
+      const heldSockets = new Set<Socket>();
+      const voice = rejection
+        ? createServer().on('upgrade', (_request, socket) => {
+            socket.end(
+              'HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n',
+            );
+          })
+        : createTcpServer((socket) => {
+            heldSockets.add(socket);
+            socket.once('close', () => heldSockets.delete(socket));
+          });
+      await listenNodeServer(voice, apiPort + 2);
+      closers.push(async () => {
+        for (const socket of heldSockets) socket.destroy();
+        await closeServer(voice);
+      });
+      const consent = createServer((_req, res) => res.end('{}'));
+      await listenNodeServer(consent, apiPort + 3);
+      closers.push(() => closeServer(consent));
+      const ui = createServer((_req, res) => res.end(JSON.stringify(identity)));
+      await listenNodeServer(ui, 0);
+      closers.push(() => closeServer(ui));
+      const root = mkdtempSync(join(tmpdir(), 'station-health-deadline-'));
+      const state = join(root, 'phone.json');
+      writeFileSync(
+        state,
+        JSON.stringify({
+          ...identity,
+          build: { sha: identity.sha },
+          serverPid: process.pid,
+          serverFingerprint: currentProcessFingerprint(),
+          uiPid: process.pid,
+          uiFingerprint: currentProcessFingerprint(),
+          serverPort: apiPort,
+          uiPort: (ui.address() as { port: number }).port,
+          host: '127.0.0.1',
         }),
-      ]),
-    });
-    expect(Date.now() - started).toBeLessThan(3000);
-  });
+        { mode: 0o600 },
+      );
+      const started = Date.now();
+      const health = await probeDogfoodHealth(state, { timeoutMs: 2500 });
+      expect(health).toMatchObject({
+        healthy: false,
+        failedChecks: expect.arrayContaining(['voice']),
+      });
+      expect(health.failedChecks).not.toContain('api');
+      if (rejection)
+        expect(
+          health.checks.find(
+            (check: { name: string }) => check.name === 'voice',
+          )?.reason,
+        ).toBe(rejection);
+      expect(Date.now() - started).toBeLessThan(3000);
+    },
+    SOCKET_INTEGRATION_TEST_TIMEOUT_MS,
+  );
 });

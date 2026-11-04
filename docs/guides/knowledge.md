@@ -297,8 +297,11 @@ returns the current title/category with the indexed excerpt and score.
   `topK` results. If it stops at that bound first, `index.scanLimitReached` is
   `true`.
 
-The `search_knowledge` tool and the Ask tab return only the results, not this
-report.
+Both `search_knowledge` MCP profiles retain the results array in `data` and
+return the report alongside it as `index`. Read that report before treating an
+empty or short result as complete. `index: null` means an older host did not
+report health; it does not mean the index is current. The Ask tab still returns
+only results.
 
 ## `root:conversations`: past conversations as a knowledge root
 
@@ -502,7 +505,10 @@ document sources; their readiness and permission checks remain independent.
 The Project knowledge section keeps the older document upload, indexing and
 migration controls. Store creation and attachment now have one owner:
 **Settings → Sources**. **Manage sources** navigates there through the ordinary
-unsaved-changes guard.
+unsaved-changes guard. These document actions apply immediately rather than
+waiting for the Project settings **Save** button. Failed reads offer **Retry**;
+upload failures name the affected files while remaining files continue.
+Indexing, removal, and clear failures remain visible in the section.
 
 **Migrate this project's existing knowledge** appears when earlier document
 storage contains files. It runs the [migration described above](#the-non-destructive-guarantee),
@@ -621,11 +627,15 @@ alone cannot enable it.
   `examples/meeting-transcription/`), then writes the structured result as a `compiled` record whose
   `links` includes `{ target_id: <raw record's id>, kind: 'source' }` and whose
   `provenance.source_ids` names the same raw record. The ordinary workflow saves
-  first, then compiles using the retained ID. The compile call does not re-read
-  or lock that source record, so this reference is not proof that the source
-  still exists or that its text matches the current textarea. An external edit
-  or a late save response can break that correspondence; inspect the saved raw
-  record when checking the compiled note's provenance.
+  first, then compiles using the retained ID. Each request keeps its submitted
+  root, text and source ID. Editing or switching roots clears the saved IDs;
+  late responses cannot enable Compile or label the changed draft. A pending
+  compile can still finish writing its originally submitted note. The compile
+  call does not re-read or lock the stored source, so external edits or deletion
+  remain outside this guarantee. Inspect the raw record when checking provenance.
+
+An unreadable transcript upload shows an error and preserves the current text.
+Reading a file does not overwrite edits made while that read was pending.
 
 Both writes go through the K2 store seam described above — nothing about capture bypasses the
 adapter contract or invents a parallel storage format. See
@@ -867,3 +877,13 @@ Those require their own configured service or device observation.
   sqlite-vec was chosen as the built-in index, and the evaluation of the runner-up (real LanceDB).
 - [docs/design/knowledge-foundation.md](../design/knowledge-foundation.md) — the full
   `KnowledgeStoreProvider`/`KnowledgeIndexProvider` interface contracts and landed file references.
+
+
+## Reviewed learning lifecycle
+
+Project Sources also offers the **Learning lifecycle review** preview. It uses
+Knowledge Kit's public lifecycle API rather than interpreting a raw record's
+`active` status as approved guidance. Sources, evaluation, decision, activation,
+effects and retirement retain distinct owner receipts. See
+[bounded agent work](agent-efficiency.md#review-and-use-a-learning) for the
+operator flow, current consumer and platform limits.

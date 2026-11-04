@@ -1,0 +1,7 @@
+{
+  "revision": "c4df5a9fc57ad7b28eca416c36d46ee6dd1be9ec",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added turnStartDetached to the orchestration contract row: a capped newest page whose oldest event is a re-added turn.started, with nextCursor reading the gap; absent when contiguous or from older hosts.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts"]}
+  ]
+}

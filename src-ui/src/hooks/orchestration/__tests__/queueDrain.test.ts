@@ -396,7 +396,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(recovered).toBeDefined();
     expect(recovered.queuedMessages).toEqual(['authored before first receipt']);
     expect(recovered.queuedMessageMetadata).toEqual([
-      { id: 'first-receipt-pending', mode: 'queue' },
+      { id: 'first-receipt-pending', mode: 'queue', originUnverified: true },
     ]);
     expect(recovered.queuedMessageFailure?.code).toBe('unconfirmed-first-send');
     const { conversationCanMutate } = await import(
@@ -437,8 +437,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       'later',
     ]);
     expect(reloaded.getSnapshot()[threadId].queuedMessageMetadata).toEqual([
-      { id: 'recover-id', mode: 'steer' },
-      { id: 'later-id', mode: 'queue' },
+      { id: 'recover-id', mode: 'steer', originUnverified: true },
+      { id: 'later-id', mode: 'queue', originUnverified: true },
     ]);
     expect(reloaded.getSnapshot()[threadId].queueDrainHeldForOpen).toBe(true);
   });

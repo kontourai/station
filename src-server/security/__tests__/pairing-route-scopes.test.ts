@@ -20,6 +20,7 @@ import {
   PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS,
   PAIRING_SCOPE_FAMILY_INHERITED_LEAVES,
   PAIRING_WS_SCOPES,
+  pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../pairing-route-scopes.js';
@@ -29,6 +30,94 @@ import {
 } from './pairing-route-leaf-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+test.each([
+  ['POST', 'archive-preparations'],
+  ['POST', 'installations'],
+  ['POST', 'installations/01234567-89ab-4cde-8fab-0123456789ab/actions'],
+  ['POST', 'product-incidents/group/links'],
+  ['DELETE', 'product-incidents/group/links/link'],
+])(
+  'companion %s %s requires promoted management authority rather than continuity or ordinary operation',
+  (method, operation) => {
+    const route = {
+      method,
+      path: `/api/operator/telemetry-companion/${operation}`,
+    };
+    expect(requiredPairingScope(route.method, route.path)).toBe(
+      'telemetry:manage',
+    );
+    for (const scope of [
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'orchestration:read orchestration:operate home:control',
+    ])
+      expect(
+        pairingScopeSatisfiesHttpRoute(scope, 'telemetry:manage', route),
+      ).toBe(false);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        'orchestration:read telemetry:manage',
+        'telemetry:manage',
+        route,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        false,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        { ...route, path: '/api/unrelated' },
+        true,
+        true,
+      ),
+    ).toBe(false);
+  },
+);
+test.each([
+  ['POST', '/acp/connections/cursor/sign-in/start', true],
+  ['GET', '/acp/connections/cursor/sign-in/attempt', true],
+  ['PUT', '/acp/connections/cursor/credentials/CURSOR_API_KEY', true],
+  ['GET', '/api/connections/agent/claude/device-code-profiles', false],
+  ['POST', '/api/connections/agent/claude/account-login', false],
+] as const)(
+  'a home-possession operator passes engine:login on %s %s only where the sign-in handler admits it (%s)',
+  (method, path, admitted) => {
+    const route = { method, path };
+    expect(requiredPairingScope(method, path)).toBe('engine:login');
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'engine:login',
+        route,
+        false,
+        true,
+      ),
+    ).toBe(admitted);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'engine:login',
+        route,
+      ),
+    ).toBe(false);
+  },
+);
 const RUNTIME_ROUTES_PATH = join(
   __dirname,
   '../../runtime/routes/runtime-routes.ts',
@@ -83,6 +172,23 @@ function scanMountedRouteBases(): string[] {
   }
   return bases;
 }
+
+test('terminal socket HTTP classification refuses personal tokens explicitly', () => {
+  expect(matchPairingScopeRule('GET', '/api/terminal/socket')).toMatchObject({
+    scope: 'terminal:operate',
+    personalTokens: 'refused',
+  });
+});
+
+test('terminal ticket mint requires at least terminal observe and refuses personal tokens', () => {
+  expect(matchPairingScopeRule('POST', '/api/terminal/tickets')).toMatchObject({
+    scope: 'terminal:observe',
+    personalTokens: 'refused',
+  });
+  expect(requiredPairingScope('POST', '/api/terminal/tickets')).toBe(
+    'terminal:observe',
+  );
+});
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
   test('reserves the entire home-authority family for explicit home-transfer grants', () => {
@@ -174,6 +280,25 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       ({ method, path }) => `${method} ${path}`,
     );
     expect(identities).toEqual([...new Set(identities)]);
+  });
+
+  test('classifies only the person notification leaves at their read and mutate tiers', () => {
+    for (const [method, path, scope] of [
+      ['GET', '/api/me/notifications', 'orchestration:read'],
+      ['POST', '/api/me/notifications/:id/read', 'orchestration:operate'],
+      ['DELETE', '/api/me/notifications/:id', 'orchestration:operate'],
+    ] as const) {
+      expect(isLeafScopeDeclared(method, path)).toBe(true);
+      expect(requiredPairingScope(method, path)).toBe(scope);
+      expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
+        method,
+        path,
+      });
+    }
+    expect(isLeafScopeDeclared('POST', '/api/me/notifications')).toBe(false);
+    expect(
+      isLeafScopeDeclared('DELETE', '/api/me/notifications/:id/read'),
+    ).toBe(false);
   });
 
   test('inherits read scope for the local operating-state availability leaf', () => {
@@ -609,24 +734,11 @@ describe('external surface capability table (station#2000)', () => {
       scope: 'orchestration:operate',
     });
     expect(
-      requiredExternalSurfaceCapability('terminal-ws', 'CONNECT', '/'),
-    ).toMatchObject({
-      capability: 'pairing-scope',
-      scope: 'terminal:operate',
-    });
-    expect(
       requiredExternalSurfaceCapability('voice-ws', 'CONNECT', '/'),
     ).toMatchObject({
       capability: 'pairing-scope',
       scope: 'orchestration:operate',
     });
-    expect(
-      requiredExternalSurfaceCapability(
-        'terminal-ws',
-        'CONNECT',
-        '/__station/health',
-      ),
-    ).toMatchObject({ capability: 'public' });
     expect(EXTERNAL_SURFACE_CAPABILITY_TABLE).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -864,6 +976,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/skills/experiences', 'orchestration:read'],
     ['GET', '/api/tasks/task-1/user-input-references', 'orchestration:read'],
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
+    ['GET', '/api/tasks/task-1/room', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/history', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/document', 'orchestration:read'],
+    ['GET', '/api/tasks/task-1/room/events', 'orchestration:read'],
+    ['POST', '/api/tasks/task-1/room/messages', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/live', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/edit-plan', 'orchestration:operate'],
     ['POST', '/api/tasks/task-1/room/output-feedback', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
@@ -1213,6 +1332,41 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         '/api/projects/my-proj/file-preview/download',
       ),
     ).toBe('orchestration:read');
+  });
+
+  test('terminal session ingress requires observe for reads and operate for writes without generic Project grants', () => {
+    const base = '/api/projects/alpha/terminal-sessions';
+    for (const [method, path, expected] of [
+      ['GET', base, 'terminal:observe'],
+      ['HEAD', base, 'terminal:observe'],
+      ['GET', `${base}/terminal-id`, 'terminal:observe'],
+      ['HEAD', `${base}/terminal-id`, 'terminal:observe'],
+      ['POST', base, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/input`, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/resize`, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/restart`, 'terminal:operate'],
+      ['DELETE', `${base}/terminal-id`, 'terminal:operate'],
+    ] as const) {
+      const scope = requiredPairingScope(method, path);
+      expect(scope).toBe(expected);
+      expect(matchPairingScopeRule(method, path)?.origin).toBe('explicit');
+      for (const grant of ['orchestration:read', 'orchestration:operate'])
+        expect(
+          pairingScopeSatisfiesHttpRoute(grant, scope!, { method, path }),
+        ).toBe(false);
+      expect(
+        pairingScopeSatisfiesHttpRoute('terminal:observe', scope!, {
+          method,
+          path,
+        }),
+      ).toBe(expected === 'terminal:observe');
+      expect(
+        pairingScopeSatisfiesHttpRoute('terminal:operate', scope!, {
+          method,
+          path,
+        }),
+      ).toBe(true);
+    }
   });
 
   test('gives project terminal termination the explicit terminal-operate scope', () => {
@@ -1719,8 +1873,7 @@ describe('station#1398 slice 2: the fleet inference family and the model-invento
 });
 
 describe('pairing-route-scopes: WS upgrade paths', () => {
-  test('terminal requires terminal:operate; voice requires orchestration:operate', () => {
-    expect(PAIRING_WS_SCOPES.terminal).toBe('terminal:operate');
+  test('voice requires orchestration:operate', () => {
     expect(PAIRING_WS_SCOPES.voice).toBe('orchestration:operate');
   });
 
@@ -1735,20 +1888,12 @@ describe('pairing-route-scopes: WS upgrade paths', () => {
 });
 
 /**
- * `credentialAuthorizedForScope` is the exact function both WebSocket
- * first-frame auth wrappers call — terminal's in
- * `runtime-service-bootstrap.ts` (`PAIRING_WS_SCOPES.terminal`) and voice's
- * in `runtime-initialize.ts` (`PAIRING_WS_SCOPES.voice`). Mirrored describe
- * blocks per archive#1098: terminal already had a
- * capture-based bootstrap test (`runtime-service-bootstrap.test.ts`); voice
- * had none. Both are exercised identically here against the same shared
- * function, so this closes that gap without depending on either runtime's
- * heavy cold-start wiring.
+ * `credentialAuthorizedForScope` is the exact function the voice WebSocket
+ * first-frame auth wrapper calls in `runtime-initialize.ts`
+ * (`PAIRING_WS_SCOPES.voice`), exercised here without the runtime's heavy
+ * cold-start wiring (archive#1098).
  */
-describe.each([
-  ['terminal', PAIRING_WS_SCOPES.terminal],
-  ['voice', PAIRING_WS_SCOPES.voice],
-] as const)(
+describe.each([['voice', PAIRING_WS_SCOPES.voice]] as const)(
   'credentialAuthorizedForScope: %s WebSocket gate',
   (_name, requiredScope) => {
     test('a read-only credential is denied', async () => {
@@ -1913,4 +2058,82 @@ test('declares exact inventory input inspection at the read tier', () => {
   const path = '/api/orchestration/sessions/:threadId/inputs/:eventId';
   expect(isLeafScopeDeclared('GET', path)).toBe(true);
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
+});
+
+test('Task write-back log is a declared Task read', () => {
+  expect(isLeafScopeDeclared('GET', '/api/tasks/:taskId/write-back')).toBe(
+    true,
+  );
+  expect(requiredPairingScope('GET', '/api/tasks/task-a/write-back')).toBe(
+    'orchestration:read',
+  );
+});
+
+test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  expect(
+    requiredPairingScope(
+      'POST',
+      '/api/mobile-devices/projects/demo/device-artifacts/upload',
+    ),
+  ).toBe('terminal:operate');
+  expect(
+    requiredPairingScope(
+      'POST',
+      '/api/tasks/task-a/review/device-repro-bundles',
+    ),
+  ).toBe('terminal:operate');
+  for (const path of [
+    '/api/tasks/task-a/review/walkthroughs',
+    '/api/tasks/task-a/review/walkthroughs/clip-a',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/video',
+    '/api/tasks/task-a/review/walkthroughs/clip-a/frames/frame-a',
+  ])
+    expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
+  ).toBe('orchestration:operate');
+  expect(
+    requiredPairingScope('GET', '/api/tasks/task-a/review/capture-sessions'),
+  ).toBe('orchestration:read');
+  expect(
+    requiredPairingScope(
+      'GET',
+      '/api/tasks/task-a/review/device-capture-sessions',
+    ),
+  ).toBe('terminal:operate');
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/device-captures'),
+  ).toBe('terminal:operate');
+  for (const [method, path] of [
+    ['POST', '/api/tasks/task-a/review/device-recordings'],
+    ['GET', '/api/tasks/task-a/review/device-recordings/job-a'],
+    ['POST', '/api/tasks/task-a/review/device-recordings/job-a/stop'],
+  ] as const)
+    expect(requiredPairingScope(method, path)).toBe('terminal:operate');
+  expect(
+    requiredPairingScope(
+      'GET',
+      '/api/tasks/task-a/review/captures/capture-a/content',
+    ),
+  ).toBe('orchestration:read');
+  expect(requiredPairingScope('POST', '/api/tasks/task-a/review/threads')).toBe(
+    'orchestration:operate',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/captures/extra'),
+  ).toBe('orchestration:operate');
+});
+test('integration status has only the Connections read scope', () => {
+  expect(requiredPairingScope('GET', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(requiredPairingScope('HEAD', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/integrations/status'),
+  ).toBeUndefined();
+  expect(
+    requiredPairingScope('GET', '/api/integrations/status/other'),
+  ).toBeUndefined();
 });

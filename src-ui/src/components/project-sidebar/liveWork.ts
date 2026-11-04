@@ -6,9 +6,8 @@ type LiveWorkSession = Parameters<typeof orchestrationLifecycleLabel>[0] & {
 
 /**
  * The sessions Live work counts: running or needing attention, excluding a
- * read-only attachment, classified by the canonical lifecycle label. Shared by
- * the footer's presence tray and the phone overflow's Live work row, so the
- * two cannot disagree about what "active" means.
+ * read-only attachment, classified by the canonical lifecycle label. The phone
+ * overflow's Live work row reads it, so "active" has one definition.
  */
 export function activeLiveWorkSessions<T extends LiveWorkSession>(
   sessions: readonly T[],

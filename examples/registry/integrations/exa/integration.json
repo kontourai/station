@@ -1,0 +1,14 @@
+{
+  "id": "exa",
+  "kind": "mcp",
+  "displayName": "Exa Web Search",
+  "icon": "🔎",
+  "description": "Search the public web and retrieve pages. Hosted anonymous access is rate-limited; queries and fetched URLs go to Exa. No local runtime required.",
+  "enabled": false,
+  "transport": "streamable-http",
+  "endpoint": "https://mcp.exa.ai/mcp",
+  "timeouts": {
+    "startupMs": 20000,
+    "requestMs": 60000
+  }
+}

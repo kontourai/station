@@ -1,0 +1,7 @@
+{
+  "revision": "148d8d7ce5bb4eb3c89fecb9ce2e841a462ef935",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Monitoring guide changed only in the stall paragraph's page-fault sentence; this document's observation-path paragraph is unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

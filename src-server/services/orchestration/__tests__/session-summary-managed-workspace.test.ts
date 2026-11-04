@@ -1,16 +1,18 @@
+import { join } from 'node:path';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
+import { resolveHomeDir } from '../../../utils/paths.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
 /**
  * The session summary says when its `cwd` is a folder Station created for the
  * chat (`cwdManagedWorkspace`), so clients can name it ("Chat workspace")
  * instead of printing a hash path — and never have to match the path
- * themselves. The server's own `isManagedAcpWorkspace` decides.
+ * themselves. The server's own `isStationChatFolder` decides.
  */
-function summarize(cwd: string | undefined) {
+function summarize(cwd: string | undefined, provider = 'acp-test') {
   const persisted: ProviderSession = {
-    provider: 'acp-test',
+    provider,
     threadId: 'thread-managed',
     status: 'ready',
     ...(cwd ? { cwd } : {}),
@@ -41,8 +43,24 @@ describe('cwdManagedWorkspace on the session summary', () => {
     expect(summary.cwd).toContain(DIGEST);
   });
 
+  test('a Windows Codex private workspace is named as a chat workspace', () => {
+    const cwd = `C:\\Users\\someone\\.station\\runtime\\codex-workspaces\\session\\${DIGEST}`;
+    const summary = summarize(cwd, 'codex');
+    expect(summary.provider).toBe('codex');
+    expect(summary.cwdManagedWorkspace).toBe(true);
+    expect(summary.cwd).toBe(cwd);
+  });
+
   test.each([
     ['a user folder', '/Users/someone/dev/project'],
+    [
+      'a Codex folder with a short digest',
+      `/Users/someone/.station/runtime/codex-workspaces/session/${DIGEST.slice(1)}`,
+    ],
+    [
+      'an unknown engine',
+      `/Users/someone/.station/runtime/other-workspaces/session/${DIGEST}`,
+    ],
     [
       'a folder shaped like one with a short digest',
       `/Users/someone/.station/runtime/acp-workspaces/session/${DIGEST.slice(1)}`,
@@ -53,6 +71,18 @@ describe('cwdManagedWorkspace on the session summary', () => {
     ],
   ])('%s is not', (_, cwd) => {
     expect(summarize(cwd).cwdManagedWorkspace).toBeUndefined();
+  });
+
+  test("a no-project chat's scratch folder under this Station's home is flagged (#4389)", () => {
+    const scratch = join(resolveHomeDir(), 'scratch', 'thread-managed');
+    expect(summarize(scratch).cwdManagedWorkspace).toBe(true);
+    // The scratch root itself, or a sibling of it, is not a chat's folder.
+    expect(
+      summarize(join(resolveHomeDir(), 'scratch')).cwdManagedWorkspace,
+    ).toBeUndefined();
+    expect(
+      summarize(join(resolveHomeDir(), 'scratchpad', 'x')).cwdManagedWorkspace,
+    ).toBeUndefined();
   });
 
   test('no cwd, no flag', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Added canForgetConnection to the useConnections listing; matches ConnectionsContext (false for injected, native relay route, or shared profile without a host remover). forgetConnection line unchanged.","inputs":["docs/reference/connect.md","packages/connect/src/react/ConnectionsContext.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

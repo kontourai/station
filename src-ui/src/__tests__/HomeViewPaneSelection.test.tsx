@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const selection = vi.hoisted(() => ({
@@ -62,6 +62,7 @@ import {
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
 import { HomeView } from '../views/HomeView';
+import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 
 afterEach(() => {
   selection.result = { state: 'selected' };
@@ -87,12 +88,29 @@ test('mounts the builtin Home renderer when the selector admits it as the primar
   expect(screen.getByTestId('home-surface')).toBeTruthy();
 });
 
-test('does not mount the builtin when the selector refuses Home', () => {
-  selection.result = { state: 'unavailable' };
-  render(<HomeView continuation={null} onNavigate={() => undefined} />);
-  expect(screen.queryByTestId('home-surface')).toBeNull();
-  expect(screen.getByText('Home is unavailable')).toBeTruthy();
-});
+test.each([null, { type: 'project', slug: 'station' }] as const)(
+  'selection refusal explains the cause and Close Home navigates from %j',
+  (continuation) => {
+    const safeMode = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(safeMode);
+    selection.result = { state: 'unavailable' };
+    const onNavigate = vi.fn();
+    render(<HomeView continuation={continuation} onNavigate={onNavigate} />);
+    expect(screen.queryByTestId('home-surface')).toBeNull();
+    expect(screen.getByText('Home is unavailable')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Home’s layout needs a renderer this version doesn’t include. Choose Close Home to leave Home.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith(
+      continuation ?? { type: 'settings' },
+    );
+    expect(safeMode).toHaveBeenCalledOnce();
+    unsubscribe();
+  },
+);
 
 test('does not mount the builtin when the selected renderer is not the builtin primary', () => {
   // A contributed Home reaches this route through the same call. Mounting

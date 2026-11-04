@@ -1,0 +1,7 @@
+{
+  "revision": "1fb787336ea6f662f63e091d5b1a1b5fd0c6287d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts from the canonical guides (docs:mcp:generate): the only content delta is the module-map workload paragraph (budget resolution, settings, session attribution, workload routes/tool, first-turn composition). station-docs.md describes the credential-free docs MCP, its topics and delivery, none of which changed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

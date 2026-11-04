@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed after the review-fix round: added that an HTTPS page does not probe plain-HTTP non-loopback addresses, that the bulk confirmation names each Station, and that local-service profiles are refused until the app identifies its own at startup. Checked against StationSwitcherMenu.tsx, stationSwitcher.isProbeable/probeStation and stationProfileStorage.isOwnStation.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx","src-ui/src/components/header/StationSwitcherMenu.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

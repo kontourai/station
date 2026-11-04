@@ -238,6 +238,12 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
             }
           : undefined
       }
+      canRemoveSharedProfile={
+        profile.isTauri
+          ? (connectionId) =>
+              nativeProfileRepository().canRemoveProfile(connectionId)
+          : undefined
+      }
       makeDefaultProfile={
         profile.isTauri
           ? async (connectionId) => {

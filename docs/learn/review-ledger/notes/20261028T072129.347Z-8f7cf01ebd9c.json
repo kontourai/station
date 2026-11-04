@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Re-reviewed after connections.md's switcher paragraph gained probe and fail-closed detail. This guide does not describe the switcher or forgetting a saved Station; no claim changes.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

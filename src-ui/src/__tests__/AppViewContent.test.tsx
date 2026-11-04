@@ -157,7 +157,7 @@ describe('AppViewContent — R3 un-stacking', () => {
     const { container, unmount } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
     );
-    await screen.findByRole('heading', { level: 1, name: 'Schedule' });
+    await screen.findByRole('heading', { level: 1, name: 'Automations' });
     expect(container.querySelector('.page-frame__header')).not.toBeNull();
     unmount();
 

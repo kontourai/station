@@ -7,8 +7,8 @@
  *   registry untouched until it is promoted.
  * - A handoff from generation 1 to 2 under continuous HTTP load, including
  *   requests whose headers are still arriving when generation 1 drains,
- *   refuses and resets nothing, keeps every port, and leaves the terminal,
- *   voice, and consent listeners served by the new generation.
+ *   refuses and resets nothing, keeps every port, and leaves the voice and
+ *   consent listeners served by the new generation.
  * - The supervisor (from source, with its fixture core) leaves a fresh home
  *   untouched, and keeps its socket, token, and lock through a home schema
  *   migration, since its run directory is beside the home.
@@ -245,7 +245,24 @@ describe('a parked core generation', () => {
       children.add(core);
       const output = capture(core);
       const messages: Array<{ type: string }> = [];
-      core.on('message', (message: { type: string }) => messages.push(message));
+      const observedTypes = new Set(['parked', 'listener.bound', 'ready']);
+      const ipcEvents: string[] = [];
+      const started = performance.now();
+      const observe = (event: string) => {
+        if (ipcEvents.length < 32)
+          ipcEvents.push(
+            `${event}@${Math.floor(performance.now() - started)}ms`,
+          );
+      };
+      core.on('message', (message: { type: string }) => {
+        messages.push(message);
+        if (observedTypes.has(message.type)) observe(message.type);
+      });
+      let disconnectObserved = false;
+      core.once('disconnect', () => {
+        disconnectObserved = true;
+        observe('disconnect');
+      });
 
       await waitFor(
         'parked',
@@ -285,13 +302,15 @@ describe('a parked core generation', () => {
       );
 
       // Losing the supervisor's channel ends the generation.
+      observe('disconnect-requested');
       core.disconnect();
       await waitFor(
         'the generation to exit after its IPC channel closed',
         BOOT_TIMEOUT_MS,
         () =>
           core.exitCode !== null || core.signalCode !== null ? true : undefined,
-        output,
+        () =>
+          `${output()}\nIPC: connected=${core.connected}, channel=${Boolean(core.channel)}, disconnectObserved=${disconnectObserved}, events=${ipcEvents.join(',')}`,
       );
     },
     // Above the sum of its three bounded waits, so a stuck one names itself.
@@ -526,7 +545,7 @@ describe('a supervised core handoff', () => {
       };
       try {
         const first = await waitFor(
-          'generation 1 serving all four listeners',
+          'generation 1 serving all three listeners',
           BOOT_TIMEOUT_MS,
           async () => {
             if (supervisor.exitCode !== null)
@@ -535,7 +554,7 @@ describe('a supervised core handoff', () => {
             const current = await status();
             return current.state === 'serving' &&
               current.active?.state === 'serving' &&
-              current.listeners.length === 4
+              current.listeners.length === 3
               ? current
               : undefined;
           },
@@ -548,7 +567,6 @@ describe('a supervised core handoff', () => {
           Object.fromEntries(first.listeners.map((l) => [l.name, l.port])),
         ).toEqual({
           api: port,
-          terminal: port + 1,
           voice: port + 2,
           consent: port + 3,
         });
@@ -595,10 +613,10 @@ describe('a supervised core handoff', () => {
         }
         // On Windows the handoff rests on the supervisor catching connections
         // while generation 1 drains (process supervisor design, Windows): all
-        // four listeners, eight spares each.
+        // three listeners, eight spares each.
         if (process.platform === 'win32') {
           expect(output()).toContain(
-            'catching connections on 32 spare listener(s) while generation 1 drains',
+            'catching connections on 24 spare listener(s) while generation 1 drains',
           );
         }
         // Slow-header requests were in flight across the drain and finished.
@@ -618,16 +636,12 @@ describe('a supervised core handoff', () => {
         expect(processAlive(second.active?.pid as number)).toBe(true);
 
         // Generation 1 is gone, so whatever answers now is generation 2.
-        await expect(healthClose(port + 1)).resolves.toEqual({
-          code: 1000,
-          reason: 'healthy',
-        });
         await expect(healthClose(port + 2)).resolves.toEqual({
           code: 1000,
           reason: 'healthy',
         });
         // Non-upgrade requests get exactly what ws sends from a port it owns.
-        await expect(plainGet(port + 1)).resolves.toEqual({
+        await expect(plainGet(port + 2)).resolves.toEqual({
           status: 426,
           body: 'Upgrade Required',
           type: 'text/plain',

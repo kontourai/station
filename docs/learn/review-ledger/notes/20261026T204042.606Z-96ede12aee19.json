@@ -1,0 +1,7 @@
+{
+  "revision": "bc956eb745f249cb63216f38296775def58f778f",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed D5 supersession note and footer description after removing the unmounted ProjectSidebarPresenceTray. Footer renders Schedule/Customize left, Updates and account right; no presence tray component remains. ProjectSidebarRow change is a comment-only correction of the SEAM note (live-activity read is host-wide); no behavior change.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]}
+  ]
+}

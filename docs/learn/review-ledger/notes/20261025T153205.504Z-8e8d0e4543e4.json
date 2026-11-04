@@ -1,0 +1,9 @@
+{
+  "revision": "6d5e1998875198758310659fdfb8756b8c9aec99",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Reviewed current Developer/TelemetryTab composition and the scoped companion lifecycle/product readers, including incident expansion, fresh draft export and local issue-link UI. Added discoverable incident navigation and limits: retained operator aggregates, no private incident detail or external publishing, old results hidden on failed read. This is source composition review, not installed/native rendering or a qualified official companion profile.","inputs":["docs/design/developer-surface.md","packages/sdk/src/query-domains/telemetryCompanion.ts","src-ui/src/views/developer/CompanionManaged.css","src-ui/src/views/developer/CompanionProductTrends.tsx"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed native platform boundary, requesterConsent adapter, lib.rs broker changes, Pending requester custody and mounted consent route authority. Added the separate requester-session path, expiring profile/origin/request binding, host-only secret/nonce, generic-relay exclusion and no operator fallback. Capability reports remain build declarations rather than permissions or physical proof. Rust compilation, real dialogs, mobile account-switch/revocation and installed release qualification remain NOT_VERIFIED.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs","src-ui/src/platform/native/__tests__/native-consent-broker-capability.test.ts","src-ui/src/platform/native/tauri.ts","src-ui/src/platform/native/types.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

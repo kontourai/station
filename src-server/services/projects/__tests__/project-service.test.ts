@@ -8,6 +8,7 @@ import {
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { parseProjectConfig } from '../../../domain/file-storage-schemas.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -32,9 +33,11 @@ vi.mock('@kontourai/station-contracts/knowledge', async (importOriginal) => {
   };
 });
 
-const { ProjectService, ProjectIconRefusedError } = await import(
-  '../project-service.js'
-);
+const {
+  ProjectService,
+  ProjectIconRefusedError,
+  ProjectFullAccessDefaultRefusal,
+} = await import('../project-service.js');
 const { FileStorageAdapter, compareProjectListOrder } = await import(
   '../../../domain/file-storage-adapter.js'
 );
@@ -513,6 +516,100 @@ describe('ProjectService', () => {
     const replaced = (revision.replace as any).mock.calls[0][0];
     expect(Object.hasOwn(replaced, 'defaultWorkspaceIsolation')).toBe(false);
     expect(replaced.name).toBe('Test');
+  });
+
+  test('null on a new-chat default drops it, and the stored record still parses', async () => {
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      defaultModelSelection: 'last-used',
+      defaultApprovalMode: 'auto',
+      defaultApprovalModeSelection: 'last-used',
+    });
+    const svc = new ProjectService(adapter as any);
+    const updated = await svc.updateProject('test', {
+      defaultModelSelection: null,
+      defaultApprovalMode: null,
+      defaultApprovalModeSelection: null,
+    });
+    for (const field of [
+      'defaultModelSelection',
+      'defaultApprovalMode',
+      'defaultApprovalModeSelection',
+    ]) {
+      expect(Object.hasOwn(updated, field), field).toBe(false);
+    }
+    // The file layer's strict schema admits the stored values it is given.
+    expect(() =>
+      parseProjectConfig({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        defaultModelSelection: 'last-used',
+        defaultApprovalMode: 'never',
+        defaultApprovalModeSelection: 'fixed',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      parseProjectConfig({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        defaultApprovalMode: 'connection-default',
+      }),
+    ).toThrow();
+  });
+
+  test('raising the new-chat mode to full access needs the grant, checked against the revision it replaces', async () => {
+    const stored = (defaultApprovalMode?: string) => {
+      const adapter = createMockStorageAdapter();
+      adapter.getProject.mockReturnValue({
+        id: 'project-test',
+        slug: 'test',
+        name: 'Test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        ...(defaultApprovalMode ? { defaultApprovalMode } : {}),
+      });
+      return adapter;
+    };
+    const lowered = stored('ask');
+    await expect(
+      new ProjectService(lowered as any).updateProject('test', {
+        defaultApprovalMode: 'never',
+      }),
+    ).rejects.toBeInstanceOf(ProjectFullAccessDefaultRefusal);
+    expect(
+      lowered.projectRevision.mock.results[0]!.value.replace,
+    ).not.toHaveBeenCalled();
+    await expect(
+      new ProjectService(stored('ask') as any).updateProject(
+        'test',
+        { defaultApprovalMode: 'never' },
+        { mayRaiseFullAccessDefault: true },
+      ),
+    ).resolves.toMatchObject({ defaultApprovalMode: 'never' });
+    // A save resending the `never` the revision already holds is no raise.
+    await expect(
+      new ProjectService(stored('never') as any).updateProject('test', {
+        defaultApprovalMode: 'never',
+        name: 'Renamed',
+      }),
+    ).resolves.toMatchObject({ name: 'Renamed' });
+    // Lowering never needs it.
+    await expect(
+      new ProjectService(stored('never') as any).updateProject('test', {
+        defaultApprovalMode: 'ask',
+      }),
+    ).resolves.toMatchObject({ defaultApprovalMode: 'ask' });
   });
 
   test('a non-override field is untouched by the drop pass', async () => {

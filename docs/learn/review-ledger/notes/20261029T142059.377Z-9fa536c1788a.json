@@ -1,0 +1,7 @@
+{
+  "revision": "adcb52b8a02011276d4b43ea91c9e6f9037c8a4a",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"No prose change. The only change to its source docs/guides/self-configuring-agent.md is a sentence about the chat Delegate launcher refusing a paired Station without orchestration:operate; no Session API shape or route changed.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

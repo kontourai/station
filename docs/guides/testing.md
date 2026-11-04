@@ -13,6 +13,16 @@ rerunning a failed gate to recover its output. Capture limits still apply;
 truncated diagnostics do not establish a complete failure inventory. The JSON
 format does not change readiness requirements or promotion evidence.
 
+For a failed Vitest corpus, the runner prints the child exit status and signal.
+The failed full-regression artifact also retains `receipt.json`, `stdout.log`
+and `stderr.log` in a unique directory for each failed group invocation under
+`vitest-corpus/` (from the runner’s temporary directory). The receipt names that
+invocation, so a later write cannot mix its logs with an older receipt.
+These logs preserve the capture already bounded by the runner, including
+diagnostics before the printed tails; they do not recover bytes lost to an
+output-limit refusal. A receipt reports cancellation and capture truncation
+separately from a test failure.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -233,7 +243,7 @@ It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, and readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
+`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises, owned-delegation ordering and activity, and repeated adapter stops. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 
@@ -663,6 +673,18 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+A same-repository pull request that GitHub confirms is conflicted with `main`
+(two consecutive `mergeable: false` observations a few seconds apart) is deferred
+by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
+plan, shards and statics run, because it cannot merge and that work would be
+discarded. Only the job's explicit `admitted=false` output defers: mergeability
+still being computed, an API failure or the job failing to start admit the run.
+A deferred run fails `fast-checks` with the annotation naming the conflict. Merge
+or rebase `main` (a new head starts a new run), or, when `main` has since cleared
+the conflict without a head change, use "Re-run failed jobs" on the run: the
+source-policy publisher reads each run's newest attempt, so the rerun supersedes
+the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
+
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping
@@ -766,6 +788,11 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+The bounded [CI browser installer](../../scripts/install-playwright-browsers.mjs)
+uses the installed Playwright package. Windows runs its advertised CLI binary
+with Node; other platforms use `npx --no`. Neither path fetches a new Playwright
+package. Browser downloads still use the ambient `PLAYWRIGHT_BROWSERS_PATH`.
+
 New or materially changed test files state their measured wall cost in the
 pull request (the `test:focused` duration line is the receipt). A file that
 needs seconds must name the contract no cheaper layer proves; prefer splitting
@@ -854,6 +881,29 @@ inside a checkout. Because the baseline is the merge base, `origin/main`
 moving does not invalidate it; merging `origin/main` into the candidate does,
 unless the push is a pure merge of main (below).
 
+To inspect dependency accumulation without deleting anything, run:
+
+```bash
+node scripts/worktree-hygiene.mjs
+node scripts/worktree-hygiene.mjs --json
+```
+
+The ordinary report lists root `node_modules` directories even in kept lanes;
+JSON exposes `dependencyDirectory` (`true`, `false`, or `null` when unreadable).
+Symlinked dependency paths are not counted as directories. This is an inventory,
+not a disk-size estimate or evidence that a lane is inactive. Before retiring
+anything, check live processes, submission handoffs, recent use and local changes.
+The report never removes dependencies or worktrees.
+
+Prefer the preparation command's canonical `4294-transfer-baseline-<sha>` name.
+Automatic baseline retention owns only that naming convention and preserves
+in-use, recent and retained baselines; Windows skips pruning when it cannot
+prove process inactivity. Legacy `<lane>-transfer-baseline-<sha>` names remain
+usable for the explicit baseline selection above, but automatic retention does
+not own them. When a detached legacy lane's HEAD matches its name, the inventory
+calls out that retention gap without declaring it disposable. Repeatedly
+clearing package caches leaves those installed dependency trees in place.
+
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
@@ -914,11 +964,21 @@ stay in every clone's history after the pull request merges.
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
 OpenSSH argv, cleanup, and broken-pipe contracts, the file-memory
-transcript durability suite, and the Windows process identity probe run
-against real processes. The durability suite is here because torn-tail repair
-truncates through a non-append descriptor, which Windows requires. The probe
-test is the one test of that PowerShell probe that does not fake it (skipped
-off Windows). Full Windows Vitest parity
+transcript durability suite, the Windows process identity probe run
+against real processes, and the Windows owned-process registry suite. The
+durability suite is here because torn-tail repair truncates through a
+non-append descriptor, which Windows requires. The probe test is the one test
+of that PowerShell probe that does not fake it (skipped off Windows). It also
+compiles the archive's process-birth helper and proves the helper prints the
+probe's birth (#2805). The registry suite kills a real owner and proves the
+startup sweep reaps its orphaned engine and grandchild (#3873). The
+supervisor's terminal workload tests run there too: the workload host with
+real ConPTY shells, and a journey whose shell keeps its pid and journal across
+a handoff of built supervisor and workload host bundles. The command-session
+suite runs there as well: output caps, exits and ACP engine terminals without a
+PTY (its PTY restart cases are POSIX-only). A ConPTY cannot change
+parents, so Windows is where that design is load-bearing.
+Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
@@ -1227,10 +1287,12 @@ daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
 no threshold, so a baseline is only meaningful against the renderer that
 produced it, and that renderer has to be reproducible. `--font-sans` resolves
-to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
-latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`, `●` and
-`✓` come from the **host's** fonts — pinning the image by digest pins the
-rasterizer, fontconfig and that font set together. The job logs the Playwright
+to `"DM Sans"`, then two width-matched fallback faces that read a local Arial
+and a local Roboto, then `system-ui, sans-serif`. The bundled woff2 subsets
+cover latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`,
+`●` and `✓` come from the **host's** fonts (the render container has neither
+Arial nor Roboto, so fontconfig picks them) — pinning the image by digest pins
+the rasterizer, fontconfig and that font set together. The job logs the Playwright
 build and the resolved font families for exactly this reason.
 
 **The render container's font set is part of the baseline.** A hash captured
@@ -1288,7 +1350,9 @@ not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+the product assertions below fail the job. Gallery is not a required status
+check in the `main` ruleset, so a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
 intentional pixel changes alone do not open a main incident. Skipping the
 optional API image review does not hide the comparison report.
@@ -1313,6 +1377,91 @@ Two consequences worth stating plainly:
   pin, verify the published tag's OCI index and selected platform manifest and
   config against their content digests. That registry check is separate from
   an actual container/browser run and Gallery pixel review.
+
+#### Gallery product assertions
+
+Every captured screen also runs three product checks against the state it
+photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
+(`tests/helpers/gallery-ui-audit.ts`):
+
+- hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
+  on screen, overlapping targets that both centres can confirm (a pair with
+  a pinned control, in a fixed or sticky layer, counts unless a covering
+  sheet is on top: `aria-modal`, a modal `<dialog>`, or the expanded chat
+  dock. Content behind, or partly under, a covering sheet, including the
+  non-modal expanded chat dock, is cleared; a user can still tap the visible
+  part of such content, which this check accepts. Scroll position is not
+  credited, so content a user could scroll clear of a bar is still reported
+  (conservative by design);
+  controls the UA does not render, inside a closed `<details>`, are
+  skipped; accepted limitation: the sheet test trusts markup, so a bar that
+  carries `aria-modal="true"` or the `chat-dock` class is treated as a
+  sheet), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
+  when it was introduced, so it would measure the desktop design, not defects;
+- horizontal overflow: the document scrolling sideways, and elements that
+  cross the viewport edge without an on-screen scroller or a narrower clip;
+- blocking (serious/critical) axe violations, through
+  `getBlockingAccessibilityViolations`.
+
+`node scripts/gallery-ui-findings.mjs` judges
+them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
+name plus a finding identity. The identity names the element by its stable
+anchor (`tests/helpers/stable-anchor.ts`): the nearest `data-testid`, else its
+tag and first stable class, a form control's `type` and `name`, and its
+accessible name (including an associated `<label>`) or role; an element left
+with only its tag is scoped by its nearest classed ancestor. It is not axe's
+shortest-unique selector, which moves when unrelated DOM is added, and digit
+runs and React ids are masked, so no measurement, position, count or
+generated id reaches it. Identical controls share one identity. An unlisted
+finding, an audit that threw, or a missing audit fails. A listed finding that
+no longer occurs never fails: it prints `RESOLVED`, and
+`node scripts/gallery-ui-findings.mjs prune` removes it after a full capture.
+Pass `--screens=` to judge a targeted capture.
+
+Existing screens only shrink. The PR workflow's `allowlist-ceiling` job
+fetches the base commit (from this repository, for forks too), fails when it
+cannot resolve it, and runs that base commit's judge in `growth` mode. An
+entry added for a screen the base already had fails: fix the finding instead
+of listing it. Both screen maps are read as data
+(`tests/gallery-screen-sources.json`), never executed. A screen in the head
+map but not the base map is new coverage, and it may arrive with the findings
+it inherits from shared components listed. A listed screen missing from the
+head map fails, and a change that both removes a base screen and adds one
+fails (`REMOVED SCREEN`): land a rename as a removal, then an addition. Each
+accepted new screen is a `::warning::` annotation on the PR, and its listed
+findings are printed in the run summary. Accepted gap: a rename that keeps a
+stub of the old screen, or a removal and an addition landed as two PRs,
+passes the ceiling; those annotations and the removal's own diff are what
+make it visible to review.
+
+An intended accessible-name change rekeys a name-bearing finding (for
+example axe `label-content-name-mismatch`). The ceiling pairs it as
+`REKEY old → new` when the screen already existed and the rule and anchor
+match once each anchor's trailing name segment is set aside. Each added key
+consumes one removed key of its shape, so a shape never ends with more keys
+than the base had; that one-to-one pairing is the count guard. Each REKEY is a
+`::warning::` annotation on the allowlist file and is counted in the run
+summary's heading; `check` prints `LIKELY REKEY` for the pair. Accepted gap:
+fixing one finding and adding an unrelated defect of the same shape pairs as
+a REKEY, which the annotation puts in front of review. The allowlist may not
+list a key twice. Replace
+the key in the allowlist rather than reverting the copy. Names stay in keys
+because, without them, 143 of 257 entries shared a key when this was measured.
+To add
+a screen: add it to `SCREENS` and the screen map, capture it, run
+`node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
+listed findings in the PR.
+
+`npm run gate:for` names the gallery screens whose module graph loads each
+changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
+the `--screens=` capture, diff and assertion commands. Coverage is the import
+closure (`scripts/lib/ui-module-graph.mjs`) of each screen's entry modules in
+`tests/gallery-screen-sources.json`; the shell's eager closure counts as every
+screen. A path no screen loads prints "no gallery screen covers this path,
+add one". The capture refuses to start when that map and `SCREENS` disagree.
+Loading a module does not prove it renders on that screen. UI PRs attach the
+before/after PNGs they inspected.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -1459,6 +1608,16 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
+On Linux, the canonical process-exclusive corpus binds its preview fixtures
+to the installed Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
+The corpus runner supplies `STATION_VITEST_CORPUS_GROUP=process-exclusive`;
+global setup then places a `google-chrome` link in the run-owned temporary
+directory ahead of ambient browsers. Ordinary affected-test shards and
+process-heavy installed-browser compatibility suites retain system-Chrome
+discovery, which otherwise takes precedence over a `chromium` link. Missing pinned files fail the prerequisite. Teardown removes
+the link with that run root and restores its PATH. This does not disable the
+Chromium sandbox or qualify an unconfigured system browser.
+
 `npm test` is the named focused pre-push test tier. Station's own
 `.githooks/pre-push` has its separate check list; it does not invoke this alias. Its checked-in manifest covers repository guardrails, public contracts,
 authentication/connection boundaries, orchestration state, and core
@@ -1577,6 +1736,85 @@ typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. 
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
+### Host heavy-check slots
+
+Typecheck slots bound compilers only. Several agents on one small host can
+still run `docs:truth:gate`, Vitest selections and pre-push gates together and
+starve everything else on it, Station included. These heavy checks therefore
+queue for a second host-wide pool, `scripts/lib/heavy-check-slots.mjs`, which
+uses the same lock-file protocol as the typecheck slots (atomic claims,
+dead-holder reclaim, a bounded wait), in its own directory:
+`/tmp/station-heavy-check-slots-<uid>` on macOS and Linux and the per-user
+temp directory on Windows.
+
+`node scripts/heavy-check-slot.mjs <label> <script.mjs> [arguments]` holds a
+slot and then runs the script as the slot holder. These entry points use it:
+
+| Entry point | Label |
+| --- | --- |
+| `npm run test:focused` | `test:focused` |
+| `npm run test:changed` | `test:changed` |
+| `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
+| `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
+| `npm run typecheck` (its lanes run under this slot) | `typecheck` |
+| Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
+| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
+| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
+| Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+
+- N is the smaller of one slot per four logical CPUs (floored) and one per
+  8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
+- A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
+  for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
+  every minute.
+- Waiters are admitted in arrival order. Each waiter writes a ticket under the
+  pool's `queue/` directory, and only the earliest N live tickets may claim a
+  slot. A ticket whose waiter died is removed by the next reader.
+- The wait is bounded. After `STATION_HEAVY_CHECK_SLOT_WAIT_MS` (default 30
+  minutes) the check fails with exit status 1 and names the holders. It never
+  passes without running.
+- A slotted check started inside another one (for example `test:focused`
+  inside `docs:truth:gate`) runs under its ancestor's slot and prints one line
+  naming it. `STATION_HEAVY_CHECK_SLOT_HELD` names the holder's exact claim
+  (slot directory, index and nonce). A marker for a released, reclaimed or
+  dead claim is ignored.
+- Admission is always taken in one order: the verification coordinator, then
+  a heavy-check slot, then typecheck or Biome.
+  - A coordinator owner takes its slot only after the lane, or each
+    full-regression phase, has been admitted and is about to execute. It
+    releases the slot before the next phase queues.
+  - A request that reuses a receipt or joins a running lane takes no slot.
+  - The wait spends the lane's deadline, as coordinator queueing already
+    does. A full-regression phase's own execution budget starts only once its
+    slot is held. A wait cut short by the lane deadline makes the lane's
+    receipt report a timeout. A cancel during the wait ends the lane as any
+    other cancel would.
+  - A refusal publishes an `infrastructure_error` receipt that names the
+    holders. Only passing receipts are reused, so the next request retries.
+- Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
+  from inside a slotted check. None of the slotted entry points do. A request
+  made there would join another owner's lane while its own ancestor held the
+  slot that owner waits for. That would hold until one of the bounded waits
+  failed.
+- With one slot, a `ci:fast` requested during a long full-regression phase
+  waits for that phase to finish. It fails at its own deadline if the phase
+  outlasts it.
+- If a lane is fenced because its child never settled after a timeout, the
+  coordinator process keeps that lane's slot until it exits.
+- On macOS and Linux the runner becomes the check, so the slot lasts as long
+  as that process. A check that spawns children, such as Vitest under
+  `test:focused`, releases its slot if it is killed without its children.
+  An interrupt from the terminal reaches the whole process group. A targeted
+  `kill` of only the holder leaves its children running outside the cap.
+- Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
+  single-tenant, and prints one line saying so. `CI` alone does not exempt a
+  run, because local tools set it too.
+- A dead holder's slot is reclaimed by the next waiter.
+
+Overrides: `STATION_HEAVY_CHECK_SLOTS` (count, 1–64),
+`STATION_HEAVY_CHECK_SLOT_WAIT_MS`, and `STATION_HEAVY_CHECK_SLOT_DIR` (set it
+identically for every caller).
+
 ### Host-pressure liveness scale (#3302)
 
 A fixed liveness bound is a dead-child guard sized for an idle machine. On a
@@ -1654,6 +1892,18 @@ The HTML preview process suite also runs in the exclusive group so other Vitest
 files in that invocation do not compete with its disposable Chromium startup.
 It retains the 15-second render deadline and 3-second effective-policy check.
 
+The pinned Vitest runner 4.1.12 has a [managed timer patch](../../patches/vitest-runner-4.1.12.patch).
+Its task-event throttle could lose a pending update when a timer fired exactly
+at its 100 ms boundary, leaving a running body or hook reported as unknown
+until another update arrived. The patch clears the expired timer handle before
+retrying, so an early or boundary callback can schedule another attempt.
+The corpus-runner test exercises the installed package's public `updateTask`
+API with a controlled clock, including cancellation of a pending timer by an
+immediate flush. Real-child lifecycle controls still require observed events
+within their existing two-second test and hook limits; no worker count or
+product deadline changes. Remove the patch when an upstream release passes
+these controls through the managed dependency workflow.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
@@ -1699,7 +1949,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
-- `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-process-exclusive` — 60-unit host reservation; 10-minute execution deadline.
 - `test-full-coordinator-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
@@ -1771,6 +2021,13 @@ runners. Persistent jobs also skip automatic `pull_request` execution and run
 only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
+
+Hosted PR and merge-group Chromium setup can restore a cache keyed by runner
+OS, architecture, and the lockfile. The admitted main Nightly source gate warms
+that cache; untrusted jobs only restore it. A cache miss or cache-service failure
+falls back to the required Playwright installation, which still runs on a hit.
+Browser smoke and test failures remain required. Compare cache restore plus
+installation time with uncached setup before treating the cache as a speedup.
 
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
@@ -2246,14 +2503,9 @@ injected seams, so it runs identically on a machine whose `node-pty` works:
   `() => Promise.reject(new Error('Failed to load native module: …'))` to
   exercise `probeCapability()` and the `PtyUnavailableError` spawn rejection
   (`src-server/adapters/__tests__/node-pty-adapter.test.ts`).
-- `TerminalService` receives a mock `IPtyAdapter` whose `spawn` rejects with
-  `PtyUnavailableError`; assert `open()` rethrows the specific reason rather
-  than the generic "no viable shell found"
-  (`src-server/services/terminal/__tests__/terminal-service.test.ts`).
-- The WebSocket transport must answer an `open` with
-  `{ type: 'error', code: 'terminal-unavailable' }` carrying only the fixed
-  product-owned text
-  (`src-server/services/terminal/__tests__/terminal-ws-server.test.ts`).
+- The terminal socket must answer an `open` on a host without a PTY backend
+  with the distinct `pty-unavailable` error carrying the server's reason
+  (`src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts`).
 - `/api/system/status` takes `probeTerminalCapability` in its deps; assert
   the `capabilities.terminal` record and its `reason`
   (`src-server/routes/system/__tests__/system.routes.test.ts`), and the
@@ -2354,8 +2606,11 @@ receipt); `fast-checks-statics` runs `ci:fast` with
 UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
-that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred
+that each allocated shard ran its exact slice. Each nonempty resource group also
+compares Vitest’s reported file identities with its planned files; missing,
+duplicate, unexpected, or outside-checkout identities cause a parser error even
+when aggregate test counts pass. An unexpected skip, cancellation, missing
+receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
 into deferral. The unresolved obligation remains for main/release full

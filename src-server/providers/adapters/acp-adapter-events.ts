@@ -21,7 +21,7 @@ import type {
   RequestPermissionOutcome,
   SessionUpdate,
   StopReason,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type {
   ApprovalStatus,
   TurnCompletedEvent,

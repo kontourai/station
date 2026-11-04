@@ -1,0 +1,7 @@
+{
+  "revision": "a6c7a264953e0fdfe3cdeeab7fc27ec7daa221b2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the embedded mobile Inbox entry, retained reader, explicit navigation, shared row actions, and inline recorded-turn Branch action against ChatDock, MobileInboxPanel, MobileHeader, MessageBubble and their focused owners. The completed child label describes the run, not task completion. Scope is these changed UI claims; provider, native and release acceptance is not established.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

@@ -83,6 +83,7 @@ export const TOOL_DENIED_FINISH_REASON = 'tool-denied';
 
 export interface ITool {
   name: string;
+  replay?: 'safe' | 'unsafe';
   id?: string;
   description?: string;
   parameters?: any;
@@ -192,11 +193,14 @@ export interface IAgent {
 
 export interface ToolCallContext {
   toolName: string;
+  replay?: 'safe' | 'unsafe';
   toolCallId: string;
   toolArgs: any;
   toolDescription?: string;
   /** Untrusted model-stated intent; display-only, never approval evidence. */
   purpose?: string;
+  /** Station-owned built-in identity, supplied by the tool loader. */
+  builtin?: Readonly<{ integrationId: string }>;
   /** Server-only loader authority; never inferred from a model-visible name. */
   mcp?: Readonly<{
     provenance: MCPToolLoaderProvenance;
@@ -312,6 +316,10 @@ export interface ToolCallDenial {
 }
 
 export interface IAgentHooks {
+  /** One completed model generation, separate from invocation billing totals. */
+  afterModelGeneration?(
+    observation: ModelGenerationObservation,
+  ): void | Promise<void>;
   /**
    * Called before a tool executes. Return `true` to allow; ANY other value
    * denies execution (adapters must compare against `true`, never rely on
@@ -335,6 +343,14 @@ export interface IAgentHooks {
   ): void;
 
   /**
+   * Called exactly once when an invocation ends, however it ends: success,
+   * error or abort. Adapters call it from a `finally` path, unlike
+   * `afterInvocation`, which a failed invocation may skip. Used for:
+   * releasing per-turn state (#3483).
+   */
+  endInvocation?(invocation: InvocationContext): void;
+
+  /**
    * Called after the full agent invocation completes.
    * Used for: usage tracking, cost calculation, message enrichment,
    * conversation stats update.
@@ -348,6 +364,21 @@ export interface IAgentHooks {
     toolCallCount: number;
     error?: Error;
   }): Promise<void>;
+}
+
+export interface ModelGenerationObservation {
+  /** Captured from the actual direct model instance; absent for unresolved Dispatch/fallback routes. */
+  connectionId?: string;
+  connectionConfigurationDigest?: string;
+  invocation: InvocationContext;
+  modelId: string;
+  modelIdentitySource: 'provider-response' | 'runtime-model';
+  source: 'voltagent-step' | 'strands-metadata';
+  inputTokenAccounting: 'total' | 'provider-specific';
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheWriteInputTokens?: number;
 }
 
 // ── Framework Adapter ──────────────────────────────────
@@ -517,6 +548,7 @@ export interface IAgentFramework {
      * that pass `tools: []` may omit this.
      */
     hooks?: IAgentHooks;
+    durable?: { home: string; slug: string; definition: string };
   }): Promise<IAgent>;
 }
 

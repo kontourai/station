@@ -13,9 +13,18 @@ import {
 interface ChatEmptyStateProps {
   agentSlug: string;
   agentName: string;
+  /**
+   * `false` when the server said this caller may not send to the chat. The
+   * empty state then invites nothing; the composer carries the reason.
+   */
+  canSend?: boolean;
 }
 
-export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
+export function ChatEmptyState({
+  agentSlug,
+  agentName,
+  canSend = true,
+}: ChatEmptyStateProps) {
   const { data: status } = useSystemStatus();
   const { navigate } = useNavigation();
   const agents = useAgents();
@@ -57,6 +66,16 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
     agentsLoaded &&
     status?.recommendation?.code === 'runtime-only' &&
     !isExternalEngineAgent;
+
+  // A caller who may not send is invited to do nothing: not to type, and not
+  // to set up a connection it could not use here either.
+  if (!canSend) {
+    return (
+      <div className="empty-state">
+        <h3>This chat is empty</h3>
+      </div>
+    );
+  }
 
   // Loading state (status not yet resolved) keeps today's normal copy so the
   // guided variant doesn't flash in before readiness is known.

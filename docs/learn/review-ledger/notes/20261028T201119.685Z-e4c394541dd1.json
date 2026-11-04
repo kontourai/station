@@ -1,0 +1,17 @@
+{
+  "revision": "1d28ef50d7f76b0bbd5fbf820ee1884e36412ab1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Rewrote the server-protection paragraph under Linux service workload budgets to match workload-resources.ts: server unit gets MemorySwapMax=0, MemoryLow min(1536 MiB, floor(RAM/8 MiB)), ManagedOOMPreference=avoid; workload slice gets CPUWeight=25 and no IOWeight. Checked worked examples (16 GiB -> 1536, 4 GiB -> 512, 2 GiB -> 256 MiB) against controlPlaneProperties and the fake-manager tests. The ancestor-protection caveat was confirmed on a systemd 259 host (memory.low=0 on every ancestor, only cpu/memory/pids delegated).","inputs":["docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The workload launcher paragraph names the launcher, scopes outside the server unit, and defers budgets and failure behavior to the development guide. It states no protection values, so the new server-unit properties and the slice CPUWeight leave it accurate.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Only references workload budgets as separating child scopes from the control server's failure domain, which this change keeps. It states no MemoryLow or CPU values.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The typecheck-slot section links to Linux service workload budgets for scope accounting. It makes no claim about server-unit protection values, so it stays accurate.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"The child-workload leaf section says resource budgets belong to the server and links to the guide. The change stays in the server and leaves the leaf untouched.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Server-scope instructions (logger seam, windowsHide, route capability flags) are unaffected: the change adds no process launch, route or console call.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

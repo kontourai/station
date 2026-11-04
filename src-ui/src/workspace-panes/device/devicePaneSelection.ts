@@ -12,16 +12,28 @@ export interface DevicePaneSelection {
   deviceId: string;
 }
 
-const listeners = new Set<(selection: DevicePaneSelection) => void>();
+export interface DevicePaneSelectionScope {
+  apiBase: string;
+  authorityKey: string;
+}
+const listeners = new Set<
+  (selection: DevicePaneSelection, scope?: DevicePaneSelectionScope) => void
+>();
 
 /** Tell every mounted Device pane to show this device. */
-export function selectDeviceInPane(selection: DevicePaneSelection): void {
-  for (const listener of listeners) listener(selection);
+export function selectDeviceInPane(
+  selection: DevicePaneSelection,
+  scope?: DevicePaneSelectionScope,
+): void {
+  for (const listener of listeners) listener(selection, scope);
 }
 
 /** A mounted Device pane's subscription; returns its release. */
 export function onDevicePaneSelection(
-  listener: (selection: DevicePaneSelection) => void,
+  listener: (
+    selection: DevicePaneSelection,
+    scope?: DevicePaneSelectionScope,
+  ) => void,
 ): () => void {
   listeners.add(listener);
   return () => {

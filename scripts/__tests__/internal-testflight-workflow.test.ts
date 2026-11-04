@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const source = readFileSync(
@@ -22,6 +23,33 @@ const workflow = load(source) as {
 };
 
 describe('internal iOS TestFlight cohort workflow', () => {
+  test('build delivery uses the verified pnpm bootstrap before managed install', () => {
+    const reusable = load(delivery) as {
+      jobs: {
+        deliver: {
+          steps: Array<{
+            name?: string;
+            uses?: string;
+            run?: string;
+            with?: unknown;
+          }>;
+        };
+      };
+    };
+    const steps = reusable.jobs.deliver.steps;
+    const setup = steps.findIndex((step) => step.name === 'Setup pinned pnpm');
+    const node = steps.findIndex((step) =>
+      step.uses?.startsWith('actions/setup-node@'),
+    );
+    const install = steps.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    expect(setup).toBeGreaterThanOrEqual(0);
+    expect(steps[setup].uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
+    expect(steps[setup].with).toBeUndefined();
+    expect(node).toBeGreaterThan(setup);
+    expect(install).toBeGreaterThan(node);
+  });
   test('external distribution is a non-blocking Nightly opt-in, excluded from internal authority', () => {
     const reusable = load(delivery) as {
       on: {

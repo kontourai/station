@@ -14,24 +14,44 @@ const host = vi.hoisted(() => ({
 const applied = vi.hoisted(() => vi.fn());
 const streams = vi.hoisted(
   () =>
-    [] as Array<{
-      close: ReturnType<typeof vi.fn>;
-      onMessage: (message: { event: string; data: string }) => void;
-    }>,
+    [] as Array<
+      ReturnType<typeof import('@kontourai/station-sdk').fetchSSE> & {
+        onMessage: (message: { event: string; data: string }) => void;
+      }
+    >,
 );
+
+function createStreamHandle(): ReturnType<
+  typeof import('@kontourai/station-sdk').fetchSSE
+> {
+  const controller = new AbortController();
+  const completed = new Promise<void>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(), {
+      once: true,
+    });
+  });
+  return {
+    signal: controller.signal,
+    completed,
+    close: vi.fn(() => controller.abort()),
+    retry: vi.fn(),
+    restart: vi.fn(),
+  };
+}
 
 vi.mock('@kontourai/station-sdk', () => ({
   _setApiBase: vi.fn(),
   applyServerUpdateStateEvent: applied,
   fetchSSE: vi.fn(
     (
-      _url: string,
+      url: string,
       options: {
         onMessage: (message: { event: string; data: string }) => void;
       },
     ) => {
-      const stream = { close: vi.fn(), onMessage: options.onMessage };
-      streams.push(stream);
+      const stream = { ...createStreamHandle(), onMessage: options.onMessage };
+      if (url.endsWith('/events') && !url.includes('/api/orchestration/'))
+        streams.push(stream);
       return stream;
     },
   ),
@@ -182,7 +202,10 @@ test('overflow resync invalidates every cached query, including future event que
     );
     expect(client.getQueryState(['attention'])?.isInvalidated).toBe(true);
   } finally {
+    const stream = streams[0]!;
     unmount();
+    expect(stream.signal.aborted).toBe(true);
+    await expect(stream.completed).resolves.toBeUndefined();
     client.clear();
   }
 });

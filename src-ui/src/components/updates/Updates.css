@@ -28,7 +28,7 @@
 }
 .updates-control small {
   display: block;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .updates-control--collapsed {
   position: relative;
@@ -70,6 +70,11 @@
 }
 .updates-panel__notice {
   margin-bottom: var(--k-space-3);
+}
+/* The server card spaces its own rows. */
+.updates-panel .server-update p,
+.updates-panel .server-update .updates-panel__notice {
+  margin: 0;
 }
 .updates-panel a {
   display: inline-flex;

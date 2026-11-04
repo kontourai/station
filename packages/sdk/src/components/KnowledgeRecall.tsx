@@ -190,7 +190,6 @@ function BreakableTitle({ title }: { title: string }) {
   return (
     <>
       {segments.map((segment, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and never reorder
         <Fragment key={index}>
           {index > 0 && <wbr />}
           {segment}

@@ -24,6 +24,13 @@ import {
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { AccountEntryPage, AccountEntryView } from '../AccountEntryView';
 
+// The browser's WebAuthn boundary: the page's own requests stay real.
+const webauthn = vi.hoisted(() => ({
+  startRegistration: vi.fn(),
+  startAuthentication: vi.fn(),
+}));
+vi.mock('@simplewebauthn/browser', () => webauthn);
+
 const apiBase = 'https://station.example.test';
 const invitation = 'i'.repeat(43);
 const descriptor = {
@@ -75,6 +82,12 @@ let provider: unknown;
 let pairingMode: 'none' | 'approve' | 'deny' | 'personal';
 let deviceReady: boolean;
 let projectFailureStatus: number | undefined;
+let passkeys: {
+  id: string;
+  name?: string;
+  createdAt: string;
+  synced: boolean;
+}[];
 
 // Invitation tests exercise onboarding after the account action, not chunk loading.
 beforeAll(async () => {
@@ -94,6 +107,9 @@ beforeEach(() => {
   pairingMode = 'none';
   deviceReady = false;
   projectFailureStatus = undefined;
+  passkeys = [];
+  webauthn.startRegistration.mockReset();
+  webauthn.startAuthentication.mockReset();
   sessionStorage.clear();
   setClientCredentialResolver(() => ({
     origin: apiBase,
@@ -250,6 +266,19 @@ beforeEach(() => {
             actions: ['view'],
           },
         });
+      if (path.includes('/passkey/')) {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        if (path.endsWith('/passkey/list')) return reply({ passkeys });
+        if (path.endsWith('/passkey/remove'))
+          return Response.json(
+            { error: { code: 'last_sign_in_method' } },
+            { status: 409 },
+          );
+        if (body.step === 'options')
+          return reply({ options: { challenge: `challenge:${path}` } });
+        if (!path.endsWith('/passkey/add')) signedIn = true;
+        return reply({ success: true });
+      }
       if (path.endsWith('/oidc/test/begin'))
         return reply({ url: 'javascript:alert(1)' });
       if (path.endsWith('/sign-out')) signedIn = false;
@@ -779,5 +808,217 @@ describe('account sign-out and appearance', () => {
       localStorage.clear();
       deviceSettingsStore.reloadFromStorage();
     }
+  });
+});
+
+describe('member passkeys (#4303)', () => {
+  const passkeyProvider = {
+    ...descriptor,
+    login: {
+      kind: 'username-password',
+      signInPath: '/sign-in/username',
+      signUpPath: '/sign-up/username',
+    },
+    endpoints: [
+      {
+        path: '/sign-in/username',
+        methods: ['POST'],
+        operation: 'begin-login',
+      },
+      { path: '/sign-up/username', methods: ['POST'], operation: 'register' },
+      {
+        path: '/reset-password',
+        methods: ['POST'],
+        operation: 'complete-recovery',
+      },
+      { path: '/sign-out', methods: ['POST'], operation: 'logout' },
+      {
+        path: '/passkey/sign-in',
+        methods: ['POST'],
+        operation: 'passkey-sign-in',
+      },
+      {
+        path: '/passkey/sign-up',
+        methods: ['POST'],
+        operation: 'passkey-register',
+      },
+      { path: '/passkey/add', methods: ['POST'], operation: 'passkey-add' },
+      {
+        path: '/passkey/recover',
+        methods: ['POST'],
+        operation: 'passkey-recover',
+      },
+      { path: '/passkey/list', methods: ['POST'], operation: 'passkey-list' },
+      {
+        path: '/passkey/remove',
+        methods: ['POST'],
+        operation: 'passkey-remove',
+      },
+    ],
+  };
+  const credential = { id: 'credential-1', type: 'public-key' };
+  beforeEach(() => {
+    provider = passkeyProvider;
+    vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: {},
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'credentials');
+  });
+  const passkeyCalls = (endpoint: string) =>
+    calls.filter((call) => call.path.endsWith(endpoint));
+
+  test('signs in with a passkey through the declared two-step ceremony', async () => {
+    webauthn.startAuthentication.mockResolvedValue(credential);
+    mount({});
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign in with a passkey' }),
+    );
+    await screen.findByText('Signed in as');
+    expect(webauthn.startAuthentication).toHaveBeenCalledWith({
+      optionsJSON: { challenge: 'challenge:/api/account-auth/passkey/sign-in' },
+    });
+    expect(passkeyCalls('/passkey/sign-in').map((call) => call.body)).toEqual([
+      { step: 'options' },
+      { step: 'verify', response: credential },
+    ]);
+    expect(
+      passkeyCalls('/passkey/sign-in').some((call) =>
+        call.headers.has('authorization'),
+      ),
+    ).toBe(false);
+  });
+
+  test('an invited person creates an account with a passkey: no password, invitation sent at both steps', async () => {
+    webauthn.startRegistration.mockResolvedValue(credential);
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create an account' }),
+    );
+    fireEvent.change(screen.getByLabelText('Username'), {
+      target: { value: 'passkey.person' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create account with a passkey' }),
+    );
+    await screen.findByRole('button', { name: 'Accept invitation' });
+    const sent = passkeyCalls('/passkey/sign-up');
+    expect(sent.map((call) => call.body)).toEqual([
+      { step: 'options', username: 'passkey.person' },
+      { step: 'verify', response: credential },
+    ]);
+    expect(
+      sent.map((call) => call.headers.get('x-station-invitation')),
+    ).toEqual([invitation, invitation]);
+    expect(calls.some((call) => call.path.endsWith('/sign-up/username'))).toBe(
+      false,
+    );
+    expect(calls.some((call) => call.path.endsWith('/accept-invitation'))).toBe(
+      false,
+    );
+    // Signing out returns to passkey sign-in, not to an orphaned sign-up form.
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(
+      await screen.findByRole('button', { name: 'Sign in with a passkey' }),
+    ).toBeTruthy();
+  });
+
+  test('a passkey registration needs a valid username before any request', async () => {
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create an account' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create account with a passkey' }),
+    );
+    await screen.findByText(
+      'Choose a username: 3 to 32 letters, digits, dots, dashes or underscores.',
+    );
+    expect(passkeyCalls('/passkey/sign-up')).toEqual([]);
+    expect(webauthn.startRegistration).not.toHaveBeenCalled();
+  });
+
+  test('an operator recovery link enrols a passkey with its token and signs in', async () => {
+    webauthn.startRegistration.mockResolvedValue(credential);
+    mount({ resetToken: 'recovery-proof-token-1234567890' });
+    expect(
+      await screen.findByRole('heading', { name: 'Recover your account' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Add a passkey instead' }),
+    );
+    await screen.findByText('Passkey added. You are signed in.');
+    expect(passkeyCalls('/passkey/recover').map((call) => call.body)).toEqual([
+      { step: 'options', token: 'recovery-proof-token-1234567890' },
+      {
+        step: 'verify',
+        token: 'recovery-proof-token-1234567890',
+        response: credential,
+      },
+    ]);
+    expect(calls.some((call) => call.path.endsWith('/reset-password'))).toBe(
+      false,
+    );
+  });
+
+  test('a cancelled passkey prompt explains itself and creates no session', async () => {
+    webauthn.startAuthentication.mockRejectedValue(
+      Object.assign(
+        new Error('The operation either timed out or was not allowed.'),
+        {
+          name: 'NotAllowedError',
+        },
+      ),
+    );
+    mount({});
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign in with a passkey' }),
+    );
+    await screen.findByText('The passkey request was cancelled or timed out.');
+    expect(passkeyCalls('/passkey/sign-in').map((call) => call.body)).toEqual([
+      { step: 'options' },
+    ]);
+    expect(screen.queryByText('Signed in as')).toBeNull();
+  });
+
+  test('a browser without WebAuthn is not offered passkeys', async () => {
+    vi.stubGlobal('PublicKeyCredential', undefined);
+    mount({});
+    await screen.findByRole('button', { name: 'Sign in' });
+    expect(
+      screen.queryByRole('button', { name: 'Sign in with a passkey' }),
+    ).toBeNull();
+  });
+
+  test('a signed-in member lists, adds and is told why the last passkey stays', async () => {
+    signedIn = true;
+    passkeys = [
+      {
+        id: 'passkey-1',
+        name: 'Work laptop',
+        createdAt: '2026-10-01T00:00:00.000Z',
+        synced: true,
+      },
+    ];
+    webauthn.startRegistration.mockResolvedValue(credential);
+    mount({});
+    await screen.findByText('Work laptop');
+    fireEvent.click(screen.getByRole('button', { name: 'Add a passkey' }));
+    await screen.findByText('Passkey added.');
+    expect(passkeyCalls('/passkey/add').map((call) => call.body)).toEqual([
+      { step: 'options' },
+      { step: 'verify', response: credential },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove passkey' }),
+    );
+    await screen.findByText('Keep at least one way to sign in.');
+    expect(passkeyCalls('/passkey/remove').map((call) => call.body)).toEqual([
+      { id: 'passkey-1' },
+    ]);
   });
 });

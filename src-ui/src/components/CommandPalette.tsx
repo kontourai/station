@@ -27,6 +27,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import {
   evaluateShortcutWhen,
+  formatShortcutChord,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { KERNEL_RESERVED_SHORTCUTS } from '../contexts/kernelReservedShortcuts';
@@ -44,6 +45,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
 import { requestReportProblem } from '../lib/reportProblemEvents';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
@@ -282,6 +284,7 @@ export function CommandPalette() {
         isDesktop,
         developerToolsEnabled,
         experimentalTrustEnabled: developerFeatures.trust,
+        experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
       }) ?? [],
     [
       isMobile,
@@ -289,6 +292,7 @@ export function CommandPalette() {
       settingsCatalog,
       developerToolsEnabled,
       developerFeatures.trust,
+      developerFeatures.stationRoutes,
     ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
@@ -600,6 +604,9 @@ export function CommandPalette() {
         label: shortcut.description,
         group: 'Commands',
         keywords: ['command', 'shortcut', shortcut.id],
+        shortcut: shortcut.disabled
+          ? undefined
+          : formatShortcutChord(shortcut.modifiers, shortcut.key),
         disabled: !canExecute(),
         canExecute,
         run: shortcut.handler,
@@ -653,6 +660,26 @@ export function CommandPalette() {
       ],
       run: () => requestFirstRunTour(),
     });
+    // #4470: starts a troubleshooting conversation with the Station
+    // Assistant (`TroubleshootHost`, same overlays chunk). With no usable
+    // engine it falls back to Report a problem and the CLI command.
+    list.push({
+      id: 'action:troubleshoot',
+      label: 'Troubleshoot an issue',
+      group: 'Actions',
+      keywords: [
+        'troubleshoot',
+        'triage',
+        'bug',
+        'broken',
+        'not working',
+        'crash',
+        'help',
+        'support',
+        'debug',
+      ],
+      run: () => requestTroubleshoot(),
+    });
     // #766 item 4: opens the Report-a-problem dialog (hosted by
     // `ReportProblemHost` in the same overlays chunk), which previews the
     // captured context before the user chooses GitHub issue or local bundle.
@@ -687,6 +714,7 @@ export function CommandPalette() {
         id: `nav:${destination.id}`,
         label: destination.label(),
         group: 'Navigation',
+        detail: destination.palette?.detail,
         keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
           // A `regionSurface` destination is a place (Activity; Home, when a
@@ -1111,7 +1139,8 @@ export function CommandPalette() {
                   )}`
                 : undefined
             }
-            placeholder="Search commands, projects, agents, indexed conversation messages…"
+            // #4407: the long form was cut off at the palette's width.
+            placeholder="Search commands, projects and chats…"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -1247,9 +1276,15 @@ export function CommandPalette() {
                             </small>
                           )}
                         </span>
-                        <span className="command-palette__option-group">
-                          {cmd.group}
-                        </span>
+                        {cmd.shortcut ? (
+                          <kbd className="command-palette__option-shortcut">
+                            {cmd.shortcut}
+                          </kbd>
+                        ) : (
+                          <span className="command-palette__option-group">
+                            {cmd.group}
+                          </span>
+                        )}
                       </li>
                     );
                   })}

@@ -1,0 +1,7 @@
+{
+  "revision": "2926d4b5179085fcad9c2a5b1e6743eb5542ec94",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked: screenshots.spec.ts only changes how the phone inventory screens open the Chat inventory reader (actions sheet row per #4199, via the shared tests/helpers/chat-inventory.ts helper). This document makes no claim about that entry path; its claims about the gallery capture remain accurate.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

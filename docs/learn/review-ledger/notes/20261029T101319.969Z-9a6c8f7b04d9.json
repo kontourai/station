@@ -1,0 +1,37 @@
+{
+  "revision": "203cebfa273ae72b68fea22540c9e8bd37702413",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed owner-approved pairing against provisional and final Device name disambiguation. Ingress and approval authority remain unchanged; no deployment run.","inputs":["deploy/public-ingress/README.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DevicePairingService ownership against required-candidate name reservation and final approved-binding recheck. No full architecture or live runtime audit.","inputs":["docs/architecture/module-map.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed participant pairing and scope boundaries against Device label allocation; home-control grants and approval are unchanged. No transfer run.","inputs":["docs/design/channel-home-authority.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed pairing and Device notification prerequisites against label allocation. Notification authorization and delivery are unchanged; no native push run.","inputs":["docs/design/notification-delivery.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed operator approval and paired-Device inventory against provisional and final name handling. Request and Device IDs remain authority targets; no live passkey ceremony.","inputs":["docs/design/operator-device-access.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Device and pairing terminology against the Connect reference clarification. The terms and authority boundaries are unchanged; no full glossary audit.","inputs":["docs/glossary.md","docs/reference/connect.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the request-access Device name journey against final exchange suffixing. Origin and approval instructions remain unchanged; no deployed Station run.","inputs":["docs/guides/deployment.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed owner-approved pairing prerequisites against name disambiguation. Home-control scopes and transfer behavior are unchanged; no transfer run.","inputs":["docs/guides/home-transfer-controller.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed operator session and pairing references against the name-only change. Passkey authorization is unchanged; no passkey ceremony.","inputs":["docs/guides/operator-passkeys.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed Device subscription and revocation references against exchange name recheck. Push and revocation behavior are unchanged; no push delivery run.","inputs":["docs/guides/web-push-notifications.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Device pairing request and exchange references against final binding name allocation. Route shapes and approval authority are unchanged; no full API or deployment audit.","inputs":["docs/reference/api.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed pairing configuration and admission references against Device label allocation. No configuration or default changed; no deployment run.","inputs":["docs/reference/config.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed displayed pairing name and client correlation against optional-candidate and final-binding tests. Documented a possible exchange-time suffix; no installed Connect or live Device run.","inputs":["docs/reference/connect.md","src-server/services/ssh/__tests__/device-pairing-service.test.ts","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed Device pairing identity and name contract references against final binding name allocation. Wire types and approval authority remain unchanged; no full contract audit.","inputs":["docs/reference/contracts.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed Origin and pairing environment references against the Device name change. No variable or default changed; no live Serve run.","inputs":["docs/reference/env-vars.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed pending Device name disclosure and approved account replacement against provisional and final binding checks and focused fault tests. No live threat exercise.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/device-pairing-service.ts"]}
+  ]
+}

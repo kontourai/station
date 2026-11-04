@@ -67,7 +67,7 @@ export function localCronSchedule(
 export const WEEKDAY_MORNING_CRON = '0 8 * * 1-5';
 
 /**
- * The "Morning Briefing" starter's schedule, and the Add Job form's default.
+ * The "Daily repo digest" starter's schedule, and the job form's default.
  * ONE definition on purpose: the form used to default to `* * * * *`, so a
  * reader who accepted the default without noticing scheduled a job that ran
  * every single minute, forever.

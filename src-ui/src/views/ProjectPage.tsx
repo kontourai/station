@@ -181,7 +181,7 @@ export function ProjectPage({ slug }: { slug: string }) {
         <div className="project-page__inner">
           <ErrorState
             title="This Project is not shared with this account"
-            description="Native relay accounts can open Projects shared with them. Ask a Station operator to share this Project; operator configuration is unavailable through this route."
+            description="Ask a Station operator to share it with you."
           />
         </div>
       </div>

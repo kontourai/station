@@ -1,0 +1,7 @@
+{
+  "revision": "5c3631951e5b27656f30daf8b207e438caf6e987",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked attachment-staging and retry claims; useChatInput now restages Send again attachments under fresh ids through the existing prepare/upload SDK calls, which this reference already describes. No change.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "85806d5e89eaa2524a72dba32b57bb544bc6be98",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed transaction write-admission correction against LocalAccountAdministration guards, provider cleanup/promotion/discard and passkey removal. Operator busy errors map to explicit503 without queued work. Independent review089537b passed47 tests and retry/reopen probes. No new physical, Windows or live browser proof.","inputs":["docs/guides/deployment-authentication.md","src-server/services/identity/local-account-provider.ts"]}
+  ]
+}

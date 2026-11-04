@@ -152,6 +152,7 @@ describe('e2e manifest', () => {
       'tests/agents-new-model-turn.spec.ts',
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
+      'tests/chat-inventory-drilldown-mobile.spec.ts',
       'tests/native-conversation-restart.spec.ts',
       'tests/chat-send-again-failed-turn.spec.ts',
       'tests/message-delivery-recovery.spec.ts',
@@ -174,6 +175,7 @@ describe('e2e manifest', () => {
       'tests/client-authority-live.spec.ts',
       'tests/project-guest-shared-task-live.spec.ts',
       'tests/project-guest-admin-live.spec.ts',
+      'tests/member-passkeys-live.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
     // #2144 slice 4 (#2146): Settings left `extended` for `product` so that
@@ -224,6 +226,7 @@ describe('e2e manifest', () => {
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
       'tests/operator-sessions.spec.ts',
       'tests/connect-modal.spec.ts',
@@ -320,6 +323,9 @@ describe('e2e manifest', () => {
       }),
       expect.objectContaining({
         path: 'tests/pr-smoke-live-chat-send.spec.ts',
+      }),
+      expect.objectContaining({
+        path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
       }),
     ]);
     expect(getSpecsForSuite('pr-smoke')).toEqual(

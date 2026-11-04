@@ -143,6 +143,35 @@ function runTaskSettingsProgram(
 }
 
 describe('Windows Task Scheduler service backend', () => {
+  test.each([
+    [0, false, null],
+    [1, null, expect.stringContaining('absence could not be verified')],
+  ])(
+    'distinguishes a missing task from an unreadable task after schtasks exit 1 (confirmation=%s)',
+    (confirmation, active, error) => {
+      const registration = windowsRegistration(
+        'agent',
+        lifecycle('C:\\Station'),
+      );
+      const run = vi.fn((command: string) =>
+        isWindowsUtility(command, 'powershell')
+          ? {
+              status: confirmation,
+              stderr: confirmation ? 'Access denied' : '',
+            }
+          : { status: 1, stderr: 'Localized scheduler error' },
+      );
+      expect(
+        windowsServiceStatus(registration, { fs: windowsFs(), run }),
+      ).toMatchObject({
+        active,
+        present: false,
+        error,
+      });
+      expect(run).toHaveBeenCalledTimes(2);
+    },
+  );
+
   test('quotes task arguments without shell interpolation', () => {
     expect(quoteWindowsArgument('C:\\Program Files\\Station\\node.exe')).toBe(
       '"C:\\Program Files\\Station\\node.exe"',
@@ -422,6 +451,33 @@ describe('Windows Task Scheduler service backend', () => {
     });
   });
 
+  test('explains a scheduler start refusal when no interactive user is logged in', () => {
+    const registration = windowsRegistration('agent', lifecycle('C:\\Station'));
+    const run = vi.fn((command: string, args: string[]) => {
+      if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
+      if (args[0] === '/Query')
+        return { status: 0, stdout: taskXml(registration.unitPath) };
+      if (isWindowsUtility(command, 'powershell')) {
+        return {
+          status: 0,
+          stdout: powerShellProgram(args).includes('Get-ScheduledTaskInfo')
+            ? '3|2147750688\n'
+            : '3\n',
+        };
+      }
+      return { status: 0 };
+    });
+    expect(() =>
+      startWindowsService(registration, {
+        fs: windowsFs(),
+        run,
+        sleep: vi.fn(),
+      }),
+    ).toThrow(
+      /LastTaskResult=0x80041320.*sign into Windows.*SSH login alone/su,
+    );
+  });
+
   test('waits boundedly for a newly started task to report Running', () => {
     const fs = windowsFs();
     const baseDir = `\\tmp\\station-win-delayed-${process.pid}`;
@@ -448,6 +504,8 @@ describe('Windows Task Scheduler service backend', () => {
         ) {
           return { status: 0 };
         }
+        if (!powerShellProgram(args).includes('[int]$task.State'))
+          return { status: 0 };
         stateChecks += 1;
         return {
           status: 0,

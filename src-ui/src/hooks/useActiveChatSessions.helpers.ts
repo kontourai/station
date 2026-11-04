@@ -123,8 +123,17 @@ export function buildOutgoingUserMessage(
   }
   if (attachments) {
     for (const attachment of attachments) {
+      // The composer already holds the sent bytes as a data URL; the bubble
+      // shares that same string (no copy) so the chip previews and opens
+      // before the server's transcript, with its blobRef, replaces this row.
+      // Chat messages are never written to sessionStorage
+      // (`serializeActiveChats`), so this stays in memory only.
+      const url = [attachment.data, attachment.preview].find((source) =>
+        source?.startsWith('data:'),
+      );
       contentParts.push({
         type: 'file',
+        ...(url ? { url } : {}),
         mediaType: attachment.type,
         name: attachment.name,
       });

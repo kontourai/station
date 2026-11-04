@@ -1,0 +1,41 @@
+{
+  "revision": "53862fdd222c3ac179e1cf177eae3717a5c1d2cd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ProjectTaskRoom admission and stream paragraphs against task-member-admission, runtime and membership transaction results: action mapping and delivery rechecks are unchanged; setup errors now release subscribers and committed revisions notify before later reads. No new hosted or two-person evidence.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed source closure and authority boundaries against the runtime delta: subscription setup cleanup does not change source seals, controller decisions, activation or transfer. Existing staged limits remain.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/conversation-state.md","note":"Reviewed historical status and current-owner pointer against the runtime delta. Subscription setup cleanup does not implement signing, replication, witnesses or hosted membership; the historical survey remains labelled.","inputs":["docs/design/conversation-state.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/live-work-session.md","note":"Reviewed room composition and lifecycle projection against subscription setup cleanup. Lifecycle, recovery and durable adapter rules are unchanged; cleanup releases a failed subscription.","inputs":["docs/design/live-work-session.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed member actions, revision rechecks and the notification paragraph against transaction results, service listener handling and room subscriber reauthorization. Clarified synchronous in-process best-effort delivery and process-failure limit.","inputs":["docs/design/project-membership.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed membership admission, delivery recheck, data-version wake and SQLite contention text against runtime and history changes. Failed setup now releases its listener; per-delivery authority and contention limits remain.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed room bridge authority, settlement and publication retry claims against runtime delta. Subscription setup cleanup changes none of the freeze or evidence operations.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed requester rechecks, attachment version fence and published answers against the room runtime delta. Subscription cleanup does not change agent request admission, execution or persistence.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed account-bound room action mapping, change wake and idle recheck against member admission and membership service. Notification now uses committed transaction revisions before response reads; Device and account limits remain.","inputs":["docs/guides/deployment-authentication.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed account and membership lab scope against the membership store and service. Invitation consumption and revision behavior remain; transaction notifications do not turn this fixture into two-person room acceptance.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Project membership and Device relationship claims against the store and service changes. Post-commit notification carries no additional Device, compute or host authority.","inputs":["docs/guides/machine-relationships.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed Task room navigation and saved brief description against the room runtime change. Failed subscription cleanup does not alter navigation or document editing.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed Task Plan capture description and current navigation against the capture and runtime change. Listener cleanup does not alter the depicted saved plan; historical capture and qualification limits remain.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed diagnostic batch receipt and target limits against the runtime change. Subscription setup cleanup does not alter the benchmark or qualify a reference target.","inputs":["docs/reference/interactive-workspace-performance.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed fixture-render and real-browser boundaries against the test and runtime. Render uses fixture actors, reduced motion, stable layout and disabled screenshot animations; this is not a real two-account or hosted acceptance.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/services/orchestration/project-task-room-runtime.ts","tests/project-task-room-collaboration.spec.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed account-bound room read, message and attachment limits against membership service. The internal transaction-result change does not change SDK APIs or grant attachment access.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-membership-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed account-bound action mapping, membership revision wake, delivery recheck and idle fallback against runtime and membership service. Listener notifications are in-process and not durable; no new host execution or Session access.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/projects/project-membership-service.ts","src-server/services/projects/project-membership-store.ts"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Inspected retained dark 1440px Plan capture against its manifest and Task workspace: it depicts a saved single-user plan, not membership or revocation. Subscription cleanup does not change this frame; original capture revision and evidence limits remain.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts"]}
+  ]
+}

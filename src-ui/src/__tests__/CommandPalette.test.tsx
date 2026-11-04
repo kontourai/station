@@ -28,6 +28,7 @@ import {
   openChatsStore,
 } from '../contexts/open-chats-store';
 import { pluginRegistry } from '../core/PluginRegistry';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 // --- SDK + navigation mocks ------------------------------------------------
@@ -163,7 +164,13 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile: false }),
 }));
 
-vi.mock('../contexts/KeyboardShortcutsContext', () => ({
+vi.mock('../contexts/KeyboardShortcutsContext', async (importOriginal) => ({
+  // The real chord spelling: the palette shows what the registry would.
+  formatShortcutChord: (
+    await importOriginal<
+      typeof import('../contexts/KeyboardShortcutsContext')
+    >()
+  ).formatShortcutChord,
   evaluateShortcutWhen: () => shortcutWhenEnabled,
   useShortcutRegistry: () => ({
     getAllShortcuts: () => [
@@ -520,7 +527,7 @@ describe('CommandPalette', () => {
       'Search commands and indexed conversation messages',
     );
     expect(input.getAttribute('placeholder')).toBe(
-      'Search commands, projects, agents, indexed conversation messages…',
+      'Search commands, projects and chats…',
     );
     fireEvent.change(input, { target: { value: 'c' } });
     expect(screen.queryByText(/cobalt albatross/)).toBeNull();
@@ -753,6 +760,30 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
   });
 
+  // #4407: rows carried a generic "Commands" tag; the chord is what a
+  // palette row can teach.
+  test('a shortcut-backed row shows its chord instead of a group tag', async () => {
+    await renderCommandPalette();
+    open();
+    const row = screen.getByRole('option', { name: /New chat/ });
+    const chord = row.querySelector('kbd');
+    expect(chord?.textContent).toMatch(/^(Ctrl\+T|⌘T)$/);
+    expect(row.textContent).not.toContain('Commands');
+  });
+
+  test('the Developer destination explains itself', async () => {
+    deviceSettingsStore.set('developerToolsEnabled', true);
+    try {
+      await renderCommandPalette();
+      open();
+      expect(
+        screen.getByRole('option', { name: /^Developer/ }).textContent,
+      ).toContain('Logs, diagnostics and internals of this Station');
+    } finally {
+      deviceSettingsStore.set('developerToolsEnabled', false);
+    }
+  });
+
   test('projects both registered region toggles into the command palette', async () => {
     const chat = REGION_SURFACE_REGISTRY.get('chat');
     const activity = REGION_SURFACE_REGISTRY.get('activity');
@@ -808,6 +839,40 @@ describe('CommandPalette', () => {
     }
   });
 
+  // #4470: the troubleshoot palette action dispatches the open event that
+  // TroubleshootHost (deferred overlays) runs the start flow on.
+  test('registers Troubleshoot an issue under its keywords and dispatches its open event', async () => {
+    const { OPEN_TROUBLESHOOT_EVENT } = await import(
+      '../lib/troubleshootEvents'
+    );
+    const listener = vi.fn();
+    window.addEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    try {
+      await renderCommandPalette();
+      for (const keyword of ['triage', 'not working', 'crash', 'debug']) {
+        open();
+        fireEvent.change(screen.getByRole('combobox'), {
+          target: { value: keyword },
+        });
+        expect(
+          screen.getByRole('option', { name: /Troubleshoot an issue/ }),
+        ).toBeTruthy();
+        fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+      }
+      open();
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'troubleshoot' },
+      });
+      fireEvent.click(
+        screen.getByRole('option', { name: /Troubleshoot an issue/ }),
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      window.removeEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    }
+  });
+
   /**
    * #2062 review MED-6: the Boards section is hidden when the viewer owns
    * none, and its `+` lives inside it, so this row is the ONLY way to make a
@@ -844,7 +909,7 @@ describe('CommandPalette', () => {
     // Filter down to a single nav command so the highlight is deterministic.
     fireEvent.change(input, { target: { value: 'schedule' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -886,7 +951,7 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
   });
 
   test('records keyboard and pointer selections exactly once each', async () => {
@@ -1453,7 +1518,7 @@ describe('CommandPalette return focus (station#1245)', () => {
       frame.callback?.(0);
     });
 
-    expect(navigateMock).toHaveBeenCalledWith('/schedule');
+    expect(navigateMock).toHaveBeenCalledWith('/automations');
     expect(document.activeElement).toBe(list);
     expect(document.activeElement).not.toBe(document.body);
     expect(trigger.isConnected).toBe(false);

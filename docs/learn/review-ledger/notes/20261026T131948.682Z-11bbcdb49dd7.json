@@ -1,0 +1,7 @@
+{
+  "revision": "d8670897b26ece13b06df1f9638424e36aa8bfb4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Merge of origin/main and a test-only speedup; this document's claims about project new-chat defaults re-checked against the merged tree.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx"]}
+  ]
+}

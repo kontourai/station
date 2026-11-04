@@ -38,6 +38,59 @@ function renderMenu(overrides: Record<string, unknown> = {}) {
   return props;
 }
 
+/** Answer `(pointer: coarse)` as given; every other query does not match. */
+function withPointer(coarse: boolean, run: () => void) {
+  const original = window.matchMedia;
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: (query: string) => ({
+      matches: query.includes('pointer: coarse') ? coarse : false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      media: query,
+      onchange: null,
+    }),
+  });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: original,
+    });
+  }
+}
+
+describe('ComposerActionsMenu command-launcher chord hint', () => {
+  test('a fine pointer shows the chord on the Commands item', () => {
+    withPointer(false, () => {
+      renderMenu();
+      fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+      const commands = screen.getByRole('menuitem', {
+        name: 'Open command launcher',
+      });
+      expect(commands.querySelector('kbd')?.textContent).toBe('⌘⇧L');
+      expect(commands.getAttribute('title')).toContain('⌘⇧L');
+    });
+  });
+
+  // The phone report: chord hints a finger cannot press.
+  test('a coarse pointer shows no chord, in the kbd or the label', () => {
+    withPointer(true, () => {
+      renderMenu();
+      fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+      const commands = screen.getByRole('menuitem', {
+        name: 'Open command launcher',
+      });
+      expect(commands.querySelector('kbd')).toBeNull();
+      expect(commands.getAttribute('title')).toBe('Open command launcher');
+    });
+  });
+});
+
 describe('ComposerActionsMenu', () => {
   test('the trigger is a real labeled button, closed by default', () => {
     renderMenu();

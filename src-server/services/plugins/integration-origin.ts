@@ -103,3 +103,29 @@ export function readIntegrationOrigin(home: string, def: ToolDef): ToolOrigin {
     return { kind: 'unavailable' };
   }
 }
+
+/**
+ * #3483: whether a catalog supplied this integration, for connection
+ * safety rather than display. Unlike `readIntegrationOrigin`, a later edit
+ * to the definition does not clear it, and a record Station cannot read
+ * counts as catalog-supplied.
+ */
+export function isCatalogSuppliedIntegration(
+  home: string,
+  id: string,
+): boolean {
+  if (!isSafeToolServerId(id)) return true;
+  const file = join(home, 'integrations', id, 'origin.json');
+  if (!existsSync(file)) return false;
+  try {
+    const parsed = originRecordSchema.safeParse(
+      readJsonFile<unknown>(file, null, {
+        maxBytes: 16 * 1024,
+        label: 'Integration origin',
+      }),
+    );
+    return !parsed.success || parsed.data.origin.kind === 'registry';
+  } catch {
+    return true;
+  }
+}

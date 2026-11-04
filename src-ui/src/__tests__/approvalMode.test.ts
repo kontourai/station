@@ -6,6 +6,7 @@ import {
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
+  approvalModeSourceNote,
   foldApprovalPosture,
   resolveEffectiveApprovalMode,
   sessionApprovalOverride,
@@ -228,19 +229,110 @@ describe('resolveEffectiveApprovalMode', () => {
     });
   });
 
+  test('a new chat’s Project layer sits below the Agent default and above the personal and Station defaults', () => {
+    const projectDefault = {
+      approvalMode: 'auto' as const,
+      source: 'last-used' as const,
+    };
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault,
+        personalDefault: 'ask',
+        stationDefault: 'ask',
+      }),
+    ).toEqual({
+      mode: 'auto',
+      label: 'Auto (last used in project)',
+      source: 'project last used',
+    });
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault: { approvalMode: 'ask', source: 'fixed' },
+        stationDefault: 'auto',
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'project default' });
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        agentDefault: 'ask',
+        projectDefault,
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'agent default' });
+    // A Project that does not decide leaves the personal default in place.
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefault: { source: 'none', fallback: 'no-history' },
+        personalDefault: 'ask',
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'account default' });
+    // An engine with no approval knob is never told a Project posture.
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'ollama',
+        projectDefault,
+      }),
+    ).toMatchObject({ mode: 'connection-default' });
+  });
+
+  test('an explicit Default pick resolves as the server does: Agent, then Station, no Project or personal layer', () => {
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        sessionOverride: 'connection-default',
+        projectDefault: { approvalMode: 'auto', source: 'fixed' },
+        personalDefault: 'never',
+        stationDefault: 'ask',
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'station default' });
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        sessionOverride: 'connection-default',
+        projectDefaultUnavailable: true,
+        agentDefault: 'auto',
+      }),
+    ).toMatchObject({ mode: 'auto', source: 'agent default' });
+  });
+
+  test('an unreadable Project layer says the mode is set at start instead of guessing', () => {
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        projectDefaultUnavailable: true,
+        personalDefault: 'never',
+        stationDefault: 'ask',
+      }),
+    ).toEqual({
+      mode: 'connection-default',
+      label: 'Set when the chat starts',
+      source: 'project unavailable',
+    });
+    // The Agent's own default still applies first, as on the server.
+    expect(
+      resolveEffectiveApprovalMode({
+        engineConnectionId: 'claude',
+        agentDefault: 'ask',
+        projectDefaultUnavailable: true,
+      }),
+    ).toMatchObject({ mode: 'ask', source: 'agent default' });
+  });
+
   test('an untouched Claude or Codex connection does not invent Ask/Never (station#1950)', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'codex' }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'claude' }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
   });
@@ -248,13 +340,13 @@ describe('resolveEffectiveApprovalMode', () => {
   test('a no-knob/unrecognized runtime has no adapter default to fall back to, so it resolves to the connection-default placeholder itself', () => {
     expect(resolveEffectiveApprovalMode({})).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
     expect(resolveEffectiveApprovalMode({ engineConnectionId: 'acp' })).toEqual(
       {
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       },
     );
@@ -318,7 +410,7 @@ describe('resolveEffectiveApprovalMode', () => {
         }),
       ).toEqual({
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       });
       // The same value on a supporting engine DOES resolve — without this
@@ -340,7 +432,7 @@ describe('resolveEffectiveApprovalMode', () => {
         }),
       ).toEqual({
         mode: 'connection-default',
-        label: 'Connection default',
+        label: 'Default',
         source: 'adapter default',
       });
     });
@@ -364,7 +456,7 @@ describe('resolveEffectiveApprovalMode', () => {
       }),
     ).toEqual({
       mode: 'connection-default',
-      label: 'Connection default',
+      label: 'Default',
       source: 'adapter default',
     });
   });
@@ -435,5 +527,35 @@ describe('sessionApprovalOverride: a pick the engine could not take (#3290)', ()
       mode: 'ask',
       state: 'requested',
     });
+  });
+});
+
+describe('#4390: one name for the inherited default, no raw ids', () => {
+  test('the inherited default is called Default', () => {
+    expect(
+      APPROVAL_MODE_OPTIONS.find((o) => o.value === 'connection-default')
+        ?.label,
+    ).toBe('Default');
+  });
+
+  test('every resolution source reads as words, never its internal id', () => {
+    const sources = [
+      'session override',
+      'agent default',
+      'project default',
+      'project last used',
+      'project unavailable',
+      'account default',
+      'station default',
+      'adapter default',
+    ] as const;
+    for (const source of sources) {
+      const note = approvalModeSourceNote(source);
+      expect(note).toBeTruthy();
+      expect(note).not.toContain(source);
+    }
+    expect(approvalModeSourceNote('adapter default')).toBe(
+      'Default: the engine’s own settings',
+    );
   });
 });

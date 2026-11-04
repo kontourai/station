@@ -29,6 +29,11 @@ export type ProcessIdentityDependencies = {
   env?: NodeJS.ProcessEnv;
   /** existsSync-shaped seam for PowerShell 7's standard install path. */
   fileExists?: (path: string) => boolean;
+  /**
+   * The running Node.js whose `runtime` directory may carry the precompiled
+   * birth helper (#2805); absent means `process.execPath`.
+   */
+  execPath?: string;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,
@@ -57,6 +62,11 @@ export function ownProcessBirthProbeSchedule(
   platform?: NodeJS.Platform,
 ): OwnProcessBirthProbeSchedule;
 export function describeRecentProcessBirthProbeFailures(pid: number): string;
+export const WINDOWS_BIRTH_HELPER_FILENAME: string;
+export const WINDOWS_BIRTH_HELPER_DIGEST_FILENAME: string;
+export function resolveWindowsBirthHelper(
+  dependencies?: Pick<ProcessIdentityDependencies, 'execPath' | 'fileExists'>,
+): string | null;
 export function describeProcessBirthProbe(
   platform?: NodeJS.Platform,
   env?: NodeJS.ProcessEnv,

@@ -1,0 +1,7 @@
+{
+  "revision": "f70b1b1e8b34eb485099c293b2cd2fbdfbe2dac1",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Refs #3568 and #3575. Re-read the glossary, including engine identity, Session/activity status, user-facing labels and the canonical contracts link. The linked contracts reference adds inbox_key_conflict as the existing conflict kind with retryable false; it introduces no new product noun, activity status, engine identity, permission or automatic-retry rule. Glossary wording remains accurate and does not duplicate the diagnostic table. This is a bounded review of that linked-reference change, with prior vocabulary and source/runtime qualification limits retained.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

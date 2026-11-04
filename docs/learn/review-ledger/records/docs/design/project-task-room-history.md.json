@@ -28,7 +28,9 @@
 
     "src-server/services/orchestration/__tests__/attached-session-write-contention.test.ts",
 
-    "src-server/domain/migrations/023-project-task-room-attachments.ts"
+    "src-server/domain/migrations/023-project-task-room-attachments.ts",
+
+    "src-server/domain/migrations/028-project-task-room-members.ts"
   ],
 
   "checks": [

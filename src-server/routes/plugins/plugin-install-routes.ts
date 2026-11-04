@@ -7,6 +7,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
@@ -37,6 +38,7 @@ import {
   recoverInstalledPlugin,
   resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
+import type { PluginInstallTrustPolicy } from '../../services/plugins/plugin-install-trust-recording.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -45,6 +47,7 @@ import {
   PluginManifestReadRefusedError,
   readUntrustedPluginManifestSyncWithFormat,
 } from '../../services/plugins/plugin-manifest-bounded-read.js';
+import { PluginManifestValidationError } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   describePluginGrantState,
   getPermissionTier,
@@ -53,6 +56,7 @@ import {
   readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import { listRetainedPluginBackups } from '../../services/plugins/plugin-recovery-inventory.js';
 import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   detectPluginConflicts,
@@ -89,11 +93,15 @@ import {
 import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
+  recoveryInventoryPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   installationHost?: PluginInstallationHost;
+  /** Install trust policy; absent in production, which uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
@@ -168,6 +176,52 @@ export function registerPluginInstallRoutes(
   // Sources once installed without their git metadata stay that way after
   // the proposal that named them resolves (#2719).
   const sourceStaging = new PluginSourceStaging(projectHomeDir);
+
+  app.get('/recovery-backups', (c) => {
+    if (
+      getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority !==
+      'operator-credential'
+    )
+      return c.json(
+        { success: false, error: 'Operator credential required' },
+        403,
+      );
+    if (
+      !deps.recoveryInventoryPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      })
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          error:
+            'Enable Plugin recovery inventory in Settings → Advanced → Feature previews.',
+        },
+        403,
+      );
+    try {
+      return c.json({
+        success: true,
+        data: {
+          backups: listRetainedPluginBackups(projectHomeDir),
+          instructions: [
+            'Stop Station and make a separate copy of its home and the retained backup.',
+            'Compare the saved plugin and integrations with the current home, person trust overlays, and grant records; preserve newer person choices.',
+            'Restore only the reviewed components manually. Do not copy the whole registry-install file over the current one.',
+            'Restart Station and review plugin permissions and integrations before enabling the plugin.',
+            'Automated restore is unavailable until a cross-store atomic boundary exists.',
+          ],
+        },
+      });
+    } catch {
+      return c.json(
+        { success: false, error: 'Recovery inventory unavailable' },
+        503,
+      );
+    }
+  });
 
   app.get('/:name/retained-generations', (c) => {
     const history = deps.packageMcpJournal?.history(c.req.param('name'), {
@@ -461,6 +515,13 @@ export function registerPluginInstallRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error) {
+      // #2998: recovery reinstalls through the transaction, so it answers
+      // install trust refusals exactly as install does.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       return c.json(
         { success: false, error: errorMessage(error) },
         error instanceof PluginGrantsUnavailableError
@@ -982,6 +1043,7 @@ export function registerPluginInstallRoutes(
               registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
+              ...(deps.installTrust ? { installTrust: deps.installTrust } : {}),
               beginConfigurationMutation: beginMutation,
               buildPlugin: (pluginDir, name, manifest) =>
                 buildPlugin(pluginDir, name, logger, manifest),
@@ -1047,6 +1109,13 @@ export function registerPluginInstallRoutes(
           },
           409,
         );
+      // #2998: a refused bundle, a newer build's record and unreadable
+      // records are closed outcomes, never the generic 500.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       if (error instanceof PluginInstallationPending)
         return c.json(
           {
@@ -1061,6 +1130,8 @@ export function registerPluginInstallRoutes(
           202,
         );
 
+      if (error instanceof PluginManifestValidationError)
+        return c.json({ success: false, error: errorMessage(error) }, 400);
       if (isContextSafetyError(error)) {
         return c.json(
           {

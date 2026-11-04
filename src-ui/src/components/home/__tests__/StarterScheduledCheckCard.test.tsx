@@ -187,14 +187,14 @@ describe('StarterScheduledCheckCard', () => {
     ['conflict', 'The canonical job name is already in use.'],
     ['unavailable', 'Scheduled-check storage needs operator repair.'],
   ] as const)(
-    'opens Schedule instead of retrying a non-retryable %s result',
+    'opens Automations instead of retrying a non-retryable %s result',
     async (state, reason) => {
       launch.mockResolvedValue({ state, reason, retrySafe: false });
       render(<StarterScheduledCheckCard />);
       fireEvent.click(screen.getByRole('button', { name: 'Run check' }));
       await screen.findByText(reason);
-      fireEvent.click(screen.getByRole('button', { name: 'Open Schedule' }));
-      expect(navigate).toHaveBeenCalledWith('/schedule');
+      fireEvent.click(screen.getByRole('button', { name: 'Open Automations' }));
+      expect(navigate).toHaveBeenCalledWith('/automations');
       expect(launch).toHaveBeenCalledTimes(1);
     },
   );

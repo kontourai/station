@@ -1,5 +1,6 @@
 .usage-rollup {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 .usage-rollup__header,
@@ -100,4 +101,20 @@
     width: 100%;
     min-height: 100%;
   }
+}
+
+.usage-rollup__cost-boundaries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-4);
+  margin: 0;
+}
+.usage-rollup__cost-boundaries div {
+  flex: 1 1 12rem;
+}
+.usage-rollup__cost-boundaries dt {
+  color: var(--k-text-muted);
+}
+.usage-rollup__cost-boundaries dd {
+  margin: 0;
 }

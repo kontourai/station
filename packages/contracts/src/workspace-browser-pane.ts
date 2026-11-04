@@ -22,6 +22,7 @@ import {
 } from './workspace-pane.js';
 
 export const WORKSPACE_BROWSER_PANE_STATE_VERSION = '2.0' as const;
+export const BROWSER_PANE_TAB_LIMIT = 12;
 
 /**
  * The deployment capability the Browser pane requires: the answering Station
@@ -44,6 +45,8 @@ export interface WorkspaceBrowserPaneState {
   version: typeof WORKSPACE_BROWSER_PANE_STATE_VERSION;
   projectId: string;
   browserSessionId: string;
+  /** Ordered target identities; absent in saved single-session panes. */
+  browserSessionIds?: string[];
   updatedAt: string;
 }
 
@@ -88,7 +91,13 @@ export function parseWorkspaceBrowserPaneState(
 ): WorkspaceBrowserPaneState | null {
   const record = plainRecord(value);
   if (!record) return null;
-  const allowed = ['version', 'projectId', 'browserSessionId', 'updatedAt'];
+  const allowed = [
+    'version',
+    'projectId',
+    'browserSessionId',
+    'browserSessionIds',
+    'updatedAt',
+  ];
   if (Object.keys(record).some((key) => !allowed.includes(key))) return null;
   if (
     record.version !== WORKSPACE_BROWSER_PANE_STATE_VERSION ||
@@ -98,10 +107,24 @@ export function parseWorkspaceBrowserPaneState(
     !isCanonicalTimestamp(record.updatedAt)
   )
     return null;
+  const tabs = record.browserSessionIds;
+  if (
+    tabs !== undefined &&
+    (!Array.isArray(tabs) ||
+      tabs.length < 1 ||
+      tabs.length > BROWSER_PANE_TAB_LIMIT ||
+      tabs.some(
+        (id) => typeof id !== 'string' || !BROWSER_SESSION_ID_PATTERN.test(id),
+      ) ||
+      new Set(tabs).size !== tabs.length ||
+      !tabs.includes(record.browserSessionId))
+  )
+    return null;
   return {
     version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
     projectId: record.projectId,
     browserSessionId: record.browserSessionId,
+    ...(Array.isArray(tabs) ? { browserSessionIds: [...tabs] } : {}),
     updatedAt: record.updatedAt,
   };
 }
@@ -254,6 +277,46 @@ export interface BrowserPendingDialogView {
   openedAt: string;
 }
 
+export interface BrowserNetworkEntryView {
+  /** Stable identity across incremental updates to a request. */
+  requestSeq?: number;
+  seq: number;
+  method: string;
+  url: string;
+  type: string;
+  status?: number;
+  bytes?: number;
+  durationMs?: number;
+  failed?: boolean;
+}
+
+export interface BrowserNetworkView {
+  entries: BrowserNetworkEntryView[];
+  dropped: number;
+  latestSeq: number;
+  generation: number;
+}
+
+/** A target-viewport element inspection and optional cropped PNG. */
+export interface BrowserPickedElementView {
+  browserSessionId: string;
+  targetId: string;
+  generation: number;
+  viewport: BrowserViewportView;
+  url: string;
+  capturedAt: string;
+  selector: string;
+  locator: string;
+  tagName: string;
+  role: string;
+  name: string;
+  html: string;
+  styles: Record<string, string>;
+  rect: { x: number; y: number; width: number; height: number };
+  screenshot?: string;
+  digest?: string;
+}
+
 export type BrowserConsoleLevelView = 'error' | 'warning' | 'info' | 'debug';
 
 /** One console line: page text, untrusted, shown as text only. */
@@ -301,7 +364,14 @@ export interface BrowserSessionView {
   reach: 'operator' | 'project';
   threadId?: string;
   url: string;
+  /** Observed page title, when available from the host. */
+  title?: string;
+  /** Bounded raster icon observed by the Browser host. */
+  favicon?: string;
+  openerBrowserSessionId?: string;
   viewport: BrowserViewportView;
+  zoomFactor?: number;
+  colorScheme?: 'system' | 'light' | 'dark';
   generation: number;
   /** Which Station runs the browser (#90 D13); `local` today. */
   hostId?: string;
@@ -327,12 +397,22 @@ export interface BrowserSessionView {
   pendingDialog?: BrowserPendingDialogView;
 }
 
+export interface BrowserNavigationView {
+  generation: number;
+  title: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
 export interface BrowserPaneAccessView {
   projectId: string;
-  role: 'operator' | 'project-admin';
+  role: 'operator' | 'operator-device' | 'project-admin';
   /** The profile the caller's own sessions run in (D7). */
   principalKey?: string;
   operator: boolean;
+  /** False when the viewer may watch this profile but cannot drive it. */
+  canDrive?: boolean;
+  experiencePreviewEnabled?: boolean;
   browser: 'ready' | 'not-ready';
 }
 

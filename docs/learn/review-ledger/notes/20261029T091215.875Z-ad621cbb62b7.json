@@ -1,0 +1,9 @@
+{
+  "revision": "c1b7836dbe0e4b537f71f3c4a9b95feb081096a4",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed relay authorization, policy-unavailable refusal, receipt and crash behavior against gateway, authorization and core; live Discord not verified.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-authorization.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed chat-app module description against delivery refusal contract and boundary tests; the additive policy-unavailable reason does not change the module ownership description.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/chat-app.test.ts","packages/contracts/src/chat-app.ts"]}
+  ]
+}

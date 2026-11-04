@@ -9,7 +9,12 @@ type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
-import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
+import type {
+  IntegrationEngineCoverage,
+  IntegrationTrustReviewDecision,
+  ToolDef,
+  ToolMetadata,
+} from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
   type MCPLocalClaim,
@@ -20,6 +25,7 @@ import {
 import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type {
+  FetchLike,
   GetPromptResult,
   Prompt,
   Transport,
@@ -27,7 +33,10 @@ import type {
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { markIntegrationEnabledExplicit } from '../../domain/config-loader-storage.js';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  isBuiltinStationControl,
+  isRuntimeManagedIntegrationId,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   extractMCPAppsResourceMetadata,
   extractMCPAppsToolMetadata,
@@ -36,6 +45,10 @@ import {
   type MCPAppsUiMetadata,
 } from '../../runtime/mcp/mcp-apps-metadata.js';
 import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
+import {
+  OAUTH_CLIENT_CHANGED_REASON,
+  OAUTH_CLIENT_ID_REQUIRED_REASON,
+} from '../../security/tool-server-reason.js';
 import {
   toolServerLifecycle,
   toolServerOAuth,
@@ -46,7 +59,11 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
-import { recordIntegrationOrigin } from './integration-origin.js';
+import {
+  isCatalogSuppliedIntegration,
+  recordIntegrationOrigin,
+} from './integration-origin.js';
+import { externalEngineCoverage } from './mediated-untrusted-content-gate.js';
 import {
   principalToolCatalogExists,
   writePrincipalToolCatalog,
@@ -61,13 +78,17 @@ import {
   classifyToolServerProbeFailure,
   formatToolServerFailure,
   INSTANCE_CREDENTIAL_OWNER,
+  OAuthClientRequiredError,
+  parseRequestedOAuthScopes,
   principalCredentialOwner,
   removeToolServerOAuthCredentials,
   requireHttpAuthorizationUrl,
   requireToolServerResult,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  type ToolServerOAuthClientConfig,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
   validateOAuthCallbackUrl,
 } from './tool-server-oauth.js';
@@ -94,6 +115,8 @@ export interface ToolServerAccountStatus {
   shared: { usable: boolean; connected: boolean };
   /** Whether a person-owned integration has a recorded tool catalog yet. */
   catalogAvailable?: boolean;
+  /** The caller's scope choice at their last completed sign-in. */
+  rememberedScopes?: string[];
 }
 
 class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
@@ -411,6 +434,42 @@ export class MCPService {
     return this.configLoader.listIntegrations();
   }
 
+  /**
+   * #3483: where each external engine's calls to this server go (see
+   * `externalEngineCoverage`).
+   */
+  engineCoverage(
+    def: Pick<
+      ToolMetadata,
+      'id' | 'kind' | 'transport' | 'credentialOwnership' | 'probe'
+    >,
+    secrets: boolean,
+  ): IntegrationEngineCoverage[] | undefined {
+    return externalEngineCoverage(def, {
+      builtin: isRuntimeManagedIntegrationId(def.id),
+      catalogSupplied: isCatalogSuppliedIntegration(
+        this.configLoader.getProjectHomeDir(),
+        def.id,
+      ),
+      secrets,
+    });
+  }
+
+  /** #3483: legacy trust settings waiting for a person, if any. */
+  async integrationTrustReview(id: string) {
+    return this.configLoader.integrationTrustReview(id);
+  }
+
+  /** #3483: a person keeps or resets legacy trust settings, with a receipt. */
+  async decideIntegrationTrustReview(
+    id: string,
+    decision: IntegrationTrustReviewDecision,
+    by: string,
+  ): Promise<void> {
+    this.assertMutableIntegration(id);
+    await this.configLoader.decideIntegrationTrustReview(id, decision, by);
+  }
+
   async getToolAgentMap(): Promise<Record<string, string[]>> {
     return this.configLoader.getToolAgentMap();
   }
@@ -442,61 +501,114 @@ export class MCPService {
     }
   }
 
-  async saveIntegration(def: ToolDef): Promise<void> {
+  async saveIntegration(
+    def: ToolDef,
+    options?: {
+      changedBy?: string;
+      personChange?: boolean;
+      explicitFields?: readonly (
+        | 'contentTrust'
+        | 'permissions'
+        | 'trustReadOnlyHints'
+      )[];
+    },
+  ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
-      true
+        true ||
+      this.isLiveContributedIntegration(def.id)
     ) {
-      throw new Error(
-        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      if (!options?.personChange && !options?.changedBy)
+        throw new Error(
+          'Package-supplied integration definitions are read-only',
+        );
+      await this.mcpCustody.mutate(def.id, () =>
+        this.configLoader.saveIntegration(def.id, def, {
+          ...options,
+          requireContributed: true,
+        }),
       );
+      return;
     }
     this.assertMutableIntegration(def.id);
-    let existing: ToolDef | undefined;
-    try {
-      existing = await this.configLoader.loadIntegration(def.id);
-    } catch (error) {
-      if (!isMissingIntegrationError(error)) throw error;
-    }
-    if (
-      Object.hasOwn(def, 'secretEnvRefs') &&
-      !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
-    ) {
-      throw new Error(
-        'Secret bindings can be changed only through the operator binding API.',
-      );
-    }
-    if (
-      existing?.secretEnvRefs &&
-      Object.keys(existing.secretEnvRefs).length > 0 &&
-      changesBoundChildExecutionIdentity(existing, def)
-    ) {
-      throw new Error(
-        'Unbind secret bindings before changing an integration execution configuration.',
-      );
-    }
-    const identityChanged =
-      existing !== undefined &&
-      toolServerOAuthResourceIdentity(existing) !==
-        toolServerOAuthResourceIdentity(def);
-    const withPreservedBindings = existing?.secretEnvRefs
-      ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
-      : def;
-    const persisted = identityChanged
-      ? withAuthorizationRequired(
-          withPreservedBindings,
-          'Tool server endpoint changed',
-        )
-      : withPreservedBindings;
+
     const write = async () => {
-      await this.configLoader.saveIntegration(def.id, persisted);
+      let existing: ToolDef | undefined;
+      try {
+        existing = await this.configLoader.loadIntegration(def.id);
+      } catch (error) {
+        if (!isMissingIntegrationError(error)) throw error;
+      }
+      if (
+        Object.hasOwn(def, 'secretEnvRefs') &&
+        !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
+      ) {
+        throw new Error(
+          'Secret bindings can be changed only through the operator binding API.',
+        );
+      }
+      if (
+        existing?.secretEnvRefs &&
+        Object.keys(existing.secretEnvRefs).length > 0 &&
+        changesBoundChildExecutionIdentity(existing, def)
+      ) {
+        throw new Error(
+          'Unbind secret bindings before changing an integration execution configuration.',
+        );
+      }
+      const existingSecretRef = existing?.oauthClient?.clientSecretRef;
+      if (
+        def.oauthClient &&
+        Object.hasOwn(def.oauthClient, 'clientSecretRef') &&
+        def.oauthClient.clientSecretRef !== existingSecretRef
+      ) {
+        throw new Error(
+          'Secret bindings can be changed only through the operator binding API.',
+        );
+      }
+      const identityChanged =
+        existing !== undefined &&
+        toolServerOAuthResourceIdentity(existing) !==
+          toolServerOAuthResourceIdentity(def);
+      // A bound secret pins the issuer and endpoint; the storage writer every
+      // path shares enforces that (assertToolOAuthClientWritable).
+      // Tokens and a registered client belong to the client that obtained them.
+      const clientChanged =
+        existing !== undefined &&
+        !identityChanged &&
+        (existing.oauthClient?.clientId !== def.oauthClient?.clientId ||
+          existing.oauthClient?.issuer !== def.oauthClient?.issuer ||
+          existing.oauthClient?.clientMetadataUrl !==
+            def.oauthClient?.clientMetadataUrl);
+      const withPreservedBindings = withPreservedOAuthClientSecret(
+        existing?.secretEnvRefs
+          ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
+          : def,
+        existingSecretRef,
+      );
+      const persisted = identityChanged
+        ? withAuthorizationRequired(
+            withPreservedBindings,
+            'Tool server endpoint changed',
+          )
+        : clientChanged && toolServerOAuthResourceIdentity(def)
+          ? withAuthorizationRequired(
+              withPreservedBindings,
+              OAUTH_CLIENT_CHANGED_REASON,
+            )
+          : withPreservedBindings;
+      await this.configLoader.saveIntegration(
+        def.id,
+        persisted,
+        ...(options ? [options] : []),
+      );
       if (!existing)
         recordIntegrationOrigin(
           this.configLoader.getProjectHomeDir(),
           persisted,
           { kind: 'manual' },
         );
-      if (identityChanged || def.enabled === false) {
+      if (identityChanged || clientChanged || def.enabled === false) {
         await removeToolServerOAuthCredentials(this.credentialStore(), def.id);
         await removePrincipalToolServerCredentials(
           this.configLoader.getProjectHomeDir(),
@@ -568,10 +680,15 @@ export class MCPService {
     return updated;
   }
 
+  /**
+   * `requested.scopes` is the signing-in person's choice for this sign-in;
+   * without it the integration's default scopes apply, then the server's.
+   */
   async startOAuth(
     id: string,
     mode: 'local' | 'remote',
     actor?: ToolServerAccountActor,
+    requested: { scopes?: readonly string[] } = {},
   ): Promise<{
     authorizationUrl: string;
     mode: 'local-browser-opened' | 'remote-manual-open';
@@ -588,12 +705,19 @@ export class MCPService {
         );
       const owner = this.accountOwner(def, actor);
       const flowKey = this.oauthFlowKey(def, actor);
-      const provider = this.createOAuthProvider(def, owner);
+      const provider = this.createOAuthProvider(
+        def,
+        owner,
+        requested.scopes === undefined
+          ? undefined
+          : parseRequestedOAuthScopes(requested.scopes),
+      );
       let transport: Transport | undefined;
       try {
         const connection = await this.establishChild(def, async (child) =>
           claim.connect(child, {
             authProvider: provider.forAuthorization(),
+            authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
             onTransport: (value) => {
               transport = value;
             },
@@ -612,6 +736,22 @@ export class MCPService {
         );
         const authorizationUrl = provider.takeAuthorizationUrl();
         await this.requireCurrentDefinition(claim, def);
+        // A server without client registration is a configuration state the
+        // operator can act on, not a failed authorization.
+        if (
+          publicError instanceof OAuthClientRequiredError &&
+          !def.credentialOwnership
+        ) {
+          const resourceIdentity = toolServerOAuthResourceIdentity(def);
+          if (resourceIdentity)
+            await this.saveAuthorizationHealth(
+              id,
+              resourceIdentity,
+              'client-id-required',
+              OAUTH_CLIENT_ID_REQUIRED_REASON,
+              claim,
+            );
+        }
         if (!authorizationUrl || !transport || !('finishAuth' in transport))
           throw publicError;
         try {
@@ -796,7 +936,10 @@ export class MCPService {
     let failed = false;
     try {
       const connection = await this.establishChild(def, async (child) =>
-        claim.connect(child, { authProvider: await provider.forTransport() }),
+        claim.connect(child, {
+          authProvider: await provider.forTransport(),
+          authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
+        }),
       );
       await this.requireCurrentDefinition(claim, def);
       return await writePrincipalToolCatalog(
@@ -834,11 +977,19 @@ export class MCPService {
         ? Boolean(await this.createOAuthProvider(def, owner).tokens())
         : false;
     const shared = await connected(INSTANCE_CREDENTIAL_OWNER);
+    // The choice remembered for the account this caller would sign in as.
+    const remembered = async (owner: CredentialOwner) => {
+      const scopes = resourceIdentity
+        ? await this.createOAuthProvider(def, owner).rememberedScopes()
+        : undefined;
+      return scopes ? { rememberedScopes: scopes } : {};
+    };
     if (!def.credentialOwnership)
       return {
         ownership: 'instance',
         connectedAs: shared ? 'shared' : null,
         shared: { usable: true, connected: shared },
+        ...(await remembered(INSTANCE_CREDENTIAL_OWNER)),
       };
     if (!actor) throw new ConnectedAccountActorRequiredError();
     const fallback = def.credentialOwnership.allowInstanceFallback === true;
@@ -872,6 +1023,9 @@ export class MCPService {
             resourceIdentity,
           )
         : false,
+      ...(await remembered(
+        principalCredentialOwner(actor.principalId, actor.projectSlug),
+      )),
     };
   }
 
@@ -915,7 +1069,8 @@ export class MCPService {
       | 'awaiting-operator-consent'
       | 'authorized'
       | 'authorization-failed'
-      | 'token-expired-refresh-failed',
+      | 'token-expired-refresh-failed'
+      | 'client-id-required',
     reason?: string,
     claim?: MCPLocalClaim,
   ): Promise<ToolDef> {
@@ -974,10 +1129,28 @@ export class MCPService {
     return principalCredentialOwner(actor.principalId, actor.projectSlug);
   }
 
+  /** Connect options for a remote integration: its provider and fetch guard. */
+  private async oauthConnectOptions(def: ToolDef) {
+    if (def.transport !== 'sse' && def.transport !== 'streamable-http')
+      return {};
+    const provider = this.createOAuthProvider(def);
+    return {
+      authProvider: await provider.forTransport(),
+      authorizationFetch: (fetch: FetchLike) =>
+        provider.authorizationFetch(fetch),
+    };
+  }
+
   private createOAuthProvider(
     def: ToolDef,
     owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
+    scopes?: readonly string[],
   ): StationToolServerOAuthProvider {
+    const client = toolServerOAuthClientConfig(
+      def,
+      this.integrationSecretResolver,
+      { homeDir: this.configLoader.getProjectHomeDir() },
+    );
     const resourceIdentity = toolServerOAuthResourceIdentity(def);
     if (!resourceIdentity)
       throw new Error('OAuth tool server endpoint is missing or invalid');
@@ -999,6 +1172,7 @@ export class MCPService {
         },
       },
       owner,
+      withRequestedScopes(client, scopes),
     );
   }
 
@@ -1075,6 +1249,12 @@ export class MCPService {
         const connection = await this.establishChild(existing, async (child) =>
           claim.connect(child, {
             authProvider: await oauthProvider?.forTransport(),
+            ...(oauthProvider
+              ? {
+                  authorizationFetch: (fetch) =>
+                    oauthProvider.authorizationFetch(fetch),
+                }
+              : {}),
             onTransport: (value) => {
               oauthTransport = value;
             },
@@ -1226,6 +1406,7 @@ export class MCPService {
       const connection = await this.establishChild(existing, async (child) =>
         claim.connect(child, {
           authProvider: await provider.forTransport(),
+          authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
           onTransport: (value) => {
             transport = value;
           },
@@ -1375,12 +1556,7 @@ export class MCPService {
       let conn: MCPConnection;
       try {
         conn = await this.establishChild(def, async (child) =>
-          claim.connect(child, {
-            authProvider:
-              def.transport === 'sse' || def.transport === 'streamable-http'
-                ? await this.createOAuthProvider(def).forTransport()
-                : undefined,
-          }),
+          claim.connect(child, await this.oauthConnectOptions(def)),
         );
         await this.requireCurrentDefinition(claim, def);
       } catch (error) {
@@ -1811,6 +1987,36 @@ export function openSystemBrowser(
 
 export function toolServerOAuthRedirectUrl(port: number, id: string): string {
   return `http://127.0.0.1:${port}/integrations/${encodeURIComponent(id)}/oauth/callback`;
+}
+
+/**
+ * A person's scope choice for one sign-in replaces the integration default;
+ * an empty choice drops it so the server's advertised scopes apply.
+ */
+function withRequestedScopes(
+  client: ToolServerOAuthClientConfig | undefined,
+  scopes: readonly string[] | undefined,
+): ToolServerOAuthClientConfig | undefined {
+  if (scopes === undefined) return client;
+  if (scopes.length > 0) return { ...client, scopes, rememberScopes: scopes };
+  const { scopes: _default, ...rest } = client ?? {};
+  return { ...rest, rememberScopes: [] };
+}
+
+/**
+ * Raw integration JSON never carries the client-secret binding id; the
+ * binding routes own it. A save keeps the existing one, even when the client
+ * fields are cleared, so the binding can still be unbound.
+ */
+function withPreservedOAuthClientSecret(
+  def: ToolDef,
+  clientSecretRef: string | undefined,
+): ToolDef {
+  if (!clientSecretRef) return def;
+  return {
+    ...def,
+    oauthClient: { ...(def.oauthClient ?? {}), clientSecretRef },
+  };
 }
 
 function withAuthorizationRequired(def: ToolDef, reason: string): ToolDef {

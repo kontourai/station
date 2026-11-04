@@ -34,7 +34,43 @@
 
     "src-server/services/webhooks/inbound-webhook-store.ts",
 
-    "src-server/runtime/agents/unattended-principal-context.ts"
+    "src-server/runtime/agents/unattended-principal-context.ts",
+
+    "src-server/services/automation/github-poll.ts",
+
+    "src-server/services/automation/automation-intake.ts",
+
+    "src-server/services/automation/github-workflow-run.ts",
+
+    "scripts/qualify-isolated-repair.mjs",
+
+    "package.json#/scripts/qualify:isolated-repair",
+
+    "package.json#/scripts/qualify:isolated-repair:prepare",
+
+    "packages/contracts/src/isolated-repair.ts",
+
+    "packages/contracts/src/qualification-repair-policy.mjs",
+
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/automation/repair-source.ts",
+
+    "src-server/services/automation/repair-store.ts",
+
+    "src-server/services/automation/repair-worker.mjs",
+
+    "src-server/services/automation/repair-credentials.mjs",
+
+    "src-server/services/automation/repair-publisher.ts",
+
+    "src-server/routes/operations/repairs.ts",
+
+    "src-server/services/automation/__tests__/repair-controller.test.ts",
+
+    "src-server/services/automation/__tests__/repair-worker.test.ts",
+
+    "src-server/services/automation/__tests__/repair-publisher.test.ts"
   ],
 
   "checks": [

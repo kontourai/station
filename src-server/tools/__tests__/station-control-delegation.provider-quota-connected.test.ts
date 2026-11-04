@@ -1,3 +1,4 @@
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 /**
  * #2265 connected projection test — the FULL storage/serving composition.
  *
@@ -34,11 +35,10 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  type Client,
   type ContentBlock,
   type PromptResponse,
   RequestError,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -50,6 +50,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import type {
   ACPProcess,
   ACPProcessOptions,
@@ -78,7 +79,7 @@ const CONNECTION_ID = 'opencode-connection';
 const bridgeFetch = globalThis.fetch.bind(globalThis);
 
 class QuotaStubProcess {
-  client!: Client;
+  client!: ACPClientCallbacks;
   initResult = {
     protocolVersion: 1,
     agentCapabilities: { promptCapabilities: { image: true } },
@@ -89,7 +90,7 @@ class QuotaStubProcess {
   constructor(readonly opts: ACPProcessOptions) {}
 
   async start() {
-    this.client = this.opts.createClient(undefined as never);
+    this.client = this.opts.createClient();
     return this.initResult;
   }
 
@@ -302,6 +303,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       {
         prompt: 'do the thing',
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          fakeHome,
+        ),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -499,6 +503,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       {
         prompt: 'control run',
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          fakeHome,
+        ),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),

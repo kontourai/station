@@ -1,0 +1,7 @@
+{
+  "revision": "a3b813e0f52e5b2404c177a5afd637eeb07cbff7",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the wait_session rule after the recovery-abort fix: a restart-interrupted turn ends the open turn (Session reads idle) but satisfies no turn-settled wait and acknowledges no requested work, as thread-inbox pins. Wording in self-configuring-agent.md updated to match; the other claims are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/__tests__/session-turn-wait.test.ts","src-server/services/orchestration/session-turn-wait.ts"]}
+  ]
+}

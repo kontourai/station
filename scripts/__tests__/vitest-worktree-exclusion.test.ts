@@ -59,7 +59,7 @@ describe('Vitest worktree exclusion', () => {
   it('bounds workers in every canonical unit-test lane', () => {
     expect(packageJson.scripts.test).toBe('npm run test:prepush');
     expect(packageJson.scripts['test:focused']).toBe(
-      'node scripts/run-focused-tests.mjs',
+      'node scripts/heavy-check-slot.mjs test:focused scripts/run-focused-tests.mjs',
     );
     const repoRoot = path.resolve(import.meta.dirname, '../..');
     const focused = buildFocusedVitestInvocation(

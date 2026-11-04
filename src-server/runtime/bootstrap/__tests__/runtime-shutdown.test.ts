@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { cancelSharedDeviceCodeLogins } from '../../../services/connections/device-code-login.js';
+import { startRuntimeHealthChecks } from '../runtime-health.js';
 import { shutdownRuntimeServices } from '../runtime-shutdown.js';
 
 vi.mock('../../../services/connections/device-code-login.js', () => ({
@@ -28,8 +29,6 @@ describe('shutdownRuntimeServices', () => {
       acpBridge: { shutdown: vi.fn(async () => {}) },
       feedbackService: { stop: vi.fn() },
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
       configLoader: { dispose: vi.fn(async () => {}) },
     });
     await vi.advanceTimersByTimeAsync(19);
@@ -39,6 +38,49 @@ describe('shutdownRuntimeServices', () => {
     await expect(shutdown).resolves.toBeUndefined();
     expect(signals.every((signal) => signal.aborted)).toBe(true);
     expect(schedulerService.stop).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  test('shutdown drains the scheduled health maintenance before closing orchestration', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const maintainOwnedWork = vi.fn(() => pending);
+    const timers: NodeJS.Timeout[] = [];
+    const stopHealthChecks = vi.fn(
+      await startRuntimeHealthChecks({
+        timers,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        interval: 1000,
+        maintainOwnedWork,
+        runHealthChecks: async () => {},
+      }),
+    );
+    const orchestrationService = { shutdown: vi.fn(async () => {}) };
+    const shutting = shutdownRuntimeServices({
+      logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+      timers,
+      stopHealthChecks,
+      orchestrationService,
+      mcpConfigs: new Map(),
+      activeAgents: new Map(),
+      acpBridge: { shutdown: vi.fn(async () => {}) },
+      feedbackService: { stop: vi.fn() },
+      voiceService: { stop: vi.fn(async () => {}) },
+      configLoader: { dispose: vi.fn(async () => {}) },
+    });
+    try {
+      await vi.waitFor(() => expect(stopHealthChecks).toHaveBeenCalledOnce());
+      expect(orchestrationService.shutdown).not.toHaveBeenCalled();
+    } finally {
+      finish();
+      await shutting;
+    }
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(maintainOwnedWork).toHaveBeenCalledOnce();
+    expect(orchestrationService.shutdown).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
 
@@ -75,8 +117,6 @@ describe('shutdownRuntimeServices', () => {
       feedbackService: { stop: vi.fn() },
       notificationService: { shutdown: vi.fn() },
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
       configLoader: { dispose: vi.fn(async () => {}) },
     });
 
@@ -113,8 +153,6 @@ describe('shutdownRuntimeServices', () => {
       acpBridge: { shutdown: vi.fn(async () => {}) },
       feedbackService: { stop: vi.fn() },
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
     };
 
     await shutdownRuntimeServices({ ...base, logger, configLoader });
@@ -149,8 +187,6 @@ describe('shutdownRuntimeServices', () => {
       feedbackService: { stop: vi.fn() },
       notificationService,
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
       configLoader: { dispose: vi.fn(async () => {}) },
     });
     let settled = false;
@@ -180,8 +216,6 @@ describe('shutdownRuntimeServices', () => {
         feedbackService: { stop: vi.fn() },
         notificationService: undefined,
         voiceService: { stop: vi.fn(async () => {}) },
-        terminalWsServer: { stop: vi.fn() },
-        terminalService: { dispose: vi.fn(async () => {}) },
         configLoader,
       }),
     ).resolves.toBeUndefined();
@@ -206,8 +240,6 @@ describe('shutdownRuntimeServices', () => {
       acpBridge: { shutdown: vi.fn(async () => {}) },
       feedbackService: { stop: vi.fn() },
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
       configLoader: { dispose: vi.fn(async () => {}) },
     });
 
@@ -242,8 +274,7 @@ describe('shutdownRuntimeServices', () => {
       notificationService: { shutdown: vi.fn(failure('notification')) },
       voiceService: { stop: vi.fn(asyncFailure('voice')) },
       mcpUiFrameServer: { close: vi.fn(asyncFailure('mcp-ui-frame')) },
-      terminalWsServer: { stop: vi.fn(failure('terminal-ws')) },
-      terminalService: { dispose: vi.fn(asyncFailure('terminal')) },
+      terminalSessions: { dispose: vi.fn(asyncFailure('terminal')) },
       monitoringEmitter: { flush: vi.fn(asyncFailure('monitoring')) },
       configLoader: { dispose: vi.fn(asyncFailure('config')) },
     });
@@ -268,7 +299,6 @@ describe('shutdownRuntimeServices', () => {
       'notification',
       'voice',
       'mcp-ui-frame',
-      'terminal-ws',
       'terminal',
       'monitoring',
       'config',
@@ -294,8 +324,6 @@ describe('shutdownRuntimeServices', () => {
         acpBridge: { shutdown: vi.fn(async () => {}) },
         feedbackService: { stop: vi.fn() },
         voiceService: { stop: vi.fn(async () => {}) },
-        terminalWsServer: { stop: vi.fn() },
-        terminalService: { dispose: vi.fn(async () => {}) },
         configLoader,
       });
       const caughtShutdown = shutdown.catch((error: unknown) => error);
@@ -337,8 +365,6 @@ describe('shutdownRuntimeServices', () => {
         acpBridge: { shutdown: vi.fn(async () => {}) },
         feedbackService: { stop: vi.fn() },
         voiceService: { stop: vi.fn(async () => {}) },
-        terminalWsServer: { stop: vi.fn() },
-        terminalService: { dispose: vi.fn(async () => {}) },
         configLoader: { dispose: vi.fn(async () => {}) },
       }),
     ).rejects.toMatchObject({
@@ -370,8 +396,6 @@ describe('shutdownRuntimeServices and engine device-code logins', () => {
       acpBridge: { shutdown: vi.fn(async () => {}) },
       feedbackService: { stop: vi.fn() },
       voiceService: { stop: vi.fn(async () => {}) },
-      terminalWsServer: { stop: vi.fn() },
-      terminalService: { dispose: vi.fn(async () => {}) },
       configLoader: { dispose: vi.fn(async () => {}) },
     });
 

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, OwnerIdentity } from '@kontourai/monument';
+import type { SessionTurnBoundaryRecord } from '@kontourai/monument/session-boundary';
 import {
   openSqliteKernelStorage,
   type SqliteKernelDatabase,
@@ -14,12 +15,8 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-
 import type { EventStore } from '../event-store.js';
-import type {
-  SessionTurnBoundaryCoordinator,
-  SessionTurnBoundaryRecord,
-} from '../session-turn-boundary.js';
+import type { SessionTurnBoundaryCoordinator } from '../session-turn-boundary-binding.js';
 import { createSqliteSessionTurnBoundaryCoordinator } from '../sqlite-session-turn-boundary.js';
 import { legacyTurnBoundaryCoordinator } from './fixtures/legacy-turn-boundary.js';
 import {
@@ -49,6 +46,35 @@ afterEach(async () => {
   vi.restoreAllMocks();
   metrics.count.mockReset();
   metrics.duration.mockReset();
+});
+
+test('a durable cancellation fence refuses a new turn on another connection', () => {
+  const root = makeTempDir('cancellation-fence-');
+  const path = join(root, 'events.sqlite');
+  const store = open(path);
+  closes.push(() => {
+    store.close();
+  });
+  const peer = new DatabaseSync(path);
+  closes.push(() => peer.close());
+  peer.exec(`CREATE TABLE IF NOT EXISTS orchestration_cancellation_fences (
+    thread_id TEXT NOT NULL, terminal_event_id TEXT NOT NULL,
+    PRIMARY KEY (thread_id, terminal_event_id)
+  )`);
+  peer
+    .prepare('INSERT INTO orchestration_cancellation_fences VALUES (?, ?)')
+    .run('fenced-child', 'parent-terminal');
+  const claim = store
+    .sessionTurnBoundaryAuthority()
+    .claim('fenced-child', at(1));
+  expect(claim.kind).not.toBe('owner');
+  expect(
+    peer
+      .prepare(
+        'SELECT * FROM orchestration_turn_boundaries WHERE thread_id = ?',
+      )
+      .all('fenced-child'),
+  ).toEqual([]);
 });
 function record(command: {
   boundaryId: string;

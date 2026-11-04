@@ -2,6 +2,12 @@
 
 `tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
 
+The separate `renders Task collaboration member names and avatars` case in
+that file uses an explicit browser history and SSE fixture to render two member
+names and the header stack at 390 and 1440 pixels in both themes. It checks
+presentation only; those fixture actors are not a real two-account browser
+journey or a deployed/native acceptance receipt.
+
 The workspace opens on **Overview**. **Conversation**, **Work chats**, **Plan**
 and **Details** remain directly accessible. The selected view is retained in
 the URL through authority re-verification; protected pane state is recreated
@@ -10,7 +16,7 @@ for the current authority and Task incarnation.
 When it passes, the lane checks both browsers receive the same server-owned room generation;
 implicit join and durable publication; symmetric named presence; autosave;
 watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
-document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; immutable revision links in Details; and same-home SQLite
+document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; autosaves leaving immutable revision links unrequested; and same-home SQLite
 restoration after a full server restart. Reconnect checks the selected Plan tab
 and converged preview before explicitly reopening the editor. It does not claim
 draft or edit-mode continuity across authority re-verification. After restart,
@@ -58,3 +64,5 @@ The #2892 synthetic command remains smoke evidence only. Reference performance
 is verified only by the named Windows production target and bridge
 described in `interactive-workspace-performance.md`; an absent target or bridge
 is `NOT_VERIFIED`, never a substitute PASS.
+
+The [revision evidence composition suite](../../src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts) and composed Task Review routes own exact plan-reference freezing. Saving alone no longer publishes an immutable revision link; the [freeze policy](../decisions/revision-evidence-freeze-policy.md) separates those outcomes.

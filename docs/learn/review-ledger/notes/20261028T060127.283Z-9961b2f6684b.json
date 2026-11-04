@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added Context menus and holds: traced ActionOverflowMenu handleRef, TurnActionsMenu/UserMessageActionsMenu handles, ContextMenu, useContextMenuGesture, wantsNativeContextMenu and NativeContextMenuGuard against their callers (PullRequestRow, MessageBubble, FileTreePanel, InboxRow, App) and the new jsdom suites; device behavior marked unverified. Existing action-row and dialog claims unaffected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ActionOverflowMenu.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "832b02043a99fc779091b6294808eb460ac23aeb",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked: no claim about the busy-wait composer gate, live-frame stitching, or reload page merging; content-part mapping and history failure-state wording are unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

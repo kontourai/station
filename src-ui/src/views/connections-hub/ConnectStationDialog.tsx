@@ -16,6 +16,7 @@ import {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
@@ -260,6 +261,12 @@ export function ConnectStationDialog({
   const start = useStartPeerEnrollmentMutation(controller.apiBase, scope);
   const complete = useCompletePeerEnrollmentMutation(controller.apiBase, scope);
   const cancel = useCancelPeerEnrollmentMutation(controller.apiBase, scope);
+  const acceptEnrollment = (result: PeerEnrollment) => {
+    setEnrollment(result);
+    start.reset();
+    complete.reset();
+    cancel.reset();
+  };
   const requestPeer = () => {
     if (!destination || !peerAvailable) {
       setError(
@@ -287,14 +294,14 @@ export function ConnectStationDialog({
         environmentId: destination.environmentId,
         label: destination.label,
       },
-      { onSuccess: setEnrollment },
+      { onSuccess: acceptEnrollment },
     );
   };
   const cancelPeer = () => {
     if (!reservation || !peerAvailable) return;
     cancel.mutate(reservation, {
       onSuccess: (result) => {
-        setEnrollment(result);
+        acceptEnrollment(result);
         if (destination) {
           try {
             sessionStorage.removeItem(reservationKey(destination));
@@ -325,12 +332,23 @@ export function ConnectStationDialog({
   const status = observed?.status;
   const peerNeedsRetry = !observed;
   const peerBusy = start.isPending || complete.isPending || cancel.isPending;
+  const peerAuthorityRefused = [
+    start.error,
+    complete.error,
+    cancel.error,
+    peerStatus.error,
+  ].some(
+    (failure) =>
+      failure instanceof StationHttpError &&
+      (failure.status === 401 || failure.status === 403),
+  );
   const failure =
     error ||
     identify.error?.message ||
-    start.error?.message ||
-    complete.error?.message ||
-    cancel.error?.message;
+    (!peerAuthorityRefused &&
+      (start.error?.message ||
+        complete.error?.message ||
+        cancel.error?.message));
 
   let failedBrowserOrigin: string | undefined;
   if (identify.isError && !profile.isTauri && identify.variables) {
@@ -389,10 +407,7 @@ export function ConnectStationDialog({
           Sending Station: <strong>{controller.name}</strong>
         </p>
         {stale ? (
-          <p role="alert">
-            Station access changed. This setup cannot send requests under a
-            different Station or credential. Return and reopen it.
-          </p>
+          <p role="alert">Station access changed. Reopen this setup.</p>
         ) : null}
         {!destination ? (
           <>
@@ -481,10 +496,7 @@ export function ConnectStationDialog({
             <div className="connect-station-destination">
               <strong>{destination.label}</strong>
               <code>{destination.environmentId}</code>
-              <span>
-                Reported identity. Approval verifies the destination before
-                access is saved.
-              </span>
+              <span>Reported identity; verified on approval.</span>
             </div>
             {!reservation &&
             !deviceStarted &&
@@ -513,17 +525,12 @@ export function ConnectStationDialog({
                 </label>
                 {selectedControllerTarget ? (
                   <p>
-                    This is your currently selected Station. Its Device access
-                    is kept. Use Reconnect or Request access in Stations to
-                    explicitly replace or repair that access.
+                    This is your current Station; its Device access is kept. To
+                    replace it, use Reconnect in Stations.
                   </p>
                 ) : null}
                 {!scope ? (
-                  <p>
-                    Device pairing is available. Sending work requires access to
-                    a controlling Station; no peer request can be submitted from
-                    this device yet.
-                  </p>
+                  <p>Sending work needs access to a controlling Station.</p>
                 ) : null}
                 {peerInvitation ? (
                   <p>
@@ -531,10 +538,8 @@ export function ConnectStationDialog({
                     invitation.
                   </p>
                 ) : null}
-                <p>
-                  Each grant is approved and revoked separately. Peer access
-                  does not grant Project execution consent.
-                </p>
+                <p>Peer setup requires operator access on {controller.name}.</p>
+                <p>Peer access doesn't include consent to run Projects.</p>
                 <Button
                   variant="primary"
                   disabled={
@@ -561,39 +566,48 @@ export function ConnectStationDialog({
               </>
             ) : null}
             {peerSelected && reservation ? (
-              <section aria-label="Peer access">
+              <section
+                aria-label="Peer access"
+                className="connect-station-peer"
+              >
                 <h3>
                   {controller.name} → {destination.label}
                 </h3>
                 <p role="status">
-                  {status === 'connected'
-                    ? 'Peer access approved. Project and Agent eligibility are checked separately when you choose a task destination.'
-                    : status === 'pending'
-                      ? 'Waiting for approval on the destination Station. Use its trusted operator session or host CLI; this device cannot approve itself.'
-                      : status === 'outcome-unknown' || !status
-                        ? 'The request outcome is unknown. Check this same request before starting any replacement.'
-                        : `Peer setup: ${status}.`}
+                  {peerAuthorityRefused
+                    ? `Peer setup needs operator access on ${controller.name}.`
+                    : status === 'connected'
+                      ? 'Peer access approved.'
+                      : status === 'pending'
+                        ? 'Waiting for approval from the destination’s operator session or host CLI. This device can’t approve itself.'
+                        : status === 'outcome-unknown' || !status
+                          ? 'Request outcome unknown. Check it before starting a new one.'
+                          : `Peer setup: ${status}.`}
                 </p>
                 {observed?.error ? <p role="alert">{observed.error}</p> : null}
-                {peerStatus.error ? (
+                {peerStatus.error && !peerAuthorityRefused ? (
                   <p role="alert">
-                    The request status could not be read. Peer setup requires a
-                    trusted operator session on {controller.name}; ordinary
-                    device access cannot provision peers.
+                    Couldn't read the request status. Peer setup needs a trusted
+                    operator session on {controller.name}.
                   </p>
                 ) : null}
-                <p>
-                  Approval expires:{' '}
-                  {observed
-                    ? new Date(observed.expiresAt).toLocaleString()
-                    : 'Not yet reported'}
-                </p>
-                {peerNeedsRetry ? (
+                {observed && !peerAuthorityRefused ? (
                   <p>
-                    The sending Station has not confirmed this request. Retry
-                    retains the same request reference and destination. If its
-                    record was removed, an earlier receiver request may still
-                    exist; review requests on the destination first.
+                    Approval expires:{' '}
+                    {new Date(observed.expiresAt).toLocaleString()}
+                  </p>
+                ) : null}
+                {peerNeedsRetry && !peerAuthorityRefused ? (
+                  <p>
+                    The sending Station hasn't confirmed this request. Retry
+                    reuses it; if that fails, check the destination for an
+                    earlier request first.
+                  </p>
+                ) : null}
+                {peerAuthorityRefused ? (
+                  <p>
+                    Open setup from an operator session, then retry this same
+                    request.
                   </p>
                 ) : null}
                 {status !== 'connected' && status !== 'cancelled' ? (
@@ -613,7 +627,7 @@ export function ConnectStationDialog({
                           disabled={peerBusy || !peerAvailable}
                           onClick={() =>
                             complete.mutate(reservation, {
-                              onSuccess: setEnrollment,
+                              onSuccess: acceptEnrollment,
                             })
                           }
                         >
@@ -633,6 +647,46 @@ export function ConnectStationDialog({
                 ) : null}
               </section>
             ) : null}
+            {peerSelected &&
+            reservation &&
+            !deviceStarted &&
+            !devicePending &&
+            !deviceSaved ? (
+              <section aria-label="Connection setup recovery">
+                <ActionRow
+                  label="Connection setup actions"
+                  overflowLabel="More connection setup actions"
+                  primary={
+                    !peerInvitation && !selectedControllerTarget ? (
+                      <Button
+                        disabled={stale}
+                        onClick={() => setDeviceStarted(true)}
+                      >
+                        Request access for this device
+                      </Button>
+                    ) : undefined
+                  }
+                  secondary={
+                    status === 'cancelled' ? (
+                      <Button
+                        disabled={stale || Boolean(error)}
+                        onClick={() => {
+                          setReservation(undefined);
+                          setEnrollment(undefined);
+                          setDestination(null);
+                          setPeerInvitation(false);
+                          setPairingPayload(undefined);
+                          setManualPairingCode(undefined);
+                          identify.reset();
+                        }}
+                      >
+                        Choose another Station
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </section>
+            ) : null}
             {deviceStarted && !deviceSaved && !stale ? (
               <section aria-label="Device access">
                 <h3>This device → {destination.label}</h3>
@@ -649,7 +703,7 @@ export function ConnectStationDialog({
                       >
                         open the destination directly in another tab
                       </a>
-                      . Your current Station and Project stay here.
+                      .
                     </p>
                   </aside>
                 ) : null}
@@ -759,14 +813,13 @@ export function ConnectStationDialog({
             ) : null}
             {devicePending ? (
               <p role="status">
-                Device access requested. Approval, denial, and expiry stay
-                visible in connection status while you continue working here.
+                Device access requested. Track it in connection status.
               </p>
             ) : null}
             {deviceSaved ? (
               <p role="status">
                 {scope
-                  ? 'Device access saved. Your current Station stays selected; choose the destination from Stations when you want to use it.'
+                  ? 'Device access saved. Switch to it from Stations.'
                   : 'Device access saved. This Station is available in Stations.'}
               </p>
             ) : null}
@@ -776,19 +829,12 @@ export function ConnectStationDialog({
         {failedBrowserOrigin ? (
           <section aria-label="Browser connection help">
             <p>
-              A Station can be reachable while this browser cannot read it. The
-              destination must permit this page’s exact origin:{' '}
-              <code>{window.location.origin}</code>. HTTPS pages may also block
-              HTTP destinations.
+              Ask the destination operator to start it with{' '}
+              <code>{`--allowed-origin=${window.location.origin}`}</code>, then
+              retry. HTTPS pages can't reach HTTP Stations.
             </p>
             <p>
-              Ask the destination operator to configure{' '}
-              <code>{`--allowed-origin=${window.location.origin}`}</code>{' '}
-              through its existing Station startup or service settings, then
-              retry. Origin permission does not approve Device or peer access.
-            </p>
-            <p>
-              You can use the native app instead. For Device pairing,{' '}
+              Or use the native app, or{' '}
               <a
                 href={failedBrowserOrigin}
                 target="_blank"
@@ -796,12 +842,9 @@ export function ConnectStationDialog({
               >
                 open the destination Station directly
               </a>
-              . Peer setup still belongs to the sending Station’s trusted
-              session.
+              .
             </p>
-            <p>
-              No access request was submitted during this identification check.
-            </p>
+            <p>Station didn’t send an access request.</p>
           </section>
         ) : null}
       </div>

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { TransferAttempt } from './http-transfer-recorder.js';
 
@@ -369,12 +370,21 @@ export async function measureOrchestrationTransfer(
   if (!replayedEvents.some((event) => event?.turnId === source.heavyTurnId()))
     fail(`${source.scenario} short replay lost the heavy turn identity`);
   const finalToolEvent = replayedEvents[1];
-  if (
-    createHash('sha256')
-      .update(String(finalToolEvent?.output))
-      .digest('hex') !==
-    createHash('sha256').update(source.finalToolOutput()).digest('hex')
-  )
+  // A large output is stored out of line (docs/design/event-content-spill.md):
+  // the replay then carries a reference whose digest binds the exact text.
+  const finalOutput = (finalToolEvent as { output?: unknown } | undefined)
+    ?.output;
+  const expected = source.finalToolOutput();
+  // The gate runs this same scenario against the merge-base server, which
+  // carries the output inline, so both forms must pass here; the candidate's
+  // reference form is asserted by the budget integration test.
+  const carriesExactOutput = isRuntimeEventContentRef(finalOutput)
+    ? finalOutput.kind === 'string' &&
+      finalOutput.ref ===
+        `sha256-${createHash('sha256').update('string').update('\0').update(expected, 'utf8').digest('hex')}`
+    : createHash('sha256').update(String(finalOutput)).digest('hex') ===
+      createHash('sha256').update(expected).digest('hex');
+  if (!carriesExactOutput)
     fail(`${source.scenario} short replay lost final tool output`);
   if (
     replay.messages.some(

@@ -444,7 +444,15 @@ test.each([
             c.path.includes('profileRef=work'),
         ),
       ).toBe(true);
-      expect(window.localStorage.length).toBe(0);
+      // The sign-in code never reaches browser storage. The device-settings
+      // envelope is the only key allowed: every dialog reads that store, and
+      // the store writes its own envelope when it loads.
+      const stored = Object.keys(window.localStorage);
+      expect(
+        stored.filter((key) => key !== 'station-device-settings-v1'),
+      ).toEqual([]);
+      for (const key of stored)
+        expect(window.localStorage.getItem(key)).not.toContain('AUTH#STATE');
     } else expect(await screen.findByText('ABCD-1234')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     if (management) {

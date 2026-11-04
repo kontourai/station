@@ -775,6 +775,64 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('restores the trusted Chromium cache before each nonempty required CI install', () => {
+    const ci = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!ci) throw new Error('Expected the CI workflow');
+    const jobs = (
+      ci.document as {
+        jobs: Record<
+          string,
+          {
+            steps: Array<{
+              name?: string;
+              uses?: string;
+              if?: string;
+              'continue-on-error'?: boolean;
+              with?: Record<string, unknown>;
+              run?: string;
+            }>;
+          }
+        >;
+      }
+    ).jobs;
+    for (const job of [
+      'fast-checks-plan',
+      'fast-checks-shard',
+      'fast-checks-statics',
+    ]) {
+      const steps = jobs[job].steps;
+      const cache = steps.findIndex(
+        (step) => step.name === 'Restore trusted Chromium cache',
+      );
+      const install = steps.findIndex(
+        (step) =>
+          step.name === 'Install Chromium for changed-set touch-target checks',
+      );
+      expect(cache).toBeGreaterThanOrEqual(0);
+      expect(steps[cache].uses).toBe(
+        'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+      );
+      expect(steps[cache]['continue-on-error']).toBe(true);
+      expect(steps[cache].with).toEqual({
+        path: '~/.cache/ms-playwright',
+        key: `station-playwright-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('pnpm-lock.yaml') }}`,
+      });
+      expect(steps[cache].if).toBe(
+        job === 'fast-checks-shard'
+          ? `\${{ steps.slice.outputs.empty == 'false' }}`
+          : job === 'fast-checks-plan'
+            ? `\${{ steps.mode.outputs.legacy == 'true' }}`
+            : undefined,
+      );
+      expect(install).toBeGreaterThan(cache);
+      expect(steps[install].if).toBe(steps[cache].if);
+      expect(steps[install]['continue-on-error']).toBeUndefined();
+      expect(steps[install].run).toContain('npx playwright install chromium');
+    }
+  });
+
   // Three lanes build Android from three separate definitions: build-android.yml
   // verifies main, nightly-native-stage.yml signs and ships to Play, release.yml
   // ships a tag. A toolchain revision restated per lane can therefore be right
@@ -1467,7 +1525,11 @@ describe('CI verification workflow contracts', () => {
     // The path filter is the base commit's classifier, not a `paths:` list: a
     // candidate cannot edit the rule that decides whether its screens are
     // photographed, and the scope it asks for is the gallery one.
-    expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
+    expect(Object.keys(pr.jobs).sort()).toEqual([
+      'allowlist-ceiling',
+      'classify',
+      'gallery-diff',
+    ]);
     const classifyStep = pr.jobs.classify.steps.find(
       (step) => step.id === 'relevance',
     );
@@ -1555,10 +1617,38 @@ describe('CI verification workflow contracts', () => {
       'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
     );
     expect(diffIndex).toBe(captureIndex + 1);
+    // Product assertions are the blocking half: after the advisory pixel
+    // report, still judged when that report fails, never after a capture
+    // that did not complete.
+    const assertionsIndex = job.steps.findIndex(
+      (step) => step.id === 'assertions',
+    );
+    expect(assertionsIndex).toBe(diffIndex + 1);
+    expect(job.steps[assertionsIndex]?.run).toBe(
+      'node scripts/gallery-ui-findings.mjs check --summary="$GITHUB_STEP_SUMMARY"',
+    );
+    expect(job.steps[assertionsIndex]?.if).toBe(
+      "always() && steps.capture.outcome == 'success'",
+    );
+    // The allowlist may only shrink, judged by the BASE commit's judge.
+    const ceiling = pr.jobs['allowlist-ceiling'];
+    const growth = ceiling.steps.find(
+      (step) => step.name === 'Refuse allowlist growth',
+    );
+    expect(growth?.run).toContain(
+      'git show "${BASE_SHA}:scripts/gallery-ui-findings.mjs"',
+    );
+    expect(growth?.env?.UPSTREAM_URL).toBe(
+      `https://github.com/\${{ github.repository }}.git`,
+    );
+    expect(growth?.run).toContain('node "$judge" growth --base="$BASE_SHA"');
+    expect(growth?.env?.BASE_SHA).toBe(
+      `\${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}`,
+    );
     const uploadIndex = job.steps.findIndex((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
     );
-    expect(uploadIndex).toBeGreaterThan(diffIndex);
+    expect(uploadIndex).toBeGreaterThan(assertionsIndex);
     for (const step of job.steps.slice(0, uploadIndex)) {
       expect(step['continue-on-error'], step.name).toBeUndefined();
     }
@@ -1573,7 +1663,10 @@ describe('CI verification workflow contracts', () => {
     );
     expect(upload.uses).toBe(nightlyUpload?.uses);
     expect(upload.if).toBe('always()');
-    expect(upload.with?.path).toBe('gallery/');
+    expect(upload.with?.path?.trim().split(/\r?\n/)).toEqual([
+      'gallery/',
+      'test-results/e2e-screenshot-*/station.log',
+    ]);
     const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
     expect(upload.with?.name).toBe(artifactName);
 
@@ -2015,8 +2108,8 @@ describe('CI verification workflow contracts', () => {
       .slice(0, laneIndex)
       .filter((step) => step.uses)
       .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
-    // Checkout, pnpm and Node: a shrinking list would pass vacuously.
-    expect(laneActions).toHaveLength(3);
+    // Checkout, pnpm, Node and the reviewed restore must all remain present.
+    expect(laneActions).toHaveLength(4);
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
       ['fast-checks-plan', 'Plan the affected-test selection'],
@@ -2175,7 +2268,8 @@ describe('CI verification workflow contracts', () => {
       const source = workflow(name);
       expect(source, name).toContain('if: always()');
       expect(source, name).toContain('if-no-files-found: ignore');
-      expect(source, name).not.toContain('actions/cache');
+      expect(source, name).not.toContain('actions/cache/save@');
+      expect(source, name).not.toContain('actions/cache@');
       for (const artifactPath of coordinatedArtifactPaths)
         expect(source, name).toContain(artifactPath);
     }

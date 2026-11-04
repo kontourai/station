@@ -1,0 +1,13 @@
+{
+  "revision": "27face77a5ab3e9aedd9d811a5397ffb6c03a9ad",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#4266 second fix round. runtime-routes.ts only builds the conversation acknowledgement store with ownerDevicePredicate; the operator sign-in and step-up screens this capture shows do not read it, so the capture still matches.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#4266 second fix round. runtime-routes.ts only builds the conversation acknowledgement store with ownerDevicePredicate; the operator sign-in and step-up screens this capture shows do not read it, so the capture still matches.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#4266 second fix round. runtime-routes.ts only builds the conversation acknowledgement store with ownerDevicePredicate; the operator sign-in and step-up screens this capture shows do not read it, so the capture still matches.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#4266 second fix round. runtime-routes.ts only builds the conversation acknowledgement store with ownerDevicePredicate; the operator sign-in and step-up screens this capture shows do not read it, so the capture still matches.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

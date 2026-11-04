@@ -7,6 +7,7 @@
  * markdown or auth are mocked.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -146,6 +147,51 @@ function expectCopyBesideTrigger(triggerName: string, copyName: string) {
 }
 
 describe('MessageBubble phone copy and details actions', () => {
+  it('branches a completed answer directly from its icon, without duplicating the action in details', async () => {
+    mobile.current = true;
+    const onForkFromTurn = vi.fn();
+    renderRow(
+      {
+        role: 'assistant',
+        content: 'The repair is ready.',
+        turnId: 'turn-7',
+        sessionId: 'thread-1',
+        agentSlug: agentId('agent'),
+        answerEligible: true,
+        provenance: envelope,
+      },
+      { onForkFromTurn },
+    );
+    const branch = screen.getByRole('button', {
+      name: 'Branch from this answer',
+    });
+    expectIconOnly(branch, 'Branch from this answer');
+    fireEvent.click(branch);
+    expect(onForkFromTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'thread-1',
+        turnId: 'turn-7',
+        agentSlug: 'agent',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Answer details and actions' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Fork from here…' }),
+    ).toBeNull();
+  });
+
+  it('offers no inline branch for a live or unsupported answer', () => {
+    mobile.current = true;
+    renderRow(
+      { role: 'assistant', content: 'Still working…', turnId: 'live' },
+      { onForkFromTurn: vi.fn() },
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Branch from this answer' }),
+    ).toBeNull();
+  });
   it('puts Copy beside the ⋯ of a user message, and the sheet does not repeat it', () => {
     mobile.current = true;
     const { onCopy } = renderRow(
@@ -187,13 +233,25 @@ describe('MessageBubble phone copy and details actions', () => {
     const sheet = screen.getByRole('dialog', {
       name: 'Answer details and actions',
     });
+    // #4404 (A40): one sheet lists every answer action — no second ⋯ whose
+    // popup clipped the sheet title, and no row repeating that title.
     expect(
-      await within(sheet).findByRole('button', { name: 'More answer actions' }),
+      await within(sheet).findByRole('button', { name: 'Provenance' }),
     ).toBeTruthy();
+    expect(
+      within(sheet).queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+    expect(
+      within(sheet).queryByRole('button', { name: 'Answer details' }),
+    ).toBeNull();
     expect(
       within(sheet).getByRole('button', { name: 'Good response' }),
     ).toBeTruthy();
     expect(within(sheet).queryByRole('button', { name: /^Copy/ })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Provenance' }),
+    ).toBeTruthy();
   });
 
   it('keeps an answer without a turn footer to one Copy, outside its sheet', () => {

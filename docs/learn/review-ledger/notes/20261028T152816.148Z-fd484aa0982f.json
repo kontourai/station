@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Its POST /integrations row cites integrationSchema; the schema gained optional contentTrust/untrustedContentPermissions only, and the documented stdio/HTTP payloads and disabled save are unchanged. Line references are approximate and not relied on. No edit.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/tools.ts","src-server/routes/schemas/schema-definitions/runtime.ts"]}
+  ]
+}

@@ -18,7 +18,17 @@
 
     "src-server/index.ts",
 
-    "docs/guides/development.md"
+    "docs/guides/development.md",
+
+    "src-server/runtime/bootstrap/supervisor-link.ts",
+
+    "src-server/runtime/bootstrap/__tests__/supervisor-link-workloads.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/supervisor-link.test.ts",
+
+    "src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts",
+
+    "src-server/services/terminal/__tests__/fixtures/workload-journey-core.ts"
   ],
 
   "checks": []

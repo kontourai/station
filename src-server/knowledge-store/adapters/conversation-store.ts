@@ -67,6 +67,7 @@ import type {
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   type InternalSessionReadScope,
   isSessionReadAuthority,
   type SessionReadAuthority,
@@ -74,6 +75,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { scrubChatErrorMarkers } from '../../runtime/conversation/chat-error-marker.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { SessionQueryModule } from '../../services/orchestration/session-query-module.js';
 import { conversationStoreReadOps } from '../../telemetry/metrics.js';
 import { ReadOnlyStoreError } from '../errors.js';
@@ -161,6 +163,7 @@ interface ConversationStoreAdapterDeps {
    * it is the ONLY session authority: `undefined` (no request in scope)
    * reads no session at all. */
   getReadAuthority?: () => SessionReadScope | undefined;
+  canReadFileOwner?: (requesterId: string, ownerId: string) => boolean;
 }
 
 function readAuthority(
@@ -171,6 +174,27 @@ function readAuthority(
     deps.getUserId() ?? '',
     undefined,
     undefined,
+  );
+}
+
+/** File-memory aliases name this home's operator, never an arbitrary principal. */
+function canReadFileConversation(
+  deps: ConversationStoreAdapterDeps,
+  scope: SessionReadScope | undefined,
+  ownerId: string,
+): boolean {
+  if (scope === INTERNAL_SESSION_READ_SCOPE) return true;
+  if (!isSessionReadAuthority(scope) || scope.mode !== 'personal') return false;
+  const alias = deps.getUserId();
+  if (ownerId === alias) {
+    return (
+      deps.canReadFileOwner?.(scope.userId, LOCAL_OPERATOR_PRINCIPAL_ID) ===
+      true
+    );
+  }
+  return (
+    scope.userId === ownerId ||
+    deps.canReadFileOwner?.(scope.userId, ownerId) === true
   );
 }
 
@@ -294,12 +318,15 @@ async function sessionLegRecords(
 }
 
 async function fileLegRecords(
-  fileStores: Map<string, ConversationFileStoreReader>,
+  deps: ConversationStoreAdapterDeps,
+  authority: SessionReadScope | undefined,
 ): Promise<KitRecord[]> {
   const records: KitRecord[] = [];
-  for (const [slug, adapter] of fileStores) {
+  for (const [slug, adapter] of deps.fileStores) {
     const conversations = await adapter.getConversations(slug);
     for (const conversation of conversations) {
+      if (!canReadFileConversation(deps, authority, conversation.userId))
+        continue;
       const messages = await adapter.getMessages(
         conversation.userId,
         conversation.id,
@@ -333,7 +360,7 @@ async function allConversationRecords(
   // remain local-first data, but are never an implicit hosted authorization.
   const fileRecords = isHostedScope(authority)
     ? []
-    : await fileLegRecords(deps.fileStores);
+    : await fileLegRecords(deps, authority);
   // No request authority: no session is anyone's to read here.
   const sessionRecords = authority
     ? await sessionLegRecords(deps.sessionReader, authority)
@@ -391,7 +418,9 @@ async function getConversationRecord(
 
   for (const [slug, adapter] of deps.fileStores) {
     const conversations = await adapter.getConversations(slug);
-    const conversation = conversations.find((c) => c.id === id);
+    const conversation = conversations.find(
+      (c) => c.id === id && canReadFileConversation(deps, authority, c.userId),
+    );
     if (!conversation) continue;
     const messages = await adapter.getMessages(
       conversation.userId,
@@ -455,7 +484,10 @@ class ConversationStoreAdapter implements KnowledgeStoreAdapter {
       const fileIds = new Set<string>();
       for (const [slug, adapter] of this.deps.fileStores) {
         for (const conversation of await adapter.getConversations(slug))
-          fileIds.add(conversation.id);
+          if (
+            canReadFileConversation(this.deps, authority, conversation.userId)
+          )
+            fileIds.add(conversation.id);
       }
       for (const id of pending) if (fileIds.has(id)) readable.add(id);
     }

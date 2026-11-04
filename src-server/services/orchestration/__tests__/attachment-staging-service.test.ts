@@ -9,6 +9,7 @@ const descriptor = {
   mimeType: 'text/plain' as const,
   size: 5,
 };
+const { clientAttachmentId: _composerHandle, ...hydratedFields } = descriptor;
 const ownerA = { principalId: 'human:local:operator' };
 const ownerB = { principalId: 'human:local:other' };
 
@@ -37,7 +38,7 @@ describe('AttachmentStagingService', () => {
     );
     service.releaseBinding(ownerA, [reference], refused);
     expect(service.bindAndHydrate(ownerA, [reference], resend)).toEqual([
-      { ...descriptor, dataUrl: DATA },
+      { ...hydratedFields, dataUrl: DATA },
     ]);
   });
 
@@ -64,7 +65,7 @@ describe('AttachmentStagingService', () => {
         threadId: 'thread-1',
         clientTurnId: 'turn-1',
       }),
-    ).toEqual([{ ...descriptor, dataUrl: DATA }]);
+    ).toEqual([{ ...hydratedFields, dataUrl: DATA }]);
   });
 
   test('rejects a different owner and expires abandoned stages', () => {
@@ -152,10 +153,10 @@ describe('AttachmentStagingService', () => {
     );
     const binding = { threadId: 'thread-1', clientTurnId: 'turn-1' };
     expect(service.bindAndHydrate(ownerA, [reference], binding)).toEqual([
-      { ...descriptor, dataUrl: DATA },
+      { ...hydratedFields, dataUrl: DATA },
     ]);
     expect(service.bindAndHydrate(ownerA, [reference], binding)).toEqual([
-      { ...descriptor, dataUrl: DATA },
+      { ...hydratedFields, dataUrl: DATA },
     ]);
     expect(() => service.prepare(ownerA, descriptor)).toThrow(
       'already complete',

@@ -29,9 +29,11 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
+import { StationRouteLearning } from './components/connections/useStationRoutes';
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
+import { NativeContextMenuGuard } from './components/NativeContextMenuGuard';
 import { ConnectionBannerSource } from './components/notifications/ConnectionBannerSource';
 import {
   SetupReturnNotice,
@@ -39,7 +41,7 @@ import {
   WorkspaceStationState,
 } from './components/notifications/StationConditions';
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
-import { Empty, ErrorState } from './components/state';
+import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
@@ -109,6 +111,13 @@ const loadOutboundQueueFlushMount = () =>
     default: module.OutboundQueueFlushMount,
   }));
 
+// The shared stream pulls in chat event projections. Start it with the shell,
+// but keep those projections out of the first-paint bundle.
+const loadServerEventsMount = () =>
+  import('./hooks/ServerEventsMount').then((module) => ({
+    default: module.ServerEventsMount,
+  }));
+
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -116,7 +125,7 @@ import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
-import { useServerEvents } from './hooks/useServerEvents';
+import { useServerEventsListener } from './hooks/useServerEventsListener';
 import { useTurnNotificationReads } from './hooks/useTurnNotificationReads';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
@@ -132,6 +141,8 @@ function resolveCurrentLocation(options: {
 }
 
 const NO_SHORTCUT_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = [];
+/** `?` is Shift+/ on the layouts that type it with one key. */
+const QUESTION_MARK_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = ['shift'];
 
 /**
  * The query-param key the `station <dir>` launcher (archive#1986) deep-links a
@@ -156,7 +167,11 @@ function stripProjectSelectParam(): void {
   window.history.replaceState(window.history.state, '', cleanUrl);
 }
 
-function App() {
+function App({
+  loadServerEvents = loadServerEventsMount,
+}: {
+  loadServerEvents?: typeof loadServerEventsMount;
+} = {}) {
   const { apiBase: API_BASE } = useApiBase();
   // The saved connection's display identity for unavailable-state copy —
   // `connectionFailureCopy`'s contract wants the short name the user saved,
@@ -180,8 +195,8 @@ function App() {
   // recent input) is read: its failure must not escalate to their other
   // devices minutes later.
   useTurnNotificationReads();
-  // SSE event stream — replaces all polling for ACP status, agent changes, etc.
-  useServerEvents();
+  // Register the listener before the lazy transport can start.
+  useServerEventsListener();
   // #2585: tell Station whether this document is being looked at, so
   // notification delivery can avoid interrupting a surface already in use.
   useFocusReporter();
@@ -457,8 +472,21 @@ function App() {
   // transient `#chat-dock` on the Coding route (#3035 review). A layout route
   // only ever has both slugs, so the query is never disabled here; `isPending`
   // settles on its answer or its error.
-  const { data: selectedLayout, isPending: selectedLayoutUnknown } =
-    useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
+  //
+  // A failure being re-checked is still an answer. Without that, a failed
+  // read mounted the dock, the dock's new observer re-ran the errored query
+  // (TanStack loads a no-data query on observer mount regardless of
+  // `refetchOnMount`), the query went pending, the dock unmounted, the retry
+  // failed, and the cycle repeated about once a second for as long as the
+  // layout endpoint failed.
+  const selectedLayoutQuery = useProjectLayoutQuery(
+    selectedLayoutProjectSlug,
+    selectedLayoutSlug,
+  );
+  const selectedLayoutFailure = useRetainedReadFailure(selectedLayoutQuery);
+  const selectedLayout = selectedLayoutQuery.data;
+  const selectedLayoutUnknown =
+    selectedLayoutQuery.isPending && !selectedLayoutFailure;
   // Derived from the same facts `ProjectLayoutRenderer` dispatches on, not
   // from the `type` word alone: a plugin-contributed layout typed 'chat'
   // renders its own tabs and keeps the ambient regions (#1446), and one typed
@@ -547,6 +575,17 @@ function App() {
     KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.key,
     [...KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.modifiers],
     'Show keyboard shortcuts',
+    useCallback(() => {
+      setShowShortcutsCheatsheet(true);
+    }, []),
+  );
+  // #4407: `?` is the key people try first for a shortcut list. A printable
+  // key, so the registry leaves it to any text field that has focus.
+  useKeyboardShortcut(
+    'app.shortcutsHelp',
+    '?',
+    QUESTION_MARK_MODIFIERS,
+    'Keyboard shortcuts help',
     useCallback(() => {
       setShowShortcutsCheatsheet(true);
     }, []),
@@ -668,6 +707,11 @@ function App() {
               pending={null}
               componentProps={{ apiBase: API_BASE }}
             />
+            <LazyBoundary
+              load={loadServerEvents}
+              pending={null}
+              componentProps={{}}
+            />
             <div className="app app--with-sidebar">
               {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
@@ -701,6 +745,7 @@ function App() {
                   onNavigate={navigateToView}
                 />
                 <ConnectionBannerSource />
+                <StationRouteLearning />
                 <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (
@@ -768,6 +813,7 @@ function App() {
                   componentProps={{}}
                   pending={null}
                 />
+                <NativeContextMenuGuard />
                 {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
               mics (opposite corners) whenever voice was enabled — and its

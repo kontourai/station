@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -11,11 +12,23 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -116,7 +129,10 @@ import {
   createStagedPreToolPolicyEvaluator,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -125,6 +141,11 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -145,6 +166,7 @@ import { credentialProfileAppHomeDir } from '../app-home/credential-profile-regi
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,
+  FakeClaudeChild,
   sdkCanUseToolOptions,
   startFakeClaudeEngine,
 } from './claude-engine-process-test-utils.js';
@@ -215,6 +237,19 @@ function createControlledMockQuery() {
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    setMcpServers: vi.fn().mockResolvedValue({
+      added: ['station-control'],
+      removed: [],
+      errors: {},
+    }),
+    mcpServerStatus: vi.fn().mockResolvedValue([
+      {
+        name: 'station-control',
+        source: 'sdk',
+        status: 'connected',
+        tools: [{ name: 'delegate_task' }],
+      },
+    ]),
   };
 }
 
@@ -1065,6 +1100,11 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
     expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
+    expect(
+      Object.entries(adapter.metadata.durability)
+        .filter(([, cell]) => cell.state === 'native')
+        .map(([key]) => key),
+    ).toEqual(['steerPlacement']);
     const events = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'claude',
@@ -1099,6 +1139,227 @@ describe('ClaudeAdapter', () => {
       },
     });
     await adapter.stopSession('thread-steer');
+  });
+
+  test('a designated running chat adds Station Control in place before its next turn and keeps authored servers', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    mockQuery.mockReturnValue(controlled);
+    let designated = false;
+    const instance = { connect: vi.fn(), close: vi.fn() };
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => designated,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => instance,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const until = async (method: string) => {
+      for (let i = 0; i < 30; i++) {
+        const event = (await iterator.next()).value;
+        if (event?.method === method) return event;
+      }
+      throw new Error('event missing');
+    };
+    const threadId = 'coordinator-refresh';
+    await adapter.startSession({
+      provider: 'claude',
+      threadId,
+      agent: {
+        slug: 'writer',
+        toolServers: [
+          {
+            id: 'third-party',
+            transport: 'stdio',
+            command: process.execPath,
+            args: ['--version'],
+          },
+        ],
+      },
+    });
+    const first = await adapter.sendTurn({ threadId, input: 'first' });
+    await until('turn.started');
+    designated = true;
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await completeClaudeTurn(controlled, threadId, iterator);
+    const next = await adapter.sendTurn({ threadId, input: 'next' });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(controlled.setMcpServers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'third-party': expect.objectContaining({ type: 'stdio' }),
+        'station-control': expect.objectContaining({ type: 'sdk', instance }),
+      }),
+    );
+    expect(controlled.mcpServerStatus).toHaveBeenCalled();
+    await adapter.stopSession(threadId);
+  });
+
+  test('an uncertain MCP refresh refuses the turn and is not repeated', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    controlled.setMcpServers.mockRejectedValueOnce(new Error('transport lost'));
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-uncertain',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-uncertain', input: 'go' }),
+    ).rejects.toThrow('could not confirm');
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-uncertain', input: 'retry' }),
+    ).rejects.toThrow('could not confirm');
+    expect(controlled.setMcpServers).toHaveBeenCalledTimes(1);
+    await adapter.stopSession('refresh-uncertain');
+  });
+
+  test('concurrent turns cannot start two coordinator refreshes', async () => {
+    const controlled = createControlledMockQuery();
+    let release!: (value: never[]) => void;
+    controlled.mcpServerStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-concurrent',
+    });
+    const first = adapter.sendTurn({
+      threadId: 'refresh-concurrent',
+      input: 'first',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-concurrent', input: 'second' }),
+    ).rejects.toThrow('could not confirm');
+    release([]);
+    await first;
+    expect(controlled.setMcpServers).toHaveBeenCalledTimes(1);
+    await adapter.stopSession('refresh-concurrent');
+  });
+
+  test('coordinator refresh preserves the Agent tool selection', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    controlled.mcpServerStatus.mockResolvedValue([
+      {
+        name: 'station-control',
+        source: 'sdk',
+        status: 'connected',
+        tools: [{ name: 'read_conversation' }],
+      },
+    ]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        id: 'station-control',
+        transport: 'stdio',
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+        toolNames: ['read_conversation', 'delegate_task'],
+        allowedTools: ['read_conversation'],
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-selection',
+    });
+    await adapter.sendTurn({ threadId: 'refresh-selection', input: 'go' });
+    expect(createControl).toHaveBeenCalledWith(
+      'refresh-selection',
+      undefined,
+      ['read_conversation'],
+      0,
+    );
+    await adapter.stopSession('refresh-selection');
+  });
+
+  test('coordinator refresh refuses when the canonical server is unavailable', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => undefined,
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-unavailable',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-unavailable', input: 'go' }),
+    ).rejects.toThrow('could not confirm');
+    expect(createControl).not.toHaveBeenCalled();
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await adapter.stopSession('refresh-unavailable');
+  });
+
+  test('a same-named third-party server is not replaced by coordinator refresh', async () => {
+    const controlled = createControlledMockQuery();
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      createInProcessCoordinatorStationControl: () => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }),
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-impostor',
+      agent: {
+        slug: 'writer',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio',
+            command: process.execPath,
+            args: ['--version'],
+          },
+        ],
+      },
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-impostor', input: 'go' }),
+    ).rejects.toThrow('station-control');
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await adapter.stopSession('refresh-impostor');
   });
 
   test('#2415: a send racing a dispatched turn is refused before any effect, and the next send after its result is accepted', async () => {
@@ -2723,6 +2984,34 @@ describe('ClaudeAdapter', () => {
       if (plain.kind === 'prompted') await plain.answer('decline');
 
       await adapter.stopSession('thread-escalation-no-mint');
+    });
+
+    test('a tool session answer never forwards a suggested switch into full access', async () => {
+      const { adapter, ask } = await grantHarness('thread-tool-no-bypass', {
+        modelOptions: { approvalMode: 'ask' },
+      });
+      const toolRule = {
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
+        behavior: 'allow',
+        destination: 'session',
+      };
+      const bypass = {
+        type: 'setMode',
+        mode: 'bypassPermissions',
+        destination: 'session',
+      };
+      const plain = await ask(
+        'Bash',
+        { command: 'git status' },
+        { suggestions: [toolRule, bypass] },
+      );
+      if (plain.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(plain.answer('acceptForSession')).resolves.toMatchObject({
+        behavior: 'allow',
+        updatedPermissions: [toolRule],
+      });
+      await adapter.stopSession('thread-tool-no-bypass');
     });
 
     test("a file edit's session answer forwards acceptEdits and mints nothing: a later sensitive-file edit prompts", async () => {
@@ -6758,6 +7047,92 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each(['result', 'iterator'] as const)(
+    'an unavailable model from the %s reaches delegation without inferring quota or exposing raw details',
+    async (source) => {
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          const failure =
+            'API Error: 400 unknown provider for model claude-sonnet-5-5 /private/secret-proof';
+          if (source === 'result')
+            yield {
+              type: 'result',
+              subtype: 'success',
+              is_error: true,
+              result: failure,
+              stop_reason: null,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              uuid: 'missing-provider-result',
+              session_id: 'missing-provider-native',
+            };
+          throw new Error(failure);
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'missing-provider',
+        modelId: 'sonnet',
+      });
+      await vi.waitFor(() =>
+        expect(events.some((event) => event.method === 'runtime.error')).toBe(
+          true,
+        ),
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'provider_model_unavailable',
+        kind: 'model_unavailable',
+        retryable: false,
+      });
+      const snapshot = snapshotFor({
+        target: {
+          apiBase: 'http://current.invalid',
+          environmentId: 'current',
+          environmentName: 'Current',
+          kind: 'current',
+        },
+        metadata: {
+          taskId: 'missing-provider',
+          conversationId: 'missing-provider',
+          targetKind: 'agent',
+          targetId: 'claude',
+        },
+        detail: {
+          session: {
+            threadId: 'missing-provider',
+            status: 'error',
+            lifecycleState: 'failed',
+            terminalAttribution: { kind: 'runtime_error' },
+          },
+          events: failures,
+        },
+      });
+      expect(snapshot.status).toBe('failed');
+      const reason = snapshot.reason;
+      expect(reason).toMatchObject({
+        code: 'provider_model_unavailable',
+        detail: expect.stringMatching(/provider.*model.*availability/i),
+      });
+      const projected = projectDelegatedTaskEvent(1, failures[0]);
+      expect(projected.text).toBe(reason?.detail);
+      expect(JSON.stringify({ failures, reason, projected })).not.toMatch(
+        /secret-proof|quota.exhausted/i,
+      );
+    },
+  );
+
   test.each([true, false])(
     'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
     async (throwsWrapper) => {
@@ -8206,6 +8581,148 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('a host start below full access takes the bypass grant at spawn, so a later full-access turn applies with no restart', async () => {
+    const mockedQuery = createControlledMockQuery();
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-host-ask-escalate';
+    // Whoever runs the suite: the engine's root guard is out of play.
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId,
+      // An operator start: its caller proved it may grant full access.
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    // Granted, but not used: the engine starts at Ask.
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: true,
+      }),
+    });
+    await iterator.next(); // session.started
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'session.configured',
+      metadata: { approvalMode: 'ask', allowDangerouslySkipPermissions: true },
+    });
+
+    await adapter.sendTurn({
+      threadId,
+      input: 'switch to full access mid-chat',
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    expect(mockedQuery.setPermissionMode).toHaveBeenCalledWith(
+      'bypassPermissions',
+    );
+    const turnStarted = await iterator.next();
+    expect(turnStarted.value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalMode: 'never' },
+    });
+    expect(turnStarted.value.metadata).not.toHaveProperty(
+      'approvalEscalationRejected',
+      true,
+    );
+  });
+
+  test('a host plan start is not granted bypass, which the engine would read as permission to skip prompts in plan mode', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-plan',
+        confinement: 'host',
+        modelOptions: { permissionMode: 'plan' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'plan',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a host start with no mode from Station is not granted bypass: the engine settings decide alone', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-host-no-mode',
+      confinement: 'host',
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        allowDangerouslySkipPermissions: undefined,
+      }),
+    });
+  });
+
+  test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    // Defined where the platform has none (Windows), so the guard sees root.
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-root',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'default',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a workspace start below full access is not granted bypass at spawn', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-workspace-ask',
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: undefined,
+      }),
+    });
+  });
+
   test('#2436: the server re-applies a refused full access on every turn; the warning is sent once, the refusal is reported on each turn, and a different posture re-arms it', async () => {
     // Controlled, so each turn can end before the next is sent: a send while
     // a turn is still owed is refused (#2415/#2324).
@@ -8806,6 +9323,8 @@ describe('ClaudeAdapter', () => {
       };
       expect(queryArgs.options).toEqual({
         cwd: undefined,
+        // The artifacts setting is off by default, which disallows the tool.
+        disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
         includePartialMessages: true,
@@ -8821,6 +9340,7 @@ describe('ClaudeAdapter', () => {
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         // #2932: Station owns the engine spawn to read permission asks.
@@ -8921,7 +9441,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       for (const name of ['write', 'new_tool']) {
         const refused = await hook(
@@ -8996,7 +9519,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.mcpServers.weather.command).toBe(process.execPath);
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(
@@ -9156,6 +9682,104 @@ describe('ClaudeAdapter', () => {
         args: ['--version'],
       },
     ];
+
+    test('a coordinator-added server uses the designation-scoped factory at Session start', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const derived = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+      const independent = vi.fn();
+      const adapter = new ClaudeAdapter({
+        createInProcessCoordinatorStationControl: derived,
+        createInProcessStationControl: independent,
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-start',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(derived).toHaveBeenCalledWith(
+        'coordinator-start',
+        undefined,
+        undefined,
+        7,
+      );
+      expect(independent).not.toHaveBeenCalled();
+      await adapter.stopSession('coordinator-start');
+    });
+
+    test('a re-designated chat needs a successor when its coordinator credential is from an earlier generation', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      let generation = 7;
+      const adapter = new ClaudeAdapter({
+        coordinatorGenerationForSession: () => generation,
+        createInProcessCoordinatorStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+        createInProcessStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+        createInProcessStationKnowledge: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-knowledge-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            stationControlToolServers[0]!,
+            {
+              id: 'station-knowledge',
+              transport: 'stdio',
+              command: 'node',
+              args: [builtinStationKnowledgeServerPath()],
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(false);
+      generation = 8;
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(true);
+      expect(
+        adapter.coordinatorToolsNeedSuccessor(
+          'coordinator-knowledge-generation',
+        ),
+      ).toBe(true);
+      await adapter.stopSession('coordinator-generation');
+      await adapter.stopSession('coordinator-knowledge-generation');
+    });
 
     test('Station #90 lane D: with in-process delivery wired, the built-in is an sdk server with no command, env or argv credential; the third-party server is untouched', async () => {
       __resetStationControlMcpTokensForTests();
@@ -10413,6 +11037,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10434,6 +11059,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10465,6 +11091,7 @@ echo '{"loggedIn":true}'
         scrubBootInternalSecrets({
           ...augmentedEnv,
           CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10493,6 +11120,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10583,6 +11211,265 @@ echo '{"loggedIn":true}'
     });
   });
 
+  describe('Claude Code artifacts setting at the SDK spawn seam', () => {
+    async function sessionEnv(
+      options: ConstructorParameters<typeof ClaudeAdapter>[0],
+      threadId: string,
+    ) {
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter(options);
+      await adapter.startSession({ provider: 'claude', threadId });
+      const env = mockQuery.mock.calls.at(-1)?.[0].options.env;
+      await adapter.stopAll();
+      return env as Record<string, string | undefined>;
+    }
+
+    test('on, a session start turns the Artifact tool on', async () => {
+      const getArtifactsEnabled = vi.fn(async () => true);
+      const env = await sessionEnv({ getArtifactsEnabled }, 'artifacts-on');
+      expect(env.CLAUDE_CODE_ARTIFACT).toBe('1');
+      expect(getArtifactsEnabled).toHaveBeenCalledTimes(1);
+    });
+
+    test('off, unwired, or unreadable, a session start turns it off explicitly', async () => {
+      expect(
+        (await sessionEnv({ getArtifactsEnabled: async () => false }, 'off'))
+          .CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      expect((await sessionEnv({}, 'unwired')).CLAUDE_CODE_ARTIFACT).toBe('0');
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => {
+                throw new Error('config unreadable');
+              },
+              logger: { warn: vi.fn() } as never,
+            },
+            'unreadable',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+    });
+
+    test('off wins over an ambient or connection-env enable; on wins over a connection-env disable', async () => {
+      mockAugmentedSpawnEnv.mockResolvedValue({
+        ...process.env,
+        CLAUDE_CODE_ARTIFACT: '1',
+      });
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => false,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '1' }),
+            },
+            'off-over-ambient',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      mockAugmentedSpawnEnv.mockReset();
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => true,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '0' }),
+            },
+            'on-over-connection',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+    });
+
+    test('off also disallows the tool, which a settings-file env enable cannot undo; on leaves it allowed', async () => {
+      async function disallowed(enabled: boolean, threadId: string) {
+        mockQuery.mockClear();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          getArtifactsEnabled: async () => enabled,
+        });
+        await adapter.startSession({ provider: 'claude', threadId });
+        const tools = mockQuery.mock.calls.at(-1)?.[0].options
+          .disallowedTools as string[] | undefined;
+        await adapter.stopAll();
+        return tools ?? [];
+      }
+      expect(await disallowed(false, 'artifacts-off-disallowed')).toContain(
+        'Artifact',
+      );
+      expect(await disallowed(true, 'artifacts-on-allowed')).not.toContain(
+        'Artifact',
+      );
+    });
+
+    test('an adopted session reads the setting at its own start', async () => {
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getArtifactsEnabled: async () => true,
+      });
+      await adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'artifacts-adopted',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        },
+        {
+          onProviderChildCreationStarted: () => {},
+          onProviderChildCreated: () => {},
+        },
+      );
+      expect(
+        mockQuery.mock.calls.at(-1)?.[0].options.env.CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+      await adapter.stopAll();
+    });
+  });
+
+  describe('chat-host-images: per-session engine TMPDIR', () => {
+    test('a session the preview admits gets its own Station-owned TMPDIR; the catalog probe keeps the shared one', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-session-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'thread-session-tmp-on',
+      );
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        // A live engine: its stream stays open (a stream that ends means the
+        // engine is gone, which releases the folder).
+        mockQuery.mockReturnValueOnce(createControlledMockQuery());
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-on',
+        });
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-off',
+        });
+        await adapter.listModelCatalog?.();
+        const [onCall, offCall, catalogCall] = mockQuery.mock.calls.map(
+          ([call]) => call,
+        );
+        const own = sessionTmpDirPath('thread-session-tmp-on', stationHome);
+        expect(onCall.options.env.TMPDIR).toBe(own);
+        expect(statSync(own).isDirectory()).toBe(true);
+        expect(statSync(own).mode & 0o777).toBe(0o700);
+        expect(offCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+        expect(catalogCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine that dies on its own', () => {
+    test('releases its launch temp folder though no session.exited follows', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-crash-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let fail: (error: Error) => void = () => undefined;
+        const failed = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        failed.catch(() => undefined);
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          [Symbol.asyncIterator]: () => ({ next: () => failed }),
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-crash',
+        });
+        const own = sessionTmpDirPath('thread-crash', stationHome);
+        expect(sessionTempRoot('thread-crash')).toBe(own);
+        fail(new Error('Claude Code process exited with code 1'));
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-crash')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine stream that simply ends', () => {
+    test('releases its launch temp folder on a clean end too', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-end-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let end: () => void = () => undefined;
+        const ended = new Promise<void>((resolve) => {
+          end = resolve;
+        });
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          async *[Symbol.asyncIterator]() {
+            await ended;
+            // Ends without a message: a clean end of the engine stream.
+            yield* [];
+          },
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-clean-end',
+        });
+        const own = sessionTmpDirPath('thread-clean-end', stationHome);
+        expect(sessionTempRoot('thread-clean-end')).toBe(own);
+        end();
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-clean-end')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('station#1182: runtime-reported model, end to end', () => {
     test("a second turn that reports nothing does not inherit the first turn's reportedModel", async () => {
       const controlled = createControlledMockQuery();
@@ -10623,9 +11510,14 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const firstCompleted = await iterator.next(); // turn.completed
-      expect((firstCompleted.value as any).metadata).toEqual({
-        reportedModel: 'claude-opus-4-5-20260101',
-      });
+      if (
+        firstCompleted.done ||
+        firstCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the first turn completion.');
+      expect(firstCompleted.value.metadata?.reportedModel).toBe(
+        'claude-opus-4-5-20260101',
+      );
 
       // Second turn reports nothing (e.g. no assistant message before an
       // early result) — must not surface the first turn's stale value.
@@ -10643,7 +11535,12 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const secondCompleted = await iterator.next(); // turn.completed
-      expect((secondCompleted.value as any).metadata).toBeUndefined();
+      if (
+        secondCompleted.done ||
+        secondCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the second turn completion.');
+      expect(secondCompleted.value.metadata?.reportedModel).toBeUndefined();
     });
   });
   // #1551: Station detected the user's installed Claude Code, reported it
@@ -12220,6 +13117,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     const pending: unknown[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
+    let failure: Error | undefined;
     const end = () => {
       ended = true;
       wake?.();
@@ -12232,9 +13130,15 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         wake = null;
       },
       end,
+      /** The SDK iterator failing as it does when the `claude` process dies. */
+      crash(error: Error) {
+        failure = error;
+        end();
+      },
       async *[Symbol.asyncIterator]() {
         for (;;) {
           while (pending.length === 0) {
+            if (failure) throw failure;
             if (ended) return;
             await new Promise<void>((resolve) => {
               wake = resolve;
@@ -12298,7 +13202,10 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       event.method === 'child-work.updated' &&
       event.delta.kind === 'settle' &&
       event.delta.childId === capturedChildId
-        ? [event.delta.status]
+        ? [
+            // The wire status, and what a current client shows for it.
+            `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+          ]
         : [],
     );
 
@@ -12414,6 +13321,53 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     expect(settleAt).toBeLessThan(
       seen.findIndex((event) => event.method === 'session.exited'),
     );
+  });
+
+  /** The fake `claude` process the adapter's own spawn starts for the SDK. */
+  function spawnEngine() {
+    const options = mockQuery.mock.calls.at(-1)?.[0]?.options;
+    startFakeClaudeEngine(options);
+    const child = FakeClaudeChild.newest;
+    if (!child) throw new Error('no fake engine spawned');
+    return child;
+  }
+
+  test('the engine process dying settles the running child interrupted, not unresolved', async () => {
+    const threadId = 'thread-child-process-death';
+    const { query, until, seen } = await runningChild(threadId);
+    const engine = spawnEngine();
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    query.crash(new Error('Claude Code process terminated by signal SIGKILL'));
+    const settled = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.childId === capturedChildId,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(settled, 'no settle after the engine died').not.toBeNull();
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+  });
+
+  test('a stream failure with the engine process still running is no interruption (#4266)', async () => {
+    const threadId = 'thread-child-stream-failure';
+    const { query, until, seen } = await runningChild(threadId);
+    spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    const emptied = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(emptied, 'no empty snapshot after the stream failed').not.toBeNull();
+    expect(childSettles(seen)).toEqual([]);
   });
 
   test('the engine process ending on its own settles the running child too', async () => {

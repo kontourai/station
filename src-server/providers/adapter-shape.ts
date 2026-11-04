@@ -36,6 +36,12 @@ import {
   type ProviderFailureCode,
   type ProviderFailureKind,
 } from '@kontourai/station-contracts/provider-failure';
+import type {
+  SessionGoalCommand,
+  SessionGoalControlResult,
+  SessionGoalRead,
+} from '@kontourai/station-contracts/session-goal';
+import type { ModelOption } from '@kontourai/station-contracts/tool';
 import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
@@ -269,6 +275,13 @@ export interface ProviderAdapterMetadata {
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
   abortSettlement?: 'await';
+  /**
+   * `engine-process`: each session's engine is a child process launched
+   * through the shared workload launcher, so where Linux workload enforcement
+   * runs, the engine and every command it starts share one bounded scope.
+   * Station then tells the engine its budget. Absent: no such claim.
+   */
+  workloadScope?: 'engine-process';
   /** Optional bounded same-session recovery declaration; absence is unsupported. */
   recovery?: ConnectionRecoveryCapability;
   /**
@@ -326,13 +339,7 @@ export interface ProviderAdapterMetadata {
 }
 
 export interface ProviderAdapterModelCatalog {
-  models: Array<{
-    id: string;
-    name: string;
-    originalId: string;
-    /** Concrete catalog identity for an alias; not per-turn served-model proof. */
-    resolvedModel?: string;
-  }>;
+  models: ModelOption[];
   /** True when a bounded entry limit omitted additional adapter results. */
   truncated?: boolean;
 }
@@ -383,6 +390,11 @@ export type ProviderInterruptTurnResult =
   | { outcome: 'target-mismatch'; activeTurnId?: string }
   | { outcome: 'termination-unconfirmed'; turnId: string };
 
+export type ProviderChildSteerResult =
+  | { outcome: 'steered'; turnId: string }
+  | { outcome: 'unsupported' }
+  | { outcome: 'no-active-task' };
+
 /**
  * Provider adapters can arrive from runtime-loaded JavaScript plugins, where
  * the TypeScript contract is not enforcement. Keep the boundary check here so
@@ -414,10 +426,22 @@ export function isProviderInterruptTurnResult(
 }
 
 export interface ProviderAdapterShape {
+  /** This adapter can add coordinator tools to this Session without a successor. */
+  readonly coordinatorToolsRefresh?: true;
+  coordinatorToolsNeedSuccessor?(threadId: string): boolean;
   /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+
+  /** Absent means unsupported. Neither operation may materialize an engine session. */
+  readonly goals?: {
+    read(threadId: string): Promise<SessionGoalRead>;
+    control(
+      threadId: string,
+      command: SessionGoalCommand,
+    ): Promise<SessionGoalControlResult>;
+  };
 
   /** Read-only projection used to suppress duplicate attached-session aliases. */
   nativeSessionIdentity?(
@@ -458,6 +482,13 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /** Targets an observed child turn owned by this session, never the parent. */
+  steerChildWork?(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult>;
   /**
    * Stop ONE provider-reported subagent, targeted rather than a blanket
    * turn interrupt.
@@ -528,7 +559,7 @@ export interface ProviderAdapterShape {
   stopAll(): Promise<void>;
   /** Implementations must settle pending reads when the signal is aborted. */
   streamEvents(
-    options?: AsyncEventStreamOptions,
+    options?: AsyncEventStreamOptions<CanonicalRuntimeEvent>,
   ): AsyncIterable<CanonicalRuntimeEvent>;
   getPrerequisites?(options?: {
     signal?: AbortSignal;

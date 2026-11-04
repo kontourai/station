@@ -1,0 +1,19 @@
+{
+  "revision": "2bf2ace1413519e06ddfd51e175c192eea230c1e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked against the chat.css change in fix round 2: it adds only the Load full content button styles (spacing, the filled user bubble foreground, focus ring on loaded content) and the multi-line text argument block; nothing this document describes changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked against the chat.css change in fix round 2: it adds only the Load full content button styles (spacing, the filled user bubble foreground, focus ring on loaded content) and the multi-line text argument block; nothing this document describes changes.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked against the chat.css change in fix round 2: it adds only the Load full content button styles (spacing, the filled user bubble foreground, focus ring on loaded content) and the multi-line text argument block; nothing this document describes changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked against the chat.css change in fix round 2: it adds only the Load full content button styles (spacing, the filled user bubble foreground, focus ring on loaded content) and the multi-line text argument block; nothing this document describes changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts carries the fix round 2 prose (session-api content binding, sdk loadApprovalContent, contracts, acp plan loading, module map); this reference describes the generator and tool, which are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Viewed the capture: an inline (not spilled) approval in the inspect dialog with Deny and Approve once. The orchestration-service change in fix round 2 (approval content binding) only affects requests with spilled content, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Viewed the capture: an inline (not spilled) approval in the inspect dialog with Deny and Approve once. The orchestration-service change in fix round 2 (approval content binding) only affects requests with spilled content, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts","src-ui/src/index.css"]}
+  ]
+}

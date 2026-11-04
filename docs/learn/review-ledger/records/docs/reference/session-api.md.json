@@ -90,8 +90,6 @@
 
     "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts",
 
-    "src-server/services/turn-idempotency.ts",
-
     "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/services/orchestration/conversation-lineage.ts",
@@ -122,7 +120,51 @@
 
     "docs/guides/self-configuring-agent.md",
 
-    "src-server/routes/orchestration/events.ts"
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
+    "packages/cli/src/commands/mcp-clients.ts",
+
+    "src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/domain/migrations/020-conversation-fork-context.ts",
+
+    "src-server/domain/migrations/021-conversation-start-context.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/providers/adapters/native-resume-binding.ts",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+    "src-server/routes/orchestration/events.ts",
+
+    "src-server/routes/orchestration/session-goals.ts",
+
+    "packages/monument/src/turn-dedup.ts",
+
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"
   ],
 
   "checks": [

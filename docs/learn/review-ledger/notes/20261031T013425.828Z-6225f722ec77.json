@@ -1,0 +1,7 @@
+{
+  "revision": "67f68c18da3a85332dc368b2c2496ad56b09a033",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked boot-advertised sharing and fallback against the authority-scoped browser owner, the orchestration route and general event producer. General frames omit IDs and retain their own event gates; cursor replay applies to orchestration. Source inspection only; no proxy or native-device qualification.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/events.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

@@ -21,7 +21,10 @@ import { NotificationContainer } from '../components/notifications/NotificationC
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
-import { registerFullscreenChatSurface } from '../hooks/orchestration/chatForeground';
+import {
+  registerChatReaderCover,
+  registerFullscreenChatSurface,
+} from '../hooks/orchestration/chatForeground';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import {
   resetTurnAttentionNotifications,
@@ -167,6 +170,35 @@ describe('end-of-turn toasts', () => {
     expect(toastCards()).toHaveLength(0);
   });
 
+  // #4396: every page load replayed recent turn ends and toasted each again.
+  test('a turn already toasted is not toasted again after a reload; a new turn is', () => {
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
+    act(() => {
+      toastStore.dismissAll();
+    });
+
+    // Reload: this page's memory and chat state are gone; the event log
+    // replays the same turn into a fresh chat.
+    resetTurnAttentionNotifications({ reload: true });
+    activeChatsStore.removeChat(BG);
+    activeChatsStore.initChat(BG, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Refactor auth',
+      conversationId: BG,
+      currentSessionId: BG,
+    });
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(0);
+
+    startTurn('turn-2');
+    emit({ method: 'turn.completed', turnId: 'turn-2', outputText: 'Again.' });
+    expect(toastCards()).toHaveLength(1);
+  });
+
   test('the foreground chat never toasts its own turn end', () => {
     navigationStore.setActiveChat(BG);
     startTurn('turn-1');
@@ -199,6 +231,21 @@ describe('end-of-turn toasts', () => {
     startTurn('turn-1');
     emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
     expect(toastCards()).toHaveLength(0);
+    release();
+    release();
+    startTurn('turn-2');
+    emit({ method: 'turn.completed', turnId: 'turn-2', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
+  });
+
+  // A New chat draft shows in place of the dock's chat, so that chat is not
+  // being read while it is covered.
+  test('a chat covered by a New chat draft counts as background', () => {
+    navigationStore.setActiveChat(BG);
+    const release = registerChatReaderCover();
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
     release();
     release();
     startTurn('turn-2');

@@ -1,0 +1,7 @@
+{
+  "revision": "6347a78f9ccddc0c4e6238558afd838107d5434d",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Test-only change (routes test now expects the person-chat flag); no documented claim changed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]}
+  ]
+}

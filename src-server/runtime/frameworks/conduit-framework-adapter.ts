@@ -111,6 +111,8 @@ export function conformAgentHooks(
   if (!hooks) return undefined;
   const adapter = createStationFrameworkConduitAdapter(framework);
   return {
+    // Context measurement observes a generation; it grants no Conduit lifecycle action.
+    afterModelGeneration: hooks.afterModelGeneration,
     beforeToolCall: hooks.beforeToolCall
       ? async (tool, invocation) => {
           const decision = await hooks.beforeToolCall!(tool, invocation);
@@ -145,6 +147,9 @@ export function conformAgentHooks(
             { decision: 'observe' },
           );
         }
+      : undefined,
+    endInvocation: hooks.endInvocation
+      ? (invocation) => hooks.endInvocation!(invocation)
       : undefined,
     afterInvocation: hooks.afterInvocation
       ? async (context) => {

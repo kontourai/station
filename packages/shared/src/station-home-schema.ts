@@ -431,6 +431,43 @@ function migrateStationHome(
   }
 }
 
+/**
+ * A prebuilt archive's CLI keeps instance records in `<root>/state/<channel>/
+ * instances` of the Station root a home belongs to, and a home outside
+ * `<root>/instances/` (`--temp-home`, `--home=<dir>`) is its own root
+ * (packages/cli/src/commands/lifecycle-code-root.ts).
+ */
+const LIFECYCLE_STATE_DIRECTORY = 'state';
+
+/**
+ * `<home>/state` holding only empty `<channel>/instances` directories: what a
+ * refused or cleaned-up archive start leaves once its record is gone (#4381).
+ * A record, any other entry, a file or a link is data the gate keeps refusing
+ * to bootstrap over.
+ */
+function isEmptyLifecycleStateScaffolding(stateDir: string): boolean {
+  const isPlainDirectory = (path: string) => {
+    const stats = lstatSync(path);
+    return stats.isDirectory() && !stats.isSymbolicLink();
+  };
+  if (!isPlainDirectory(stateDir)) return false;
+  for (const channel of readdirSync(stateDir)) {
+    const channelDir = join(stateDir, channel);
+    if (!isPlainDirectory(channelDir)) return false;
+    for (const child of readdirSync(channelDir)) {
+      const instancesDir = join(channelDir, child);
+      if (
+        child !== 'instances' ||
+        !isPlainDirectory(instancesDir) ||
+        readdirSync(instancesDir).length > 0
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function isBootstrapScaffolding(homeDir: string): boolean {
   if (!existsSync(homeDir)) return true;
   for (const entry of readdirSync(homeDir)) {
@@ -455,6 +492,10 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       } catch {
         // fall through to the refusal below
       }
+      return false;
+    }
+    if (entry === LIFECYCLE_STATE_DIRECTORY) {
+      if (isEmptyLifecycleStateScaffolding(join(homeDir, entry))) continue;
       return false;
     }
     if (entry !== 'config') return false;

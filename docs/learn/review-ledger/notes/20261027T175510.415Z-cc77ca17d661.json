@@ -1,0 +1,7 @@
+{
+  "revision": "7f7d0b7ffce2499351cddb51d8956cb1ec71218d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the turnHandlers change (a keyed turn.started that matches the composer bubble by clientTurnId now also adopts the turn's recorded attachments, in order, as file parts with blobRef, keeping inline bytes the bubble already shows) against the map. Line ~4028's claim that an explicit server-stamped turn.started.clientTurnId matching an authored bubble is the settle/retire evidence is unchanged: the match rule and delivery-check path are untouched, only the matched row's file parts change. Line ~1402 (replay carries stored attachment references; the attachment route fetches bytes on demand) still holds: the adopted parts are the same blobRef shape runtime-event-projection builds on reload and FilePartPreview resolves through /api/attachments/:ref. No map prose describes optimistic bubble parts, so no edit is needed. Checks: turnHandlers.remoteInput and useActiveChatSessionMessaging focused tests, fault injection on both seams, isolated-Station render.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/orchestration/turnHandlers.ts"]}
+  ]
+}

@@ -10,6 +10,7 @@ import {
 import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
+import { requestTurnBrowser } from '../chat/transcript-turn-browser-events';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import {
@@ -119,14 +120,13 @@ export interface ChatDockWorkspaceControls {
 /**
  * Chat's OWN toolbar (#2046 2b). What belongs here is the chat on screen and
  * the dock's primary verbs: the identity (title, agent, engine, on one line),
- * the inbox toggle, New with its destination project, and ONE overflow menu
+ * the inbox toggle, New chat, and one overflow menu
  * that holds everything else — the working chats, the chat's commands, and
  * the region's own commands when the region host offers them
- * (`RegionMenu`). The context meter lives in the composer beside the model
- * it measures; branch and directory facts live in the session context card.
+ * (`RegionMenu`). The context meter lives in the composer beside Send; branch and directory facts live in the session context card.
  * See docs/design/placement.md, "What the dock header holds".
  *
- * Inside a region host it renders into the region bar's two slots
+ * Inside a region host it renders into the region bar's slots
  * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's
  * placement grab, tab strip and visibility chevron are `RegionChromeBar`'s.
  * The full-screen placement has no region bar and renders this as its own
@@ -135,12 +135,6 @@ export interface ChatDockWorkspaceControls {
 interface ChatDockHeaderProps {
   /** Absent for a non-Chat occupant — see `ChatDockHeaderChatControls`. */
   chatControls?: ChatDockHeaderChatControls;
-  /**
-   * Where New starts a chat: the dock's project, as the second half of the
-   * New split button (`ChatDockProjectContext`). It changes the destination
-   * only; switching never opens or creates a chat (#4524).
-   */
-  projectContext?: React.ReactNode;
   /** Active conversation title + engine/Flow identity, sharing this row. */
   chatIdentity?: React.ReactNode;
   /** Imported chats keep their origin visible when no composer owns that context. */
@@ -176,7 +170,6 @@ interface ChatDockHeaderProps {
 export function ChatDockHeader({
   chatIdentity,
   retainIdentityInNamedPane = false,
-  projectContext,
   chatControls,
   fullscreen = false,
   workspaceControls,
@@ -319,6 +312,16 @@ export function ChatDockHeader({
           },
         ]
       : []),
+    ...(inventory
+      ? [
+          {
+            key: 'browse-turns',
+            label: 'Browse turns',
+            haspopup: 'dialog' as const,
+            onSelect: () => requestTurnBrowser(inventory.chatStoreId),
+          },
+        ]
+      : []),
     ...(moreActions ?? []),
     ...(regionMenu?.actions ?? []),
   ].map((action, index, rows) =>
@@ -355,9 +358,60 @@ export function ChatDockHeader({
   // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
   // picker with the legacy docked-Home path. #2046 2b took the placement grab
   // too: it moved to the region bar with the tab strip, since it moves the
-  // REGION and not this pane. What is left is the pane's own identity.
+  // REGION and not this pane. The inbox toggle sits before that chrome.
+  const inboxToggle =
+    showInboxToggle && workspaceControls ? (
+      <button
+        type="button"
+        className="chat-dock__icon-btn chat-dock__inbox-toggle"
+        aria-label={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        title={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        aria-pressed={workspaceControls.isInboxOpen}
+        data-unread={unreadCount > 0 ? '' : undefined}
+        onClick={workspaceControls.onToggleInbox}
+      >
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+        >
+          <rect
+            x="2"
+            y="2"
+            width="12"
+            height="12"
+            rx="2"
+            stroke="currentColor"
+          />
+          <path d="M6 2v12" stroke="currentColor" />
+          <path
+            d={workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'}
+            stroke="currentColor"
+          />
+        </svg>
+        {workingCount > 0 ? (
+          <span className="chat-dock__inbox-working" aria-hidden="true">
+            {workingCount}
+          </span>
+        ) : null}
+      </button>
+    ) : null;
+
   const leading = (
     <>
+      {slots?.start === undefined ? inboxToggle : null}
       {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
@@ -371,84 +425,17 @@ export function ChatDockHeader({
 
   const trailing = (
     <>
-      {inventory ? (
-        <button
-          type="button"
-          className="chat-dock__inventory-button"
-          aria-label="Chat inventory"
-          title="Messages, tool results, decisions and outputs in this chat"
-          aria-expanded={Boolean(inventoryOccurrence)}
-          disabled={!inventoryReady}
-          onClick={(event) =>
-            dockMoreActions
-              .find((action) => action.key === 'session-inventory')
-              ?.onSelect(event.currentTarget)
-          }
-        >
-          Inventory
-        </button>
-      ) : null}
-      {showInboxToggle && workspaceControls ? (
-        <button
-          type="button"
-          className="chat-dock__icon-btn chat-dock__inbox-toggle"
-          aria-label={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-            workingCount,
-            unreadCount,
-          )}
-          title={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-            workingCount,
-            unreadCount,
-          )}
-          aria-pressed={workspaceControls.isInboxOpen}
-          data-unread={unreadCount > 0 ? '' : undefined}
-          onClick={workspaceControls.onToggleInbox}
-        >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="12"
-              height="12"
-              rx="2"
-              stroke="currentColor"
-            />
-            <path d="M6 2v12" stroke="currentColor" />
-            <path
-              d={
-                workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'
-              }
-              stroke="currentColor"
-            />
-          </svg>
-          {workingCount > 0 ? (
-            <span className="chat-dock__inbox-working" aria-hidden="true">
-              {workingCount}
-            </span>
-          ) : null}
-        </button>
-      ) : null}
-      {workspaceControls ? (
+      {workspaceControls &&
+      !(workspaceControls.showInboxToggle && workspaceControls.isInboxOpen) ? (
         <div className="chat-dock__new-split">
           <LazyBoundary
             load={loadChatDockWorkspaceActions}
             pending={null}
             componentProps={{
               ...workspaceControls,
-              iconOnly: Boolean(slots?.namesPane),
+              iconOnly: true,
             }}
           />
-          {projectContext && !slots?.namesPane ? projectContext : null}
         </div>
       ) : null}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
@@ -476,9 +463,7 @@ export function ChatDockHeader({
           focus on to that chat's composer (`useWorkingChatFocus`). */}
       <span className="chat-dock__more" data-working-chat-origin="">
         <ChatDockHeaderMoreMenu
-          actions={dockMoreActions.filter(
-            (action) => action.key !== 'session-inventory',
-          )}
+          actions={dockMoreActions}
           // With no inbox toggle on the bar (a side dock, a collapsed bar),
           // the working and unread counts ride this trigger instead, the way
           // the phone's Chat actions trigger carries them. While the toggle
@@ -519,6 +504,7 @@ export function ChatDockHeader({
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>
+        {slots.start ? createPortal(inboxToggle, slots.start) : null}
         {slots.leading ? createPortal(leading, slots.leading) : null}
         {slots.trailing ? createPortal(trailing, slots.trailing) : null}
       </>
@@ -528,6 +514,7 @@ export function ChatDockHeader({
   return (
     <div className="chat-dock__header">
       <div className="chat-dock__title">
+        {slots?.start !== undefined ? inboxToggle : null}
         {leading}
         {/* The row's growth, on an empty element rather than inside any of the
             labels above: the identity and the project context used to grow

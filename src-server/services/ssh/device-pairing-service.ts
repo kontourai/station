@@ -43,7 +43,9 @@ import {
 } from '@kontourai/station-contracts';
 import {
   deviceRequestedExtraScopes,
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
+  PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
@@ -298,6 +300,8 @@ interface PairingOfferState extends DevicePairingOffer {
   requesterPosition?: PairingRequesterPosition;
   /** PRIVATE provider session used to revalidate an account candidate at approval. */
   accountCandidateSessionId?: string;
+  /** Server-owned access-request policy; never supplied by a client. */
+  accountBrowserReadOnly?: true;
   /** PRIVATE marker: these requests can be approved/exchanged only by relay enrollment. */
   relayEnrollmentId?: string;
 }
@@ -493,6 +497,14 @@ interface DevicePairingServiceOptions {
    * capped. Omitted, a device uses exactly what it was granted.
    */
   capScope?: (device: PairedDevice) => string;
+  /**
+   * Owner-device standing: whether this Station's own
+   * paired devices may hold the owner's standing at all. Only a personal
+   * Station passes `true`; a hosted tenant never does, because its devices
+   * do not belong to the person who runs the host. Omitted means no device
+   * ever holds owner standing.
+   */
+  ownerDeviceStanding?: boolean;
 }
 
 export class DevicePairingError extends Error {
@@ -1139,15 +1151,48 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
   };
 }
 
+type AccountReplacementIdentity = Pick<
+  Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  'kind' | 'issuer' | 'subject'
+>;
+type ReplacementBinding = DevicePrincipalBinding | AccountReplacementIdentity;
+
+// A candidate can reserve a display name; only an approved binding authorizes exchange replacement.
+function accountCandidateIdentity(
+  candidate: DeviceAccountBindingCandidate | undefined,
+): AccountReplacementIdentity | undefined {
+  return candidate
+    ? { kind: 'account', issuer: candidate.issuer, subject: candidate.subject }
+    : undefined;
+}
+
 /**
  * A caller-controlled instance id is only a replacement key inside an
- * already-proven principal. It must never let one tailnet identity, or an
- * identityless source, revoke another's device.
+ * existing provenance domain. Account-bound Devices also require the same
+ * approved issuer and subject; WhoIs alone cannot link accounts.
  */
 function isSameReplacementDomain(
-  existing: Pick<StoredDevice, 'source' | 'requester'>,
+  existing: Pick<StoredDevice, 'source' | 'requester'> & {
+    principalBinding?: ReplacementBinding;
+  },
   request: PairingProvenance,
+  approvedBinding: ReplacementBinding | undefined,
 ): boolean {
+  const existingAccount =
+    existing.principalBinding && 'kind' in existing.principalBinding
+      ? existing.principalBinding
+      : undefined;
+  const approvedAccount =
+    approvedBinding && 'kind' in approvedBinding ? approvedBinding : undefined;
+  if (existingAccount || approvedAccount) {
+    if (
+      !existingAccount ||
+      !approvedAccount ||
+      existingAccount.issuer !== approvedAccount.issuer ||
+      existingAccount.subject !== approvedAccount.subject
+    )
+      return false;
+  }
   if (request.source === 'tailnet') {
     return (
       existing.source === 'tailnet' &&
@@ -1171,6 +1216,7 @@ export class DevicePairingService {
   readonly #maxActiveCredentialsPerVerifiedIdentity: number;
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
   readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
+  readonly #ownerDeviceStanding: boolean;
   /** #3557: personal access tokens, resolved as headless devices. */
   readonly #tokens: PersonalTokenStore;
   /**
@@ -1192,6 +1238,7 @@ export class DevicePairingService {
 
   constructor(options: DevicePairingServiceOptions) {
     this.#capScope = options.capScope ?? ((device) => device.scope);
+    this.#ownerDeviceStanding = options.ownerDeviceStanding === true;
     this.#tokens = new PersonalTokenStore({
       securityDir: join(options.homeDir, 'security'),
       ...(options.now ? { now: options.now } : {}),
@@ -1388,6 +1435,9 @@ export class DevicePairingService {
         name,
         input.clientInstanceId,
         provenance,
+        input.requireAccountBinding
+          ? accountCandidateIdentity(input.accountCandidate)
+          : undefined,
       ),
       scope: offer.scope,
       kind: offer.kind,
@@ -1424,10 +1474,14 @@ export class DevicePairingService {
   ): DevicePairingAccessRequestResponse {
     const offer = this.createOffer({
       endpoint: input.endpoint,
-      scope: input.scope,
+      scope: input.requireAccountBinding
+        ? PAIRING_SCOPE_ORCHESTRATION_READ
+        : input.scope,
       kind: input.kind,
     });
     try {
+      if (input.requireAccountBinding)
+        this.#offers.get(offer.offerId)!.accountBrowserReadOnly = true;
       const provenance = pairingProvenance({
         ...input,
         source: input.source ?? 'same-origin',
@@ -1665,6 +1719,13 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     }
     const finalScope = grantedScope ?? offer.scope;
+    if (
+      offer.accountBrowserReadOnly &&
+      (offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        offer.request.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        finalScope !== PAIRING_SCOPE_ORCHESTRATION_READ)
+    )
+      throw new DevicePairingError('invalid_request');
     // Full access or running commands, asked for at pairing, is kept only by
     // a credentialed approval, never by the unauthenticated floor.
     if (
@@ -1862,6 +1923,14 @@ export class DevicePairingService {
     const request = offer.request;
     if (!request) throw new DevicePairingError('request_not_confirmed');
     if (
+      offer.accountBrowserReadOnly &&
+      (offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        request.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        (input.sessionScope !== undefined &&
+          input.sessionScope !== PAIRING_SCOPE_ORCHESTRATION_READ))
+    )
+      throw new DevicePairingError('invalid_request');
+    if (
       request.requireAccountBinding &&
       (!offer.principalBinding ||
         !('kind' in offer.principalBinding) ||
@@ -1914,7 +1983,11 @@ export class DevicePairingService {
           (item) =>
             item.revokedAt === null &&
             item.clientInstanceId === input.clientInstanceId &&
-            isSameReplacementDomain(item, requestProvenance),
+            isSameReplacementDomain(
+              item,
+              requestProvenance,
+              offer.principalBinding,
+            ),
         )
       : false;
     if (input.clientInstanceId) {
@@ -1923,7 +1996,11 @@ export class DevicePairingService {
         if (
           item.revokedAt === null &&
           item.clientInstanceId === input.clientInstanceId &&
-          isSameReplacementDomain(item, requestProvenance)
+          isSameReplacementDomain(
+            item,
+            requestProvenance,
+            offer.principalBinding,
+          )
         ) {
           item.revokedAt = revokedAt;
           item.revocation = {
@@ -1974,7 +2051,13 @@ export class DevicePairingService {
     const issuedAt = this.#now();
     const device: StoredDevice = {
       id: relayReservation?.deviceId ?? randomUUID(),
-      name: request.deviceName,
+      name: this.#uniqueDeviceName(
+        request.deviceName,
+        input.clientInstanceId,
+        requestProvenance,
+        offer.principalBinding,
+        offer.offerId,
+      ),
       scope: sessionScope,
       kind: offer.kind,
       createdAt: issuedAt,
@@ -3462,14 +3545,76 @@ export class DevicePairingService {
       : undefined;
   }
 
-  /** Host-issued browser sessions may manage device access, never native consent. */
+  /**
+   * Host-issued browser sessions may manage device access, never native
+   * consent. Owner devices ({@link credentialHasOwnerStanding}) hold the same
+   * standing and the same limits: device grants only, never a protected
+   * administration or consent scope, never a delegation.
+   */
   credentialMayManagePairing(candidate: string): boolean {
+    return (
+      this.isHostBrowserSessionCredential(candidate) ||
+      this.credentialHasOwnerStanding(candidate)
+    );
+  }
+
+  /**
+   * Exactly the host-issued launcher browser session (`ui-bootstrap` mint,
+   * holding `access:manage`), and never an owner device: the one session a
+   * fresh launcher link has no reason to upgrade.
+   */
+  isHostBrowserSessionCredential(candidate: string): boolean {
     return (
       this.credentialMintKind(candidate) === 'ui-bootstrap' &&
       pairingScopeIncludes(
         this.effectiveScope(candidate) ?? '',
         PAIRING_SCOPE_ACCESS_MANAGE,
       )
+    );
+  }
+
+  /**
+   * Owner-device standing (operator-device-access.md D14): on a personal
+   * Station, a device the owner paired for themself acts as the owner, with
+   * the host launcher browser's standing.
+   *
+   * Only for a device that already has a host shell (`terminal:operate`)
+   * and may drive work (`orchestration:operate`): it can already do what the
+   * host account can, so this removes refusals rather than adding reach.
+   * Never a read-only or single-purpose grant, a delegation, a personal
+   * token, a device tied to a person (#3557), a relay alias, a
+   * home-possession credential (already the operator), or a device still
+   * enrolling. Re-read on every call, so a revoke, rebind or narrowing
+   * applies to the next request.
+   */
+  credentialHasOwnerStanding(candidate: string): boolean {
+    if (!this.#ownerDeviceStanding) return false;
+    const match = this.#findActiveCredential(this.#registry, candidate);
+    if (!match || match.alias) return false;
+    return this.#storedDeviceHasOwnerStanding(match.device);
+  }
+
+  /** {@link credentialHasOwnerStanding}, by device id, for background work. */
+  deviceHasOwnerStanding(deviceId: string): boolean {
+    if (!this.#ownerDeviceStanding) return false;
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device !== undefined && this.#storedDeviceHasOwnerStanding(device);
+  }
+
+  #storedDeviceHasOwnerStanding(device: StoredDevice): boolean {
+    if (
+      device.revokedAt !== null ||
+      device.kind !== 'device' ||
+      device.credentialKind === 'personal-token' ||
+      device.principalBinding !== undefined ||
+      device.locality !== undefined ||
+      device.pendingEnrollmentId !== undefined
+    )
+      return false;
+    const scope = this.#capScope(publicDevice(device));
+    return (
+      pairingScopeIncludes(scope, PAIRING_SCOPE_ORCHESTRATION_OPERATE) &&
+      pairingScopeIncludes(scope, PAIRING_SCOPE_TERMINAL_OPERATE)
     );
   }
 
@@ -3606,6 +3751,8 @@ export class DevicePairingService {
     name: string,
     clientInstanceId?: string,
     provenance?: PairingProvenance,
+    requestedBinding?: ReplacementBinding,
+    excludeOfferId?: string,
   ): string {
     const existingNames = new Set(
       this.#registry.devices
@@ -3615,13 +3762,13 @@ export class DevicePairingService {
             (!clientInstanceId ||
               !provenance ||
               device.clientInstanceId !== clientInstanceId ||
-              !isSameReplacementDomain(device, provenance)),
+              !isSameReplacementDomain(device, provenance, requestedBinding)),
         )
         .map((device) => device.name),
     );
     const now = this.#now();
     for (const offer of this.#offers.values()) {
-      if (offer.expiresAt <= now) continue;
+      if (offer.offerId === excludeOfferId || offer.expiresAt <= now) continue;
       if (offer.status !== 'requested' && offer.status !== 'confirmed') {
         continue;
       }
@@ -3630,7 +3777,19 @@ export class DevicePairingService {
         (!clientInstanceId ||
           !provenance ||
           offer.clientInstanceId !== clientInstanceId ||
-          !isSameReplacementDomain(offer.request, provenance))
+          !isSameReplacementDomain(
+            {
+              ...offer.request,
+              principalBinding:
+                offer.status === 'confirmed'
+                  ? offer.principalBinding
+                  : offer.request.requireAccountBinding
+                    ? accountCandidateIdentity(offer.request.accountCandidate)
+                    : undefined,
+            },
+            provenance,
+            requestedBinding,
+          ))
       ) {
         existingNames.add(offer.request.deviceName);
       }
@@ -3646,7 +3805,7 @@ export class DevicePairingService {
       const candidate = `${base}${suffixText}`;
       if (!existingNames.has(candidate)) return candidate;
     }
-    return name;
+    throw new DevicePairingError('invalid_request');
   }
 
   #activeOffer(offerId: string): PairingOfferState {

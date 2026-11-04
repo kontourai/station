@@ -1,7 +1,14 @@
+import { existsSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
+import {
+  servesConnectionRoutes,
+  servesWebPushNotifications,
+} from '../../capabilities/station-capability-flags.js';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -11,6 +18,15 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import {
+  createAutomationLedger,
+  SharedAutomationLedger,
+} from '../../services/automation/automation-ledger.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
+import { composeGitHubAutomationObservation } from '../../services/automation/github-poll.js';
+import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
+import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -29,8 +45,12 @@ import { registerPluginNotificationProviders } from '../../services/notification
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
-import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
@@ -41,13 +61,19 @@ import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
+import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
+import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
+import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
+import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import {
   createStationEngineAvailabilityReader,
@@ -217,6 +243,22 @@ export function createRuntimeSystemRouteDeps(
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
+    ...(resolveRuntimeConnectionRoutesEnabled()
+      ? {
+          resolveStationRoutes: createStationRoutesResolver({
+            boundAddress: () =>
+              lanDiscoveryFor(context.configLoader).boundAddress(),
+            networkInterfaces,
+            servedOrigins: () =>
+              publicIngressOriginResolver(context.port).resolve(),
+            magicDnsHost: () =>
+              publicIngressOriginResolver(context.port).magicDnsHost(),
+            environmentId: async () =>
+              (await context.environmentSecurityService.getPublicHandshake())
+                .environmentId,
+          }),
+        }
+      : {}),
     port: context.port,
     host: context.host,
     publicOrigins: (process.env.ALLOWED_ORIGINS ?? '')
@@ -229,7 +271,8 @@ export function createRuntimeSystemRouteDeps(
     // #1244: the terminal surface's live PTY capability, so a Station whose
     // node-pty never built reports a specific degraded reason on the same
     // readiness record that carries chat/runtime/acp.
-    probeTerminalCapability: () => context.terminalService.probeCapability(),
+    probeTerminalCapability: async () =>
+      (await context.ptyAdapter.probeCapability?.()) ?? { state: 'available' },
   };
 }
 
@@ -268,6 +311,9 @@ export function memoizeStationSetupRequirement<T>(
   };
 }
 
+/** The built-in Station Agent's public identity (`agent-service.ts`). */
+const BUILTIN_STATION_AGENT_SLUG = 'station';
+
 /**
  * #1536 D8: the one thing standing between this Station and a working chat on
  * its own engine, or `null` when nothing is.
@@ -280,6 +326,15 @@ export function memoizeStationSetupRequirement<T>(
  * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
  * asking a model-resolution probe about Claude Code reports a working Agent as
  * broken (the `deriveAgentCatalog` lesson).
+ *
+ * #4388 (deliberate reversal of #1536 D8 for this one Agent): the built-in
+ * Station Agent is optional. A fresh home whose chats run on Claude Code or
+ * Codex never asked for it, so its missing model connection is informational
+ * — the Agents page and the picker's disabled row already say "Not set up" —
+ * and is not attention: it raised a bell badge and "Needs attention" that no
+ * working chat would ever clear, while Station details said "No notices". An
+ * Agent the person authored on Station's own engine still projects, because
+ * they did ask for it.
  */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
@@ -291,17 +346,13 @@ export async function readStationSetupRequirement(
     // that varied with store order would re-mint the row. And taking
     // `agents[0]` unconditionally silenced the notice whenever the agent that
     // happened to sort first was external-engine bound, even with a blocked
-    // Station-engine agent right behind it. Station's own Agent first; then the
-    // first Station-engine candidate by slug.
-    const candidates = [...agents].sort((left, right) =>
-      left.slug.localeCompare(right.slug),
-    );
-    const station = candidates.find((agent) => agent.slug === 'station');
+    // Station-engine agent right behind it. The first Station-engine
+    // candidate by slug, never the optional built-in Agent (#4388).
+    const candidates = [...agents]
+      .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
+      .sort((left, right) => left.slug.localeCompare(right.slug));
     const readAvailability = createStationEngineAvailabilityReader(context);
-    const ordered = station
-      ? [station, ...candidates.filter((agent) => agent.slug !== 'station')]
-      : candidates;
-    for (const metadata of ordered) {
+    for (const metadata of candidates) {
       const spec = await context.agentService.getAgent(metadata.slug);
       if (isExternalEngineBoundAgent(spec)) continue;
       const reason = readAvailability(spec);
@@ -322,11 +373,38 @@ export async function readStationSetupRequirement(
   }
 }
 
+/**
+ * Whether this deployment serves Web Push, from the same predicate the public
+ * handshake uses to advertise `webPushNotifications` (#4177).
+ */
+export function resolveRuntimeWebPushEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesWebPushNotifications({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
+/**
+ * Whether this deployment serves Station routes, from the same predicate the
+ * public handshake uses to advertise `connectionRoutes`.
+ */
+export function resolveRuntimeConnectionRoutesEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesConnectionRoutes({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
 export function configureRuntimeSupportServices(
   context: ConfigureRuntimeRoutesContext,
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
   options: {
     webPushEnabled?: boolean;
+    threadInbox?: () =>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | undefined;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
@@ -341,6 +419,11 @@ export function configureRuntimeSupportServices(
      */
     focus?: FocusSource;
     inAppLiveness?: InAppLiveness;
+    /**
+     * Runs automations that target a conversation, through its inbox.
+     * Absent (hosted, or no inbox): such a job fails without invoking.
+     */
+    conversationRuns?: ScheduledConversationRunner;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -348,12 +431,13 @@ export function configureRuntimeSupportServices(
   // default there; callers can inject the same resolved boolean when they
   // compose the public Push routes.
   const webPushEnabled =
-    options.webPushEnabled ?? !isHostedTenantExecutionRequired();
+    options.webPushEnabled ?? resolveRuntimeWebPushEnabled();
   const notificationService = new NotificationService(
     context.eventBus,
     context.configLoader.getProjectHomeDir(),
     60_000,
     {
+      projectMembership: context.projectMembership,
       onAsyncDispatchError: (operation, error) =>
         context.logger.warn('Notification async adapter failed', {
           operation,
@@ -429,13 +513,106 @@ export function configureRuntimeSupportServices(
         (event) => event.payload,
       ),
   });
+  const integrationSecretResolver = context.secretBindingAdministration;
+  // Observe-only Automation intake (epic #3439, S2): `github-poll` sources
+  // ride the scheduler's tick through the external monitor's transport. One
+  // lazily opened ledger serves the poller and the read route.
+  const automationHome = context.configLoader.getProjectHomeDir();
+  const automationLedger = new SharedAutomationLedger(
+    () =>
+      createAutomationLedger({ directory: join(automationHome, 'automation') }),
+    () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
+  );
+  const automationStore = new AutomationStore(automationHome);
+  const automationObservation = composeGitHubAutomationObservation(
+    context.featurePreviews,
+    isHostedTenantExecutionRequired(),
+    {
+      store: automationStore,
+      ledger: automationLedger,
+      integrationSecretResolver,
+      logger: context.logger,
+    },
+  );
+  const automationActions =
+    !isHostedTenantExecutionRequired() && context.orchestrationEventStore
+      ? createAutomationActionsRuntime({
+          hosted: false,
+          featurePreviews: context.featurePreviews,
+          store: automationStore,
+          isProjectCurrent: (id) =>
+            context.projectService
+              .listProjects()
+              .some((project) => project.id === id),
+          ledger: () => automationLedger.get(),
+          existingLedger: () => automationLedger.getExisting(),
+          taskGraph: context.taskGraphService,
+          taskDispatcher: context.taskDispatcher,
+          orchestration: context.orchestrationService,
+          eventStore: context.orchestrationEventStore,
+          eventBus: context.eventBus,
+          inbox: () => options.threadInbox?.(),
+          logger: context.logger,
+        })
+      : undefined;
+  const repairPreview = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'isolated-github-repairs',
+        label: 'Isolated GitHub repairs',
+        description:
+          'Run bounded repairs in Docker, then review and separately grant draft PR publication. Can spend provider credits.',
+      });
+  const isolatedRepairs = isHostedTenantExecutionRequired()
+    ? undefined
+    : new IsolatedRepairController({
+        home: automationHome,
+        enabled: () =>
+          repairPreview?.select({
+            enabled: () => true,
+            disabled: () => false,
+          }) === true,
+        policy: automationStore,
+        ledger: () => automationLedger.get(),
+        tasks: context.taskGraphService,
+        projectRoot: (id) => {
+          const project = context.projectService
+            .listProjects()
+            .find((p) => p.id === id);
+          if (!project) return undefined;
+          const config = context.projectService.getProject(project.slug);
+          return config.workingDirectory
+            ? expandTilde(config.workingDirectory)
+            : defaultedProjectWorkingDirectory(project.slug, automationHome);
+        },
+        isAgentCurrent: async (id) =>
+          (await context.agentService.listAgents()).some(
+            (agent) => agent.slug === id,
+          ),
+        logger: context.logger,
+      });
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
-      integrationSecretResolver:
-        context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
+      ...(options.conversationRuns
+        ? { conversationRuns: options.conversationRuns }
+        : {}),
+      integrationSecretResolver,
+      automationPoller: {
+        async poll(input) {
+          await automationObservation.poller?.poll(input);
+          if (!input.signal.aborted) await automationActions?.tick();
+          if (!input.signal.aborted) await isolatedRepairs?.tick();
+        },
+        async close() {
+          await isolatedRepairs?.close();
+          automationActions?.close();
+          automationObservation.poller?.close();
+          automationLedger.close();
+        },
+      },
       onActionableMonitor: async (input) => {
         const task = await context.taskGraphService.createTaskIdempotent(
           {
@@ -651,6 +828,8 @@ export function configureRuntimeSupportServices(
         context.environmentSecurityService.devicePairing.deviceLocality(
           deviceId,
         ),
+      deviceHasOwnerStanding: (deviceId) =>
+        context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {
@@ -688,6 +867,9 @@ export function configureRuntimeSupportServices(
     // not a new storage mechanism.
     new FileConversationAcknowledgementStore(
       context.configLoader.getProjectHomeDir(),
+      ownerDevicePredicate(() =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      ),
     ),
     () => getCachedUser().alias,
     // #765 D5: pending pairing requests project as needs-attention items,
@@ -713,9 +895,24 @@ export function configureRuntimeSupportServices(
       context.configLoader.getProjectHomeDir(),
     ),
     new ToolLibraryService(context.configLoader.getProjectHomeDir()),
+    {
+      store: new FileAttentionSnoozeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      preview: context.featurePreviews.bind({
+        id: 'attention-snooze',
+        label: 'Attention snooze',
+        description:
+          'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
+      }),
+    },
   );
   return {
     schedulerService,
+    automationLedger,
+    automationPreview: automationObservation.preview,
+    automationActions,
+    isolatedRepairs,
     notificationService,
     approvalInboxProvider,
     attentionProjection,

@@ -116,13 +116,15 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts"
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+
+    "docs/guides/walkthroughs.md",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
   ],
 
   "checks": [

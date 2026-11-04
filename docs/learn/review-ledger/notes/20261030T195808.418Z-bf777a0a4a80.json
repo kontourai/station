@@ -1,0 +1,7 @@
+{
+  "revision": "4cfcb0fc875e3703dddab9344e8c6f5a1bc95b5e",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the inventory's plugin lifecycle and identity claims against the Agent guide's added tool-grant paragraph: the paragraph describes approval authority and does not change lifecycle or identity claims. Source inspection only; no lifecycle journey exercised.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NativeMemoryContinuityUnavailableError } from '../../services/orchestration/native-memory-continuity.js';
 import { projectToolContext } from './project-tool-context.js';
 /**
@@ -24,6 +25,7 @@ import {
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readMcpPromptOriginRelay,
   readNativeForegroundRelayCompanion,
   readNativeMemoryRelayCompanion,
   readNativeOutputRelayCompanion,
@@ -50,6 +52,7 @@ import {
 import type { RuntimeContext } from '../../runtime/types.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
+import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import { chatErrors } from '../../telemetry/metrics.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -164,6 +167,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     const skillExperienceContext = trustedRelay
       ? readSkillExperienceRelayContext(relayHandoff)
       : undefined;
+    const mcpPromptOrigin = trustedRelay
+      ? readMcpPromptOriginRelay(relayHandoff)
+      : undefined;
     const nativeMemory = trustedRelay
       ? readNativeMemoryRelayCompanion(relayHandoff)
       : undefined;
@@ -213,6 +219,29 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions = {},
         projectSlug,
       } = getBody(c);
+      const { clientTurnId: _key, ...digestOptions } = rawOptions;
+      if (
+        _key !== undefined &&
+        (typeof _key !== 'string' || !_key.trim() || _key.length > 200)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'clientTurnId must be a non-empty string of at most 200 characters.',
+          },
+          400,
+        );
+      const clientTurnId = _key ?? randomUUID();
+      c.header('X-Station-Client-Turn-Id', clientTurnId);
+      const submissionDigest = chatTurnSubmissionDigest({
+        slug,
+        plugin,
+        input,
+        ambientContext: ambientContext ?? null,
+        projectSlug: projectSlug ?? null,
+        options: digestOptions,
+      });
       nativeForeground?.assertRequest({
         agentId: slug,
         projectSlug,
@@ -220,7 +249,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions,
         ambientContext,
       });
-      const optionsForPreparation = { ...rawOptions };
+      const optionsForPreparation = { ...rawOptions, clientTurnId };
       delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
@@ -362,7 +391,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // offline-queue turn) is recognized even after a server restart. The
         // facade holds no state of its own — see chat-turn-dedup.ts.
         dedupStore: new ChatTurnDedupStore(ctx.orchestrationEventStore),
+        submissionDigest,
         turnCorrelation,
+        ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
         // A relay thread that is not this request's own conversation is
         // ignored, never trusted for another conversation's approvals.
         ...(relayThread && relayThread === options.conversationId

@@ -1,7 +1,11 @@
 import type {
+  ClientRequestHandlersByMethod,
+  ClientRequestMethod,
+  ClientRequestParamsByMethod,
   CreateTerminalRequest,
   RequestPermissionRequest,
-} from '@agentclientprotocol/sdk';
+  SessionNotification,
+} from '@agentclientprotocol/sdk/unstable';
 
 export interface ManagedTerminal {
   process: import('node:child_process').ChildProcess;
@@ -18,6 +22,8 @@ export interface ManagedTerminal {
   signal: string | null;
   /** True once the child has exited, whichever way it went. */
   exited: boolean;
+  /** ACP `outputByteLimit`: output is truncated from the beginning to this. */
+  outputByteLimit?: number;
   /**
    * Set when the child never started — the spawn itself failed. The failure
    * is reported through the shell's failure channel (`output` plus the
@@ -45,4 +51,29 @@ export interface EnvironmentVariable {
 
 export interface ExtendedCreateTerminalRequest extends CreateTerminalRequest {
   env?: EnvironmentVariable[];
+}
+
+/** Station's filesystem, terminal, approval and vendor-extension callbacks. */
+type ClientRequestCallback<Method extends ClientRequestMethod> = (
+  params: ClientRequestParamsByMethod[Method],
+) => ReturnType<ClientRequestHandlersByMethod[Method]>;
+
+export interface ACPClientCallbacks {
+  sessionUpdate: (params: SessionNotification) => Promise<void>;
+  requestPermission: ClientRequestCallback<'session/request_permission'>;
+  readTextFile: ClientRequestCallback<'fs/read_text_file'>;
+  writeTextFile: ClientRequestCallback<'fs/write_text_file'>;
+  createTerminal: ClientRequestCallback<'terminal/create'>;
+  terminalOutput: ClientRequestCallback<'terminal/output'>;
+  releaseTerminal: ClientRequestCallback<'terminal/release'>;
+  waitForTerminalExit: ClientRequestCallback<'terminal/wait_for_exit'>;
+  killTerminal: ClientRequestCallback<'terminal/kill'>;
+  extMethod: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  extNotification: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => Promise<void>;
 }

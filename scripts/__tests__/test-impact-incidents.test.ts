@@ -44,11 +44,13 @@ const head = (path: string): string | null => {
 function select(
   paths: readonly string[],
   readBaseFile: (path: string) => string | null = head,
+  preserveMappedTargets = false,
 ) {
   return prepareChangedSelection('incident', {
     root,
     changedPathsFn: () => ({ mergeBase: 'incident-base', paths: [...paths] }),
     readBaseFile,
+    preserveMappedTargets,
   });
 }
 
@@ -95,7 +97,10 @@ describe('#3200: a sibling dependency bump selects the suites importing it', () 
   }
 
   test('the incident diff selects agent-policy-service for the bump', () => {
-    const result = select(incidents['3200'].paths, flowAgentsBase);
+    // The hosted fast-checks planner keeps every mapped target; the local
+    // profile drops explicit tests above its 32-entry cap (#1911), which
+    // this tree-dependent selection can cross as suites are added.
+    const result = select(incidents['3200'].paths, flowAgentsBase, true);
     const entry = result.selection.tests.find(
       (test: { path: string }) => test.path === AGENT_POLICY,
     );

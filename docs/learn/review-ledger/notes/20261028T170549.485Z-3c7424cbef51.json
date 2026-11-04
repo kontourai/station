@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Source-impact review: the module map adds one sentence: binding an OAuth client secret requires the declared oauthClient.issuer and the provider never presents it to another issuer. Searched this document for MCP tool-server OAuth client, issuer, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}

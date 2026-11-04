@@ -104,8 +104,6 @@
 
     "src-server/services/ssh/ssh-probe-admission.ts",
 
-    "src-server/services/terminal/terminal-ws-server.ts",
-
     "src-server/utils/private-sqlite.ts",
 
     "src-ui/src/views/account/AccountEntryView.tsx",
@@ -140,6 +138,16 @@
 
     "src-server/services/telemetry-producers/telemetry-producer-store.ts",
 
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-caller.ts",
+
+    "src-server/routes/mcp/station-control-mcp-route.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/connect/src/core/pendingPairingExchangeJournal.ts",
 
     "src-server/services/connections/lan-discovery.ts",
@@ -154,11 +162,31 @@
 
     "src-server/services/projects/project-s3-sources.ts",
 
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",
 
-    "src-server/services/identity/operator-sessions.ts"
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": [

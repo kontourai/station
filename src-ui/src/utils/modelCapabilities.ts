@@ -29,6 +29,9 @@ export type ModelProviderOption = {
   detail?: string;
 };
 
+const VERSION_DOT = /(?<=\d)\.(?=\d)/g;
+const UPPERCASE_PARTS = new Set(['gpt']);
+
 /**
  * A model id made readable WITHOUT claiming a name the catalog never gave:
  * 'claude-opus-5[1m]' → 'Opus 5 (1M)'. Reached only when no catalog entry
@@ -40,16 +43,28 @@ export type ModelProviderOption = {
  * "Us.anthropic.claude Sonnet 4 5 20250929 V1:0", which is not a prettier name
  * but a fabricated one. For those the id itself is the most honest thing we
  * have, so it is returned unchanged (archive#3391).
+ *
+ * A dot BETWEEN DIGITS is a version number, not a provider qualifier
+ * (#4402): `gpt-6.1-sol` reads "GPT 6.1 Sol" — the Codex catalog's own name —
+ * where the transcript used to print the raw id because the dot alone sent
+ * it down the provider-qualified path. Any other dot still does.
  */
 export function prettifyModelId(modelId: string): string {
   const id = modelId.trim();
-  if (!id || /[.:/]/.test(id)) return id;
+  if (!id || /[:/]/.test(id) || id.replace(VERSION_DOT, '').includes('.'))
+    return id;
   const oneM = /\[1m\]$/i.test(id);
   const base = id
     .replace(/\[1m\]$/i, '')
     .replace(/^claude-/i, '')
     .split('-')
-    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .map((part) =>
+      UPPERCASE_PARTS.has(part.toLowerCase())
+        ? part.toUpperCase()
+        : part
+          ? part[0].toUpperCase() + part.slice(1)
+          : part,
+    )
     .join(' ');
   const label = oneM ? `${base} (1M)` : base;
   // 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
@@ -196,6 +211,22 @@ export function replaceModelControlOptions(
   return { ...next, ...applied };
 }
 
+export function updateModelRuntimeOption(
+  current: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): Record<string, unknown> {
+  const next = { ...current };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  // Canonical controls and their legacy aliases cannot compete.
+  if (key === 'serviceTier') delete next.fastMode;
+  if (key === 'fastMode') delete next.serviceTier;
+  if (key === 'effort') delete next.reasoningEffort;
+  if (key === 'reasoningEffort') delete next.effort;
+  return next;
+}
+
 /**
  * A report can acknowledge picker-owned controls only when every meaningful
  * model control agrees. Non-model options (for example approval posture) are
@@ -239,6 +270,12 @@ export function sanitizeRuntimeOptionsForModel(
   const next = replaceModelControlOptions(current);
   const capabilities = model?.capabilities;
   const supportedEffort = capabilities?.supportedEffortLevels ?? [];
+  if (
+    capabilities?.serviceTiers?.some((tier) => tier.id === current.serviceTier)
+  )
+    next.serviceTier = current.serviceTier;
+  else if (current.serviceTier === null && capabilities?.serviceTiers?.length)
+    next.serviceTier = null;
   const currentEffort =
     typeof current.effort === 'string'
       ? current.effort
@@ -254,7 +291,8 @@ export function sanitizeRuntimeOptionsForModel(
   }
   if (
     capabilities?.supportsFastMode === true &&
-    typeof current.fastMode === 'boolean'
+    typeof current.fastMode === 'boolean' &&
+    current.serviceTier === undefined
   ) {
     next.fastMode = current.fastMode;
   }

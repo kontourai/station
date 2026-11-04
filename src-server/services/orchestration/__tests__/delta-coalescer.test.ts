@@ -190,7 +190,7 @@ describe('DeltaCoalescer', () => {
     const emitted: CanonicalRuntimeEvent[] = [];
     const coalescer = new DeltaCoalescer((e) => emitted.push(e), {
       windowMs: 1_000_000,
-      maxChars: 10,
+      maxBytes: 10,
       setTimer: () => 'timer',
       clearTimer: () => {},
       logger: { warn: vi.fn() },
@@ -373,7 +373,7 @@ describe('DeltaCoalescer', () => {
       },
       {
         windowMs: 1_000_000,
-        maxChars: 10,
+        maxBytes: 10,
         setTimer: () => 'timer',
         clearTimer: () => {},
         logger: { warn: vi.fn() },
@@ -485,7 +485,7 @@ describe('DeltaCoalescer', () => {
       },
       {
         windowMs: 1_000_000,
-        maxChars: 10,
+        maxBytes: 10,
         setTimer: () => 'timer',
         clearTimer: () => {},
         logger: { warn: vi.fn() },

@@ -1,0 +1,9 @@
+{
+  "revision": "1479ccab2a639ace96d8581eb764705f0a7f253f",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Scoped review of ChatMessageList visibility-only delta at a8e493e0d: removal of the six-user-turn cutoff does not change UIBlockActionsContext form dispatch/acceptance or subagent transcript-card placement, spawn anchoring, loaded-child retention or phone folding. Those documented owners and caller paths remain unchanged; no prose edits required for this delta. Source review only, without live provider or release acceptance.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Scoped review of ChatMessageList visibility-only delta at a8e493e0d: removal of the six-user-turn cutoff does not change UIBlockActionsContext form dispatch/acceptance or subagent transcript-card placement, spawn anchoring, loaded-child retention or phone folding. Those documented owners and caller paths remain unchanged; no prose edits required for this delta. Source review only, without live provider or release acceptance.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

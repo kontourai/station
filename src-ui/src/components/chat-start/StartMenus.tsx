@@ -1,7 +1,10 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
-import { useExecutionStationCatalog } from '../../hooks/useExecutionStationCatalog';
+import {
+  type ExecutionStation,
+  useExecutionStationCatalog,
+} from '../../hooks/useExecutionStationCatalog';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   type EffectiveModelSource,
@@ -14,7 +17,7 @@ import type {
 import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { WarningGlyph } from '../icons/Glyph';
+import { CheckGlyph, MonitorGlyph, WarningGlyph } from '../icons/Glyph';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   GLOBAL_CONTEXT,
@@ -193,7 +196,7 @@ export function StartAgentMenu({
             <Empty
               variant="compact"
               label="Nothing to chat with yet"
-              description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
+              description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
               action={
                 <Button onClick={onSetUpConnections}>Set up Connections</Button>
               }
@@ -317,6 +320,103 @@ export function StartProjectMenu({
   );
 }
 
+const STATION_KIND_DETAIL: Record<ExecutionStation['kind'], string> = {
+  current: 'This Station',
+  ssh: 'SSH',
+  paired: 'Paired Station',
+};
+
+/**
+ * The Station list behind "Runs on …": it only chooses where this start
+ * runs. Start still starts it; on another Station that is a task there,
+ * after its engine is chosen (see `StartPickerMenus`).
+ */
+export function StartStationMenu({
+  anchor,
+  layer,
+  stations,
+  selectedId,
+  stationsUnavailable,
+  onRetry,
+  onChoose,
+  onClose,
+}: {
+  anchor: HTMLElement | null;
+  layer: MenuLayer;
+  stations: ExecutionStation[];
+  selectedId: string;
+  stationsUnavailable: boolean;
+  onRetry?: () => void;
+  onChoose: (station: ExecutionStation) => void;
+  onClose: () => void;
+}) {
+  const anchorRef = useRef<HTMLElement | null>(anchor);
+  return (
+    <ResponsiveDialogSurface
+      layer={layer}
+      ariaLabel="Where this work runs"
+      onClose={onClose}
+      historyMode="entry"
+      anchorRef={anchorRef}
+      returnFocusTarget={anchor}
+      initialFocusPolicy="desktop"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
+      panelClassName="composer-popover-panel start-menu__panel"
+    >
+      <ResponsiveDialogHeader
+        title="Where this work runs"
+        closeLabel="Close Station list"
+        onClose={onClose}
+      />
+      <p className="start-menu__hint">
+        Choose the Station whose computer runs this work. On another Station,
+        Start sends it there as a task after you choose its engine.
+      </p>
+      <div className="start-menu__list">
+        {stations.map((station) => {
+          const selected = station.id === selectedId;
+          return (
+            <button
+              type="button"
+              key={station.id}
+              className={`new-chat-modal__dropdown-item ${selected ? 'new-chat-modal__dropdown-item--active' : ''}`}
+              aria-current={selected ? 'true' : undefined}
+              onClick={() => onChoose(station)}
+            >
+              <span className="new-chat-modal__dropdown-item-main">
+                <span className="new-chat-modal__dropdown-item-label">
+                  <span className="start-menu__mark">
+                    <MonitorGlyph />
+                  </span>
+                  <span>{station.name}</span>
+                </span>
+                <span className="start-menu__detail">
+                  {STATION_KIND_DETAIL[station.kind]}
+                </span>
+              </span>
+              {selected && (
+                <span className="start-menu__mark">
+                  <CheckGlyph />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {stationsUnavailable && (
+        <ErrorState
+          variant="compact"
+          title="Couldn’t list other Stations"
+          description="Check this device’s access and the host Station’s version."
+          action={
+            onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined
+          }
+        />
+      )}
+    </ResponsiveDialogSurface>
+  );
+}
+
 /**
  * The Model picker for one Agent, with its runtime options (reasoning effort
  * and the rest). Runtime options apply to this start only; the Model is
@@ -336,9 +436,12 @@ export function StartModelPicker({
   onClose,
   profile,
   onEnvironmentChange,
+  projectSelected,
 }: {
   profile?: AgentData;
   onEnvironmentChange?: (environmentId: string) => void;
+  /** A Project is selected: SSH Stations are not offered (see executionPlacement). */
+  projectSelected?: boolean;
   anchor: HTMLElement | null;
   layer: MenuLayer;
   models: SelectableModel[];
@@ -356,6 +459,7 @@ export function StartModelPicker({
   onClose: () => void;
 }) {
   const anchorRef: RefObject<HTMLElement | null> = useRef(anchor);
+  const titleId = React.useId();
   if (profile && onEnvironmentChange)
     return (
       <StationScopedModelPicker
@@ -372,6 +476,7 @@ export function StartModelPicker({
         onClose={onClose}
         profile={profile}
         onEnvironmentChange={onEnvironmentChange}
+        projectSelected={projectSelected}
       />
     );
   const loadingFrame = (
@@ -383,6 +488,7 @@ export function StartModelPicker({
     <ResponsiveDialogSurface
       layer={layer}
       ariaLabel="Model"
+      ariaLabelledBy={titleId}
       onClose={onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -395,6 +501,7 @@ export function StartModelPicker({
       ) : (
         <React.Suspense fallback={loadingFrame}>
           <SessionModelPicker
+            hostTitleId={titleId}
             returnFocusTarget={anchor}
             models={models}
             providers={modelPickerProviders(models, modelConnections)}
@@ -433,7 +540,11 @@ function StationScopedModelPicker(
   },
 ) {
   const environmentId = props.choice?.environmentId ?? 'current';
-  const catalog = useExecutionStationCatalog(props.profile, environmentId);
+  const catalog = useExecutionStationCatalog(
+    props.profile,
+    environmentId,
+    props.projectSelected,
+  );
   const remote = environmentId !== 'current';
   const models = remote
     ? catalog.models
@@ -443,10 +554,12 @@ function StationScopedModelPicker(
         environmentId: 'current',
       }));
   const anchorRef = useRef(props.anchor);
+  const titleId = React.useId();
   return (
     <ResponsiveDialogSurface
       layer={props.layer}
       ariaLabel="Engine & model"
+      ariaLabelledBy={titleId}
       onClose={props.onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -460,6 +573,7 @@ function StationScopedModelPicker(
         }
       >
         <SessionModelPicker
+          hostTitleId={titleId}
           stationControl={
             <>
               <label className="session-model-picker__station-control">
@@ -487,7 +601,16 @@ function StationScopedModelPicker(
                 </select>
               </label>
               {catalog.stationsUnavailable && (
-                <p role="status">Some Station choices could not be loaded.</p>
+                <ErrorState
+                  variant="compact"
+                  title="Couldn’t list other Stations"
+                  description="Check this device’s access and the host Station’s version."
+                  action={
+                    <Button onClick={() => void catalog.retryStations()}>
+                      Retry
+                    </Button>
+                  }
+                />
               )}
               {remote && (
                 <p className="session-model-picker__binding">
@@ -500,7 +623,10 @@ function StationScopedModelPicker(
           models={models}
           loading={remote ? catalog.loading : props.loading}
           providers={modelPickerProviders(models, props.modelConnections)}
-          currentProviderId={props.choice?.providerId}
+          currentProviderId={
+            props.choice?.providerId ??
+            (remote ? undefined : props.defaultModel?.providerId)
+          }
           currentModel={props.choice?.modelId}
           currentExecutionAgentId={props.choice?.executionAgentId}
           defaultModel={props.defaultModel?.id ?? undefined}

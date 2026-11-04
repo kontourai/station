@@ -1,13 +1,13 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import {
-  type Client,
   type PermissionOption,
   RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   ACP_MODEL_OVERRIDE_PER_TURN,
@@ -27,6 +27,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   builtinStationControlServerPath,
@@ -34,6 +35,12 @@ import {
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
@@ -56,6 +63,7 @@ import {
   AcpAdapter,
   type AcpAdapterOptions,
   acpConnectionFingerprint,
+  acpEngineExitEndsLaunch,
   acpExecutionIdentity,
 } from '../adapters/acp-adapter.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
@@ -200,7 +208,7 @@ async function nextEvent(
 }
 
 async function requestPermission(
-  client: Client,
+  client: ACPClientCallbacks,
   toolCallId: string,
   toolName?: string,
 ): Promise<RequestPermissionResponse> {
@@ -262,7 +270,7 @@ describe('AcpAdapter', () => {
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp/project',
-      createClient: () => ({}) as Client,
+      createClient: () => ({}) as ACPClientCallbacks,
       logger: { debug: vi.fn() },
       terminateProcess,
     });
@@ -282,7 +290,7 @@ describe('AcpAdapter', () => {
     const process = new ACPProcess({
       command: 'unused',
       cwd: '/tmp/project',
-      createClient: () => ({}) as Client,
+      createClient: () => ({}) as ACPClientCallbacks,
       logger: { debug: vi.fn() },
       terminateProcess,
     });
@@ -688,7 +696,7 @@ describe('AcpAdapter', () => {
     });
 
     // H1 fix, wired end-to-end: an `available_commands_update` session
-    // update sent through the live Client mutates the real
+    // update sent through the live ACPClientCallbacks mutates the real
     // AcpSessionRecord (via `ctx.state = record`) and getCommands()
     // reflects it — not just unit-testable against the mapper in isolation.
     await proc.client.sessionUpdate({
@@ -783,7 +791,9 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
     const managedCwd = initialSession.cwd;
-    expect(managedCwd).toContain('/runtime/acp-workspaces/session/');
+    expect(managedCwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     await nextEvent(iterator, 'session.started');
     await nextEvent(iterator, 'session.configured');
 
@@ -1066,6 +1076,54 @@ describe('AcpAdapter', () => {
         logger: { warn: vi.fn(), info: vi.fn() },
       });
     }
+
+    test('a required policy question overrides a previous session grant', async () => {
+      const evaluator = vi
+        .fn()
+        .mockResolvedValueOnce({ behavior: 'defer' })
+        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+      const { adapter, processes } = createAdapter({
+        resolvePreToolPolicy: async () => evaluator,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'required-ask',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        agent: { slug: 'engine-lab' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const first = requestPermission(
+        processes[0].client,
+        'first',
+        'mcp__tools__write',
+      );
+      const opened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await first;
+      await nextEvent(iterator, 'request.resolved');
+      const second = requestPermission(
+        processes[0].client,
+        'second',
+        'mcp__tools__write',
+      );
+      const required = await nextEvent(iterator, 'required request.opened');
+      expect(required.method).toBe('request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(required.requestId),
+        'decline',
+      );
+      await expect(second).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    });
 
     test('maps shared staged-policy allow/deny/defer without opening a second approval path', async () => {
       const evaluator = vi
@@ -1834,8 +1892,9 @@ describe('AcpAdapter', () => {
   });
 
   test('#1011: a connection cwd still applies when the session supplies none', async () => {
+    const connectionCwd = tmpdir();
     const { adapter, processes } = createAdapter({
-      connectionOverrides: [{ id: 'kiro', cwd: '/tmp/connection-default' }],
+      connectionOverrides: [{ id: 'kiro', cwd: connectionCwd }],
     });
 
     await adapter.startSession({
@@ -1844,7 +1903,7 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    expect(processes[0].opts.cwd).toBe('/tmp/connection-default');
+    expect(processes[0].opts.cwd).toBe(connectionCwd);
   });
 
   test('#1403: an unbound CLI launches in a private Station-managed workspace', async () => {
@@ -1864,7 +1923,9 @@ describe('AcpAdapter', () => {
     });
 
     expect(processes[0].opts.cwd).toBe(session.cwd);
-    expect(session.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(session.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     expect(processes[0].opts.cwd).not.toBe(homedir());
     expect(processes[0].opts.cwd).not.toBe(process.cwd());
   });
@@ -1911,7 +1972,9 @@ describe('AcpAdapter', () => {
     });
 
     expect(processes[0].opts.cwd).toBe(session.cwd);
-    expect(session.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(session.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     expect(processes[0].opts.cwd).not.toBe(homedir());
     expect(processes[0].opts.cwd).not.toBe(process.cwd());
   });
@@ -1930,7 +1993,9 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    expect(processes[0].opts.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(processes[0].opts.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
   });
 
   test('#1023 review: a connection cwd with a literal ~ is expanded, not passed through raw', async () => {
@@ -2701,7 +2766,7 @@ describe('AcpAdapter', () => {
      * stored history inside `loadSession`, plus one update still in flight
      * after the response (the SDK dispatches without awaiting).
      */
-    const emitStoredHistory = (client: Client) => {
+    const emitStoredHistory = (client: ACPClientCallbacks) => {
       const replayed = (update: Record<string, unknown>) =>
         ({ sessionId: 'native-kiro-cli', update }) as any;
       void client.sessionUpdate(
@@ -4082,7 +4147,7 @@ describe('AcpAdapter', () => {
   // before the same turn's `prompt()` rejects with a bare JSON-RPC -32603
   // ("Internal error", no detail). This is an integration probe through the
   // adapter's real event translation (`process.client.extNotification` is
-  // the genuine `createACPBridgeClient`-built Client the SDK would call, not
+  // the genuine `createACPBridgeClient`-built ACPClientCallbacks the SDK would call, not
   // a direct call into the pure mapper) — the mapper-level unit tests for
   // the retention/extraction rules live in acp-adapter-events.test.ts.
   describe('station#4084: turn-failure enrichment from a co-reported extension notification', () => {
@@ -5940,6 +6005,46 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     );
   });
 
+  test('a failed coordinator-only delivery revokes only its own credential', async () => {
+    const revoke = vi.fn();
+    const { adapter } = createAdapter({
+      mcpHttpCapability: true,
+      mintStationControlMcpAuth: () => ({
+        url: STATION_CONTROL_URL,
+        token: TOKEN,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-derived-refusal',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      agent: {
+        slug: 'my-agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio',
+            command: 'node',
+            args: ['/not-the-builtin'],
+            coordinatorDerived: true,
+            coordinatorGeneration: 0,
+          },
+        ],
+      },
+    });
+    expect(revoke).toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'coordinator-control',
+    );
+    expect(revoke).not.toHaveBeenCalledWith(
+      'thread-derived-refusal',
+      'station-control',
+    );
+    await adapter.stopAll();
+  });
+
   /**
    * station#1569 (L3): the credential-refusal recovery is the ACP session-end
    * path that settled NOTHING before — unlike the stop path it never reaches
@@ -7123,5 +7228,295 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
       turnId: followUp.turnId,
     });
     await adapter.stopAll();
+  });
+});
+
+describe('chat-host-images: an ACP engine that exits on its own', () => {
+  const makeHome = trackTempDirs();
+
+  test('releases its launch temp folder when its process exits', async () => {
+    const home = makeHome('acp-crash-tmp-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const exits: Array<() => void> = [];
+      const { adapter } = createAdapter({
+        onProcess: (proc) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-acp-crash',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-acp-crash', home);
+      expect(sessionTempRoot('thread-acp-crash')).toBe(own);
+      exits[0]!();
+      expect(sessionTempRoot('thread-acp-crash')).toBeUndefined();
+      expect(existsSync(own)).toBe(false);
+      await adapter.stopAll();
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  });
+});
+
+describe('chat-host-images: an ACP approval relaunch and its temp folder', () => {
+  const makeHome = trackTempDirs();
+
+  async function relaunchWithOldExitMidStart(nextStart: 'succeeds' | 'fails') {
+    const home = makeHome('acp-relaunch-tmp-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    const exits: Array<() => void> = [];
+    let releaseStart!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    try {
+      const { adapter } = createAdapter({
+        resumeSessionCapability: true,
+        onProcess: (proc, index) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+          if (index === 1) {
+            const start = proc.start.bind(proc);
+            proc.start = async () => {
+              await gate;
+              if (nextStart === 'fails')
+                throw new Error('replacement did not start');
+              return start();
+            };
+            // The real resume answers with a result (the fake answers nothing).
+            const resume = proc.resumeSession.bind(proc);
+            Object.assign(proc, {
+              resumeSession: async (...args: Parameters<typeof resume>) => {
+                await resume(...args);
+                return {};
+              },
+            });
+          }
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-relaunch',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-relaunch', home);
+      expect(sessionTempRoot('thread-relaunch')).toBe(own);
+      const record = (
+        adapter as unknown as { sessions: Map<string, unknown> }
+      ).sessions.get('thread-relaunch');
+      const relaunch = (
+        adapter as unknown as {
+          relaunchOnApprovalFloor: (
+            record: unknown,
+            floor: undefined,
+          ) => Promise<{ ok: boolean }>;
+        }
+      ).relaunchOnApprovalFloor(record, undefined);
+      // The old process dies while its replacement is still starting.
+      await vi.waitFor(() => expect(exits.length).toBe(2));
+      exits[0]!();
+      releaseStart();
+      const outcome = await relaunch;
+      const afterRelaunch = {
+        root: sessionTempRoot('thread-relaunch'),
+        exists: existsSync(own),
+      };
+      // The replacement, now current, dies on its own: that ends the launch.
+      exits[1]!();
+      const result = {
+        afterRelaunch,
+        outcome,
+        own,
+        root: sessionTempRoot('thread-relaunch'),
+        exists: existsSync(own),
+      };
+      await adapter.stopAll();
+      return result;
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  }
+
+  test('the old process exiting mid-start keeps the folder for the replacement, whose own exit then releases it', async () => {
+    const result = await relaunchWithOldExitMidStart('succeeds');
+    expect(result.outcome).toEqual({ ok: true });
+    expect(result.afterRelaunch).toEqual({ root: result.own, exists: true });
+    // ... and the replacement's own later exit still releases it.
+    expect(result.root).toBeUndefined();
+    expect(result.exists).toBe(false);
+  });
+
+  test('if the replacement then fails to start, the launch is released, not leaked', async () => {
+    const result = await relaunchWithOldExitMidStart('fails');
+    expect(result.outcome.ok).toBe(false);
+    expect(result.afterRelaunch).toEqual({ root: undefined, exists: false });
+  });
+});
+
+describe('chat-host-images: ACP relaunch sequences and the temp folder', () => {
+  const makeHome = trackTempDirs();
+  type Step = { oldDies: boolean; next: 'ok' | 'start-fails' | 'resume-fails' };
+
+  /** Each step relaunches once; returns whether the folder and root remain. */
+  async function relaunches(steps: Step[]) {
+    const home = makeHome('acp-relaunch-seq-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    const exits: Array<() => void> = [];
+    const gates: Array<() => void> = [];
+    try {
+      const { adapter } = createAdapter({
+        resumeSessionCapability: true,
+        onProcess: (proc, index) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+          if (index === 0) return;
+          const step = steps[index - 1]!;
+          const gate = new Promise<void>((resolve) => {
+            gates[index] = resolve;
+          });
+          const start = proc.start.bind(proc);
+          proc.start = async () => {
+            await gate;
+            if (step.next === 'start-fails') throw new Error('start failed');
+            return start();
+          };
+          const resume = proc.resumeSession.bind(proc);
+          Object.assign(proc, {
+            resumeSession: async (...args: Parameters<typeof resume>) => {
+              if (step.next === 'resume-fails')
+                throw new Error('resume failed');
+              await resume(...args);
+              return {};
+            },
+          });
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-seq',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-seq', home);
+      const record = (
+        adapter as unknown as { sessions: Map<string, unknown> }
+      ).sessions.get('thread-seq');
+      const relaunch = (
+        adapter as unknown as {
+          relaunchOnApprovalFloor: (
+            record: unknown,
+            floor: undefined,
+          ) => Promise<{ ok: boolean }>;
+        }
+      ).relaunchOnApprovalFloor.bind(adapter);
+      const outcomes: boolean[] = [];
+      let current = 0;
+      for (const [i, step] of steps.entries()) {
+        const pending = relaunch(record, undefined);
+        await vi.waitFor(() => expect(gates[i + 1]).toBeDefined());
+        if (step.oldDies) exits[current]!();
+        gates[i + 1]!();
+        const outcome = await pending;
+        outcomes.push(outcome.ok);
+        if (outcome.ok) current = i + 1;
+      }
+      const result = {
+        outcomes,
+        root: sessionTempRoot('thread-seq'),
+        own,
+        exists: existsSync(own),
+      };
+      await adapter.stopAll();
+      return result;
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  }
+
+  test('a relaunch after an earlier one whose old process died does not inherit that marker', async () => {
+    const result = await relaunches([
+      { oldDies: true, next: 'ok' },
+      { oldDies: false, next: 'start-fails' },
+    ]);
+    expect(result.outcomes).toEqual([true, false]);
+    // The live (first replacement) process keeps its folder.
+    expect(result.root).toBe(result.own);
+    expect(result.exists).toBe(true);
+  });
+
+  test('replacement starts but cannot resume: the folder is kept while the old process lives', async () => {
+    const result = await relaunches([{ oldDies: false, next: 'resume-fails' }]);
+    expect(result.outcomes).toEqual([false]);
+    expect(result.root).toBe(result.own);
+    expect(result.exists).toBe(true);
+  });
+
+  test('replacement starts but cannot resume and the old process died: the launch is released', async () => {
+    const result = await relaunches([{ oldDies: true, next: 'resume-fails' }]);
+    expect(result.outcomes).toEqual([false]);
+    expect(result.root).toBeUndefined();
+    expect(result.exists).toBe(false);
+  });
+});
+
+describe('chat-host-images: which ACP engine exit ends its launch', () => {
+  const engine = {};
+  const other = {};
+  test('the current process of the current session, with no relaunch starting', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: engine },
+        engine,
+      }),
+    ).toBe(true);
+  });
+  test('not a process that was already replaced', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: other },
+        engine,
+      }),
+    ).toBe(false);
+  });
+  test('not while a relaunch starts its replacement (the old process is still current)', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: engine, relaunching: true },
+        engine,
+      }),
+    ).toBe(false);
+  });
+  test('not a session that is no longer the thread session', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: false,
+        record: { process: engine },
+        engine,
+      }),
+    ).toBe(false);
   });
 });

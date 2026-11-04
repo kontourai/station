@@ -167,6 +167,7 @@ function buildChatInput(): Parameters<typeof ChatDockBody>[0]['chatInput'] {
     slashCommands: [],
     handleInputChange: vi.fn(),
     handleSend: vi.fn(async () => {}),
+    sendComposedMessage: vi.fn(async () => true),
     handleCancel: vi.fn(),
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),

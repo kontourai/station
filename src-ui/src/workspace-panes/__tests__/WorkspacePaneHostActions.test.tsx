@@ -49,12 +49,21 @@ const projection = {
     },
   },
 };
+const hostQuery = vi.hoisted(() => ({
+  state: {} as Record<string, unknown>,
+}));
+const loadedHostQuery = () => ({
+  isLoading: false,
+  fetchStatus: 'idle' as string,
+  isError: false,
+  error: null as unknown,
+  errorUpdatedAt: 0,
+  data: { contributions: [{ projection }] } as unknown,
+});
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
   useWorkspacePaneHostActionsQuery: () => ({
-    isLoading: false,
-    isError: false,
+    ...hostQuery.state,
     refetch: mocks.refetch,
-    data: { contributions: [{ projection }] },
   }),
   useWorkspacePaneHostActionMutation: () => ({
     mutateAsync: mocks.mutateAsync,
@@ -78,6 +87,7 @@ import { WorkspacePaneHostActionsFrame } from '../WorkspacePaneHostActions';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  hostQuery.state = loadedHostQuery();
   mocks.isCurrent.mockReturnValue(true);
   mocks.openConversation.mockResolvedValue(true);
 });
@@ -234,4 +244,47 @@ test('late results cannot publish into a replaced Station authority', async () =
     screen.queryByRole('button', { name: 'Open conversation' }),
   ).toBeNull();
   expect(mocks.openConversation).not.toHaveBeenCalled();
+});
+
+test('a failed catalog stays a failure while it retries instead of flickering to the skeleton', () => {
+  hostQuery.state = {
+    ...loadedHostQuery(),
+    data: undefined,
+    isError: true,
+    error: new TypeError('Failed to fetch'),
+    errorUpdatedAt: 1,
+  };
+  const view = render(
+    <WorkspacePaneHostActionsFrame projectSlug="one">
+      <div>Pane</div>
+    </WorkspacePaneHostActionsFrame>,
+  );
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Workspace actions unavailable',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  expect(mocks.refetch).toHaveBeenCalledTimes(1);
+
+  // TanStack resets a no-data query to loading when the refetch starts.
+  hostQuery.state = {
+    ...hostQuery.state,
+    isError: false,
+    error: null,
+    isLoading: true,
+    fetchStatus: 'fetching',
+  };
+  view.rerender(
+    <WorkspacePaneHostActionsFrame projectSlug="one">
+      <div>Pane</div>
+    </WorkspacePaneHostActionsFrame>,
+  );
+  expect(
+    screen.queryByRole('status', { name: 'Loading workspace actions' }),
+  ).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Could not reach Station',
+  );
+  expect(
+    screen.getByRole('button', { name: 'Try again' }).getAttribute('aria-busy'),
+  ).toBe('true');
 });

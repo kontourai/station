@@ -1,0 +1,606 @@
+import { readFileSync } from 'node:fs';
+import { type Browser, chromium, type Page } from '@playwright/test';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { auditGalleryScreen } from '../../tests/helpers/gallery-ui-audit';
+import {
+  HIT_TARGET_AUDIT,
+  type HitTargetAudit,
+} from '../../tests/helpers/hit-target-audit';
+
+// The gallery's product assertions, run against fixture pages in a real
+// Chromium: geometry needs layout, and the axe keys need axe's real selectors.
+
+let browser: Browser;
+let page: Page;
+beforeAll(async () => {
+  browser = await chromium.launch({ headless: true });
+  // AxeBuilder requires a page from an explicit context.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  page = await context.newPage();
+}, 60_000);
+afterAll(async () => {
+  await browser?.close();
+});
+
+async function render(body: string) {
+  await page.setContent(
+    `<!doctype html><html lang="en"><head><title>Fixture</title></head><body style="margin:0"><main><div id="root">${body}</div></main></body></html>`,
+  );
+}
+
+const control = (name: string) =>
+  `<button aria-label="${name}" style="display:block;width:60px;height:60px">${name}</button>`;
+
+describe('hit-target audit scrollers', { timeout: 60_000 }, () => {
+  async function unreachable(body: string) {
+    await render(body);
+    const audit = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
+    return audit.unreachable;
+  }
+
+  it('A: a control below the fold of a scroller that scrolls is reachable', async () => {
+    expect(
+      await unreachable(
+        `<div style="height:300px;overflow:hidden"><div style="height:300px;overflow:auto"><div style="height:1000px"></div>${control('Case A')}</div></div>`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('B: a control past a hard clip is unreachable', async () => {
+    expect(
+      await unreachable(
+        `<div style="height:100px;overflow:hidden"><div style="height:500px"></div>${control('Case B')}</div>`,
+      ),
+    ).toEqual(['Case B']);
+  });
+
+  it('C: an auto box that does not scroll, cut by an outer clip, hides its control', async () => {
+    expect(
+      await unreachable(
+        `<div style="height:100px;overflow:hidden"><div style="overflow:auto"><div style="height:500px"></div>${control('Case C')}</div></div>`,
+      ),
+    ).toEqual(['Case C']);
+  });
+
+  it('D: a flex child that really scrolls lets its control scroll into view', async () => {
+    expect(
+      await unreachable(
+        `<div style="display:flex;flex-direction:column;height:200px;overflow:hidden"><div style="flex:1;min-height:0;overflow:auto"><div style="height:600px"></div>${control('Case D')}</div></div>`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('a scroller clipped away entirely leaves its controls unreachable', async () => {
+    expect(
+      await unreachable(
+        `<div style="height:100px;overflow:hidden"><div style="height:200px"></div><div style="height:100px;overflow:auto"><div style="height:400px"></div>${control('Case E')}</div></div>`,
+      ),
+    ).toEqual(['Case E']);
+  });
+});
+
+describe('gallery finding identities', { timeout: 60_000 }, () => {
+  it('reports a control partly covered by collapsed dock chrome, but not one clear of it', async () => {
+    await render(
+      `<button aria-label="Covered" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Covered</button><button aria-label="Clear" style="position:fixed;left:150px;bottom:100px;width:100px;height:44px">Clear</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Covered'),
+      ),
+    ).toBe(true);
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clear'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not report a clickable foreground dialog control above the dock', async () => {
+    await render(
+      `<div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div role="dialog" style="position:fixed;left:0;right:0;bottom:0;height:180px;z-index:10;background:white"><button aria-label="Done" style="position:absolute;left:10px;bottom:35px;width:100px;height:44px" onclick="this.closest('[role=dialog]').remove()">Done</button></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Done'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Done' }).click();
+    expect(await page.getByRole('dialog').count()).toBe(0);
+  });
+
+  it('ignores background controls while a modal backdrop covers the dock', async () => {
+    await render(
+      `<button aria-label="Background" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Background</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div style="position:fixed;inset:0;z-index:10;background:#0008"></div><div role="dialog" style="position:fixed;top:10px;left:10px;z-index:11;background:white">Dialog</div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Background'),
+      ),
+    ).toBe(false);
+  });
+
+  it('reports a partly visible control extending beyond the content clip into the dock', async () => {
+    await render(
+      `<div style="position:fixed;left:0;right:0;top:0;bottom:55px;overflow:hidden"><button aria-label="Clipped by dock boundary" style="position:absolute;bottom:-24px;left:10px;width:100px;height:44px">Clipped by dock boundary</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clipped by dock boundary'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not treat a small glimpse of a below-fold scrolling card as dock occlusion', async () => {
+    await render(
+      `<div style="position:fixed;left:10px;width:200px;top:0;bottom:55px;overflow:auto"><div style="height:900px"></div><button aria-label="Below fold" style="width:100px;height:60px;position:absolute;top:780px" onclick="this.dataset.clicked=1">Below fold</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Below fold'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Below fold' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Below fold' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
+  it('allows a Settings row that scrolls fully above the dock', async () => {
+    await render(
+      `<div style="position:fixed;left:0;right:0;top:0;bottom:0;overflow:auto"><div class="settings__section" style="height:1300px"><button aria-label="Settings row" style="position:absolute;top:800px;width:100px;height:32px" onclick="this.dataset.clicked=1">Settings row</button></div></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Settings row'),
+      ),
+    ).toBe(false);
+    await page.mouse.move(200, 400);
+    await page.mouse.wheel(0, 300);
+    await page.getByRole('button', { name: 'Settings row' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Settings row' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
+  it.each(['sticky control', 'sticky ancestor', 'fixed control'])(
+    'reports a %s that cannot scroll clear of the dock',
+    async (kind) => {
+      const position = kind === 'fixed control' ? 'fixed' : 'sticky';
+      const button = `<button aria-label="Pinned row" style="${kind === 'sticky ancestor' ? '' : `position:${position};top:800px;`}width:100px;height:32px">Pinned row</button>`;
+      const content =
+        kind === 'sticky ancestor'
+          ? `<div style="position:sticky;top:800px">${button}</div>`
+          : button;
+      await render(
+        `<div style="position:fixed;left:0;right:0;top:0;bottom:0;overflow:auto"><div class="settings__section" style="height:1800px">${content}</div></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+      );
+      const row = page.getByRole('button', { name: 'Pinned row' });
+      const audit = await auditGalleryScreen(page, 'fixture');
+      expect(
+        audit.findings.some(
+          (finding) =>
+            finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+            finding.identity.includes('Pinned row'),
+        ),
+      ).toBe(true);
+      await page.mouse.move(200, 400);
+      await page.mouse.wheel(0, 300);
+      await expect(row.click({ timeout: 1000 })).rejects.toThrow();
+    },
+  );
+
+  it('does not call a control clipped out by its own ancestor a dock occlusion', async () => {
+    await render(
+      `<div style="position:fixed;top:700px;left:10px;width:120px;height:10px;overflow:hidden"><button aria-label="Clipped" style="position:absolute;top:100px;width:100px;height:44px">Clipped</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clipped'),
+      ),
+    ).toBe(false);
+  });
+  // Visible text missing from the accessible name: axe's
+  // label-content-name-mismatch (serious), keyed by the gallery.
+  const mismatch =
+    '<button class="tool-chip" aria-label="Open the panel">Settings</button>';
+
+  async function axeKeys(body: string) {
+    await render(body);
+    const audit = await auditGalleryScreen(page, 'fixture');
+    return audit.findings
+      .map(({ identity }) => identity)
+      .filter((identity) => identity.startsWith('axe:'));
+  }
+
+  it('keys a finding by what the element is, not where axe found it', async () => {
+    const alone = await axeKeys(`<section>${mismatch}</section>`);
+    expect(alone).toEqual([
+      'axe:label-content-name-mismatch:button.tool-chip[Open the panel]',
+    ]);
+    // An unrelated sibling before it, and a second instance elsewhere, move
+    // axe's selector (`.tool-chip` -> `section > .tool-chip:nth-child(2)`).
+    const crowded = await axeKeys(
+      `<section><button class="tool-chip" aria-label="Other">Other</button>${mismatch}</section><aside>${mismatch}</aside>`,
+    );
+    expect(crowded).toEqual(alone);
+  });
+
+  it('masks React ids and counts in the anchor', async () => {
+    const first = await axeKeys(
+      '<span id="_r_d_-0-name">Run 3 checks</span><button aria-labelledby="_r_d_-0-name">Go</button>',
+    );
+    const renumbered = await axeKeys(
+      '<p>unrelated</p><span id="_r_1f_-0-name">Run 12 checks</span><button aria-labelledby="_r_1f_-0-name">Go</button>',
+    );
+    expect(first).toEqual([
+      'axe:label-content-name-mismatch:button[Run # checks]',
+    ]);
+    expect(renumbered).toEqual(first);
+  });
+});
+
+describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
+  async function keys(body: string, prefix: string) {
+    await render(body);
+    const audit = await auditGalleryScreen(page, 'fixture');
+    return audit.findings
+      .map(({ identity }) => identity)
+      .filter((identity) => identity.startsWith(prefix));
+  }
+  const tiny =
+    '<button class="tiny-action" aria-label="Save draft 2" style="width:30px;height:30px">S</button>';
+  const clipped =
+    '<div style="height:40px;overflow:hidden"><div style="height:200px"></div><button class="buried-action" aria-label="Hidden action">H</button></div>';
+  const wide =
+    '<div class="wide-row" style="width:600px;height:20px">wide</div>';
+
+  it('keys a small target by its anchor, unmoved by a sibling or a second instance', async () => {
+    const alone = await keys(`<section>${tiny}</section>`, 'hit-target:small:');
+    expect(alone).toEqual([
+      'hit-target:small:button.tiny-action[Save draft #]',
+    ]);
+    expect(
+      await keys(
+        `<section><p>intro</p>${tiny}</section><aside style="margin-top:60px">${tiny}</aside>`,
+        'hit-target:small:',
+      ),
+    ).toEqual(alone);
+  });
+
+  it('keys an unreachable control by its anchor', async () => {
+    const alone = await keys(clipped, 'hit-target:unreachable:');
+    expect(alone).toEqual([
+      'hit-target:unreachable:button.buried-action[Hidden action]',
+    ]);
+    expect(
+      await keys(`<p>intro</p>${clipped}`, 'hit-target:unreachable:'),
+    ).toEqual(alone);
+  });
+
+  it('keys horizontal overflow by its anchor', async () => {
+    const alone = await keys(`<section>${wide}</section>`, 'overflow:element:');
+    expect(alone).toEqual(['overflow:element:div.wide-row']);
+    expect(
+      await keys(`<section><p>intro</p>${wide}</section>`, 'overflow:element:'),
+    ).toEqual(alone);
+  });
+
+  const overlaps = (body: string) => keys(body, 'hit-target:overlap:');
+  const bar =
+    '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
+
+  it('keeps a below-fold action reachable without overlapping the input beneath its scroller', async () => {
+    expect(
+      await overlaps(
+        '<div style="height:60px;overflow:auto"><div style="height:80px"></div><button class="below-fold" aria-label="Setup" style="width:200px;height:44px" onclick="this.dataset.clicked=1">Setup</button></div><textarea class="draft-input" aria-label="Draft" style="display:block;width:200px;height:60px"></textarea>',
+      ),
+    ).toEqual([]);
+    await page.getByRole('button', { name: 'Setup' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Setup' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
+  it('does not judge controls inside a closed, clipping details', async () => {
+    expect(
+      await keys(
+        '<details class="more" style="overflow:hidden"><summary style="display:block;width:120px;height:44px">More</summary><div style="height:40px"></div><button class="inner-action" aria-label="Inner" style="display:block;width:30px;height:30px">Inner</button></details>',
+        'hit-target:',
+      ),
+    ).toEqual([]);
+  });
+
+  it('still judges controls in content-visibility: auto content below the fold', async () => {
+    expect(
+      await keys(
+        '<div style="height:3000px"></div><div style="content-visibility:auto;contain-intrinsic-size:auto 100px"><button class="deferred-action" aria-label="Deferred" style="width:30px;height:30px">D</button></div>',
+        'hit-target:small:',
+      ),
+    ).toEqual(['hit-target:small:button.deferred-action[Deferred]']);
+  });
+
+  it('reports content scrolled under a fixed header: scroll position is not credited', async () => {
+    // Scrolling back up would separate them, but modelling scroll clearance
+    // kept hiding real defects, so the audit stays conservative.
+    expect(
+      await overlaps(
+        `${bar}<div style="height:130px"></div><button class="under-choice" aria-label="Choice" style="display:block;width:200px;height:44px;margin-top:10px">Choice</button><div style="height:2000px"></div><script>scrollTo(0, 100)</script>`,
+      ),
+    ).toEqual([
+      'hit-target:overlap:button.bar-action[Menu] / button.under-choice[Choice]',
+    ]);
+  });
+
+  it('clears content behind a modal sheet that covers its centre', async () => {
+    expect(
+      await overlaps(
+        '<div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="sheet-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
+      ),
+    ).toEqual([]);
+  });
+
+  it('clears content whose lower edge runs under the expanded dock sheet', async () => {
+    // The hosted renderer's home composer: the textarea's centre is visible
+    // above the dock, its bottom edge sits behind the dock header's buttons.
+    expect(
+      await overlaps(
+        '<div style="height:380px"></div><textarea class="composer" aria-label="What would you like done?" style="display:block;width:330px;height:120px;margin-left:30px"></textarea><section class="chat-dock" style="position:fixed;left:0;right:0;top:465px;bottom:0;background:#111"><button class="dock-new" aria-label="New chat" style="width:60px;height:50px;margin-left:300px">N</button></section>',
+      ),
+    ).toEqual([]);
+  });
+
+  // Accepted decision: a sheet clears content partly under it, including
+  // the non-modal expanded chat dock; the visible part stays tappable.
+  const content = (top: number) =>
+    `<div style="height:${top}px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div>`;
+
+  it('A2h: clears content whose lower 20 of 44px run under the expanded dock', async () => {
+    expect(
+      await overlaps(
+        `${content(441)}<section class="chat-dock" style="position:fixed;left:0;right:0;top:465px;bottom:0;z-index:5;background:#111"><button class="dock-new" aria-label="New chat" style="width:390px;height:50px">N</button></section>`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('A1d: clears content under a showModal() dialog', async () => {
+    expect(
+      await overlaps(
+        `${content(758)}<dialog id="d" style="position:fixed;margin:0;inset:800px 0 0 0;max-width:none;max-height:none;width:auto;height:auto;padding:0;border:0"><button class="sheet-close" aria-label="Sheet close" style="width:390px;height:44px">X</button></dialog><script>document.getElementById("d").showModal()</script>`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('clears content behind the expanded chat dock sheet', async () => {
+    expect(
+      await overlaps(
+        '<section class="chat-dock" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="dock-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></section><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
+      ),
+    ).toEqual([]);
+  });
+
+  // Must stay reported: each is a control a user cannot reach or press.
+  const reported: Record<string, [string, string]> = {
+    'a collapsed chat dock bar over the last control at max scroll': [
+      '<div style="height:790px"></div><button class="tech-details" aria-label="Technical details" style="display:block;width:390px;height:44px">Technical details</button><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:44px"><button class="dock-bar" aria-label="Chat" style="width:390px;height:44px">Chat</button></section>',
+      'hit-target:overlap:button.tech-details[Technical details] / button.dock-bar[Chat]',
+    ],
+    'F1: a fixed bottom bar button over a primary control, page cannot scroll':
+      [
+        '<div style="height:780px"></div><button class="primary-submit" aria-label="Submit order" style="display:block;width:390px;height:44px">Submit</button><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div>',
+        'hit-target:overlap:button.primary-submit[Submit order] / button.bar-save[Bar save]',
+      ],
+    "F3: a fixed header over a scrolling page's first row": [
+      '<div style="position:fixed;top:0;left:0;right:0;height:56px;z-index:2;background:#fff"><button class="hdr-menu" aria-label="Menu" style="width:390px;height:56px">M</button></div><button class="first-row" aria-label="First row" style="display:block;width:390px;height:44px;margin-top:30px">First</button><div style="height:2000px"></div>',
+      'hit-target:overlap:button.hdr-menu[Menu] / button.first-row[First row]',
+    ],
+    'F4: a page that scrolls 8px with its last control 30px under a bar': [
+      '<div style="height:776px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:76px">Last</button><div style="position:fixed;left:0;right:0;bottom:0;height:30px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:30px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    "F5: a sticky header over a pane's first row at scrollTop 0": [
+      '<div style="height:600px;overflow:auto"><div style="position:sticky;top:0;height:50px;z-index:2"><button class="sticky-filter" aria-label="Filter" style="width:390px;height:50px">F</button></div><button class="row-one" aria-label="Row one" style="display:block;width:390px;height:44px;margin-top:-30px;position:relative">Row</button><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.sticky-filter[Filter] / button.row-one[Row one]',
+    ],
+    'F6: a control in a non-scrolling region under a fixed button': [
+      '<div style="height:300px;overflow:hidden"><button class="pane-act" aria-label="Pane act" style="display:block;width:200px;height:44px;margin-top:20px">Act</button></div><div style="position:fixed;top:0;left:0;width:150px;height:50px;z-index:2"><button class="dock-new" aria-label="Dock new" style="width:150px;height:50px">N</button></div><div style="height:2000px"></div>',
+      'hit-target:overlap:button.pane-act[Pane act] / button.dock-new[Dock new]',
+    ],
+    'F7: two pinned controls overlapping': [
+      '<div style="position:fixed;top:0;left:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div>',
+      'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+    ],
+    'a pinned control whose centre a modal sheet covers': [
+      '<div style="position:fixed;left:0;top:0"><button class="toolbar-action" aria-label="Toolbar" style="width:300px;height:60px">T</button></div><div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="sheet-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div>',
+      'hit-target:overlap:button.toolbar-action[Toolbar] / button.sheet-action[New chat]',
+    ],
+    'B2: the last control at max page scroll under a 60px bottom bar': [
+      '<div style="height:2000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>scrollTo(0, 99999)</script>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B2b: the same at max pane scroll': [
+      '<div id="p" style="height:844px;overflow:auto"><div style="height:2000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>document.getElementById("p").scrollTop=99999</script>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B3: a column-reverse scroller at its natural bottom under a 60px bar': [
+      '<div style="height:844px;overflow:auto;display:flex;flex-direction:column-reverse"><button class="last-row" aria-label="Last row" style="flex:none;display:block;width:390px;height:44px">Last</button><div style="flex:none;height:2000px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B3b: a column-reverse scroller under a 30px bar': [
+      '<div style="height:844px;overflow:auto;display:flex;flex-direction:column-reverse"><button class="last-row" aria-label="Last row" style="flex:none;display:block;width:390px;height:44px">Last</button><div style="flex:none;height:2000px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:30px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:30px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B4: a fixed control inside a scroller, under another fixed control': [
+      '<div style="height:844px;overflow:auto"><div style="height:2000px"></div><div style="position:fixed;left:0;top:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div>',
+      'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+    ],
+    'B5: two sticky controls overlapping in one scroller': [
+      '<div style="height:600px;overflow:auto"><div style="position:sticky;top:0;height:0;z-index:2"><button class="st-a" aria-label="St A" style="width:60px;height:60px">A</button></div><div style="position:sticky;top:20px;height:0;margin-left:20px;z-index:3"><button class="st-b" aria-label="St B" style="width:60px;height:60px">B</button></div><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.st-a[St A] / button.st-b[St B]',
+    ],
+    "B6: a layer covering the scroller's whole visible area": [
+      '<div style="height:744px"></div><div style="height:100px;overflow:auto"><button class="pane-row" aria-label="Pane row" style="display:block;width:390px;height:44px">R</button><div style="height:400px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:100px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:100px">Bar</button></div>',
+      'hit-target:overlap:button.pane-row[Pane row] / button.bar-save[Bar save]',
+    ],
+    'N5c: a clipped scroller taller than its clip, at max scroll, under a bar':
+      [
+        '<div style="height:844px;overflow:hidden"><div style="height:500px"></div><div id="i" style="height:1000px;overflow:auto"><div style="height:1000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button><div style="height:666px"></div></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>{const i=document.getElementById("i");i.scrollTop=99999;window.__dbg={st:i.scrollTop,max:i.scrollHeight-i.clientHeight}}</script>',
+        'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+      ],
+    'N7: an un-stuck sticky header over a row in the same scroller': [
+      '<div style="height:600px;overflow:auto"><div style="height:300px"></div><div style="position:sticky;top:0;height:50px;z-index:2"><button class="sec-hdr" aria-label="Sec hdr" style="width:390px;height:50px">H</button></div><button class="row-x" aria-label="Row x" style="display:block;width:390px;height:44px;margin-top:-30px;position:relative">Row</button><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.sec-hdr[Sec hdr] / button.row-x[Row x]',
+    ],
+    'B4m: a fixed control inside a mid-scrolled pane, under another fixed control':
+      [
+        '<div id="p" style="height:844px;overflow:auto"><div style="height:2000px"></div><div style="position:fixed;left:0;top:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div><script>document.getElementById("p").scrollTop=500</script>',
+        'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+      ],
+    'content whose lower edge runs under a fixed bar that is not a sheet': [
+      '<div style="height:380px"></div><textarea class="composer" aria-label="What would you like done?" style="display:block;width:330px;height:120px;margin-left:30px"></textarea><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;top:465px;height:60px;background:#111"><button class="dock-new" aria-label="New chat" style="width:60px;height:50px;margin-left:300px">N</button></section>',
+      'hit-target:overlap:textarea.composer[What would you like done?] / button.dock-new[New chat]',
+    ],
+    'A6: a collapsed dock covering the lower 20 of 44px': [
+      '<div style="height:441px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;top:465px;height:60px;z-index:5;background:#111"><button class="dock-new" aria-label="New chat" style="width:390px;height:50px">N</button></section>',
+      'hit-target:overlap:button.content-act[Content act] / button.dock-new[New chat]',
+    ],
+    'A1n: a non-modal dialog.show() over a 2px sliver': [
+      '<div style="height:758px"></div><button class="content-act" aria-label="Content act" style="display:block;width:390px;height:44px">C</button><div style="height:2000px"></div><dialog id="d" style="position:fixed;margin:0;inset:800px 0 0 0;max-width:none;max-height:none;width:auto;height:auto;padding:0;border:0;z-index:5"><button class="sheet-close" aria-label="Sheet close" style="width:390px;height:44px">X</button></dialog><script>document.getElementById("d").show()</script>',
+      'hit-target:overlap:button.content-act[Content act] / button.sheet-close[Sheet close]',
+    ],
+    'two overlapping content controls': [
+      '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
+      'hit-target:overlap:button.first-action[First] / button.second-action[Second]',
+    ],
+  };
+  for (const [name, [body, key]] of Object.entries(reported))
+    it(`still reports ${name}`, async () => {
+      expect(await overlaps(body)).toEqual([key]);
+    });
+
+  it('measures a select like any other control', async () => {
+    expect(
+      await keys(
+        '<label for="tone">Alert sound</label><select id="tone" name="tone" style="width:120px;height:38px"><option>Chime</option></select>',
+        'hit-target:small:',
+      ),
+    ).toEqual(['hit-target:small:select[name=tone][Alert sound]']);
+  });
+
+  it('tells two inputs apart by their label alone', async () => {
+    // Same tag, same type, no name: only the label differs.
+    expect(
+      await keys(
+        '<label for="bill">Billing email</label><input id="bill" type="text" style="width:30px;height:20px"><label for="ship">Shipping email</label><input id="ship" type="text" style="width:30px;height:20px">',
+        'hit-target:small:',
+      ),
+    ).toEqual([
+      'hit-target:small:input[type=text][Billing email]',
+      'hit-target:small:input[type=text][Shipping email]',
+    ]);
+  });
+
+  it('tells unlabelled-looking form controls apart by type, name and label', async () => {
+    expect(
+      await keys(
+        '<label for="email">Email</label><input id="email" type="email" name="email" style="width:30px;height:20px"><label>Phone <input type="tel" name="phone" style="width:30px;height:20px"></label>',
+        'hit-target:small:',
+      ),
+    ).toEqual([
+      'hit-target:small:input[type=email][name=email][Email]',
+      'hit-target:small:input[type=tel][name=phone][Phone]',
+    ]);
+    // A select with nothing of its own is scoped by its classed ancestor.
+    expect(
+      await keys(
+        '<div class="var-row"><select><option>a</option></select></div><div class="tier-row"><select><option>b</option></select></div>',
+        'axe:select-name:',
+      ),
+    ).toEqual([
+      'axe:select-name:div.tier-row select',
+      'axe:select-name:div.var-row select',
+    ]);
+    // Two unnamed selects: each keyed by its own `name`, not one `select`.
+    expect(
+      await keys(
+        '<select name="tier"><option>a</option></select><select name="region"><option>b</option></select>',
+        'axe:select-name:',
+      ),
+    ).toEqual([
+      'axe:select-name:select[name=region]',
+      'axe:select-name:select[name=tier]',
+    ]);
+  });
+});
+
+describe('settings notification controls on a phone', {
+  timeout: 60_000,
+}, () => {
+  // The real stylesheet, so the shared narrow-width floor and the component
+  // rule meet exactly as they do in the app. In the gallery most of these
+  // sit in a closed disclosure and are not measured; here every one is.
+  const css = readFileSync('src-ui/src/views/SettingsView.css', 'utf8');
+
+  it('gives every notification select and time input a 44px target at 390px', async () => {
+    const row = (label: string, control: string) =>
+      `<label class="settings__notification-sound"><span>${label}</span>${control}</label>`;
+    const select = '<select><option>Default</option></select>';
+    await page.setContent(
+      `<!doctype html><html lang="en"><head><style>${css}</style></head><body><div class="settings"><fieldset class="settings__notification-sounds"><div class="settings__notification-sounds-grid">${[
+        'Agent notifications',
+        'Station local UI: interrupt for',
+        'Approval requests sound',
+        'Completed turns sound',
+        'Failed turns sound',
+        'Job failures sound',
+        'Missed jobs sound',
+        'Pairing requests sound',
+        'Scheduler health sound',
+        'Stopped turns sound',
+      ]
+        .map((label) => row(label, select))
+        .join(
+          '',
+        )}${row('Quiet hours start', '<input type="time">')}</div></fieldset></div></body></html>`,
+    );
+    const controls = page.locator(
+      '.settings__notification-sound > :is(select, input[type="time"])',
+    );
+    const heights: number[] = [];
+    for (let i = 0; i < (await controls.count()); i += 1)
+      heights.push((await controls.nth(i).boundingBox())?.height ?? 0);
+    expect(heights).toHaveLength(11);
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(43.99);
+  });
+});

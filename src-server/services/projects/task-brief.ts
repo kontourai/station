@@ -34,6 +34,11 @@
  * word, are quoted, since agents and people wrote them.
  */
 import { createHash } from 'node:crypto';
+import type {
+  LearningReviewRevisionRef,
+  LearningReviewTaskContext,
+} from '@kontourai/station-contracts/learning-review';
+import type { ProjectWorkingContext } from '@kontourai/station-contracts/project-working-configuration';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import {
   isLiveTaskRecord,
@@ -54,6 +59,13 @@ import {
 } from '../orchestration/quoted-text.js';
 import type { DigestTurn } from '../orchestration/session-digest.js';
 import { TRACKER_GUIDANCE } from './task-brief-tracker-guidance.js';
+
+export class TaskContextAdmissionError extends Error {
+  constructor(cause: unknown) {
+    super('Required Task context could not be verified.', { cause });
+    this.name = 'TaskContextAdmissionError';
+  }
+}
 
 export const TASK_BRIEF_VERSION = 'station.task-brief/v1' as const;
 
@@ -186,6 +198,8 @@ export interface TaskBriefInput {
   sessions: readonly TaskBriefSessionFacts[];
   /** Required when the Task has a `workItemRef`; ignored otherwise. */
   observation?: TaskBriefObservation;
+  workingContext?: ProjectWorkingContext;
+  learningContext?: LearningReviewTaskContext;
 }
 
 /** What the brief counted instead of showing. */
@@ -200,9 +214,27 @@ export interface TaskBriefOmissions {
   sessions: number;
 }
 
+export function taskMandatoryContextDigest(
+  input: Pick<TaskBriefInput, 'task' | 'workingContext' | 'learningContext'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        input.task.id,
+        input.task.projectId,
+        input.task.createdAt,
+        input.workingContext ?? null,
+        input.learningContext ?? null,
+      ]),
+    )
+    .digest('hex');
+}
+
 export interface TaskBriefSnapshot {
   version: typeof TASK_BRIEF_VERSION;
   digest: string;
+  mandatoryContextDigest: string;
+  learningContributions: readonly LearningReviewRevisionRef[];
   taskId: string;
   projectId: string;
   title: string;
@@ -603,6 +635,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     sourceProvider: task.sourceProvider ?? null,
     observation: observation ?? null,
     sessions: input.sessions,
+    workingContext: input.workingContext ?? null,
+    learningContext: input.learningContext ?? null,
   };
   const digest = createHash('sha256')
     .update(JSON.stringify([...scope, digestInput]))
@@ -622,6 +656,13 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
       : []),
   ];
   const workItem = renderWorkItem(task, observation);
+  const workingContext =
+    input.workingContext && input.workingContext.state !== 'disabled'
+      ? ['## Project working configuration', input.workingContext.text]
+      : [];
+  const learningContext = input.learningContext
+    ? ['## Reviewed Project guidance', cut(input.learningContext.text, 2400)]
+    : [];
   const documentText =
     input.document.kind === 'available' ? input.document.text.trim() : '';
   const documentMax = memory?.summary
@@ -717,6 +758,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     (
       block(head) +
       block(workItem) +
+      block(workingContext) +
+      block(learningContext) +
       block(document) +
       block(summary) +
       block(rules) +
@@ -790,6 +833,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const text =
     block(head) +
     block(workItem) +
+    block(workingContext) +
+    block(learningContext) +
     block(document) +
     block(summary) +
     recordsText +
@@ -805,6 +850,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   return Object.freeze({
     version: TASK_BRIEF_VERSION,
     digest,
+    mandatoryContextDigest: taskMandatoryContextDigest(input),
+    learningContributions: input.learningContext?.contributions ?? [],
     taskId: task.id,
     projectId: task.projectId,
     title,

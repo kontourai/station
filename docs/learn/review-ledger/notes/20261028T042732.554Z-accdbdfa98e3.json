@@ -1,0 +1,7 @@
+{
+  "revision": "63119743e667daa80861a4e3d3ad89b392232178",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"tests/screenshots.spec.ts change only re-scrolls the telemetry outbox gallery capture so the Operator select rests below the pinned toolbar; this doc's claims about captures, the gallery judge and telemetry are unchanged; no prose change.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

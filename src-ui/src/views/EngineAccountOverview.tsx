@@ -21,6 +21,7 @@ import { Button } from '../components/Button';
 import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
 import './EngineAccountOverview.css';
 
@@ -98,13 +99,10 @@ function AccountPage({
     'engine',
   );
   const [days, setDays] = useState<7 | 30>(7);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!canManage) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 60000);
-    return () => clearInterval(timer);
-  }, [canManage]);
+  const now = useCoarseNow(undefined, {
+    intervalMs: 60_000,
+    enabled: canManage,
+  });
   const accounts = useEngineAccountsQuery(
     connectionId,
     scope,

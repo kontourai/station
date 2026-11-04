@@ -1,7 +1,9 @@
 import type {
+  SchedulerAutomationTarget,
   SchedulerJob,
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
+import { useScheduledConversationTargetCapability } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
@@ -46,7 +48,35 @@ export type JobFormPrefill = Partial<{
   schedule?: SchedulerSchedule;
   prompt: string;
   agent: string;
+  /** Opened from a chat: offer "This chat" and choose it. */
+  conversationId: string;
 }>;
+
+/**
+ * Where each run lands. `chat` and `dedicated` are turns in a conversation
+ * (any engine, results in the chat); `file` is the legacy Station-engine run
+ * whose output is a file, kept for jobs created before targets and for hosts
+ * without `scheduledConversationTarget`.
+ */
+type RunIn = 'dedicated' | 'chat' | 'file';
+
+function runInForJob(job: SchedulerJob | undefined): RunIn | undefined {
+  if (!job) return undefined;
+  if (job.target?.kind === 'dedicated') return 'dedicated';
+  if (job.target?.kind === 'conversation') return 'chat';
+  return 'file';
+}
+
+/** A job's target as the form compares it: the server-written id dropped. */
+function targetOf(job: SchedulerJob): SchedulerAutomationTarget | null {
+  const target = job.target;
+  if (!target) return null;
+  if (target.kind === 'dedicated') {
+    const { conversationId: _recorded, ...chosen } = target;
+    return chosen;
+  }
+  return target;
+}
 
 export function JobFormModal({
   job,
@@ -89,7 +119,24 @@ export function JobFormModal({
     retrying: agentsRetrying,
     retry: retryAgents,
   } = useAgentCatalogRead();
-  const agentOptions = useMemo(() => schedulerAgentOptions(agents), [agents]);
+  const conversationTargets = useScheduledConversationTargetCapability();
+  // Only a host that says so runs a turn in a chat; anything else (older,
+  // hosted, or a handshake that has not answered) keeps the file run.
+  const targetsSupported = conversationTargets.data === true;
+  const chatConversationId =
+    job?.target?.kind === 'conversation'
+      ? job.target.conversationId
+      : init.conversationId;
+  const [runInChoice, setRunInChoice] = useState<RunIn | undefined>(
+    () => runInForJob(job) ?? (init.conversationId ? 'chat' : undefined),
+  );
+  const runIn: RunIn = runInChoice ?? (targetsSupported ? 'dedicated' : 'file');
+  const targeted = runIn !== 'file';
+  const anyEngine = runIn === 'dedicated';
+  const agentOptions = useMemo(
+    () => schedulerAgentOptions(agents, { anyEngine }),
+    [agents, anyEngine],
+  );
   // Weekdays 8:00 AM, not `* * * * *`. A default nobody reads must be the
   // schedule a reasonable person would have chosen, not the one that runs
   // every minute of every day.
@@ -142,7 +189,12 @@ export function JobFormModal({
         ? (initialSchedule.deleteAfterRun ?? true)
         : true,
     prompt: job?.prompt || init.prompt || '',
-    agent: job?.agent || init.agent || agentOptions.defaultSlug || 'station',
+    agent:
+      (job?.target?.kind === 'dedicated' ? job.target.agent : undefined) ||
+      job?.agent ||
+      init.agent ||
+      agentOptions.defaultSlug ||
+      'station',
     retryCount: job?.retryCount ?? 0,
     retryDelaySecs: job?.retryDelaySecs ?? 60,
     monitorTarget:
@@ -201,19 +253,33 @@ export function JobFormModal({
     const runnableDefault = agentOptions.defaultSlug;
     if (!runnableDefault) return;
     setForm((current) =>
-      schedulerAgentRunnability(agents, current.agent).runnable
+      schedulerAgentRunnability(agents, current.agent, { anyEngine }).runnable
         ? current
         : { ...current, agent: runnableDefault },
     );
-  }, [agents, agentOptions.defaultSlug, agentsLoaded, canChooseDefaultAgent]);
+  }, [
+    agents,
+    agentOptions.defaultSlug,
+    agentsLoaded,
+    canChooseDefaultAgent,
+    anyEngine,
+  ]);
 
-  const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent);
+  const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent, {
+    anyEngine,
+  });
   const monitorAgentRunnability = schedulerAgentRunnability(
     agents,
     form.monitorAgentId,
   );
+  // A run in an existing chat uses that chat's own Agent and engine; the form
+  // names none, so nothing here can refuse it.
   const namedAgentRunnability =
-    form.monitorType === 'none' ? jobAgentRunnability : monitorAgentRunnability;
+    runIn === 'chat'
+      ? { runnable: true as const }
+      : form.monitorType === 'none'
+        ? jobAgentRunnability
+        : monitorAgentRunnability;
   // #1536 H1-2: `useAgents()` is `[]` while the catalog is arriving AND when it
   // failed, so every runnability answer above is "no Agent named that" until it
   // has actually answered. Reporting that as the Agent's own fault — and
@@ -308,11 +374,19 @@ export function JobFormModal({
         [field]: e.target.value,
       }));
 
+  const targetFromForm = (): SchedulerAutomationTarget | undefined => {
+    if (runIn === 'dedicated') return { kind: 'dedicated', agent: form.agent };
+    if (runIn === 'chat' && chatConversationId)
+      return { kind: 'conversation', conversationId: chatConversationId };
+    return undefined;
+  };
+
   const handleSubmit = () => {
     if (interactionDisabled) return;
     const nextSchedule = scheduleFromForm();
+    const target = targetFromForm();
     const monitor =
-      form.monitorType === 'github-pull-request'
+      !target && form.monitorType === 'github-pull-request'
         ? {
             kind: 'github-pull-request' as const,
             objective: 'review-ready' as const,
@@ -337,8 +411,14 @@ export function JobFormModal({
         opts.schedule = nextSchedule;
       }
       if (form.prompt !== (job.prompt || '')) opts.prompt = form.prompt;
-      if (form.monitorType === 'none' && form.agent !== (job.agent || ''))
+      if (
+        !target &&
+        form.monitorType === 'none' &&
+        form.agent !== (job.agent || '')
+      )
         opts.agent = form.agent;
+      if (JSON.stringify(target ?? null) !== JSON.stringify(targetOf(job)))
+        opts.target = target ?? null;
       if (form.retryCount !== (job.retryCount ?? 0))
         opts.retryCount = form.retryCount;
       if (form.retryDelaySecs !== (job.retryDelaySecs ?? 60))
@@ -377,12 +457,18 @@ export function JobFormModal({
             ? { cron: nextSchedule.expr }
             : { schedule: nextSchedule }),
           prompt: form.prompt,
-          ...(form.monitorType === 'none'
-            ? { agent: form.agent || undefined }
-            : {}),
-          retryCount: form.retryCount || undefined,
-          retryDelaySecs: form.retryCount ? form.retryDelaySecs : undefined,
-          monitor,
+          ...(target
+            ? { target }
+            : {
+                ...(form.monitorType === 'none'
+                  ? { agent: form.agent || undefined }
+                  : {}),
+                retryCount: form.retryCount || undefined,
+                retryDelaySecs: form.retryCount
+                  ? form.retryDelaySecs
+                  : undefined,
+                monitor,
+              }),
           ...Object.fromEntries(
             extraFields
               .map((f) => [f.key, form[f.key] || undefined])
@@ -404,6 +490,7 @@ export function JobFormModal({
         ? Number.isFinite(form.everyValue) && form.everyValue > 0
         : Number.isFinite(new Date(form.atTime).getTime());
   const monitorValid =
+    targeted ||
     form.monitorType === 'none' ||
     (form.monitorTarget.trim().length > 0 &&
       form.monitorProjectId.trim().length > 0 &&
@@ -415,9 +502,9 @@ export function JobFormModal({
   if (hidden) return null;
   return (
     <Dialog
-      eyebrow="Schedule"
-      title={isEdit ? `Edit: ${job.name}` : 'Add Job'}
-      closeLabel="Close job editor"
+      eyebrow="Automations"
+      title={isEdit ? `Edit: ${job.name}` : 'New automation'}
+      closeLabel="Close automation editor"
       onClose={onClose}
       size="lg"
       panelClassName="schedule__modal"
@@ -450,7 +537,7 @@ export function JobFormModal({
                   (agentRunnabilityKnown && !namedAgentRunnability.runnable)))
             }
           >
-            {isEdit ? 'Save Changes' : 'Add Job'}
+            {isEdit ? 'Save Changes' : 'Create automation'}
           </Button>
         </>
       }
@@ -491,6 +578,36 @@ export function JobFormModal({
             )}
           </label>
         )}
+        {(targetsSupported || (isEdit && targeted)) && (
+          <label className="schedule__field">
+            <span className="schedule__field-label">Run in</span>
+            <select
+              aria-label="Run in"
+              value={runIn}
+              onChange={(event) => {
+                const next = event.target.value as RunIn;
+                setRunInChoice(next);
+                if (next !== 'file')
+                  setForm((current) => ({
+                    ...current,
+                    monitorType: 'none',
+                    retryCount: 0,
+                  }));
+              }}
+            >
+              <option value="dedicated">Its own chat</option>
+              {chatConversationId && <option value="chat">This chat</option>}
+              {(runInForJob(job) === 'file' || !isEdit) && (
+                <option value="file">Station engine, output file</option>
+              )}
+            </select>
+            <span className="schedule__field-hint">
+              {runIn === 'file'
+                ? 'Runs on Station’s engine and saves the output to a file.'
+                : 'Each run is a message in the chat, with its approvals.'}
+            </span>
+          </label>
+        )}
         {/* #1536 S1: the catalog READ's state is one fact about one catalog, so
             it is stated once — above whichever Agent field this form is
             showing. It used to live inside the non-monitor branch only, which
@@ -520,10 +637,11 @@ export function JobFormModal({
             </button>
           </span>
         )}
-        {form.monitorType === 'none' && (
+        {form.monitorType === 'none' && runIn !== 'chat' && (
           <div className="schedule__field">
             <span className="schedule__field-label">Agent</span>
             <AgentPicker
+              anyEngine={anyEngine}
               value={form.agent}
               catalogErrorId={agentsFailed ? AGENT_CATALOG_ERROR_ID : undefined}
               onChange={(v) => {
@@ -552,7 +670,8 @@ export function JobFormModal({
                     : 'Set up a scheduled-job agent'}
                 </Button>
               )}
-            {agentOptions.excludedEngineAgents.length > 0 &&
+            {!anyEngine &&
+              agentOptions.excludedEngineAgents.length > 0 &&
               !needsAgentSetup && (
                 <span className="schedule__field-hint">
                   {SCHEDULER_ENGINE_AGENT_NOTE}
@@ -569,7 +688,7 @@ export function JobFormModal({
             placeholder="What should the agent do?"
           />
         </label>
-        {form.monitorType === 'github-pull-request' && (
+        {!targeted && form.monitorType === 'github-pull-request' && (
           <>
             <div className="schedule__field">
               <span className="schedule__field-label">Monitor Agent</span>
@@ -628,36 +747,38 @@ export function JobFormModal({
             ))}
           </>
         )}
-        <label className="schedule__field">
-          <span className="schedule__field-label">Monitor type</span>
-          <select
-            value={form.monitorType}
-            onChange={(event) =>
-              setForm((current) => {
-                const monitorType = event.target.value as
-                  | 'none'
-                  | 'github-pull-request';
-                // A disabled panel is not a secret-value cache. Clearing
-                // all hidden fields makes a later enable an intentional
-                // reconfiguration, never a revival of stale authority.
-                return monitorType === 'none'
-                  ? {
-                      ...current,
-                      monitorType,
-                      monitorTarget: '',
-                      monitorProjectId: '',
-                      monitorAgentId: '',
-                      monitorCredentialBinding: '',
-                    }
-                  : { ...current, monitorType };
-              })
-            }
-          >
-            <option value="none">None</option>
-            <option value="github-pull-request">GitHub pull request</option>
-          </select>
-        </label>
-        {form.monitorType === 'github-pull-request' && (
+        {!targeted && (
+          <label className="schedule__field">
+            <span className="schedule__field-label">Monitor type</span>
+            <select
+              value={form.monitorType}
+              onChange={(event) =>
+                setForm((current) => {
+                  const monitorType = event.target.value as
+                    | 'none'
+                    | 'github-pull-request';
+                  // A disabled panel is not a secret-value cache. Clearing
+                  // all hidden fields makes a later enable an intentional
+                  // reconfiguration, never a revival of stale authority.
+                  return monitorType === 'none'
+                    ? {
+                        ...current,
+                        monitorType,
+                        monitorTarget: '',
+                        monitorProjectId: '',
+                        monitorAgentId: '',
+                        monitorCredentialBinding: '',
+                      }
+                    : { ...current, monitorType };
+                })
+              }
+            >
+              <option value="none">None</option>
+              <option value="github-pull-request">GitHub pull request</option>
+            </select>
+          </label>
+        )}
+        {!targeted && form.monitorType === 'github-pull-request' && (
           <label className="schedule__field">
             <span className="schedule__field-label">
               Project for actionable revisions
@@ -673,7 +794,7 @@ export function JobFormModal({
             </span>
           </label>
         )}
-        {form.monitorType === 'github-pull-request' && (
+        {!targeted && form.monitorType === 'github-pull-request' && (
           <label className="schedule__field">
             <span className="schedule__field-label">
               GitHub pull request monitor
@@ -825,22 +946,24 @@ export function JobFormModal({
             </>
           )}
         </div>
-        <label className="schedule__field">
-          <span className="schedule__field-label">Retries</span>
-          <input
-            type="number"
-            min={0}
-            max={10}
-            value={form.retryCount}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                retryCount: Number(e.target.value) || 0,
-              }))
-            }
-          />
-        </label>
-        {form.retryCount > 0 && (
+        {!targeted && (
+          <label className="schedule__field">
+            <span className="schedule__field-label">Retries</span>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              value={form.retryCount}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  retryCount: Number(e.target.value) || 0,
+                }))
+              }
+            />
+          </label>
+        )}
+        {!targeted && form.retryCount > 0 && (
           <label className="schedule__field">
             <span className="schedule__field-label">Retry delay (s)</span>
             <input

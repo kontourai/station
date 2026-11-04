@@ -3,6 +3,7 @@
  */
 
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -180,6 +181,87 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         'turn-1',
         'corrected message',
       ),
+    );
+  });
+
+  it('keeps a rejected queued edit available for correction and retry', async () => {
+    const onError = vi.fn();
+    editOutboundTurnMock.mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'original', status: 'pending' },
+        ]}
+        onError={onError}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit message' }));
+    const input = screen.getByRole('textbox', { name: 'Edit queued message' });
+    fireEvent.change(input, { target: { value: 'my corrected message' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(
+      screen.getByRole('textbox', { name: 'Edit queued message' }),
+    ).toHaveProperty('value', 'my corrected message');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('textbox', { name: 'Edit queued message' }),
+      ).toBeNull(),
+    );
+    expect(editOutboundTurnMock).toHaveBeenCalledTimes(2);
+    expect(editOutboundTurnMock).toHaveBeenLastCalledWith(
+      'turn-1',
+      'my corrected message',
+    );
+  });
+
+  it('saves once while pending and does not close another queued edit', async () => {
+    let finish!: () => void;
+    editOutboundTurnMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'original', status: 'pending' },
+          { clientTurnId: 'turn-2', content: 'second', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Edit message' })[0]!,
+    );
+    const input = screen.getByRole('textbox', { name: 'Edit queued message' });
+    fireEvent.change(input, { target: { value: 'first correction' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    await waitFor(() => expect(editOutboundTurnMock).toHaveBeenCalledTimes(1));
+    expect(input.hasAttribute('readonly')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit message' }));
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Edit queued message' }),
+      {
+        target: { value: 'newer correction' },
+      },
+    );
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: 'Edit queued message' }),
+      ).toHaveProperty('value', 'newer correction'),
     );
   });
 
@@ -719,6 +801,27 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         'Could not start a new chat: agent "codex" is not available on this device',
       ),
     );
+  });
+
+  // A caller the server refused a new chat gets no handler, and so no offer.
+  it('a refused row offers no New chat when no handler is given', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'move this message',
+            status: 'failed',
+            lastError: 'Workspace refusal: worktree is gone',
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Refused/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
 
   it('reports a post-draft discard failure with the kept-row copy', async () => {

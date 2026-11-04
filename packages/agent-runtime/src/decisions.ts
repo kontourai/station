@@ -112,6 +112,10 @@ export interface DecisionInput {
   readonly policy: ModelPolicy;
   readonly admission: CurrentAdmission;
   readonly now: number;
+  readonly globalOpen?: {
+    readonly activeCount: number;
+    readonly conversationBusy: boolean;
+  };
   readonly readBody: (ref: BodyRef) => Uint8Array;
 }
 export function decideModel<C extends ModelCommand>(
@@ -273,6 +277,7 @@ export function decideModel(
       (r) => r.state === 'open' || r.state === 'running',
     );
     if (
+      input.globalOpen?.conversationBusy ??
       active.some(
         (r) =>
           r.spec.key.scopeId === key.scopeId &&
@@ -280,7 +285,8 @@ export function decideModel(
       )
     )
       return refuse('busy');
-    if (active.length >= policy.maxOpenRuns) return refuse('capacity');
+    if ((input.globalOpen?.activeCount ?? active.length) >= policy.maxOpenRuns)
+      return refuse('capacity');
     const entry = entryData(
       command.spec.entry.body.codec,
       readBody(command.spec.entry.body),
@@ -410,6 +416,9 @@ export function decideModel(
     // Abandonment does not let a live owner issue a second attempt.
     if (p.attempts.some((a) => a.attempt.owner.id === run.fence.owner.id))
       return remember({ kind: 'already-begun', fence: run.fence });
+    // A committed grant may have reached the provider before its owner died.
+    // Without provider idempotency or result lookup, another grant can duplicate it.
+    if (p.attempts.length > 0) return refuse('indeterminate');
     const attempt: Attempt = {
       requestId: p.pin.requestId,
       number: p.attempts.length + 1,

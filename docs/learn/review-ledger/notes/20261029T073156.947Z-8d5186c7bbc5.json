@@ -1,0 +1,39 @@
+{
+  "revision": "802a01f73c764922588a434b0e1ff21879518ca5",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Review ordinal and SharedWorkingState claims against receipt backfill, failure isolation, retry, save and read paths, and SQLite owner regressions; no hosted qualification.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/project-task-room-working-state-worker.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed working-state and frozen-revision boundary against the worker change; ordinal indexing does not alter evidence identity or freeze admission.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/project-task-room-working-state-worker.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed shipped manual Task and Station Docs claims against regenerated TaskReviewThreads topic; ordinal failure handling remains in the module map.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed references and relevant Task, working-state, revision or module-map claims against the scoped ordinal backfill change; no prose change needed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

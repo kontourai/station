@@ -1,0 +1,7 @@
+{
+  "revision": "4a7de6f46167fdac25e1b85cf248358c8a4e3698",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Dependency on notification-service.ts only; the documented notification types and status semantics are unchanged by emitting notification:updated for an actions-only dedupe update. No prose change.","inputs":["docs/reference/shared.md","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

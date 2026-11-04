@@ -989,6 +989,12 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     });
   });
 
+  app.get('/routes', async (c) => {
+    if (!deps.resolveStationRoutes) return c.json({ error: 'not_found' }, 404);
+    systemOps.add(1, { op: 'get_routes' });
+    return c.json(await deps.resolveStationRoutes());
+  });
+
   app.get('/identity', (c) => {
     // The SAME derivation the core-update diagnostics read — one identity
     // rule, shared (update-ux PR2), never two implementations that can
@@ -1339,19 +1345,13 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     });
   });
 
-  app.get('/terminal-port', (c) => {
-    const port = deps.port ?? 0;
-    return c.json({ success: true, port: port + 1 });
-  });
-
-  // Mirrors `/terminal-port` exactly: the Voice WebSocket server binds at
+  // The Voice WebSocket server binds at
   // `serverPort + 2` (`src-server/runtime/bootstrap/runtime-initialize.ts`), a
   // dedicated raw `ws` port distinct from `deps.port` (the main API port,
   // whose value can differ from the *client's* resolved `apiBase` port —
   // e.g. the UI's own same-origin default). Same-origin `apiBase` clients
   // (see `voiceWsUrl.ts`/`useVoiceSession.ts`) query this route instead of
-  // deriving the voice port by arithmetic on `apiBase`, exactly like
-  // `TerminalPanel.tsx` already does via `fetchTerminalPort`.
+  // deriving the voice port by arithmetic on `apiBase`.
   app.get('/voice-port', (c) => {
     const port = deps.port ?? 0;
     return c.json({ success: true, port: port + 2 });

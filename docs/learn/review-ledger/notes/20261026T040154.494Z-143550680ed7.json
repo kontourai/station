@@ -1,0 +1,7 @@
+{
+  "revision": "b3ff8062a292ec9cbf902839ec113ff4239eaa96",
+
+  "notes": [
+    {"path":"docs/design/station-instance-reconciler.md","note":"#4200 review fix round: added that start/stop refuse before reconcile from a stale-manifest home, checked against service.ts where the refusal precedes createStationInstanceReconciler(...).reconcile.","inputs":["docs/design/station-instance-reconciler.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

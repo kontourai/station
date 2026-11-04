@@ -1,0 +1,7 @@
+{
+  "revision": "dae9c652d52f08a808de2438d03c8028c7e8f5b8",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed person-notification and account-tied PAT claims against the merged production-composition fixture and notification membership admission: operator-only sharing issues invitations, the owner account joins explicitly, and personal feeds and PAT isolation remain asserted. Focused PAT and related suites passed 272 tests; no API prose change needed. This is local fixture evidence, not live Serve verification.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"]}
+  ]
+}

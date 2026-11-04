@@ -1,0 +1,7 @@
+{
+  "revision": "8f11a17232e7a26943bb95482ab43f2a2391c61c",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Regenerated design index; the only change adds the event-content-spill.md entry (title line from the new note). Checked the entry text and link target.","inputs":["docs/design/README.md"]}
+  ]
+}

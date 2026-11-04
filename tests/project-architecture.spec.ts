@@ -316,7 +316,7 @@ test.describe('Project Sidebar', () => {
         navigation.getByRole('button', { name: gone, exact: true }),
       ).toHaveCount(0);
     }
-    // …and the configuration destinations are behind the gear. Connections is
+    // …and the configuration destinations are behind Customize. Connections is
     // listed as 'Engines & Models' (#2144 decision 7): the row names what a
     // reader is looking for and opens the hub at that tab.
     const sections = await openCustomize(page);
@@ -621,7 +621,9 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Delivery notes');
-    await page.getByPlaceholder('/path/to/project').fill('/tmp/delivery-notes');
+    await page
+      .getByPlaceholder('~/code/my-project')
+      .fill('/tmp/delivery-notes');
     const browse = page.getByRole('button', { name: 'Browse all' });
     await browse.click();
     const browser = page.getByRole('dialog', {
@@ -637,7 +639,7 @@ test.describe('Project Navigation', () => {
     await expect(page.getByPlaceholder('My Project')).toHaveValue(
       'Delivery notes',
     );
-    await expect(page.getByPlaceholder('/path/to/project')).toHaveValue(
+    await expect(page.getByPlaceholder('~/code/my-project')).toHaveValue(
       '/tmp/delivery-notes',
     );
     await expect(
@@ -689,7 +691,9 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('New Project');
-    await page.getByPlaceholder('/path/to/project').fill('/tmp/git-workspace/');
+    await page
+      .getByPlaceholder('~/code/my-project')
+      .fill('/tmp/git-workspace/');
     const identityIcon = page.getByRole('button', {
       name: 'Choose project icon',
     });
@@ -767,7 +771,7 @@ test.describe('Project Navigation', () => {
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
     // No trailing slash: the shape a user who pastes a path actually types.
     await page
-      .getByPlaceholder('/path/to/project')
+      .getByPlaceholder('~/code/my-project')
       .fill('/tmp/typed-workspace');
 
     // The recommendation is ON SCREEN before anything is created.
@@ -833,7 +837,7 @@ test.describe('Project Navigation', () => {
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
     await page
-      .getByPlaceholder('/path/to/project')
+      .getByPlaceholder('~/code/my-project')
       .fill('/tmp/typed-workspace');
 
     const noLayout = page.getByRole('button', {

@@ -26,6 +26,7 @@ export function incomingMessageLabel(sender: ClientOriginSender): string {
   if (sender.kind === 'unattributed')
     return 'Non-person input: sender not recorded';
   if (sender.kind === 'provider') return 'The engine replied on its own';
+  if (sender.kind === 'coordinator') return 'Update from Station';
   const agent = senderAgentLabel(sender);
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
@@ -52,6 +53,13 @@ export function IncomingAgentHeader({
       <p className="agent-cause">
         <InboxGlyph />
         The engine replied on its own
+      </p>
+    );
+  if (sender.kind === 'coordinator')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        Update from Station
       </p>
     );
   const session = senderSessionLabel(sender);
@@ -98,7 +106,9 @@ export function IncomingAgentCause({
       ? 'Non-person input · sender not recorded'
       : sender.kind === 'provider'
         ? 'The engine replied on its own'
-        : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+        : sender.kind === 'coordinator'
+          ? 'Update from Station'
+          : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
     <details className="agent-cause-disclosure">
       <summary className="agent-cause">

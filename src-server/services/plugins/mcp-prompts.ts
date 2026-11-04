@@ -14,12 +14,15 @@ import type {
   AgentMcpPromptListing,
   AgentMcpPromptRun,
 } from '@kontourai/station-contracts/mcp-prompts';
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type { GetPromptResult, Prompt } from '@modelcontextprotocol/client';
 import { isRuntimeManagedIntegrationId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { matchesToolPattern } from '../../runtime/tools/mcp-tool-names.js';
+import { issueMcpPromptOrigin } from './mcp-prompt-origin-receipt.js';
 import { MCPServerDisabledError } from './mcp-service.js';
 
 export interface McpPromptSource {
+  getIntegration?(serverId: string): Promise<ToolDef>;
   listMCPPrompts(serverId: string): Promise<Prompt[]>;
   getMCPPrompt(
     serverId: string,
@@ -195,6 +198,24 @@ export async function runAgentMcpPrompt(
       `/${serverId}:${name} needs ${missing.join(', ')}. Nothing was sent.`,
       400,
     );
+  const classify = async () => {
+    try {
+      const definition = await source.getIntegration?.(serverId);
+      return !definition || definition.contentTrust === 'untrusted';
+    } catch {
+      return true;
+    }
+  };
+  const before = await classify();
   const result = await source.getMCPPrompt(serverId, name, values);
-  return { serverId, name, text: renderPromptText(result) };
+  const after = await classify();
+  const text = renderPromptText(result);
+  return {
+    serverId,
+    name,
+    text,
+    turnOriginSupported: true,
+    originReceipt: issueMcpPromptOrigin(serverId, name, text, before || after)
+      .receipt,
+  };
 }

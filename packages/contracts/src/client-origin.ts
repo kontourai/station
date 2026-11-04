@@ -39,7 +39,8 @@ export interface ClientReportedOrigin {
  * `agent-session` identifies an agent in another Session
  * messaging this one (`send_to_session`). `provider` identifies an engine-opened
  * turn; `delegation-result` identifies a result from a child Session. The
- * coordinator and a scheduled job are expected to join as further kinds; a
+ * coordinator identifies a Station-generated coordinator wake; a scheduled
+ * job may join as a further kind. A
  * reader that does not know a kind drops the sender
  * ({@link clientOriginSender}) and keeps the `actor`, so a newer writer's
  * record still reads as the non-person it is.
@@ -47,6 +48,7 @@ export interface ClientReportedOrigin {
 export const CLIENT_ORIGIN_SENDER_KINDS = [
   'agent-session',
   'delegation-result',
+  'coordinator',
   'provider',
   'unattributed',
 ] as const;
@@ -57,7 +59,8 @@ export interface ClientOriginSender {
   kind: ClientOriginSenderKind;
   /**
    * Sending Session for agent-session/delegation-result; the engine's Session
-   * for provider. Unattributed input carries its receiving Session as context,
+   * for provider. Coordinator and unattributed input carry the receiving Session
+   * as context,
    * never as a claim identifying the missing sender.
    */
   sessionId: string;

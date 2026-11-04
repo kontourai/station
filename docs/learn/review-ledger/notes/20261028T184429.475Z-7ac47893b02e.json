@@ -1,0 +1,7 @@
+{
+  "revision": "f98d3d8036428bf25e2225f02639b7134db2b628",
+
+  "notes": [
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Source-impact review: the module map adds that the OAuth client-secret pins are enforced in writeIntegrationConfigLocked. Searched this document for MCP tool-server OAuth client, issuer, secret-binding reference, registry-install and required-integration claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]}
+  ]
+}

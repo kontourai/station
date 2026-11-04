@@ -1,9 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChildWorkProjection } from '../child-work-projection.js';
+import {
+  createConversationForkContext,
+  type NativeForkCommitInput,
+  type NativeForkSourceSeal,
+} from '../conversation-fork-context.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
 import { captureTurnIntent } from '../prepared-turn-intent.js';
@@ -89,6 +95,362 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     for (const created of extraProjections.splice(0)) created.dispose();
     store.close();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  function unknownCommittedNativeFork() {
+    const childId = 'activity-native-child';
+    const binding = 'c'.repeat(64);
+    store.upsertSession({
+      provider: 'claude',
+      threadId: ROOT,
+      status: 'ready',
+      cwd: directory,
+      resumeCursor: { nativeSessionId: 'source-native' },
+      createdAt: at(),
+      updatedAt: at(),
+    });
+    store.claimNativeSessionIdentity('a'.repeat(64), ROOT);
+    append(ROOT, {
+      method: 'session.configured',
+      sessionId: ROOT,
+      cwd: directory,
+      metadata: {
+        userId: 'owner',
+        agentSlug: 'claude',
+        environmentId: 'local',
+        nativeResumeBindingKey: binding,
+      },
+    });
+    const done = append(ROOT, {
+      method: 'turn.completed',
+      turnId: 'selected-turn',
+      finishReason: 'stop',
+    });
+    const snapshot = createConversationForkContext({
+      forkEventId: 'activity-fork-event',
+      sourceConversationId: ROOT,
+      sourceSessionId: ROOT,
+      sourceAgent: 'claude',
+      targetConversationId: childId,
+      targetAgent: 'claude',
+      ownerUserId: 'owner',
+      branchPointTurnId: 'selected-turn',
+      sourceTitle: 'Activity source',
+      createdAt: at(),
+      messages: [
+        {
+          id: 'selected-answer',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Answer' }],
+        },
+      ],
+    });
+    store.reserveConversationForkContext(snapshot);
+    const source: NativeForkSourceSeal = {
+      sourceConversationId: ROOT,
+      sourceSessionId: ROOT,
+      selectedEventId: done.eventId,
+      selectedTurnId: 'selected-turn',
+      headEventId: done.eventId,
+      nativeIdentityKey: 'a'.repeat(64),
+      nativeResumeBindingKey: binding,
+      provider: 'claude',
+      environmentId: 'local',
+      agentId: 'claude',
+      cwd: directory,
+    };
+    const reserved = store.reserveNativeForkEffect({
+      targetId: childId,
+      contextDigest: snapshot.digest,
+      source,
+    });
+    if (reserved.kind !== 'owner')
+      throw new Error('Expected actual native owner');
+    const metadata = {
+      userId: 'owner',
+      agentSlug: 'claude',
+      environmentId: 'local',
+      nativeResumeBindingKey: binding,
+    };
+    const commit: NativeForkCommitInput = {
+      child: {
+        provider: 'claude',
+        threadId: childId,
+        status: 'ready',
+        cwd: directory,
+        resumeCursor: { nativeSessionId: 'child-native' },
+        createdAt: at(),
+        updatedAt: at(),
+      },
+      startedEvent: {
+        eventId: 'activity-child-started',
+        provider: 'claude',
+        threadId: childId,
+        sessionId: childId,
+        method: 'session.started',
+        createdAt: at(),
+        metadata,
+      },
+      configuredEvent: {
+        eventId: 'activity-child-configured',
+        provider: 'claude',
+        threadId: childId,
+        sessionId: childId,
+        method: 'session.configured',
+        cwd: directory,
+        createdAt: at(),
+        metadata,
+      },
+      forkEvent: {
+        eventId: snapshot.forkEventId,
+        provider: 'station',
+        threadId: ROOT,
+        method: 'conversation.forked',
+        sourceConversationId: ROOT,
+        targetConversationId: childId,
+        targetAgent: 'claude',
+        sourceSessionId: ROOT,
+        branchPointTurnId: 'selected-turn',
+        contextDigest: snapshot.digest,
+        continuation: 'native',
+        forkedAt: snapshot.createdAt,
+        createdAt: snapshot.createdAt,
+      },
+    };
+    const oldSource = projection.readConversation(ROOT);
+    const oldChild = projection.readConversation(childId);
+    reserved.effect.sessionStart.beginInvocation(at());
+    reserved.effect.observeChild(commit.child.resumeCursor, 'b'.repeat(64));
+    store.claimNativeSessionIdentity('b'.repeat(64), childId);
+    const exec = store['db'].exec.bind(store['db']);
+    const fault = vi.spyOn(store['db'], 'exec').mockImplementation((sql) => {
+      const result = exec(sql);
+      if (sql === 'COMMIT')
+        throw new Error('injected unknown committed activity');
+      return result;
+    });
+    expect(() => reserved.effect.commit(commit)).toThrow();
+    fault.mockRestore();
+    return { childId, snapshot, commit, oldSource, oldChild };
+  }
+
+  test('warm-only cache read refuses cold and changed lineage before every durable fallback', () => {
+    const expected = new Map([[ROOT, [ROOT]]]);
+    const lineage = vi.spyOn(store, 'conversationSessions');
+    const member = vi.spyOn(store, 'conversationForSession');
+    const events = vi.spyOn(store, 'listSessionProjectionEvents');
+    const seed = vi.spyOn(store, 'readTurnActivitySeed');
+    expect(projection.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    projection.readForThread(ROOT);
+    append(ROOT, { method: 'turn.started', turnId: 'warm-cached' });
+    lineage.mockClear();
+    member.mockClear();
+    events.mockClear();
+    seed.mockClear();
+    const warm = projection.readWarmConversations(expected);
+    expect(warm.kind).toBe('warm-current');
+    if (warm.kind !== 'warm-current')
+      throw new Error('Expected actual warm fold');
+    expect(warm.conversations[0]?.openTurn?.turnId).toBe('warm-cached');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD_1,
+      createdAt: at(),
+    });
+    lineage.mockClear();
+    member.mockClear();
+    events.mockClear();
+    seed.mockClear();
+    expect(projection.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    // The ordinary reader still owns its existing fallback after guard exit.
+    expect(projection.readForThread(ROOT)?.currentThreadId).toBe(CHILD_1);
+  });
+
+  test('cached child-work requires a real retained report, not only historical eligibility', () => {
+    const work = new ChildWorkProjection();
+    expect(work.readWarmReporter(ROOT, 'claude').kind).toBe('unavailable');
+    work.seedHistoricalSettled(
+      ROOT,
+      store
+        .listChildWorkHistoryForThreads([ROOT])
+        .get(ROOT)
+        ?.map((row) => row.payload) ?? [],
+    );
+    expect(work.readWarmReporter(ROOT, 'claude')).toEqual({
+      kind: 'unavailable',
+      reason: 'warm-child-work-report-unavailable',
+    });
+    const reported = new ChildWorkProjection();
+    append(ROOT, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: ROOT,
+        running: [],
+      },
+    });
+    reported.seedHistoricalSettled(
+      ROOT,
+      store
+        .listChildWorkHistoryForThreads([ROOT])
+        .get(ROOT)!
+        .map((row) => row.payload),
+    );
+    const warm = reported.readWarmReporter(ROOT, 'claude');
+    expect(warm.kind).toBe('warm');
+    if (warm.kind !== 'warm') throw new Error('Expected retained report');
+    expect(warm.view.observability).toBe('reported');
+  });
+
+  test('warm read permits same-scope reentry but refuses widening and restores ordinary access', () => {
+    const foreign = 'warm-foreign';
+    session(foreign);
+    const expected = new Map([[ROOT, [ROOT]]]);
+    let mode: 'none' | 'same' | 'foreign' = 'none';
+    let entered = false;
+    let nested:
+      | ReturnType<ConversationTurnActivityProjection['readWarmConversations']>
+      | undefined;
+    const warm = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      logger,
+      readRunningChildWork: () => {
+        if (!entered && mode !== 'none') {
+          entered = true;
+          nested = warm.readWarmConversations(
+            mode === 'same' ? expected : new Map([[foreign, [foreign]]]),
+          );
+          entered = false;
+        }
+        return [];
+      },
+    });
+    extraProjections.push(warm);
+    warm.readForThread(ROOT);
+    warm.readForThread(foreign);
+    mode = 'same';
+    expect(warm.readWarmConversations(expected).kind).toBe('warm-current');
+    expect(nested?.kind).toBe('warm-current');
+    const lineage = vi.spyOn(store, 'conversationSessions');
+    const events = vi.spyOn(store, 'listSessionProjectionEvents');
+    mode = 'foreign';
+    expect(warm.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(nested?.kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    mode = 'none';
+    expect(warm.readForThread(foreign)?.conversationId).toBe(foreign);
+    expect(warm.readWarmConversations(expected).kind).toBe('warm-current');
+  });
+
+  test('verified source and child fold invalidation reseeds actual prewarmed activity after uncertain commit', () => {
+    const f = unknownCommittedNativeFork();
+    const peer = new DatabaseSync(join(directory, 'orchestration.sqlite'), {
+      readOnly: true,
+    });
+    try {
+      expect(
+        peer
+          .prepare('SELECT 1 FROM orchestration_events WHERE id=?')
+          .get(f.snapshot.forkEventId),
+      ).toBeDefined();
+      expect(projection.readConversation(ROOT)).toEqual(f.oldSource);
+      expect(projection.readConversation(f.childId)).toEqual(f.oldChild);
+      const observed = store.observeCommittedNativeFork(
+        f.childId,
+        f.snapshot.digest,
+      );
+      expect(observed.kind).toBe('verified-creation');
+      if (observed.kind !== 'verified-creation')
+        throw new Error('Expected immutable creation evidence');
+      expect(observed.affected.threadIds).toEqual(
+        expect.arrayContaining([ROOT, f.childId]),
+      );
+      const oracle = freshProjection();
+      const currentSource = oracle.readConversation(ROOT),
+        currentChild = oracle.readConversation(f.childId);
+      expect(currentSource.asOfSequence).toBeGreaterThan(
+        f.oldSource.asOfSequence,
+      );
+      expect(currentChild.asOfSequence).toBeGreaterThan(
+        f.oldChild.asOfSequence,
+      );
+      projection.invalidateCommittedNativeFork(observed.affected);
+      expect(projection.readConversation(ROOT)).toEqual(currentSource);
+      expect(projection.readConversation(f.childId)).toEqual(currentChild);
+    } finally {
+      peer.close();
+    }
+  });
+
+  test('targeted reseed keeps later child progress and unrelated pending-followup lifetime', () => {
+    vi.useFakeTimers();
+    try {
+      session('unrelated');
+      const unrelatedPending = append('unrelated', {
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { reason: 'seed-probe', pending: true },
+      });
+      const unrelatedBefore = projection.readConversation('unrelated');
+      expect(unrelatedBefore.runningChildWork?.followUpPending).toBe(true);
+      const f = unknownCommittedNativeFork();
+      store.upsertSession({
+        ...f.commit.child,
+        status: 'closed',
+        resumeCursor: { nativeSessionId: 'later-current', revision: 2 },
+        updatedAt: at(),
+      });
+      append(f.childId, { method: 'turn.started', turnId: 'later-child' });
+      append(f.childId, {
+        method: 'turn.completed',
+        turnId: 'later-child',
+        finishReason: 'stop',
+        outputText: 'Later output',
+      });
+      const observation = store.observeCommittedNativeFork(
+        f.childId,
+        f.snapshot.digest,
+      );
+      expect(observation.kind).toBe('verified-creation');
+      if (observation.kind !== 'verified-creation')
+        throw new Error('Expected creation evidence');
+      expect(observation.currentSession.status).toBe('closed');
+      expect(observation.currentSession.resumeCursor).toEqual({
+        nativeSessionId: 'later-current',
+        revision: 2,
+      });
+      projection.invalidateCommittedNativeFork(observation.affected);
+      const oracle = freshProjection();
+      expect(projection.readConversation(f.childId)).toEqual(
+        oracle.readConversation(f.childId),
+      );
+      expect(projection.readConversation('unrelated')).toEqual(unrelatedBefore);
+      expect(store.hasEventId(unrelatedPending.eventId)).toBe(true);
+      vi.advanceTimersByTime(5_001);
+      expect(
+        projection.readConversation('unrelated').runningChildWork,
+      ).toBeUndefined();
+      expect(store.readSessionByThread(f.childId)?.status).toBe('closed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('the open turn is exactly the hasOpenTurn fold, live and freshly seeded, over random sequences', () => {

@@ -205,11 +205,14 @@ qualification is reported separately from this adapter regression.
 Preview still uses the ordinary acquisition preference for an installed system
 Chrome/Edge before the pinned download. It does not assume those browsers honor
 profile preferences: before any authored HTML loads, a separate temporary
-internal target reads `chrome://prefs-internals/` and requires the effective
-`webrtc.ip_handling_policy` value to be `disable_non_proxied_udp`, with no
-per-URL overrides. Chromium reports managed-policy precedence in that resolved
-value. A mismatch, unreadable/unsupported diagnostic, timeout or URL override
-refuses preview with a fixed, clear error. The diagnostic target is closed;
+internal target reads each of `chrome://prefs-internals/webrtc.ip_handling_policy`
+and `chrome://prefs-internals/webrtc.ip_handling_url`, requiring the effective
+policy to be `disable_non_proxied_udp` with no per-URL overrides. These targeted
+reads avoid rendering the complete preference dump and share the existing
+three-second verification budget. Each read is bound to its exact committed
+document and isolated context. Chromium reports managed-policy precedence in
+these resolved values. A mismatch, unreadable/unsupported diagnostic, timeout or URL override
+refuses preview with a fixed, clear error. Both diagnostic targets are closed;
 authored content uses a separate fresh target. This keeps system-browser support
 while failing closed for enterprise overrides and incompatible browser versions.
 

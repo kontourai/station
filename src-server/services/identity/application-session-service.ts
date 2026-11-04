@@ -206,6 +206,10 @@ export class ApplicationSessionRefusal extends Error {
 export class ApplicationSessionService {
   private readonly admitted = new WeakMap<Request, string>();
   private readonly nativeAdmitted = new WeakMap<Request, string>();
+  private readonly currentGrants = new WeakMap<
+    Request,
+    (request: Request) => boolean
+  >();
   private closed = false;
   constructor(
     private readonly db: DatabaseSync,
@@ -557,6 +561,7 @@ export class ApplicationSessionService {
   async authenticateNative(
     request: Request,
   ): Promise<ResolvedDeploymentAuthentication> {
+    this.currentGrants.delete(request);
     try {
       const token = request.headers.get(APPLICATION_SESSION_NATIVE_HEADER);
       const signed = request.headers.get(
@@ -577,15 +582,7 @@ export class ApplicationSessionService {
         subject: record.subject,
         principalId: record.principalId,
       });
-      const fingerprint = digest(
-        JSON.stringify([
-          token,
-          signed,
-          request.method,
-          request.url,
-          request.headers.get('Authorization'),
-        ]),
-      );
+      const fingerprint = this.requestFingerprint(request);
       const firstAdmission = this.nativeAdmitted.get(request) !== fingerprint;
       const jti = firstAdmission
         ? await this.nativeProof(request, signed, record, 'request', {
@@ -643,6 +640,25 @@ export class ApplicationSessionService {
         });
         this.nativeAdmitted.set(request, fingerprint);
       }
+      const providerCurrent = this.authentication.captureVerifiedSession(
+        account.session,
+      );
+      this.currentGrants.set(request, (observed) => {
+        if (this.requestFingerprint(observed) !== fingerprint) return false;
+        const row = this.db
+          .prepare(
+            'SELECT record FROM application_session_native_sessions WHERE token_hash=? AND expires_at>?',
+          )
+          .get(hash, this.now());
+        if (row?.record !== persistedRecord || current.expiresAt <= this.now())
+          return false;
+        this.nativeDevice(observed, current.target, current.deviceId, {
+          issuer: current.issuer,
+          subject: current.subject,
+          principalId: current.principalId,
+        });
+        return providerCurrent();
+      });
       return {
         ...account,
         session: {
@@ -1123,6 +1139,7 @@ export class ApplicationSessionService {
   async authenticate(
     request: Request,
   ): Promise<ResolvedDeploymentAuthentication> {
+    this.currentGrants.delete(request);
     try {
       const token = request.headers.get(APPLICATION_SESSION_HEADER);
       const signed = request.headers.get(APPLICATION_SESSION_PROOF_HEADER);
@@ -1133,16 +1150,7 @@ export class ApplicationSessionService {
       this.assertAlias(request, record.aliasId);
       if (this.origin(request) !== record.origin)
         throw new ApplicationSessionRefusal('invalid');
-      const fingerprint = digest(
-        JSON.stringify([
-          token,
-          signed,
-          request.method,
-          request.url,
-          request.headers.get('Authorization'),
-          request.headers.get('Origin'),
-        ]),
-      );
+      const fingerprint = this.requestFingerprint(request);
       if (this.admitted.get(request) !== fingerprint) {
         const jti = await this.proof(request, signed, record, 'request', token);
         this.transaction(() => {
@@ -1180,6 +1188,22 @@ export class ApplicationSessionService {
       )
         throw new ApplicationSessionRefusal('invalid');
       this.markAdoptionActive(record);
+      const providerCurrent = this.authentication.captureVerifiedSession(
+        result.session,
+      );
+      this.currentGrants.set(request, (observed) => {
+        if (this.requestFingerprint(observed) !== fingerprint) return false;
+        if (JSON.stringify(this.read(hash)) !== JSON.stringify(record))
+          return false;
+        this.device(observed, record.deviceId, record.principalId);
+        this.assertAlias(observed, record.aliasId);
+        this.assertAdoptionBinding(
+          record.deviceId,
+          record.aliasId,
+          record.adoptionId,
+        );
+        return this.origin(observed) === record.origin && providerCurrent();
+      });
       return {
         ...result,
         session: {
@@ -1198,36 +1222,54 @@ export class ApplicationSessionService {
         : { kind: 'unavailable' };
     }
   }
-  transferRequest(source: Request, replacement: Request): void {
-    const fingerprint = this.admitted.get(source);
-    if (
-      fingerprint &&
-      source.url === replacement.url &&
-      source.method === replacement.method &&
-      source.headers.get(APPLICATION_SESSION_HEADER) ===
-        replacement.headers.get(APPLICATION_SESSION_HEADER) &&
-      source.headers.get(APPLICATION_SESSION_PROOF_HEADER) ===
-        replacement.headers.get(APPLICATION_SESSION_PROOF_HEADER) &&
-      source.headers.get('Authorization') ===
-        replacement.headers.get('Authorization') &&
-      source.headers.get('Origin') === replacement.headers.get('Origin')
-    )
-      this.admitted.set(replacement, fingerprint);
-    const nativeFingerprint = this.nativeAdmitted.get(source);
-    if (
-      nativeFingerprint &&
-      source.url === replacement.url &&
-      source.method === replacement.method &&
-      source.headers.get(APPLICATION_SESSION_NATIVE_HEADER) ===
-        replacement.headers.get(APPLICATION_SESSION_NATIVE_HEADER) &&
-      source.headers.get(APPLICATION_SESSION_NATIVE_PROOF_HEADER) ===
-        replacement.headers.get(APPLICATION_SESSION_NATIVE_PROOF_HEADER) &&
-      source.headers.get('Authorization') ===
-        replacement.headers.get('Authorization') &&
-      source.headers.get('Origin') === replacement.headers.get('Origin')
-    )
-      this.nativeAdmitted.set(replacement, nativeFingerprint);
+  private requestFingerprint(request: Request): string {
+    return digest(
+      JSON.stringify([
+        request.method,
+        request.url,
+        ...[
+          'Authorization',
+          'Origin',
+          'Cookie',
+          APPLICATION_SESSION_HEADER,
+          APPLICATION_SESSION_PROOF_HEADER,
+          APPLICATION_SESSION_NATIVE_HEADER,
+          APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+        ].map((name) => request.headers.get(name)),
+      ]),
+    );
   }
+
+  /** Only an admitted proof can capture a synchronous, owner-backed grant witness. */
+  captureCurrentSession(request: Request): () => boolean {
+    const grant = this.currentGrants.get(request);
+    return () => {
+      if (
+        this.closed ||
+        request.signal.aborted ||
+        !grant ||
+        !this.currentGrants.has(request)
+      )
+        return false;
+      try {
+        return grant(request);
+      } catch {
+        return false;
+      }
+    };
+  }
+
+  transferRequest(source: Request, replacement: Request): void {
+    const fingerprint = this.requestFingerprint(source);
+    if (fingerprint !== this.requestFingerprint(replacement)) return;
+    if (this.admitted.get(source) === fingerprint)
+      this.admitted.set(replacement, fingerprint);
+    if (this.nativeAdmitted.get(source) === fingerprint)
+      this.nativeAdmitted.set(replacement, fingerprint);
+    const grant = this.currentGrants.get(source);
+    if (grant) this.currentGrants.set(replacement, grant);
+  }
+
   async renew(request: Request): Promise<ApplicationSessionContinuation> {
     const account = this.account(await this.authenticate(request));
     const hash = digest(request.headers.get(APPLICATION_SESSION_HEADER)!);

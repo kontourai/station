@@ -22,6 +22,10 @@ import {
   readDocumentationImpact,
 } from './documentation-impact.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  formatGalleryCoverage,
+  galleryCoverage,
+} from './lib/gallery-screen-coverage.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
@@ -102,17 +106,20 @@ export function gateScopes({ changedPaths, baseSha }) {
     {
       name: 'orchestration transfer budgets',
       decision: transfer,
-      command: 'node scripts/check-prepush-orchestration-transfer.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:transfer-budgets scripts/check-prepush-orchestration-transfer.mjs',
     },
     {
       name: 'static gates (UI contracts, content)',
       decision: statics,
-      command: 'node scripts/check-prepush-static-gates.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:static-gates scripts/check-prepush-static-gates.mjs',
     },
     {
       name: 'SDK public barrel',
       decision: barrel,
-      command: 'node scripts/check-prepush-sdk-barrel.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs',
     },
   ].map(({ name, decision, command }) => ({
     name,
@@ -129,6 +136,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     everyPush: EVERY_PUSH_CHECKS,
     scoped: gateScopes({ changedPaths, baseSha }),
     fixtureCommands: fixturePolicyCommands(changedPaths),
+    gallery: galleryCoverage({ changedPaths }),
     ladder: LANE_LADDER,
   };
 }
@@ -158,6 +166,7 @@ export function gateReport({ changedPaths, baseSha }) {
       'Fixture and test-effectiveness route:',
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
+  if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
   lines.push(
     '',
     ...plan.ladder.map(

@@ -1,0 +1,9 @@
+{
+  "revision": "9aed94e1857a17a5d160b19da040dc7fdf596c24",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the in-app PR review section against the fixed GitHub CLI reader: explicit target and host, CLI-owned authentication, SHA-bound reads and writes, bounded diff and unavailable observations are unchanged. Live provider reads for PR 4277 succeeded on gh 2.46.0. No SDK contract prose change needed.","inputs":["docs/reference/sdk.md","src-server/services/pull-requests/pull-request-review.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the new-chat permission instructions to match compact requested-mode labels and source explanation in the shared picker. Reviewed StartApprovalSummary and the Home/dock selection-and-submit tests, including full-access confirmation and Engine default explanation. Browser fixture renders at 390 and 1440 in both themes passed; native keyboard behavior was not tested.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d0b2802259cb460e4139d32822cf0fbb6e80e092",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed the integration storage pin-lock repair against managed publication/retained-recovery and portable-definition boundaries. No schema, supported transport or plugin authority changes: the locked publisher now also holds the existing OAuth pin lease during snapshot/replacement/compensation. Publication and restore concurrency tests retain issuer A and prevent re-pinning B; 221 storage/transaction tests passed after clean-commit mutation restoration. Portable read-only MCP limitations remain unchanged; this is local evidence, not live remote credential acceptance.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader-storage.ts"]}
+  ]
+}

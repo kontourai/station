@@ -1,0 +1,20 @@
+name: "PR conflict signer diagnostic"
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Open same-repository PR number with a confirmed conflict
+        required: true
+        type: string
+permissions: {}
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: read
+      attestations: write
+      id-token: write
+    uses: ./.github/workflows/pr-conflict-admission.yml
+    with:
+      pr: ${{ inputs.pr }}

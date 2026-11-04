@@ -229,6 +229,10 @@ async function createHarness(options?: {
       isInternal: () => false,
     }),
   );
+  // Test endpoints allow the real gate's method/path decisions to be observed.
+  app.get('/api/me/notifications', (c) => c.json({ ok: true }));
+  app.post('/api/me/notifications/:id/read', (c) => c.json({ ok: true }));
+  app.delete('/api/me/notifications/:id', (c) => c.json({ ok: true }));
   // The real account login/logout surface (provider revocation included),
   // mounted exactly where production mounts it.
   app.route(
@@ -519,6 +523,36 @@ describe('GET /api/auth/authority through the production composition', () => {
         error: { code: 'account_bound_device_route_forbidden' },
       });
     }
+  });
+
+  test('account-bound notification admission is limited to the three person-feed leaves', async () => {
+    const h = await createHarness();
+    const { credential } = h.pairAccountBoundDevice('notification-phone', true);
+    const headers = new Headers(h.bothCookies(credential).headers);
+    headers.set('Origin', ORIGIN);
+    for (const [method, path] of [
+      ['GET', '/api/me/notifications'],
+      ['POST', '/api/me/notifications/id/read'],
+      ['DELETE', '/api/me/notifications/id'],
+    ]) {
+      const response = await h.request(path!, { method, headers });
+      expect(response.status, await response.clone().text()).toBe(200);
+    }
+    for (const [method, path] of [
+      ['POST', '/api/me/notifications'],
+      ['GET', '/api/me/notifications/id'],
+      ['DELETE', '/api/me/notifications/id/read'],
+      ['POST', '/api/me/notifications/id/read/extra'],
+    ]) {
+      const response = await h.request(path!, { method, headers });
+      expect(response.status).toBe(403);
+      expect(await readJson(response)).toEqual({
+        error: { code: 'account_bound_device_route_forbidden' },
+      });
+    }
+    expect(
+      (await h.request('/api/me/notifications', h.bearer(credential))).status,
+    ).toBe(401);
   });
 
   test('account-bound device allowlist: exact GET self-read only', async () => {

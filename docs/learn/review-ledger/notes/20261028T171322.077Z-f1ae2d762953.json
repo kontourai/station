@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited: issuer field, binding requires issuer, issuer/endpoint pinned while bound, mismatch refused before secret read, empty scopes = advertised, scopes applied to registration. Checked against runtime.ts schema, tools.ts, mcp-service.ts and tool-server-oauth.ts. Other inputs: the API reference documents the declared issuer, empty scope choice and scoped registration; ToolOAuthClient adds the optional declared issuer; the integration schema accepts oauthClient.issuer (an RFC 8414 HTTPS issuer); mcp-service.ts refuses an issuer change while a client secret is bound, resets tokens on issuer change, and lets an empty sign-in scope choice drop the integration default.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

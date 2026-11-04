@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import { stitchWindowWithLiveEvents } from './conversationTranscriptParts';
 import { ensureOrchestrationEventStream } from './ensureOrchestrationEventStream';
 import {
@@ -40,16 +41,32 @@ export function useSessionTranscriptEvents(
   apiBase: string,
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
   isStreaming: boolean,
+  observation?: { live: false; revision: number },
 ) {
   // The live half of this transcript is the app-wide stream. The chat dock
   // and the Agents pane start it, but the detail must not depend on either
   // being mounted: ensure it here (deduplicated per apiBase; the returned
   // release drops only this registration).
   const queryClient = useQueryClient();
-  useEffect(
-    () => ensureOrchestrationEventStream(apiBase, queryClient),
-    [apiBase, queryClient],
-  );
+  const bootstrap = useClientBootstrapReadiness();
+  const streamAuthorityKey = bootstrap.authorityKey;
+  useEffect(() => {
+    if (bootstrap.status !== 'settled' || observation?.live === false) return;
+    return ensureOrchestrationEventStream(
+      apiBase,
+      queryClient,
+      streamAuthorityKey,
+      false,
+      bootstrap.sharedRealtime,
+    );
+  }, [
+    apiBase,
+    queryClient,
+    streamAuthorityKey,
+    bootstrap.status,
+    bootstrap.sharedRealtime,
+    observation?.live,
+  ]);
 
   const [revision, setRevision] = useState(0);
   const wasStreaming = useRef(isStreaming);
@@ -61,7 +78,7 @@ export function useSessionTranscriptEvents(
   const window = useSessionEventWindow(
     apiBase,
     session.conversationId ?? session.threadId,
-    revision,
+    observation?.revision ?? revision,
     session.threadId,
   );
   const subscribeLive = useCallback(
@@ -130,6 +147,8 @@ export function useSessionTranscriptEvents(
 
   return {
     events,
+    // #4266: turns the window holds only as their start and tail.
+    partialTurnStartEventIds: window.partialTurnStartEventIds,
     hasMore: window.hasMore,
     loadOlder: window.loadOlder,
     settled: window.settled,

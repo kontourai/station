@@ -6,6 +6,7 @@ import type {
   KernelResult,
   OwnerIdentity,
   OwnerLiveness,
+  TurnClaim,
 } from '@kontourai/monument';
 import { decideTurnBoundaryObserveTerminal } from '@kontourai/monument';
 import {
@@ -13,29 +14,31 @@ import {
   findInvocationTerminal,
 } from '@kontourai/monument/adapter';
 import {
+  type InvocationAcceptanceSnapshot,
+  SESSION_TURN_ACCEPTED_CAPACITY,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
+import {
   openSqliteKernelStorage,
   type SqliteInvocationTerminalFacts,
 } from '@kontourai/monument/sqlite';
 import { z } from 'zod';
-import { readPreparedClaimCustody } from '../turn-idempotency.js';
+import { isCancellationAdmissionBlocked } from './cancellation-fence.js';
 import {
   type CapturedTurnIntent,
   decodeTurnIntent,
 } from './prepared-turn-intent.js';
 import { isProjectTaskRoomExecutionSealed } from './project-task-room-source-seal.js';
 import {
-  type InvocationAcceptanceSnapshot,
   SESSION_START_INDETERMINATE_CODE,
-  SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryCoordinator,
-  type SessionTurnBoundaryRecord,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 import {
+  readPreparedClaimCustody,
   STATION_TURN_DEDUP_KERNEL_TABLES,
   turnDedupKey,
-} from './sqlite-turn-dedup-persistence.js';
-import type { TurnClaim } from './turn-deduplicator.js';
+} from './station-turn-dedup-bindings.js';
 
 /** Station's host tables and admission policy; Monument owns the boundary writes. */
 export function createSqliteSessionTurnBoundaryCoordinator({
@@ -167,6 +170,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       {
         name: 'station-boundary-admission',
         admit(command) {
+          if (isCancellationAdmissionBlocked(db, command))
+            return { refuse: 'session-cancellation-fenced' };
           if (
             (command.type === 'turnBoundary.resumePrepared' ||
               command.type === 'turnBoundary.beginInvocation') &&

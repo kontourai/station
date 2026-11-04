@@ -1,0 +1,7 @@
+{
+  "revision": "832b02043a99fc779091b6294808eb460ac23aeb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the active-turn continuation wait paragraph: a chat reopened mid-turn steers or queues while the turn is in flight; a wait with no turn in flight stays blocked behind Check again.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

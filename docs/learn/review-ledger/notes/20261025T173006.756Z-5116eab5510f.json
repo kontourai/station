@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Links to src-ui/AGENTS.md still resolve; new brief links back here and agrees with the StatusBadge/Badge, Button, Dialog and ConfirmModal guidance.","inputs":["docs/patterns/frontend.md","src-ui/AGENTS.md"]}
+  ]
+}

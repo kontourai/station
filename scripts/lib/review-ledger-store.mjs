@@ -899,18 +899,6 @@ export function readReviewState(root, { history = true } = {}) {
   return state;
 }
 
-function readBlobsAt(root, ref, paths) {
-  const objects = readGitObjects(
-    root,
-    paths.map((path) => `${ref}:${path}`),
-  );
-  return new Map(
-    paths.flatMap((path, index) =>
-      objects[index] === undefined ? [] : [[path, objects[index]]],
-    ),
-  );
-}
-
 /**
  * The compiled ledger and capture manifest at a commit, in either layout.
  * `ledger` or `media` is undefined when that commit has none.
@@ -918,23 +906,29 @@ function readBlobsAt(root, ref, paths) {
  * @param {string} ref
  */
 export function readReviewStateAt(root, ref, { purpose } = {}) {
-  const files = git(root, [
-    'ls-tree',
-    '-r',
-    '-z',
-    '--name-only',
-    ref,
-    '--',
-    REVIEW_LEDGER_DIR,
-  ])
+  // `ls-tree` has already resolved every path in this immutable tree. Feed
+  // its object IDs to cat-file rather than resolving the tree once per path.
+  const tree = git(root, ['ls-tree', '-r', '-z', ref, '--', REVIEW_LEDGER_DIR])
     .toString('utf8')
     .split('\0')
-    .filter(Boolean);
-  const blobs = readBlobsAt(root, ref, [
-    ...files,
-    LEGACY_REVIEW_LEDGER,
-    LEARNING_MEDIA_MANIFEST,
+    .filter(Boolean)
+    .map((entry) => {
+      const match = /^\d{6} \S+ ([a-f0-9]{40,64})\t([\s\S]+)$/.exec(entry);
+      if (!match) throw new Error('Invalid Git review ledger tree entry');
+      return { oid: match[1], file: match[2] };
+    });
+  const files = tree.map(({ file }) => file);
+  const paths = [...files, LEGACY_REVIEW_LEDGER, LEARNING_MEDIA_MANIFEST];
+  const objects = readGitObjects(root, [
+    ...tree.map(({ oid }) => oid),
+    `${ref}:${LEGACY_REVIEW_LEDGER}`,
+    `${ref}:${LEARNING_MEDIA_MANIFEST}`,
   ]);
+  const blobs = new Map(
+    paths.flatMap((path, index) =>
+      objects[index] === undefined ? [] : [[path, objects[index]]],
+    ),
+  );
   const json = (path) =>
     blobs.has(path) ? JSON.parse(blobs.get(path).toString('utf8')) : undefined;
   const manifest = json(LEARNING_MEDIA_MANIFEST);

@@ -70,9 +70,22 @@ export const NOTIFICATION_SOUND_VALUES = [
   'none',
 ] as const satisfies readonly NotificationSound[];
 
+/**
+ * #4405 (A36): the inbox scope that follows the project page on screen, and
+ * shows all work anywhere else.
+ */
+export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
+
 export interface InboxSectionsState {
   snoozed: boolean;
   earlier: boolean;
+  needsYou?: boolean;
+  open?: boolean;
+  running?: boolean;
+  idle?: boolean;
+  settled?: boolean;
+  drafts?: boolean;
+  external?: boolean;
 }
 
 /**
@@ -277,8 +290,16 @@ export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
  */
 export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
 
+/**
+ * The appearance mode a person chose. `system` follows the device's
+ * `prefers-color-scheme` and is the default (#4407). It is never stored:
+ * choosing it clears a saved light/dark choice, so an older client or server,
+ * which knows only light and dark, reads it as "no choice".
+ */
+export type ThemePreference = 'light' | 'dark' | 'system';
+
 export interface DeviceSettings {
-  theme: 'light' | 'dark';
+  theme: ThemePreference;
   accentColor: string | null;
   /**
    * The color-theme family. Values arrive from storage, imports and the
@@ -306,6 +327,10 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  /**
+   * `'all'` (the default), a Station or project key, or
+   * `INBOX_SCOPE_CURRENT_PROJECT` (the project page on screen, else all work).
+   */
   inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
@@ -328,6 +353,7 @@ export interface DeviceSettings {
    * URL param and was never persisted.
    */
   chatFontSize: number | null;
+  chatAnswerWidth: 'comfortable' | 'wide' | 'full';
   /** Return behavior for every keyboard on this device; auto follows the pointer type. */
   chatReturnBehavior: 'auto' | 'send' | 'newline';
   /**
@@ -344,6 +370,12 @@ export interface DeviceSettings {
   hapticsEnabled: boolean;
   /** Reopen this phone's last explicitly selected Station on its next launch. */
   openLastStationOnLaunch: boolean;
+  /**
+   * Terminals keep a navigable text mirror of their screen and announce new
+   * output (#3994). Off by default: browsers report no screen reader, and the
+   * mirror costs work on every frame.
+   */
+  terminalScreenReader: boolean;
   /**
    * archive#2652: chapter/step reached in the guided first run on this device.
    * Never had a prior key — the guided first run is new.
@@ -373,6 +405,9 @@ export interface DeviceSettings {
   experimentalFlowEnabled?: boolean;
   experimentalReadinessEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  /** Station routes (docs/design/station-routes.md): learn and show every route to a saved Station. */
+  experimentalStationRoutesEnabled?: boolean;
+  experimentalSheetGesturesEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -673,14 +708,13 @@ export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'theme',
     scope: 'account',
-    descriptor: { kind: 'enum', values: ['light', 'dark'] },
+    descriptor: { kind: 'enum', values: ['light', 'dark', 'system'] },
     label: 'Theme',
-    help: 'The interface renders in this color scheme in your interface.',
-    description: 'Light or dark interface theme.',
+    help: 'The interface renders light, dark, or follows this device’s appearance.',
+    description: 'Light, dark, or System (follows the device) interface theme.',
     priorStorageKey: 'theme',
-    // Confirmed against index.css: no `data-theme` attribute resolves the
-    // dark skin (ThemeToggle.tsx's own in-code default already agreed).
-    defaultValue: 'dark',
+    // #4407: unset follows the device. A saved light or dark choice is kept.
+    defaultValue: 'system',
   }),
   defineDeviceSetting({
     key: 'accentColor',
@@ -822,6 +856,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Inbox scope',
     help: 'Limit the inbox to one project or Station on this device.',
     description: 'Selected project or Station filter for the inbox.',
+    // Unchosen, the inbox shows all work, so the conversation you open is
+    // always in it. `INBOX_SCOPE_CURRENT_PROJECT` (#4405 A36) is a choice that
+    // follows the project page you are on.
     defaultValue: 'all',
   }),
   defineDeviceSetting({
@@ -841,9 +878,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Chat dock inbox sections',
-    help: 'The snoozed and earlier inbox sections reopen collapsed or expanded as you left them.',
-    description:
-      'Collapsed/expanded state of the snoozed and earlier inbox sections.',
+    help: 'Inbox groups reopen collapsed or expanded as you left them.',
+    description: 'Collapsed/expanded state of the inbox groups.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -969,6 +1005,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: 'auto',
   }),
   defineDeviceSetting({
+    key: 'chatAnswerWidth',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: ['comfortable', 'wide', 'full'] },
+    label: 'Answer width',
+    help: 'Choose how much horizontal space assistant answers use.',
+    description:
+      'Preferred assistant answer width. User message bubbles keep their own width.',
+    defaultValue: 'wide',
+  }),
+  defineDeviceSetting({
     key: 'chatFontSize',
     scope: 'account',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
@@ -1013,6 +1059,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
       'Light selection pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms. Mobile native shells only.',
     // archive#1954: default on; desktop/web no-op via capability gate.
     defaultValue: true,
+  }),
+  defineDeviceSetting({
+    key: 'terminalScreenReader',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Terminal screen reader mode',
+    help: 'Terminals on this device keep a text copy of the screen for screen readers and announce new output.',
+    description:
+      'Keep a navigable text mirror of each terminal and announce new output, bells and exits. Off by default.',
+    defaultValue: false,
   }),
   defineDeviceSetting({
     key: 'confirmConversationDelete',
@@ -1066,6 +1122,26 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Trust preview',
     help: 'Opt in to experimental Trust panels and evidence-import settings.',
     description: 'Show project evidence panels and Trust settings.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalStationRoutesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Station routes preview',
+    help: 'Opt in to learning every address a saved Station reports and showing each route in its connection details.',
+    description:
+      'Reach a saved Station over its LAN, Tailscale and Tailscale HTTPS addresses.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalSheetGesturesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Sheet gestures preview',
+    help: 'Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.',
+    description:
+      'Drag phone sheets to resize or close them; swipe inbox rows left for actions.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1209,13 +1285,17 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatShowReasoning',
   'chatShowToolDetails',
   'chatFontSize',
+  'chatAnswerWidth',
   'chatReturnBehavior',
   'hapticsEnabled',
   'openLastStationOnLaunch',
+  'terminalScreenReader',
   'developerToolsEnabled',
   'experimentalFlowEnabled',
   'experimentalReadinessEnabled',
   'experimentalTrustEnabled',
+  'experimentalStationRoutesEnabled',
+  'experimentalSheetGesturesEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

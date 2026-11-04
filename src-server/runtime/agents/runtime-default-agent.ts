@@ -2,6 +2,7 @@ import {
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
+import { STATION_AGENT_DISPLAY_NAME } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   type BuiltinAgentEngineBinding,
@@ -18,14 +19,20 @@ import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
 } from '../bootstrap/station-control-runtime-env.js';
+import { directModelImplementationBinding } from '../frameworks/model-generation-identity.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type { IAgentFramework } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import type { AgentHooksDeps } from './agent-hooks.js';
 import { createAgentHooks } from './agent-hooks.js';
+import {
+  bindDurableAgent,
+  durableAgentDefinition,
+} from './durable-agent-invocation.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from './station-capability-discovery.js';
 
 interface RuntimeDefaultAgentContext {
+  observeModelContext?: AgentHooksDeps['observeModelContext'];
   appConfig: AppConfig;
   configLoader: ConfigLoader;
   framework: IAgentFramework;
@@ -248,7 +255,7 @@ export async function bootstrapRuntimeDefaultAgent(
     context.agentHooksMap?.delete('default');
     context.agentMetadataMap.set('default', {
       slug: 'default',
-      name: 'Station',
+      name: STATION_AGENT_DISPLAY_NAME,
       description: 'Default agent with full access to manage Station',
       updatedAt: new Date().toISOString(),
       tools: builtinTools,
@@ -327,6 +334,7 @@ export async function bootstrapRuntimeDefaultAgent(
   // an unattended run can read but a mutating tool fails closed unless an
   // interactive requester (registered via agentHooksMap) approves it.
   const defaultHooks = createAgentHooks({
+    observeModelContext: context.observeModelContext,
     spec: defaultSpec,
     appConfig: context.appConfig,
     configLoader: context.configLoader,
@@ -342,6 +350,16 @@ export async function bootstrapRuntimeDefaultAgent(
     logger: context.logger,
   });
 
+  const durable = {
+    home: context.configLoader.getProjectHomeDir(),
+    slug: 'station',
+    definition: durableAgentDefinition({
+      spec: defaultSpec,
+      binding: directModelImplementationBinding(defaultModel),
+      runtime: context.appConfig.runtime ?? 'voltagent',
+    }),
+  };
+
   const defaultAgent = await context.framework.createTempAgent({
     agentId: 'station',
     name: 'default',
@@ -356,7 +374,9 @@ export async function bootstrapRuntimeDefaultAgent(
     tools: defaultTools,
     memoryAdapter: defaultMemoryAdapter,
     hooks: defaultHooks,
+    durable,
   });
+  bindDurableAgent(defaultAgent, durable);
 
   context.agentHooksMap?.set('default', defaultHooks);
   context.activeAgents.set('default', defaultAgent as any);
@@ -364,7 +384,7 @@ export async function bootstrapRuntimeDefaultAgent(
   context.memoryAdapters.set('default', defaultMemoryAdapter);
   context.agentMetadataMap.set('default', {
     slug: 'default',
-    name: 'Station',
+    name: STATION_AGENT_DISPLAY_NAME,
     description: 'Default agent with full access to manage Station',
     updatedAt: new Date().toISOString(),
   });

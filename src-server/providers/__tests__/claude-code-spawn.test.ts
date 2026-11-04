@@ -280,3 +280,23 @@ describe('claudeExitDetailWithStderr', () => {
     ).toBe('Claude Code process exited with code 1. stderr: already');
   });
 });
+
+describe('workload attribution', () => {
+  test("names the session in the engine launch's environment for the workload launcher", () => {
+    const engine = createClaudeEngineProcess(
+      fakeClaudeSpawn(),
+      undefined,
+      'thread-claude',
+    );
+    engine.spawn({
+      command: FAKE_CLAUDE_COMMAND,
+      args: [],
+      cwd: '/work',
+      env: { PATH: '/bin' },
+      signal: new AbortController().signal,
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.options).toMatchObject({
+      env: { PATH: '/bin', STATION_WORKLOAD_SESSION_ID: 'thread-claude' },
+    });
+  });
+});

@@ -9,6 +9,7 @@
     "reviewGuidesEnabled": { "type": "boolean", "default": false },
     "reviewGuideModel": { "type": "string", "maxLength": 255 },
     "reviewGuideInstructions": { "type": "string", "maxLength": 4000 },
+    "titleModel": { "type": "string", "maxLength": 255 },
     "region": {
       "type": "string",
       "description": "AWS region for Bedrock (e.g., us-east-1)",
@@ -37,6 +38,18 @@
       "description": "Default maximum turns for agent conversations",
       "minimum": 1,
       "default": 200
+    },
+    "checkoutStaleAfterCommits": {
+      "type": "integer",
+      "description": "Commits behind its upstream at which a Project's checkout reads as stale",
+      "minimum": 1,
+      "default": 50
+    },
+    "checkoutStaleAfterDays": {
+      "type": "integer",
+      "description": "Days a Project's checkout may lack an upstream commit, or go without a fetch, before it reads as stale",
+      "minimum": 1,
+      "default": 3
     },
     "defaultMaxOutputTokens": {
       "type": "number",
@@ -93,6 +106,12 @@
       "enum": ["shared", "worktree"],
       "description": "Workspace mode a new project chat starts in when the project does not name one. Default: shared",
       "default": "shared"
+    },
+    "noProjectChatFolder": {
+      "type": "string",
+      "enum": ["private", "home"],
+      "description": "Folder a new chat with no project runs in: a private scratch folder under Station's data, or the home folder. Chats that already ran keep their folder. Default: private",
+      "default": "private"
     },
     "gitRemote": {
       "type": "string",
@@ -280,6 +299,33 @@
       "type": "string",
       "description": "Shell used when Station spawns a terminal session."
     },
+    "terminalHistoryEnabled": {
+      "type": "boolean",
+      "description": "Write new terminals' output to disk so it survives a restart."
+    },
+    "terminalHistoryDirectory": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Absolute directory for terminal history; empty uses terminal-journals in the Station home."
+    },
+    "terminalHistoryMaxAgeDays": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3650,
+      "description": "Days to keep the history of an ended terminal."
+    },
+    "terminalHistoryMaxTerminalMiB": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024,
+      "description": "MiB of history each terminal keeps."
+    },
+    "terminalHistoryMaxTotalMiB": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 1048576,
+      "description": "MiB of history all terminals keep together."
+    },
     "disableDefaultSkillRegistries": {
       "type": "boolean",
       "description": "Stop Station from loading its built-in skill registries."
@@ -307,6 +353,11 @@
     "usageLimitAutoResume": {
       "type": "boolean",
       "description": "Send a Claude Code or Codex turn that stopped on a usage limit again once the provider-reported reset passes. Default off."
+    },
+    "claudeArtifactsEnabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Turn on Claude Code's Artifact tool (publishes pages to claude.ai; needs a claude.ai subscription login) for Claude sessions started afterwards. Default off."
     },
     "agentConnections": {
       "type": "object",

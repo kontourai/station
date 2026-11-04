@@ -35,7 +35,7 @@ import {
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
-import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
+import { runSessionStartWithBoundary } from '../session-turn-boundary-binding.js';
 
 const workerConstructions = vi.hoisted(() => ({ count: 0 }));
 // Track construction while retaining the real worker and SQLite implementation.
@@ -2575,56 +2575,83 @@ it('source seal requires a dedicated grant and rechecks it at the commit boundar
   }
 });
 
-it('source seal refuses an unpublished committed document instead of hiding it behind a closing checkpoint', async () => {
-  const path = databasePath();
-  const source = history(path);
-  const working = createProjectTaskRoomWorkingState(path);
-  try {
-    await source.open({ grant: grant('discover') });
-    const documentScope = {
-      projectId: scope.projectId,
-      taskId: scope.taskId,
-      documentId: 'document',
-    };
-    expect(
-      (
-        await working.settle({
-          scope: documentScope,
-          intentId: 'pending-edit',
-          intentDigest: sha('pending-edit'),
-          actorId: 'operator',
-          epoch: 1,
-          publicationPrincipal: {
-            operatorId: 'operator',
-            deviceId: 'device',
-            policyRevision: 'policy-1',
-          },
-          operations: [
-            {
-              schemaVersion: 1,
-              operationId: 'pending-op',
-              documentId: 'document',
-              replicaId: 'replica',
-              actor: { actorId: 'operator', kind: 'human' },
-              parents: [],
-              authorizationEpoch: 1,
-              kind: 'insert',
-              after: null,
-              text: 'not yet published',
+it.each([false, true])(
+  'source seal distinguishes claimed publication from replaceable working state (coalesce=%s)',
+  async (coalesce) => {
+    const path = databasePath();
+    const source = history(path);
+    const working = createProjectTaskRoomWorkingState(path);
+    try {
+      await source.open({ grant: grant('discover') });
+      const documentScope = {
+        projectId: scope.projectId,
+        taskId: scope.taskId,
+        documentId: 'document',
+      };
+      expect(
+        (
+          await working.settle({
+            scope: documentScope,
+            intentId: 'pending-edit',
+            ...(coalesce ? { coalesceRevisionPublication: true as const } : {}),
+            intentDigest: sha('pending-edit'),
+            actorId: 'operator',
+            epoch: 1,
+            publicationPrincipal: {
+              operatorId: 'operator',
+              deviceId: 'device',
+              policyRevision: 'policy-1',
             },
-          ],
-        })
-      ).kind,
-    ).toBe('committed');
-    expect(
-      await source.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
-    ).toEqual({ kind: 'publication-pending' });
-    expect((await source.append(message('still-open'))).kind).toBe('committed');
-  } finally {
-    await source.close();
-    await working.close();
-  }
-});
+            operations: [
+              {
+                schemaVersion: 1,
+                operationId: 'pending-op',
+                documentId: 'document',
+                replicaId: 'replica',
+                actor: { actorId: 'operator', kind: 'human' },
+                parents: [],
+                authorizationEpoch: 1,
+                kind: 'insert',
+                after: null,
+                text: 'not yet published',
+              },
+            ],
+          })
+        ).kind,
+      ).toBe('committed');
+      const sealed = await source.sealSource({
+        grant: grant('home-transfer'),
+        ...sealIntent,
+      });
+      if (coalesce) {
+        expect(sealed).toMatchObject({
+          kind: 'sealed',
+          seal: { workingStateDigest: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        });
+        expect(await working.read({ scope: documentScope })).toMatchObject({
+          text: 'not yet published',
+        });
+        expect(
+          await source.sealSource({
+            grant: grant('home-transfer'),
+            ...sealIntent,
+          }),
+        ).toEqual(sealed);
+        expect((await source.append(message('after-seal'))).kind).toBe(
+          'denied',
+        );
+      } else {
+        expect(sealed).toEqual({ kind: 'publication-pending' });
+        expect((await source.append(message('still-open'))).kind).toBe(
+          'committed',
+        );
+      }
+    } finally {
+      await source.close();
+      await working.close();
+    }
+  },
+);
 
 it('source seal serializes behind an admitted transaction and closes at its committed checkpoint', async () => {
   const path = databasePath();
@@ -3409,6 +3436,77 @@ it('feedback preserves legacy bytes, fences downgraded writers and replays perma
     expect(await room.append(feedback)).toEqual({ kind: 'denied' });
     db.close();
   } finally {
+    await room.close();
+  }
+});
+
+it('writes member records as v5 and permanently fences older writers after retention and restart', async () => {
+  const path = databasePath();
+  let member = false;
+  const options: Parameters<typeof history>[1] = {
+    limits: {
+      retentionRecords: 2,
+      retentionBytes: 1024 * 1024,
+      maxIdentities: 20,
+    },
+    capabilities: {
+      resolve: async (input) => {
+        const result = await capabilities.resolve(input);
+        return result.kind === 'granted' && member
+          ? {
+              ...result,
+              receipt: {
+                ...result.receipt,
+                principal: {
+                  kind: 'member',
+                  principalId: 'human:local-account:alice',
+                  deviceId: 'device-a',
+                },
+              },
+            }
+          : result;
+      },
+    },
+  };
+  let room = history(path, options);
+  let db: InstanceType<typeof DatabaseSync> | undefined;
+  try {
+    await room.open({ grant: grant('discover') });
+    db = new DatabaseSync(path);
+    expect((await room.append(message('legacy'))).kind).toBe('committed');
+    member = true;
+    expect((await room.append(message('member'))).kind).toBe('committed');
+    const memberPage = await room.read({ grant: grant('history-read') });
+    expect(memberPage.kind).toBe('available');
+    if (memberPage.kind !== 'available')
+      throw new Error('expected member history');
+    expect(memberPage.records[1]).toMatchObject({
+      schemaVersion: 'station.project-task-room/v5',
+      principal: {
+        kind: 'member',
+        principalId: 'human:local-account:alice',
+        deviceId: 'device-a',
+      },
+    });
+    member = false;
+    expect((await room.append(message('after-member'))).kind).toBe('committed');
+    expect((await room.append(message('after-pruning'))).kind).toBe(
+      'committed',
+    );
+    await room.close();
+    room = history(path, options);
+    expect((await room.append(message('after-restart'))).kind).toBe(
+      'committed',
+    );
+    expect(() =>
+      db!
+        .prepare(
+          "INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) SELECT channel_id,epoch,99,'old-writer',proposal_digest,envelope_digest,checkpoint_digest,json_set(record_json,'$.schemaVersion','station.project-task-room/v4'),record_bytes FROM project_task_room_records WHERE proposal_id='after-restart'",
+        )
+        .run(),
+    ).toThrow('room requires v5 writer');
+  } finally {
+    db?.close();
     await room.close();
   }
 });

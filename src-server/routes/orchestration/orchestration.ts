@@ -1,3 +1,5 @@
+export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
+
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
@@ -59,10 +61,15 @@ import {
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  CLIENT_TURN_INPUT_CONFLICT_CODE,
   type DelegationProvenance,
+  INBOX_KEY_CONFLICT_CODE,
+  isSteerConflictCode,
+  MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -88,8 +95,10 @@ import {
   DelegationFileRefusal,
 } from '@kontourai/station-shared/delegation-files';
 import { type Context, Hono } from 'hono';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
+import { servesSessionInventoryInputRead } from '../../capabilities/station-capability-flags.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
@@ -104,9 +113,34 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
-import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  type FullAccessGrant,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  resolveClientOriginForRequest,
+} from '../../security/runtime-request-security.js';
+import {
+  stationControlRequestAuthority,
+  stationControlRequestCurrent,
+} from '../../security/station-control-request-authority.js';
+import {
+  CreateRequestCapacityError,
+  CreateRequestConflictError,
+  CreateRequestIndeterminateError,
+  createRequestCallerSession,
+  isCreateRequestHandle,
+  runForegroundCreateClaim,
+} from '../../services/orchestration/create-request-claims.js';
+
+/** #3483: an authenticated request that is not a station-control (internal) call. */
+function isPersonRequest(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  return principal !== undefined && principal.kind !== 'internal';
+}
+
+import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -147,6 +181,7 @@ import type {
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -170,6 +205,8 @@ import {
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
+import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -188,7 +225,6 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
-import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -353,27 +389,6 @@ const sessionInventoryPageQuerySchema = sessionInventoryQueryBaseSchema
   });
 const sessionOutputInspectSchema = z.object({}).strict();
 
-/** Narrow, runtime-checked view of the `ForegroundMessageHandle` shape
- * `executeForegroundMessage` resolves (`execution-target-execution.ts`).
- * The route's own `deps.executeForegroundMessage` is typed `Promise<unknown>`
- * (a generic Hono DI boundary), so this is a real type GUARD, not a cast —
- * a caller-injected value missing `conversationId` is simply not bound. */
-export function isForegroundDispatchHandle(value: unknown): value is {
-  conversationId: string;
-  providerTurnId: string;
-  target?: { id?: unknown };
-} {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { conversationId?: unknown }).conversationId ===
-      'string' &&
-    typeof (value as { providerTurnId?: unknown }).providerTurnId ===
-      'string' &&
-    (value as { providerTurnId: string }).providerTurnId.trim().length > 0
-  );
-}
-
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
@@ -455,13 +470,22 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
-  clientInputId: z.string().min(1).max(128).optional(),
+  clientInputId: z.string().min(1).max(128),
 });
 
 const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
   type: z.literal('steerTurnOnce'),
   threadId: z.string().min(1).max(512),
   turnId: z.string().min(1).max(512).optional(),
+  clientInputId: z.string().min(1).max(128),
+});
+
+const steerChildWorkCommandSchema = z.object({
+  type: z.literal('steerChildWork'),
+  threadId: z.string().min(1).max(512),
+  childId: z.string().min(1).max(512),
+  turnId: z.string().min(1).max(512),
+  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   clientInputId: z.string().min(1).max(128),
 });
 
@@ -509,6 +533,14 @@ const respondToRequestCommandSchema = z.object({
   // Only an `acceptForSession` answer reads it, and only an authentic
   // Station browser request honours it (the adapter's grant computation).
   sessionGrantScope: z.literal('server').optional(),
+  // docs/design/event-content-spill.md: proof the client loaded a spilled
+  // request's full content before allowing it. Checked by the service.
+  viewedContentDigest: z
+    .string()
+    // 'sha256-' plus 64 hex digits; the regex fixes the exact shape.
+    .max(71)
+    .regex(/^sha256-[0-9a-f]{64}$/)
+    .optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
   // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
@@ -572,6 +604,12 @@ const discardDraftCommandSchema = z.object({
   threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
 });
 
+const releaseUnknownOwnedWorkSchema = z.object({
+  type: z.literal('releaseUnknownOwnedWork'),
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  confirmation: z.literal('child-process-may-still-be-running'),
+});
+
 const sessionTransitionSchema = z.object({
   state: z.enum(SESSION_LIFECYCLE_STATES),
   reason: z
@@ -595,11 +633,13 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   interruptTurnCommandSchema,
   steerTurnCommandSchema,
   steerTurnOnceCommandSchema,
+  steerChildWorkCommandSchema,
   inspectSteerInputCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
   setApprovalModeCommandSchema,
   discardDraftCommandSchema,
+  releaseUnknownOwnedWorkSchema,
 ]);
 
 const environmentRefSchema = z.discriminatedUnion('kind', [
@@ -795,6 +835,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
   attachments: z.never().optional(),
@@ -884,6 +925,14 @@ export const foregroundMessageObjectSchema = z.object({
   // text bound, but let the object-level check below require either text or an
   // attachment rather than silently rejecting a caption-less pasted image.
   message: z.string().max(CHAT_INPUT_MAX_CHARS),
+  mcpPromptOrigin: z
+    .object({
+      serverId: z.string().min(1).max(256),
+      name: z.string().min(1).max(256),
+      receipt: z.string().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   conversationId: z.string().min(1).max(512).optional(),
   ambientContext: z.string().max(4000).optional(),
   attachments: z
@@ -899,11 +948,24 @@ export const foregroundMessageObjectSchema = z.object({
     })
     .optional(),
   attachmentRefs: stagedAttachmentReferencesSchema,
-  clientTurnId: z.string().min(1).max(200).optional(),
+  // Station's own continuation after a memory kill owns its key prefix; a
+  // client claiming one could pre-empt that continuation.
+  clientTurnId: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (key) => !key.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX),
+      'This clientTurnId prefix is reserved for Station.',
+    )
+    .optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
+  // The person's personal per-engine default, a hint below the Agent's and
+  // the Project's defaults (`recordPersonalApprovalDefault`), never a pick.
+  personalApprovalDefault: z.enum(['ask', 'auto', 'never']).optional(),
 });
 
 /**
@@ -912,7 +974,7 @@ export const foregroundMessageObjectSchema = z.object({
  * Only a plain continuation can: the inbox replays it through the
  * conversation's persisted binding later, without this request. Attachments,
  * a visual skill start, an input reply, an approval pick, a delegated or
- * background send and another Station's target all need this request's own
+ * another Station's target all need this request's own
  * authority or bytes, so they are refused when busy, as before.
  */
 function inboxFollowUpOf(
@@ -928,6 +990,7 @@ function inboxFollowUpOf(
       message: string;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      automaticBackground?: true;
     }
   | undefined {
   if (
@@ -936,10 +999,10 @@ function inboxFollowUpOf(
     !body.clientTurnId ||
     options.delegated ||
     options.remote ||
-    body.automaticBackground ||
     body.attachments?.length ||
     body.attachmentRefs?.length ||
     body.skillExperience ||
+    body.mcpPromptOrigin ||
     body.expectedInputRequest ||
     body.setApprovalMode !== undefined ||
     requestedApprovalMode(body.target.model?.options) !== undefined
@@ -949,6 +1012,7 @@ function inboxFollowUpOf(
     conversationId: body.conversationId,
     clientTurnId: body.clientTurnId,
     message: body.message,
+    ...(body.automaticBackground ? { automaticBackground: true } : {}),
     ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
     ...(body.target.model
       ? { model: body.target.model as ExecutionModelRequest }
@@ -1052,6 +1116,7 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
     // A continuation is remote-capable. Never silently strip a current-host
     // reference: that would hide a cross-host byte dispatch from the caller.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     environment: environmentRefSchema.optional(),
     // The persisted binding, not this continuation request, owns execution
     // identity. Preserve legacy clients that sent a scalar `model` field by
@@ -1071,6 +1136,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     // A handoff may target another Station; current-host staged references
     // have no portable byte authority and must be refused at validation.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
   })
   .superRefine(requireApprovalPickBasis);
@@ -1107,6 +1173,7 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  clientTurnId: z.string().min(1).max(200),
   taskRoomReply: z
     .object({
       taskId: z.string().min(1).max(256),
@@ -1234,6 +1301,8 @@ interface DelegateTaskRequest {
    * caller grant composes below and this Station is the executing
    * receiver. Never an authorization by itself.
    */
+  clientTurnId?: string;
+  createRequestIntent?: unknown;
   delegationAttemptId?: string;
   /**
    * #485: the verified delegation-kind device grant behind the CURRENT
@@ -1249,6 +1318,7 @@ interface ForegroundMessageRequest {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   resolveAttachments?: (binding: {
@@ -1284,6 +1354,10 @@ interface ForegroundMessageRequest {
   clientOrigin?: ClientOrigin;
   /** #3323: how the route came by the stamped delegation; never body JSON. */
   delegationProvenance?: DelegationProvenance;
+  /** See `ForegroundMessageInput.personChatStart`; derived here, never body JSON. */
+  personChatStart?: true;
+  /** See `ForegroundMessageInput.personalApprovalDefault`. */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 interface ContinueForegroundMessageRequest {
@@ -1830,6 +1904,12 @@ function recordDelegationResultRead(
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
+    generalEventProducer?: (
+      c: Context,
+      stream: SSEStreamingApi,
+      write: (frame: { event: string; data: string }) => Promise<void>,
+      authority: ReturnType<typeof sessionReadAuthorityFromRequest>,
+    ) => Promise<void>;
     eventBus: {
       subscribe(
         listener: (event: {
@@ -1860,10 +1940,18 @@ export function createOrchestrationRoutes(
         debug(message: string, meta?: Record<string, unknown>): void;
       };
     };
-    terminalService?: {
-      listProcessSummaries(): TerminalProcessSummary[];
-      readProcess(sessionId: string): TerminalProcessDetail | null;
-      close(sessionId: string): Promise<void>;
+    /**
+     * #3994: sessions the terminal socket owns, projected into the same
+     * process shapes. Each call is authorized as the caller (terminal
+     * observe to list or read, operate to close); refused ids read absent.
+     */
+    scopedTerminals?: {
+      list(request: Request): Promise<TerminalProcessSummary[]>;
+      read(
+        request: Request,
+        terminalId: string,
+      ): Promise<TerminalProcessDetail | null>;
+      close(request: Request, terminalId: string): Promise<boolean>;
     };
     /**
      * Station #90 lane D (B2): runtime-composed from server facts (the
@@ -2083,14 +2171,26 @@ export function createOrchestrationRoutes(
      */
     threadInbox?: Pick<
       ThreadInboxDelivery,
+      | 'mayContinue'
+      | 'currentHead'
       | 'mustQueue'
       | 'submit'
+      | 'submitSteer'
+      | 'submitDisplay'
       | 'list'
       | 'entry'
       | 'cancel'
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+    >;
+    /**
+     * Continuing a conversation whose engine was killed for memory
+     * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
+     */
+    memoryContinuation?: Pick<
+      MemoryExhaustionContinuation,
+      'continueOnRequest' | 'continuationEligibility'
     >;
     delegationResults?: Pick<
       DelegationResultDelivery,
@@ -2118,6 +2218,11 @@ export function createOrchestrationRoutes(
      * reads this instead.
      */
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
+    /** Checks whether this request may invoke the continuation POST. */
+    mayRequestMemoryContinuation?: (
+      request: Request,
+      conversationId: string,
+    ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
@@ -2542,7 +2647,7 @@ export function createOrchestrationRoutes(
           success: false,
           error:
             'This message key was already used for a different queued message.',
-          code: 'inbox_key_conflict',
+          code: INBOX_KEY_CONFLICT_CODE,
         },
         409,
       );
@@ -2608,9 +2713,44 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
         whenBusy?: 'queue';
       };
+      if (!body.clientTurnId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_key_required',
+            error: 'A client turn key is required.',
+          },
+          400,
+        );
+      let verifiedMcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin
+        | undefined;
+      if (body.mcpPromptOrigin) {
+        try {
+          verifiedMcpPromptOrigin = verifyMcpPromptOrigin(
+            body.mcpPromptOrigin,
+            body.message,
+          );
+        } catch {
+          return c.json(
+            {
+              success: false,
+              error:
+                'MCP prompt origin is invalid or expired; run the prompt again.',
+            },
+            400,
+          );
+        }
+      }
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        // A person's approval hint is theirs to send; an agent sends none.
+        {
+          path: 'personalApprovalDefault',
+          value: body.personalApprovalDefault,
+          kind: 'pick',
+        },
         {
           path: 'target.model.options',
           value: body.target.model?.options,
@@ -2787,6 +2927,9 @@ export function createOrchestrationRoutes(
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
+        ...(verifiedMcpPromptOrigin
+          ? { mcpPromptOrigin: verifiedMcpPromptOrigin }
+          : {}),
         ...(delegation ? { delegation } : {}),
         // #3323: how the route came by `delegation`, stamped beside it by the
         // start. Set here only, after the body spread, so a body can never
@@ -2832,6 +2975,17 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // A person's own interactive chat, which alone records and inherits
+        // a Project's last-used values (`project-chat-defaults.ts`).
+        ...(isPersonChatRequest({
+          mayBeAnAgent: requestMayBeAnAgent(c.req.raw),
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          automaticBackground: body.automaticBackground === true,
+          delegated: Boolean(claimedDelegation || delegation),
+          ownerAttributed: ownerAttribution !== undefined,
+        })
+          ? { personChatStart: true as const }
+          : {}),
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
@@ -2889,6 +3043,9 @@ export function createOrchestrationRoutes(
               clientTurnId: followUp.clientTurnId,
               payload: {
                 message: followUp.message,
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
                 inputDigest,
                 ...(followUp.ambientContext
                   ? { ambientContext: followUp.ambientContext }
@@ -2929,22 +3086,16 @@ export function createOrchestrationRoutes(
           clientTurnId: body.clientTurnId,
           forwarded: resolvedTarget.environment.kind !== 'current',
         });
-      const data = await deps.executeForegroundMessage(foregroundRequest);
-      if (!isForegroundDispatchHandle(data)) {
-        // The foreground Interface cannot honestly call this accepted without
-        // the exact provider turn identity needed for terminal settlement.
-        return c.json(
-          {
-            ...providerFailure('indeterminate', 'indeterminate'),
-            success: false,
-            error:
-              'Foreground Agent execution may have started but did not return a provider turn id',
-            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-            outcome: 'indeterminate',
-          },
-          409,
-        );
-      }
+      const data = await runForegroundCreateClaim(
+        deps.delegationAttemptClaimStore?.createRequests,
+        foregroundRequest,
+        readAuthorityFor(c),
+        body,
+        (request) =>
+          deps.executeForegroundMessage!(request as ForegroundMessageRequest),
+        async (id) => orchestrationService.hasSessionStartRecord(id),
+        await createRequestCallerSession(c.req.raw),
+      );
       if (stagedAttachments?.length && stagedBinding) {
         deps.acceptStagedAttachments?.(
           principal!,
@@ -2972,6 +3123,40 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
+      if (error instanceof CreateRequestConflictError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: 'client_turn_input_conflict',
+          },
+          409,
+        );
+      if (error instanceof CreateRequestIndeterminateError)
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: errorMessage(error),
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+            conversationId: error.sessionId,
+            sessionId: error.sessionId,
+            clientTurnId: error.clientTurnId,
+          },
+          409,
+        );
       if (error instanceof ConversationTurnQueuedError)
         return queuedFollowUpResponse(
           c,
@@ -3149,6 +3334,12 @@ export function createOrchestrationRoutes(
             kind: 'pick',
           },
           {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
+            kind: 'pick',
+          },
+          {
             path: 'target.model.options',
             value: body.target.model?.options,
             kind: 'options',
@@ -3185,7 +3376,7 @@ export function createOrchestrationRoutes(
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -3379,12 +3570,193 @@ export function createOrchestrationRoutes(
     return c.json({
       success: true,
       data: {
+        currentHead: deps.threadInbox.currentHead(conversationId),
         entries: deps.threadInbox.list(
           conversationId,
           resolveDispatchActor(deps, c).userId,
         ),
       },
     });
+  });
+
+  app.post(
+    '/conversations/:conversationId/inbox',
+    validate(
+      z.discriminatedUnion('kind', [
+        z.object({
+          kind: z.literal('steer'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096),
+        }),
+        z.object({
+          kind: z.literal('follow-up'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096).optional(),
+        }),
+        z.object({
+          kind: z.literal('display'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096).optional(),
+        }),
+      ]),
+    ),
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const inbox = deps.threadInbox;
+      if (!inbox)
+        return c.json({ success: false, error: 'Inbox unavailable.' }, 404);
+      if (
+        conversationId.length > 512 ||
+        !(await orchestrationService.hasReadableSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const body = getBody(c);
+      const actor = resolveDispatchActor(deps, c);
+      const input = {
+        conversationId,
+        clientTurnId: body.key,
+        expectedHead: body.expectedHead,
+        payload: {
+          message: body.message,
+          actor: {
+            userId: actor.userId,
+            ...(actor.principal ? { principal: actor.principal } : {}),
+            ...(actor.ownerAttribution
+              ? { ownerAttribution: actor.ownerAttribution }
+              : {}),
+          },
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        },
+      };
+      let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
+      try {
+        result =
+          body.kind === 'steer'
+            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+            : body.kind === 'follow-up'
+              ? inbox.submit(input)
+              : inbox.submitDisplay(input);
+      } catch (error) {
+        if (!isSteerConflictCode(errorCode(error))) throw error;
+        return c.json(
+          {
+            success: false,
+            code: CLIENT_TURN_INPUT_CONFLICT_CODE,
+            error: 'This key already names different steer input.',
+          },
+          409,
+        );
+      }
+      if (result.outcome === 'stale-head')
+        return c.json(
+          {
+            success: false,
+            code: 'inbox_stale_head',
+            error: 'The conversation changed before this entry was accepted.',
+            currentHead: result.currentHead,
+          },
+          409,
+        );
+      if (result.outcome === 'not-permitted')
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (result.outcome === 'conflict')
+        return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
+      if (result.outcome === 'capacity')
+        return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
+      return c.json({ success: true, data: result.entry }, 202);
+    },
+  );
+
+  /**
+   * A person's Continue after the conversation's engine was killed for
+   * memory: the same Station-authored turn, under the same key derived from
+   * the dead turn, as Station's automatic continuation. Whichever arrives
+   * second is the same entry (same sender) or a 409 (another sender), never a
+   * second continuation. An older Station answers 404; the client then sends
+   * an ordinary message.
+   */
+  app.post('/conversations/:conversationId/memory-continuation', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.memoryContinuation)
+      return c.json(
+        { success: false, error: 'This Station has no memory continuation.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const actor = resolveDispatchActor(deps, c);
+    const outcome = deps.memoryContinuation.continueOnRequest({
+      conversationId,
+      actor: {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      },
+    });
+    if (outcome.kind === 'queued')
+      return c.json(
+        { success: true, data: { clientTurnId: outcome.clientTurnId } },
+        202,
+      );
+    if (
+      (outcome.kind === 'skipped' && outcome.reason === 'already-claimed') ||
+      (outcome.kind === 'failed' && outcome.reason === 'conflict')
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_already_started',
+          error: 'This conversation is already being continued.',
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped' && outcome.reason === 'withdrawn')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_retries_exhausted',
+          error:
+            "This turn's continuation was cancelled or refused too many times. Send a message to continue the conversation.",
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_applicable',
+          error:
+            "The conversation's latest turn did not end because its engine ran out of memory.",
+        },
+        409,
+      );
+    if (outcome.reason === 'not-permitted')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_permitted',
+          error: 'You cannot continue this conversation.',
+        },
+        403,
+      );
+    return c.json(
+      { success: false, error: 'Station could not continue the conversation.' },
+      503,
+    );
   });
 
   /**
@@ -3551,11 +3923,26 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        if (!body.clientTurnId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_key_required',
+              error: 'A client turn key is required.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent continues without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
             path: 'setApprovalMode',
             value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {
@@ -3627,7 +4014,7 @@ export function createOrchestrationRoutes(
           // Only the join wait a same-key retry may spend; never the send.
           joinWaitSignal: c.req.raw.signal,
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -3875,6 +4262,15 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
+      if (roomRequest && body.clientTurnId !== roomRequest.operationId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_input_conflict',
+            error: 'The request key must match this Task Room operation.',
+          },
+          409,
+        );
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
@@ -3890,6 +4286,10 @@ export function createOrchestrationRoutes(
         }
         return delegate({
           ...request,
+          createRequestIntent: body,
+          createRequestCallerSessionId: await createRequestCallerSession(
+            c.req.raw,
+          ),
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
@@ -4131,9 +4531,39 @@ export function createOrchestrationRoutes(
             ? 409
             : 400,
         );
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (
+        error instanceof CreateRequestConflictError ||
+        error instanceof CreateRequestIndeterminateError
+      )
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            ...(error instanceof CreateRequestIndeterminateError
+              ? {
+                  outcome: error.outcome,
+                  sessionId: error.sessionId,
+                  clientTurnId: error.clientTurnId,
+                }
+              : {}),
+          },
+          409,
+        );
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a
       // manufactured completed handle and never a resend authorization.
@@ -4538,6 +4968,15 @@ export function createOrchestrationRoutes(
               )
           : undefined;
         const roomReply = getBody(c).taskRoomReply;
+        if (roomReply && getBody(c).clientTurnId !== roomReply.operationId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_input_conflict',
+              error: 'The request key must match this Task Room operation.',
+            },
+            409,
+          );
         let continuationMessage = getBody(c).message;
         if (roomReply && roomReply.attachBrief !== false && principal) {
           const context = await deps.taskRoomWork?.resolveContext?.(
@@ -5290,6 +5729,71 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  /**
+   * docs/design/event-content-spill.md: the full value behind a runtime
+   * event's out-of-line content reference, as its raw body (a string as
+   * text, a subtree as JSON) with no JSON-in-JSON escaping. Authorized like
+   * the window read that delivered the reference, so it works in hosted
+   * mode under the same tenant scope and for paired devices. `maxChars`
+   * returns a prefix for bounded readers, marked incomplete.
+   */
+  app.get('/sessions/:threadId/content/:ref', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const digest = param(c, 'ref');
+    const maxCharsQuery = c.req.query('maxChars');
+    const maxChars =
+      maxCharsQuery === undefined ? undefined : Number(maxCharsQuery);
+    if (
+      !isRuntimeEventContentDigest(digest) ||
+      (maxChars !== undefined &&
+        (!Number.isSafeInteger(maxChars) || maxChars < 1))
+    )
+      return c.json(
+        { success: false, error: 'Invalid content reference' },
+        400,
+      );
+    const found = orchestrationService.readEventContent(
+      threadId,
+      digest,
+      readAuthorityFor(c),
+    );
+    if (!found)
+      return c.json({ success: false, error: 'Content not found' }, 404);
+    const complete = maxChars === undefined || found.body.length <= maxChars;
+    c.header('X-Station-Content-Kind', found.kind);
+    c.header('X-Station-Content-Bytes', String(found.bytes));
+    c.header('X-Station-Content-Complete', complete ? 'true' : 'false');
+    c.header(
+      'Content-Type',
+      found.kind === 'string' || !complete
+        ? 'text/plain; charset=utf-8'
+        : 'application/json; charset=utf-8',
+    );
+    const prefix = complete
+      ? found.body
+      : found.body.slice(0, maxChars).replace(/[\uD800-\uDBFF]$/u, '');
+    return c.body(prefix);
+  });
+
+  /**
+   * docs/design/event-content-spill.md: what an allow of this request must
+   * load and the viewed-content digest the gate will check, as the server
+   * defines them (the request and the tool calls bound to it). Authorized
+   * like the window read.
+   */
+  app.get('/sessions/:threadId/requests/:requestId/content-binding', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const binding = orchestrationService.readApprovalContentBinding(
+      param(c, 'threadId'),
+      param(c, 'requestId'),
+      readAuthorityFor(c),
+    );
+    if (!binding)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data: binding });
+  });
+
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
@@ -5304,7 +5808,32 @@ export function createOrchestrationRoutes(
     );
     if (!data)
       return c.json({ success: false, error: 'Conversation not found' }, 404);
-    return c.json({ success: true, data });
+    const eligibility = deps.memoryContinuation?.continuationEligibility(
+      param(c, 'conversationId'),
+    );
+    return c.json({
+      success: true,
+      data: {
+        ...data,
+        ...(eligibility
+          ? {
+              memoryContinuation: {
+                ...eligibility,
+                eligible:
+                  eligibility.eligible &&
+                  deps.mayRequestMemoryContinuation?.(
+                    c.req.raw,
+                    param(c, 'conversationId'),
+                  ) === true &&
+                  deps.threadInbox?.mayContinue(
+                    param(c, 'conversationId'),
+                    resolveDispatchActor(deps, c).userId,
+                  ) === true,
+              },
+            }
+          : {}),
+      },
+    });
   });
 
   /**
@@ -5442,6 +5971,48 @@ export function createOrchestrationRoutes(
     )
       return unavailable();
     return c.json({ success: true, data: outcome.page });
+  });
+  app.get('/sessions/:threadId/child-work/:childId/instructions', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = () =>
+      c.json({ success: false, error: 'Child instructions unavailable' }, 404);
+    const offsetText = c.req.query('offset') ?? '0';
+    const limitText = c.req.query('limit') ?? '10';
+    if (!/^\d{1,8}$/.test(offsetText) || !/^\d{1,2}$/.test(limitText))
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const offset = Number(offsetText);
+    const limit = Number(limitText);
+    if (limit < 1 || limit > 10 || offset > 1_000_000)
+      return c.json({ success: false, error: 'Invalid instruction page' }, 400);
+    const threadId = param(c, 'threadId');
+    const childId = param(c, 'childId');
+    const authority = readAuthorityFor(c);
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    const page = orchestrationService.readChildSteerInstructions(
+      threadId,
+      childId,
+      offset,
+      limit,
+    );
+    if (
+      !page ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.childWorkTranscripts.ownsChild({
+        threadId,
+        childId,
+        authority,
+      })
+    )
+      return unavailable();
+    return c.json({ success: true, data: page });
   });
   const sessionInventoryUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
@@ -5752,7 +6323,9 @@ export function createOrchestrationRoutes(
     const unavailable = (status: 404 | 503 = 404) =>
       c.json({ success: false, error: 'Input unavailable' }, status);
     if (
-      deps.hostedTenantRegistry !== undefined ||
+      !servesSessionInventoryInputRead({
+        hosted: deps.hostedTenantRegistry !== undefined,
+      }) ||
       !boundedToolResultId(threadId) ||
       !boundedToolResultId(eventId) ||
       !turnId ||
@@ -6186,12 +6759,12 @@ export function createOrchestrationRoutes(
     // Terminal state is process-global and carries no durable tenant binding.
     // Keep the complete surface unavailable in a hosted deployment until it
     // can be authorized from a tenant-bound terminal record. Do this before
-    // looking at the optional service so an unavailable terminal is
+    // looking at the optional sessions so an unavailable terminal is
     // indistinguishable from an unbound one and no process state is read.
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Terminal not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
@@ -6199,7 +6772,7 @@ export function createOrchestrationRoutes(
     }
     return c.json({
       success: true,
-      data: deps.terminalService.listProcessSummaries(),
+      data: await deps.scopedTerminals.list(c.req.raw),
     });
   });
 
@@ -6207,13 +6780,16 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
-    const data = deps.terminalService.readProcess(param(c, 'sessionId'));
+    const data = await deps.scopedTerminals.read(
+      c.req.raw,
+      param(c, 'sessionId'),
+    );
     if (!data) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
@@ -6224,17 +6800,17 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
-    await deps.terminalService.close(param(c, 'sessionId'));
-    return c.json({
-      success: true,
-      data: { sessionId: param(c, 'sessionId') },
-    });
+    const sessionId = param(c, 'sessionId');
+    if (!(await deps.scopedTerminals.close(c.req.raw, sessionId))) {
+      return c.json({ success: false, error: 'Process not found' }, 404);
+    }
+    return c.json({ success: true, data: { sessionId } });
   });
 
   app.post(
@@ -6284,6 +6860,20 @@ export function createOrchestrationRoutes(
         getTenantRequestContext(c.req.raw),
         deps.hostedTenantRegistry,
       );
+      if (
+        command.type === 'steerChildWork' &&
+        (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          !orchestrationService.canUserReadSession(
+            command.threadId,
+            readAuthority,
+          ) ||
+          !orchestrationService.canUserMutateSession(
+            command.threadId,
+            actorUserId,
+            tenantExecutionContextForRequest(c.req.raw),
+          ))
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
       const actionOperationActor = actionOperationActorForRequest(
         c.req.raw,
         readAuthority,
@@ -6345,11 +6935,33 @@ export function createOrchestrationRoutes(
           ...(command.type === 'respondToRequest'
             ? { approvalModeAuthority: true as const }
             : {}),
+          // #3483: a person answering, not a station-control tool call that
+          // acts for its session's owner. Only a person's approval admits a
+          // call the untrusted-content permission asks about.
+          ...(command.type === 'respondToRequest' && isPersonRequest(c.req.raw)
+            ? { personAnswer: true as const }
+            : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {
                 requestCurrent: () =>
                   deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+              }
+            : {}),
+          ...(command.type === 'steerChildWork'
+            ? {
+                requestCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                  stationControlRequestCurrent(c.req.raw) &&
+                  orchestrationService.canUserReadSession(
+                    command.threadId,
+                    readAuthority,
+                  ) &&
+                  orchestrationService.canUserMutateSession(
+                    command.threadId,
+                    actorUserId,
+                    tenantExecutionContextForRequest(c.req.raw),
+                  ),
               }
             : {}),
           // archive#4075 stage 2: this is the STEER path's attribution
@@ -6478,8 +7090,10 @@ export function createOrchestrationRoutes(
           error instanceof AdoptionContinuationInProgressError ||
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
-              (error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable'))
+              (error.code === 'client_turn_input_conflict' ||
+                error.code === 'request_event_changed' ||
+                error.code === 'request_verification_unavailable' ||
+                error.code === 'request_content_not_loaded'))
             ? 409
             : 400,
         );
@@ -6518,6 +7132,9 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
+      c.header('X-Station-General-Stream', '1');
+    }
     return streamSSE(c, async (stream) => {
       sseOps.add(1, {
         op: threadId ? 'orchestration_connect_thread' : 'orchestration_connect',
@@ -6575,7 +7192,28 @@ export function createOrchestrationRoutes(
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
       let clearPending: (() => void) | undefined;
+      // General frames use a separate event name and no id, so Last-Event-ID
+      // remains exclusively the durable orchestration cursor.
+      const shared =
+        c.req.query('includeGeneral') === '1' && deps.generalEventProducer;
+      const abortShared = () => stream.abort();
       try {
+        if (shared) {
+          c.req.raw.signal.addEventListener('abort', abortShared, {
+            once: true,
+          });
+          if (c.req.raw.signal.aborted) abortShared();
+          void shared(
+            c,
+            stream,
+            (frame) =>
+              stream.writeSSE({
+                event: 'station:general',
+                data: JSON.stringify(frame),
+              }),
+            authority,
+          ).then(abortShared, abortShared);
+        }
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
         // registered before `abort()` runs, so a client that left during a
@@ -7087,6 +7725,10 @@ export function createOrchestrationRoutes(
         // or `stopKeepAlive` being `undefined` (a throw before the keepalive
         // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
+        if (shared) {
+          c.req.raw.signal.removeEventListener('abort', abortShared);
+          stream.abort();
+        }
         stopKeepAlive?.();
         stopActivityFlush?.();
         clearPending?.();

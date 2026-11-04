@@ -1,9 +1,16 @@
+import type { ComponentProps } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useConfig } from '../../contexts/ConfigContext';
+import {
+  effectiveExecutionStationId,
+  useExecutionStations,
+} from '../../hooks/useExecutionStationCatalog';
 import type { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { useStartSelection } from '../../hooks/useStartSelection';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentFixRoute } from '../AgentReadinessCell';
 import {
+  GLOBAL_CONTEXT,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
@@ -11,10 +18,11 @@ import {
   StartAgentMenu,
   StartModelPicker,
   StartProjectMenu,
+  StartStationMenu,
 } from './StartMenus';
 
 export type StartPickerMenu = {
-  kind: 'agents' | 'project' | 'model';
+  kind: 'agents' | 'project' | 'model' | 'station';
   trigger: HTMLElement | null;
   agentSlug?: string;
 };
@@ -34,6 +42,7 @@ export function StartPickerMenus({
   enablePending,
   interactionDisabled,
   onChooseProject,
+  projectOverride,
   icons,
   accents,
 }: {
@@ -51,6 +60,15 @@ export function StartPickerMenus({
   enablePending: boolean;
   interactionDisabled?: boolean;
   onChooseProject: (context: string) => void;
+  projectOverride?: {
+    options: ComponentProps<typeof StartProjectMenu>['options'];
+    context: string;
+    workspaceHint: ComponentProps<typeof StartProjectMenu>['workspaceHint'];
+    folderlessHint?: ComponentProps<typeof StartProjectMenu>['folderlessHint'];
+    icons?: ReadonlyMap<string, string>;
+    accents?: ReadonlyMap<string, string>;
+    onChoose: (context: string) => void;
+  };
   icons: ReadonlyMap<string, string>;
   accents: ReadonlyMap<string, string>;
 }) {
@@ -66,6 +84,8 @@ export function StartPickerMenus({
     modelConnections,
     acpConnections,
   } = selection;
+  // #4389: where a No project chat runs on this Station.
+  const noProjectChatFolder = useConfig()?.noProjectChatFolder ?? 'private';
   const close = () => {
     onSearch('');
     setMenu(null);
@@ -115,24 +135,29 @@ export function StartPickerMenus({
     agent: start.agent,
     project: viewModel.selectedProject,
     acpConnections,
+    noProjectChatFolder:
+      context === GLOBAL_CONTEXT ? noProjectChatFolder : undefined,
   });
   if (menu.kind === 'project')
     return (
       <StartProjectMenu
         anchor={menu.trigger}
         layer={layer}
-        options={viewModel.contextOptions}
-        selectedContext={context}
-        workspaceHint={workspaceHint}
-        folderlessHint={resolveNewChatWorkspaceHint({
-          agent: start.agent,
-          project: undefined,
-          acpConnections,
-        })}
-        icons={icons}
-        accents={accents}
+        options={projectOverride?.options ?? viewModel.contextOptions}
+        selectedContext={projectOverride?.context ?? context}
+        workspaceHint={projectOverride?.workspaceHint ?? workspaceHint}
+        folderlessHint={
+          projectOverride?.folderlessHint ??
+          resolveNewChatWorkspaceHint({
+            agent: start.agent,
+            project: undefined,
+            acpConnections,
+          })
+        }
+        icons={projectOverride?.icons ?? icons}
+        accents={projectOverride?.accents ?? accents}
         onChoose={(value) => {
-          onChooseProject(value);
+          (projectOverride?.onChoose ?? onChooseProject)(value);
           close();
         }}
         onClose={close}
@@ -142,9 +167,35 @@ export function StartPickerMenus({
     (entry) => entry.slug === menu.agentSlug,
   );
   if (!agent) return null;
+  if (menu.kind === 'station')
+    return (
+      <StationMenu
+        anchor={menu.trigger}
+        layer={layer}
+        selectedId={effectiveExecutionStationId(
+          start.modelChoiceFor(agent)?.environmentId,
+          viewModel.selectedProject?.defaultEnvironment,
+        )}
+        projectSelected={Boolean(viewModel.selectedProject)}
+        onChoose={(environmentId) => {
+          start.setExecutionEnvironment(agent, environmentId);
+          // Another Station runs its own engines: choosing one continues
+          // straight to that Station's engine and model, which Start needs.
+          if (environmentId === 'current') close();
+          else
+            setMenu({
+              kind: 'model',
+              trigger: menu.trigger,
+              agentSlug: agent.slug,
+            });
+        }}
+        onClose={close}
+      />
+    );
   return (
     <StartModelPicker
       profile={agent}
+      projectSelected={Boolean(viewModel.selectedProject)}
       onEnvironmentChange={(environmentId) =>
         start.setExecutionEnvironment(agent, environmentId)
       }
@@ -161,6 +212,45 @@ export function StartPickerMenus({
         start.setRuntimeOption(agent, key, value)
       }
       onClose={close}
+    />
+  );
+}
+
+function StationMenu({
+  anchor,
+  layer,
+  selectedId,
+  projectSelected,
+  onChoose,
+  onClose,
+}: {
+  anchor: HTMLElement | null;
+  layer: 'popover' | 'dialog';
+  selectedId: string;
+  projectSelected: boolean;
+  onChoose: (environmentId: string) => void;
+  onClose: () => void;
+}) {
+  const { stations, stationsUnavailable, retryStations } = useExecutionStations(
+    {
+      projectSelected,
+    },
+  );
+  return (
+    <StartStationMenu
+      anchor={anchor}
+      layer={layer}
+      stations={stations}
+      selectedId={selectedId}
+      stationsUnavailable={stationsUnavailable}
+      onRetry={() => void retryStations()}
+      onChoose={(station) => {
+        // Re-choosing where it already runs changes nothing (and keeps the
+        // chosen Model, which a Station change resets).
+        if (station.id === selectedId) onClose();
+        else onChoose(station.id);
+      }}
+      onClose={onClose}
     />
   );
 }

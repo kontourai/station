@@ -1,19 +1,23 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   CanonicalRuntimeEvent,
   TokenUsageUpdatedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -37,6 +41,7 @@ import { ReceiverExecutionRefusal } from '../../services/projects/project-contri
  * `station-control-delegation-relay.test.ts`.
  */
 const remoteFixture = vi.hoisted(() => ({
+  claimHome: '',
   ssh: undefined as
     | undefined
     | {
@@ -71,13 +76,33 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
           : null,
     },
   });
+  const { FileDelegationAttemptClaimStore } = await import(
+    '../../services/orchestration/delegation-attempt-claim-store.js'
+  );
   type Remote = typeof remote;
   return {
     ...actual,
     discoverDelegationOptions: (input: never, r?: Remote) =>
       actual.discoverDelegationOptions(input, r ?? remote),
-    delegateTask: (input: never, service?: never, r?: Remote) =>
-      actual.delegateTask(input, service, r ?? remote),
+    delegateTask: (
+      input: Parameters<typeof actual.delegateTask>[0],
+      service?: never,
+      r?: Remote,
+    ) =>
+      actual.delegateTask(
+        {
+          ...input,
+          userId:
+            input.userId ??
+            input.readAuthority?.userId ??
+            'delegation-test-user',
+          delegationAttemptClaimStore:
+            input.delegationAttemptClaimStore ??
+            new FileDelegationAttemptClaimStore(remoteFixture.claimHome),
+        },
+        service,
+        r ?? remote,
+      ),
     executeExecutionTargetMessage: (
       input: never,
       service?: never,
@@ -117,12 +142,14 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
 
 beforeEach(() => {
   remoteFixture.ssh = undefined;
+  remoteFixture.claimHome = makeTempDir('delegation-runtime-claims-');
 });
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
 
 const CURRENT_API = 'http://control-delegation.test';
+const makeTempDir = trackTempDirs();
 const REMOTE_API = 'http://127.0.0.1:45123';
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -221,6 +248,10 @@ function localService() {
     ) => sessionCommands.execute(command, context),
   );
   return {
+    readPendingConversationSubmission: vi.fn(() => undefined),
+    inspectTurnDelivery: vi.fn(() => ({ outcome: 'not-received' as const })),
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     readSession: vi.fn(async (_sessionId?: string) => null),
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
@@ -437,6 +468,10 @@ function localDelegatedTaskService(
     tenantExecutionContext?: { tenantId: string };
   }) => authority.tenantExecutionContext?.tenantId === 'alpha';
   return {
+    readPendingConversationSubmission: vi.fn(() => undefined),
+    inspectTurnDelivery: vi.fn(() => ({ outcome: 'not-received' as const })),
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     listSessionReadModel: vi.fn(async (authority) =>
       canRead(authority) ? [session] : [],
     ),
@@ -985,6 +1020,42 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test.each([
+    ['sandbox_unavailable', /host.*sandbox/i],
+    ['provider_model_unavailable', /provider.*model.*availability/i],
+  ] as const)(
+    'a local %s start failure keeps its safe diagnostic in the delegate tool envelope',
+    async (code, guidance) => {
+      installCurrentStationFetch();
+      const service = localService();
+      service.sessionCommands.execute.mockResolvedValueOnce({
+        status: 'failed',
+        receipt: { commandId: 'command-1', status: 'failed' },
+        code,
+        message: '/private/secret-proof',
+      } as never);
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const { delegationToolResult } = await import(
+        '../station-control-shared.js'
+      );
+      const response = await delegationToolResult(() =>
+        delegateTask(
+          { prompt: 'Inspect the checkout', target: currentTarget() },
+          service as never,
+        ),
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0].text);
+      expect(body).toMatchObject({
+        success: false,
+        code,
+        error: expect.stringMatching(guidance),
+      });
+      expect(JSON.stringify(response)).not.toContain('secret-proof');
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([true, false])(
     'does not retry an indeterminate delegation start (session returned: %s)',
     async (hasSession) => {
@@ -1099,6 +1170,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
     expect(call).toBeDefined();
     expect(bodyOf(call!)).toEqual({
+      clientTurnId: expect.any(String),
       prompt: 'Run tests',
       target: {
         environment: { kind: 'current' },
@@ -2397,6 +2469,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       String(url).endsWith('/delegations/task-1/continue'),
     );
     expect(bodyOf(call!)).toEqual({
+      clientTurnId: expect.any(String),
       message: 'Continue',
       modelOptions: { reasoningEffort: 'high' },
     });
@@ -3406,6 +3479,183 @@ describe('Station Control canonical Environment + Agent execution', () => {
         }),
       }),
     );
+  });
+
+  // docs/design/event-content-spill.md: an approval whose bound call holds
+  // spilled arguments (a Codex file change's diff) is answered with the
+  // digest covering them, so the server's content gate admits it.
+  // docs/design/event-content-spill.md: the tool echoes the server's
+  // binding (what an allow must load and the digest the gate checks).
+  test('allows a request with spilled content by echoing the server binding', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = Object.assign(localDelegatedTaskService('running'), {
+      readApprovalContentBinding: vi.fn(() => ({
+        requestEventId: 'open-fc',
+        request: {},
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      })),
+    });
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+    await respondToDelegatedTaskRequest(
+      {
+        taskId: 'task-alpha',
+        requestId: 'request-alpha',
+        decision: 'accept',
+        readAuthority: authority,
+      },
+      service as never,
+    );
+    expect(service.readApprovalContentBinding).toHaveBeenCalledWith(
+      'task-alpha',
+      'request-alpha',
+      authority,
+    );
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'respondToRequest',
+        expectedRequestEventId: 'open-fc',
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      }),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  test("pins the request event the tool read, not the binding's current one", async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = Object.assign(localDelegatedTaskService('running'), {
+      readApprovalContentBinding: vi.fn(() => ({
+        requestEventId: 'open-current',
+        request: {},
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      })),
+    });
+    // The detail the tool reads names the request event it saw.
+    const detail = (await service.readSession('task-alpha', authority))!;
+    Object.assign(detail.events[1]!, { eventId: 'open-read' });
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+    await respondToDelegatedTaskRequest(
+      {
+        taskId: 'task-alpha',
+        requestId: 'request-alpha',
+        decision: 'accept',
+        readAuthority: authority,
+      },
+      service as never,
+    );
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRequestEventId: 'open-read' }),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  // The binding comes from the real OrchestrationService over a real
+  // EventStore holding a stored request and its bound tool.started whose
+  // arguments were stored out of line: the digest the tool sends is the one
+  // the server's own binding computes over both, not the request alone.
+  test('echoes the real service binding over a stored request and its spilled bound call', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const eventStore = new EventStore(
+      join(makeTempDir('delegate-binding-'), 'orchestration.sqlite'),
+    );
+    const real = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      real.initialize();
+      const at = new Date().toISOString();
+      eventStore.upsertSession({
+        provider: 'codex',
+        threadId: 'task-alpha',
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'task-alpha',
+        createdAt: at,
+        method: 'tool.started',
+        itemId: 'item-fc',
+        toolCallId: 'item-fc',
+        toolName: 'apply_patch',
+        arguments: { changes: { 'a.ts': { diff: 'x\n'.repeat(40_000) } } },
+      });
+      eventStore.appendEvent({
+        eventId: 'open-fc',
+        provider: 'codex',
+        threadId: 'task-alpha',
+        createdAt: at,
+        method: 'request.opened',
+        requestId: 'request-alpha',
+        requestType: 'approval',
+        title: 'Approve file changes',
+        payload: { itemId: 'item-fc' },
+      });
+      const binding = real.readApprovalContentBinding(
+        'task-alpha',
+        'request-alpha',
+        INTERNAL_SESSION_READ_SCOPE,
+      )!;
+      expect(binding.required).toBe(true);
+      expect(binding.bound).toHaveLength(1);
+      const service = Object.assign(localDelegatedTaskService('running'), {
+        // Authorization is the stub's; what is bound and digested is real.
+        readApprovalContentBinding: (threadId: string, requestId: string) =>
+          real.readApprovalContentBinding(
+            threadId,
+            requestId,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+      });
+      const { respondToDelegatedTaskRequest } = await import(
+        '../station-control-delegation.js'
+      );
+      await respondToDelegatedTaskRequest(
+        {
+          taskId: 'task-alpha',
+          requestId: 'request-alpha',
+          decision: 'accept',
+          readAuthority: authority,
+        },
+        service as never,
+      );
+      const requestOnly = `sha256-${createHash('sha256')
+        .update(viewedContentPreimage(binding.request))
+        .digest('hex')}`;
+      const covering = `sha256-${createHash('sha256')
+        .update(viewedContentPreimage(binding.request, binding.bound))
+        .digest('hex')}`;
+      expect(covering).not.toBe(requestOnly);
+      expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'respondToRequest',
+          expectedRequestEventId: 'open-fc',
+          viewedContentDigest: covering,
+        }),
+        expect.anything(),
+        undefined,
+      );
+    } finally {
+      await real.shutdown();
+      eventStore.close();
+    }
   });
 
   test('an interrupt on a marked portable session acquires no new authority', async () => {
@@ -4876,7 +5126,7 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
 });
 
 describe('#225 a delegated task usage event keeps every canonical usage field', () => {
-  test('projects all ten TokenUsageUpdatedEvent usage fields and bounds the opaque tier', async () => {
+  test('projects canonical token counters and bounds the opaque tier', async () => {
     const { projectDelegatedTaskEvent } = await import(
       '../station-control-delegation.js'
     );
@@ -4889,6 +5139,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       method: 'token-usage.updated',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,
@@ -4916,6 +5167,7 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       turnId: 'turn-1',
       promptTokens: 1200,
       completionTokens: 300,
+      reasoningTokens: 120,
       totalTokens: 1500,
       cacheReadTokens: 900,
       cacheWriteTokens: 44785,
@@ -5374,7 +5626,11 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
       expectedInputRequest: PEER_BINDING,
     });
     expect(posted).toEqual([
-      { message: 'Use staging', expectedInputRequest: PEER_BINDING },
+      {
+        clientTurnId: expect.any(String),
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      },
     ]);
   });
 

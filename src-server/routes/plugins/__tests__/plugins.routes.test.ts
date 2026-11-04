@@ -113,6 +113,16 @@ vi.mock('../../../services/plugins/plugin-command-skill-source.js', () => ({
 
 const execGit = vi.hoisted(() => vi.fn().mockResolvedValue({ stdout: '' }));
 vi.mock('../../../utils/git-exec.js', () => ({ execGit }));
+// #2998: the install trust migration the update route runs first has its own
+// suite against real homes (plugin-install-trust-legacy-update.test.ts);
+// this fixture's filesystem is replaced, so the step is stubbed here.
+const ensurePluginInstallTrustMigration = vi.hoisted(() =>
+  vi.fn(async () => undefined),
+);
+vi.mock('../../../services/plugins/plugin-install-trust-migration.js', () => ({
+  ensurePluginInstallTrustMigration,
+  migratePluginInstallTrustAtStartup: vi.fn(async () => undefined),
+}));
 
 // Spied, not replaced: everything else in this module (the content lock the
 // update route runs inside) stays real.
@@ -333,6 +343,10 @@ vi.mock('node:fs', async (importOriginal) => {
       ) {
         return JSON.stringify(mockRegistryInstallAliases);
       }
+      // #2998: the install trust store does not exist in this fixture home,
+      // the state of a Station whose migration has not run.
+      if (typeof p === 'string' && p.endsWith('/plugin-trust.json'))
+        throw enoent('open', p);
       return manifestFileText.override ?? JSON.stringify(mockManifest);
     }),
     lstatSync: vi.fn(lstatFixture((path) => existsSync(path))),
@@ -444,6 +458,16 @@ vi.mock('@kontourai/station-shared/parsers', () => ({
 }));
 
 const mockOverrides: Record<string, any> = {};
+// This route fixture owns update orchestration; the storage/transaction suites
+// exercise real locked integration publication and restoration.
+vi.mock('../../../domain/config-loader-storage.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../domain/config-loader-storage.js')
+  >()),
+  publishPluginIntegrations: vi.fn(async () => []),
+  restorePluginIntegrations: vi.fn(async () => []),
+}));
+
 vi.mock('../../../domain/config-loader.js', () => ({
   ConfigLoader: vi.fn().mockImplementation(function MockConfigLoader() {
     return {

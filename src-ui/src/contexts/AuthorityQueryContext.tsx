@@ -123,7 +123,14 @@ import {
   type AsyncStorage,
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { OfflineSessionIndex } from '../components/OfflineSessionIndex';
 import {
   isPluginCommandEffectCookieAuthEligible,
@@ -145,14 +152,21 @@ import {
   clearOfflineReading,
   discardForeignOfflineReading,
 } from '../lib/offlineReading';
-import { stationQueryDefaults } from '../lib/queryDefaults';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
   buildPersistOptions,
 } from '../lib/queryPersistence';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
-import { AuthorityPersistenceContext } from './AuthorityPersistenceContext';
+import {
+  AuthorityPersistenceContext,
+  type AuthorityPersistenceContextValue,
+  ClientBootstrapContext,
+} from './AuthorityPersistenceContext';
 import { activeChatsStore } from './active-chats-store';
 
 export interface AuthorityObservationRequest {
@@ -203,9 +217,27 @@ interface ActiveAuthorityClient {
   queryClient: QueryClient;
 }
 
+/**
+ * A failed observation's persistence context. A refused credential (401)
+ * offers no re-read: reading it again on each reconnect would only repeat
+ * the refusal.
+ */
+function failedObservationPersistence(
+  unauthorized: boolean,
+  reobserve: () => void,
+): AuthorityPersistenceContextValue {
+  const failed = { namespace: null, observation: null, refused: unauthorized };
+  return unauthorized
+    ? { ...failed, status: 'unavailable' }
+    : { ...failed, status: 'unverified', reobserve };
+}
+
 export function createAuthorityClient(): QueryClient {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: stationQueryDefaults() },
+    defaultOptions: {
+      queries: stationQueryDefaults(),
+      mutations: stationMutationDefaults(),
+    },
   });
   applyPersistedQueryGcTimeDefaults(queryClient);
   return queryClient;
@@ -335,7 +367,17 @@ export function AuthorityQueryProvider({
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
+    // A reconnect without a switch keeps key and namespace (module header).
+    // Re-reading a VERIFIED observation on the browser's `online` event would
+    // unverify it for the length of the fetch and replace the whole protected
+    // tree, so every Wi-Fi/cellular handoff discarded each mounted view's
+    // state. Only a FAILED observation is retried on reconnect.
+    refetchOnReconnect: (query) => query.state.status === 'error',
   });
+  const refetchObservation = observationQuery.refetch;
+  const reobserve = useCallback(() => {
+    void refetchObservation();
+  }, [refetchObservation]);
 
   // A cached success from a previous activation must never verify the
   // current one: while the current key's fetch is in flight React Query
@@ -497,16 +539,23 @@ export function AuthorityQueryProvider({
   // survive client replacement and skip a new client's seed.
   const [nativeBootFinished, setNativeBootFinished] =
     useState<QueryClient | null>(null);
+  const [bootCapability, setBootCapability] = useState<{
+    scope: NonNullable<typeof boundScope>;
+    client: QueryClient;
+    sharedRealtime: boolean;
+  } | null>(null);
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
+    scope: NonNullable<typeof boundScope>;
   } | null>(null);
   useEffect(() => {
     if (!verifiedNamespace || !active || !boundScope) return;
     if (active.namespace !== verifiedNamespace) return;
     if (
       seededRef.current?.namespace === verifiedNamespace &&
-      seededRef.current.client === active.queryClient
+      seededRef.current.client === active.queryClient &&
+      seededRef.current.scope === boundScope
     )
       return;
     let sameOrigin = false;
@@ -516,7 +565,14 @@ export function AuthorityQueryProvider({
     } catch {
       sameOrigin = false;
     }
-    if (!profile.isTauri && !sameOrigin) return;
+    if (!profile.isTauri && !sameOrigin) {
+      setBootCapability({
+        scope: boundScope,
+        client: active.queryClient,
+        sharedRealtime: false,
+      });
+      return;
+    }
     const scopeAtSeed = boundScope;
     const clientAtSeed = active.queryClient;
     const namespaceAtSeed = verifiedNamespace;
@@ -532,7 +588,13 @@ export function AuthorityQueryProvider({
         const read = bootReadRef.current;
         if (read?.scope !== scopeAtSeed) return;
         const result = await read.promise;
-        if (!result || !stillCurrent()) return;
+        if (!stillCurrent()) return;
+        setBootCapability({
+          scope: scopeAtSeed,
+          client: clientAtSeed,
+          sharedRealtime: result?.payload?.sharedRealtime === true,
+        });
+        if (!result) return;
         await result.boot.seedBootPayloadGuarded(
           clientAtSeed,
           result.payload,
@@ -543,6 +605,7 @@ export function AuthorityQueryProvider({
         seededRef.current = {
           namespace: namespaceAtSeed,
           client: clientAtSeed,
+          scope: scopeAtSeed,
         };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
@@ -633,7 +696,21 @@ export function AuthorityQueryProvider({
         >
           <AuthoritySwitchInvalidator />
           <OfflineSessionIndex />
-          <SessionReadModelProvider>{children}</SessionReadModelProvider>
+          <ClientBootstrapContext.Provider
+            value={
+              bootCapability !== null &&
+              bootCapability.scope === boundScope &&
+              bootCapability.client === active.queryClient
+                ? {
+                    status: 'settled',
+                    sharedRealtime: bootCapability.sharedRealtime,
+                    authorityKey: boundScope?.authorityKey,
+                  }
+                : { status: 'pending', sharedRealtime: false }
+            }
+          >
+            <SessionReadModelProvider>{children}</SessionReadModelProvider>
+          </ClientBootstrapContext.Provider>
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
     );
@@ -649,12 +726,7 @@ export function AuthorityQueryProvider({
   if (observationFailed) {
     return (
       <AuthorityPersistenceContext.Provider
-        value={{
-          status: unauthorized ? 'unavailable' : 'unverified',
-          namespace: null,
-          observation: null,
-          refused: unauthorized,
-        }}
+        value={failedObservationPersistence(unauthorized, reobserve)}
       >
         <EphemeralTree key={ephemeralKey}>
           <AuthoritySwitchInvalidator />

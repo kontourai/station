@@ -1,0 +1,7 @@
+{
+  "revision": "6ee110f2daaa53603d85492876085ec976bc6586",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked after a comment-only change to ProjectLayoutRenderer (unplaced builtin Review substitution now reads the retained 404 so a re-check keeps the workbench mounted). No claim in this document about placement, dispatch, or settings is affected.","inputs":["docs/design/placement.md","src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]}
+  ]
+}

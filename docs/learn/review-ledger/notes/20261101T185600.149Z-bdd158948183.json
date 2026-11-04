@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Rechecked against the cleanup commit: pairing-route-scopes.ts only merges two stacked JSDoc blocks on refusedOnWebSocket; no route rule, scope or refusal logic changed. This document's claims do not depend on the changed lines and remain accurate.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

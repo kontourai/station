@@ -1,0 +1,7 @@
+{
+  "revision": "5c1aadf5e58ca7dcbb969beea648bdc27d7468f7",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed home backup/restore and media-tools backup claims against the registry delta: attention-snoozes.json is explicitly state, matching the previous safe default. Live and media-tools exclusions and restore authority boundaries are unchanged. Source review plus registry completeness tests; no CLI backup execution in this round.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

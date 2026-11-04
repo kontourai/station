@@ -86,13 +86,17 @@ Agent/model. See the [plugin guide](../../docs/guides/plugins.md).
 
 The transcript is text input, not an authenticated meeting recording. The
 record route accepts the submitted provenance label; that label does not prove
-who spoke or captured the material. The compile helper reads the current
-textarea, not the stored raw record, and does not verify equality with that
-record before writing the source link. Editing normally clears the saved ID,
-but inputs remain editable while requests are pending. Avoid switching the
-root or transcript during save/compile, and verify both records before relying
-on their provenance relationship. This is a known qualification gap, not a
-claim of an enforced immutable capture workflow.
+who spoke or captured the material. Save and Compile retain the submitted
+root and text; Compile also retains its source ID. Editing or switching roots
+clears the saved IDs, and late results cannot label the changed draft or enable
+Compile for it. A pending compile can still write its originally submitted
+note. Upload read failures preserve the typed draft and show an error; a late
+file read cannot replace newer edits.
+
+The compile helper does not re-read or lock the stored raw record. External
+edits or deletion can still invalidate that source relationship. Verify both
+records before relying on their provenance; this is not an immutable recording
+or a source-revision check.
 
 Live capture is currently unavailable in this example: the public SDK does not
 export `useSTT`, so `LIVE_CAPTURE_SUPPORTED` hides the control. Paste/upload

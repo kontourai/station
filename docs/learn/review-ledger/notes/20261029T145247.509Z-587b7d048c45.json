@@ -1,0 +1,15 @@
+{
+  "revision": "cee23d26e35d33157801cc2b64f03d9a3d604ba1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"turnHandlers gained a comment only (the live bubble's hint is fixed at error time and refreshes on reload). No claim here depends on it. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/orchestration/turnHandlers.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"MessageContent's memo now compares callerAccess by value and ChatMessageList rebuilds the bubble's callerAccess from its two values; neither affects this document's claims. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the hint sentence for round 5: one default-deny rule on every chat error copy surface; full access unchanged; restricted callers see only a hint declared for their kind and never refused advice; an unconfirmed start keeps its warning for every caller; the live bubble's hint is fixed at error time and refreshes on reload; the approval-delivery failure line is named as not covered. Pinned by chatErrorCallerHints.test.ts (every branch, every restricted kind, full-access literals), MessageContent rerender, terminalSessionMarker and turnHandlers tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatMessageList change is the bubble session's callerAccess built by value; no placement claim depends on it. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"chatErrorTranslation's callerHints became default-deny and gained `true` (hint itself safe); internal to src-ui. The memory-continuation same-tier note is unchanged and still accurate. No prose change.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "revision": "1d6afbaaa9fcaa7c1328163abae0f05fa42e7a29",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Discord service and core receipt ownership, ordered chunks, failure and simulated test limits.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/glossary.md","docs/architecture/module-map.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed ingress busy refusal, chunk delivery, cap, unknown transport outcome and restart handling against gateway and core tests; live Discord remains unverified.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-gateway-service.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed closed parser, refusal link, chunk bounds and overflow invariants against contract tests.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/chat-app.test.ts","packages/contracts/src/chat-app.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed references and relevant claims against the Discord module-map and chat-app contract changes; no change to this document’s scope or claims.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

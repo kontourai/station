@@ -190,7 +190,11 @@ describe('createPairingAudienceResolver', () => {
     const { resolver: subject, logger } = resolver();
     for (let i = 0; i < 3; i += 1) {
       const result = subject.resolve(
-        envelope({ kind: 'principal', principalId: 'human:x:y' }),
+        envelope({
+          kind: 'principal',
+          principalId: 'human:x:y',
+          projectId: 'project-1',
+        }),
       );
       expect(result.deviceSurfaces.size).toBe(0);
       expect(result.includesOperator).toBe(false);

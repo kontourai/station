@@ -29,10 +29,29 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 const sendTurn = vi.fn();
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+const snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: [], error: null, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   sendOrchestrationTurn: (...args: unknown[]) => sendTurn(...args),
@@ -65,6 +84,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
+  useNavigationOptional: () => null,
 }));
 
 import { NotificationHistory } from '../components/notifications/NotificationHistory';

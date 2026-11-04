@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { countWords } from '../../utils/text-display';
+import { BrainGlyph } from '../icons/Glyph';
 
 interface ReasoningSectionProps {
   content: string;
@@ -115,6 +116,9 @@ export function ReasoningSection({
           setIntent(isOpen ? 'user-closed' : 'user-open');
         }}
       >
+        <span className="tool-call__glyph" aria-hidden="true">
+          <BrainGlyph />
+        </span>
         <span className="reasoning-section__label">{summary}</span>
         <span className="reasoning-section__chevron" aria-hidden="true">
           {isOpen ? '⌄' : '›'}

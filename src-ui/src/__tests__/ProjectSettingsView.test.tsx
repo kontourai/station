@@ -8,10 +8,13 @@ import type {
   ProjectConfig,
   ProjectIconCandidate,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
+import type { ProjectCheckoutFreshness } from '@kontourai/station-contracts/project-checkout-freshness';
 import type {
   useIntegrationsQuery,
   useKnowledgeRootsQuery,
 } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -46,8 +49,19 @@ const sdkMocks = vi.hoisted(() => ({
   // `undefined` is the unread config — the picker must not claim a resolved
   // mode it has not seen.
   stationConfig: undefined as
-    | { defaultWorkspaceIsolation?: 'shared' | 'worktree' }
+    | {
+        defaultWorkspaceIsolation?: 'shared' | 'worktree';
+        defaultApprovalMode?: 'ask' | 'auto' | 'never' | 'connection-default';
+      }
     | undefined,
+  chatDefaults: undefined as ProjectChatDefaultsView | undefined,
+  chatDefaultsQuery: vi.fn(),
+  // Station-wide previews the host reports, and the checkout freshness read.
+  previews: [] as Array<{ id: string; enabled: boolean }>,
+  checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
+  checkoutFreshnessError: null as Error | null,
+  checkoutFreshnessQuery: vi.fn(),
+  checkoutFreshnessRefetch: vi.fn(),
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -241,6 +255,55 @@ vi.mock('@kontourai/station-sdk', () => ({
   useModelConnectionsQuery: vi.fn(() => ({
     data: sdkMocks.modelConnections,
   })),
+  // The New chats section names what `last-used` would pick right now.
+  useProjectChatDefaultsQuery: (...args: unknown[]) => {
+    sdkMocks.chatDefaultsQuery(...args);
+    return {
+      data: sdkMocks.chatDefaults,
+      isFetching: false,
+      isPending: !sdkMocks.chatDefaults,
+    };
+  },
+  useFeaturePreviewsQuery: () => ({ data: sdkMocks.previews }),
+  useProjectCheckoutFreshnessQuery: (...args: unknown[]) => {
+    sdkMocks.checkoutFreshnessQuery(...args);
+    const enabled = (args[1] as { enabled?: boolean } | undefined)?.enabled;
+    return {
+      data: enabled ? sdkMocks.checkoutFreshness : undefined,
+      error: enabled ? sdkMocks.checkoutFreshnessError : null,
+      isFetching: false,
+      refetch: sdkMocks.checkoutFreshnessRefetch,
+    };
+  },
+  useAgentsQuery: () => ({
+    data: [
+      {
+        slug: 'claude',
+        name: 'Claude Code',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ],
+    error: null,
+  }),
+  // The engine's catalog, for the last-used model's display name.
+  useEngineConnectionsQuery: () => ({
+    data: [
+      {
+        id: 'claude',
+        runtimeCatalog: {
+          source: 'live',
+          models: [
+            {
+              id: 'claude-sonnet-5',
+              name: 'Claude Sonnet 5',
+              originalId: 'claude-sonnet-5',
+            },
+          ],
+          builtInModels: [],
+        },
+      },
+    ],
+  }),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
     mutateAsync: async (slug: string) => {
@@ -329,6 +392,16 @@ function expectPageFullRoot(container: HTMLElement) {
   );
 }
 
+// Every suite here renders the Workspace section, so the stale checkout
+// warning's state starts empty for each test.
+beforeEach(() => {
+  sdkMocks.previews = [];
+  sdkMocks.checkoutFreshness = undefined;
+  sdkMocks.checkoutFreshnessError = null;
+  sdkMocks.checkoutFreshnessQuery.mockClear();
+  sdkMocks.checkoutFreshnessRefetch.mockClear();
+});
+
 describe('ProjectSettingsView (#250 shell port)', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/projects/demo/settings');
@@ -343,6 +416,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
     sdkMocks.stationConfig = {};
+    sdkMocks.chatDefaults = undefined;
+    sdkMocks.chatDefaultsQuery.mockClear();
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
     sdkMocks.peerCredentials = [];
@@ -392,6 +467,46 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
+  });
+
+  test('clearing the working directory reaches the update instead of retaining the old folder', async () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', workingDirectory: '' }),
+      ),
+    );
+  });
+
+  test('a refreshed project preserves unsaved edits through Save', async () => {
+    const { rerender } = renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: 'Draft name' },
+    });
+    sdkMocks.project = { ...projectFixture, description: 'Changed elsewhere' };
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(inputValue(screen.getByLabelText('Name *'))).toBe('Draft name');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Draft name' }),
+      ),
+    );
+  });
+
+  test('a whitespace-only name cannot be saved', () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 
   test('shows a dangling saved environment as the selected missing option', () => {
@@ -585,7 +700,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(model.disabled).toBe(true);
       expect(
         screen.getByText(
-          'Choose a model connection first. Without one, chats in this project use the Station default.',
+          'Choose a connection to override the Station default.',
         ),
       ).toBeTruthy();
 
@@ -805,6 +920,23 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(sdkMocks.refetch).toHaveBeenCalledTimes(1);
   });
 
+  test('a mixed account conflict explains recovery instead of treating the Device as disconnected', () => {
+    sdkMocks.project = undefined;
+    sdkMocks.isLoading = false;
+    sdkMocks.isError = true;
+    sdkMocks.error = new StationHttpError(403, 'conflict', {
+      code: 'account_identity_conflict',
+    });
+    renderProjectSettings();
+    expect(
+      screen.getByText(/This browser is signed in to a Station account/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Loading project')).toBeNull();
+  });
+
   test('preserves save payload behavior and clears dirty state on success', async () => {
     const { container } = renderProjectSettings();
 
@@ -839,6 +971,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         defaultProviderId: '',
         defaultAgent: null,
         defaultWorkspaceIsolation: 'worktree',
+        // A Project that chose nothing for new chats stores nothing.
+        defaultModelSelection: null,
+        defaultApprovalModeSelection: null,
+        defaultApprovalMode: null,
         defaultEnvironment: { kind: 'current' },
         workingDirectory: '~/dev/demo',
         agents: ['codex'],
@@ -855,6 +991,161 @@ describe('ProjectSettingsView (#250 shell port)', () => {
    * `shared` would print the same sentence from different amounts of
    * knowledge.
    */
+  describe('New chats', () => {
+    const history: ProjectChatDefaultsView = {
+      version: 'station.project-chat-defaults/v1',
+      projectSlug: 'demo',
+      model: {
+        selection: 'last-used',
+        lastUsed: [
+          {
+            agentSlug: 'claude',
+            modelId: 'claude-sonnet-5',
+            startedAt: '2026-10-20T10:00:00.000Z',
+          },
+        ],
+      },
+      approvalMode: {
+        selection: 'last-used',
+        lastUsed: {
+          approvalMode: 'auto',
+          startedAt: '2026-10-20T10:00:00.000Z',
+        },
+        resolved: { approvalMode: 'auto', source: 'last-used' },
+      },
+    };
+
+    test('a Project that stores no choice shows the set defaults, and the read is scoped to it', () => {
+      sdkMocks.stationConfig = { defaultApprovalMode: 'ask' };
+      renderProjectSettings();
+      expect(
+        (screen.getByLabelText('Starting model') as HTMLSelectElement).value,
+      ).toBe('fixed');
+      expect(
+        (screen.getByLabelText('Starting approval mode') as HTMLSelectElement)
+          .value,
+      ).toBe('fixed');
+      expect(
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
+      ).toBe('inherit');
+      expect(
+        screen.getByRole('option', {
+          name: 'Use the Station approval default (currently: Ask first)',
+        }),
+      ).toBeTruthy();
+      expect(sdkMocks.chatDefaultsQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.anything(),
+      );
+      // The fixture names a model but no connection, so nothing above applies.
+      expect(
+        screen.getByText(
+          'This project sets no AI model above, so a new chat starts on the Agent’s own model.',
+        ),
+      ).toBeTruthy();
+      // The fallback select says what it is for.
+      expect(
+        screen.getByText(/Also used when there is no chat history/),
+      ).toBeTruthy();
+    });
+
+    test('a project model above is the one fixed new chats start on', () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultProviderId: 'openai-main',
+      };
+      renderProjectSettings();
+      expect(
+        screen.getByText(
+          /starts on the AI model above wherever its Agent offers/,
+        ),
+      ).toBeTruthy();
+    });
+
+    test('choosing last used and a mode saves exactly those fields', async () => {
+      renderProjectSettings();
+      fireEvent.change(screen.getByLabelText('Starting model'), {
+        target: { value: 'last-used' },
+      });
+      fireEvent.change(screen.getByLabelText('Starting approval mode'), {
+        target: { value: 'last-used' },
+      });
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
+        target: { value: 'auto' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            slug: 'demo',
+            defaultModelSelection: 'last-used',
+            defaultApprovalModeSelection: 'last-used',
+            defaultApprovalMode: 'auto',
+          }),
+        ),
+      );
+    });
+
+    test('a stored choice loads, and setting it back to fixed drops it', async () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultModelSelection: 'last-used',
+        defaultApprovalModeSelection: 'last-used',
+        defaultApprovalMode: 'never',
+      };
+      renderProjectSettings();
+      expect(
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
+      ).toBe('never');
+      fireEvent.change(screen.getByLabelText('Starting model'), {
+        target: { value: 'fixed' },
+      });
+      fireEvent.change(screen.getByLabelText('Starting approval mode'), {
+        target: { value: 'fixed' },
+      });
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
+        target: { value: 'inherit' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultModelSelection: null,
+            defaultApprovalModeSelection: null,
+            defaultApprovalMode: null,
+          }),
+        ),
+      );
+    });
+
+    test('last used names what it would pick, or says nothing is recorded yet', () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultModelSelection: 'last-used',
+        defaultApprovalModeSelection: 'last-used',
+      };
+      sdkMocks.chatDefaults = history;
+      const { unmount } = renderProjectSettings();
+      expect(
+        screen.getByText(/last: Claude Sonnet 5 with Claude Code/),
+      ).toBeTruthy();
+      expect(screen.getByText(/\(last: Auto\)/)).toBeTruthy();
+      unmount();
+      sdkMocks.chatDefaults = {
+        ...history,
+        model: { ...history.model, lastUsed: [] },
+        approvalMode: {
+          selection: 'last-used',
+          resolved: { source: 'none', fallback: 'no-history' },
+        },
+      };
+      renderProjectSettings();
+      expect(
+        screen.getAllByText(/No chat started here has been recorded yet/),
+      ).toHaveLength(2);
+    });
+  });
+
   test('the inherit option names the mode the Station default resolves to', () => {
     sdkMocks.stationConfig = { defaultWorkspaceIsolation: 'worktree' };
     renderProjectSettings();
@@ -1013,6 +1304,169 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.getByRole('dialog').textContent).toContain(
       'no longer have a live Project workspace',
     );
+  });
+
+  describe('stale checkout warning', () => {
+    const stale: ProjectCheckoutFreshness = {
+      version: 'station.project-checkout-freshness/v1',
+      status: 'stale',
+      staleBecause: ['commits'],
+      thresholds: { commits: 50, days: 3 },
+      branch: 'main',
+      upstream: 'origin/main',
+      behind: 183,
+      ahead: 0,
+      updateCommand: 'git -C /Users/me/dev/demo pull --ff-only',
+      checkedAt: '2026-10-28T12:00:00.000Z',
+    };
+    const enablePreview = () => {
+      sdkMocks.previews = [{ id: 'stale-project-checkout', enabled: true }];
+    };
+
+    test('does not read or show anything while the preview is off', () => {
+      sdkMocks.checkoutFreshness = stale;
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+      expect(sdkMocks.checkoutFreshnessQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.objectContaining({ enabled: false }),
+      );
+    });
+
+    test('shows how far behind the checkout is and the command, in the Workspace section', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = stale;
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.closest('#section-workspace')).not.toBeNull();
+      expect(notice.textContent).toContain(
+        'Checkout is 183 commits behind origin/main',
+      );
+      expect(notice.textContent).toContain(
+        'git -C /Users/me/dev/demo pull --ff-only',
+      );
+      expect(notice.textContent).not.toContain('will refuse');
+    });
+
+    test('warns that the pull will refuse when the checkout has its own commits', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = { ...stale, ahead: 1 };
+      renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-stale').textContent,
+      ).toContain('It also has 1 local commit, so this pull will refuse');
+    });
+
+    test('shows nothing for a checkout that is not stale or cannot be judged', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        status: 'not-stale',
+        staleBecause: [],
+        behind: 4,
+      };
+      const { unmount } = renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+      unmount();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'no-upstream',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+    });
+
+    test('an old fetch with nothing behind says when it was fetched, not a count', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 0,
+        upstreamFetchedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.textContent).toContain('Checkout last fetched 4d ago');
+      expect(notice.textContent).toContain('It may be behind origin/main');
+      expect(notice.textContent).not.toContain('0 commits');
+    });
+
+    test('a few commits behind with only an old fetch leads with the fetch, not the count', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 2,
+        upstreamFetchedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.textContent).toContain('Checkout last fetched 5d ago');
+      expect(notice.textContent).toContain(
+        'It was 2 commits behind origin/main then, and may be further now.',
+      );
+    });
+
+    test('a checkout Station refused to read says so quietly, and an unjudgeable one says nothing', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'config-refused',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      const { unmount } = renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-unchecked').textContent,
+      ).toContain('its git config sets options Station refuses');
+      unmount();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'not-a-repository',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-unchecked')).toBeNull();
+    });
+
+    test('a checkout only ahead is not told its pull will refuse', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 0,
+        ahead: 2,
+        upstreamFetchedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-stale').textContent,
+      ).not.toContain('will refuse');
+    });
+
+    test('asks again whenever the person comes back, since a pull happens outside Station', () => {
+      enablePreview();
+      renderProjectSettings();
+      expect(sdkMocks.checkoutFreshnessQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.objectContaining({
+          enabled: true,
+          refetchOnMount: true,
+          refetchOnWindowFocus: true,
+        }),
+      );
+    });
+
+    test('a failed read offers a retry that reads again', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshnessError = new Error('Station is unreachable');
+      renderProjectSettings();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(sdkMocks.checkoutFreshnessRefetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

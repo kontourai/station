@@ -402,6 +402,55 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'pr-admission': 'failure' },
+      outputs: { 'pr-admission': { admitted: 'false' } },
+    });
+    expect(state.results.get('pr-admission')).toBe('failure');
+    for (const part of PARTS)
+      expect(state.results.get(part), part).toBe('skipped');
+    expect(aggregatorPartResults(jobs, state)).toBe(1);
+  });
+
+  test.each(['failure', 'cancelled'] as const)(
+    'an admission job that %s without deciding never blocks the candidate',
+    (outcome) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'pr-admission': outcome },
+        outputs: { 'fast-checks-plan': { legacy: 'false' } },
+      });
+      for (const part of PARTS)
+        expect(state.results.get(part), part).toBe('success');
+      expect(aggregatorPartResults(jobs, state)).toBe(0);
+    },
+  );
+
+  test.each([
+    ['merge_group', { ...sameRepositoryPr, event: 'merge_group' }],
+    ['workflow_dispatch', { ...sameRepositoryPr, event: 'workflow_dispatch' }],
+  ])('%s never evaluates conflict admission', (_name, context) => {
+    const state = simulate(jobs, context, {
+      outputs: {
+        classify: { heavy: 'false' },
+        'fast-checks-plan': { legacy: 'false' },
+      },
+    });
+    expect(state.results.get('pr-admission')).toBe('skipped');
+    expect(state.results.get('fast-checks-plan')).toBe('success');
+  });
+
+  test('a fork candidate and a metadata-only edit skip conflict admission', () => {
+    for (const context of [
+      { ...sameRepositoryPr, headRepository: 'someone/fork' },
+      { ...sameRepositoryPr, action: 'edited' },
+    ])
+      expect(
+        simulate(jobs, context).results.get('pr-admission'),
+        JSON.stringify(context),
+      ).toBe('skipped');
+  });
+
   test('empty selections allocate no shard runner while retaining a required verdict', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outputs: {
@@ -787,7 +836,8 @@ describe('repository-wide PR source runner ceilings', () => {
       },
     );
   };
-  test('25 simultaneous PRs expose exactly two statics and two shard slots, with no cancellation or pending replacement', () => {
+  // #4365 added a third shared shard slot for odd shards of PRs ending 0-2.
+  test('25 simultaneous PRs expose exactly two statics and three shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -796,16 +846,22 @@ describe('repository-wide PR source runner ceilings', () => {
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
     expect(statics.size).toBe(2);
-    expect(shards.size).toBe(2);
-    expect(new Set([...statics, ...shards]).size).toBe(4);
+    expect(shards).toEqual(
+      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
+    );
+    expect(new Set([...statics, ...shards]).size).toBe(5);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
   });
   test('odd and even one-shard PRs use both slots; four-way plans keep every shard without cancelling siblings', () => {
-    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).not.toBe(
-      sourceGroups(jobs['fast-checks-shard'], 3702),
+    // PRs ending 0-2 send shard 1 to the third slot; 3703/3704 keep odd/even.
+    expect(sourceGroups(jobs['fast-checks-shard'], 3703)).not.toBe(
+      sourceGroups(jobs['fast-checks-shard'], 3704),
+    );
+    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).toBe(
+      'ci-pr-shards-third',
     );
     const slots = [1, 2, 3, 4].map((shard) =>
       sourceGroups(jobs['fast-checks-shard'], 3701, shard),

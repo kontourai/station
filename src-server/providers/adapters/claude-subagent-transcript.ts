@@ -1,7 +1,6 @@
-import { constants, type Dirent } from 'node:fs';
-import { type FileHandle, lstat, open, readdir } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX,
   CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
@@ -11,6 +10,15 @@ import {
   cutChildWorkText,
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
+import {
+  createResolvedPathCache,
+  directoryEntries as entriesOf,
+  isRealDirectory,
+  isRealDirectoryChain,
+  openTranscriptFile as openTranscript,
+  type TranscriptJsonlRecord as TranscriptRecord,
+  transcriptJsonlRecords as transcriptRecords,
+} from './transcript-jsonl-file.js';
 
 /**
  * #3163: a Claude subagent's own transcript, read from disk.
@@ -26,15 +34,10 @@ import { redactInlineData } from '../model-image-attachments.js';
  *
  * Nothing here builds a path from request input: the session and agent ids
  * are validated by the contract (a UUID and one path-safe segment), and the
- * file name is fixed. Symlinks below the config home are refused by checks
- * made immediately before the open: each directory must be a real one
- * (`lstat`, repeated on every read of a cached path), the file must be a
- * regular file by `lstat`, it is opened with `O_NOFOLLOW` (the last
- * component only) and `O_NONBLOCK` (so a FIFO cannot block the open), and
- * the open handle must be a regular file. These checks are not atomic
- * against a concurrent swap by a process running as the same user: a
- * directory swapped for a link between the check and the open is followed.
- * The config home itself may be a link (a dotfiles-managed `~/.claude`).
+ * file name is fixed. Symlinks below the config home are refused as
+ * `transcript-jsonl-file.ts` describes (repeated on every read of a cached
+ * path). The config home itself may be a link (a dotfiles-managed
+ * `~/.claude`).
  *
  * The file is read in its own order, so it can show what the engine's own
  * reader hides: a branch abandoned by a retry or edit, and a compaction
@@ -49,6 +52,11 @@ import { redactInlineData } from '../model-image-attachments.js';
  * left out.
  */
 
+export type ClaudeSubagentTranscriptRef = Extract<
+  ChildWorkTranscriptRef,
+  { kind: 'claude-subagent' }
+>;
+
 export type ClaudeSubagentTranscriptOutcome =
   | { status: 'found'; page: ChildWorkTranscriptPage }
   /** No transcript for this agent under its config home. */
@@ -56,13 +64,6 @@ export type ClaudeSubagentTranscriptOutcome =
 
 /** How deep under `subagents/` a workflow keeps its agents' transcripts. */
 const SUBAGENT_DIR_MAX_DEPTH = 3;
-/**
- * A record longer than this many BYTES is not buffered: its bytes are
- * discarded as they are read and it becomes one `too-large` entry.
- */
-const TRANSCRIPT_LINE_MAX_BYTES = 4 * 1024 * 1024;
-/** Bytes read per `read()` call. */
-const READ_CHUNK_BYTES = 64 * 1024;
 /** Resolved transcript paths kept per process (a FIFO cache: oldest inserted evicted first). */
 const RESOLVED_PATHS_MAX = 256;
 
@@ -165,20 +166,6 @@ export function claudeTranscriptEntries(
   ];
 }
 
-async function entriesOf(directory: string): Promise<Dirent[]> {
-  try {
-    return await readdir(directory, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-
-/** A real directory: present, and not a symlink to one. */
-async function isRealDirectory(path: string): Promise<boolean> {
-  const stat = await lstat(path).catch(() => undefined);
-  return stat?.isDirectory() === true;
-}
-
 /**
  * `agent-<id>.jsonl` under a `subagents/` directory. Only real directories
  * are entered and only a regular file matches: a symlinked directory or file
@@ -211,19 +198,10 @@ async function findUnder(
  * file is still opened without following links and checked on every read,
  * and a miss forgets the entry.
  */
-const resolvedPaths = new Map<string, string>();
+const resolvedPaths = createResolvedPathCache(RESOLVED_PATHS_MAX);
 
-function refKey(ref: ChildWorkTranscriptRef): string {
+function refKey(ref: ClaudeSubagentTranscriptRef): string {
   return JSON.stringify([ref.configHome ?? '', ref.sessionId, ref.agentId]);
-}
-
-function rememberPath(key: string, path: string): void {
-  resolvedPaths.delete(key);
-  resolvedPaths.set(key, path);
-  if (resolvedPaths.size > RESOLVED_PATHS_MAX) {
-    const oldest = resolvedPaths.keys().next().value;
-    if (oldest !== undefined) resolvedPaths.delete(oldest);
-  }
 }
 
 /**
@@ -234,7 +212,7 @@ function rememberPath(key: string, path: string): void {
  * level) must be a real directory.
  */
 async function findClaudeSubagentTranscript(
-  ref: ChildWorkTranscriptRef,
+  ref: ClaudeSubagentTranscriptRef,
 ): Promise<string | undefined> {
   const projects = join(configHomeOf(ref), 'projects');
   if (!(await isRealDirectory(projects))) return undefined;
@@ -251,118 +229,14 @@ async function findClaudeSubagentTranscript(
   return undefined;
 }
 
-function configHomeOf(ref: ChildWorkTranscriptRef): string {
+function configHomeOf(ref: ClaudeSubagentTranscriptRef): string {
   return ref.configHome ?? claudeGlobalConfigHome();
-}
-
-/** Every directory from below `root` down to `directory` is a real one. */
-async function isRealDirectoryChain(
-  root: string,
-  directory: string,
-): Promise<boolean> {
-  const below = relative(root, directory);
-  if (below.length === 0 || below.startsWith('..')) return false;
-  let current = root;
-  for (const segment of below.split(sep)) {
-    current = join(current, segment);
-    if (!(await isRealDirectory(current))) return false;
-  }
-  return true;
 }
 
 /** The server's own global config home, as Claude Code resolves it. */
 function claudeGlobalConfigHome(): string {
   const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
   return configured ? configured : join(homedir(), '.claude');
-}
-
-/**
- * Opens a transcript without following a link in its last component, and
- * only when the opened handle is a regular file. Where the platform has no
- * `O_NOFOLLOW` (Windows), the handle's own stat still refuses a non-file.
- */
-async function openTranscript(path: string): Promise<FileHandle | undefined> {
-  // A regular file before the open: a FIFO or device is refused unopened.
-  const linkStat = await lstat(path).catch(() => undefined);
-  if (!linkStat?.isFile()) return undefined;
-  const handle = await open(
-    path,
-    constants.O_RDONLY |
-      (constants.O_NOFOLLOW ?? 0) |
-      // Reads of a regular file are unaffected; a FIFO swapped in after the
-      // lstat opens at once instead of waiting for a writer.
-      (constants.O_NONBLOCK ?? 0),
-  ).catch(() => undefined);
-  if (!handle) return undefined;
-  const stat = await handle.stat().catch(() => undefined);
-  if (stat?.isFile()) return handle;
-  await handle.close();
-  return undefined;
-}
-
-type TranscriptRecord =
-  | { tooLarge: true }
-  | { tooLarge?: undefined; type?: unknown; message?: unknown };
-
-/**
- * The file's records, one per line. Bytes are split on newline as they are
- * read; a line past `TRANSCRIPT_LINE_MAX_BYTES` stops being buffered at the
- * cap, its remaining bytes are skipped, and it is yielded as `tooLarge`.
- */
-async function* transcriptRecords(
-  handle: FileHandle,
-): AsyncGenerator<TranscriptRecord> {
-  const buffer = Buffer.alloc(READ_CHUNK_BYTES);
-  let parts: Buffer[] = [];
-  let length = 0;
-  let overflow = false;
-  const finish = (): TranscriptRecord | undefined => {
-    const wasOverflow = overflow;
-    const line = wasOverflow
-      ? ''
-      : Buffer.concat(parts, length).toString('utf8');
-    parts = [];
-    length = 0;
-    overflow = false;
-    if (wasOverflow) return { tooLarge: true };
-    if (line.trim().length === 0) return undefined;
-    try {
-      const record = asRecord(JSON.parse(line));
-      return record ?? undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  const take = (chunk: Buffer) => {
-    if (overflow) return;
-    if (length + chunk.length > TRANSCRIPT_LINE_MAX_BYTES) {
-      overflow = true;
-      parts = [];
-      length = 0;
-      return;
-    }
-    // Copied: the read buffer is reused by the next read.
-    parts.push(Buffer.from(chunk));
-    length += chunk.length;
-  };
-  for (;;) {
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
-    if (bytesRead === 0) break;
-    let start = 0;
-    for (;;) {
-      const newline = buffer.indexOf(0x0a, start);
-      if (newline === -1 || newline >= bytesRead) {
-        take(buffer.subarray(start, bytesRead));
-        break;
-      }
-      take(buffer.subarray(start, newline));
-      const record = finish();
-      if (record) yield record;
-      start = newline + 1;
-    }
-  }
-  const last = finish();
-  if (last) yield last;
 }
 
 /** A conversation turn: a user or assistant record that is not meta. */
@@ -396,7 +270,7 @@ async function readMessages(
 
 /** A page of the subagent's transcript, starting at message `offset`. */
 export async function readClaudeSubagentTranscriptPage(
-  ref: ChildWorkTranscriptRef,
+  ref: ClaudeSubagentTranscriptRef,
   options: { offset: number; limit: number },
 ): Promise<ClaudeSubagentTranscriptOutcome> {
   const key = refKey(ref);
@@ -407,13 +281,13 @@ export async function readClaudeSubagentTranscriptPage(
     // below the config home still a real directory.
     if (await isRealDirectoryChain(configHomeOf(ref), dirname(cached)))
       handle = await openTranscript(cached);
-    if (!handle) resolvedPaths.delete(key);
+    if (!handle) resolvedPaths.forget(key);
   }
   if (!handle) {
     const path = await findClaudeSubagentTranscript(ref);
     if (path) handle = await openTranscript(path);
     if (!path || !handle) return { status: 'unavailable' };
-    rememberPath(key, path);
+    resolvedPaths.remember(key, path);
   }
   try {
     // One past the page tells whether another page follows.
@@ -429,7 +303,10 @@ export async function readClaudeSubagentTranscriptPage(
         entries: page.flatMap((record, index): ChildWorkTranscriptEntry[] =>
           record.tooLarge
             ? [{ message: options.offset + index, kind: 'too-large' }]
-            : claudeTranscriptEntries(record, options.offset + index),
+            : claudeTranscriptEntries(
+                { type: record.type, message: record.message },
+                options.offset + index,
+              ),
         ),
         ...(messages.length > options.limit
           ? { nextOffset: options.offset + options.limit }

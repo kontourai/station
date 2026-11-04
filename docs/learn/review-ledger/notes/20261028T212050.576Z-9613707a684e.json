@@ -1,0 +1,11 @@
+{
+  "revision": "5b9f06c21eb55b14f4e03fdf419571dc7c98fe9d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Round 5: added the uncached handshake re-read and the STATION_NOT_ANSWERING code for 5xx/408/429 handshakes; checked against probeHandshake in client/session-reads.ts and the 500/429/503/521 handshake tests (fault-injected).","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/sdk.md only gained the person Session read fetchers' handshake retry detail; this guide does not restate it.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"docs/reference/sdk.md only gained a fetcher entry's handshake detail; the SDK scope rules here are unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

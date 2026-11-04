@@ -1,9 +1,9 @@
 import {
-  migrateWorkspaceBrowserPaneState,
+  BROWSER_PANE_TAB_LIMIT,
   parseWorkspaceBrowserPaneState,
   WORKSPACE_BROWSER_PANE_STATE_VERSION,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/state';
 import type { BrowserPaneTarget } from './browser-pane/BrowserPane';
@@ -11,6 +11,7 @@ import { isCanonicalBrowserPreviewPaneInstance } from './browserPreviewPaneInsta
 import {
   readBrowserPreviewPaneState,
   storedBrowserPaneProjectId,
+  subscribeBrowserPreviewPaneState,
   writeBrowserPreviewPaneState,
 } from './browserPreviewPaneStateStorage';
 import type { BuiltinWorkspacePaneProps } from './builtinWorkspacePaneRegistry';
@@ -34,6 +35,13 @@ export function BrowserPreviewWorkspacePane({
   const identity = useWorkspacePaneBoundIdentity(instance, false);
   const projectId = identity.state === 'resolved' ? identity.project.id : '';
   const [, setRevision] = useState(0);
+  useEffect(
+    () =>
+      subscribeBrowserPreviewPaneState(() =>
+        setRevision((current) => current + 1),
+      ),
+    [],
+  );
   const stored = readBrowserPreviewPaneState(
     window.localStorage,
     instance.stateKey,
@@ -54,36 +62,57 @@ export function BrowserPreviewWorkspacePane({
     (browserSessionId: string) => {
       if (!storedProject) return;
       const updatedAt = new Date().toISOString();
-      const next = !stored
-        ? parseWorkspaceBrowserPaneState({
-            version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
-            projectId: storedProject,
-            browserSessionId,
-            updatedAt,
-          })
-        : stored.version === '1.0'
-          ? migrateWorkspaceBrowserPaneState(
-              stored.migration,
-              browserSessionId,
-              updatedAt,
+      const previous = readBrowserPreviewPaneState(
+        window.localStorage,
+        instance.stateKey,
+      );
+      const ids =
+        previous?.version === '2.0'
+          ? (previous.state.browserSessionIds ?? [
+              previous.state.browserSessionId,
+            ])
+          : [];
+      const nextIds = ids.includes(browserSessionId)
+        ? ids
+        : ids.length >= BROWSER_PANE_TAB_LIMIT && previous?.version === '2.0'
+          ? ids.map((id) =>
+              id === previous.state.browserSessionId ? browserSessionId : id,
             )
-          : parseWorkspaceBrowserPaneState({
-              version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
-              projectId: stored.state.projectId,
-              browserSessionId,
-              updatedAt,
-            });
-      if (
-        next &&
+          : [...ids, browserSessionId];
+      const next = parseWorkspaceBrowserPaneState({
+        version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+        projectId: storedProject,
+        browserSessionId,
+        browserSessionIds: nextIds,
+        updatedAt,
+      });
+      if (next)
         writeBrowserPreviewPaneState(
           window.localStorage,
           instance.stateKey,
           next,
-        )
-      )
-        setRevision((current) => current + 1);
+        );
     },
-    [instance.stateKey, stored, storedProject],
+    [instance.stateKey, storedProject],
+  );
+  const onTabsChange = useCallback(
+    (browserSessionIds: string[], selected: string) => {
+      if (!storedProject) return;
+      const next = parseWorkspaceBrowserPaneState({
+        version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+        projectId: storedProject,
+        browserSessionId: selected,
+        browserSessionIds,
+        updatedAt: new Date().toISOString(),
+      });
+      if (next)
+        writeBrowserPreviewPaneState(
+          window.localStorage,
+          instance.stateKey,
+          next,
+        );
+    },
+    [instance.stateKey, storedProject],
   );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
@@ -105,6 +134,13 @@ export function BrowserPreviewWorkspacePane({
         projectSlug: identity.project.slug,
         target,
         onAttach,
+        browserSessionIds:
+          stored?.version === '2.0'
+            ? (stored.state.browserSessionIds ?? [
+                stored.state.browserSessionId,
+              ])
+            : [],
+        onTabsChange,
       }}
       pending={<SkeletonBlock count={2} label="Loading the browser" />}
     />

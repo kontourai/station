@@ -1,0 +1,7 @@
+{
+  "revision": "e58daf415d4c951ccac8dc473694c2852d3592aa",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed AppearancePage.tsx at e58daf415d4 against the design's current ownership, mode/theme and Answer width claims. The runtime delta restores the intended Loading… ellipsis instead of mojibake; two comments also regain the Cmd-H glyph. Theme selection, pending/failed/applied state, retry, account/device scope, shortcut registration and width choices are unchanged. All 212 tests in the three affected component suites pass (the baseline reproduced 11 failures), and 14 real-Chromium Appearance tests pass, including pending styles, out-of-order sheets, failure and retry focus. The real page and production CSS were bundled into a controlled loading-sheet harness, rendered at 390/1440 in both modes, and all four PNGs opened: the selected card reads CatppuccinLoading… and the live status reads Loading Catppuccin. This qualifies the component rendering, not the complete Settings shell, native devices or live account persistence. Existing prose remains accurate.","inputs":["docs/design/settings-architecture.md","src-ui/src/pages/AppearancePage.tsx"]}
+  ]
+}

@@ -11,6 +11,11 @@ const exclusions = {
       'event_history_limit_exceeded',
       'Monitoring history read budget; surfaced as HTTP 413, not provider execution.',
     ],
+  'src-server/services/infra/workload-resources.ts:WorkloadSettingsRejectedError.code':
+    [
+      'workload_settings_invalid',
+      'Workload budget settings validation, answered 400 by PUT /api/system/workload/settings; not provider execution.',
+    ],
   'packages/contracts/src/agent-identity.ts:ReservedStationIdentityError.code':
     [
       'STATION_ID_RESERVED',
@@ -28,6 +33,16 @@ const exclusions = {
     'INVALID_LAYOUT_DECLARATION',
     'Layout presentation declaration validation.',
   ],
+  'src-server/services/plugins/plugin-install-trust-recording.ts:PluginInstallTrustRefused.code':
+    [
+      'plugin-install-trust-refused',
+      'Plugin install trust admission, before any provider runs.',
+    ],
+  'src-server/services/plugins/plugin-install-trust-store.ts:PluginTrustRecordNewerError.code':
+    [
+      'plugin-trust-record-newer',
+      'Plugin install trust record versioning, before any provider runs.',
+    ],
   'src-server/security/coding-authority.ts:WORKING_DIRECTORY_NOT_GRANTED_CODE':
     [
       'working-directory-not-granted',

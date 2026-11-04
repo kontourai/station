@@ -32,6 +32,7 @@ mod native_enrollment_peer;
 mod native_http_performance_tests;
 mod native_http_transport;
 mod native_relay_ice;
+mod native_requester_consent;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -54,6 +55,8 @@ mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
 mod panic_log;
+#[cfg(not(mobile))]
+mod plugin_bundle_protocol;
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -605,6 +608,7 @@ struct NativeProfileAuthorityState {
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
     transitioning: std::collections::HashSet<String>,
     http_pool: NativeHttpAgentPool,
+    requester_consents: Vec<native_requester_consent::Pending>,
 }
 
 /// A bearer returned by the public pairing exchange is never returned across
@@ -4757,6 +4761,17 @@ fn station_native_http_request_to_sink_blocking(
                 (reference, credential)
             }
         };
+        let requester_binding =
+            if native_requester_consent::is_creation_request(&method, &parsed_url) {
+                authority.0.lock().ok().and_then(|state| {
+                    state
+                        .active
+                        .as_ref()
+                        .map(|active| active.binding_id.clone())
+                })
+            } else {
+                None
+            };
         let mut builder = ureq::http::Request::builder()
             .method(parsed_method)
             .uri(&request.url)
@@ -4840,6 +4855,18 @@ fn station_native_http_request_to_sink_blocking(
                 }
 
                 let status = response.status().as_u16();
+                let requester_cookie = if status == 200 && requester_binding.is_some() {
+                    response
+                        .headers()
+                        .get_all("set-cookie")
+                        .iter()
+                        .filter_map(|value| value.to_str().ok())
+                        .find(|value| value.starts_with("station-consent="))
+                        .map(str::to_owned)
+                } else {
+                    None
+                };
+                let mut requester_body = requester_cookie.as_ref().map(|_| Vec::new());
                 sink.send(NativeHttpMessage::Response {
                     status,
                     headers: native_response_headers(response.headers()),
@@ -4892,6 +4919,13 @@ fn station_native_http_request_to_sink_blocking(
                         break;
                     }
                     total += read;
+                    if let Some(body) = requester_body.as_mut() {
+                        if total <= 65536 {
+                            body.extend_from_slice(&buffer[..read]);
+                        } else {
+                            requester_body = None;
+                        }
+                    }
                     if !open_stream && total > 64 * 1024 * 1024 {
                         return Err(NativeHttpBrokerFailure::coded("response_too_large"));
                     }
@@ -4916,6 +4950,31 @@ fn station_native_http_request_to_sink_blocking(
                     &reference,
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
+                if let (Some(binding), Some(cookie), Some(body)) = (
+                    requester_binding.as_deref(),
+                    requester_cookie.as_deref(),
+                    requester_body.as_deref(),
+                ) {
+                    if let Some(pending) =
+                        native_requester_consent::Pending::capture(&origin, binding, cookie, body)
+                    {
+                        if let Ok(mut state) = authority.0.lock() {
+                            if state
+                                .active
+                                .as_ref()
+                                .is_some_and(|active| active.binding_id == binding)
+                            {
+                                state.requester_consents.retain(|entry| {
+                                    entry.is_current(&origin, binding)
+                                        && entry.request_id != pending.request_id
+                                });
+                                if state.requester_consents.len() < 64 {
+                                    state.requester_consents.push(pending);
+                                }
+                            }
+                        }
+                    }
+                }
                 sink.send(NativeHttpMessage::End)
                     .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 Ok(())
@@ -4959,15 +5018,12 @@ async fn station_native_http_request(
 
 // ── Native consent broker (archive#3677) ───────────────────────────────────
 //
-// The one place a consent transaction can be decided from the desktop/mobile
-// app. The server half (`/api/consent/requests/:id/native-review|decide`)
-// admits only a LOCAL-GRANT-minted credential — the per-boot owner-secret
-// mint that lives in this process's OS keyring and never crosses into the
-// webview — and the webview relay refuses to ferry this path family at all
-// (`is_webview_forbidden_native_path`). So webview JS (plugin code included)
-// can neither call the server routes with the app's authority nor script the
-// approval surface: the dialog below is native OS chrome. The decision is
-// committed SERVER-SIDE; this command returns only the settled status.
+// The server commits decisions after the user answers native OS chrome.
+// Operator mode uses a local-grant mint held in the OS keyring. Requester mode
+// instead consumes the matching session captured by the HTTP owner, bound to
+// the active profile epoch, and never falls back to operator authority. Neither
+// the session secret nor render nonce crosses IPC. The generic relay refuses
+// this route family (`is_webview_forbidden_native_path`).
 
 /// One native consent dialog at a time, per app process (archive#3677).
 /// The command is registered on the main window's invoke handler, so any
@@ -5126,11 +5182,17 @@ fn consent_broker_post(
     url: &str,
     credential: &str,
     body: Option<String>,
+    requester_secret: Option<&str>,
 ) -> Result<(u16, String), NativeCommandError> {
     let request = agent
         .post(url)
         .header("Authorization", format!("Bearer {credential}"))
         .header("Content-Type", "application/json");
+    let request = if let Some(secret) = requester_secret {
+        request.header("X-Station-Requester-Consent", secret)
+    } else {
+        request
+    };
     let mut response = request.send(body.unwrap_or_default()).map_err(|error| {
         NativeCommandError::from(native_request_transport_detail(&error).detail)
     })?;
@@ -5145,6 +5207,7 @@ fn station_native_consent_review_blocking(
     app: AppHandle,
     authority: NativeProfileAuthority,
     request_id: String,
+    requester_only: bool,
 ) -> Result<NativeConsentOutcome, NativeCommandError> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     if !is_valid_consent_request_id(&request_id) {
@@ -5183,7 +5246,26 @@ fn station_native_consent_review_blocking(
             .exact_origin
             .clone()
     };
-    let credential = credential_entry(&authorized_profile_for_origin(&app, &authority, &origin)?)
+    let requester = if requester_only {
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable".to_string())?;
+        let binding = state
+            .active
+            .as_ref()
+            .ok_or_else(|| "Station has no active profile".to_string())?
+            .binding_id
+            .clone();
+        let index = state.requester_consents.iter().position(|entry|
+            entry.request_id == request_id && entry.is_current(&origin, &binding))
+            .ok_or_else(|| NativeCommandError::new("requester_session_missing", "Request this approval again from the connected person; no requester session is available."))?;
+        Some(state.requester_consents.remove(index))
+    } else {
+        None
+    };
+    let reference = authorized_profile_for_origin(&app, &authority, &origin)?;
+    let credential = credential_entry(&reference)
         .map_err(NativeCommandError::from)?
         .get_password()
         .map_err(|error| {
@@ -5202,8 +5284,34 @@ fn station_native_consent_review_blocking(
         .http_status_as_error(false)
         .build()
         .into();
-    let review_url = format!("{origin}/api/consent/requests/{request_id}/native-review");
-    let (status, body) = consent_broker_post(&agent, &review_url, &credential, None)?;
+    let scope_query = requester
+        .as_ref()
+        .and_then(|entry| entry.scope.as_ref())
+        .map(|scope| format!("?scope={scope}"))
+        .unwrap_or_default();
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+        if !requester.is_current(&origin, &requester.binding_id) {
+            return Err("The requester session expired before review"
+                .to_string()
+                .into());
+        }
+    }
+    let review_url =
+        format!("{origin}/api/consent/requests/{request_id}/native-review{scope_query}");
+    let (status, body) = consent_broker_post(
+        &agent,
+        &review_url,
+        &credential,
+        None,
+        requester.as_ref().map(|entry| entry.secret.as_str()),
+    )?;
     if status != 200 {
         return Err(consent_broker_error(
             &body,
@@ -5213,6 +5321,16 @@ fn station_native_consent_review_blocking(
     let review = serde_json::from_str::<ConsentNativeReviewEnvelope>(&body)
         .map_err(|_| "unexpected consent review response".to_string())?
         .review;
+
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+    }
 
     // Native OS dialog — chrome the webview cannot draw over or script. A
     // dismissal (Esc / close) maps to the deny button, which commits nothing
@@ -5228,7 +5346,22 @@ fn station_native_consent_review_blocking(
         ))
         .blocking_show();
 
-    let decide_url = format!("{origin}/api/consent/requests/{request_id}/native-decide");
+    if let Some(requester) = &requester {
+        revalidate_native_http_profile(
+            &app,
+            &authority,
+            Some(&requester.binding_id),
+            &origin,
+            &reference,
+        )?;
+        if !requester.is_current(&origin, &requester.binding_id) {
+            return Err("The requester session expired while being reviewed"
+                .to_string()
+                .into());
+        }
+    }
+    let decide_url =
+        format!("{origin}/api/consent/requests/{request_id}/native-decide{scope_query}");
     let decide_body = serde_json::json!({
         "decision": if approved { "approve" } else { "deny" },
         "nonce": review.nonce,
@@ -5241,6 +5374,7 @@ fn station_native_consent_review_blocking(
             serde_json::to_string(&decide_body)
                 .map_err(|_| "invalid consent decision".to_string())?,
         ),
+        requester.as_ref().map(|entry| entry.secret.as_str()),
     )?;
     if status != 200 {
         return Err(consent_broker_error(
@@ -5261,10 +5395,16 @@ async fn station_native_consent_review(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     request_id: String,
+    requester_only: Option<bool>,
 ) -> Result<NativeConsentOutcome, NativeCommandError> {
     let authority = authority.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        station_native_consent_review_blocking(app, authority, request_id)
+        station_native_consent_review_blocking(
+            app,
+            authority,
+            request_id,
+            requester_only.unwrap_or(false),
+        )
     })
     .await
     .map_err(|error| {
@@ -13360,18 +13500,42 @@ fn spawn_sidecar_stderr_reader(
 #[cfg(not(mobile))]
 fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     const MAX_TAIL_BYTES: usize = 64 * 1024;
+    // The head of each line. The first line that starts with the server's
+    // policy refusal is latched as it is read, because a long diagnostic
+    // after it (or the 16-line cut below) can drop it from the tail, and the
+    // exit is classified as terminal only when the marker reaches `detail`.
+    // Only that exact line prefix counts: a line that merely mentions the
+    // marker must not make an unrelated crash terminal.
+    const MAX_LATCHED_LINE_BYTES: usize = 4096;
+    let prefix = bundled_server_state::MANAGED_POLICY_LINE_PREFIX.as_bytes();
     let mut tail = std::collections::VecDeque::with_capacity(MAX_TAIL_BYTES + 4096);
+    let mut line_head: Vec<u8> = Vec::with_capacity(MAX_LATCHED_LINE_BYTES);
+    let mut latched: Option<String> = None;
+    let latch_line = |line_head: &mut Vec<u8>, latched: &mut Option<String>| {
+        if latched.is_none() && line_head.starts_with(prefix) {
+            *latched = Some(String::from_utf8_lossy(line_head).into_owned());
+        }
+        line_head.clear();
+    };
     let mut chunk = [0_u8; 4096];
     loop {
         let count = match stderr.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(count) => count,
         };
+        for &byte in &chunk[..count] {
+            if byte == b'\n' {
+                latch_line(&mut line_head, &mut latched);
+            } else if line_head.len() < MAX_LATCHED_LINE_BYTES {
+                line_head.push(byte);
+            }
+        }
         tail.extend(&chunk[..count]);
         if tail.len() > MAX_TAIL_BYTES {
             tail.drain(..tail.len() - MAX_TAIL_BYTES);
         }
     }
+    latch_line(&mut line_head, &mut latched);
     let bytes: Vec<u8> = tail.into_iter().collect();
     let text = String::from_utf8_lossy(&bytes);
     // Invalid UTF-8 expands into replacement characters; bound the rendered
@@ -13381,7 +13545,18 @@ fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
         start += 1;
     }
     let lines: Vec<&str> = text[start..].lines().rev().take(16).collect();
-    (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    let tail = (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"));
+    // At most MAX_LATCHED_LINE_BYTES (plus replacement expansion) beyond
+    // the tail bound, and only when the tail lost the marker.
+    match (latched, tail) {
+        (Some(line), Some(tail))
+            if !tail.contains(bundled_server_state::MANAGED_POLICY_LINE_PREFIX) =>
+        {
+            Some(format!("{line}\n{tail}"))
+        }
+        (Some(line), None) => Some(line),
+        (_, tail) => tail,
+    }
 }
 
 /// The direct child can exit while a descendant retains its stderr pipe. Keep
@@ -14032,6 +14207,28 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(not(mobile))]
+    let plugin_requests = plugin_bundle_protocol::RequestGate::new();
+    #[cfg(not(mobile))]
+    let plugin_capability_script =
+        plugin_requests.initialization_script(context.config().build.dev_url.as_ref());
+    #[cfg(not(mobile))]
+    let builder = builder.register_asynchronous_uri_scheme_protocol(
+        "station-plugin",
+        move |context, request, responder| {
+            let permit = match plugin_requests.enter(context.webview_label(), &request) {
+                Ok(permit) => permit,
+                Err(response) => {
+                    responder.respond(response);
+                    return;
+                }
+            };
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(plugin_bundle_protocol::handle(&app, request, permit));
+            });
+        },
+    );
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         mobile_recovery_ios::terminated(webview);
@@ -14069,6 +14266,13 @@ If a stable instance is running, this launch will focus its window and exit.",
             }
         }
     }));
+
+    #[cfg(not(mobile))]
+    let builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("station-plugin-capability")
+            .js_init_script(plugin_capability_script)
+            .build(),
+    );
 
     // The embedded WebDriver binds loopback and grants full automation over
     // the WebView. Keep it behind an explicit test feature; release workflows
@@ -18052,6 +18256,95 @@ mod tests {
         let tail = capture_sidecar_stderr(lines.as_bytes()).unwrap();
         assert_eq!(tail.lines().count(), 16);
         assert!(tail.starts_with("line 14\n"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_latches_a_fatal_marker_that_a_long_diagnostic_pushes_out_of_the_tail() {
+        // The marker leads a line longer than the retained tail, then later
+        // lines follow: without latching, neither the tail nor its last 16
+        // lines would carry the marker and the exit would be retried.
+        let mut text = format!(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p: unknown key {}\n",
+            "k".repeat(100_000)
+        );
+        text.push_str(&(0..30).map(|i| format!("later {i}\n")).collect::<String>());
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(detail.starts_with(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p"
+        ));
+        assert!(detail.len() <= 64 * 1024 + 4096 + 1);
+        assert!(detail.ends_with("later 29"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(
+            next.fail_closed,
+            "a latched marker must make the exit terminal"
+        );
+        assert_eq!(effects, vec![SupervisorEffect::None]);
+
+        // A marker still inside the tail is not duplicated.
+        let short =
+            capture_sidecar_stderr("STATION_HOME_RESET_REQUIRED: incompatible schema\n".as_bytes())
+                .unwrap();
+        assert_eq!(short, "STATION_HOME_RESET_REQUIRED: incompatible schema");
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_does_not_latch_a_line_that_only_mentions_the_policy_marker() {
+        // An agent or a logged search can print the marker mid-line long
+        // before an unrelated crash; that crash must still be retried.
+        let mut text = String::from(
+            "Unhandled rejection (non-fatal): Error: grep found STATION_MANAGED_POLICY_INVALID in docs\n",
+        );
+        text.push_str(
+            &(0..5_000)
+                .map(|i| format!("ordinary line {i}\n"))
+                .collect::<String>(),
+        );
+        text.push_str("Uncaught exception: RangeError: boom\n");
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(!detail.contains("STATION_MANAGED_POLICY_INVALID"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(!next.fail_closed, "an unrelated crash must stay retryable");
+        assert_ne!(effects, vec![SupervisorEffect::None]);
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn oversized_managed_policy_stderr_from_a_child_is_classified_terminal() {
+        // Crosses the real pipe: the child writes the marker, a 100,000-byte
+        // key, and more output in many reads' worth of chunks.
+        let mut child = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "printf 'STATION_MANAGED_POLICY_INVALID: unknown key ' >&2; \
+                 head -c 100000 /dev/zero | tr '\\0' k >&2; printf '\\n' >&2; \
+                 i=0; while [ $i -lt 40 ]; do echo \"later $i\" >&2; i=$((i+1)); done; exit 1",
+            ])
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let detail = capture_sidecar_stderr(stderr);
+        let code = child.wait().unwrap().code();
+        let status = BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into());
+        let (next, effects) = transition(&status, &SupervisorInput::Exited { code, detail });
+        assert_eq!(next.phase, bundled_server_state::ServerPhase::Failed);
+        assert!(next.fail_closed);
+        assert_eq!(effects, vec![SupervisorEffect::None]);
     }
 
     #[cfg(not(mobile))]
@@ -23782,6 +24075,7 @@ mod tests {
         assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
+        assert!(!native_header_allowlisted("X-Station-Requester-Consent"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
     }

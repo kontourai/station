@@ -34,6 +34,13 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `get_troubleshoot_playbook` and `draft_troubleshoot_report` for an in-app
+  troubleshooting conversation: the bundled playbook, and a redacted,
+  bounded `troubleshoot-report.yml` issue link. Both are pure and send
+  nothing; see [troubleshoot with an agent](../design/troubleshoot-in-app.md)
+- `workload_status` for the calling Session's own workload memory budget and
+  usage (limit, current, peak, swap, OOM kills), or why no budget is enforced;
+  see [Linux service workload budgets](development.md#linux-service-workload-budgets)
 - `read_conversation` to page through a conversation a person referenced in a
   message to the Agent, or to start at a `search_sessions` hit
   (`aroundMessageId`)
@@ -42,12 +49,21 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   and separate explicit fork ancestry. Missing or unavailable provenance means
   unknown. Reads remain scoped and paginated; a native-return request does not
   prove provider identity or delivery of every historical message.
+- `fork_conversation` to fork a conversation in the caller's scope into a new
+  one, as the Station UI's fork does (see
+  [Forking a conversation](#forking-a-conversation))
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `coordinator_picture_read` and `coordinator_picture_update` for the bound
+  designated coordinator, when the **Coordinator working picture** preview is
+  enabled. They keep short, person-scoped notes about readable conversations;
+  Station rechecks source access on reads and updates. Notes are the
+  coordinator's account, not authoritative live status. See [Houston's
+  working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
   (see [Searching and renaming conversations](#searching-and-renaming-conversations))
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
@@ -87,6 +103,19 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   for, and `task_summary_update` and `task_record` to keep that Task's summary,
   decisions, open questions and dead ends; none of them changes Task status or
   the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
+- `task_thread_list {state?}` to read the bound Task's review threads,
+  `task_thread_reply {threadId, deliveryKey, body, evidence?}` to answer a sent thread, and
+  `task_thread_resolve {threadId, reason}` to resolve it. Only the Task's lead
+  Session can use these tools. Copy `deliveryKey` from the owner message or list:
+  a stale delivery cannot claim a newer follow-up. A reply to an automatically
+  resolved delivery keeps it resolved. They never change Task status. Commit before
+  claiming a commit: Station checks that the exact object exists and has type
+  `commit` with `git cat-file -t` in the Task workspace. This does not establish
+  branch reachability or that the repair is correct. Gate evidence verifies
+  only when every ref is linked to this Task and the existing gate reader
+  returns that exact current passing evaluation; other refs stay claimed. Pass
+  an optional stable `operationId` when retrying a write. Reopening is
+  person-only; no delete tool exists. See [Task review](../reference/api.md#task-review-threads).
 - `get_answer_assessment_target`, `publish_answer_assessment`, and
   `remove_answer_assessment` for a personal-mode producer's frozen Surface
   assessment of one completed answer. Copy the target's exact answer binding
@@ -97,6 +126,22 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   producer's access and Project binding; hosted authority is refused. See the
   [producer contract](../reference/sdk.md) and
   [tool owner](../../src-server/tools/station-control-assessment-tools.ts).
+- `device_capture_to_task {deviceSessionId, label?}` to save a Screen from an
+  authorized device session to the bound lead Task. This mutating device tool
+  requires device Agent access and a clean Task workspace. See
+  [device capture](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+- `device_record_to_task {deviceSessionId, durationMs, maxBytes?, label?}` to
+  record a bounded Task clip, and `device_logs {deviceSessionId, appId}` to read
+  one bounded app log sample. Both claim the device input lease and refuse while
+  a person controls it; the lease is held for the operation.
+- `device_install_app {deviceSessionId, workspacePath?, artifactHandle?}` with
+  exactly one Project-relative path or staged upload handle; `device_launch_app`,
+  `device_terminate_app`, and `device_open_url` operate the selected host's app. URL schemes must be declared by the installed app; Android also permits HTTP and HTTPS. Telephone, SMS, mail, preferences and web-search schemes are refused.
+  They claim the device lease and report an unknown install effect if it cannot
+  be confirmed. URL foreground observation does not prove delivery.
+  In durable Station Agent execution, interrupted Device tool calls are not
+  automatically replayed. Check the device or Task before deciding whether to
+  retry an effectful action.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -105,6 +150,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `terminal_run` and `terminal_read` to run a shell command in a terminal in
+  the chat's working directory and read its exit and output. The person sees
+  the exact command and directory and approves or declines each run; no
+  approval carries over to the next. Personal hosts only, for a chat in a
+  Project ([agent terminal runs](../reference/api.md#agent-terminal-runs))
 
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
@@ -212,7 +262,7 @@ route's answer as it was sent:
 | `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
 | `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
 | `remote` | The target is on another Station; only a bound operator reaches one. |
-| `other-conversation` | A check-back names, or belongs to, a conversation that is not the caller's own. |
+| `other-conversation` | A check-back or an automation's `target` names, or belongs to, a conversation that is not the caller's own. |
 
 The copy names no Project. `target-unavailable` also refuses a bound caller
 that is not acting for the operator. `remote` is given only to a caller acting
@@ -266,6 +316,10 @@ reached by its URL token cannot declare from a full-access Session.
 Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.
+For `steerChildWork`, the scoped Session is the parent thread: the command
+also names the child and exact turn, and its forwarded caller is rechecked
+before adapter dispatch. This command does not grant a new tool or a broader
+Project or host scope to the Agent.
 
 A dispatch, delegation or follow-up from a caller that is not a bound operator
 cannot carry an approval mode. That covers `setApprovalMode` and the
@@ -354,6 +408,42 @@ beside `cursor` is `conversation_read_anchor_with_cursor`. The anchor is decided
 after admission, so it never widens what may be read and tells a caller nothing
 about a conversation it may not read.
 
+#### Forking a conversation
+
+`fork_conversation` makes the request the Station UI's fork makes
+(`POST /agents/:slug/conversations/:conversationId/fork`): a new conversation
+that starts from the source's history up to a completed assistant turn
+(`branchPointTurnId`, default the latest), for `targetAgent` (default the
+source Agent) in `targetProjectSlug` (default the source's Project). The source
+is unchanged. The tool returns the new `conversationId` and the seed its first
+turn replays; engine cursor, tool state and approval state do not carry.
+`idempotencyKey` makes a retry return the same fork.
+
+It is a Project `execute` action at the authority table, and the fork route
+holds every caller except a bound operator to the dispatch scope above twice,
+before it writes anything:
+
+- the source must be the caller's own conversation or another of its owner's,
+  in the global space or a Project where the owner holds `view`. A
+  conversation a person only referenced is not enough here, and a
+  conversation with no started Session is refused;
+- the fork must land where the caller could start a Session itself: the
+  global space, or a Project where the owner holds `execute`.
+
+A caller whose credential is not bound is also held to its own Session's
+scope: the source and the fork must both be in its Session's Project, or in
+the global space when its Session has none. Forking from Project 1 into
+Project 2, or from the global space into a Project, is refused. A bound caller
+that is not the operator is held only to its owner's Project actions, as for
+dispatch, so it may fork across those Projects, never another owner's
+conversation. A bound operator caller keeps the operator's reach. Refusals
+carry the scope rule's codes (`station_control_out_of_scope`,
+`station_control_role_required`, `station_control_assurance_insufficient`).
+A person forking through the UI or `station conversation fork` is not held to
+this rule. The
+[mounted tests](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drive each caller kind through the real route.
+
 ### Session control
 
 `send_to_session`, `interrupt_session`, and `wait_session` act on an existing
@@ -376,7 +466,13 @@ Session by its `sessionId`, without creating a task.
   work. An unscoped ordinary terminal can supply a new settlement only when
   the host proves the thread inactive and genuinely inputless, with no retained
   captured-input audit. A thread with capture history can therefore be idle
-  while a requested settlement remains unverified. Active requested work whose
+  while a requested settlement remains unverified. A turn that a Station
+  restart interrupted leaves the Session idle but settles nothing: no
+  `settledTurn` reports it, and nothing acknowledges the requested work. A
+  delegated task cut off that way tells its parent it was interrupted, quoting
+  no output. A person waiting from the CLI (`station sessions wait`) is told
+  too: its separate person-facing leaf reports that turn as interrupted,
+  while `wait_session`'s answer stays as described here. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never
@@ -404,7 +500,8 @@ Session by its `sessionId`, without creating a task.
   Once a completed key has been dropped (more than 300 later sends from that
   session, or seven days), a retry under it acts again unless the downstream
   client-turn claim still answers it: a start's claim is kept as a replay row
-  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  or, once evicted from the shared resolved replay budget (2,000 by default),
+  as an `expired` tombstone that
   refuses the resend until the target Session is deleted; a retry from another
   branch of the work is not caught at all. A start whose turn may already have reached the engine can
   stay `indeterminate` on every repeat, so 300 such keys block that session's
@@ -669,6 +766,35 @@ that could adopt it. See the
    Children on an SSH or paired Station, children of Station's own agent, and
    children on a hosted Station are not delivered this way: use `get_task`
    for those.
+   A Session started from a server-derived caller context records its exact
+   initiating Session. Stop, cancel and discard cascade through verified owned
+   Sessions, deepest first, using each child's own stop path. A declared
+   `metadata.backgroundBoundary: true` at start makes that subtree independent.
+   A name or conversation-only lineage remains a claim and grants no cascade
+   authority. See [owned delegation](../architecture/module-map.md#sessionlifecyclemodule).
+
+   A parent Session's aggregate lifecycle stays running while owned work or
+   stop obligations remain live; `ownedWork.ownLifecycleState` retains its own
+   fold. Another live process picks up its pending child stop through existing
+   reconciliation and the runtime health tick even with parking disabled and no
+   further turns. A terminal child is settled only without a held binding, newer
+   admission, or unresolved prepared/invoking/indeterminate boundary.
+   Unknown child custody stays pending for inspection but does not prevent the
+   parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
+   stopping locally, waiting on a peer, and unknown cleanup from running work.
+   Session and Inbox status lines show **Stopping**, **Waiting on another
+   Station process**, or **Unknown** through the shared status ladder.
+   Unknown custody explains why Station cannot assign the stop. In Session
+   detail, **Release and remove** can remove the parent's unknown cleanup after
+   explicit confirmation that child processes may still be running and will no
+   longer be tracked by this Session. Child history stays available; this action
+   never claims that the child stopped. Known owners and changed custody refuse
+   release. Unknown probing backs off for 30 seconds, with at most 64 entries
+   checked per maintenance pass; an explicit command requests a fresh check.
+   Reopening resumes recorded obligations, and
+   repeated delivery is harmless at the adapter. New result request IDs derive
+   from the child execution Session and its terminal event. Historical stored
+   delivery IDs remain stable across upgrade and retry.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 
@@ -729,7 +855,7 @@ A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
 so. The person sees a card above the composer ("Check back at 4:12 PM?", with
 the agent's whole note) and approves or declines it with one click; the
-chat's Scheduled section lists it as "Needs your approval". Only a person may
+chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the
 conversation reads as not found. One not approved before it is due is never
@@ -746,7 +872,7 @@ any that came due while Station was down, unless it is more than a day late.
 `list_wake_ups` lists the conversation's waiting check-backs and
 `cancel_wake_up` cancels one by id. The person sees each one above the
 composer ("Checking back at 4:12 PM", with Cancel) and in the chat's
-Scheduled section.
+Automations section, beside the automations that run in the chat.
 
 Check-backs need the conversation inbox, so a hosted Station answers
 `wake_up_unavailable`.
@@ -769,6 +895,9 @@ propose the job instead:
 `propose_job` takes the scheduler's own create fields for an ordinary job:
 `name`, `schedule` (cron, every, or at), `prompt` and an optional `agent`. A
 job that trusts every tool is never proposable (`station_control_person_only`).
+Station records the proposing chat as the job's `target`: once approved, each
+run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
+can propose work for itself.
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -795,7 +924,14 @@ The refusal an agent gets from `add_job` names both tools.
 ### Scheduled jobs
 
 An agent acting for the operator on a bound credential can create a job
-directly with `add_job`. Use a cron schedule for calendar recurrence, `every`
+directly with `add_job`. Its `target` may name only the agent's own
+conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
+run is a turn in this chat; any other conversation is refused
+`other-conversation`, and a targeted job takes no `retryCount`. `update_job`,
+`run_job`, `enable_job`, `disable_job` and `delete_job` on a job that already
+runs in a conversation are likewise refused unless that conversation is this
+agent's own (`automation_target_out_of_scope`), whatever the request body
+names, and no edit changes the creator a job runs as. Use a cron schedule for calendar recurrence, `every`
 for a fixed interval, or `at` for one future instant:
 
 ```json
@@ -811,13 +947,18 @@ for a fixed interval, or `at` for one future instant:
 }
 ```
 
-The scheduled execution is a new attributable Agent run using the stored
-prompt; it does not resume the conversation that created it. Creating
-the job also does not grant unattended tool authority. A per-job standing grant
+A proposed job targets the proposing conversation, where each scheduled run
+is a new framed turn using the stored prompt. A job without a conversation
+target uses the Station engine and writes an output file. Creating the job
+does not grant unattended tool authority. A per-job standing grant
 must target the server-issued scheduled-job principal, and a delete/recreate
 gets a new identity. An agent-wide opt-in is the agent's
 `tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
-`tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
+`tools.autoApprove` patterns such as `station-control_*` cover attended chat.
+Use `get_job_logs` or the Runs surface to observe runs in your conversation.
+Runs recorded before target provenance was added are available to the creator
+who can read the current target, or to the local operator for a creatorless,
+untargeted job. Agents cannot read those older runs.
 
 ### After a usage limit
 
@@ -844,7 +985,9 @@ Open a project chat and choose **Delegate** in its task-context bar. Station
 loads the Project's execution default before discovering workers. **Change
 routing** lets you choose an Agent, a Station and a model override. A configured
 remote stays selected while its inventory loads or its connection fails; Station
-does not replace it with **This Station**. If the Project defaults cannot be
+does not replace it with **This Station**. A paired Station whose stored
+credential lacks `orchestration:operate` is listed as unable to start work and
+cannot be chosen. If the Project defaults cannot be
 loaded, retry that read or make an explicit Station choice.
 
 Remote environments are re-verified and connected to load their available Agents

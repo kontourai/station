@@ -1,10 +1,34 @@
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { ACPChatPanel } from '../acp-connections/ACPChatPanel';
-import { AgentGlyph, MessageGlyph } from '../icons/Glyph';
+import { AgentGlyph, MessageGlyph, PlayGlyph } from '../icons/Glyph';
 import { TerminalPanel } from './TerminalPanel';
 import type { TerminalTab } from './types';
+
+/** A script tab's run as a badge: how it is going, or how it ended. */
+function scriptStatus(tab: TerminalTab): { text: string; tone: SemanticTone } {
+  if (tab.status === 'failed') return { text: 'Failed', tone: 'negative' };
+  if (tab.status === 'exited') {
+    return typeof tab.exitCode === 'number'
+      ? {
+          text: `Exit ${tab.exitCode}`,
+          tone: tab.exitCode === 0 ? 'positive' : 'negative',
+        }
+      : { text: 'Ended', tone: 'neutral' };
+  }
+  return { text: 'Running', tone: 'active' };
+}
+
+/** Said in the terminal once its script has ended. */
+function scriptEndedText(tab: TerminalTab): string {
+  if (tab.status === 'failed') return `${tab.label} failed.`;
+  return typeof tab.exitCode === 'number'
+    ? `${tab.label} exited with code ${tab.exitCode}.`
+    : `${tab.label} has ended.`;
+}
 
 export function CodingTerminalPanel({
   id,
@@ -26,11 +50,16 @@ export function CodingTerminalPanel({
   onCloseTab,
   closingTabIds = new Set(),
   closeErrors = {},
+  onTabRestarted,
+  notice,
   onToggleTabMode,
   canTogglePTY,
   onOpenNewTerminal,
+  onTerminalOpened,
   projectSlug,
+  projectId,
   workingDir,
+  emptyStatus,
 }: {
   id?: string;
   role?: React.AriaRole;
@@ -53,11 +82,22 @@ export function CodingTerminalPanel({
   closingTabIds?: ReadonlySet<string>;
   /** Per-tab close errors remain visible and can be retried. */
   closeErrors?: Readonly<Record<string, string>>;
+  /** Runs a script tab's program again under the same session. */
+  /** A script tab's program was run again. */
+  onTabRestarted?: (id: string) => void;
+  /** A failure that belongs to no tab (a script that did not start). */
+  notice?: string | null;
   onToggleTabMode: (id: string) => void;
   canTogglePTY: (tab: TerminalTab) => boolean;
   onOpenNewTerminal: () => void;
+  /** A tab's new terminal was accepted under this server session id. */
+  onTerminalOpened?: (tabId: string, terminalId: string) => void;
   projectSlug: string;
+  /** Absent while the Project is loading; terminals wait for it. */
+  projectId?: string;
   workingDir: string;
+  /** Shown instead of the empty state while there are no tabs to show. */
+  emptyStatus?: ReactNode;
 }) {
   const moveFocus = (
     event: React.KeyboardEvent<HTMLButtonElement>,
@@ -92,11 +132,19 @@ export function CodingTerminalPanel({
   // whose strip holds one tab still shows it: the tab is where its rename,
   // its close and its mode toggle live.
   const headSlots = usePaneHeadSlots();
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabsRef.current
+      ?.querySelector(`[data-terminal-tab-id="${activeTabId}"]`)
+      ?.closest('.coding-layout__terminal-tab-item')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabId]);
   const bar = (
     <div
       className={`coding-layout__terminal-bar${headSlots ? ' coding-layout__terminal-bar--head' : ''}`}
     >
       <div
+        ref={tabsRef}
         className="coding-layout__terminal-tabs"
         role="tablist"
         aria-label="Terminal tabs"
@@ -104,6 +152,7 @@ export function CodingTerminalPanel({
         {tabs.map((tab, index) => {
           const selected = tab.id === activeTabId;
           const isClosing = closingTabIds.has(tab.id);
+          const status = tab.type === 'script' ? scriptStatus(tab) : null;
           const tabId = `coding-terminal-tab-${tab.id}`;
           const panelId = `coding-terminal-panel-${tab.id}`;
           return (
@@ -126,7 +175,9 @@ export function CodingTerminalPanel({
                   id={tabId}
                   type="button"
                   role="tab"
-                  aria-label={tab.label}
+                  aria-label={
+                    status ? `${tab.label}, ${status.text}` : tab.label
+                  }
                   aria-controls={panelId}
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
@@ -137,11 +188,24 @@ export function CodingTerminalPanel({
                   onKeyDown={(event) => moveFocus(event, index)}
                 >
                   <span className="coding-layout__terminal-tab-icon">
-                    {tab.type === 'agent' ? <AgentGlyph /> : '>'}
+                    {tab.type === 'agent' ? (
+                      <AgentGlyph />
+                    ) : tab.type === 'script' ? (
+                      <PlayGlyph />
+                    ) : (
+                      '>'
+                    )}
                   </span>
                   <span className="coding-layout__terminal-tab-label">
                     {tab.label}
                   </span>
+                  {status && (
+                    <Badge
+                      className="coding-layout__terminal-tab-status"
+                      value={status.text}
+                      tone={status.tone}
+                    />
+                  )}
                 </button>
               )}
               {tab.type === 'agent' && canTogglePTY(tab) && (
@@ -177,19 +241,21 @@ export function CodingTerminalPanel({
             </div>
           );
         })}
-        {headSlots && tabs.length === 0 ? null : (
-          // In a host's head with no terminal yet, the empty state's own
-          // "New Terminal" says it; a second "+" would say it twice.
-          <button
-            type="button"
-            className="coding-layout__terminal-tab-add"
-            onClick={onOpenNewTerminal}
-            title="New terminal"
-          >
-            +
-          </button>
-        )}
       </div>
+      {headSlots && tabs.length === 0 ? null : (
+        // In a host's head with no terminal yet, the empty state's own
+        // "New Terminal" says it; a second "+" would say it twice. Outside
+        // the scrolling strip, so it stays in reach with many tabs.
+        <button
+          type="button"
+          className="coding-layout__terminal-tab-add"
+          onClick={onOpenNewTerminal}
+          title="New terminal"
+          aria-label="New terminal"
+        >
+          +
+        </button>
+      )}
       {presentation === 'layout' && (
         <button
           type="button"
@@ -238,6 +304,11 @@ export function CodingTerminalPanel({
           ? createPortal(bar, headSlots.leading)
           : null
         : bar}
+      {notice ? (
+        <div className="coding-layout__terminal-close-error" role="alert">
+          <span>{notice}</span>
+        </div>
+      ) : null}
       {tabs.map((tab) =>
         closeErrors[tab.id] ? (
           <div
@@ -258,7 +329,9 @@ export function CodingTerminalPanel({
         className="coding-layout__terminal-body"
         style={terminalOpen ? undefined : { display: 'none' }}
       >
-        {tabs.length === 0 ? (
+        {tabs.length === 0 && emptyStatus ? (
+          emptyStatus
+        ) : tabs.length === 0 ? (
           <div className="coding-layout__terminal-empty">
             <div className="coding-layout__terminal-empty-content">
               <span className="coding-layout__terminal-empty-icon">{'>_'}</span>
@@ -290,9 +363,30 @@ export function CodingTerminalPanel({
                 <TerminalPanel
                   projectSlug={projectSlug}
                   workingDir={workingDir}
-                  terminalId={tab.id}
-                  shell={tab.shell}
-                  shellArgs={tab.shellArgs}
+                  target={
+                    projectId ? { projectId, bindingKey: 'project' } : undefined
+                  }
+                  viewKey={tab.id}
+                  terminalId={tab.terminalId}
+                  {...(tab.type === 'script' && {
+                    attachOnly: true,
+                    command: true,
+                    ended: { message: scriptEndedText(tab) },
+                    onRestarted: () => onTabRestarted?.(tab.id),
+                  })}
+                  legacyTerminalId={tab.legacyTerminalId}
+                  launch={
+                    tab.type === 'agent' && tab.connectionId
+                      ? {
+                          kind: 'agent',
+                          connectionId: tab.connectionId,
+                          mode: tab.agentMode || tab.agentSlug || '',
+                        }
+                      : undefined
+                  }
+                  onOpened={(terminalId) =>
+                    onTerminalOpened?.(tab.id, terminalId)
+                  }
                   isActive={tab.id === activeTabId}
                 />
               )}

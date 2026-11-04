@@ -32,18 +32,35 @@ does not open while another dialog is open, and you can rebind it under
 phone or tablet without a keyboard cannot open it.
 
 Type to search. Results are grouped into commands, actions (such as opening the
-chat dock, a new Board, the tour or **Report a problem**), places to go,
+chat dock, a new Board, the tour, **Troubleshoot an issue** or **Report a problem**), places to go,
 plugins, Settings rows, open chats, Projects, workspace panes, Agents and
 skills. After two characters it also searches indexed conversation messages.
 Among close matches, items you use often rank higher; **Reset command history**
 clears that. Choose
 **Workspace search (this Station)** at the top to switch to workspace search.
 
+A command row shows its current shortcut, if it has one, so the palette doubles
+as a way to learn them.
+
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
 click outside to close. Running an item usually closes the palette and returns
 focus to where you were. Some items keep it open, such as
 **Reset command history**, which shows whether the reset worked, and a message
 found on another Station, which explains that it cannot be opened here.
+
+## Shortcut list
+
+Press **⌘/** on macOS or **Ctrl+/** on Windows and Linux, or **?** when focus is
+not in a text field, to open the shortcut list. When two commands share a name and key and one always overrides the
+other, the list shows only the one that runs.
+
+## Editing chords stay with text
+
+While focus is in a text input, textarea, select, contenteditable editor or
+other text box, the editing chords (copy, cut, paste, undo, redo and select all) belong to that
+field: a Station command bound to the same chord does not run. Copy and cut
+also stay with any selected text elsewhere on the page, so copying part of a
+transcript does not cancel a running turn.
 
 ## Return in chat
 
@@ -52,7 +69,16 @@ to send on desktop and to insert a new line on touch devices. You can explicitly
 choose either behavior, including for an attached tablet keyboard. Shift+Return
 always inserts a line; Ctrl/Cmd+Return sends. Return never submits during IME
 composition. During a turn, the shortcut uses the composer's selected Queue or
-Steer mode. This preference is included in device-settings export/import.
+Steer mode. The same keys start a chat from the Home, Project page and New chat
+composers. This preference is included in device-settings export/import.
+
+## Restore a dismissed conversation
+
+After dismissing an inbox conversation, choose **Undo** in the toast or press
+**⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
+be rebound in Keyboard shortcuts. The command declines inside text fields,
+contenteditable editors, CodeMirror and terminals, preserving their own Undo.
+Dismissal does not stop work or delete conversation history.
 
 ## Dispatch and limits
 
@@ -81,6 +107,12 @@ The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/do
 connects these rules to the editor, registry, device store, import/export owner
 and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut,
 or native shell.
+
+## Browser shortcuts
+
+With the Browser experience Feature Preview enabled, Mod+Shift+J opens or focuses Browser from Coding. When Browser has focus, Mod+L focuses the address, Mod+R reloads, Mod+Shift+R reloads without cache, Mod+[/] moves through history, and Alt+Left/Right moves through history on non-macOS platforms. Mod+=, Mod+- and Mod+0 change or reset page zoom. Mod+T, Mod+W and Mod+Shift+T open, close and reopen Browser tabs in the desktop shell; web browsers reserve these keys. Mod means Command on macOS and Control elsewhere.
+
+Mod+Shift+S takes a Browser screenshot even with the preview off and while the live page has focus. Screenshot to chat is a separate menu and palette action. The command palette also offers take control and hand back without default bindings. While the live page has focus, Station shortcuts, including kernel shortcuts such as Mod+K, are suppressed except the screenshot shortcut; Tab moves focus out of the page. Find in page is not available on the streamed host yet.
 
 ## Plugin shortcuts
 

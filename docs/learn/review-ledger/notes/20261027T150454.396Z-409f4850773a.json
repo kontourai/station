@@ -1,0 +1,11 @@
+{
+  "revision": "37d63cc66fa67d407f95c920bf0226d881cd9e60",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Its input contracts.md gained ENGINE_MEMORY_EXHAUSTED_CODE and WorkloadBudgetStatus. The glossary defines no workload, memory-kill or system-status term, and its existing definitions do not describe either addition, so they stay accurate. No new glossary term added: workload budget is defined where it is enforced (development guide).","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Its input contracts.md gained ENGINE_MEMORY_EXHAUSTED_CODE and WorkloadBudgetStatus. This guide's workload mentions concern hosted deployment sizing, not engine workload scopes, and it states nothing about failure codes or system-status shapes; its claims stay accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Its input contracts.md gained a provider code and a system-status shape. Both are pure, environment-free declarations in their owning domain modules, consistent with this scope's rules; no instruction here changes.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

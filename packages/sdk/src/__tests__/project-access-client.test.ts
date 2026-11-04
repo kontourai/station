@@ -1,7 +1,11 @@
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { PROJECT_MEMBER_ROLES } from '@kontourai/station-contracts/project-membership';
 import { afterEach, expect, test, vi } from 'vitest';
-import { changeProjectAccess } from '../client/project-access.js';
+import {
+  changeProjectAccess,
+  getProjectAccess,
+  projectAccessRefusal,
+} from '../client/project-access.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -108,4 +112,49 @@ test('mutations omit the precondition when the caller supplies none', async () =
   });
   for (const request of seen)
     expect(request.body).not.toHaveProperty('expectedActor');
+});
+
+test('a refused read carries the server’s sharing state only when it sent one (#4302)', async () => {
+  const refusedWith = async (body: unknown, status = 403) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(body, { status })),
+    );
+    return getProjectAccess(apiBase, 'example').then(
+      () => {
+        throw new Error('expected the read to be refused');
+      },
+      (error: unknown) => projectAccessRefusal(error),
+    );
+  };
+  const forbidden = { code: 'project_access_forbidden' };
+  expect(
+    await refusedWith({
+      error: forbidden,
+      details: { sharing: 'off', canEnable: true },
+    }),
+  ).toEqual({ sharing: 'off', canEnable: true });
+  expect(
+    await refusedWith({
+      error: forbidden,
+      details: { sharing: 'undisclosed', canEnable: false },
+    }),
+  ).toEqual({ sharing: 'undisclosed', canEnable: false });
+  // An older Station, a claim that contradicts itself, or another refusal.
+  expect(await refusedWith({ error: forbidden })).toBeUndefined();
+  expect(
+    await refusedWith({
+      error: forbidden,
+      details: { sharing: 'undisclosed', canEnable: true },
+    }),
+  ).toBeUndefined();
+  expect(
+    await refusedWith(
+      {
+        error: { code: 'project_access_conflict' },
+        details: { sharing: 'off', canEnable: true },
+      },
+      409,
+    ),
+  ).toBeUndefined();
 });

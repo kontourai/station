@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"ChatDock/ChatDockBody changes gate the engine switch on conversationCanMutate and the shared blocked reason; no concept defined here changes. Unaffected.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

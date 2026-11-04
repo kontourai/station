@@ -44,7 +44,69 @@
 
     "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
 
-    "packages/agent-runtime/src/__tests__/r4-replay.test.ts"
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/providers/adapters/claude-adapter.ts",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/providers/adapters/native-resume-binding.ts",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "src-server/runtime/agents/durable-agent-owner.ts",
+
+    "src-server/runtime/agents/durable-agent-recovery.ts",
+
+    "src-server/runtime/agents/durable-agent-lifecycle.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-recovery.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-reconnect.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-liveness.test.ts",
+
+    "src-server/__test-utils__/chat-runtime-fixture.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+
+    "src-server/services/orchestration/credential-recovery-module.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts",
+
+    "packages/agent-runtime/src/turn-references.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
   ],
 
   "checks": [

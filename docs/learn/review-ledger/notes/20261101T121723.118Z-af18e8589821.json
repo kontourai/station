@@ -1,0 +1,7 @@
+{
+  "revision": "535f7bceb9081f4e4af02e77a1418c0ec8f60d62",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-checked against the latest process-utils.ts change. The POSIX registry refusal log now names only the too-permissive case (the Windows reasons log separately), and parseWindowsProcessTable is module-private. This document cites process-utils only for owned-process cleanup and output bounds. It states nothing about registry trust messages or the Windows process-table parser (searched), so it stays accurate.","inputs":["docs/guides/development.md","scripts/lib/portable-server-archive.mjs","src-server/services/infra/process-utils.ts"]}
+  ]
+}

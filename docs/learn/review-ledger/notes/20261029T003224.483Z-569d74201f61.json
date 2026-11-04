@@ -1,0 +1,13 @@
+{
+  "revision": "8c676ac3b0ba8c27a3bf7c75ae40c6ecbf2d4726",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed inbox ledger and coordinator placement claims against committed recovery ordering and owner-boundary restart test; retained keys are resolved before a fresh policy check.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed held-message delivery, refusal and restart claims against thread inbox recovery and its accepted-after-crash test; sender checks apply before a new send, not to a proven prior delivery.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed selector and repo scan routing against the manifest addition: the coordinator name guard walks source trees and now runs in the repo-scans suite; testing lane contracts are unchanged.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed context against the test-impact manifest change: registering the coordinator name tree scan does not change agent-runtime boundaries or behavior.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

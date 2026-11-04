@@ -7,6 +7,17 @@ import { NotificationSection } from '../components/notifications/NotificationSec
 vi.mock('../hooks/useNotificationAnswerability', () => ({
   useNotificationAnswerability: () => vi.fn(),
 }));
+vi.mock('../components/notifications/snooze', () => ({
+  useInboxSnooze: () => ({ enabled: false }),
+  SnoozeControl: () => null,
+}));
+vi.mock('../components/notifications/inboxContext', () => ({
+  useInboxContext: () => ({
+    forAttention: () => [],
+    forNotification: () => [],
+  }),
+  InboxContextLine: () => null,
+}));
 
 afterEach(cleanup);
 

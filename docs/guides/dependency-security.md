@@ -57,6 +57,36 @@ fail closed and are not verified compatible.
 These are source contracts, not a completed hosted release claim. See
 [the release process](releasing.md).
 
+## Parser and HTTP stream updates (2026-10)
+
+The workspace selects body-parser 1.20.9 and 2.4.0, undici 6.29.1 and
+8.12.2, and fast-uri 3.1.9 within their existing major versions. Fieldwork
+and Survey resolve Zod 4.6.7. These updates address attacker-controlled
+collections, URI identity changes, response-integrity bypass, and HTTP stream
+errors or retained parser state that can exhaust or terminate a process.
+
+The [parser and integrity controls](../../scripts/__tests__/dependency-availability.test.ts)
+exercise the libraries resolved by Fieldwork, Survey, Ajv and jsdom. They check
+early rejection of an oversized constrained array, URI normalization and host
+refusals, and case-insensitive integrity verification of matching and tampered
+response bytes.
+
+The [HTTP lifecycle controls](../../scripts/__tests__/dependency-http-availability.process.test.ts)
+use disposable children and loopback servers. Both Express dependency lines
+must survive trailing bytes after a compressed frame while preserving another
+raw-request consumer. Both undici lines must reject excessive content encodings
+without an orphan-stream crash and enforce EventSource field-count and
+unfinished-line limits after decompression. Each child must exit normally;
+forced cleanup or a caught fetch rejection alone cannot pass the test.
+
+These are installed-library observations, not Station endpoint exploits or
+browser, native, provider or release qualification. The updates do not repair
+the legacy Zod 3 dependency paths tracked in
+[#4210](https://github.com/kontourai/station/issues/4210), nor harden the separate
+`zod/v3` implementation shipped by Zod 4. A constrained-array check does not
+bound unconstrained input. The advisory floor still evaluates the complete
+candidate graph under its existing policy.
+
 ## RSA signature verification backport (2026-10)
 
 Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
@@ -236,10 +266,10 @@ policy is changed.
 
 ## Shell quoting and MCP credential issuer advisories (2026-10)
 
-The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.3.1
-in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.1.
+The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.4.0
+in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.2.
 Exact overrides cover transitive client/SDK consumers. The client brings its
-exact core 2.3.1 dependency; server 2.3.1 brings its exact core 2.3.1 dependency.
+exact core 2.4.0 dependency; server 2.4.0 brings its exact core 2.4.0 dependency.
 No Station code imports core directly.
 
 The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)
@@ -271,6 +301,18 @@ against the new graph. These controls do not establish every transitive
 consumer's remote authorization behavior or prove an attacker reached Station.
 New interactive sign-in trust and direct low-level vendor calls remain
 separate from this advisory's saved-credential binding claim.
+A [configured OAuth client](connections.md#authorization-server-binding) has no
+issuer of its own, so Station uses it only with the issuer the operator
+declares. Every pre-registered client needs one, and a mismatch is refused from
+configuration before a secret, code or verifier leaves Station, independent of
+per-person credentials, disconnects and concurrent sign-ins. The binding
+authority also releases the secret only for the issuer, endpoint and
+integration instance its grant recorded, checked at every token request, so
+no integration writer can redirect it and a recreated integration cannot
+inherit it.
+Dynamic registration without a declared issuer pins the server of its first
+completed sign-in for that resource and refuses others afterwards; only that
+first sign-in is trust-on-first-use, as the connections guide states.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,
@@ -287,6 +329,11 @@ managed entry point bootstraps the exact pnpm version in `package.json`, forces
 an inert install, and validates every installed lifecycle package's locked
 identity and complete hook set before running approved commands. Keep npm for
 script execution and publication; do not use raw npm to install this workspace.
+
+On GitHub Actions, approved native hooks use headers bundled with the running
+Node distribution when available, avoiding a separate header download during
+compilation. An explicit `npm_config_nodedir` takes precedence. Other hosts and
+Node distributions without bundled headers retain node-gyp's normal selection.
 
 `pnpm-workspace.yaml` owns workspace membership, overrides, pinned build
 permissions, and native patches. The retained npm workspace list supports
@@ -306,6 +353,15 @@ its user's message in durable history. The real-framework regression in
 the first storage read and verifies model admission and persisted ordering.
 Remove a version's patch only after that test passes against an upstream fix
 for that version.
+The 2.11.0 patch also awaits the configured observability flush attempt at
+normal `streamText` finish. Its CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts`
+holds a real span processor and checks stream EOF after fulfillment or rejection;
+Node `auto` and `never` strategies remain no-flush controls. This preserves the
+existing export-error handling and OpenTelemetry timeout semantics. A timeout can
+settle the flush attempt while its exporter remains active, so stream completion
+is not proof that every exporter or other run resource has settled. This change
+does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.

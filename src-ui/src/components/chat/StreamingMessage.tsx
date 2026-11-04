@@ -13,6 +13,7 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
@@ -185,8 +186,9 @@ function StreamingMessageWithApps({
           ? [...contentParts, { type: 'text', content: streamingText }]
           : contentParts,
         appTools,
+        showReasoning && Boolean(renderReasoning),
       ),
-    [contentParts, streamingText, appTools],
+    [contentParts, streamingText, appTools, showReasoning, renderReasoning],
   );
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
@@ -206,7 +208,13 @@ function StreamingMessageWithApps({
   const hasVisibleContent = blocks.some((block) =>
     block.type === 'tool-call-run' ||
     (block.type === 'content-part' && isToolCallPart(block.part))
-      ? Boolean(renderToolCall)
+      ? Boolean(renderToolCall) ||
+        Boolean(
+          showReasoning &&
+            renderReasoning &&
+            block.type === 'tool-call-run' &&
+            block.interludes?.length,
+        )
       : blockHasVisibleContent(block, {
           showReasoning: showReasoning && Boolean(renderReasoning),
         }),
@@ -242,11 +250,22 @@ function StreamingMessageWithApps({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
-            if (!renderToolCall) return null;
+            const renderInterlude = (part: ChatContentPart, index: number) =>
+              renderReasoning?.(
+                part.content ?? '',
+                index,
+                renderToolCall ? true : hasAnswerText,
+              ) ?? null;
+            if (!renderToolCall)
+              return (
+                block.interludes?.map(({ part, index }) =>
+                  renderInterlude(part, index),
+                ) ?? null
+              );
             // Same inline threshold as the settled renderer
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
-            // change shape when the turn settles. Solo calls stay a
-            // row; 2+ consecutive calls become one updating line.
+            // change shape when the turn settles. Solo calls without
+            // reasoning stay inline; mixed activity shares one summary.
             // Same subagent cards, in the same place, as the settled row.
             const subagents = (
               <SubagentCardsForCalls
@@ -254,7 +273,10 @@ function StreamingMessageWithApps({
                 calls={block.calls}
               />
             );
-            if (block.calls.length <= INLINE_RUN_LIMIT) {
+            if (
+              block.calls.length + (block.interludes?.length ?? 0) <=
+              INLINE_RUN_LIMIT
+            ) {
               return [
                 ...block.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
@@ -262,14 +284,19 @@ function StreamingMessageWithApps({
                 subagents,
               ];
             }
-            const inlineRows = block.calls.map(({ part, index }) =>
-              renderToolCall(part, index),
-            );
+            const inlineRows = [...block.calls, ...(block.interludes ?? [])]
+              .sort((a, b) => a.index - b.index)
+              .map(({ part, index }) =>
+                part.type === 'reasoning'
+                  ? renderInterlude(part, index)
+                  : renderToolCall(part, index),
+              );
             return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                renderInterlude={renderInterlude}
                 pending={inlineRows}
               />,
               subagents,
@@ -293,7 +320,9 @@ function StreamingMessageWithApps({
                 className={current ? 'streaming-tip' : undefined}
                 key={block.key ?? i}
               >
-                <StreamingMarkdown content={part.content} />
+                <HostImagesContext.Provider value={STREAMING_HOST_IMAGES}>
+                  <StreamingMarkdown content={part.content} />
+                </HostImagesContext.Provider>
                 {current && block === blocks.at(-1) && (
                   <div className="stream-caret-line" aria-hidden="true">
                     <span className="stream-caret" />

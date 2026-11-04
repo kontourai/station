@@ -43,7 +43,11 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { useUsageTelemetryDisclosureState } from '../components/UsageTelemetryDisclosure';
+import {
+  telemetryDestinationHint,
+  usageSharingChoiceAuthority,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -68,8 +72,11 @@ import {
   answerDeliveryModeOf,
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
+import { AboutSection } from './settings/AboutSection';
+import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { BrowserDevicesSection } from './settings/BrowserDevicesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
 import { EnvironmentStatus } from './settings/EnvironmentStatus';
@@ -93,6 +100,7 @@ import {
 import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
+import { StationRoutesSection } from './settings/StationRoutesSection';
 import { SystemSection } from './settings/SystemSection';
 import {
   formatSettingsMessage,
@@ -111,6 +119,7 @@ import {
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
 import { TelemetryDelivery } from './settings/TelemetryDelivery';
+import { TerminalHistoryUsage } from './settings/TerminalHistoryUsage';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -120,6 +129,7 @@ import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from './settings/VoiceFeaturesSection';
+import { WorkloadBudgetSettings } from './settings/WorkloadBudgetSettings';
 
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = [
@@ -239,6 +249,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     chatFontSize,
     featureSettings,
     hapticsEnabled,
+    terminalScreenReader,
     developerToolsEnabled,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
@@ -392,6 +403,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           isOperator,
           developerToolsEnabled,
           experimentalTrustEnabled: developerFeatures.trust,
+          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
         }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
@@ -442,7 +454,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
     if (
       (entry.conditional === 'developer' && !developerToolsEnabled) ||
-      (entry.conditional === 'experimental-trust' && !developerFeatures.trust)
+      (entry.conditional === 'experimental-trust' &&
+        !developerFeatures.trust) ||
+      (entry.conditional === 'experimental-station-routes' &&
+        !developerFeatures.stationRoutes)
     ) {
       setHighlightAnnouncement(
         'This experimental tool is off. Enable it in Advanced → Developer tools.',
@@ -585,6 +600,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     locale,
     developerToolsEnabled,
     developerFeatures.trust,
+    developerFeatures.stationRoutes,
   ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
@@ -1206,6 +1222,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   it used to sit in was dissolved. System is where this page
                   already keeps Station administration: updates, log level,
                   export and import, and the two resets. */}
+                    {/* #4305: whether this Station shares Projects with local
+                  accounts at all; the account list below manages them. */}
+                    <AccountSharingSection />
                     <LocalAccountsSection />
                   </>
                 )}
@@ -1227,6 +1246,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {sectionVisible('plugin-visibility') && (
                   <PluginVisibilitySection />
                 )}
+                {sectionVisible('browser-devices') && <BrowserDevicesSection />}
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
@@ -1249,6 +1269,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    <TerminalHistoryUsage />
+                    {/* Behind the workload-budget-settings Feature Preview;
+                  renders nothing while it is off. */}
+                    <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
 
@@ -1287,6 +1311,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
                       telemetryDisclosure={telemetryDisclosure.data}
+                      telemetryChoiceAuthority={usageSharingChoiceAuthority(
+                        telemetryDisclosure,
+                      )}
+                      onTelemetryChoiceRetry={() =>
+                        void invalidate(['usage-telemetry-disclosure'])
+                      }
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}
@@ -1325,17 +1355,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             description="Sharing uses configured destinations only."
                             control={
                               <span className="settings__field-hint">
-                                {telemetryDisclosure.settled
-                                  ? telemetryDisclosure.isError
-                                    ? 'Could not read whether a destination is configured.'
-                                    : telemetryDisclosure.data
-                                          ?.endpointConfigured === false
-                                      ? 'No additional destination configured.'
-                                      : telemetryDisclosure.data
-                                            ?.endpointConfigured === true
-                                        ? 'Additional destination configured.'
-                                        : 'This Station has not reported whether a destination is configured.'
-                                  : null}
+                                {telemetryDestinationHint(telemetryDisclosure)}
                               </span>
                             }
                           />
@@ -1412,6 +1432,28 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    {/* #4470: TroubleshootHost (deferred overlays) runs the
+                        start flow, including the no-engine fallback. The
+                        event name is an inline literal for the HelpMenu
+                        entry-chunk reason; SettingsViewTroubleshoot.test.tsx
+                        binds it to OPEN_TROUBLESHOOT_EVENT. */}
+                    <PageRow
+                      {...settingsRow('diagnostics-troubleshoot')}
+                      description="Investigate a problem with the Station Assistant, then fix it, file it, or both."
+                      control={
+                        <button
+                          type="button"
+                          className="settings__secondary-btn"
+                          onClick={() =>
+                            window.dispatchEvent(
+                              new CustomEvent('station:open-troubleshoot'),
+                            )
+                          }
+                        >
+                          Troubleshoot
+                        </button>
+                      }
+                    />
                   </Section>
                 )}
               </section>
@@ -1485,7 +1527,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     page); color themes and accents live on Appearance. */}
                     <PageRow
                       {...settingsRow('theme')}
-                      description="Switch light and dark here. Color themes are on the Appearance page."
+                      description="Switch light and dark here. System mode and color themes are on the Appearance page."
                       control={
                         <span className="settings__appearance-controls">
                           <ThemeToggle />
@@ -1508,6 +1550,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    <PageRow
+                      {...settingsRow('terminal-screen-reader')}
+                      description="Keep a text copy of each terminal for screen readers and announce new output."
+                      control={
+                        <Toggle
+                          checked={terminalScreenReader}
+                          onChange={(checked) =>
+                            setDeviceSetting('terminalScreenReader', checked)
+                          }
+                          label={settingsRow('terminal-screen-reader').title}
+                        />
+                      }
+                    />
                     <PageRow
                       {...settingsRow('accent-color')}
                       description="Choose an accent on the Appearance page."
@@ -1776,6 +1831,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
                 {/* #2182: pairing is not a voice feature, and now says so. */}
                 {sectionVisible('pairing') && <PairingSection />}
+                {sectionVisible('station-routes') && <StationRoutesSection />}
 
                 {sectionVisible('developer-tools') && (
                   <Section
@@ -1798,6 +1854,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <DeveloperFeatures />
                   </Section>
+                )}
+
+                {sectionVisible('about') && (
+                  <AboutSection onOpenSection={navigateToSection} />
                 )}
               </section>
             )}

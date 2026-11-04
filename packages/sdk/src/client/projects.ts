@@ -18,6 +18,11 @@ import {
   type ProjectMetadata,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  PROJECT_CHECKOUT_FRESHNESS_VERSION,
+  type ProjectCheckoutFreshness,
+} from '@kontourai/station-contracts/project-checkout-freshness';
 import {
   isWellFormedProjectResolutionView,
   isWellFormedProjectResourceBindOutcome,
@@ -176,6 +181,71 @@ export async function listProjectRunLocations(
   return value as ProjectRunLocations;
 }
 
+/**
+ * `GET /api/projects/:slug/chat-defaults` — what a new chat in this Project
+ * starts with for the caller: the Project's model and approval-mode
+ * selections and the caller's own last-used values. The operator, or a shared
+ * member admitted to the Project (their own values only).
+ *
+ * `null`: this Station applies no Project layer to the caller's chat here.
+ * That is a 404 (an older Station without the route, or no such Project, which
+ * a start also treats as no Project layer) or a 501 (a Station that does not
+ * compose it). Any other failure throws.
+ */
+export async function getProjectChatDefaults(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectChatDefaultsView | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/chat-defaults`,
+    opts,
+  );
+  if (response.status === 404 || response.status === 501) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value = await unwrapOrThrow<unknown>(response);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as { version?: unknown }).version !==
+      'station.project-chat-defaults/v1'
+  )
+    throw new Error('Invalid Project chat defaults.');
+  return value as ProjectChatDefaultsView;
+}
+
+/**
+ * `GET /api/projects/:slug/checkout-freshness`: how far the Project's
+ * checkout is behind its upstream, from local refs. `null` when the host
+ * does not answer it: the Stale checkout warning preview is off, the host
+ * predates the route, or the caller is a shared member.
+ */
+export async function getProjectCheckoutFreshness(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectCheckoutFreshness | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/checkout-freshness`,
+    opts,
+  );
+  if (response.status === 404 || response.status === 501) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value = await unwrapOrThrow<unknown>(response);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as { version?: unknown }).version !==
+      PROJECT_CHECKOUT_FRESHNESS_VERSION
+  )
+    throw new Error('Invalid Project checkout freshness.');
+  return value as ProjectCheckoutFreshness;
+}
+
 /** `GET /api/projects/:slug` — get a project. */
 export async function getProject(
   apiBase: string,
@@ -259,6 +329,109 @@ export async function closeProjectTerminal(
     response,
     'Failed to close terminal',
   );
+}
+
+/**
+ * `POST /api/projects/:slug/terminal-sessions` with `adopt` — the Project
+ * binding's running shell, or a new one when it has none. The server
+ * serializes opens, so two views opening an empty binding at once get the
+ * same shell. Null when this Station predates `adopt` (404 or the strict
+ * schema's 400); the caller then opens through the terminal socket.
+ */
+export async function openOrAdoptProjectShell(
+  apiBase: string,
+  projectSlug: string,
+  size: { cols: number; rows: number },
+  opts?: ClientRequestOptions,
+): Promise<{ terminalId: string; ordinal?: number; adopted: boolean } | null> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions`,
+    'POST',
+    opts,
+    { ...size, bindingKey: 'project', adopt: true },
+  );
+  if (response.status === 404 || response.status === 400) return null;
+  const record = await unwrapOrThrow<{
+    terminalId: string;
+    ordinal?: number;
+    adopted?: boolean;
+  }>(response, 'Failed to open terminal');
+  return {
+    terminalId: record.terminalId,
+    ...(record.ordinal !== undefined && { ordinal: record.ordinal }),
+    adopted: record.adopted === true,
+  };
+}
+
+/**
+ * `DELETE /api/projects/:slug/terminal-sessions/:id?bindingKey=` — ends a
+ * terminal session in any binding the caller may operate (a thread's agent
+ * command, say); its output stays readable.
+ */
+export async function closeProjectTerminalSession(
+  apiBase: string,
+  projectSlug: string,
+  terminalId: string,
+  bindingKey: string,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions/${encodeURIComponent(terminalId)}?bindingKey=${encodeURIComponent(bindingKey)}`,
+    'DELETE',
+    opts,
+  );
+  await unwrapOrThrow(response, 'Failed to stop the command');
+}
+
+/** A package script the script runner can start, by name. */
+export interface ProjectTerminalScript {
+  name: string;
+  /** The script's command line, for display. */
+  command: string;
+}
+
+/**
+ * `GET /api/projects/:slug/terminal-scripts` — the Project binding's package
+ * scripts and the package manager that runs them. Null when this Station
+ * predates the script runner (404).
+ */
+export async function listProjectTerminalScripts(
+  apiBase: string,
+  projectSlug: string,
+  opts?: ClientRequestOptions,
+): Promise<{
+  packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun';
+  scripts: ProjectTerminalScript[];
+} | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-scripts?bindingKey=project`,
+    opts,
+  );
+  if (response.status === 404) return null;
+  return unwrapOrThrow(response, 'Failed to list scripts');
+}
+
+/**
+ * `POST /api/projects/:slug/terminal-scripts` — runs one package script by
+ * name as a command terminal session in the Project binding.
+ */
+export async function runProjectTerminalScript(
+  apiBase: string,
+  projectSlug: string,
+  script: string,
+  opts?: ClientRequestOptions,
+): Promise<{ terminalId: string }> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-scripts`,
+    'POST',
+    opts,
+    { bindingKey: 'project', script },
+  );
+  const record = await unwrapOrThrow<{ terminalId: string }>(
+    response,
+    'Failed to run script',
+  );
+  return { terminalId: record.terminalId };
 }
 
 /** `POST /api/projects/:slug/file-preview` — bounded, project-bound file preview. */

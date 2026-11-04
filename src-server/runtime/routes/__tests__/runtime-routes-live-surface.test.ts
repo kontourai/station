@@ -12,7 +12,13 @@
  * must refuse agent-originated credentials itself.
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -27,12 +33,14 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-live-surface-producer.js';
 import { authorizeBrowserSurfaceAction } from '../../../services/browser/browser-live-surfaces.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { createLogger } from '../../../utils/logger.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -117,6 +125,7 @@ describe('live surface routes in the runtime composition', () => {
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
+    const currentPairing = { value: pairing };
     const device = pair(pairing, 'device');
     const delegation = pair(pairing, 'delegation');
     const readOnly = pair(
@@ -125,6 +134,7 @@ describe('live surface routes in the runtime composition', () => {
       pairingScopePresetString('read-only'),
     );
     const app = new Hono();
+    const errors = vi.fn();
     const context = deepStub({
       // Explicitly absent (a deep stub would otherwise answer these with a
       // callable proxy and the auth pipeline would treat them as installed).
@@ -140,7 +150,7 @@ describe('live surface routes in the runtime composition', () => {
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger: { debug() {}, info() {}, warn() {}, error: errors },
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
@@ -159,26 +169,33 @@ describe('live surface routes in the runtime composition', () => {
         }),
       }),
       taskGraphService: { listTasks: () => [] },
-      projectService: { listProjects: () => [] },
+      projectService: {
+        listProjects: () => [{ id: 'alpha', slug: 'alpha' }],
+        getProject: () => ({}),
+      },
+      featurePreviews: new FeaturePreviewRegistry(
+        homeDir,
+        createLogger({ name: 'browser-device-wiring-test', level: 'error' }),
+      ),
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
-          pairing.verifyCredential(credential),
+          currentPairing.value.verifyCredential(credential),
         authorizeCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
-          pairing.verifyCredential(credential),
+          currentPairing.value.verifyCredential(credential),
         verifyOperatorCredential: (credential: string) =>
           credential === OPERATOR_SECRET,
         resolveGrantedScope: (credential: string) =>
           credential === OPERATOR_SECRET
             ? DEFAULT_GRANT_PAIRING_SCOPE
-            : pairing.identifyDevice(credential)?.scope,
+            : currentPairing.value.identifyDevice(credential)?.scope,
         identifyDevice: (credential: string) =>
-          pairing.identifyDevice(credential),
+          currentPairing.value.identifyDevice(credential),
         credentialLocality: (credential: string) =>
-          pairing.credentialLocality(credential),
+          currentPairing.value.credentialLocality(credential),
         credentialMintKind: (credential: string) =>
-          pairing.credentialMintKind(credential),
+          currentPairing.value.credentialMintKind(credential),
         devicePairing: pairing,
       }),
     });
@@ -187,7 +204,18 @@ describe('live surface routes in the runtime composition', () => {
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    return { app, result, device, delegation, readOnly };
+    return {
+      app,
+      result,
+      device,
+      delegation,
+      readOnly,
+      pairing,
+      currentPairing,
+      homeDir,
+      featurePreviews: context.featurePreviews,
+      errors,
+    };
   }
 
   async function firstRecord(response: Response): Promise<LiveSurfaceRecord> {
@@ -206,6 +234,182 @@ describe('live surface routes in the runtime composition', () => {
       void reader.cancel().catch(() => {});
     }
   }
+
+  test('only an operator-owned device can view Browser and cannot drive, including after rebinding during publication', async () => {
+    const h = await setup();
+    const sessionId = 'bs_00000000-0000-4000-8000-000000000001';
+    const registry = h.result.browserService!.registry;
+    const view = {
+      browserSessionId: sessionId,
+      projectId: 'alpha',
+      principalKey: 'operator',
+      state: 'live',
+      generation: 1,
+    };
+    vi.spyOn(registry, 'getSession').mockReturnValue(view as never);
+    await h.featurePreviews.setEnabled('browser-experience', true);
+    h.result.liveSurfaceRegistry!.register(
+      new SyntheticLiveSurfaceProducer(SURFACE),
+      {
+        authorize: (principal, _surface, action, context) =>
+          authorizeBrowserSurfaceAction(
+            h.result.browserProjectAuthorizer!,
+            view,
+            principal,
+            action,
+            context,
+          ),
+      },
+    );
+    const headers = (credential: string) => ({
+      Authorization: `Bearer ${credential}`,
+      'Content-Type': 'application/json',
+    });
+    const access = '/api/browser/projects/alpha/access';
+    try {
+      const ownResponse = await h.app.request(
+        access,
+        { headers: headers(h.device.credential) },
+        REMOTE,
+      );
+      expect(ownResponse.status, JSON.stringify(h.errors.mock.calls)).toBe(200);
+      expect(await ownResponse.json()).toMatchObject({
+        data: { role: 'operator-device', canDrive: false },
+      });
+      expect(
+        (
+          await h.app.request(
+            '/api/browser/projects/alpha/settings',
+            { headers: headers(h.device.credential) },
+            REMOTE,
+          )
+        ).status,
+      ).toBe(200);
+      const frames = await h.app.request(
+        `/api/live-surfaces/${encodeURIComponent(SURFACE)}/frames`,
+        { headers: headers(h.device.credential) },
+        REMOTE,
+      );
+      expect(frames.status).toBe(200);
+      expect((await firstRecord(frames)).kind).toBe('state');
+      expect(
+        (
+          await h.app.request(
+            access,
+            { headers: headers(h.delegation.credential) },
+            REMOTE,
+          )
+        ).status,
+      ).toBe(403);
+      for (const [path, body] of [
+        [
+          `/api/live-surfaces/${encodeURIComponent(SURFACE)}/input`,
+          { epoch: 0, events: [{ kind: 'pointer', type: 'move', x: 1, y: 1 }] },
+        ],
+        [
+          `/api/browser/sessions/${sessionId}/zoom`,
+          { factor: 1.25, generation: 1 },
+        ],
+        [
+          `/api/browser/sessions/${sessionId}/appearance`,
+          { scheme: 'dark', generation: 1 },
+        ],
+      ] as const) {
+        expect(
+          (
+            await h.app.request(
+              path,
+              {
+                method: 'POST',
+                headers: headers(h.device.credential),
+                body: JSON.stringify(body),
+              },
+              REMOTE,
+            )
+          ).status,
+        ).toBe(403);
+      }
+      const offer = h.pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const request = h.pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'bound',
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'person@example.test',
+        },
+      });
+      h.pairing.confirmRequest(
+        request.requestId,
+        { kind: 'presented-credential' },
+        { kind: 'verified-ingress', principalId: 'human:deployment:person' },
+      );
+      const bound = h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+      expect(h.pairing.verifyCredential(bound.credential)).toBe(true);
+      const boundResponse = await h.app.request(
+        access,
+        { headers: headers(bound.credential) },
+        REMOTE,
+      );
+      expect(
+        boundResponse.status,
+        `${await boundResponse.text()} ${JSON.stringify(h.errors.mock.calls)}`,
+      ).toBe(403);
+      const revoked = pair(h.pairing, 'device');
+      h.pairing.revokeDevice(revoked.device.id, 'operator-credential');
+      expect(
+        (
+          await h.app.request(
+            access,
+            { headers: headers(revoked.credential) },
+            REMOTE,
+          )
+        ).status,
+      ).toBe(401);
+      const status = h.result.browserService!.acquisition.status();
+      vi.spyOn(
+        h.result.browserService!.acquisition,
+        'status',
+      ).mockImplementation(() => {
+        const file = join(h.homeDir, 'security', 'paired-devices.json');
+        const data = JSON.parse(readFileSync(file, 'utf8'));
+        const row = data.devices.find(
+          (item: { id: string }) => item.id === h.device.device.id,
+        );
+        row.source = 'tailnet';
+        row.requester = bound.device.requester;
+        row.principalBinding = bound.device.principalBinding;
+        writeFileSync(file, JSON.stringify(data));
+        h.currentPairing.value = new DevicePairingService({
+          homeDir: h.homeDir,
+          environmentId: '33333333-3333-4333-8333-333333333333',
+        });
+        return status;
+      });
+      const rebound = await h.app.request(
+        access,
+        { headers: headers(h.device.credential) },
+        REMOTE,
+      );
+      expect(
+        rebound.status,
+        `${await rebound.text()} ${JSON.stringify(h.errors.mock.calls)}`,
+      ).toBe(403);
+    } finally {
+      await h.result.liveSurfaceRegistry!.dispose();
+      await h.result.browserService?.shutdown();
+      await h.result.deviceHosts?.dispose();
+      await h.result.deviceToolchainService?.shutdown();
+    }
+  });
 
   test('a human operator and a paired device are admitted; each is told who it is', async () => {
     const { app, result, device } = await setup();
@@ -420,7 +624,7 @@ describe('live surface routes in the runtime composition', () => {
     expect(authorizeProject).toBeDefined();
     const actors: Array<{ kind: string } | undefined> = [];
     const recordingAuthorizer: typeof authorizeProject = async (...args) => {
-      const actor = await authorizeProject(...args);
+      const actor = await authorizeProject(args[0], args[1], args[2]);
       actors.push(actor);
       return actor;
     };

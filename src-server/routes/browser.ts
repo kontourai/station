@@ -13,7 +13,7 @@ import {
   BROWSER_SESSION_ID_PATTERN as SESSION_ID,
   BROWSER_THREAD_ID_PATTERN as THREAD_ID,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type {
   BrowserOperatorAuthorizer,
@@ -21,19 +21,27 @@ import type {
 } from '../services/browser/browser-access.js';
 import type { BrowserConsoleSnapshot } from '../services/browser/browser-console-log.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../services/browser/browser-human-recording.js';
+import type { HumanTaskPreparation } from '../services/browser/browser-human-task-clip.js';
 import {
   LocalTargetError,
   type LocalTargetStore,
 } from '../services/browser/browser-local-targets.js';
+import type { BrowserNetworkSnapshot } from '../services/browser/browser-network-log.js';
+import { pickBrowserElement } from '../services/browser/browser-pick.js';
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
+  type BrowserHistoryDirection,
   type BrowserSessionActor,
   BrowserSessionError,
+  type BrowserSessionRecord,
   type BrowserSessionRegistry,
+  browserEffectiveViewport,
   browserProfileFor,
   browserViewportProblem,
   isValidBrowserProjectId,
+  isValidBrowserZoom,
 } from '../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../services/browser/cdp-pipe-transport.js';
 import {
@@ -59,6 +67,32 @@ const DIALOG_ID = /^d[0-9]{1,12}$/;
 const PROMPT_TEXT_MAX = 4_096;
 const CONSOLE_AFTER = /^(0|[1-9][0-9]{0,14})$/;
 const TARGET_ID = /^lt_[0-9a-f-]{36}$/;
+const EXPERIENCE_DISABLED = {
+  success: false,
+  error: 'Enable Browser experience in Settings → Advanced → Feature previews.',
+  code: 'feature_preview_disabled',
+  previewId: 'browser-experience',
+  settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+} as const;
+
+interface CapturedView {
+  viewport: BrowserViewport;
+  zoomFactor?: number;
+}
+
+/** A capture is valid only for the viewport and zoom it was taken at. */
+const sameView = (a: CapturedView, b: CapturedView) =>
+  a.viewport.width === b.viewport.width &&
+  a.viewport.height === b.viewport.height &&
+  (a.zoomFactor ?? 1) === (b.zoomFactor ?? 1);
+
+const ARTIFACTS_DISABLED = {
+  success: false,
+  error: 'Enable Browser artifacts in Feature previews.',
+  code: 'feature_preview_disabled',
+  previewId: 'browser-artifacts',
+  settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+} as const;
 
 /** A Project as the routes see it: canonical ID plus its current slug. */
 export interface BrowserRouteProject {
@@ -77,10 +111,21 @@ export interface BrowserRoutesDeps {
     | 'closeSession'
     | 'reopenSession'
     | 'navigateHistory'
+    | 'inspectNavigation'
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
-  >;
+    | 'captureAnnotationScreenshot'
+  > &
+    Partial<
+      Pick<BrowserSessionRegistry, 'liveTarget' | 'setZoom' | 'setColorScheme'>
+    >;
+  browserExperienceEnabled?(): boolean;
+  withHumanControl?(
+    context: Context,
+    browserSessionId: string,
+    operation: (guard: () => void) => Promise<BrowserSessionRecord>,
+  ): Promise<BrowserSessionRecord>;
   /**
    * The live-surface id of a live session (its screencast), when live
    * surfaces are wired. Session responses carry it as `surfaceId`.
@@ -114,6 +159,19 @@ export interface BrowserRoutesDeps {
     browserSessionId: string,
     after?: number,
   ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
+  networkFor?(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<BrowserNetworkSnapshot | undefined>;
+  networkPreviewEnabled?: () => boolean;
+  humanRecordings?: BrowserHumanRecording;
+  recordingAdmissionKey?(context: Context): string | undefined;
+  prepareHumanTaskClip?(
+    request: Request,
+    conversationId: string,
+    browser: BrowserSessionRecord,
+  ): Promise<HumanTaskPreparation>;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -143,6 +201,8 @@ export interface BrowserRoutesDeps {
   /** Slug to canonical Project; undefined when there is no such Project. */
   resolveProject(slug: string): BrowserRouteProject | undefined;
   isRequestPrincipalCurrent(request: Request): boolean;
+  /** Whether this credential's current scope admits Browser mutations. */
+  mayDriveBrowser?(request: Request): boolean;
   /** Test seam: the server clock stamped on session views as `serverNow`. */
   now?(): Date;
 }
@@ -170,29 +230,42 @@ async function readJsonObject(
 
 function sessionErrorStatus(
   error: BrowserSessionError,
-): 400 | 404 | 409 | 413 | 503 | 504 {
+): 400 | 403 | 404 | 409 | 413 | 503 | 504 {
   switch (error.code) {
     case 'url-not-allowed':
     case 'invalid-project':
     case 'invalid-viewport':
+    case 'invalid-zoom':
+    case 'invalid-appearance':
     case 'invalid-actor':
       return 400;
     case 'not-found':
+    case 'feature-preview-disabled':
       return 404;
     case 'not-live':
     case 'stale-generation':
     case 'no-history-entry':
+    case 'control-interrupted':
       return 409;
+    case 'control-refused':
+      return 403;
     case 'screenshot-too-large':
       return 413;
     case 'page-busy':
       return 504;
     case 'stopped':
+    case 'surface-busy':
       return 503;
   }
 }
 
-const HISTORY_ACTIONS = new Set(['back', 'forward', 'reload']);
+const HISTORY_ACTIONS = new Set([
+  'back',
+  'forward',
+  'reload',
+  'hard-reload',
+  'stop',
+]);
 
 export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   const app = new Hono();
@@ -246,18 +319,25 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         ? body.generation
         : null;
   const denied = { success: false, code: 'access-denied' } as const;
+  const staleSignIn = { success: false, code: 'stale-sign-in' } as const;
   const invalid = { success: false, code: 'invalid-request' } as const;
 
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (deps.isStationInternalRequest(c.req.raw)) return c.json(denied, 403);
-    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) {
+      const isAccessRead =
+        c.req.method === 'GET' && /\/projects\/[^/]+\/access$/.test(c.req.path);
+      return c.json(isAccessRead ? staleSignIn : denied, 403);
+    }
     await next();
   });
 
   // Map domain failures to typed responses; anything unknown propagates.
   app.onError((error, c) => {
     if (error instanceof BrowserSessionError) {
+      if (error.code === 'feature-preview-disabled')
+        return c.json(EXPERIENCE_DISABLED, 404);
       return c.json(
         {
           success: false,
@@ -343,7 +423,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     for (const projectId of new Set(all.map((s) => s.projectId))) {
       actors.set(
         projectId,
-        await deps.authorizeProject(c.req.raw, projectId, 'view'),
+        await deps.authorizeProject(c.req.raw, projectId, 'view', {
+          allowOperatorDeviceView: true,
+        }),
       );
     }
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
@@ -352,7 +434,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       data: all
         .filter((session) => {
           const actor = actors.get(session.projectId);
-          return actor !== undefined && actorOwnsSessionProfile(session, actor);
+          return (
+            actor !== undefined &&
+            (actor.kind === 'operator-device' ||
+              actorOwnsSessionProfile(session, actor))
+          );
         })
         .map(present),
     });
@@ -446,8 +532,13 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       request,
       session.projectId,
       purpose,
+      { allowOperatorDeviceView: purpose === 'view' },
     );
-    if (!actor || !actorOwnsSessionProfile(session, actor))
+    if (
+      !actor ||
+      (!(actor.kind === 'operator-device' && purpose === 'view') &&
+        !actorOwnsSessionProfile(session, actor))
+    )
       return { status: 403 as const };
     return { status: 200 as const, session, actor };
   };
@@ -458,6 +549,199 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       : status === 403
         ? denied
         : { success: false, code: 'not-found' };
+
+  const recordingAccess = async (request: Request, id: string) => {
+    const found = await sessionFor(request, id, 'view');
+    if (found.status !== 200) return found;
+    if (
+      !deps.isRequestPrincipalCurrent(request) ||
+      !deps.networkPreviewEnabled?.() ||
+      !deps.isAgentRequest ||
+      deps.isAgentRequest(request)
+    )
+      return { status: 403 as const };
+    return { ...found, owner: JSON.stringify(found.actor) };
+  };
+
+  const recordingPreview = async (c: Context, next: () => Promise<void>) => {
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    await next();
+  };
+  app.use('/sessions/:browserSessionId/recordings', recordingPreview);
+  app.use('/sessions/:browserSessionId/recordings/*', recordingPreview);
+
+  app.post('/sessions/:browserSessionId/recordings', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const body = await readJsonObject(c.req.raw, [
+      'generation',
+      'taskSessionId',
+    ]);
+    if (
+      !body ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.taskSessionId !== undefined &&
+        (typeof body.taskSessionId !== 'string' ||
+          body.taskSessionId.length < 1 ||
+          body.taskSessionId.length > 256))
+    )
+      return c.json(invalid, 400);
+    if (
+      found.session.state !== 'live' ||
+      body.generation !== found.session.generation
+    )
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    if (!deps.humanRecordings)
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    try {
+      const taskSessionId = body.taskSessionId;
+      const recordingId = deps.humanRecordings.start({
+        session: found.session,
+        owner: found.owner,
+        admissionKey: deps.recordingAdmissionKey?.(c) ?? found.owner,
+        ...(typeof taskSessionId === 'string' && deps.prepareHumanTaskClip
+          ? {
+              prepareTask: () =>
+                deps.prepareHumanTaskClip!(
+                  c.req.raw,
+                  taskSessionId,
+                  found.session,
+                ),
+            }
+          : {}),
+        authorize: async () => {
+          const again = await recordingAccess(c.req.raw, id);
+          return (
+            again.status === 200 &&
+            again.owner === found.owner &&
+            again.session.generation === found.session.generation
+          );
+        },
+      });
+      return c.json({ success: true, data: { recordingId } }, 201);
+    } catch {
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    }
+  });
+
+  app.get('/sessions/:browserSessionId/recordings/:recordingId', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const result = deps.humanRecordings?.status(
+      c.req.param('recordingId'),
+      found.owner,
+      id,
+      found.session.generation,
+    );
+    return result
+      ? c.json({ success: true, data: result })
+      : c.json({ success: false, code: 'not-found' }, 404);
+  });
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/stop',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      return deps.humanRecordings?.stop(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.delete(
+    '/sessions/:browserSessionId/recordings/:recordingId',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      return deps.humanRecordings?.cancel(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/task',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      const publication = deps.humanRecordings?.publishTask(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+        c.req.raw,
+      );
+      if (!publication)
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      try {
+        return c.json({ success: true, data: await publication });
+      } catch {
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      }
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/frames',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const frames = deps.humanRecordings?.contact(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      return frames
+        ? c.json({ success: true, data: { frames } })
+        : c.json({ success: false, code: 'contact-unavailable' }, 409);
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/video',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const bytes = deps.humanRecordings?.video(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      if (!bytes) return c.json({ success: false, code: 'not-found' }, 404);
+      c.header('X-Content-Type-Options', 'nosniff');
+      return c.body(new Uint8Array(bytes), 200, {
+        'Content-Type': 'video/webm',
+        'Content-Disposition': 'attachment; filename="browser-recording.webm"',
+      });
+    },
+  );
 
   // `?view=summary` is what a pane polls (the latest few actions); the full
   // history is read on demand without it.
@@ -477,6 +761,20 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         : found.session;
     if (!data) return c.json({ success: false, code: 'not-found' }, 404);
     return c.json({ success: true, data: present(data) });
+  });
+
+  app.get('/sessions/:browserSessionId/navigation', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const data = await deps.registry.inspectNavigation(
+      found.session.browserSessionId,
+    );
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({ success: true, data });
   });
 
   app.post('/sessions/:browserSessionId/navigate', async (c) => {
@@ -547,7 +845,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     const session = await deps.registry.navigateHistory(
       found.session.browserSessionId,
-      body.action as 'back' | 'forward' | 'reload',
+      body.action as BrowserHistoryDirection,
       {
         actor: found.actor,
         ...(generation !== undefined ? { generation } : {}),
@@ -577,6 +875,72 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         actor: found.actor,
         ...(generation !== undefined ? { generation } : {}),
       },
+    );
+    return c.json({ success: true, data: present(session) });
+  });
+
+  app.post('/sessions/:browserSessionId/zoom', async (c) => {
+    if (!deps.browserExperienceEnabled?.())
+      return c.json(EXPERIENCE_DISABLED, 404);
+    if (!deps.registry.setZoom || !deps.withHumanControl)
+      return c.json({ success: false, code: 'not-supported' }, 404);
+    const body = await readJsonObject(c.req.raw, ['factor', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (!body || !isValidBrowserZoom(body.factor) || generation === null)
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const factor = body.factor;
+    const session = await deps.withHumanControl(
+      c,
+      found.session.browserSessionId,
+      (guard) =>
+        deps.registry.setZoom!(found.session.browserSessionId, factor, {
+          actor: found.actor,
+          guard,
+          ...(generation === undefined ? {} : { generation }),
+        }),
+    );
+    return c.json({ success: true, data: present(session) });
+  });
+
+  app.post('/sessions/:browserSessionId/appearance', async (c) => {
+    if (!deps.browserExperienceEnabled?.())
+      return c.json(EXPERIENCE_DISABLED, 404);
+    if (!deps.registry.setColorScheme || !deps.withHumanControl)
+      return c.json({ success: false, code: 'not-supported' }, 404);
+    const body = await readJsonObject(c.req.raw, ['scheme', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (
+      !body ||
+      (body.scheme !== 'system' &&
+        body.scheme !== 'light' &&
+        body.scheme !== 'dark') ||
+      generation === null
+    )
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const scheme = body.scheme;
+    const session = await deps.withHumanControl(
+      c,
+      found.session.browserSessionId,
+      (guard) =>
+        deps.registry.setColorScheme!(found.session.browserSessionId, scheme, {
+          actor: found.actor,
+          guard,
+          ...(generation === undefined ? {} : { generation }),
+        }),
     );
     return c.json({ success: true, data: present(session) });
   });
@@ -683,6 +1047,151 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     });
   });
 
+  app.get('/sessions/:browserSessionId/network', async (c) => {
+    const after = c.req.query('after');
+    if (after !== undefined && !CONSOLE_AFTER.test(after))
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(found.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
+    if (found.session.state !== 'live')
+      return c.json({ success: false, code: 'not-live' }, 409);
+    const snapshot = await deps.networkFor?.(
+      found.session.browserSessionId,
+      after === undefined ? undefined : Number(after),
+    );
+    if (
+      !deps.isRequestPrincipalCurrent(c.req.raw) ||
+      !deps.networkPreviewEnabled?.()
+    )
+      return c.json(denied, 403);
+    const current = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (current.status !== 200)
+      return c.json(refuse(current.status), current.status);
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(current.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
+    if (!snapshot)
+      return c.json({ success: false, code: 'network-unavailable' }, 503);
+    if (
+      current.session.generation !== found.session.generation ||
+      snapshot.generation !== current.session.generation
+    )
+      return c.json({ success: false, code: 'network-unavailable' }, 409);
+    return c.json({ success: true, data: snapshot });
+  });
+
+  app.post('/sessions/:browserSessionId/pick', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw))
+      return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    const body = await readJsonObject(c.req.raw, [
+      'x',
+      'y',
+      'generation',
+      'screenshot',
+      'expectedScroll',
+    ]);
+    if (
+      !body ||
+      typeof body.x !== 'number' ||
+      typeof body.y !== 'number' ||
+      typeof body.generation !== 'number' ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.screenshot !== undefined && typeof body.screenshot !== 'boolean')
+    )
+      return c.json(invalid, 400);
+    const scroll = body.expectedScroll;
+    if (
+      scroll !== undefined &&
+      (!scroll ||
+        typeof scroll !== 'object' ||
+        Array.isArray(scroll) ||
+        Object.keys(scroll).some((key) => key !== 'x' && key !== 'y') ||
+        typeof (scroll as { x?: unknown }).x !== 'number' ||
+        typeof (scroll as { y?: unknown }).y !== 'number' ||
+        !Number.isFinite((scroll as { x: number }).x) ||
+        !Number.isFinite((scroll as { y: number }).y))
+    )
+      return c.json(invalid, 400);
+    if (found.session.generation !== body.generation)
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    const live = deps.registry.liveTarget?.(found.session.browserSessionId);
+    if (!live || live.generation !== body.generation)
+      return c.json({ success: false, code: 'not-live' }, 409);
+    try {
+      const picked = await pickBrowserElement(
+        live,
+        browserEffectiveViewport(
+          found.session.viewport,
+          found.session.zoomFactor ?? 1,
+        ),
+        { x: body.x, y: body.y },
+        body.screenshot !== false,
+        scroll as { x: number; y: number } | undefined,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      const target = deps.registry.liveTarget?.(found.session.browserSessionId);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId ||
+        current.session.generation !== body.generation ||
+        !sameView(current.session, found.session)
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          ...picked,
+          browserSessionId: found.session.browserSessionId,
+          targetId: live.target.targetId,
+          generation: live.generation,
+          viewport: browserEffectiveViewport(
+            found.session.viewport,
+            found.session.zoomFactor ?? 1,
+          ),
+        },
+      });
+    } catch {
+      return c.json({ success: false, code: 'pick-unavailable' }, 409);
+    }
+  });
+
   // A still of the page for a person to save or copy. The same standing as
   // watching it: the stream already shows them every pixel.
   app.get('/sessions/:browserSessionId/screenshot', async (c) => {
@@ -693,9 +1202,54 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (c.req.query('annotation') === '1') {
+      if (
+        !deps.networkPreviewEnabled?.() ||
+        !deps.isAgentRequest ||
+        deps.isAgentRequest(c.req.raw)
+      )
+        return c.json(denied, 403);
+      const shot = await deps.registry.captureAnnotationScreenshot(
+        found.session.browserSessionId,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        current.session.generation !== found.session.generation ||
+        !sameView(current.session, found.session)
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          image: shot.data.toString('base64'),
+          mimeType: shot.mimeType,
+          scroll: shot.scroll,
+        },
+      });
+    }
     const shot = await deps.registry.captureScreenshot(
       found.session.browserSessionId,
     );
+    const current = await sessionFor(
+      c.req.raw,
+      found.session.browserSessionId,
+      'view',
+    );
+    if (current.status !== 200 || !deps.isRequestPrincipalCurrent(c.req.raw))
+      return c.json(denied, 403);
+    if (
+      current.session.generation !== found.session.generation ||
+      current.session.state !== 'live'
+    )
+      return c.json({ success: false, code: 'stale-generation' }, 409);
     c.header('X-Content-Type-Options', 'nosniff');
     return c.body(new Uint8Array(shot.data), 200, {
       'Content-Type': shot.mimeType,
@@ -765,8 +1319,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const allowed =
       need === 'operator'
         ? await deps.authorizeOperator(request)
-        : (await deps.authorizeProject(request, project.id, 'view')) !==
-          undefined;
+        : (await deps.authorizeProject(request, project.id, 'view', {
+            allowOperatorDeviceView: true,
+          })) !== undefined;
     return allowed ? project : undefined;
   };
 
@@ -781,21 +1336,66 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const project = isValidBrowserProjectId(slug)
       ? deps.resolveProject(slug)
       : undefined;
-    const actor = project
-      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
-      : undefined;
-    if (!project || !actor) return c.json(denied, 403);
+    if (!project) {
+      const operator = await deps.authorizeOperator(c.req.raw);
+      if (!deps.isRequestPrincipalCurrent(c.req.raw))
+        return c.json(staleSignIn, 403);
+      return c.json(
+        operator ? { success: false, code: 'project-not-found' } : denied,
+        403,
+      );
+    }
+    const actor = await deps.authorizeProject(c.req.raw, project.id, 'view', {
+      allowOperatorDeviceView: true,
+    });
+    if (!actor) {
+      if (!deps.isRequestPrincipalCurrent(c.req.raw))
+        return c.json(staleSignIn, 403);
+      return c.json(denied, 403);
+    }
     const operator = await deps.authorizeOperator(c.req.raw);
+    const driveActor = await deps.authorizeProject(
+      c.req.raw,
+      project.id,
+      'drive',
+    );
+    const viewProfile = browserProfileFor(project.id, actor);
+    const driveProfile = driveActor
+      ? browserProfileFor(project.id, driveActor)
+      : undefined;
+    const currentActor = await deps.authorizeProject(
+      c.req.raw,
+      project.id,
+      'view',
+      { allowOperatorDeviceView: true },
+    );
+    if (
+      !currentActor ||
+      browserProfileFor(project.id, currentActor)?.principalKey !==
+        viewProfile?.principalKey
+    )
+      return c.json(denied, 403);
     const acquisition = deps.acquisition.status();
-    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw))
+      return c.json(staleSignIn, 403);
     return c.json({
       success: true,
       data: {
         projectId: project.id,
-        role: actor.kind === 'operator' ? 'operator' : 'project-admin',
+        role:
+          actor.kind === 'operator-device'
+            ? 'operator-device'
+            : actor.kind === 'operator'
+              ? 'operator'
+              : 'project-admin',
         // The profile this caller's sessions run in (D7).
         principalKey: browserProfileFor(project.id, actor)?.principalKey,
         operator,
+        canDrive:
+          deps.mayDriveBrowser?.(c.req.raw) === true &&
+          !!driveProfile &&
+          driveProfile.principalKey === viewProfile?.principalKey,
+        experiencePreviewEnabled: deps.browserExperienceEnabled?.() === true,
         browser:
           acquisition.state === 'found-system' ||
           acquisition.state === 'downloaded'
@@ -823,7 +1423,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       ? deps.resolveProject(slug)
       : undefined;
     const actor = project
-      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
+      ? await deps.authorizeProject(c.req.raw, project.id, 'view', {
+          allowOperatorDeviceView: true,
+        })
       : undefined;
     if (!project || !actor) return c.json(denied, 403);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);

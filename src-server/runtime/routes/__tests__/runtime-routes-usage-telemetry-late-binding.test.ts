@@ -149,6 +149,15 @@ function runtimeContext(
   return fallback as never;
 }
 
+const NO_CAPABILITIES = {
+  acknowledge: false,
+  recordNotice: false,
+  lower: false,
+  raise: false,
+  // Not caller-specific: the write baseline for destinations with no choice.
+  defaults: { kontour: 'lite', operator: 'lite' },
+};
+
 function loopbackEnv() {
   return { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never;
 }
@@ -282,7 +291,12 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       expect(afterReady.status).toBe(200);
       await expect(afterReady.json()).resolves.toEqual({
         success: true,
-        data: disclosure,
+        // The runtime passes its credential authority, so every answer
+        // reports what THIS caller may do. Ingress is mocked out above, so
+        // no principal was published and every capability fails closed; the
+        // per-credential answers are pinned in
+        // config-telemetry-paired.routes.test.ts.
+        data: { ...disclosure, capabilities: NO_CAPABILITIES },
       });
 
       for (const [body, status] of [
@@ -341,7 +355,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       );
       await expect(acknowledged.json()).resolves.toEqual({
         success: true,
-        data: disclosure,
+        data: { ...disclosure, capabilities: NO_CAPABILITIES },
       });
 
       disclosureSpy.mockRestore();

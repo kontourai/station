@@ -1,0 +1,7 @@
+{
+  "revision": "b3ff8062a292ec9cbf902839ec113ff4239eaa96",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#4200 review fix round, delta only: service.ts now compares stale manifests by device+inode, reports a missing/unreadable unit-home manifest without offering rm, and refuses start/stop/uninstall from a stale-manifest home; cli.md documents it. Searched this document for service status/start/stop/uninstall, manifest-home and removal claims; it only invokes these commands generically, so no prose change. Other claims bound to these sources were not re-reviewed.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "dd386fe5b8b78ba37aa735f3663b8882db2e3cd7",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed maintained runtime command against its executed f555657e73e report: authenticated synthetic OTLP trace query preserved IDs/times/allowed attributes and removed resource/scope/span privacy canaries, events, links, status text and trace state; the same projected trace and exact historical metric survived same-volume restart without resend. Wrong Collector trace credential and anonymous Grafana trace query were refused. Exact owned cleanup completed and command exited zero. Initial attempt failed before telemetry checks because Docker address pools were exhausted; only report-owned stopped containers/networks were reclaimed after preserving metadata/logs, with volumes/images retained. This proves synthetic component runtime behavior, not real Station export, fresh restore, upgrade/rollback, native qualification or installation authority.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/qualify-telemetry-companion.mjs"]}
+  ]
+}

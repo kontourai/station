@@ -8,7 +8,7 @@ import type {
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
 import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
 import {
@@ -16,9 +16,11 @@ import {
   type UsageRollupReadAuthority,
   type UsageRollupService,
   UsageRollupService as UsageRollupServiceImpl,
+  type UsageTaskOutcomeSource,
 } from '../../analytics/usage-rollup-service.js';
 import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { PeerCredential } from '../../services/peers/peer-credential-store.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { analyticsOps } from '../../telemetry/metrics.js';
 import {
   credentialProfileRefSchema,
@@ -41,6 +43,7 @@ export function createAnalyticsRoutes(
     context: AuthorityObservationRequestContext,
     request: UsageExportRequest,
   ) => Promise<{ page: UsageExportPage; assertCurrent(): Promise<void> }>,
+  taskOutcomesForRequest?: (context: Context) => UsageTaskOutcomeSource,
 ) {
   const app = new Hono();
 
@@ -266,6 +269,7 @@ export function createAnalyticsRoutes(
       const localOnly = c.req.query('localOnly') === '1';
       const peers = localOnly ? [] : (configuredPeers?.() ?? []);
       const queriedPeers = peers.slice(0, 2);
+      const taskSource = taskOutcomesForRequest?.(c);
       const service =
         usageRollupService ??
         new UsageRollupServiceImpl(
@@ -287,6 +291,7 @@ export function createAnalyticsRoutes(
             reason: 'not queried: usage source cap is 3 Stations',
             window: { from, to },
           })),
+          taskSource,
         );
       const data = await service.read(
         {
@@ -314,8 +319,21 @@ export function createAnalyticsRoutes(
         },
         authority,
       );
+      if (taskSource?.isCurrent && !(await taskSource.isCurrent())) {
+        data.taskOutcomes = data.taskOutcomes?.map((outcome) => ({
+          stationId: outcome.stationId,
+          taskId: outcome.taskId,
+          receiptCount: outcome.receiptCount,
+          reportedCostBuckets: outcome.reportedCostBuckets,
+          state: 'unavailable',
+        }));
+      }
       analyticsOps.add(1, { op: 'get_usage_rollup' });
-      return c.json({ success: true, data });
+      const response = c.json({ success: true, data });
+      return taskSource?.isCurrent &&
+        data.taskOutcomes?.some((outcome) => outcome.state === 'available')
+        ? guardProjectResponse(response, () => taskSource.isCurrent!())
+        : response;
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

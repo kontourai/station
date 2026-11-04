@@ -160,3 +160,86 @@ describe('UsagePricingSnapshotReader (station#4135)', () => {
     expect(receipt.estimatedCost).toBeUndefined();
   });
 });
+
+test('published retail needs exact route and category rules independently of an engine-reported zero', () => {
+  const snapshot = {
+    id: 'published-tariff',
+    capturedAt: '2026-08-01T00:00:00.000Z',
+    currency: 'USD',
+    provider: 'acp',
+    model: 'model',
+    inputPerMillion: 2,
+    outputPerMillion: 4,
+    cacheReadPerMillion: 0.5,
+    publishedTariff: {
+      routeId: 'provider-direct',
+      modelRevision: 'r1',
+      tariffId: 'tariff-1',
+      sourceUrl: 'https://provider.example/pricing',
+      sourceArtifactId: 'sha256:source',
+      reviewedAt: '2026-08-01T00:00:00.000Z',
+      effectiveAt: '2026-08-01T00:00:00.000Z',
+      validUntil: '2026-08-30T00:00:00.000Z',
+      cacheInput: 'included' as const,
+      reasoning: 'separate' as const,
+      reasoningPerMillion: 5,
+    },
+  };
+  const receipt = {
+    id: 'retail',
+    stationId: 'local',
+    provider: 'acp',
+    model: 'model',
+    occurredAt: '2026-08-10T00:00:00.000Z',
+    inputTokens: 1_000_000,
+    outputTokens: 100_000,
+    cacheReadTokens: 200_000,
+    reasoningTokens: 50_000,
+    route: {
+      id: 'provider-direct',
+      modelRevision: 'r1',
+      tariffId: 'tariff-1',
+      provenance: {
+        authority: 'provider-reported' as const,
+        sourceRef: 'event:usage',
+      },
+    },
+    reportedCost: { amount: 0, currency: 'USD' },
+  };
+  const reader = new CatalogUsagePricingSnapshotReader([snapshot]);
+  const priced = stampUsageReceiptPrice(receipt, reader);
+  expect(priced.reportedCost?.amount).toBe(0);
+  expect(priced.retailEquivalent).toMatchObject({
+    state: 'available',
+    amount: 2.35,
+  });
+  expect(
+    stampUsageReceiptPrice(
+      { ...receipt, route: { ...receipt.route, id: 'openrouter' } },
+      reader,
+    ),
+  ).toMatchObject({
+    pricing: { status: 'unpriced' },
+    retailEquivalent: { state: 'unavailable', reason: 'route-unverified' },
+  });
+  expect(
+    stampUsageReceiptPrice(
+      { ...receipt, occurredAt: '2026-09-01T00:00:00.000Z' },
+      reader,
+    ).retailEquivalent,
+  ).toMatchObject({ state: 'stale', amount: 2.35 });
+  expect(
+    stampUsageReceiptPrice(
+      receipt,
+      new CatalogUsagePricingSnapshotReader([
+        {
+          ...snapshot,
+          publishedTariff: {
+            ...snapshot.publishedTariff,
+            reasoning: 'unknown',
+          },
+        },
+      ]),
+    ).retailEquivalent,
+  ).toMatchObject({ state: 'unavailable', reason: 'category-unverified' });
+});

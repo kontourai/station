@@ -1,0 +1,7 @@
+{
+  "revision": "0a6534af65d3b3c6afc91853595bd793ff87237e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Bounded prerequisite-wire review after0a6534af: private Docker response schema replaces manual server-field guards while public TelemetryCompanionPrerequisites shape, checked timestamp, explicit reasons and available versions remain unchanged. No environment or Docker details enter the pure contracts helper boundary; runtime service remains Node-owned.190 merged auth/scope/pane tests, server-test typecheck and actual local probe passed. No install or release authority inferred. This is no-prose-change review of this delta only, not a new full contracts audit.","inputs":["docs/reference/contracts.md","src-server/services/telemetry-companion.ts"]}
+  ]
+}

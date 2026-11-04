@@ -236,7 +236,7 @@ async function bindChatToProject(page: Page, project: string): Promise<void> {
     .getByRole('region', { name: 'Dock', exact: true })
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
-  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   // The start composer's project chip is remembered: choosing a project
   // binds the dock to it for new chats, which is what renders the dock's
@@ -274,7 +274,7 @@ for (const scenario of [
     // project-context row.
     await bindChatToProject(page, scenario.project);
     await expect(
-      page.getByRole('dialog', { name: 'New chat', exact: true }),
+      page.getByRole('region', { name: 'New chat', exact: true }),
     ).toBeHidden();
 
     const badge = page.locator('.chat-dock__project-badge');

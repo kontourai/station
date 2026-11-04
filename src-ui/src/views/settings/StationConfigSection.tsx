@@ -35,6 +35,7 @@ import type { ReactNode, Ref } from 'react';
 import type {
   SharingCounts,
   SharingDisclosure,
+  TelemetryChoiceAuthority,
 } from '../../components/UsageSharingChoices';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
@@ -58,6 +59,11 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
   // and the local device helper the Device pane dials.
   'host-runtime': [
     'terminalShell',
+    'terminalHistoryEnabled',
+    'terminalHistoryDirectory',
+    'terminalHistoryMaxAgeDays',
+    'terminalHistoryMaxTerminalMiB',
+    'terminalHistoryMaxTotalMiB',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
     'attachedSessionsOutsideProjects',
@@ -84,14 +90,18 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultMaxTurns',
     'defaultMaxOutputTokens',
     'defaultWorkspaceIsolation',
+    'noProjectChatFolder',
     'workspaceCheckpoints',
+    'checkoutStaleAfterCommits',
+    'checkoutStaleAfterDays',
     'usageLimitAutoResume',
+    'claudeArtifactsEnabled',
     'reviewGuidesEnabled',
     'reviewGuideModel',
     'reviewGuideInstructions',
   ],
   // The Station default this device's chat-font-size slider falls back to.
-  chat: ['defaultChatFontSize'],
+  chat: ['defaultChatFontSize', 'titleModel'],
 } as const satisfies Partial<Record<SettingsSectionId, readonly string[]>>;
 
 export type StationSettingsSectionId =
@@ -169,6 +179,8 @@ export function StationConfigSection({
   projectOverride,
   telemetryPublishers,
   telemetryDisclosure,
+  telemetryChoiceAuthority,
+  onTelemetryChoiceRetry,
   savedTelemetryChoices,
   telemetryStatusError,
   onTelemetryFeedback,
@@ -204,6 +216,10 @@ export function StationConfigSection({
   savedTelemetryChoices?: AppConfig['telemetryTier'];
   telemetryStatusError?: boolean;
   telemetryDisclosure?: SharingDisclosure;
+  /** See `TelemetryTierSettings`'s `choiceAuthority`. */
+  telemetryChoiceAuthority?: TelemetryChoiceAuthority;
+  /** Re-reads the disclosure after `telemetryChoiceAuthority` is `'error'`. */
+  onTelemetryChoiceRetry?: () => void;
   telemetryPublishers?: Partial<
     Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
@@ -288,6 +304,8 @@ export function StationConfigSection({
         onChange={onChange}
         publishers={telemetryPublishers}
         disclosure={telemetryDisclosure}
+        choiceAuthority={telemetryChoiceAuthority}
+        onChoiceRetry={onTelemetryChoiceRetry}
         counts={telemetryCounts}
         noticeRef={telemetryNoticeRef}
         noticeError={telemetryNoticeError}

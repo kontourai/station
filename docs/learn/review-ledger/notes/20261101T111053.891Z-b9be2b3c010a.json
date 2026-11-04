@@ -1,0 +1,7 @@
+{
+  "revision": "9f7d3387a831aaa86fe9534bab2f9120d9ef4edd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the TerminalSessions section's link to the SDK session store: the store's role (one socket per Station, resume, client of the gateway) is unchanged by the follow-up edits (refusal cause, frame buffer typing, comment wording).","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/terminal-session-store.ts"]}
+  ]
+}

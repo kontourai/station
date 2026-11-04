@@ -86,7 +86,7 @@ describe('startWebSocketListener', () => {
     link.onDrain((request) => {
       settled = request.connectionsSettled;
     });
-    const wss = startWebSocketListener('terminal', { port: 0, host: HOST }, {});
+    const wss = startWebSocketListener('voice', { port: 0, host: HOST }, {});
     cleanups.push(() => new Promise((resolve) => wss.close(resolve)));
     const port = await listening(wss);
     const accepted = once(wss, 'connection');

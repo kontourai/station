@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"SessionModelPicker gained an optional resetDisabledReason; this guide's agent configuration claims do not concern the picker reset. Unaffected.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

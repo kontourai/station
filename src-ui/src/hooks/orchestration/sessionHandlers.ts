@@ -1,4 +1,5 @@
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import type { ChatUIState } from '../../contexts/active-chats-state';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -46,10 +47,32 @@ export function handleSessionLifecycleEvent(
   const currentChat = activeChatsStore.getChatForExecutionSession(
     event.threadId,
   );
+  // #4162: a Session's engine connection is fixed when it starts, and the
+  // server stamps it on that Session's own `session.started`. Without this a
+  // successor Session on another connection kept its predecessor's id.
+  // Station's own engine runs on no connection.
+  const startedConnection: Partial<ChatUIState> =
+    event.method !== 'session.started'
+      ? {}
+      : typeof event.metadata?.connectionId === 'string'
+        ? {
+            agentConnectionId: event.metadata.connectionId,
+            agentConnectionObservedFor: event.threadId,
+          }
+        : event.provider === 'station-agent'
+          ? {
+              agentConnectionId: undefined,
+              agentConnectionObservedFor: event.threadId,
+            }
+          : {};
   activeChatsStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
+    ...(currentChat?.orchestrationProvider !== event.provider
+      ? { orchestrationDurability: undefined }
+      : {}),
     orchestrationSessionStarted: true,
+    ...startedConnection,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
@@ -151,6 +174,9 @@ export function handleSessionStateChangedEvent(
     status: event.to === 'running' && turnActive ? 'sending' : 'idle',
     provider: event.provider,
     orchestrationProvider: event.provider,
+    ...(chat?.orchestrationProvider !== event.provider
+      ? { orchestrationDurability: undefined }
+      : {}),
     orchestrationStatus:
       event.to === 'running' && !turnActive ? 'idle' : event.to,
     orchestrationSessionStarted: true,

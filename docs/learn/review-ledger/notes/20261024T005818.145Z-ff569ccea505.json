@@ -1,0 +1,7 @@
+{
+  "revision": "1f25459e83eedaeb4b6535c720d60a4472709550",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed maintained qualification entrypoint, private request/command intent custody, pinned Grafana Compose environment and exact-source runtime at 1f25459e83e. Runtime report /private/tmp/telemetry-grafana-1f254-runtime/report.json completed exit0: host schema/auth/network checks, authenticated DELTA2+3 queried through Grafana as5, source replay dedupe and product-only restore fence passed; cleanup confirmed no project listeners. Prior b93f runtime caught bundled Prometheus unload during unpinned startup update; preinstall and auto-update now disabled. Source-checkout synthetic diagnostic only; not installation authority, real Station export, trace query, durable backup/restore, versions, personal or native/release acceptance.","inputs":["deployment/telemetry/README.md","deployment/telemetry/compose.diagnostics.yaml","scripts/qualify-telemetry-companion.mjs"]}
+  ]
+}

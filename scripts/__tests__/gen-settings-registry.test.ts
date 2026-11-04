@@ -66,10 +66,16 @@ describe('settings registry generator', () => {
   test('the floor refuses to write a catalog one entry short', async () => {
     const scratch = mkdtempSync(join(tmpdir(), 'settings-registry-floor-'));
     const outputPath = join(scratch, 'settings-registry.json');
+    // Keyed rows first, so where a new row lands in the catalog cannot drop
+    // the slices below under the separate config-key floor.
+    const keyedFirst = [
+      ...sources.catalog.filter((entry) => entry.configKeys?.length),
+      ...sources.catalog.filter((entry) => !entry.configKeys?.length),
+    ];
     try {
       const short = {
         ...sources,
-        catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
+        catalog: keyedFirst.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
       };
       expect(short.catalog).toHaveLength(39);
       await expect(
@@ -85,7 +91,7 @@ describe('settings registry generator', () => {
         generateSettingsRegistry({
           sources: {
             ...sources,
-            catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES),
+            catalog: keyedFirst.slice(0, MINIMUM_REGISTRY_ENTRIES),
           },
           outputPath,
         }),
@@ -244,6 +250,12 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-max-turns': 'station',
   'default-max-output-tokens': 'station',
   'default-chat-font-size': 'station',
+  'chat-title-model': 'station',
+  'terminal-history': 'station',
+  'terminal-history-location': 'station',
+  'terminal-history-max-age': 'station',
+  'terminal-history-per-terminal': 'station',
+  'terminal-history-total': 'station',
   'terminal-shell': 'station',
   'mcp-ui-host': 'station',
   'surface-trust': 'station',
@@ -252,7 +264,12 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
   'usage-limit-auto-resume': 'station',
+  'claude-artifacts': 'station',
   'default-workspace-isolation': 'station',
+  // #4389: where chats without a project run.
+  'no-project-chat-folder': 'station',
+  'browser-project-settings': 'station',
+  'device-setup': 'station',
   'device-hosts': 'station',
   'default-approval-mode': 'station',
   'registry-url': 'station',
@@ -270,10 +287,13 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-flow': 'device',
   'experimental-readiness': 'device',
   'experimental-trust': 'device',
+  'experimental-station-routes': 'device',
+  'experimental-sheet-gestures': 'device',
   'shared-answers': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
   'diagnostics-bundle': 'informational',
+  'diagnostics-troubleshoot': 'informational',
   'default-model': 'defaults',
   'default-region': 'defaults',
   'default-agent-instructions': 'defaults',
@@ -282,12 +302,15 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'smooth-answer-reveal': 'account',
   'chat-show-reasoning': 'account',
   'chat-show-tool-details': 'account',
+  'checkout-stale-after-commits': 'station',
+  'checkout-stale-after-days': 'station',
   'chat-dock-auto-hide': 'account',
   'chat-auto-float-browser': 'device',
   'diff-style': 'account',
   'diff-wrap': 'account',
   theme: 'account',
   'haptic-feedback': 'device',
+  'terminal-screen-reader': 'device',
   'confirm-conversation-delete': 'account',
   'accent-color': 'account',
   'keyboard-shortcuts': 'device',
@@ -298,11 +321,16 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'voice-pill': 'device',
   'mobile-pairing': 'informational',
   'lan-discovery': 'station',
+  'station-routes': 'device',
   'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
   // #3557: groups and personal access tokens are stored on the Station.
   people: 'station',
+  // Settings → About: build facts and links, nothing written.
+  'app-version': 'informational',
+  'open-source-licenses': 'informational',
+  legal: 'informational',
 };
 
 describe('published write authority', () => {

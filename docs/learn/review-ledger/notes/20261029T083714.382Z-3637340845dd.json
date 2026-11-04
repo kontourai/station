@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited: claimIntegrationOAuthIssuerPin and .station-oauth-issuer. Checked against config-loader-storage.ts and tool-server-oauth.ts. Other inputs: the module map adds the per-resource OAuth issuer pin (.station-oauth-issuer) for integrations without a declared issuer; storage adds read/claim functions for .station-oauth-issuer and refuses plugin bundles carrying it; station-runtime.ts only validates STATION_OAUTH_CLIENT_METADATA_URL at construction (a malformed value refuses startup); mcp-manager.ts passes the Station home to the OAuth client config so providers read the issuer pin; mcp-service.ts passes the home to the OAuth client config, records an explicit scope choice for remembering, and returns rememberedScopes in account status.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-storage.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f98d3d8036428bf25e2225f02639b7134db2b628",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 2 of #4279: issuer required with any client ID (public mix-up rationale), optional issuer pinning registration, writer-wide enforcement including registry installs/imports, RFC 9207 iss checks, and a precise Known limit for DCR without a declared issuer when the honest server omits iss. Checked against tool-server-oauth.ts, integration-oauth-client-invariants.ts and the round-2 tests (mix-up, RFC 9207, registry route, install helper). Other inputs: the connections guide documents the round-2 mix-up rules, RFC 9207 and the remaining DCR limit; the provider requires a declared issuer for every pre-registered client, enforces a declared issuer for registration too, refuses duplicate iss, and re-registers when scopes outgrow a registration.","inputs":["docs/guides/connections.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

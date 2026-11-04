@@ -52,7 +52,11 @@
 
     "src-server/routes/outside-agent/consent-routes.ts",
 
-    "src-server/security/outside-agent-release-guard.ts"
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "src-server/runtime/routes/project-sharing-step-up.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-sharing-step-up.test.ts"
   ],
 
   "checks": [

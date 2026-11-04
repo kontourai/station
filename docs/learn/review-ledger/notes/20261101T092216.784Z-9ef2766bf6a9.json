@@ -1,0 +1,7 @@
+{
+  "revision": "ddd0bee6de13a456e2ecfee5cd267c2981826c56",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Searched this document for claims about the changed behavior Changed sources: the shared package adds a ./windows-system-utility export. No remaining claim here contradicts them.","inputs":["docs/architecture.md","packages/shared/package.json#/exports"]}
+  ]
+}

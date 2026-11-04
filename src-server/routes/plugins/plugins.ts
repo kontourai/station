@@ -68,6 +68,7 @@ export function createPluginRoutes(
   logger: Logger,
   eventBus?: EventBus,
   runtime?: {
+    recoveryInventoryPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
     onTelemetryRemoval?: (
       publisher: TelemetryPublisherId,
       reason?: TelemetryFeedbackReason,
@@ -375,6 +376,7 @@ export function createPluginRoutes(
     projectHomeDir,
   });
   registerPluginInstallRoutes(app, {
+    recoveryInventoryPreview: runtime?.recoveryInventoryPreview,
     registryTrustPolicyAuthority: runtime?.registryTrustPolicyAuthority,
     packageMcpJournal: runtime?.packageMcpJournal,
     installationHost: runtime?.installationHost,

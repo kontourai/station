@@ -37,6 +37,7 @@ interface Sent {
 class FakeChannel extends EventEmitter {
   readonly env: NodeJS.ProcessEnv;
   connected = true;
+  writable = true;
   readonly sent: Sent[] = [];
   readonly exit = vi.fn((_code: number) => {});
   readonly send = vi.fn(
@@ -48,7 +49,7 @@ class FakeChannel extends EventEmitter {
     ) => {
       this.sent.push({ message, handle });
       callback?.(null);
-      return true;
+      return this.writable;
     },
   );
 
@@ -219,7 +220,7 @@ describe('first generation: promote with no listeners', () => {
   it('sends ready only after every started listener has settled', async () => {
     const channel = new FakeChannel();
     const link = await promoted(channel);
-    const listening = link.listen('terminal', okServer(), {
+    const listening = link.listen('voice', okServer(), {
       port: 0,
       host: HOST,
     });
@@ -274,11 +275,11 @@ describe('later generation: promote with held listeners', () => {
     const channel = new FakeChannel();
     const link = quietLink(channel, { adoptTimeoutMs: 20 });
     const parked = link.park();
-    channel.deliver({ type: 'promote', listeners: ['api', 'terminal'] });
-    const terminal = { close: vi.fn() };
-    channel.deliver({ type: 'listener.adopt', name: 'terminal' }, terminal);
+    channel.deliver({ type: 'promote', listeners: ['api', 'voice'] });
+    const voice = { close: vi.fn() };
+    channel.deliver({ type: 'listener.adopt', name: 'voice' }, voice);
     await expect(parked).rejects.toThrow(/never sent: api/);
-    expect(terminal.close).toHaveBeenCalledTimes(1);
+    expect(voice.close).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -445,7 +446,7 @@ describe('drain', () => {
       link.upgraded(socket as net.Socket);
       socket.write('HTTP/1.1 101 Switching Protocols\r\n\r\n');
     });
-    const { port } = await link.listen('terminal', server, {
+    const { port } = await link.listen('voice', server, {
       port: 0,
       host: HOST,
     });
@@ -654,41 +655,65 @@ describe('supervisor disconnect', () => {
 });
 
 describe('handoff requests', () => {
-  it('settles on handoff.refused and on this generation draining', async () => {
+  it.each([true, false])(
+    'settles on handoff.refused and draining with IPC writable=%s',
+    async (writable) => {
+      const channel = new FakeChannel();
+      const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
+      channel.writable = writable;
+      link.onDrain(() => {});
+      const refused = link.requestHandoff({ entry: '/build/next.js' });
+      const request = channel.sent.at(-1)?.message;
+      expect(request).toMatchObject({
+        type: 'handoff.request',
+        entry: '/build/next.js',
+      });
+      channel.deliver({
+        type: 'handoff.refused',
+        requestId: request?.requestId,
+        reason: 'busy',
+      });
+      await expect(refused).resolves.toEqual({
+        status: 'refused',
+        reason: 'busy',
+      });
+      const accepted = link.requestHandoff();
+      channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+      await expect(accepted).resolves.toEqual({ status: 'draining' });
+    },
+  );
+
+  it('waits for a backpressured drained message to flush before resolving', async () => {
     const channel = new FakeChannel();
-    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
-    link.onDrain(() => {});
-    const refused = link.requestHandoff({ entry: '/build/next.js' });
-    const request = channel.sent.at(-1)?.message;
-    expect(request).toMatchObject({
-      type: 'handoff.request',
-      entry: '/build/next.js',
-    });
-    channel.deliver({
-      type: 'handoff.refused',
-      requestId: request?.requestId,
-      reason: 'busy',
-    });
-    await expect(refused).resolves.toEqual({
-      status: 'refused',
-      reason: 'busy',
-    });
-    const accepted = link.requestHandoff();
-    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
-    await expect(accepted).resolves.toEqual({ status: 'draining' });
+    const link = quietLink(channel);
+    let flushed: ((error: Error | null) => void) | undefined;
+    channel.send.mockImplementationOnce(
+      (_message, _handle, _options, callback) => {
+        flushed = callback;
+        return false;
+      },
+    );
+    const done = vi.fn();
+    const pending = link.reportDrained().then(done);
+    await Promise.resolve();
+    expect(done).not.toHaveBeenCalled();
+    expect(flushed).toBeTypeOf('function');
+    flushed?.(null);
+    await pending;
+    expect(done).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('handoff events (protocol 1.2)', () => {
   afterEach(() => installListenerLink(null));
 
-  it('announces handoff-events when it parks', async () => {
+  it('announces handoff-events (and, protocol 1.3, workloads) when it parks', async () => {
     const channel = new FakeChannel();
     await promoted(channel);
     expect(channel.sent[0]?.message).toEqual({
       type: 'parked',
       adoptsConnections: true,
-      capabilities: ['handoff-events'],
+      capabilities: ['handoff-events', 'workloads'],
     });
   });
 
@@ -919,6 +944,29 @@ describe('connection catching (protocol 1.1)', () => {
     const notASocket = { close: vi.fn() };
     channel.deliver({ type: 'connection.adopt', name: 'api' }, notASocket);
     expect(notASocket.close).toHaveBeenCalled();
+  });
+
+  it('parks under an older supervisor that still holds the retired terminal listener, closing its copy', async () => {
+    const channel = new FakeChannel();
+    const held = await rawListeningHandle();
+    const terminal = { close: vi.fn() };
+    const link = await promoted(channel, ['api', 'terminal'], {
+      api: held.handle,
+      terminal,
+    });
+    expect(terminal.close).toHaveBeenCalledTimes(1);
+    const { port } = await link.listen('api', okServer(), {
+      port: 0,
+      host: HOST,
+    });
+    expect(port).toBe(held.port);
+    const stray = await heldConnection(GET_CLOSE);
+    channel.deliver(
+      { type: 'connection.adopt', name: 'terminal' },
+      stray.socket,
+    );
+    expect(await stray.reply).toBe('');
+    expect(stray.socket.destroyed).toBe(true);
   });
 
   it('waits for an adopted connection to finish its request before a drain settles, though net.Server does not count it', async () => {

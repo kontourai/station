@@ -1,0 +1,7 @@
+{
+  "revision": "333fcda1c0982ac881085c27a2721c17b7b51dca",
+
+  "notes": [
+    {"path":"README.md","note":"privacy-inventory renderer now emits #4325's passkey sentence already in docs/privacy-policy.md; README's privacy pointer unchanged.","inputs":["README.md","src-server/services/privacy-inventory.ts"]}
+  ]
+}

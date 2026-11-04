@@ -53,11 +53,13 @@ export function withShortcutHint(
 export type ShortcutContextKey =
   | 'composerFocused'
   | 'terminalFocused'
+  | 'browserFocused'
   | 'dialogOpen'
   | 'dockFocused';
 export const SHORTCUT_CONTEXT_KEYS: readonly ShortcutContextKey[] = [
   'composerFocused',
   'terminalFocused',
+  'browserFocused',
   'dialogOpen',
   'dockFocused',
 ];
@@ -111,7 +113,7 @@ const RESERVED_SHORTCUT_IDS: ReadonlySet<string> = new Set(
  * The physical chord a binding fires on this platform: off a Mac, `cmd` IS
  * Control (see the dispatcher), so `cmd+k` and `ctrl+k` are one chord there.
  */
-function effectiveChordSignature(
+export function effectiveChordSignature(
   binding: { key: string; modifiers: readonly ShortcutModifier[] },
   mac: boolean = isMac,
 ): string {
@@ -256,7 +258,38 @@ export function formatShortcutChord(
     if (modifier === 'alt') return mac ? '⌥' : 'Alt+';
     return '';
   });
-  return symbols.join('') + key.toUpperCase();
+  return symbols.join('') + formatShortcutKey(key);
+}
+
+/**
+ * Named keys keep their keycap spelling (`Esc`, `Enter`) rather than the
+ * `KeyboardEvent.key` name shouted in capitals (#4383: `ESCAPE` beside
+ * `Ctrl+K`). Single characters stay upper-case.
+ */
+const NAMED_KEY_LABELS: Readonly<Record<string, string>> = {
+  escape: 'Esc',
+  enter: 'Enter',
+  tab: 'Tab',
+  backspace: 'Backspace',
+  delete: 'Delete',
+  space: 'Space',
+  ' ': 'Space',
+  arrowup: '↑',
+  arrowdown: '↓',
+  arrowleft: '←',
+  arrowright: '→',
+  pageup: 'Page Up',
+  pagedown: 'Page Down',
+  home: 'Home',
+  end: 'End',
+};
+
+function formatShortcutKey(key: string): string {
+  const named = NAMED_KEY_LABELS[key.toLowerCase()];
+  if (named) return named;
+  if (key.length === 1) return key.toUpperCase();
+  // F-keys and other named keys: first letter capitalised, as typed (`F5`).
+  return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
 export function orderShortcuts(
@@ -283,7 +316,7 @@ export function findShortcutConflicts(
 ): ShortcutConflict[] {
   const byChord = new Map<string, KeyboardShortcut[]>();
   for (const shortcut of shortcuts) {
-    if (shortcut.disabled) continue;
+    if (shortcut.disabled || !shortcut.key) continue;
     const chord = [
       ...[...shortcut.modifiers].sort(),
       shortcut.key.toLowerCase(),
@@ -308,6 +341,61 @@ export function findShortcutConflicts(
   return conflicts.sort((a, b) => a.chord.localeCompare(b.chord));
 }
 
+const TEXT_ENTRY_SELECTOR =
+  'textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]';
+/** `<input>` types that hold no editable text: Cut/Copy/Undo mean nothing there. */
+const NON_TEXT_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'hidden',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+]);
+
+function isTextEntryTarget(element: Element | null): boolean {
+  if (!element) return false;
+  if (element instanceof HTMLInputElement) {
+    return !NON_TEXT_INPUT_TYPES.has(element.type);
+  }
+  return element.matches(TEXT_ENTRY_SELECTOR);
+}
+
+const EDITING_CHORD_SIGNATURES = new Map(
+  EDITING_RESERVED_CHORDS.map((entry) => [
+    effectiveChordSignature(entry.binding),
+    entry.id,
+  ]),
+);
+
+/**
+ * #4383: a Station command bound to a text-editing chord (Ctrl+X close,
+ * Ctrl+C cancel, a configured Ctrl+Z undo) must not take the chord from the
+ * place the user is editing. Inside a text field every editing chord belongs
+ * to the field; and Copy/Cut belong to any live text selection, so copying
+ * transcript text never cancels a running turn.
+ */
+function editingChordOwnsKey(
+  shortcut: KeyboardShortcut,
+  targetElement: Element | null,
+  ownerDocument: Document,
+): boolean {
+  const editingId = EDITING_CHORD_SIGNATURES.get(
+    effectiveChordSignature(shortcut),
+  );
+  if (!editingId) return false;
+  if (isTextEntryTarget(targetElement)) return true;
+  if (editingId !== 'editing.copy' && editingId !== 'editing.cut') return false;
+  const selection = ownerDocument.getSelection?.();
+  return Boolean(
+    selection && !selection.isCollapsed && selection.toString().length > 0,
+  );
+}
+
 /**
  * The live dispatcher must call this modal/input guard. An earlier replacement
  * left it tested but unused, reopening the modal leak (archive#3767, archive#2579).
@@ -319,8 +407,24 @@ export function shouldIgnoreShortcut(
   if (event.defaultPrevented) return true;
   const target = event.target;
   const targetElement = target instanceof Element ? target : null;
+  if (
+    targetElement?.closest('[data-live-surface-keyboard]') &&
+    shortcut.id !== 'browser.screenshot'
+  )
+    return true;
   const ownerDocument = targetElement?.ownerDocument ?? document;
   if (isModalDialogOpen(ownerDocument)) return true;
+  if (editingChordOwnsKey(shortcut, targetElement, ownerDocument)) return true;
+  // A chord with no Cmd/Ctrl/Alt on a printable key (`?`) is a character the
+  // user is typing whenever a text field has focus (#4407).
+  if (
+    shortcut.key.length === 1 &&
+    !shortcut.modifiers.some(
+      (m) => m === 'cmd' || m === 'ctrl' || m === 'alt',
+    ) &&
+    isTextEntryTarget(targetElement)
+  )
+    return true;
   if (shortcut.key.toLowerCase() === 'escape') {
     if (ownerDocument.querySelector('[data-escape-owner]')) return true;
     return Boolean(
@@ -564,8 +668,29 @@ export function KeyboardShortcutsProvider({
       }
     };
 
+    const handlePageScreenshot = (event: KeyboardEvent) => {
+      if (
+        !(event.target instanceof Element) ||
+        !event.target.closest('[data-live-surface-keyboard]')
+      )
+        return;
+      const primary = isMac
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey;
+      if (
+        primary &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 's'
+      )
+        handleKeyDown(event);
+    };
+    window.addEventListener('keydown', handlePageScreenshot, true);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handlePageScreenshot, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [resolveShortcut, reservedChords]);
 
   const store = useMemo<ShortcutRegistryStore>(

@@ -1,8 +1,11 @@
 #!/usr/bin/env tsx
+
 import {
   mintLocalBrowserToken,
   runOpenCommand,
 } from './commands/local-browser.js';
+import { runMediaToolsCommand } from './commands/media-tools.js';
+import { runPolicyCommand } from './commands/policy.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -43,6 +46,9 @@ import {
   configureRequestTimeout,
   getResolvedApiBase,
   parseCoreArgs,
+  printJson,
+  requestJson,
+  resolveApiBase,
 } from './commands/core-api.js';
 import { runDevCommand } from './commands/dev-command.js';
 import {
@@ -113,7 +119,11 @@ import {
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
-import { runTriageCommand } from './commands/triage.js';
+import {
+  runTriageCommand,
+  runTriageDraftReport,
+  type TriageDependencies,
+} from './commands/triage.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
@@ -359,6 +369,11 @@ export interface CliDependencies {
   }) => Promise<PlaybookSkillMigrationSummary>;
   /** Source-only diagnostic callback for `station triage`; never bundled. */
   collectTriageDoctorReport?: () => Promise<unknown>;
+  /** Test seam: `station triage` agent probe, launch and consent prompt. */
+  triage?: Pick<
+    TriageDependencies,
+    'confirmIssueSearch' | 'launchAgent' | 'probeAgent'
+  >;
   /** Exact source revision supplied by the checkout launcher when available. */
   sourceRevision?: () => string | undefined;
 }
@@ -400,6 +415,7 @@ export interface PlaybookSkillMigrationSummary {
 const CORE_COMMANDS = [
   'agents',
   'sessions',
+  'activity',
   'approvals',
   'operate',
   'delegate',
@@ -407,7 +423,9 @@ const CORE_COMMANDS = [
   'tasks',
   'skills',
   'secret-bindings',
+  'mcp-clients',
   'conversation',
+  'claims',
   'chat',
 ] as const;
 
@@ -418,15 +436,18 @@ const SURFACE_COMMANDS = [
   'notifications',
   'monitoring',
   'schedule',
+  'automation',
   'runs',
   'review',
   'knowledge',
+  'walkthrough',
   'auth',
   'branding',
   'feedback',
   'insights',
   'acp',
   'voice',
+  'workload',
 ] as const;
 
 const INDIVIDUAL_COMMANDS = [
@@ -448,6 +469,8 @@ const INDIVIDUAL_COMMANDS = [
   'shortcut',
   'config',
   'telemetry',
+  'media-tools',
+  'policy',
   'checkpoints',
   'environment',
   'export',
@@ -785,9 +808,16 @@ function buildProgram(
   register('target', (rawArgs) => runTargetCommand(rawArgs));
   register('open', (rawArgs) => runOpenCommand(rawArgs));
   register('triage', async (rawArgs) => {
+    if (rawArgs[0] === 'draft-report') {
+      await runTriageDraftReport(rawArgs.slice(1));
+      return;
+    }
     await runTriageCommand(rawArgs, {
+      ...dependencies.triage,
       collectSourceDoctorReport: dependencies.collectTriageDoctorReport,
-      isInteractive: interactive,
+      // `interactive` reflects stdin only; an interactive agent also needs
+      // stdout to be a terminal.
+      isInteractive: interactive && Boolean(process.stdout.isTTY),
       sourceRevision: dependencies.sourceRevision,
     });
   });
@@ -829,6 +859,23 @@ function buildProgram(
       case 'list': {
         const parsed = parseCoreArgs(subArgs);
         await list(parsed);
+        break;
+      }
+      case 'recovery-backups': {
+        const parsed = parseCoreArgs(subArgs);
+        try {
+          const result = await requestJson(
+            resolveApiBase(parsed),
+            '/api/plugins/recovery-backups',
+          );
+          printJson(result);
+        } catch (error) {
+          if ((error as { status?: number }).status === 404)
+            throw new Error(
+              'This Station does not support recovery backup inventory; update the Station.',
+            );
+          throw error;
+        }
         break;
       }
       case 'remove': {
@@ -1279,6 +1326,8 @@ function buildProgram(
   });
 
   register('telemetry', runTelemetryCommand);
+  register('media-tools', runMediaToolsCommand);
+  register('policy', runPolicyCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

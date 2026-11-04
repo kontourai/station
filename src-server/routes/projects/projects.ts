@@ -32,6 +32,11 @@ import {
   type ProjectConfig,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  PROJECT_CHECKOUT_FRESHNESS_PREVIEW_ID,
+  type ProjectCheckoutFreshness,
+} from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
   ProjectMemberAction,
@@ -65,12 +70,14 @@ import {
 import {
   isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
+  mayGrantFullAccess,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
   layoutPluginBindingWithheld,
@@ -109,7 +116,10 @@ import {
   type ProjectManifestReader,
 } from '../../services/projects/project-resource-binder.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
-import type { ProjectService } from '../../services/projects/project-service.js';
+import {
+  ProjectFullAccessDefaultRefusal,
+  type ProjectService,
+} from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import {
   RepositoryAcquisitionConflict,
@@ -117,7 +127,6 @@ import {
 } from '../../services/projects/repository-acquisition-service.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import {
   projectBindingOperations,
   projectOps,
@@ -297,8 +306,19 @@ interface ProjectRouteDeps {
   layoutCatalog?: DistributionProfileService;
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
   kitObservabilityRegistry?: StationKitObservabilityRegistry;
-  /** Project-scoped terminal termination; the route supplies the identity. */
-  terminalService?: Pick<TerminalService, 'closeForProject'>;
+  /**
+   * #3994: a session id the terminal socket issued (a UUID) closes in
+   * TerminalSessions, under the caller's own terminal authority and only
+   * inside this Project. `false` when it is not this Project's session or
+   * the caller may not operate it.
+   */
+  closeScopedTerminal?: (
+    request: Request,
+    projectId: string,
+    terminalId: string,
+  ) => Promise<boolean>;
+  /** #3994: ends a deleted Project's running terminal sessions. */
+  endProjectTerminals?: (projectId: string) => Promise<number | undefined>;
   /**
    * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
@@ -348,6 +368,26 @@ interface ProjectRouteDeps {
    * availability from it; absent means unknown, which fails closed.
    */
   browserPaneDeployment?: 'supported' | 'unsupported';
+  /**
+   * What a new chat in a Project starts with for the request's caller
+   * (`ProjectChatDefaultsService.view`). Absent: `GET /:slug/chat-defaults`
+   * answers 501 rather than inventing a view.
+   */
+  chatDefaults?: (
+    c: Context,
+    project: ProjectConfig,
+    /** The caller's own full-access proof, decided by this route. */
+    options: { mayGrantFullAccess: boolean },
+  ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
+  /**
+   * How far the Project's checkout is behind its upstream, behind the
+   * `stale-project-checkout` preview. Absent: `GET /:slug/checkout-freshness`
+   * answers 501.
+   */
+  checkoutFreshness?: {
+    preview: FeaturePreviewSelector;
+    read: (project: ProjectConfig) => Promise<ProjectCheckoutFreshness>;
+  };
 }
 
 /**
@@ -897,6 +937,25 @@ export function createProjectRoutes(
   }
 
   /**
+   * A Project's new-chat approval mode at full access (`never`) puts every new
+   * chat there at full access, as the Station default does, so raising it
+   * takes the grant raising the Station default takes (`PUT /config/app`,
+   * #2436): the operator in person or a device holding `approval:full-access`.
+   * At create there is nothing to raise from; an update is checked by
+   * `ProjectService.updateProject` against the revision it replaces, and a
+   * resent `never` the Project already has is not a raise there.
+   */
+  function mayRaiseFullAccessDefault(c: Context): boolean {
+    return mayGrantFullAccess(
+      c.req.raw,
+      grantedPairingScope(c as unknown as PairingScopeContextStore),
+    );
+  }
+
+  const FULL_ACCESS_DEFAULT_REFUSAL =
+    'Starting new chats at full access needs full-access permission. No changes were saved.';
+
+  /**
    * #2412 review: a Project's working directory is what every coding route
    * is confined to, so whoever may set it decides where the coding routes
    * read, edit and run. Setting it (create) or changing it (update) is
@@ -1118,6 +1177,11 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
+      if (body.defaultApprovalMode === 'never' && !mayRaiseFullAccessDefault(c))
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       if (body.starterLayoutId !== undefined && !body.creationRequestId)
         return c.json(
           {
@@ -1301,6 +1365,76 @@ export function createProjectRoutes(
     }
   });
 
+  // What a new chat here starts with, for the caller. A shared member reads
+  // it too: the session start applies the same Project layer to a member's
+  // chat, so the member's composer must show what will apply. The view holds
+  // only the Project's new-chat selections and the caller's own last-used
+  // values, never another person's.
+  app.get('/:slug/chat-defaults', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (
+        memberAdmission === null ||
+        (memberAdmission && memberAdmission.scope.localProjectId !== project.id)
+      )
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (!deps.chatDefaults)
+        return c.json(
+          { success: false, error: 'Project chat defaults are unavailable.' },
+          501,
+        );
+      return c.json({
+        success: true,
+        data: await deps.chatDefaults(c, project, {
+          mayGrantFullAccess: mayRaiseFullAccessDefault(c),
+        }),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
+  // Whether the Project's checkout is far behind its upstream. The answer
+  // names a host path and a command to run there, so a shared member is
+  // answered as if the Project did not exist, like any other owner-only read.
+  app.get('/:slug/checkout-freshness', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      if ((await deps.memberProjectAdmission?.(c, slug)) !== undefined)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      const freshness = deps.checkoutFreshness;
+      if (!freshness)
+        return c.json(
+          { success: false, error: 'Checkout freshness is unavailable.' },
+          501,
+        );
+      return await freshness.preview.select<Promise<Response>>({
+        enabled: async () =>
+          c.json({ success: true, data: await freshness.read(project) }),
+        disabled: async () =>
+          c.json(
+            {
+              success: false,
+              error:
+                'Enable Stale checkout warning in Settings → Advanced → Feature previews.',
+              code: 'feature_preview_disabled',
+              previewId: PROJECT_CHECKOUT_FRESHNESS_PREVIEW_ID,
+              settingsPath:
+                '/settings?view=feature-previews&highlight=feature-previews',
+            },
+            404,
+          ),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
   // Update project
   app.put('/:slug', validate(projectUpdateSchema), async (c) => {
     try {
@@ -1345,10 +1479,17 @@ export function createProjectRoutes(
         async () => projectService.getProject(slug),
       );
       if (folderRefusal) return folderRefusal;
-      const updated = await projectService.updateProject(slug, body);
+      const updated = await projectService.updateProject(slug, body, {
+        mayRaiseFullAccessDefault: mayRaiseFullAccessDefault(c),
+      });
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });
     } catch (error: unknown) {
+      if (error instanceof ProjectFullAccessDefaultRefusal)
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
@@ -1360,8 +1501,22 @@ export function createProjectRoutes(
   app.delete('/:slug', async (c) => {
     try {
       const slug = param(c, 'slug');
+      let projectId: string | undefined;
+      try {
+        projectId = storageAdapter.getProject(slug).id;
+      } catch {
+        // The delete below reports the missing Project.
+      }
       await projectService.deleteProject(slug);
       projectOps.add(1, { op: 'delete' });
+      // The Project is gone either way; a shell that will not end is logged,
+      // not reported as a failed delete.
+      if (projectId && deps.endProjectTerminals)
+        await deps.endProjectTerminals(projectId).catch((error: unknown) =>
+          logger.error("Ending a deleted Project's terminals failed", {
+            error: errorMessage(error),
+          }),
+        );
       return c.json({ success: true }, 200);
     } catch (error: unknown) {
       return c.json(
@@ -1372,9 +1527,9 @@ export function createProjectRoutes(
   });
 
   /**
-   * Explicit terminal termination belongs to the TerminalService. The route
-   * first resolves the Project selected by the URL, then passes only that
-   * route-bound slug plus the terminal id to the service. A renderer cannot
+   * Explicit terminal termination belongs to the terminal sessions. The
+   * route first resolves the Project selected by the URL, then passes only
+   * that route-bound Project plus the terminal id to them. A renderer cannot
    * close an arbitrary raw session id, and mounting a terminal renderer is
    * not a prerequisite for this operation.
    */
@@ -1385,27 +1540,27 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('project slug', slug);
       assertSafeLayoutPathSegment('terminal id', terminalId);
 
+      let projectId: string;
       try {
-        storageAdapter.getProject(slug);
+        projectId = storageAdapter.getProject(slug).id;
       } catch {
         return c.json({ success: false, error: 'Project not found' }, 404);
       }
 
-      if (!deps.terminalService) {
+      if (!deps.closeScopedTerminal) {
         return c.json(
           { success: false, error: 'Terminal service is unavailable' },
           503,
         );
       }
-
-      const closed = await deps.terminalService.closeForProject(
-        slug,
-        terminalId,
-      );
-      if (!closed) {
-        return c.json({ success: false, error: 'Terminal not found' }, 404);
-      }
-      return c.json({ success: true, data: closed });
+      // Refusal and absence answer alike: an id outside this Project
+      // discloses nothing about the session it names.
+      return (await deps.closeScopedTerminal(c.req.raw, projectId, terminalId))
+        ? c.json({
+            success: true,
+            data: { sessionId: terminalId, projectSlug: slug, terminalId },
+          })
+        : c.json({ success: false, error: 'Terminal not found' }, 404);
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -1754,6 +1909,38 @@ export function createProjectRoutes(
       });
     }
   });
+
+  // This leaf is authorized as manage-extensions by the runtime Project guard.
+  app.put(
+    '/:slug/layout-policy',
+    validate(
+      z
+        .object({
+          personalLayouts: z.enum(['off', 'project-panes', 'allowed-plugins']),
+          personalLayoutAllowedPlugins: z.array(z.string().min(1)).optional(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        assertSafeLayoutPathSegment('project slug', slug);
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
 
   // Create layout
   app.post('/:slug/layouts', validate(projectLayoutCreateSchema), async (c) => {
@@ -2418,8 +2605,8 @@ export function createProjectRoutes(
  */
 function withoutClientLayoutOwner<T extends Record<string, unknown>>(
   value: T,
-): Omit<T, 'owner'> {
-  const { owner: _owner, ...withoutOwner } = value;
+): Omit<T, 'owner' | 'subject'> {
+  const { owner: _owner, subject: _subject, ...withoutOwner } = value;
   return withoutOwner;
 }
 

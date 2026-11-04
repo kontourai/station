@@ -1,5 +1,7 @@
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   rmSync,
   statSync,
@@ -74,5 +76,33 @@ describe('engine-spawn-tmpdir (station#1908)', () => {
     const dir = engineSpawnTmpDirPath(home);
     expect(existsSync(dir)).toBe(false);
     expect(reapEngineSpawnTmpDir(dir, 60_000)).toBe(0);
+  });
+
+  test('the spawn directory and its tmp parent are owner-only even under a permissive umask', () => {
+    const home = makeHome();
+    let previous: number | undefined;
+    try {
+      previous = process.umask(0o002);
+    } catch {
+      previous = undefined; // a worker without umask control: created dirs keep the default
+    }
+    try {
+      const dir = ensureEngineSpawnTmpDir(home);
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(join(home, 'tmp')).mode & 0o777).toBe(0o700);
+    } finally {
+      if (previous !== undefined) process.umask(previous);
+    }
+  });
+
+  test('an existing group-writable spawn directory is tightened', () => {
+    const home = makeHome();
+    const dir = engineSpawnTmpDirPath(home);
+    mkdirSync(dir, { recursive: true });
+    chmodSync(dir, 0o775);
+    chmodSync(join(home, 'tmp'), 0o775);
+    ensureEngineSpawnTmpDir(home);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(home, 'tmp')).mode & 0o777).toBe(0o700);
   });
 });

@@ -5,6 +5,8 @@ import type {
 import type { AddJobOpts } from '@kontourai/station-contracts/scheduler';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
+import { hasCapability } from '../capability';
+import { readPublicStationCapabilities } from '../client/publicStationCapabilities';
 import { getRun, listRuns } from '../client/runs';
 import {
   createJob,
@@ -51,6 +53,29 @@ export function useSchedulerJobs() {
       return listJobs(apiBase);
     },
     { staleTime: 30_000 },
+  );
+}
+
+/**
+ * Whether the host runs automations in a conversation, on any engine
+ * (`scheduledConversationTarget`). `null`: its public handshake could not be
+ * read, so support is undetermined. A host without it runs only
+ * Station-engine jobs, so a client offers other engines only on `true`.
+ */
+async function fetchScheduledConversationTargetCapability(
+  apiBase: string,
+): Promise<boolean | null> {
+  const handshake = await readPublicStationCapabilities(apiBase);
+  return handshake
+    ? hasCapability(handshake, 'scheduledConversationTarget')
+    : null;
+}
+
+export function useScheduledConversationTargetCapability() {
+  return useApiQuery(
+    ['scheduler', 'conversation-target-capability'],
+    async () => fetchScheduledConversationTargetCapability(await _getApiBase()),
+    { staleTime: 10_000, refetchInterval: 10_000, retry: false },
   );
 }
 

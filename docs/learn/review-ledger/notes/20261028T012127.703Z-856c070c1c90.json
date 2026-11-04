@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Copy-only delta in OnboardingGate pairing review line (restores the no-resend fact). No native capability, permission or bridge behavior changed; prose accurate.","inputs":["docs/design/native-capabilities.md","src-ui/src/components/OnboardingGate.tsx"]}
+  ]
+}

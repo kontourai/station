@@ -82,7 +82,7 @@ export function NativeRelayConnectionRecovery({
         <p role="status">
           {pending
             ? 'Some saved connections could not be removed yet. Keep this screen open and ask the Station owner for help before continuing.'
-            : 'Saved connections removed. Continue to device approval; account sign-in and shared Project access are separate steps.'}
+            : 'Saved connections removed. Continue to device approval.'}
         </p>
       )}
       {result && result.outcomes.length > 0 ? (

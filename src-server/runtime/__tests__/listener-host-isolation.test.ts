@@ -3,7 +3,6 @@ import { createServer as createTcpServer, type Server, Socket } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
-import { TerminalWebSocketServer } from '../../services/terminal/terminal-ws-server.js';
 
 const LOOPBACK = '127.0.0.1';
 const CONNECT_TIMEOUT_MS = 1_000;
@@ -79,7 +78,7 @@ describe('explicit Station WebSocket listener host isolation', () => {
   // Covers the listeners Station binds itself from a caller-supplied host. The
   // API and UI sockets are bound by @hono/node-server and the CLI's own
   // `listen`; this file does not resolve the production host for any of them.
-  it('terminal and voice honour an explicit loopback host and refuse a control-proven non-loopback route', async () => {
+  it('voice honours an explicit loopback host and refuse a control-proven non-loopback route', async () => {
     const control = createTcpServer();
     const controlPort = await listen(control, '0.0.0.0');
     cleanup.push(() => close(control));
@@ -94,21 +93,6 @@ describe('explicit Station WebSocket listener host isolation', () => {
       'A wildcard control listener must prove at least one non-loopback route before isolation assertions are meaningful',
     ).toBeGreaterThan(0);
 
-    const terminal = new TerminalWebSocketServer({
-      subscribe: () => () => {},
-    } as any);
-    const terminalWss = terminal.start(0, LOOPBACK);
-    await once(terminalWss, 'listening');
-    const terminalAddress = terminalWss.address();
-    if (!terminalAddress || typeof terminalAddress === 'string') {
-      throw new Error('Terminal listener did not report an assigned TCP port');
-    }
-    cleanup.push(async () => {
-      const closed = once(terminalWss, 'close');
-      terminal.stop();
-      await closed;
-    });
-
     const voiceWss = attachVoiceWebSocket(
       0,
       { createSession: () => {} } as any,
@@ -122,20 +106,15 @@ describe('explicit Station WebSocket listener host isolation', () => {
     }
     cleanup.push(() => close(voiceWss));
 
-    const listeners = [
-      ['terminal', terminalAddress.port],
-      ['voice', voiceAddress.port],
-    ] as const;
-    for (const [name, port] of listeners) {
-      expect(await connect(LOOPBACK, port), `${name} loopback readiness`).toBe(
-        'reachable',
-      );
-      for (const address of probativeAddresses) {
-        expect(
-          await connect(address, port),
-          `${name} must refuse ${address}:${port}`,
-        ).toBe('refused');
-      }
+    const port = voiceAddress.port;
+    expect(await connect(LOOPBACK, port), 'voice loopback readiness').toBe(
+      'reachable',
+    );
+    for (const address of probativeAddresses) {
+      expect(
+        await connect(address, port),
+        `voice must refuse ${address}:${port}`,
+      ).toBe('refused');
     }
   });
 });

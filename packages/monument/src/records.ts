@@ -107,8 +107,8 @@ export interface RequestKeyRecord {
   readonly createdAt: number;
 }
 
-/** The inbox's entry kinds. Steer and display-only entries come later. */
-export type InboxEntryKind = 'follow-up';
+/** The inbox's entry kinds. */
+export type InboxEntryKind = 'follow-up' | 'steer' | 'display';
 
 /**
  * Where one inbox entry stands (station#3568).

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { inspect } from 'node:util';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -14,13 +16,14 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { expect, test, vi } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import type {
   ProviderAdapterMetadata,
   ProviderSendTurnInput,
@@ -31,6 +34,8 @@ import {
   continueDelegatedTask,
   delegateTask,
 } from '../../../tools/station-control-delegation.js';
+import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
+import { FileDelegationAttemptClaimStore } from '../../orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -253,6 +258,22 @@ async function fixture(observe = true) {
   )!;
   let room: ProjectTaskRoomRuntime;
   const historyOpens = vi.fn();
+  let heldMessageWrite: { entered(): void; wait: Promise<void> } | undefined;
+  let releaseMessageWrite = () => {};
+  const holdNextMessageWrite = () => {
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    releaseMessageWrite = release;
+    heldMessageWrite = { entered: enter, wait };
+    return { entered, release };
+  };
+
   const conversation = new TaskRoomConversationModule({
     graph,
     work,
@@ -268,7 +289,40 @@ async function fixture(observe = true) {
     taskGraph: graph,
     projectForId: (id) => ({ id, slug: id }),
     history: (authority) => {
-      const history = store.createProjectTaskRoomHistory(authority);
+      const history = store.createProjectTaskRoomHistory({
+        ...authority,
+        capabilities: {
+          resolve: async (input) => {
+            const resolution = await authority.capabilities.resolve(input);
+            if (
+              heldMessageWrite &&
+              input.required === 'message-write' &&
+              resolution.kind === 'granted'
+            ) {
+              const probe = new DatabaseSync(join(directory, 'events.sqlite'), {
+                timeout: 0,
+              });
+              let locked = false;
+              try {
+                probe.exec('BEGIN IMMEDIATE');
+                probe.exec('ROLLBACK');
+              } catch (error) {
+                if (!isSqliteContentionError(error)) throw error;
+                locked = true;
+              } finally {
+                probe.close();
+              }
+              if (locked) {
+                const held = heldMessageWrite;
+                heldMessageWrite = undefined;
+                held.entered();
+                await held.wait;
+              }
+            }
+            return resolution;
+          },
+        },
+      });
       return {
         ...history,
         open: (input) => {
@@ -366,6 +420,7 @@ async function fixture(observe = true) {
     );
   }
   const app = createOrchestrationRoutes(sessions, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(directory),
     eventBus: bus,
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
@@ -397,7 +452,7 @@ async function fixture(observe = true) {
     app.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(keyedTurnRequest(body)),
     });
   const history = async () => {
     const result = await room.history({ taskId: task.id, request });
@@ -437,6 +492,7 @@ async function fixture(observe = true) {
     conversation,
     workFile: join(directory, 'work.json'),
     historyOpens,
+    holdNextMessageWrite,
     history,
     failures,
     agentCount: async () => {
@@ -459,6 +515,7 @@ async function fixture(observe = true) {
       revokeAtProjectRead = true;
     },
     close: async () => {
+      releaseMessageWrite();
       unsubscribe();
       await Promise.all(publications);
       await room.close();
@@ -473,9 +530,28 @@ async function fixture(observe = true) {
 test.each(['lineage', 'history', 'query', 'stored'] as const)(
   'the %s conversation title comes from the person rather than the appended brief',
   async (surface) => {
+    const started = performance.now();
+    const phases: Array<{ phase: string; ms: number }> = [];
+    const phase = (name: string) => {
+      if (phases.length < 16)
+        phases.push({
+          phase: name,
+          ms: Math.round(performance.now() - started),
+        });
+    };
+    onTestFinished(({ task }) => {
+      if (task.result?.state === 'fail')
+        console.warn(
+          'Task room title timeout phases',
+          JSON.stringify({ surface, phases }),
+        );
+    });
+    phase('fixture:start');
     const f = await fixture();
+    phase('fixture:ready');
     try {
       const title = 'Where should preference state live?';
+      phase('delegation:start');
       const response = await f.post('/delegations', {
         prompt: title,
         target: {
@@ -490,17 +566,21 @@ test.each(['lineage', 'history', 'query', 'stored'] as const)(
           context: { version: f.brief.version, digest: f.brief.digest },
         },
       });
+      phase('delegation:response');
       expect(response.status, await response.clone().text()).toBe(200);
       const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
       if (body.data.kind !== 'recorded')
         throw new Error('Request not recorded');
       const sessionId = body.data.record.sessionId;
+      phase('turn-start:wait');
       await f.started(sessionId, 'turn-1');
+      phase('turn-start:ready');
       const authority = sessionReadAuthorityFromRequest(
         f.principal.id,
         undefined,
         undefined,
       );
+      phase(`title:${surface}:read`);
       let actual: string | undefined;
       if (surface === 'lineage')
         actual = (
@@ -520,10 +600,13 @@ test.each(['lineage', 'history', 'query', 'stored'] as const)(
         if (result.status !== 'found') throw new Error(result.status);
         actual = result.conversation.title;
       }
+      phase('title:read-complete');
       expect(actual).toBe(title);
       expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     } finally {
+      phase('cleanup:start');
       await f.close();
+      phase('cleanup:complete');
     }
   },
 );
@@ -577,7 +660,7 @@ test('a terminal runtime error publishes the failed room line without another re
       ]);
     });
     expect(await f.agentCount()).toBe(0);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -605,7 +688,7 @@ test('room requests start the Task and publish canonical answers and continued t
     if (body.data.kind !== 'recorded')
       throw new Error('Request was not recorded');
     const sessionId = body.data.record.sessionId;
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
     expect(body.data.record.state, JSON.stringify(body)).toBe('dispatched');
     expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     expect(f.adapter.turns[0].input).toContain('Brief shortened to fit');
@@ -786,7 +869,7 @@ test('room requests start the Task and publish canonical answers and continued t
     });
     expect(forbidden.status).toBe(403);
     expect(f.adapter.turns).toHaveLength(3);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -842,7 +925,7 @@ async function requestAgent(f: Awaited<ReturnType<typeof fixture>>) {
   expect(response.status, await response.clone().text()).toBe(200);
   const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
   if (body.data.kind !== 'recorded') throw new Error('Missing request record');
-  expect(body.data.record.state, JSON.stringify(f.failures)).toBe('dispatched');
+  expect(body.data.record.state, inspect(f.failures)).toBe('dispatched');
   expect(f.adapter.turns).toHaveLength(1);
   await vi.waitFor(() =>
     expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
@@ -859,7 +942,7 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const root = f.store.conversationForSession(sessionId)!;
     const started = f.store
@@ -977,7 +1060,7 @@ test('a continuation failure after admission posts no human reply', async () => 
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const send = vi
       .spyOn(f.adapter, 'sendTurn')
@@ -1102,7 +1185,7 @@ test.each(['initial', 'reply'] as const)(
           record.body.text === 'Immediate canonical answer',
       );
       expect(prompt).toBeDefined();
-      expect(answer, JSON.stringify(f.failures)).toBeDefined();
+      expect(answer, inspect(f.failures)).toBeDefined();
       expect(prompt!.envelope.seq).toBeLessThan(answer!.envelope.seq);
     } finally {
       vi.restoreAllMocks();
@@ -1153,7 +1236,7 @@ test.each([undefined, 'room-reply:forged-dock-send'])(
       expect(JSON.stringify(history)).not.toContain(
         'Private second-turn answer',
       );
-      expect(f.failures).toEqual([]);
+      expect(f.failures, inspect(f.failures)).toEqual([]);
     } finally {
       await f.close();
     }
@@ -1262,6 +1345,83 @@ test('publication holds expire and an expired release cannot release a newer hol
   }
 });
 
+test('an unavailable completed answer stays blocked while other Sessions recover, then publishes once on retry', async () => {
+  const f = await fixture(false);
+  try {
+    const unavailableSession = await requestAgent(f);
+    await f.complete(unavailableSession, 'turn-1', 'Deferred canonical answer');
+    const response = await f.post('/delegations', {
+      prompt: 'Independent investigation',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'researcher',
+        workspace: { kind: 'project', projectSlug: 'project' },
+      },
+      taskRoomRequest: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'independent-request',
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+    if (body.data.kind !== 'recorded')
+      throw new Error('Missing second request');
+    const healthySession = body.data.record.sessionId;
+    expect(healthySession).not.toBe(unavailableSession);
+    await f.complete(healthySession, 'turn-2', 'Independent canonical answer');
+    const read = f.sessions.sessionQueries.readAssistantTurn.bind(
+      f.sessions.sessionQueries,
+    );
+    const projection = vi
+      .spyOn(f.sessions.sessionQueries, 'readAssistantTurn')
+      .mockImplementation((query, authority) =>
+        query.threadId === unavailableSession
+          ? Promise.resolve({ status: 'unavailable' as const })
+          : read(query, authority),
+      );
+
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    expect(JSON.stringify(await f.history())).toContain(
+      'Independent canonical answer',
+    );
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'Deferred canonical answer',
+    );
+    expect(
+      await f.room.liveActivity({
+        request: new Request('http://station.test'),
+      }),
+    ).toMatchObject({
+      kind: 'available',
+      projection: {
+        participants: [
+          expect.objectContaining({
+            work: expect.objectContaining({
+              sessionId: unavailableSession,
+              workState: 'blocked',
+              workName: "Answer couldn't be posted",
+            }),
+          }),
+        ],
+      },
+    });
+    projection.mockRestore();
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    const answers = (await f.history()).filter(
+      (entry) => entry.correlationId === `room-answer:${unavailableSession}`,
+    );
+    expect(answers).toHaveLength(1);
+    expect(JSON.stringify(answers)).toContain('Deferred canonical answer');
+    expect(await f.agentCount()).toBe(0);
+    expect(f.adapter.turns).toHaveLength(2);
+  } finally {
+    vi.restoreAllMocks();
+    await f.close();
+  }
+});
+
 test('canonical initial answers remain readable without a reply journal, while corrupt journals fail closed', async () => {
   const f = await fixture(false);
   try {
@@ -1330,9 +1490,7 @@ test('Task images reach the provider on requests and same-session replies and re
     const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
     if (result.data.kind !== 'recorded')
       throw new Error('Request not recorded');
-    expect(result.data.record.state, JSON.stringify(f.failures)).toBe(
-      'dispatched',
-    );
+    expect(result.data.record.state, inspect(f.failures)).toBe('dispatched');
     expect(f.adapter.turns).toHaveLength(1);
     const sessionId = result.data.record.sessionId;
     await f.started(sessionId, 'turn-1');
@@ -1459,3 +1617,80 @@ test('unavailable reply attachments release publication before the hold expires'
     await f.close();
   }
 });
+
+test('an image reply remains durably posted when its room write overlaps provider turn-start publication', async () => {
+  const f = await fixture();
+  let releaseWrite = () => {};
+  let deliverStart: (() => boolean) | undefined;
+  let pending: Promise<Response> | undefined;
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+  const push = f.adapter.events.push.bind(f.adapter.events);
+  const events = vi.spyOn(f.adapter.events, 'push');
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'Initial answer');
+    await f.conversation.reconcile(f.task.id);
+    const image = {
+      kind: 'image' as const,
+      name: 'screen.png',
+      mimeType: 'image/png' as const,
+      size: 8,
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    const attachments = await f.room.storeAttachments({
+      taskId: f.task.id,
+      taskCreatedAt: f.task.createdAt,
+      request: new Request('http://station.test'),
+      attachments: [image],
+    });
+    if (!attachments) throw Error('Image binding prerequisite');
+    const commit = f.holdNextMessageWrite();
+    releaseWrite = commit.release;
+    events.mockImplementation((event) => {
+      if (event.method === 'turn.started' && event.turnId === 'turn-2')
+        deliverStart = () => push(event);
+      else return push(event);
+      return true;
+    });
+    pending = Promise.resolve(
+      f.post(`/delegations/${sessionId}/continue`, {
+        message: 'Look again',
+        taskRoomReply: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'overlapping-image-reply',
+          attachBrief: false,
+          attachments,
+        },
+      }),
+    );
+    await commit.entered;
+    // Hold past both short observed-event retry delays: publication must wait
+    // for write availability, while leaving this authorization release runnable.
+    releaseTimer = setTimeout(commit.release, 300);
+    if (!deliverStart) throw Error('Provider start prerequisite');
+    deliverStart();
+    deliverStart = undefined;
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toMatchObject({
+      data: { taskRoomReplyDelivery: 'posted' },
+    });
+    await f.started(sessionId, 'turn-2');
+    expect(f.adapter.turns[1]?.attachments).toEqual([image]);
+    expect(await f.history()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: { kind: 'human-message', text: 'Look again', attachments },
+        }),
+      ]),
+    );
+  } finally {
+    if (releaseTimer) clearTimeout(releaseTimer);
+    releaseWrite();
+    deliverStart?.();
+    await pending?.catch(() => {});
+    events.mockRestore();
+    await f.close();
+  }
+}, 20_000);

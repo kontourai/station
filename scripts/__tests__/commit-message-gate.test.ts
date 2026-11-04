@@ -801,9 +801,30 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     console.log(
       `commit-message-gate corpus: ${merges.length - failures.length}/${merges.length} merge subjects are exempt, conform, or exact immutable records`,
     );
-    expect([...immutableCounts.entries()]).toEqual(
-      FROZEN_IMMUTABLE_HISTORY_RECORDS.map((record) => [record.sha, 1]),
-    );
+    for (const record of FROZEN_IMMUTABLE_HISTORY_RECORDS) {
+      // The rolling 3000-commit window eventually moves past a frozen
+      // record. Verify its exact bytes and ancestry independently of that window.
+      execFileSync(
+        'git',
+        ['merge-base', '--is-ancestor', record.sha, historyRef],
+        {
+          windowsHide: true,
+        },
+      );
+      const [sha, parents, subject] = execFileSync(
+        'git',
+        ['show', '-s', '--format=%H%x00%P%x00%s', record.sha],
+        { encoding: 'utf8', windowsHide: true },
+      )
+        .trimEnd()
+        .split('\0');
+      expect(
+        matchingFrozenImmutableHistoryRecord({ sha, parents, subject }),
+      ).toEqual(record);
+      expect(immutableCounts.get(record.sha)).toBe(
+        rows.some(([rowSha]) => rowSha === record.sha) ? 1 : 0,
+      );
+    }
     expect(failures.map((f) => f.subject)).toEqual([]);
   });
 });

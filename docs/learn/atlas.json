@@ -10,16 +10,19 @@
         "docs/design/portable-project-identity.md",
         "docs/design/task-dispatcher.md",
         "docs/reference/task-basis-mcp-app.md",
-        "docs/learn/walkthroughs.md#projects-and-tasks"
+        "docs/learn/walkthroughs.md#projects-and-tasks",
+        "docs/guides/agent-efficiency.md"
       ],
       "modules": [
         "ProjectFileTransactions",
         "ProjectIdentity",
         "Project tool defaults",
         "TaskDispatcher and TaskGraph",
+        "TaskReviewThreads",
         "Whole Task Basis collection",
         "Project session directory",
-        "StarterWorkRegistry"
+        "StarterWorkRegistry",
+        "Project working configuration"
       ],
       "questions": [
         "Which record owns the work when no engine is running?",
@@ -37,10 +40,13 @@
         "docs/design/orchestration-decomposition-map.md",
         "docs/guides/agent-configuration.md",
         "docs/guides/acp.md",
-        "docs/user/workspace-checkpoints.md"
+        "docs/user/workspace-checkpoints.md",
+        "docs/design/terminal.md"
       ],
       "modules": [
+        "Durable Station Agent",
         "SessionQueryModule",
+        "SessionGoalModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
@@ -49,13 +55,16 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "CoordinatorWakeDelivery",
         "WorkClaimStore",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",
         "OutboundDispatchModule",
         "Session inventory Sources",
-        "Workspace checkpoints"
+        "Workspace checkpoints",
+        "TerminalSessions",
+        "Context compaction and Project supervision"
       ],
       "questions": [
         "Where is the boundary between accepting a command and knowing an engine accepted it?",
@@ -71,6 +80,7 @@
         "docs/guides/workspace-pane-authoring.md",
         "docs/design/pane-host-contract.md",
         "docs/guides/commands.md",
+        "docs/guides/local-speech.md",
         "docs/guides/responsive-ui.md",
         "docs/user/work-board.md",
         "docs/user/personal-boards.md"
@@ -87,6 +97,8 @@
         "ProjectTaskRoom",
         "MobileDeviceHost",
         "BrowserSessionService",
+        "TerminalView",
+        "Local speech and media tools",
         "Shared live surface",
         "Personal Work Board",
         "Personal Board authoring"
@@ -159,6 +171,7 @@
       "summary": "How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.",
       "docs": [
         "docs/guides/knowledge.md",
+        "docs/guides/walkthroughs.md",
         "docs/learn/walkthroughs.md#explore-repository-knowledge",
         "docs/guides/repository-knowledge-graph.md",
         "docs/plans/1364-owner-source-observation--grounding.md",
@@ -168,6 +181,7 @@
       "modules": [
         "StationKnowledgeMcpServer",
         "KnowledgeStoreProvider",
+        "WalkthroughService",
         "SqliteVecIndexProvider",
         "KnowledgeFileTransactions",
         "KnowledgeSourceObservation",
@@ -226,11 +240,14 @@
         "OperationalEventSubscriptions",
         "ExtensionNotificationBindings",
         "SchedulerLedger and BuiltinScheduler",
+        "IsolatedRepairController",
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",
         "PluginTelemetryPublisher",
         "CanonicalUsageExport",
+        "PrivateUsageStorage",
+        "AnalyticsSavedViews",
         "Native notification feed"
       ],
       "questions": [

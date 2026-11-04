@@ -1,0 +1,7 @@
+{
+  "revision": "b707a49ca5063367d97ed8b1733eae2e46ef6ef1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the Engine & model caption rule: it names the live Session's engine (own ACP connection for generic acp), with an 'Agent now on' hint when the Agent is repointed. Traced to ChatDockBody/ChatInputArea and conversation-lineage resolveConversationContinuation (open Session kept; successor starts on the requested engine).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

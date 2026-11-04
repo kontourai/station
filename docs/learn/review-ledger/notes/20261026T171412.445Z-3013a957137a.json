@@ -1,0 +1,7 @@
+{
+  "revision": "5b99bcd46ef69a1ddd2d172a1d717162b0c4d9a2",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Reviewed LocalSpeechSTTProvider and media-tools-acquisition.test changes. Instance-owned listeners preserve the documented capture, upload, limits and cancellation lifecycle. Importing pinned decoder observation JSON retains the pin and decoder assertions while giving the fixture an import edge. EXECUTED: provider, registration and acquisition checks in the 334-test focused run, plus clean-tree path-pin and SDK import fault/restoration cycles. Native loading and human speech accuracy remain NOT_VERIFIED.","inputs":["docs/guides/local-speech.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/station-home-store-registry.ts","src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts","src-ui/src/providers/voice/LocalSpeechSTTProvider.ts"]}
+  ]
+}

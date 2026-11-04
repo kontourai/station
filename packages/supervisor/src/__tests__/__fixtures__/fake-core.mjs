@@ -15,6 +15,8 @@
  *   FAKE_CORE_NO_ADOPT=1            ignore adopted handles and bind FAKE_CORE_PORT itself
  *   FAKE_CORE_VOICE_SESSIONS=<n>    report n live voice sessions while draining (never ends them)
  *   FAKE_CORE_EXIT_ON_BOOT=1        exit(1) before parking
+ *   FAKE_CORE_PARK_DELAY_MS=<n>    report parked n ms after starting, as a slow host loads its code
+ *   FAKE_CORE_NEVER_PARK=1          run but never report parked
  *   FAKE_CORE_REQUEST_HANDOFF=1     generation 1 sends handoff.request once ready
  *   FAKE_CORE_SEND_SERVER=1         send the net.Server itself with listener.bound (a protocol violation)
  *   FAKE_CORE_EXIT_AFTER_READY=1    exit(1) in the same tick as reporting ready
@@ -25,6 +27,9 @@
  *   FAKE_CORE_PROTOCOL_1_0=1        speak protocol 1.0: no connection catching (parks without
  *                                   adoptsConnections, ignores listener.spares, closes an adopted
  *                                   connection as a stray handle)
+ *   FAKE_CORE_WORKLOADS=1           announce `workloads` (protocol 1.3); serves POST /workload, which
+ *                                   relays its JSON body as a workload request and answers with the
+ *                                   reply, and GET /workload-events, every workload event received
  *
  * @import { CoreToSupervisorMessage, SupervisorToCoreMessage } from '../../protocol.ts'
  */
@@ -75,6 +80,14 @@ let draining = false;
 let lastAcceptAt = 0;
 let sparesSent = 0;
 let adoptedConnections = 0;
+const announcesWorkloads = process.env.FAKE_CORE_WORKLOADS === '1';
+/** @type {string[]} */
+let granted = [];
+let nextWorkloadRequest = 1;
+/** @type {Map<string, (reply: unknown) => void>} */
+const workloadReplies = new Map();
+/** @type {unknown[]} */
+const workloadEvents = [];
 /** @type {Set<http.ServerResponse>} */
 const streams = new Set();
 
@@ -94,8 +107,30 @@ const server = http.createServer((req, res) => {
         inheritedForceCatching:
           process.env.STATION_SUPERVISOR_TEST_FORCE_CATCHING ?? null,
         adoptedConnections,
+        granted,
       }),
     );
+    return;
+  }
+  if (req.url === '/workload' && req.method === 'POST') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      const id = String(nextWorkloadRequest++);
+      workloadReplies.set(id, (reply) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(reply));
+      });
+      send({ type: 'workload.request', id, request: JSON.parse(body) });
+    });
+    return;
+  }
+  if (req.url === '/workload-events') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(workloadEvents));
     return;
   }
   if (req.url === '/events') {
@@ -227,6 +262,7 @@ process.on(
       case 'promote':
         if (promoted) return;
         promoted = true;
+        granted = message.capabilities ?? [];
         if (process.env.FAKE_CORE_EXIT_AFTER_PROMOTE === '1') process.exit(1);
         expected = [...message.listeners];
         if (expected.length === 0) {
@@ -289,6 +325,15 @@ process.on(
       case 'drain':
         drain();
         return;
+      case 'workload.response': {
+        const reply = workloadReplies.get(message.id);
+        workloadReplies.delete(message.id);
+        reply?.(message);
+        return;
+      }
+      case 'workload.event':
+        workloadEvents.push(message);
+        return;
       case 'handoff.refused':
         // The supervisor may still be committing this generation; ask again, boundedly.
         if (handoffAttempts < 50) setTimeout(requestHandoff, 100);
@@ -306,6 +351,19 @@ process.on('disconnect', () => {
   if (process.env.FAKE_CORE_IGNORE_DISCONNECT !== '1') process.exit(0);
 });
 
-send(
-  protocol10 ? { type: 'parked' } : { type: 'parked', adoptsConnections: true },
-);
+function park() {
+  send(
+    protocol10
+      ? { type: 'parked' }
+      : {
+          type: 'parked',
+          adoptsConnections: true,
+          ...(announcesWorkloads ? { capabilities: ['workloads'] } : {}),
+        },
+  );
+}
+const parkDelayMs = Number(process.env.FAKE_CORE_PARK_DELAY_MS ?? 0);
+if (process.env.FAKE_CORE_NEVER_PARK !== '1') {
+  if (parkDelayMs > 0) setTimeout(park, parkDelayMs);
+  else park();
+}

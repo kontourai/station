@@ -1,0 +1,17 @@
+{
+  "revision": "3474bd628bd96efdd30323e6796df052deb68d46",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/design/instance-registry.md","packages/cli/src/__tests__/service-run.test.ts","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/guides/android-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/guides/desktop-build.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/guides/desktop-tray.md","packages/cli/src/commands/service-run.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Rechecked against the supervisor change that defers wedge escalation under measured host CPU pressure (packages/cli/src/commands/service-run.ts, host-pressure.ts). This document states no supervisor wedge timing, identity-probe escalation window or restart rule for a slow child, so no prose changes; prior recorded scope unchanged.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/service-run.ts"]}
+  ]
+}

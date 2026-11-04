@@ -1717,6 +1717,40 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
 });
 
 describe('station#1182 — claude-adapter-events runtime-reported model', () => {
+  test('binds completion to the SDK result identity rather than the mutable Session cursor', () => {
+    const messages: SDKMessage[] = readFileSync(
+      new URL(
+        './fixtures/claude-2.1.296-skill-invocation-local.jsonl',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const result = messages.find((message) => message.type === 'result');
+    if (!result)
+      throw new Error('The captured SDK fixture has no terminal result.');
+    const record = makeRecord({ nativeOwnershipBindingKey: 'a'.repeat(64) });
+    record.session.resumeCursor = 'later-rebound-native';
+    const events: CanonicalRuntimeEvent[] = [];
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish: (event) => events.push(event),
+      message: { ...result, session_id: 'native-result-identity' },
+    });
+    expect(
+      events.find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({
+      turnId: 'turn-1',
+      metadata: {
+        nativeTurnIdentityKey:
+          '3799a900a7fe24ddad7fd701aa8ec9b22c99bf43a75c7a58a746ee5b0ab465a7',
+      },
+    });
+  });
+
   test('captures message.message.model off a top-level assistant message and carries it onto turn.completed as reportedModel — distinct from the requested/init model', () => {
     const publish = vi.fn();
     // The init message (session.configured) reports the REQUESTED alias —
@@ -2800,5 +2834,150 @@ describe('claude-adapter-events — inline image data in tool_result text', () =
     // The redacted text fits the limit: no truncation receipt, no bytes.
     expect(completed).not.toHaveProperty('outputReceipt');
     expect(JSON.stringify(completed)).not.toContain('QUJD');
+  });
+});
+
+describe('Claude Code Artifact publish link on tool.completed', () => {
+  // `ArtifactOutput`'s publish variant (sdk-tools.d.ts, Agent SDK 0.3.304).
+  const publishOutput = {
+    url: 'https://claude.ai/code/artifact/5f0c2e4a-8d1b-4c33-9a7e-1b2c3d4e5f60',
+    path: '/workspace/project/latency-report.html',
+    artifact_id: '5f0c2e4a-8d1b-4c33-9a7e-1b2c3d4e5f60',
+    title: 'Q3 latency report',
+    version: '1',
+    publishesRemaining: 49,
+    owned: true,
+  };
+
+  function completedFor(
+    toolName: string,
+    toolUseResult: unknown,
+    options: { isError?: boolean; extraResult?: boolean } = {},
+  ) {
+    const publish = vi.fn();
+    const record = makeRecord();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-art', name: toolName, input: {} },
+            ...(options.extraResult
+              ? [
+                  {
+                    type: 'tool_use',
+                    id: 'toolu-other',
+                    name: 'Read',
+                    input: {},
+                  },
+                ]
+              : []),
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu-art',
+              content: 'Published.',
+              ...(options.isError ? { is_error: true } : {}),
+            },
+            ...(options.extraResult
+              ? [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: 'toolu-other',
+                    content: 'x',
+                  },
+                ]
+              : []),
+          ],
+        },
+        tool_use_result: toolUseResult,
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    return publish.mock.calls
+      .map(([event]) => event)
+      .find(
+        (event) =>
+          event.method === 'tool.completed' && event.toolCallId === 'toolu-art',
+      );
+  }
+
+  test('a publish carries the claude.ai link and title from the structured output', () => {
+    const completed = completedFor('Artifact', publishOutput);
+    expect(completed).toMatchObject({
+      status: 'success',
+      output: 'Published.',
+      claudeArtifact: {
+        url: 'https://claude.ai/code/artifact/5f0c2e4a-8d1b-4c33-9a7e-1b2c3d4e5f60',
+        title: 'Q3 latency report',
+      },
+    });
+  });
+
+  test('other actions, inadmissible URLs, failures, other tools and shared messages carry none', () => {
+    const cases: [string, ReturnType<typeof completedFor>][] = [
+      [
+        'list',
+        completedFor('Artifact', {
+          artifacts: [{ title: 'Q3', url: publishOutput.url }],
+        }),
+      ],
+      [
+        'read',
+        completedFor('Artifact', {
+          read: {
+            url: publishOutput.url,
+            bytes: 1,
+            code: 200,
+            codeText: 'OK',
+            result: '',
+            durationMs: 1,
+          },
+        }),
+      ],
+      [
+        'lookalike host',
+        completedFor('Artifact', {
+          ...publishOutput,
+          url: 'https://claude.ai.evil.example/artifact/x',
+        }),
+      ],
+      [
+        'http',
+        completedFor('Artifact', {
+          ...publishOutput,
+          url: 'http://claude.ai/artifact/x',
+        }),
+      ],
+      ['error', completedFor('Artifact', publishOutput, { isError: true })],
+      ['other tool', completedFor('Write', publishOutput)],
+      [
+        'two results in one message',
+        completedFor('Artifact', publishOutput, { extraResult: true }),
+      ],
+    ];
+    for (const [name, completed] of cases) {
+      expect(completed, name).toBeDefined();
+      expect(completed, name).not.toHaveProperty('claudeArtifact');
+    }
   });
 });

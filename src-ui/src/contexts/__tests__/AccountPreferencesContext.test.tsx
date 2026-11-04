@@ -138,14 +138,14 @@ test('a real preference control saves account scope and preserves device storage
   expect(fixture.patch.mock.calls[0]?.[1]).toEqual({ theme: 'light' });
   expect(localStorage.getItem('station-device-settings-v1')).toBe(local);
   fixture.patch.mockRejectedValueOnce(new Error('Offline'));
-  fireEvent.change(screen.getByLabelText('New codex chats approval mode'), {
+  fireEvent.change(screen.getByLabelText('New Codex chats approval mode'), {
     target: { value: 'auto' },
   });
   await screen.findByRole('alert');
   expect(
     (
       screen.getByLabelText(
-        'New codex chats approval mode',
+        'New Codex chats approval mode',
       ) as HTMLSelectElement
     ).value,
   ).toBe('connection-default');
@@ -321,8 +321,9 @@ test('value controls can reset while boolean preferences use their toggle withou
   fireEvent.click(
     await screen.findByRole('button', { name: 'Reset Theme to default' }),
   );
+  // #4407: with nothing saved, the default mode is System.
   await waitFor(() =>
-    expect(screen.getByLabelText('Current theme').textContent).toBe('dark'),
+    expect(screen.getByLabelText('Current theme').textContent).toBe('system'),
   );
   expect(
     screen.queryByRole('button', { name: 'Reset Diff line wrap to default' }),
@@ -452,7 +453,7 @@ test("only a refused credential releases the previous account's cached appearanc
   fixture.refused = true;
   const view = render(tree(client()));
   expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
-  expect(screen.getByLabelText('Current theme').textContent).toBe('dark');
+  expect(screen.getByLabelText('Current theme').textContent).toBe('system');
   view.unmount();
 });
 
@@ -521,9 +522,9 @@ test('a held appearance belongs to its account: switching person drops it', asyn
   fixture.get.mockRejectedValue(new Error('preferences unavailable'));
   const other = render(tree(client()));
   // B never sees A's appearance; B has the device's own until B's arrive.
-  expect(seen()).toEqual({ theme: 'dark', colorTheme: 'station' });
+  expect(seen()).toEqual({ theme: 'system', colorTheme: 'station' });
   await waitFor(() => expect(fixture.get).toHaveBeenCalled());
-  expect(seen()).toEqual({ theme: 'dark', colorTheme: 'station' });
+  expect(seen()).toEqual({ theme: 'system', colorTheme: 'station' });
   expect(deviceSettingsStore.getAppearanceSource()).not.toBe('cache');
   other.unmount();
 });

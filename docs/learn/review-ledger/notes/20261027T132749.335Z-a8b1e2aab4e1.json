@@ -1,0 +1,7 @@
+{
+  "revision": "f36b003bd142b671be80a12818e1f914206f1c36",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#4237 import-order-only change to project-task-room.test.ts (biome organizeImports); no assertion or contract claim changed. Traversal fault injection executed: removing the '..' segment refusal fails 4 cases; restored 109/109.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/project-task-room.test.ts"]}
+  ]
+}

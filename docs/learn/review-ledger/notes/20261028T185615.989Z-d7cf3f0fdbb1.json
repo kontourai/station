@@ -1,0 +1,7 @@
+{
+  "revision": "9abd0a597028a2eaaf1b80bc5620d44704e679df",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed startup permission labels against StartApprovalSummary and StartComposerParity: compact mode-only trigger, source in shared picker, Engine default explained without claiming an active mode. Rendered actual StartComposer at 390 and 1440 in both themes; reduced browser height approximates keyboard geometry, not native Android proof. Focused tests pass.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

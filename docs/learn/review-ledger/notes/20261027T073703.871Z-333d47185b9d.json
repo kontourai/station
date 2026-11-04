@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Approval and out-of-line content claims re-checked: unchanged by this round (seed reader, schema max, SSR snapshot, test stub). No prose change.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

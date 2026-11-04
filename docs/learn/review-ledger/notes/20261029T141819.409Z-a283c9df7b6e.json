@@ -1,0 +1,7 @@
+{
+  "revision": "a560a1867644c1ca3f246db948666394bdcf71e8",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed gate-for and its pre-push selector against code hygiene guidance; Veritas planning and Station selector responsibilities remain unchanged.","inputs":["docs/guides/code-hygiene.md","scripts/gate-for.mjs"]}
+  ]
+}

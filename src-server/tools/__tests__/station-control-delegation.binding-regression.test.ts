@@ -53,6 +53,7 @@ import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -312,6 +313,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
         // The delegating principal owns the task session; every later read
         // below is that principal's.
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(tmp),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -392,6 +394,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
         // The delegating principal owns the task session; every later read
         // below is that principal's.
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(tmp),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -402,9 +405,10 @@ describe('station#4543: delegate create -> status/events binding survives for an
     const taskId = handle.taskId;
 
     await waitFor(
-      () => eventStore.listEvents(taskId).map((event) => event.payload.method),
-      (methods) => methods.includes('session.configured'),
+      () => eventStore.hasEventId(`${taskId}-configured`),
+      (persisted) => persisted,
     );
+    const initialEventCount = eventStore.listEvents(taskId).length;
 
     // `listSessionProjectionEvents`'s fold only ever retains a handful of
     // NAMED slots (session.started, session.configured, the thread's overall
@@ -415,7 +419,8 @@ describe('station#4543: delegate create -> status/events binding survives for an
     // is the exact shape of a real ACP run with text deltas and tool calls
     // that station#661 reported as "invalid task event state".
     const now = new Date().toISOString();
-    for (let turn = 0; turn < 5; turn += 1) {
+    const turnCount = 5;
+    for (let turn = 0; turn < turnCount; turn += 1) {
       const itemId = `item-${turn}`;
       const toolCallId = `tool-call-${turn}`;
       acp.events.push({
@@ -459,12 +464,11 @@ describe('station#4543: delegate create -> status/events binding survives for an
         status: 'success',
       } as unknown as CanonicalRuntimeEvent);
     }
-    // 2 (session.started/configured) + 5 * 4 (text-delta + tool triple) = 22.
-    const expectedTotalEvents = 22;
+    const expectedTotalEvents = initialEventCount + turnCount * 4;
 
     await waitFor(
-      () => eventStore.listEvents(taskId).length,
-      (count) => count >= expectedTotalEvents,
+      () => eventStore.hasEventId(`${taskId}-tool-completed-${turnCount - 1}`),
+      (persisted) => persisted,
     );
     const trueEventCount = eventStore.countEventsByThread(taskId);
     expect(trueEventCount).toBe(expectedTotalEvents);
@@ -487,6 +491,6 @@ describe('station#4543: delegate create -> status/events binding survives for an
       service,
     );
     expect(page.taskId).toBe(taskId);
-    expect(page.eventCount).toBe(trueEventCount);
+    expect(page.eventCount).toBe(expectedTotalEvents);
   });
 });

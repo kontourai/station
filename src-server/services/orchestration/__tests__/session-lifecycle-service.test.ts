@@ -2,6 +2,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { describe, expect, test } from 'vitest';
 import {
   activeTurnIdForEvents,
+  advanceOpenTurnId,
   createManualSessionTransitionEvent,
   interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
@@ -13,6 +14,54 @@ import {
 // reusable), not the terminal `completed`; the guarantees below are unchanged
 // — a finished turn stays finished across re-attach and process death.
 describe('session-lifecycle-service', () => {
+  test('#4266: lifecycleChangedAt is when the current state was entered, and a repeated report does not move it', () => {
+    const at = (second: number) =>
+      `2026-10-28T10:00:${String(second).padStart(2, '0')}.000Z`;
+    const base = { provider: 'codex' as const, threadId: 'thread-finish' };
+    const session = {
+      ...base,
+      status: 'ready' as const,
+      createdAt: at(0),
+      updatedAt: at(50),
+    };
+    const events: CanonicalRuntimeEvent[] = [
+      {
+        ...base,
+        eventId: 'e1',
+        createdAt: at(1),
+        method: 'turn.started',
+        turnId: 't1',
+        prompt: 'work',
+      },
+      {
+        ...base,
+        eventId: 'e2',
+        createdAt: at(5),
+        method: 'turn.completed',
+        turnId: 't1',
+      },
+      {
+        ...base,
+        eventId: 'e3',
+        createdAt: at(40),
+        method: 'session.state-changed',
+        sessionId: base.threadId,
+        sessionState: 'idle',
+        previousState: 'idle',
+      } as CanonicalRuntimeEvent,
+    ];
+    const finished = projectSessionLifecycle({ session, events });
+    expect(finished.lifecycleState).toBe('idle');
+    expect(finished.lifecycleChangedAt).toBe(at(5));
+
+    const running = projectSessionLifecycle({
+      session,
+      events: events.slice(0, 1),
+    });
+    expect(running.lifecycleState).toBe('running');
+    expect(running.lifecycleChangedAt).toBe(at(1));
+  });
+
   test('normalizes approval requests into review_pending lifecycle metadata', () => {
     const event = normalizeCanonicalRuntimeEventLifecycle(
       {
@@ -2132,3 +2181,48 @@ test.each(['turn.completed', 'turn.aborted', 'runtime.error'] as const)(
     expect(activeTurnIdForEvents([started, terminal('B')])).toBeUndefined();
   },
 );
+
+describe('a recovery abort without an invocationId', () => {
+  const start = {
+    eventId: 'start',
+    provider: 'codex',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    invocationId: 'invocation-1',
+    createdAt: '2026-08-16T00:00:01.000Z',
+    method: 'turn.started',
+  } as CanonicalRuntimeEvent;
+  const recoveryAbort = {
+    eventId: 'turn-interrupted-abort:boundary',
+    provider: 'codex',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    createdAt: '2026-08-16T00:00:05.000Z',
+    method: 'turn.aborted',
+    reason: 'Turn interrupted',
+    recoveryTerminal: true,
+  } as CanonicalRuntimeEvent;
+
+  test('closes the invocation-anchored turn it names in the incremental fold too', () => {
+    expect(activeTurnIdForEvents([start, recoveryAbort])).toBeUndefined();
+    expect(
+      advanceOpenTurnId('turn-1', recoveryAbort, 'invocation-1'),
+    ).toBeUndefined();
+  });
+
+  test('does not close a different turn or stand in for an engine abort', () => {
+    expect(
+      advanceOpenTurnId(
+        'turn-1',
+        { ...recoveryAbort, turnId: 'turn-0' } as CanonicalRuntimeEvent,
+        'invocation-1',
+      ),
+    ).toBe('turn-1');
+    const { recoveryTerminal: _marker, ...engineAbort } =
+      recoveryAbort as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'turn.aborted' }
+      >;
+    expect(activeTurnIdForEvents([start, engineAbort])).toBe('turn-1');
+  });
+});

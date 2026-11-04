@@ -12,6 +12,7 @@ import {
   cancelConversationContextBoundary,
   reserveConversationContextBoundary,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -124,7 +125,7 @@ export function ConversationContextResetDialog({
     setPending(true);
     setError(undefined);
     try {
-      const idempotencyKey = stored?.idempotencyKey ?? crypto.randomUUID();
+      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
         conversationId,
@@ -177,7 +178,7 @@ export function ConversationContextResetDialog({
         );
         return;
       }
-      const idempotencyKey = stored?.idempotencyKey ?? crypto.randomUUID();
+      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
         conversationId,

@@ -193,7 +193,7 @@ export async function dispatchSlashCommand(
         content: outcome.refusal,
       });
     cleanup();
-    return 'text' in outcome ? outcome.text : true;
+    return 'text' in outcome ? outcome : true;
   }
 
   // 3. Check registered commands

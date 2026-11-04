@@ -1,0 +1,7 @@
+{
+  "revision": "0c1993c3ac6ae7ff3d4ba2d04c3b486dab2db3c2",
+
+  "notes": [
+    {"path":"README.md","note":"Only links the Nightly guide; makes no claim about the changed update UI.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

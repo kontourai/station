@@ -1,0 +1,7 @@
+{
+  "revision": "8ad5ccb971917453df19397c41ef4318b6ffd20a",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed historical publication ledger contract after imported main updates. The sharing consent refusal carrier does not change ledger generation or publication records. Existing rows retain their own source/workflow/caveat boundaries; no new publication, physical-device or production acceptance is inferred from local source/tests.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

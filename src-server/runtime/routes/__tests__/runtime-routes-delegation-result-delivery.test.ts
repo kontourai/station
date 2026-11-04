@@ -20,8 +20,12 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
-import { EventStore } from '../../../services/orchestration/event-store.js';
+import {
+  EventStore,
+  type PersistedRuntimeEvent,
+} from '../../../services/orchestration/event-store.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -47,6 +51,7 @@ const support = vi.hoisted(() => ({
   busy: new Set<string>(),
   /** The steer dispatch throws (after, possibly, being accepted). */
   steerThrows: false,
+  inboxNativeSteer: false,
   /** What the conversation's turn ledger answers for a key (#3568 D1). */
   inspect: undefined as
     | ((conversationId: string, clientTurnId: string) => unknown)
@@ -149,6 +154,7 @@ async function composeOver(
   const bus = new EventBus();
   const app = new Hono();
   const context = deepStub({
+    delegationAttemptClaims: new FileDelegationAttemptClaimStore(homeDir),
     projectSharedTasks: undefined,
     deploymentAuthentication: undefined,
     localAccounts: undefined,
@@ -197,6 +203,11 @@ async function composeOver(
           limit,
           invocationId,
         ),
+      // Delivery resolves content stored out of line on the real store
+      // before reading the terminal (event-content-spill).
+      resolveEventContent: <T extends PersistedRuntimeEvent>(
+        events: readonly T[],
+      ) => store.resolveEventContent(events),
       readSessionInventoryHighWater: (threadId: string) =>
         store.readSessionInventoryHighWater(threadId),
       readInputlessTurnDisposition: (threadId: string) =>
@@ -212,6 +223,8 @@ async function composeOver(
       readSessionByThread: () => undefined,
       sessionControlRequestKeys: () => store.sessionControlRequestKeys(),
       threadInboxStore: () => store.threadInboxStore(),
+      readSteerInput: (input: Parameters<EventStore['readSteerInput']>[0]) =>
+        store.readSteerInput(input),
     }),
     orchestrationService: deepStub({
       resolveSessionActingPrincipal: () => ({
@@ -225,12 +238,31 @@ async function composeOver(
       inspectTurnDelivery: (conversationId: string, clientTurnId: string) =>
         support.inspect?.(conversationId, clientTurnId),
       hasActiveTurn: (threadId: string) => support.busy.has(threadId),
+      steerFidelityForThread: () =>
+        support.inboxNativeSteer ? 'native' : 'none',
       dispatchWithReceipt: async (
         command: Record<string, unknown>,
         dispatchContext: Record<string, unknown>,
       ) => {
         support.commands.push({ ...command, context: dispatchContext });
         if (support.steerThrows) throw new Error('receipt lost');
+        if (support.inboxNativeSteer) {
+          const input = {
+            threadId: String(command.threadId),
+            clientInputId: String(command.clientInputId),
+            input: String(command.input),
+            turnId: String(command.turnId),
+          };
+          if (store.claimSteerInput(input))
+            store.confirmSteerInput(input, input.turnId);
+          return {
+            result: {
+              outcome: 'steered',
+              threadId: input.threadId,
+              turnId: input.turnId,
+            },
+          };
+        }
         return {
           result: {
             outcome: 'unsupported-engine',
@@ -310,6 +342,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     support.commands.length = 0;
     support.busy.clear();
     support.steerThrows = false;
+    support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
     for (const close of closers.splice(0)) await close();
@@ -360,6 +393,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       method: 'POST',
       headers: callerHeaders(channel),
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'write the notes',
         target: { environment: { kind: 'current' }, agent: 'writer' },
       }),
@@ -553,6 +587,9 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   const closers: Array<() => Promise<void> | void> = [];
   afterEach(async () => {
     support.continued.length = 0;
+    support.commands.length = 0;
+    support.busy.clear();
+    support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
     for (const close of closers.splice(0)) await close();
@@ -586,20 +623,83 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     return { store, ...(await composeOver(homeDir, store, closers)) };
   }
 
-  test('startup places a held follow-up through the production start port, as its sender', async () => {
-    support.inspect = () => ({ outcome: 'not-received' });
-    const { store } = await compose((store) => held(store, 'k1'));
-    await vi.waitFor(() => expect(support.continued).toHaveLength(1));
-    expect(support.continued[0]).toMatchObject({
-      conversationId: PARENT,
-      message: 'held k1',
-      clientTurnId: 'k1',
-      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      fullAccessGrant: null,
+  test.each([false, true])(
+    'startup places a held follow-up through the production port (background=%s)',
+    async (background) => {
+      support.inspect = () => ({ outcome: 'not-received' });
+      const { store } = await compose((store) =>
+        store.threadInboxStore().submit({
+          conversationId: PARENT,
+          clientTurnId: 'k1',
+          now: Date.now(),
+          payload: {
+            message: 'held k1',
+            actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+            ...(background ? { automaticBackground: true } : {}),
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(support.continued).toHaveLength(1));
+      expect(support.continued[0]).toMatchObject({
+        conversationId: PARENT,
+        message: 'held k1',
+        clientTurnId: 'k1',
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        fullAccessGrant: null,
+      });
+      await vi.waitFor(() =>
+        expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+      );
+      expect(support.continued[0].automaticBackground).toBe(
+        background ? true : undefined,
+      );
+    },
+  );
+
+  test('startup hands a steer to the production dispatch binding with its recorded actor', async () => {
+    support.inboxNativeSteer = true;
+    support.busy.add(PARENT);
+    const { store } = await compose((store) => {
+      store.appendEvent(
+        event(PARENT, 'turn.started', {
+          turnId: 'active-turn',
+          prompt: 'working',
+        }),
+      );
+      store.threadInboxStore().submit({
+        conversationId: PARENT,
+        clientTurnId: 'native-steer',
+        kind: 'steer',
+        payload: {
+          message: 'change course',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+        now: Date.now(),
+      });
     });
     await vi.waitFor(() =>
       expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
     );
+    expect(support.commands).toEqual([
+      expect.objectContaining({
+        type: 'steerTurn',
+        threadId: PARENT,
+        turnId: 'active-turn',
+        clientInputId: 'native-steer',
+        input: 'change course',
+        context: expect.objectContaining({
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        }),
+      }),
+    ]);
+    expect(
+      store.readSteerInput({
+        threadId: PARENT,
+        clientInputId: 'native-steer',
+        input: 'change course',
+        turnId: 'active-turn',
+      }),
+    ).toMatchObject({ outcome: 'steered' });
   });
 
   test('a real durable boundary holds a queued follow-up until its exact uninvoked owner releases it', async () => {
@@ -734,6 +834,7 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   });
 
   test('a follow-up from a device that lost the scope to send is refused, never sent', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
     const { store } = await compose((store) =>
       held(store, 'k3', {
         version: 1,

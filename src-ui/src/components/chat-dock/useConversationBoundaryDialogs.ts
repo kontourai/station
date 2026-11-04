@@ -2,7 +2,7 @@ import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sd
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
-import type { ChatSession } from '../../types';
+import type { ChatSession, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -13,6 +13,12 @@ import {
   readConversationContextBoundaryUiState,
   writeConversationContextBoundaryUiState,
 } from './conversationContextBoundaryUiState';
+
+export interface ForkFollowUp {
+  mode: 'regenerate' | 'edit';
+  text: string;
+  attachments: FileAttachment[];
+}
 
 /**
  * The three conversation-boundary overlays the dock owns — Agent handoff,
@@ -60,6 +66,11 @@ export function useConversationBoundaryDialogs({
     providerType?: string;
     sourceSessionId?: string;
     idempotencyKey: string;
+    /**
+     * #4406: what the fork does once open — Regenerate sends the message
+     * again, Edit and resend puts it in the composer.
+     */
+    followUp?: ForkFollowUp;
   } | null>(null);
   const [forkOperation, setForkOperation] = useState<{
     pending: boolean;
@@ -169,18 +180,21 @@ export function useConversationBoundaryDialogs({
   );
   const contextBoundarySessionId =
     activeSession?.currentSessionId ?? activeSession?.id;
+  // One reason gates every boundary action this hook owns: continuing with
+  // another Agent, switching engines, and replacing engine context. The words
+  // therefore name no single action; each surface supplies its own subject.
   const handoffDisabledReason = !activeSession?.conversationId
-    ? 'Send a message before changing Agent.'
+    ? 'Send a message first.'
     : isSessionExecutionActive(activeSession)
-      ? 'Wait for the current turn to finish before changing Agent.'
+      ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages before changing Agent.'
+        ? 'Resolve queued or offline messages first.'
         : durableHandoffQueue.status === 'pending'
-          ? 'Checking queued messages before changing Agent.'
+          ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages before changing Agent.'
+              ? 'Resolve queued or offline messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(

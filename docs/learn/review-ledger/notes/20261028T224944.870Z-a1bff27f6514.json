@@ -1,0 +1,31 @@
+{
+  "revision": "8ebd8b44d565a170fb193f4d28517c6bc125f88b",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed this document’s claims and links against the module-map and API, SDK and contracts reference changes. The revised descriptions cover scheduler read authority, claim-time target provenance and retry settlement; this document’s scope remains accurate. Focused source tests do not establish hosted or live-provider behavior.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed this instruction file’s routing and scope against the updated module map and reference. The scheduler read-boundary and per-run target details belong to those canonical documents; these instructions remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed this instruction file’s routing and scope against the updated module map and reference. The scheduler read-boundary and per-run target details belong to those canonical documents; these instructions remain accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed this instruction file’s routing and scope against the updated module map and reference. The scheduler read-boundary and per-run target details belong to those canonical documents; these instructions remain accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed this instruction file’s routing and scope against the updated module map and reference. The scheduler read-boundary and per-run target details belong to those canonical documents; these instructions remain accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

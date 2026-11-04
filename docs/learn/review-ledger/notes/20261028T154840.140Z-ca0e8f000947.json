@@ -1,0 +1,7 @@
+{
+  "revision": "a813375a60ba4d10d555b5f39d4ac13de1e658f7",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Correction to the previous note: the regenerated station-docs-content.ts diff changes the shipped architecture topic (module-map integration-registry paragraph) and its digest, not the connections topic. Checked that this reference makes no claim about that paragraph; unchanged.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

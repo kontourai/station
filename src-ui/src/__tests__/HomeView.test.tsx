@@ -25,6 +25,8 @@ import { openChatsStore } from '../contexts/open-chats-store';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+import * as homeLanes from '../views/home/useHomeWorkLanes';
+import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // #928: Activity has no route left, so every Home affordance that used to
@@ -209,8 +211,22 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Home's start composer reads Feature Previews (the visual-skills ⋯).
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   // The start composer's Enable (a server create); no test here enables.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // The composer's "Runs on" control reads where this caller may run work;
+  // no other Station is listed here, so it stays plain text.
+  useSshEnvironmentsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
   // archive#3122: Home resolves its Workspace Pane renderer through
   // the shared selector, which reads the MCP-app host capability from config.
   // Undefined data is the real pre-load shape, and Home's built-in renderer
@@ -469,6 +485,63 @@ function continueRow(): HTMLElement {
 }
 
 describe('HomeView', () => {
+  test('real Home render errors keep Retry and Close without an initial recovery signal', async () => {
+    const signal = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(signal);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const lanes = vi
+      .spyOn(homeLanes, 'useHomeWorkLanes')
+      .mockImplementation(() => {
+        throw new Error('injected real Home render failure');
+      });
+    const onNavigate = vi.fn();
+    try {
+      renderHomeView({
+        continuation: { type: 'project', slug: 'station' },
+        onNavigate,
+      });
+      const failure = screen.getByRole('region', { name: 'Home unavailable' });
+      expect(
+        within(failure).getByText(/injected real Home render failure/),
+      ).toBeTruthy();
+      expect(
+        within(failure).getByRole('button', { name: 'Close Home' }),
+      ).toBeTruthy();
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(
+        within(failure).getByRole('button', { name: 'Try again' }),
+      );
+      await waitFor(() => expect(lanes.mock.calls.length).toBeGreaterThan(2));
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await waitFor(() =>
+        expect(signal).toHaveBeenCalledExactlyOnceWith({
+          slot: 'home',
+          defaultFiller: 'builtin:workspace-home',
+          reason: 'repeated-render-failure',
+        }),
+      );
+      lanes.mockRestore();
+      fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'project',
+        slug: 'station',
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('region', { name: 'Home unavailable' }),
+        ).toBeNull(),
+      );
+      expect(screen.getByRole('region', { name: 'Home' })).toBeTruthy();
+    } finally {
+      unsubscribe();
+      lanes.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -1303,9 +1376,9 @@ describe('HomeView', () => {
       continuation: null,
       onNavigate: vi.fn(),
     });
-    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(
-      'Loading recent work',
-    );
+    expect(
+      screen.getByRole('status', { name: 'Loading recent work' }),
+    ).toBeTruthy();
     expect(container.querySelector('.skeleton-list')).toBeTruthy();
     expect(screen.queryByText('No recent tasks yet.')).toBeNull();
     expect(
@@ -1320,9 +1393,9 @@ describe('HomeView', () => {
       onNavigate: vi.fn(),
     });
 
-    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(
-      'Loading recent work',
-    );
+    expect(
+      screen.getByRole('status', { name: 'Loading recent work' }),
+    ).toBeTruthy();
     expect(container.querySelector('.skeleton-list')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),
@@ -1343,9 +1416,14 @@ describe('HomeView', () => {
       expect(
         screen.getAllByRole('textbox', { name: 'What would you like done?' }),
       ).toHaveLength(1);
-      fireEvent.click(
-        screen.getByRole('button', { name: /View available agents/ }),
-      );
+      const agentsCard = screen.getByRole('button', {
+        name: /View available agents/,
+      });
+      // #4405 (A46): the card opens the Agents page, so its copy must not
+      // send the person to "the composer above" instead.
+      expect(agentsCard.textContent).not.toContain('composer above');
+      expect(agentsCard.textContent).toContain('See the agents ready');
+      fireEvent.click(agentsCard);
       expect(onNavigate).toHaveBeenLastCalledWith({ type: 'agents' });
       const project = screen.getByRole('button', { name: /New Project/ });
       expect(project.textContent).toContain(
@@ -1495,7 +1573,7 @@ describe('HomeView', () => {
     // The Continue row reads like every work row: no invented Agent, the
     // project, and the Task's own status rather than a session lifecycle.
     expect(continueRow().textContent).toContain('Durable local work');
-    expect(continueRow().textContent).toContain('No agent assigned · station');
+    expect(continueRow().textContent).toContain('Task · station');
     expect(continueRow().textContent).toContain('Task · To do');
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
     expect(showSurfacePage).toHaveBeenCalledWith('activity');

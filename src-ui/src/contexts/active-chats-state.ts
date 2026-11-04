@@ -1,14 +1,17 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
-  ChildWorkTerminalStatus,
+  ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
   ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalMode,
   type EngineId,
@@ -23,6 +26,8 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { PeerChatBinding } from '../lib/peer-chat';
+import { readPeerChatBinding } from '../lib/peer-chat';
 import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
@@ -37,6 +42,7 @@ import {
   newerConversationActivity,
   serverTurnLive,
 } from '../utils/conversation-activity';
+import { displayTitleFromPrompt } from '../utils/display-title';
 
 export type { UnsentMessageRecord } from '../types';
 
@@ -130,6 +136,7 @@ export type ChatContentPart = {
   result?: any;
   output?: any;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   error?: string;
   errorText?: string;
@@ -141,6 +148,12 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+  /** See `MessagePart.spilledText`. */
+  spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+  /** See `MessagePart.contentThreadId`. */
+  contentThreadId?: string;
   /** See `MessagePart.approvalToolName`. */
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
@@ -179,6 +192,8 @@ export type ChatMessage = {
   steerInterruptedRun?: boolean;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
+  /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
+  stationMemoryContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -208,6 +223,8 @@ export type ChatMessage = {
    */
   provenance?: unknown;
   changedFiles?: TurnChangedFiles;
+  /** See `ChatMessage.hostImages` in types.ts. */
+  hostImages?: ChatHostImageMap;
 };
 
 /**
@@ -217,7 +234,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
-  status: ChildWorkTerminalStatus;
+  status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
 }
@@ -354,6 +371,8 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -554,6 +573,13 @@ export type ChatUIState = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -597,6 +623,7 @@ export type ChatUIState = {
   approvalPostureSequence?: number;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
+  orchestrationDurability?: ProviderDurabilityProfile;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /**
@@ -784,6 +811,13 @@ export type ActiveChatMetadata = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -804,6 +838,8 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -854,6 +890,13 @@ export type PersistedActiveChat = {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
+  /**
+   * The execution Session `agentConnectionId` was observed for (conversation
+   * open, that Session's own `session.started`, or the send that started it).
+   * The connection describes the chat's current Session only when this names
+   * it; a successor Session can start on another connection (#4162).
+   */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   provider?: EngineId;
@@ -1026,6 +1069,7 @@ export function hydrateActiveChats(
       continue;
     }
     const session = candidate as PersistedActiveChat;
+    const peerChat = readPeerChatBinding(session.peerChat);
     const text = (value: unknown) => optionalString(value);
     const queuedMessageFailure = readQueuedMessageFailure(
       session.queuedMessageFailure,
@@ -1068,11 +1112,14 @@ export function hydrateActiveChats(
       ],
       ...(pendingDispatch ? { queueDrainHeldForOpen: true } : {}),
       queuedMessageMetadata: [
-        ...(pendingDispatch ? [pendingDispatch.metadata] : []),
+        ...(pendingDispatch
+          ? [{ ...pendingDispatch.metadata, originUnverified: true as const }]
+          : []),
         ...stringList(session.queuedMessages).map<PendingMessageMetadata>(
           (_, index) => {
             const metadata = session.queuedMessageMetadata?.[index];
             return {
+              originUnverified: true,
               id:
                 typeof metadata?.id === 'string'
                   ? metadata.id
@@ -1087,6 +1134,14 @@ export function hydrateActiveChats(
                 : {}),
               ...(typeof metadata?.steerTurnId === 'string'
                 ? { steerTurnId: metadata.steerTurnId }
+                : {}),
+              ...(typeof metadata?.inboxSteerConversationId === 'string'
+                ? {
+                    inboxSteerConversationId: metadata.inboxSteerConversationId,
+                  }
+                : {}),
+              ...(typeof metadata?.inboxSteerHead === 'string'
+                ? { inboxSteerHead: metadata.inboxSteerHead }
                 : {}),
             };
           },
@@ -1110,6 +1165,10 @@ export function hydrateActiveChats(
       inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
+      peerChat,
+      peerChatInvalid:
+        session.peerChatInvalid === true ||
+        (session.peerChat !== undefined && !peerChat),
       conversationId: text(session.conversationId),
       currentSessionId: text(session.currentSessionId),
       conversationOpenPending: typeof session.conversationId === 'string',
@@ -1174,6 +1233,7 @@ export function hydrateActiveChats(
           ? session.executionScope
           : undefined,
       agentConnectionId: text(session.agentConnectionId),
+      agentConnectionObservedFor: text(session.agentConnectionObservedFor),
       providerId: text(session.providerId),
       defaultProviderId: text(session.defaultProviderId),
       provider: text(session.provider) as EngineId,
@@ -1250,6 +1310,8 @@ export function activeChatDurableId(
  * see `activeChatHasWork` below.
  */
 export function isDurableActiveChat(chat: {
+  peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   conversationId?: string;
   unsentMessages?: unknown[];
   queuedMessages?: unknown[];
@@ -1260,7 +1322,9 @@ export function isDurableActiveChat(chat: {
 }): boolean {
   if (chat.replay) return false;
   return Boolean(
-    chat.conversationId ||
+    chat.peerChat ||
+      chat.peerChatInvalid ||
+      chat.conversationId ||
       chat.unsentMessages?.length ||
       chat.skillExperienceDraft ||
       chat.skillExperienceDraftInvalid ||
@@ -1317,6 +1381,8 @@ export function serializeActiveChats(
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
+      peerChat: chat.peerChat,
+      peerChatInvalid: chat.peerChatInvalid,
       queuedMessages: chat.queuedMessages || [],
       queuedMessageMetadata: chat.queuedMessageMetadata,
       pendingQueueDispatch: chat.pendingQueueDispatch,
@@ -1367,6 +1433,7 @@ export function serializeActiveChats(
       executionMode: chat.executionMode,
       executionScope: chat.executionScope,
       agentConnectionId: chat.agentConnectionId,
+      agentConnectionObservedFor: chat.agentConnectionObservedFor,
       providerId: chat.providerId,
       defaultProviderId: chat.defaultProviderId,
       provider: chat.provider,
@@ -1426,8 +1493,13 @@ export interface PendingMessageMetadata {
   id: string;
   mode: 'queue' | 'steer';
   delivery?: 'steering' | 'indeterminate';
+  /** Legacy storage has no originating Station or authority. Never automatically send it. */
+  originUnverified?: true;
   steerThreadId?: string;
   steerTurnId?: string;
+  /** A possibly submitted inbox steer must be reconciled through its inbox. */
+  inboxSteerConversationId?: string;
+  inboxSteerHead?: string;
 }
 
 function reconcilePendingMetadata(
@@ -1542,6 +1614,8 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'peerChat' in nextUpdates ||
+    'peerChatInvalid' in nextUpdates ||
     'skillExperienceDraft' in nextUpdates ||
     'skillExperienceDraftInvalid' in nextUpdates ||
     'skillExperienceActive' in nextUpdates ||
@@ -1672,12 +1746,34 @@ export function clearEphemeralMessagesState(chat: ChatUIState): ChatUIState {
   };
 }
 
+/**
+ * #4266: the title a chat takes when its first send is confirmed. This is
+ * the one moment the local messages are known to be the whole conversation
+ * (this client wrote all of them), so it is the one moment they may name it;
+ * once the session starts they are a bounded window that can begin with
+ * "Continue". Kept as `title`, so it is persisted and survives a reload. A
+ * low-content first message names nothing and leaves the chat untitled.
+ */
+function firstSendTitle(chat: ChatUIState): string | undefined {
+  if (chat.conversationId) return undefined;
+  if (chat.title && chat.title !== 'New chat') return undefined;
+  for (const message of chat.messages ?? []) {
+    if (message.role !== 'user' || typeof message.content !== 'string')
+      continue;
+    const title = displayTitleFromPrompt(message.content);
+    if (title && !isLowContentPrompt(title)) return title;
+  }
+  return undefined;
+}
+
 export function assignConversationIdState(
   chat: ChatUIState,
   conversationId: string,
 ): ChatUIState {
+  const title = firstSendTitle(chat);
   return {
     ...chat,
+    ...(title ? { title } : {}),
     conversationId,
     // #2309: a record describes one conversation; see `mergeChatUpdates`.
     ...(chat.conversationActivity &&

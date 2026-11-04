@@ -294,6 +294,18 @@ features still own their availability checks. See the
 about a shared stale-connection mutation policy. The optional guard's absence
 alone does not establish that a particular stale operation can succeed.
 This health coordinator does not queue mutations.
+
+Each run also records `routes` on the snapshot: one `ConnectionRouteResult`
+per route with `in-use`, `failed` (with its reason), `blocked` (the page cannot
+use it, with its reason) or `not-checked` (ranked after the route that
+answered, so never probed). `connectionRoutes.ts` classifies a route by its
+address (`connectionRouteKind`, `CONNECTION_ROUTE_LABELS`) and backs three
+`ConnectionStore` operations: `applyAdvertisedRoutes` merges a Station's own
+report only when its `environmentId` matches the saved one, marking learned
+endpoints `source: 'advertised'` and pruning those it stops reporting except
+the one in use; `addRoute` and `removeRoute` change the routes a user added.
+Relay, SSH-tunnel and native shared profiles keep their single route
+([Station routes](../design/station-routes.md)).
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -516,14 +528,17 @@ approval prompts**, `approval:full-access`). Anything else, and any `scope` besi
 delegation, is refused with `invalid_request`. The device-pairing panel asks
 for all of it (full device access: Standard, `coding:exec` and
 `approval:full-access`), never the default grant's `access:manage`; an
-account-bound request asks for Standard.
+account-bound access request asks for Read-only; the server caps older or
+overbroad account-bound access requests to Read-only as well.
 
 Every approval surface (the **Paired devices** inbox, **Needs attention**, and
 `station environment access approve --scope=<scope,…>`) lists what the request
 asks for, summarized ("asks for full device access"), and approves it as asked
 unless the approver narrows it under **Limit access** (or with `--scope`). In
 **Needs attention** the request is a one-line card whose **Review** opens a
-dialog with that summary and Approve/Deny. The confirm
+dialog with that summary and Approve/Deny for ordinary requests. An
+account-binding-required request instead opens pairing management; its attention
+item does not disclose the account identity. The confirm
 route takes the kept scope as `scope`, which must be a non-empty subset of the
 request; omitted, the device gets what it asked for. Requested extras are the
 operator's to grant: an approval that keeps one needs the operator credential or
@@ -532,9 +547,10 @@ unauthenticated at-the-machine approval, which may still approve the rest with
 the extras left out. The same rule covers an operator-created offer whose scope
 carries one. A delegation, relay or account-bound grant cannot be trimmed, and
 its **Needs attention** item carries no `requestedScope`; an account binding
-(operator only) approves the request as asked. The Station app never asks for
-an elevated grant on an account-bound request, so that matters only for an
-operator-created offer that carries one. Pairing with a Station
+review shows the read-only grant. The pairing panel requests a fresh operator
+passkey confirmation on the consent origin; the host CLI retains its direct
+operator-credential path. An operator can separately promote a Device after
+pairing when its role and use require more. Pairing with a Station
 that predates `scope` ignores it, and that Station's own approval surface shows
 the default grant it would issue. A request that names no scope still receives the historical
 default grant, which Station peers (`station environment access request`) and
@@ -586,7 +602,9 @@ access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator
 credential. An already trusted session must approve the displayed device name
 and scope or explicitly deny the request; the requesting browser cannot decide
-either outcome itself. The host inbox shows the remaining lifetime and removes
+either outcome itself. At exchange, Station may add a numeric suffix if a
+Device in a different authority domain has reserved or claimed that name; the
+approval still addresses the request ID. The host inbox shows the remaining lifetime and removes
 expired requests automatically. It distinguishes same-origin requests from
 pairing-code requests. A deployment with the explicit Tailscale Serve identity
 adapter also labels a request with the verified tailnet account returned by
@@ -638,7 +656,10 @@ The host's launcher sign-in session on the same computer may create invitations,
 requests and manage paired devices while its grant retains `access:manage`.
 This authority comes from the server's private host-possession and
 `ui-bootstrap` mint record, not from an ordinary paired Device carrying that
-scope. Invited Devices do not inherit it. It does not grant operator identity,
+scope. On a personal Station, one of the owner's own Devices that already holds
+a host shell gets the same standing and limits
+([owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)); other
+invited Devices do not inherit it. It does not grant operator identity,
 passkey management or the native desktop consent broker's local-grant authority.
 The host browser cannot introduce protected management or consent scopes into
 an invitation, a pending request's final approved scope, or another Device's
@@ -646,15 +667,24 @@ permissions. Ordinary Device-use grants, including running commands and full
 access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
-to the selected Station server. The existing client and the phone both connect
+to the selected Station server. The panel asks the Station for its reachable
+routes (`GET /api/system/routes`) and opens straight to a pre-approved code on
+the first HTTPS one (a code carries a secret, and the phone's decoder accepts
+only HTTPS, so cleartext LAN and Tailscale IP routes are not listed); choosing
+another route replaces the code and cancels the old one. Beside the routes, the
+code card shows the QR, the manual code, a countdown, **Copy link** and
+**Copy code**; an expired code offers **New code**. The scan target, app channel,
+browser link and access sit under **More options**. If no HTTPS route exists or
+the code cannot be created, the panel says why and opens the address and access
+form. The existing client and the phone both connect
 to that server; the existing client does not become a server. Check the visible
-server address: the phone needs a reachable LAN or tailnet address, not localhost.
+server address: the phone needs a reachable HTTPS address, not localhost.
 The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
-Choose **Create pairing code**, scan with the phone camera to open the selected
+Scan the code with the phone camera to open the selected
 installed Station channel, then redeem the invitation. Creating it approves
-the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
+the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** under **More options**.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
@@ -703,8 +733,8 @@ remote WebSocket admission without rotating the operator credential or revoking
 other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
-dispatched. Ordinary paired
-credentials cannot create pairing offers. An explicitly promoted
+dispatched. Paired credentials without owner-device standing cannot create
+pairing offers. An explicitly promoted
 `access:devices` Device can list, change scopes, revoke and remove revoked
 records using the same authenticated principal in the Paired devices panel.
 Only the operator can grant or remove `access:devices`; a person-bound holder
@@ -718,6 +748,9 @@ origin commits it. The panel opens that review and polls its server-owned status
 without a credential paste field or a reusable step-up window. **Cancel** on the
 review records terminal denial, and the panel shows **Cancelled**. See
 [Operator passkeys](../guides/operator-passkeys.md).
+An operator session can also request a passkey review for an ordinary Device
+pairing approval. The review binds the pending request and selected scope;
+the request stays pending until confirmation.
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.
@@ -786,8 +819,9 @@ console.log(store.getActive()?.url); // 'http://192.168.1.10:3141'
 
 For a remote connection, Station Connect first fetches the public handshake
 without authorization. It then uses the saved credential for protected HTTP
-and fetch-SSE requests and the versioned first application frame for terminal
-and voice WebSockets. A `401` returns the connection to its masked
+and fetch-SSE requests and the versioned first application frame for voice
+WebSockets. The terminal socket is admitted by a single-use ticket minted over
+authenticated HTTP instead. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
 credential recovery is tracked in #303.
 
@@ -817,7 +851,11 @@ authority. Protocol refusals use a separate direct-socket-peer audit budget
 cap. Exhaustion suppresses only audits while every refusal receives 400/426.
 Refusals neither consult nor consume the authentication budget.
 The separate native Rust pairing exchange and direct fetch callers
-remain undeclared; terminal/voice WebSockets are outside this HTTP check.
+remain undeclared; the voice WebSocket is outside this HTTP check.
+The terminal socket's ticket is minted through ordinary HTTP admission
+(`POST /api/terminal/tickets`) and admits the operator's own paired devices;
+the browser broker route stays refused. See the
+[operator-device admission](../design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.
@@ -862,6 +900,8 @@ const {
   apiBase,            // string — active URL (backward-compat alias)
   addConnection,      // (name, url) => SavedConnection
   removeConnection,   // (id) => void
+  forgetConnection,   // (id) => Promise<void>; a shared profile goes through the host, and rejects when none can forget it
+  canForgetConnection,// (id) => boolean; false for the host-supplied Station, a native relay route, or a shared profile no host can forget
   updateConnection,   // (id, changes) => void
   setActiveConnection,// (id) => Promise<void>; host transport preparation can reject
   setApiBase,         // (url) => void — upsert by URL and activate
@@ -928,6 +968,7 @@ interface ConnectionStatusResult {
   blocked: boolean;           // true on a terminal failure (e.g. authentication-failed);
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
+  routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
   recheck: () => void;        // manually trigger a check
 }
 ```
@@ -1010,8 +1051,10 @@ The optional `renderPairingEndpointSuggestions` modal slot accepts host-owned
 content with `{apiBase, request, onSuggest}`. Station's host UI fetches the
 permission-protected raw endpoint inventory with React Query and shows an exact
 HTTPS address with an explicit Use action. It never overwrites entered/remembered
-addresses automatically. Host QR creation requires reachable HTTPS/nonloopback;
-the decoder retains HTTPS and strict HTTP loopback compatibility. Native LAN
+addresses automatically. Host QR creation requires a reachable nonloopback HTTPS
+address, matching the decoder, which retains HTTPS and strict HTTP loopback
+compatibility. The offer service also accepts private-network HTTP, but the panel
+does not create a secret-bearing code for it. Native LAN
 HTTP uses the separate direct access flow instead of secret QR invitations.
 
 ### Connection candidate providers

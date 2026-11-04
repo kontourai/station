@@ -6,30 +6,33 @@ import type {
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  errorCodeOf,
+  isSteerConflictCode,
   MODEL_NOT_ADVERTISED_CODE,
-  PROVIDER_SESSION_STARTING_CODE,
-  PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
   orchestrationQueries,
-  steerOrchestrationTurn,
-  useEngineConnectionsQuery,
+  projectChatDefaultsQueryKey,
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  readConversationInboxHead,
+  submitConversationSteer,
+} from '@kontourai/station-sdk/client';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   skillExperienceAttachmentInputs,
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -41,6 +44,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -64,15 +68,14 @@ import {
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
+  chatErrorHintFor,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../utils/chatErrorTranslation';
-import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
+import { liveTurnTarget } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { withDeliveryCheck } from '../utils/messageDeliveryState';
-import { steerRefusalMessage } from '../utils/steerTurn';
-import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -99,25 +102,17 @@ interface SendTransaction {
   attachments?: FileAttachment[];
   /** Byte-free selected-stage snapshot, restored only after a definitive rejection. */
   attachmentStages?: ComposerAttachmentStageSnapshot[];
+  /**
+   * A message Station composed, not the composer's (`preserveComposer`): it
+   * took nothing from the composer, so a rejection gives nothing back to it.
+   */
+  composed?: true;
 }
 
 type UserCancelableAbortController = AbortController & {
   /** Set only by the Stop path before it releases the foreground observer. */
   _userInitiated?: boolean;
 };
-
-/**
- * Refusals that move a composer send into the queue under the same key (the
- * engine is replying on its own, or the session is still starting). The
- * outbox row and the queue must agree on this list: the row becomes the
- * queued message's held copy, never a refusal that hands the text back.
- */
-function isQueuedOnRefusalCode(code: unknown): boolean {
-  return (
-    code === PROVIDER_TURN_IN_PROGRESS_CODE ||
-    code === PROVIDER_SESSION_STARTING_CODE
-  );
-}
 
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
@@ -126,8 +121,11 @@ function prepareSendTransaction(options: {
   attachments?: FileAttachment[];
   /** The send's idempotency key: the bubble's identity too. */
   clientTurnId: string;
+  composed?: boolean;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
+  const attachmentStages = options.state?.attachmentStages;
+  const composed = options.composed ? ({ composed: true } as const) : {};
   // A resend of the same key (a replay of a kept row, a Retry) is the same
   // message: it keeps its one bubble instead of gaining a second.
   if (
@@ -142,7 +140,8 @@ function prepareSendTransaction(options: {
       optimisticMessages: originalMessages,
       optimisticMessageClientId: options.clientTurnId,
       attachments: options.attachments,
-      attachmentStages: options.state?.attachmentStages,
+      attachmentStages,
+      ...composed,
     };
   const outgoing = buildOutgoingUserMessage(
     originalMessages,
@@ -156,7 +155,8 @@ function prepareSendTransaction(options: {
     optimisticMessages: outgoing.messages,
     optimisticMessageClientId: outgoing.clientId,
     attachments: options.attachments,
-    attachmentStages: options.state?.attachmentStages,
+    attachmentStages,
+    ...composed,
   };
 }
 
@@ -182,6 +182,9 @@ function rejectedSendRollback(
     return next;
   })();
 
+  // Only its own bubble goes: the composer was never part of it.
+  if (transaction.composed)
+    return rollbackMessages ? { messages: rollbackMessages } : {};
   return {
     ...(latestState?.input === '' ? { input: transaction.submittedDraft } : {}),
     ...((latestState?.attachments?.length ?? 0) === 0 &&
@@ -283,12 +286,15 @@ async function observeSendAdmission<T>(
 function discardedMessageNotice(
   restored: boolean,
   text: string,
+  composed = false,
 ): { role: 'system'; content: string } {
   return {
     role: 'system',
-    content: restored
-      ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
-      : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
+    content: composed
+      ? 'This message was discarded, so it was not sent.'
+      : restored
+        ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
+        : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
   };
 }
 
@@ -341,7 +347,15 @@ export function useSendMessage(
   handleSlashCommand?: (
     sessionId: string,
     content: string,
-  ) => Promise<boolean | string | 'CLEAR'>,
+  ) => Promise<
+    | boolean
+    | string
+    | 'CLEAR'
+    | {
+        text: string;
+        mcpPromptOrigin: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
+      }
+  >,
 ) {
   const {
     updateChat,
@@ -351,20 +365,24 @@ export function useSendMessage(
     clearEphemeralMessages,
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
-  // Mid-turn send gate: matrix `midTurnSteer` (via sessionAdapterSupportsSteering)
-  // chooses steer vs queue. Muse and Station queue.
-  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
-    data: ConnectionConfig[];
-  };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
+  const inboxRequestScope = accountPreferences.requestScope;
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
     observation: authorityObservation,
   } = useAuthorityPersistence();
   const stationEnvironmentId = authorityObservation?.environmentId;
+  const authorityRef = useRef({
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+  });
+  authorityRef.current = {
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+  };
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -398,6 +416,12 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /**
+         * A message Station composed, not the composer's: the composer's
+         * text, attachments and visual skill are neither sent nor cleared,
+         * and a refusal puts nothing back in it.
+         */
+        preserveComposer?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
         onAdmission?: (status: SendAdmission) => void;
         /**
@@ -427,6 +451,12 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       let currentState = allChats[sessionId];
+      if (currentState?.peerChat || currentState?.peerChatInvalid) {
+        onError?.(
+          new Error('Send this message from the remote chat composer.'),
+        );
+        return false;
+      }
       if (
         currentState?.queuedApprovalDefaultNamespace &&
         (!experienceNamespace || experienceAuthorityStatus !== 'verified')
@@ -484,12 +514,22 @@ export function useSendMessage(
         ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
           .filter(Boolean)
           .join('\n\n');
-      const submittedDraft = content;
-      const experienceDraft = options?.dispatch
-        ? undefined
-        : currentState?.skillExperienceDraft;
+      // A Continue key marks the message composed on every send of it that
+      // comes through here (a Retry, an outbox replay), not only the first.
+      // The queue drain sends without touching the composer anyway.
+      const preserveComposer =
+        options?.preserveComposer === true ||
+        turnInterruptedContinueBoundaryId(turnId) !== undefined;
+      // What a refusal restores to an empty composer: nothing, for a message
+      // the composer never held.
+      const submittedDraft = preserveComposer ? '' : content;
+      const experienceDraft =
+        options?.dispatch || preserveComposer
+          ? undefined
+          : currentState?.skillExperienceDraft;
       if (
         !options?.dispatch &&
+        !preserveComposer &&
         (experienceDraft ||
           currentState?.skillExperienceDraftInvalid ||
           options?.skillExperienceDraft)
@@ -546,12 +586,25 @@ export function useSendMessage(
       // Durable outbound replay stays durable either way — it must not
       // collapse into either the in-memory queue or a live steer.
       let steerOpenTurn = false;
+      let queueBusyFollowUp = false;
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy = isTurnInFlight(currentState);
+      const turnBusy =
+        isTurnInFlight(currentState) ||
+        (!!options?.dispatch &&
+          !!currentState &&
+          conversationOpenPhase(currentState) === 'busy');
 
       if (turnBusy && currentState) {
+        if (/^\/[^\s:]+:[^\s]+/.test(content)) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'MCP prompts cannot be queued or steered during a turn. Send this prompt after the current turn finishes.',
+          });
+          return false;
+        }
         if (attachments?.length) {
           addEphemeralMessage(sessionId, {
             role: 'system',
@@ -560,10 +613,8 @@ export function useSendMessage(
           });
           return false;
         }
-        if (options?.skipInMemoryQueueOnBusy) {
-          // A turn still running is a temporary gate, not a refusal: the
-          // message waits without spending one of its attempts, so a queue
-          // replayed during a long turn never wears out to failed.
+        // Composed continuations must never be steered or queued.
+        if (preserveComposer) {
           return options?.dispatch
             ? ({
                 kind: 'deferred',
@@ -571,42 +622,32 @@ export function useSendMessage(
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
+        if (options?.skipInMemoryQueueOnBusy && !options.dispatch) {
+          return undefined;
+        }
         // #2324 (D4): a turn the engine opened on its own is not a turn the
         // user is steering. Their message waits for it to finish, queued,
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
+          !options?.dispatch &&
           !options?.queueOnBusy &&
           !currentState.queueSendNowPending &&
           !currentState.queueDrainSettling &&
           currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
-            currentState.agentConnectionId,
-            agentConnections,
-            currentState.orchestrationProvider,
+            currentState.orchestrationDurability,
           ) &&
           !(attachments && attachments.length > 0);
         if (!steeringCapable) {
-          clearInput(sessionId);
-          updateChat(sessionId, {
-            queuedMessages: [...(currentState.queuedMessages || []), content],
-            queuedMessageMetadata: [
-              ...(currentState.queuedMessageMetadata ??
-                currentState.queuedMessages.map(() => ({
-                  id: randomCorrelationId(),
-                  mode: 'queue' as const,
-                }))),
-              {
-                id: randomCorrelationId(),
-                mode: options?.queueOnBusy ? 'queue' : 'steer',
-              },
-            ],
-          });
-          options?.onAdmission?.('accepted');
-          return;
+          queueBusyFollowUp = true;
+        } else {
+          steerOpenTurn = true;
         }
-        steerOpenTurn = true;
       }
 
+      let mcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin
+        | undefined;
       if (!sourceStart && content.startsWith('/') && handleSlashCommand) {
         const result = await handleSlashCommand(sessionId, content);
         if (result === true || result === 'CLEAR') {
@@ -623,131 +664,206 @@ export function useSendMessage(
           });
           content = result;
         }
-      }
-
-      if (steerOpenTurn && currentState) {
-        const clientInputId = randomCorrelationId();
-        const openTurn = currentState.conversationActivity?.openTurn;
-        const target = {
-          threadId:
-            openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
-          turnId: openTurn?.turnId ?? currentState.openTurnId,
-        };
-        const claimState = activeChatsStore.getSnapshot()[sessionId];
-        if (!claimState) return false;
-        clearInput(sessionId);
-        updateChat(sessionId, {
-          queuedMessages: [...claimState.queuedMessages, content],
-          queuedMessageMetadata: [
-            ...(claimState.queuedMessageMetadata ?? []),
-            {
-              id: clientInputId,
-              mode: 'steer',
-              delivery: 'steering',
-              steerThreadId: target.threadId,
-              steerTurnId: target.turnId,
-            },
-          ],
-          queueSendNowPending: true,
-        });
-        if (!activeChatsStore.flushPendingSave()) {
-          const held = activeChatsStore.getSnapshot()[sessionId];
-          updateChat(sessionId, {
-            queueSendNowPending: false,
-            queuedMessageMetadata: held?.queuedMessageMetadata?.map((entry) =>
-              entry.id === clientInputId
-                ? { ...entry, delivery: 'indeterminate' }
-                : entry,
-            ),
-            queuedMessageFailure: {
-              code: 'steering-save-failed',
-              message:
-                'Could not save pending steering. It was not sent; your message remains held.',
-              at: Date.now(),
-            },
-          });
-          return false;
-        }
-        const removeClaim = () => {
-          const latest = activeChatsStore.getSnapshot()[sessionId];
-          const index =
-            latest?.queuedMessageMetadata?.findIndex(
-              (entry) => entry.id === clientInputId,
-            ) ?? -1;
-          if (!latest || index < 0) return;
-          updateChat(sessionId, {
-            queuedMessages: latest.queuedMessages.filter(
-              (_, position) => position !== index,
-            ),
-            queuedMessageMetadata: latest.queuedMessageMetadata?.filter(
-              (_, position) => position !== index,
-            ),
-          });
-        };
-        const holdUnconfirmed = () => {
-          const latest = activeChatsStore.getSnapshot()[sessionId];
-          updateChat(sessionId, {
-            queuedMessageMetadata: latest?.queuedMessageMetadata?.map(
-              (entry) =>
-                entry.id === clientInputId
-                  ? { ...entry, delivery: 'indeterminate' }
-                  : entry,
-            ),
-          });
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content:
-              'Steering delivery was not confirmed. Your message is held; retry steering to check the same delivery.',
-          });
-        };
-        try {
-          const result = await steerOrchestrationTurn({
-            ...target,
-            text: content,
-            clientInputId,
-            apiBase,
-          });
-          if (result.outcome === 'steered') {
-            removeClaim();
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          'mcpPromptOrigin' in result
+        ) {
+          if (steerOpenTurn) {
+            updateChat(sessionId, { input: submittedDraft });
             addEphemeralMessage(sessionId, {
               role: 'system',
-              content: 'Steering sent.',
+              content:
+                'MCP prompts cannot be sent as steering. Send this prompt after the current turn finishes.',
             });
-            return true;
+            return false;
           }
-          if (result.outcome === 'indeterminate') {
-            holdUnconfirmed();
-            return true;
-          }
-          removeClaim();
+          content = result.text;
+          mcpPromptOrigin = result.mcpPromptOrigin;
+        }
+      }
+
+      const notifyAdmission = () => {
+        try {
+          options?.onAdmission?.('accepted');
+        } catch {
+          /* Observers cannot undo durable admission. */
+        }
+      };
+      if (steerOpenTurn && currentState) {
+        const clientInputId = randomCorrelationId();
+        const claimState = activeChatsStore.getSnapshot()[sessionId];
+        if (!claimState) return false;
+        if (!claimState.conversationId) {
           addEphemeralMessage(sessionId, {
             role: 'system',
             sendFailure: true,
-            content: steerRefusalMessage(result),
+            content:
+              'Open the conversation before steering. Your message is still in the composer.',
           });
-          const latest = activeChatsStore.getSnapshot()[sessionId];
-          if ((latest?.input ?? '') === '')
-            updateChat(sessionId, { input: submittedDraft });
+          options?.onAdmission?.('not-invoked');
           return false;
-        } catch (error) {
-          if (isProvablyNotSent(error)) {
-            removeClaim();
-            const latest = activeChatsStore.getSnapshot()[sessionId];
-            if ((latest?.input ?? '') === '')
-              updateChat(sessionId, { input: submittedDraft });
-            return false;
+        }
+        if (
+          !experienceNamespace ||
+          experienceAuthorityStatus === 'unavailable'
+        ) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            sendFailure: true,
+            content: 'Verify your Station connection before steering.',
+          });
+          return false;
+        }
+        updateChat(sessionId, { queueSendNowPending: true });
+        let liveSteer: LiveOutboundDispatch | undefined;
+        try {
+          const usableInboxScope =
+            inboxRequestScope?.isCurrent() &&
+            inboxRequestScope.apiBase === apiBase
+              ? inboxRequestScope
+              : undefined;
+          if (experienceAuthorityStatus !== 'verified' && !usableInboxScope)
+            throw new Error('Station authority is unavailable.');
+          const requestOptions = usableInboxScope
+            ? { requestScope: usableInboxScope }
+            : accountPreferences.requestScope
+              ? { requestScope: accountPreferences.requestScope }
+              : {};
+          const authorityIsCurrent = () =>
+            authorityRef.current.namespace === experienceNamespace &&
+            authorityRef.current.status !== 'unavailable' &&
+            (!usableInboxScope || usableInboxScope.isCurrent()) &&
+            (!accountPreferences.requestScope ||
+              accountPreferences.requestScope.isCurrent());
+          let expectedHead: string;
+          try {
+            expectedHead = await readConversationInboxHead(
+              apiBase,
+              claimState.conversationId,
+              requestOptions,
+            );
+          } catch (error) {
+            const cached =
+              inboxRequestScope?.isCurrent() &&
+              inboxRequestScope.apiBase === apiBase
+                ? queryClient.getQueryData<unknown>([
+                    'conversation-inbox',
+                    apiBase,
+                    inboxRequestScope.authorityKey,
+                    claimState.conversationId,
+                    'head',
+                  ])
+                : undefined;
+            if (typeof cached !== 'string' || !cached || cached.length > 4096)
+              throw error;
+            expectedHead = cached;
           }
-          holdUnconfirmed();
+          if (!authorityIsCurrent())
+            throw new Error('Station authority changed.');
+          const { outboundDispatch } = await import('../lib/outboundQueue');
+          const durable = outboundDispatch.beginLive({
+            clientTurnId: clientInputId,
+            sessionId,
+            agentSlug,
+            conversationId: claimState.conversationId,
+            content,
+            inboxSteerHead: expectedHead,
+            station: {
+              apiBase,
+              ...(stationEnvironmentId
+                ? { environmentId: stationEnvironmentId }
+                : {}),
+              authorityNamespace: experienceNamespace,
+            },
+          });
+          let timedOut = false;
+          liveSteer = await Promise.race([
+            durable,
+            new Promise<undefined>((resolve) =>
+              setTimeout(() => {
+                timedOut = true;
+                resolve(undefined);
+              }, LIVE_DURABILITY_TIMEOUT_MS),
+            ),
+          ]);
+          if (!liveSteer) {
+            if (timedOut)
+              void durable
+                .then((late) => late.refused())
+                .catch(() => undefined);
+            throw new Error('Could not save this steer before sending.');
+          }
+          if (!authorityIsCurrent()) {
+            await liveSteer.refused();
+            liveSteer = undefined;
+            throw new Error('Station authority changed.');
+          }
+          if (
+            activeChatsStore.getSnapshot()[sessionId]?.input === submittedDraft
+          )
+            clearInput(sessionId);
+          try {
+            options?.onDurable?.();
+          } catch {
+            // The durable claim cannot be undone by an observer.
+          }
+          if (authorityRef.current.status !== 'verified') {
+            await liveSteer.unanswered();
+            notifyAdmission();
+            return true;
+          }
+          const accepted = await submitConversationSteer(
+            apiBase,
+            claimState.conversationId,
+            { key: clientInputId, message: content, expectedHead },
+            requestOptions,
+          );
+          if (accepted.state === 'cancelled') {
+            await liveSteer.indeterminate(
+              'Station reports this key was dismissed.',
+              { listed: true },
+            );
+            notifyAdmission();
+            return true;
+          }
+          await liveSteer.accepted();
+          invalidate(['conversation-inbox']);
+          notifyAdmission();
           return true;
+        } catch (error) {
+          if (liveSteer) {
+            if (
+              (errorCodeOf(error) === 'inbox_stale_head' ||
+                isSteerConflictCode(errorCodeOf(error))) &&
+              stationAnswered(error)
+            ) {
+              await liveSteer.refused();
+              if (
+                (activeChatsStore.getSnapshot()[sessionId]?.input ?? '') === ''
+              )
+                updateChat(sessionId, { input: submittedDraft });
+            } else {
+              await liveSteer.unanswered();
+              addEphemeralMessage(sessionId, {
+                role: 'system',
+                content:
+                  'Steering was not confirmed. Station will be checked before retrying.',
+              });
+              notifyAdmission();
+              return true;
+            }
+          }
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            sendFailure: true,
+            content:
+              'The steer was not sent. Review the conversation and try again.',
+          });
+          options?.onAdmission?.('not-invoked');
+          return false;
         } finally {
           updateChat(sessionId, { queueSendNowPending: false });
-          const latest = activeChatsStore.getSnapshot()[sessionId];
-          if (
-            latest &&
-            !isTurnInFlight(latest) &&
-            latest.orchestrationStatus !== 'aborted'
-          )
-            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
         }
       }
 
@@ -812,6 +928,7 @@ export function useSendMessage(
         modelInput: content,
         attachments,
         clientTurnId: resolvedTurnId,
+        composed: preserveComposer,
       });
       // The conversation this send names; the delivery lookup asks by it.
       // A replay sends (and is looked up) under the conversation its row
@@ -824,7 +941,7 @@ export function useSendMessage(
 
       const abortController = new AbortController();
 
-      clearInput(sessionId);
+      if (!preserveComposer) clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
         // #2309: the optimistic window the server has not acknowledged yet.
@@ -834,8 +951,7 @@ export function useSendMessage(
         // The window a Stop has to be held through, named (
         // review): from here until this dispatch's own `turn.started`.
         pendingClientTurnId: resolvedTurnId,
-        attachments: [],
-        attachmentStages: [],
+        ...(preserveComposer ? {} : { attachments: [], attachmentStages: [] }),
         // A new attempt for this key: a lookup answer about an earlier one
         // (a `received` whose refusal was lost in transit, before the
         // lookup-driven resend) describes nothing in flight now.
@@ -861,8 +977,9 @@ export function useSendMessage(
       if (
         !options?.dispatch &&
         !sourceStart &&
+        !mcpPromptOrigin &&
         !attachments?.length &&
-        !currentState?.attachmentStages?.length
+        (preserveComposer || !currentState?.attachmentStages?.length)
       ) {
         try {
           const { outboundDispatch } = await import('../lib/outboundQueue');
@@ -944,7 +1061,11 @@ export function useSendMessage(
               if (restored) updateChat(sessionId, { input: submittedDraft });
               addEphemeralMessage(
                 sessionId,
-                discardedMessageNotice(restored, submittedDraft),
+                discardedMessageNotice(
+                  restored,
+                  submittedDraft,
+                  preserveComposer,
+                ),
               );
               options?.onAdmission?.('not-invoked');
               return false;
@@ -1001,16 +1122,40 @@ export function useSendMessage(
           );
 
       try {
-        const { dispatchForeground } = await import(
-          '../lib/foregroundMessageDispatch'
-        );
+        const {
+          dispatchForeground,
+          dispatchPossiblyQueuedForeground,
+          dispatchQueuedForeground,
+        } = await import('../lib/foregroundMessageDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server
         // has not received yet (no session yet, or picked offline); it is
         // recorded on receipt, before the turn. A replayed turn carries the
         // chat's CURRENT queued pick, never one captured when it was queued.
         const carriedApprovalPick = currentState?.queuedApprovalMode;
-        const receipt = await dispatchForeground({
+        // An inherited personal default (queued with its account namespace,
+        // not picked) in a Project chat goes as a hint, not a pick: the
+        // server applies it only below the Agent's default and the Project's
+        // layer (`recordPersonalApprovalDefault`), so nothing here waits for
+        // the Project's answer. Outside a Project, or to a Station whose
+        // chat-defaults read answered 404 (it may predate the hint), there is
+        // no Project layer and it goes as the pick it always was.
+        const carriedAsHint =
+          carriedApprovalPick !== undefined &&
+          carriedApprovalPick !== 'connection-default' &&
+          currentState?.queuedApprovalDefaultNamespace !== undefined &&
+          !!currentState.projectSlug &&
+          !(
+            accountPreferences.requestScope &&
+            queryClient.getQueryData(
+              projectChatDefaultsQueryKey(
+                accountPreferences.requestScope,
+                experienceNamespace ?? undefined,
+                currentState.projectSlug,
+              ),
+            ) === null
+          );
+        const dispatchInput = {
           apiBase,
           sessionId,
           agentSlug,
@@ -1039,7 +1184,7 @@ export function useSendMessage(
                 )
               : undefined,
           projectSlug: currentState?.projectSlug,
-          setApprovalMode: carriedApprovalPick,
+          setApprovalMode: carriedAsHint ? undefined : carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
@@ -1054,9 +1199,13 @@ export function useSendMessage(
             ? options.executionSnapshot.providerOptions
             : currentState?.providerOptions,
           message: content,
+          ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
           conversationId: sentConversationId,
           attachments,
-          attachmentStages: currentState?.attachmentStages,
+          // A composed message carries none of the composer's staged files.
+          attachmentStages: preserveComposer
+            ? undefined
+            : currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
@@ -1070,7 +1219,66 @@ export function useSendMessage(
           requestScope: sourceStart
             ? options?.experienceRequestScope
             : accountPreferences.requestScope,
-        });
+          ...(carriedAsHint
+            ? { personalApprovalDefault: carriedApprovalPick }
+            : {}),
+        };
+        const offerInbox = Boolean(
+          !queueBusyFollowUp &&
+            currentState?.conversationId &&
+            !preserveComposer &&
+            !dispatchInput.setApprovalMode &&
+            !dispatchInput.expectedDefinitionFingerprint &&
+            !dispatchInput.attachments?.length &&
+            !dispatchInput.attachmentStages?.length &&
+            !dispatchInput.mcpPromptOrigin &&
+            !dispatchInput.skillExperience &&
+            dispatchInput.executionOnCurrentStation !== false,
+        );
+        if (
+          queueBusyFollowUp &&
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          throw new Error('The Station connection changed.');
+        const queuedResult = queueBusyFollowUp
+          ? await dispatchQueuedForeground(dispatchInput)
+          : offerInbox
+            ? await dispatchPossiblyQueuedForeground(dispatchInput)
+            : undefined;
+        if (queuedResult?.outcome === 'queued') {
+          stopDeliveryWatch?.();
+          await live?.accepted();
+          if (
+            accountPreferences.requestScope &&
+            !accountPreferences.requestScope.isCurrent()
+          )
+            return true;
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const { input: _input, ...rollback } = rejectedSendRollback(
+            transaction,
+            latest,
+          );
+          updateChat(sessionId, {
+            ...rollback,
+            ...(latest?.pendingClientTurnId === resolvedTurnId
+              ? {
+                  status: currentState?.status ?? 'idle',
+                  abortController: currentState?.abortController,
+                  pendingClientTurnId: currentState?.pendingClientTurnId,
+                  sendAwaitingTurnStart: currentState?.sendAwaitingTurnStart,
+                }
+              : {}),
+          });
+          invalidate(['conversation-inbox']);
+          options?.onAdmission?.('accepted');
+          return options?.dispatch
+            ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)
+            : true;
+        }
+        const receipt = queuedResult
+          ? queuedResult.receipt
+          : await dispatchForeground(dispatchInput);
 
         stopDeliveryWatch?.();
         // Station answered with the turn: the transcript holds it now.
@@ -1105,6 +1313,18 @@ export function useSendMessage(
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
           executionAgentId: receipt.resolution.executionAgentId,
+          // #4162: only a send that started its Session says which engine
+          // connection that Session runs on; a turn sent to a running Session
+          // leaves the observation where its own start put it.
+          ...(receipt.sessionStarted
+            ? {
+                agentConnectionId:
+                  receipt.resolution.engine.kind === 'connection'
+                    ? receipt.resolution.engine.connectionId
+                    : undefined,
+                agentConnectionObservedFor: receipt.sessionId,
+              }
+            : {}),
           // #2436: the carried pick is settled only by what the server
           // reports became of it, never by the send's success alone. A
           // Station that reports nothing (an older one, or another Station
@@ -1116,6 +1336,14 @@ export function useSendMessage(
                 carriedApprovalPick,
                 receipt.approvalMode,
               )
+            : {}),
+          // A hint the server did not apply (a higher layer decided) is
+          // spent all the same: it belongs to this first send only.
+          ...(carriedAsHint && !receipt.approvalMode
+            ? {
+                queuedApprovalMode: undefined,
+                queuedApprovalDefaultNamespace: undefined,
+              }
             : {}),
         });
         if (carriedApprovalPick && receipt.approvalMode?.recorded === false) {
@@ -1205,9 +1433,6 @@ export function useSendMessage(
           const userStopped =
             (abortController as UserCancelableAbortController)._userInitiated &&
             abortController.signal.aborted;
-          const providerBusy =
-            isQueuedOnRefusalCode((error as { code?: unknown })?.code) &&
-            stationAnswered(error);
           if (foreground) {
             // Station said it may have started: keep the text as unconfirmed
             // evidence (never resent), and say so on the message.
@@ -1220,10 +1445,6 @@ export function useSendMessage(
                 'indeterminate',
               ),
             );
-          } else if (providerBusy) {
-            // Moved into the local queue below, under the same key; its row
-            // becomes the held copy only once the queue holds it (below), so
-            // a held-copy sync in between cannot drop it.
           } else if (stationAnswered(error) || userStopped) {
             // Station refused it (nothing started): the composer gets the
             // text back below.
@@ -1306,7 +1527,7 @@ export function useSendMessage(
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
-                      if (now?.input === content)
+                      if (!preserveComposer && now?.input === content)
                         updateChat(sessionId, { input: '' });
                       if (
                         rollback.attachments &&
@@ -1331,6 +1552,9 @@ export function useSendMessage(
                               onAdmission,
                               claimRetry: options?.claimRetry,
                               skipPersonalApprovalDefault: true,
+                              ...(preserveComposer
+                                ? { preserveComposer: true }
+                                : {}),
                             },
                           ),
                         options?.onAdmission,
@@ -1388,6 +1612,18 @@ export function useSendMessage(
         );
         const undeliverableCause =
           queueModule?.classifyUndeliverableSend(err) ?? null;
+        if (undeliverableCause && mcpPromptOrigin && !options?.dispatch) {
+          updateChat(sessionId, {
+            status: 'error',
+            error:
+              'The prompt send was not confirmed. Inspect the conversation before running it again.',
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          options?.onAdmission?.('indeterminate');
+          return false;
+        }
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
@@ -1457,7 +1693,11 @@ export function useSendMessage(
               addEphemeralMessage(
                 sessionId,
                 retiredAs === 'discarded'
-                  ? discardedMessageNotice(restored, submittedDraft)
+                  ? discardedMessageNotice(
+                      restored,
+                      submittedDraft,
+                      preserveComposer,
+                    )
                   : {
                       role: 'system',
                       content:
@@ -1536,68 +1776,22 @@ export function useSendMessage(
           return false;
         }
 
-        // #2324 (D4): the engine began a turn of its own before this send
-        // reached it (the composer queues when it already sees one). The
-        // refusal is retryable: move the message into the queue that drains
-        // when that turn finishes, rather than calling it failed. A send with
-        // attachments cannot ride the text queue, so it keeps the ordinary
-        // error and Retry below. A send that outwaited its session's start
-        // (an ACP reattach) is queued the same way.
-        if (
-          isQueuedOnRefusalCode(err.code) &&
-          !options?.dispatch &&
-          !(attachments && attachments.length > 0)
-        ) {
-          const { input: _restoredDraft, ...rollback } = rejectedSendRollback(
-            transaction,
-            latestState,
-          );
-          updateChat(sessionId, {
-            ...rollback,
-            status: 'idle',
-            error: undefined,
-            abortController: undefined,
-            pendingClientTurnId: undefined,
-            sendAwaitingTurnStart: undefined,
-            queuedMessages: [...(latestState?.queuedMessages ?? []), content],
-            // A lookup answer about the refused attempt (a `received` while
-            // it waited on a starting session) must not label the resend.
-            deliveryChecks: withoutDeliveryCheck(
-              latestState?.deliveryChecks,
-              resolvedTurnId,
-            ),
-            // The same key the send carried: its durable held row and the
-            // drain's eventual send are one message.
-            queuedMessageMetadata: [
-              ...(latestState?.queuedMessageMetadata ??
-                (latestState?.queuedMessages ?? []).map(() => ({
-                  id: randomCorrelationId(),
-                  mode: 'queue' as const,
-                }))),
-              { id: resolvedTurnId, mode: 'queue' as const },
-            ],
-          });
-          await live?.hold();
-          // The turn it waited on may already have ended while this refusal
-          // was in flight; its end was the queue's only trigger.
-          if (
-            serverTurnLive(activeChatsStore.getSnapshot()[sessionId]) !== true
-          ) {
-            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
-          }
-          options?.onAdmission?.('accepted');
-          return false;
-        }
-
-        // This error-only loader keeps the foreground receipt classifier out
-        // of the initial chat shell. Classification still runs before any
-        // observer or retry affordance is exposed.
         const foreground = queueModule?.readForeground(err);
         const foregroundIndeterminate = !!foreground;
         const observedSessionId = foreground?.sessionId;
         const rollbackComposer = foregroundIndeterminate
           ? {}
-          : rejectedSendRollback(transaction, latestState);
+          : {
+              ...rejectedSendRollback(transaction, latestState),
+              ...(stationAnswered(error)
+                ? {
+                    deliveryChecks: withoutDeliveryCheck(
+                      latestState?.deliveryChecks,
+                      resolvedTurnId,
+                    ),
+                  }
+                : {}),
+            };
         // Pre-stream fetch-level failure (agent-not-found, model-override
         // validation, provider-resolution throws, or the SDK's
         // `ChatHttpError` carrying the server's real HTTP-error body — see
@@ -1623,9 +1817,15 @@ export function useSendMessage(
           // make this claim replayable.
           await dispatchClaim!.indeterminate(translated.title);
         }
-        if (foregroundIndeterminate && observedSessionId) {
+        if (
+          foregroundIndeterminate &&
+          observedSessionId &&
+          !activeChatsStore.getSnapshot()[sessionId]?.conversationId
+        ) {
           // Persist the observed session identity before surfacing the
           // non-retryable notice, so reload/navigation keeps the evidence.
+          // Only a chat with no conversation yet adopts it: a continuation's
+          // observed session is a successor Session, not the Conversation.
           assignConversationId(sessionId, observedSessionId);
         }
         updateChat(sessionId, {
@@ -1662,6 +1862,13 @@ export function useSendMessage(
         // so id/timestamp are always assigned (never defaulting to
         // timestamp 0, which used to sort this notice ahead of the whole
         // transcript instead of next to the turn it belongs to).
+        // A hint recommending a new chat follows the server's last answer on
+        // whether this caller may start one (`callerAccess.startChat`).
+        const failureHint = chatErrorHintFor(
+          translated,
+          activeChatsStore.getSnapshot()[sessionId]?.conversationOpenState
+            ?.callerAccess,
+        );
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
@@ -1670,7 +1877,7 @@ export function useSendMessage(
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.
           content: `**${translated.title}**\n\n${translated.body}${
-            translated.hint ? `\n\n${translated.hint}` : ''
+            failureHint ? `\n\n${failureHint}` : ''
           }${
             // Said only when the rollback put the draft back: a user who
             // typed during the send keeps what they typed instead.
@@ -1789,7 +1996,7 @@ export function useSendMessage(
       accountPreferences.saving,
       experienceNamespace,
       experienceAuthorityStatus,
-      agentConnections,
+      inboxRequestScope,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,

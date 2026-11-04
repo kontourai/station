@@ -58,6 +58,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   onSettledChange,
   scrollContainerRef,
   preserveReading = false,
+  observation,
 }: {
   apiBase: string;
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>;
@@ -78,10 +79,12 @@ export const SessionTranscript = memo(function SessionTranscript({
   onSettledChange?: (settled: boolean) => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   preserveReading?: boolean;
+  observation?: { live: false; revision: number };
 }) {
   const isMobile = useIsMobile();
   const {
     events,
+    partialTurnStartEventIds,
     hasMore,
     loadOlder,
     settled,
@@ -89,7 +92,7 @@ export const SessionTranscript = memo(function SessionTranscript({
     upgradeRequired,
     retry,
     loading,
-  } = useSessionTranscriptEvents(apiBase, session, isStreaming);
+  } = useSessionTranscriptEvents(apiBase, session, isStreaming, observation);
   const contentRef = useRef<HTMLElement | null>(null);
   const noScrollRef = useRef<HTMLDivElement | null>(null);
   const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(
@@ -115,6 +118,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   const rows = useMemo(() => {
     let projected = projectRuntimeEventsToMessages(events, {
       stableIds: true,
+      partialTurnStartEventIds,
     }).map((message) => ({
       id: message.id,
       role: message.role,
@@ -141,7 +145,7 @@ export const SessionTranscript = memo(function SessionTranscript({
     );
     previousRows.current = next;
     return next;
-  }, [events, failureShownAbove, session.threadId]);
+  }, [events, partialTurnStartEventIds, failureShownAbove, session.threadId]);
   const activityBinding = useActivityWorkspacePaneBinding();
   const anchor = useMemo(
     () =>

@@ -130,6 +130,12 @@ export function setFloatPlacement(
   if (options.persist) writeJson(FRAME_KEY, next);
 }
 
+export function isFloatSourceOpen(sourceKey: string): boolean {
+  return [...floating.values()].some(
+    (source) => floatSourceKey(source) === sourceKey,
+  );
+}
+
 export function getFloatingSource(conversation: string): FloatSource | null {
   return floating.get(conversation) ?? null;
 }
@@ -219,7 +225,10 @@ export function dismissFloat(conversation: string, sourceKey: string): void {
  * not keep the floater away for good.
  */
 const HANDOFF_GRACE_MS = 15_000;
-const handoffs = new Map<string, { seen: boolean; at: number }>();
+const handoffs = new Map<
+  string,
+  { seen: boolean; at: number; timer: ReturnType<typeof setTimeout> }
+>();
 const handoffKey = (conversation: string, sourceKey: string) =>
   `${conversation}\u0000${sourceKey}`;
 
@@ -233,9 +242,19 @@ export function handOffFloat(
   conversation: string,
   sourceKey: string,
   now = Date.now(),
+  retain = false,
 ): void {
-  handoffs.set(handoffKey(conversation, sourceKey), { seen: false, at: now });
-  floating.delete(conversation);
+  const key = handoffKey(conversation, sourceKey);
+  const previous = handoffs.get(key);
+  if (previous) clearTimeout(previous.timer);
+  const timer = setTimeout(() => {
+    const current = handoffs.get(key);
+    if (current?.timer !== timer) return;
+    if (!current.seen) handoffs.delete(key);
+    emit();
+  }, HANDOFF_GRACE_MS + 1);
+  handoffs.set(key, { seen: false, at: now, timer });
+  if (!retain) floating.delete(conversation);
   emit();
 }
 
@@ -258,6 +277,7 @@ export function isFloatHandedOff(
     return true;
   }
   if (handoff.seen || now - handoff.at > HANDOFF_GRACE_MS) {
+    clearTimeout(handoff.timer);
     handoffs.delete(key);
     return false;
   }
@@ -282,6 +302,19 @@ let pendingRequest: {
   at: number;
 } | null = null;
 let mountedHosts = 0;
+let devicePanePromotion: (() => void) | undefined;
+
+/** Register the mounted Device pane's source for an explicit pane close. */
+export function registerDevicePanePromotion(promote: () => void): () => void {
+  devicePanePromotion = promote;
+  return () => {
+    if (devicePanePromotion === promote) devicePanePromotion = undefined;
+  };
+}
+
+export function promoteClosedDevicePane(): void {
+  devicePanePromotion?.();
+}
 
 /** A chat's floater is mounted and can take a request; returns its release. */
 export function registerFloatHost(): () => void {
@@ -430,8 +463,10 @@ export function resetFloatStoreForTests(): void {
   placement = null;
   dismissed = null;
   floating.clear();
+  for (const handoff of handoffs.values()) clearTimeout(handoff.timer);
   handoffs.clear();
   pendingRequest = null;
+  devicePanePromotion = undefined;
   mountedHosts = 0;
   notices.clear();
   generations.clear();

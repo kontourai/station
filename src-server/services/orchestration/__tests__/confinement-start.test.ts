@@ -749,18 +749,7 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     expect(persistedRecord('codex-credential')).toMatchObject({
       posture: 'confined',
     });
-    await (
-      service as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          modelOptions?: Record<string, string>;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await service['credentialProfileRecovery'].restartRecoverySession({
       threadId: 'codex-credential',
       input: 'retry',
       modelOptions: { approvalMode: 'ask' },

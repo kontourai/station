@@ -1,0 +1,9 @@
+{
+  "revision": "1333bd642a958dc3321ce9f708e31e913009bd0f",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Its only config.md dependency is the citation at ~line 299 for guardrails/quick-prompt/date-format limits. The config.md edit in this change is one sentence in Chat attachments (the sender's chips reuse sent bytes cached under the recorded reference); it touches none of the cited limits, so this document's claims are unaffected. No edit needed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Its config.md dependency is the telemetry-destinations citation at ~line 288. The config.md edit in this change is confined to the Chat attachments section (one sentence on the sender's chips reusing sent bytes cached under the recorded reference); telemetry destinations, delivery status and settings ownership are untouched. No edit needed.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

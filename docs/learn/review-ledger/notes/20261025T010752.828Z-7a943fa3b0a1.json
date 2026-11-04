@@ -1,0 +1,7 @@
+{
+  "revision": "e8d88b98006b2440e5d9d27e9b5c6327516662ff",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Added the i1 signing-job requirement (attest-build-provenance in a job of the pinned top-level file on the pinned trigger; reusable-workflow signing and pinning a reusable file are refused by the SAN and build config URI checks; public repository) and the accepted unchanged-reinstall edge case with i0's start-time recompute as the delisting revocation. Checked against matchesSignerPin and decidePluginTrust.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust.ts"]}
+  ]
+}

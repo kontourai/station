@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useElapsedClock } from '../hooks/useElapsedClock';
 
 /** Elapsed observation time, never an estimate of progress or completion. */
 export function ElapsedWait({
@@ -17,12 +18,7 @@ export function ElapsedWait({
   separator?: string;
 }) {
   const [mountedAt] = useState(Date.now);
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (elapsedMs !== undefined) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [elapsedMs]);
+  const now = useElapsedClock(elapsedMs === undefined);
   const seconds = Math.max(
     0,
     Math.floor((elapsedMs ?? now - (startedAt ?? mountedAt)) / 1000),

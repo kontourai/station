@@ -21,6 +21,7 @@ import {
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
   findNamedWorkflowStep,
+  findVerdictBearingContinueOnError,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
   REQUIRED_FAST_CHECKS_CONDITION,
 } from '../ci-workflow-governance.mjs';
@@ -45,7 +46,7 @@ const cleanWorkflow = `
 ${primaryTriggers}
 jobs:
   fast-checks-plan:
-    needs: classify
+    needs: [classify, pr-admission]
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
@@ -87,7 +88,7 @@ jobs:
         with:
           if-no-files-found: error
   fast-checks-statics:
-    needs: classify
+    needs: [classify, pr-admission]
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     steps:
       - name: Run fast CI
@@ -360,7 +361,7 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-24.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
@@ -629,6 +630,26 @@ describe('required browser evidence cannot silently disappear', () => {
       ),
     ).toEqual([]);
   });
+  test('only the exact restore may fail softly; Chromium installation stays required', () => {
+    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+    expect(findVerdictBearingContinueOnError(workflow)).toEqual([]);
+    const changedKey = workflow.replace(
+      'key: station-playwright-v1-',
+      'key: untrusted-playwright-v1-',
+    );
+    expect(changedKey).not.toBe(workflow);
+    expect(findVerdictBearingContinueOnError(changedKey)).toContain(
+      'Restore trusted Chromium cache',
+    );
+    const optionalInstall = workflow.replace(
+      '- name: Install Chromium for changed-set touch-target checks\n',
+      '- name: Install Chromium for changed-set touch-target checks\n        continue-on-error: true\n',
+    );
+    expect(optionalInstall).not.toBe(workflow);
+    expect(findVerdictBearingContinueOnError(optionalInstall)).toContain(
+      'Install Chromium for changed-set touch-target checks',
+    );
+  });
   const executesOnce =
     'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.';
   const admitsPlan =
@@ -637,7 +658,22 @@ describe('required browser evidence cannot silently disappear', () => {
     [
       'manual dependency',
       (text: string) =>
-        text.replace('needs: classify', 'needs: [classify, full-regression]'),
+        text.replace(
+          'needs: [classify, pr-admission]',
+          'needs: [classify, pr-admission, full-regression]',
+        ),
+      admitsPlan,
+    ],
+    [
+      'dropped conflict admission dependency',
+      (text: string) =>
+        text.replace('needs: [classify, pr-admission]', 'needs: classify'),
+      admitsPlan,
+    ],
+    [
+      'pre-admission condition',
+      (text: string) =>
+        text.replace("needs.pr-admission.outputs.admitted != 'false' && ", ''),
       admitsPlan,
     ],
     [

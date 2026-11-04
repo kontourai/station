@@ -519,7 +519,7 @@ describe('Project Task room two-context HTTP acceptance (#2888)', () => {
       text: 'shared document',
     });
     const preRestartDocument = settled.data;
-    expect(preRestartDocument.revision).toMatch(/^swsr-v1:[0-9a-f]{64}$/);
+    expect(preRestartDocument.revision).toMatch(/^swsr-v2:[0-9a-f]{64}$/);
     const duplicate = await json(
       await alpha(`${roomPath}/batches`, {
         method: 'POST',

@@ -1,3 +1,4 @@
+import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { z } from 'zod';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { api, jsonToolResult } from './station-control-shared.js';
@@ -13,6 +14,19 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
         { ok: false, code: 'unavailable' },
         { failed: true },
       );
+    if (result.ok && result.screenshot) {
+      const { screenshot, ...metadata } = result;
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify(metadata) },
+          {
+            type: 'image' as const,
+            data: screenshot.data as string,
+            mimeType: screenshot.mimeType as string,
+          },
+        ],
+      };
+    }
     if (result.ok && result.capture) {
       const { pngBase64, ...capture } = result.capture;
       return {
@@ -43,30 +57,109 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     .describe('session.sessionId from device_open or device_list.');
   registry.tool(
     'device_list',
-    'List accessible local simulators/emulators and sessions opened in this conversation. Needs a bound verified session; remote hosts are not included.',
+    'List accessible local and SSH-hosted simulators/emulators and sessions opened in this conversation. Needs a bound verified session.',
     {},
     async () => callDevice('list', {}),
   );
   registry.tool(
     'device_open',
-    'Start a local device if needed, or open its shared live session. Claims control only for the operation. Returns starting while booting. The user opens Device to watch; this tool does not reveal the pane.',
+    'Start a local or SSH-hosted device if needed, or open its shared live session without acquiring control. Returns starting while booting; retry with the running device ID from device_list. Requests Device pane reveal in the active conversation by default; reveal:false opens in the background. revealRequested is not confirmation that a user viewed it.',
     {
       platform: z.enum(['ios', 'android']),
+      reveal: z.boolean().optional(),
       deviceId: z.string().min(1).max(256),
+      hostId: z
+        .string()
+        .regex(/^(?:local|ssh-[0-9a-f]{12})$/)
+        .optional()
+        .describe('hostId from device_list; defaults to local.'),
     },
     async (args) => callDevice('open', args),
+    { replay: 'unsafe' },
   );
   registry.tool(
     'device_screenshot',
-    'Capture a bounded PNG from the shared local device. Refused while a human controls it or if control changes during capture.',
+    'Capture a bounded PNG from the shared device on its own host. Refused while a human controls it or if control changes during capture.',
     { deviceSessionId },
     async (args) => callDevice('screenshot', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_capture_to_task',
+    'Save a device Screen to this Session’s Task, pinned to a clean commit. Commit changes first; workspace changes during capture are refused. Returns captureId, commit, digest and the image.',
+    {
+      deviceSessionId,
+      label: z.string().min(1).max(TASK_REVIEW_LIMITS.labelChars).optional(),
+    },
+    async (args) => callDevice('capture-to-task', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_record_to_task',
+    'Record a bounded device clip to this Session’s Task, pinned to a clean workspace.',
+    {
+      deviceSessionId,
+      durationMs: z.number().int().min(1).max(30000),
+      maxBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(16 * 1024 * 1024)
+        .optional(),
+      label: z.string().min(1).max(TASK_REVIEW_LIMITS.labelChars).optional(),
+    },
+    async (args) => callDevice('record-to-task', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_logs',
+    'Read a bounded log sample for one running app on the device host. The process identity is checked again before publication.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('logs', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_install_app',
+    'Install a Project workspace-relative app path or a staged upload handle on this device host. Exactly one source is required. The receipt states when the outcome is unknown.',
+    {
+      deviceSessionId,
+      workspacePath: z.string().min(1).max(512).optional(),
+      artifactHandle: z.string().uuid().optional(),
+    },
+    async (args) => callDevice('install-app', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_launch_app',
+    'Launch an installed app and observe it in the foreground on the selected device host.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('launch-app', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_terminate_app',
+    'Terminate an app and observe that its process is no longer running.',
+    { deviceSessionId, appId: z.string().min(3).max(255) },
+    async (args) => callDevice('terminate-app', args),
+    { replay: 'unsafe' },
+  );
+  registry.tool(
+    'device_open_url',
+    'Open a URL and observe the expected app in the foreground; this does not prove the app handled the URL.',
+    {
+      deviceSessionId,
+      appId: z.string().min(3).max(255),
+      url: z.string().min(1).max(500),
+    },
+    async (args) => callDevice('open-url', args),
+    { replay: 'unsafe' },
   );
   registry.tool(
     'device_snapshot',
-    'Read the local device accessibility tree. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
+    'Read the device accessibility tree on its own host. Coordinates describe current screen content; re-inspect after changes. Refused while a human controls it.',
     { deviceSessionId },
     async (args) => callDevice('snapshot', args),
+    { replay: 'unsafe' },
   );
   registry.tool(
     'device_input',
@@ -82,11 +175,13 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
         ),
     },
     async (args) => callDevice('input', args),
+    { replay: 'unsafe' },
   );
   registry.tool(
     'device_close',
     'End a local device session this conversation opened, for every viewer. Requires operator standing. Leaves the device running; refuses human-opened sessions and other controllers.',
     { deviceSessionId },
     async (args) => callDevice('close', args),
+    { replay: 'unsafe' },
   );
 }

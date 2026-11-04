@@ -79,7 +79,7 @@ async function start() {
   });
   const bundled = await build({
     stdin: {
-      contents: `import {createRoot} from 'react-dom/client'; import {PairedDevicesPanel} from './packages/connect/src/react/connection-manager-modal/PairedDevicesPanel'; import './src-ui/src/index.css'; import './packages/connect/src/react/ConnectionManagerModal.css'; createRoot(document.getElementById('root')).render(<PairedDevicesPanel apiBase={location.origin} getCredential={() => undefined} onPairDevice={() => {}} onBack={() => {}}/>);`,
+      contents: `import {createRoot} from 'react-dom/client'; import {PairedDevicesPanel} from './packages/connect/src/react/connection-manager-modal/PairedDevicesPanel'; import {HostDevicePairingPanel} from './packages/connect/src/react/DevicePairingPanel'; import '@kontourai/ui/tokens'; import '@kontourai/ui/react/styles.css'; import './src-ui/src/index.css'; import './packages/connect/src/react/ConnectionManagerModal.css'; createRoot(document.getElementById('root')).render(location.pathname === '/pairing-fixture' ? <HostDevicePairingPanel apiBase={location.origin} publicEndpoint={location.origin} getCredential={() => undefined} onCancel={() => {}}/> : <PairedDevicesPanel apiBase={location.origin} getCredential={() => undefined} onPairDevice={() => {}} onBack={() => {}}/>);`,
       resolveDir: process.cwd(),
       loader: 'tsx',
     },
@@ -102,6 +102,11 @@ async function start() {
   api.get('/', (c) =>
     c.html(
       '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Paired devices</title><link rel="stylesheet" href="/fixture.css"></head><body style="margin:24px;max-width:700px"><h1>Paired devices</h1><div id="root"></div><script src="/fixture.js"></script></body></html>',
+    ),
+  );
+  api.get('/pairing-fixture', (c) =>
+    c.html(
+      '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Device pairing</title><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>',
     ),
   );
   api.get('/fixture.js', (c) =>

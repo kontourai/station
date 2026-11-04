@@ -1,3 +1,4 @@
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import type {
   UsageCoverage,
   UsageReceipt,
@@ -7,9 +8,11 @@ import {
   type UsageRollupQuery,
   useUsageRollupQuery,
 } from '@kontourai/station-sdk/usage-rollup-query';
+import { Badge } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { Empty, SkeletonBlock } from '../state';
+import { Button } from '../Button';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 
 type Days = 7 | 14 | 30;
@@ -24,6 +27,8 @@ function cost(
   buckets: Array<{ amount: number; currency: string }> | undefined,
 ) {
   if (single) return `${single.amount.toFixed(4)} ${single.currency}`;
+  if (buckets?.length === 1)
+    return `${buckets[0]!.amount.toFixed(4)} ${buckets[0]!.currency}`;
   if (buckets?.length)
     return `Mixed: ${buckets
       .map((bucket) => `${bucket.amount.toFixed(4)} ${bucket.currency}`)
@@ -91,6 +96,10 @@ export function UsageRollupPanel() {
             Provider-reported usage and estimates remain separate. Missing data
             is not zero.
           </p>
+          <p>
+            Summary-generation tokens appear in compaction details, outside
+            these totals.
+          </p>
         </div>
         <button
           type="button"
@@ -154,14 +163,31 @@ export function UsageRollupPanel() {
       ) : isLoading ? (
         <SkeletonBlock count={3} label="Loading usage receipts" />
       ) : error ? (
-        <div role="alert">
-          Usage rollup could not be loaded.{' '}
-          <button type="button" onClick={() => void refetch()}>
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          variant="compact"
+          title="Usage rollup could not be loaded"
+          action={
+            <Button size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
       ) : (
         <>
+          <dl className="usage-rollup__cost-boundaries">
+            <div>
+              <dt>Account charges</dt>
+              <dd>Not reported</dd>
+            </div>
+            <div>
+              <dt>Subscription fee allocation</dt>
+              <dd>Not configured</dd>
+            </div>
+            <div>
+              <dt>Quota consumption</dt>
+              <dd>Not reported</dd>
+            </div>
+          </dl>
           <div className="usage-rollup__table-wrap">
             <table>
               <thead>
@@ -169,6 +195,7 @@ export function UsageRollupPanel() {
                   <th>{groupBy}</th>
                   <th>Input</th>
                   <th>Output</th>
+                  <th>Reasoning</th>
                   <th>Cache read</th>
                   <th>Cache write</th>
                   <th>Reported cost</th>
@@ -185,6 +212,7 @@ export function UsageRollupPanel() {
                     </th>
                     <td>{tokens(row.inputTokens)}</td>
                     <td>{tokens(row.outputTokens)}</td>
+                    <td>{tokens(row.reasoningTokens)}</td>
                     <td>{tokens(row.cacheReadTokens)}</td>
                     <td>{tokens(row.cacheWriteTokens)}</td>
                     <td>{cost(row.reportedCost, row.reportedCostBuckets)}</td>
@@ -202,6 +230,65 @@ export function UsageRollupPanel() {
               </tbody>
             </table>
           </div>
+          <section aria-labelledby="usage-task-outcomes-title">
+            <h4 id="usage-task-outcomes-title">
+              Task outcomes and recorded cost
+            </h4>
+            <p>
+              Current workflow state; result quality is not independently
+              evaluated here.
+            </p>
+            {data?.taskOutcomes?.length ? (
+              <div className="usage-rollup__table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Station</th>
+                      <th>Task</th>
+                      <th>Workflow state</th>
+                      <th>Recorded cost</th>
+                      <th>Receipts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.taskOutcomes.map((outcome) => (
+                      <tr
+                        key={JSON.stringify([
+                          outcome.stationId,
+                          outcome.taskId,
+                        ])}
+                      >
+                        <td>{outcome.stationId}</td>
+                        <th scope="row">
+                          {outcome.taskId}
+                          {outcome.state === 'available' && (
+                            <small>
+                              {' '}
+                              ·{' '}
+                              <time dateTime={outcome.taskCreatedAt}>
+                                {outcome.taskCreatedAt}
+                              </time>
+                            </small>
+                          )}
+                        </th>
+                        <td>
+                          {outcome.state === 'available' ? (
+                            <Badge value={taskStatusLabel(outcome.status)} />
+                          ) : (
+                            'Outcome unavailable'
+                          )}
+                        </td>
+                        <td>{cost(undefined, outcome.reportedCostBuckets)}</td>
+                        <td>{outcome.receiptCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty label="Task outcomes not reported in this usage window" />
+            )}
+          </section>
           <div className="usage-rollup__footer">
             <button type="button" onClick={() => setShowReceipts(true)}>
               Receipt drilldown ({data?.receipts?.length ?? 0})
@@ -294,6 +381,12 @@ export function UsageRollupPanel() {
                 {tokens(receipt.inputTokens)} input ·{' '}
                 {receipt.observedAt ?? 'legacy ingestion time unknown'} ·{' '}
                 {receipt.pricing?.status ?? 'unpriced'}
+                {' · Published-rate retail: '}
+                {receipt.retailEquivalent?.state === 'available' ||
+                receipt.retailEquivalent?.state === 'stale'
+                  ? `${receipt.retailEquivalent.amount.toFixed(6)} ${receipt.retailEquivalent.currency} (${receipt.retailEquivalent.state}; ${receipt.retailEquivalent.basis.routeId}; tariff ${receipt.retailEquivalent.basis.tariffId}; ${receipt.retailEquivalent.basis.sourceUrl})`
+                  : 'Unavailable'}
+                {' · Account charge: Not reported'}
                 {receipt.conversationId ? (
                   <>
                     {' · '}

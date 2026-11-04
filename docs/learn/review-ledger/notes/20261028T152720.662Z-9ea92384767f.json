@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked its autoApprove/unattendedAutoApprove guidance for station-control tools: still accurate for turns without untrusted content; the new stage only applies after a tool from a contentTrust=untrusted integration returns, which these flows do not involve. No edit.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

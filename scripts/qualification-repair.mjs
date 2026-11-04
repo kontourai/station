@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { validateRepairPaths } from '../packages/contracts/src/qualification-repair-policy.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { github, listGithub } from './qualification-evidence.mjs';
+
+export { validateRepairPaths } from '../packages/contracts/src/qualification-repair-policy.mjs';
 
 const TITLE = 'Main qualification repair';
 const MARKER = /<!-- station-qualification:(\{[^\n]*\}) -->/;
@@ -112,26 +115,6 @@ export function validateRepairRun(run, repository) {
     throw new Error(
       'Repair requires a completed canonical main qualification run',
     );
-}
-export function validateRepairPaths(paths) {
-  if (!paths.length || paths.length > 40)
-    throw new Error('Repair must change 1–40 paths');
-  for (const path of paths) {
-    if (
-      !/^[\w./-]+$/.test(path) ||
-      path.split('/').includes('..') ||
-      /^(\.github\/|\.veritas\/|\.githooks\/|\.husky\/|\.gitmodules$|AGENTS\.md$|CLAUDE\.md$|veritas\.claims\.json$)/.test(
-        path,
-      ) ||
-      /(^|\/)(AGENTS|CLAUDE)\.md$/.test(path) ||
-      /^scripts\/(qualification-|actionlint-gate|verification-lanes|vitest-resource-manifest|dependency-lifecycle)/.test(
-        path,
-      )
-    )
-      throw new Error(
-        `Repair requires owner review for protected path: ${path}`,
-      );
-  }
 }
 function issueBody(state, run, jobs, agent) {
   const failures = jobs
@@ -353,11 +336,6 @@ async function publish() {
         `Fresh full qualification must pass after landing before release promotion.`,
     },
   });
-  await github(`issues/${pr.number}/labels`, {
-    ...issueOptions,
-    method: 'POST',
-    body: { labels: ['station-autoland'] },
-  });
   state.repairState = 'pr-open';
   await github(`issues/${context.issue}`, {
     ...issueOptions,
@@ -410,7 +388,9 @@ async function afterMerge() {
         pr.merged_at &&
         pr.merge_commit_sha === run.head_sha &&
         pr.head?.repo?.full_name === process.env.GITHUB_REPOSITORY &&
-        /^repair\/qualification-[0-9]+-[0-9]+-[0-9]+$/.test(pr.head?.ref || ''),
+        /^repair\/qualification-(?:[0-9]+-[0-9]+-[0-9]+|[1-9][0-9]*-station-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/.test(
+          pr.head?.ref || '',
+        ),
     )
   )
     return;

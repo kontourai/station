@@ -1,3 +1,4 @@
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import {
   clearSnooze,
   readSnoozes,
@@ -8,7 +9,6 @@ import {
   LIVE_LANE_LABELS,
   type LiveLaneId,
   partitionHomeWorkItems,
-  terminalSinceFromRecency,
 } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
@@ -19,12 +19,14 @@ import type { WorkFactsById } from '../../views/home/work-facts';
 export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
+  | 'open'
   | 'external'
   | LiveLaneId
   | 'drafts'
   | 'settled'
   | 'snoozed'
-  | 'earlier';
+  | 'earlier'
+  | 'dismissed';
 
 /**
  * THE snooze presets — one set for the dock, the phone picker and Home
@@ -113,9 +115,9 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
  * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is
  * Idle, not "Active now": nothing is running, and "Just finished"/"Earlier"
- * would assert the work FINISHED, which it did not. `terminalSince` uses the shared fresh-load proxy
- * (`terminalSinceFromRecency`) because this surface, like the Sessions list,
- * has no persisted transition store.
+ * would assert the work FINISHED, which it did not. Finished work's place
+ * comes from its recorded finish time and the person's last view, the same
+ * rule on every surface (`partitionHomeWorkItems`, #4266).
  *
  * Still pure and `now`-injected so the linger boundary is testable without
  * faking timers. Input order is preserved within each group — callers hand
@@ -127,6 +129,7 @@ export function groupMobileActivity(
   now: number,
   snoozed: SnoozeMap = {},
   workFacts?: WorkFactsById,
+  resolution?: ReadonlySet<string>,
 ): MobileActivityGroup[] {
   // `snoozeKeyFor` (below) and the partition's own snooze lookup are both
   // `item.id` — the partition reads the same key this module's writers use.
@@ -134,10 +137,35 @@ export function groupMobileActivity(
     items,
     now,
     workFacts,
+    resolution,
     snoozedUntil: new Map(Object.entries(snoozed)),
-    terminalSince: terminalSinceFromRecency(items),
   });
 
+  if (resolution) {
+    const openIds = new Set(
+      [...partition.running, ...partition.idle].map((item) => item.id),
+    );
+    return [
+      {
+        id: 'needsYou' as const,
+        label: 'Needs attention',
+        items: partition.needsYou,
+      },
+      {
+        id: 'open' as const,
+        label: 'Open',
+        items: items.filter((item) => openIds.has(item.id)),
+      },
+      { id: 'settled' as const, label: 'Settled', items: partition.settled },
+      { id: 'snoozed' as const, label: 'Snoozed', items: partition.snoozed },
+      { id: 'drafts' as const, label: 'Drafts', items: partition.drafts ?? [] },
+      {
+        id: 'external' as const,
+        label: SESSION_STATUS_WORDS.elsewhere,
+        items: partition.external ?? [],
+      },
+    ].map((group) => ({ ...group, childrenById: partition.childrenById }));
+  }
   // Live groups are emitted only when non-empty, like Drafts and "From
   // other apps": three always-present headers would print empty "Needs you"
   // and "Running" sections above most inboxes. The historic groups below
@@ -164,7 +192,7 @@ export function groupMobileActivity(
       ? [
           {
             id: 'external' as const,
-            label: 'From other apps',
+            label: SESSION_STATUS_WORDS.elsewhere,
             items: partition.external,
           },
         ]

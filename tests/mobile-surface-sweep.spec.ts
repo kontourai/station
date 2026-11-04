@@ -34,7 +34,7 @@ const ROUTES: readonly string[] = [
   '/plugins',
   '/profile',
   '/registry',
-  '/schedule',
+  '/automations',
   '/?surface=activity',
   '/settings',
 ];

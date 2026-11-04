@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Transitive dependent of edited module-map/api/contracts/guides. Grepped for integration registry, registry/integrations, missing binary, autoApprove, askBeforeUse, untrusted content, subregistry and pre-tool claims: none present, so the MCP subregistry and untrusted-content changes do not affect this document.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts"]}
+  ]
+}

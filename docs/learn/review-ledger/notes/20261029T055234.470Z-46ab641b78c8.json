@@ -1,0 +1,7 @@
+{
+  "revision": "5cb3487df58a1666c0da3e74bcaf4dfdaffa5b4a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 4 of #4279: the grant pins authorization server, MCP URL and a server-created instance identity (exact recreation needs a new binding), the secret is authorized at every token request including the code exchange (revoke/unbind mid-consent stops it), and overlapping sign-ins never pair tokens with another client. Checked against tool-server-oauth.ts, secret-binding-administration.ts, config-loader-storage.ts and the round-4 tests. Other inputs: the connections guide documents instance identity, per-request authorization and overlapping consents; the shared credential store replaces upsertMany with compareAndUpsertMany (a multi-key compare-and-swap); the provider re-resolves a pre-registered client secret at every read and publishes consent tokens with their client by compare-and-swap; tokens are paired with their client id.","inputs":["docs/guides/connections.md","packages/shared/src/tool-server-credential-store.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

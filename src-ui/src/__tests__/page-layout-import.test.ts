@@ -70,11 +70,13 @@ const NOT_PAGE_ROOTED_FIXTURES = [
 ];
 
 function scan(dir: string): string[] {
-  return glob.sync('**/*.tsx', {
-    cwd: join(UI_SRC, dir),
-    nodir: true,
-    ignore: ['**/__tests__/**'],
-  });
+  return glob
+    .sync('**/*.tsx', {
+      cwd: join(UI_SRC, dir),
+      nodir: true,
+      ignore: ['**/__tests__/**'],
+    })
+    .map((file) => file.replaceAll('\\', '/'));
 }
 
 function read(relativePath: string): string {
@@ -468,11 +470,13 @@ describe('project-page-frame.css import guard (#1636)', () => {
     // and the rest of `src-ui/src` are not scanned, so without this the
     // guard's promise ("a third route applying the class reds here") would
     // hold only inside a boundary nothing checked.
-    const everyModule = glob.sync('**/*.tsx', {
-      cwd: UI_SRC,
-      nodir: true,
-      ignore: ['**/__tests__/**'],
-    });
+    const everyModule = glob
+      .sync('**/*.tsx', {
+        cwd: UI_SRC,
+        nodir: true,
+        ignore: ['**/__tests__/**'],
+      })
+      .map((file) => file.replaceAll('\\', '/'));
     const scannedRoots = FRAME_SCAN_ROOTS.map((dir) => `${dir}/`);
     const outside = everyModule.filter(
       (file) =>

@@ -1,9 +1,10 @@
 # Station process supervisor
 
-Status: Proposal — unscheduled; no tracking issue as of 2026-10-24 (phases 2–6; phase 1 shipped in #3811, #3900 and #3971, and is adopted by `station start` and `station service run`).
+Status: Proposal — phases 3–6 unscheduled. Phase 1 shipped in #3811, #3900 and #3971 and is adopted by `station start` and `station service run`. Phase 2's terminal workloads are implemented under #3994 (2026-10-31).
 
 > **Reading status: proposal (2026-10-17), phase 1 implemented and adopted
-> outside Desktop (2026-10-24).** The supervisor package
+> outside Desktop (2026-10-24); phase 2 terminal workloads implemented
+> (2026-10-31), see Workloads and Verification.** The supervisor package
 > ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
 > implements the control channel, listener handoff, sequential generation
 > handoff with rollback, and crash restart, verified against a fixture core
@@ -55,8 +56,8 @@ Every way Station restarts interrupts running work.
 - Three supervisors exist with three behaviors: a Rust thread in Desktop, a
   Node loop in `service run`, and the archive launcher's update transaction.
   None of them keeps work alive.
-- One instance binds four ports (API, terminal `+1`, voice `+2`, consent
-  `+3`), and `station start` adds a separate UI server process.
+- One instance binds three ports (API, voice `+2`, consent `+3`), and
+  `station start` adds a separate UI server process.
 
 ## Goals
 
@@ -115,7 +116,8 @@ product decisions.
   boot consumes interrupted-turn boundaries, runs the schema gate, and opens
   single-writer stores. A handoff from generation N to N+1:
   1. Start N+1, which loads its code and reports `parked` before touching
-     the home. If it fails to park, N was never disturbed and keeps serving.
+     the home. If it fails to park within 30 seconds, N was never disturbed
+     and keeps serving.
   2. Send `drain` to N. N closes its copies of the listeners, finishes
      in-flight requests, and exits. A drain deadline then escalates to
      SIGTERM and SIGKILL. An active voice call extends the deadline up to a
@@ -150,8 +152,8 @@ product decisions.
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
   home schema gate, and its log sink, which touch the home or the live
   generation's processes. Telemetry registers at import as usual, but its
-  home writes (schema gate, installation identity) wait for promotion. Its four listeners (API,
-  terminal, voice, consent) bind through one link: adopted handles when the
+  home writes (schema gate, installation identity) wait for promotion. Its three listeners (API,
+  voice, consent) bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a
@@ -178,8 +180,16 @@ product decisions.
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
   serving. A crash during a handoff counts toward the same failure budget.
-  After five failures within five minutes the supervisor gives up and exits
-  nonzero, so its launcher's restart policy takes over. Stopping the
+  A generation started while none serves (first boot, crash restart, or a
+  rollback's relaunch) has 120 seconds to park rather than a handoff's 30: it
+  loads its code cold, often on a busy host, and there is no serving
+  generation to fall back on. A generation that misses its park or readiness
+  deadline is logged by name (`did not park within …ms (park deadline)`)
+  before it is ended, and counts as a failure. After five failures within
+  five minutes, or five in a row with no generation serving between them, the
+  supervisor gives up and exits nonzero, so its launcher's restart policy
+  takes over. The second rule keeps a core that never parks from retrying
+  forever once long boot deadlines spread its failures past the window. Stopping the
   supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
   active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap
@@ -297,6 +307,63 @@ product decisions.
 
   Resource limits use systemd scopes on Linux, job objects on Windows, and
   process groups everywhere. The browser host gets a memory limit of its own.
+
+  **Implemented (phase 2, terminals; protocol 1.3).** A core that parks
+  announcing the `workloads` generation capability is granted it in
+  `promote` when the supervisor has a workload host, and only then runs its
+  terminals there. The core's `workload.request` messages (`spawn`,
+  `write`, `resize`, `signal`, `terminate`, `list`, `attach`, `read`,
+  `flush`) travel on the generation IPC channel, not the control socket, so
+  a workload needs no token or connection of its own. The supervisor relays
+  them to the workload host and sends `workload.event` (`output` with the
+  last journaled sequence, `exit`) to the granted generation that is
+  promoted or serving. A 1.2 core announces nothing and keeps terminals in
+  process; a 1.2 supervisor grants nothing.
+  The core treats a Node IPC `send()` return of `false` as possible
+  backpressure: the queued request still waits for its workload response.
+  A send-callback error, synchronous send failure or disconnected channel
+  refuses that request as unavailable. Handoff requests also keep waiting
+  for their outcome under backpressure, and a queued `drained` waits for its send
+  callback before the core exits.
+  - The workload host is a child process, `station-pty-host.js`, started
+    from the build root on the first `spawn`. node-pty is a native addon the
+    supervisor bundle cannot carry, and a crash in it should not take the
+    supervisor down. The supervisor runs the host beside its initial entry,
+    or the one `--workload-host` names inside the build root. The host
+    outlives every generation and ends its workloads and exits on
+    `host.stop` or when its IPC channel closes. On Windows it is also in
+    the supervisor's kill-on-close job.
+  - The host journals output with the core's own journal, with the same
+    sanitizer, segments and limits, so a generation that attaches after a
+    handoff reads every record from any sequence. On exit the host flushes
+    and closes the journal before it reports the exit, and the core then
+    reads it from disk.
+  - `interactive` workloads run in a PTY. `command` workloads run on pipes,
+    with stdout and stderr journaled together up to an output cap (16 MiB by
+    default), after which they are ended and their exit reports
+    `outputCapped`. The cap, signal reporting and group termination live in
+    [`command-process.ts`](../../src-server/services/terminal/command-process.ts),
+    shared with the in-process host. An ACP engine's terminals are command
+    sessions ([terminal design](terminal.md#session-kinds)). An exited
+    workload's id may be spawned again; that is how an explicit restart keeps
+    a session's id. Reattaching the engine that started a command is not
+    implemented: the command survives a handoff, but its ACP connection does
+    not.
+  - `terminate` ends the whole tree. On POSIX that is the PTY adapter's
+    process-group census for a shell, or the command's own process group,
+    SIGTERM then SIGKILL after 3 s. On Windows it is `taskkill /T /F` before
+    the PTY closes. Job objects per workload are not implemented.
+  - Draining, a core detaches from its workloads rather than ending them.
+    The next generation's `TerminalSessions` reattaches every session it
+    recorded as running and the host still runs, and marks the rest exited.
+    Stopping the supervisor ends the host and its workloads after the
+    generations drain. If the host dies, the supervisor reports every
+    workload it ran as exited with incomplete output, and starts a new host
+    on the next `spawn`.
+  - A reply and the events after it keep their order end to end. Node can
+    deliver several IPC messages in one turn, so the supervisor relays a
+    reply in the turn it arrives, and the core delivers events a macrotask
+    later, after the requester has seen its reply.
 - **Registry.** It holds the home's single-owner claim and the
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
@@ -614,7 +681,11 @@ verification, and fault injection.
    Handle passing was verified on a Windows host (see Windows above); the
    adopted launch modes have not been run there.
 2. **Workloads and terminals:** workload host and journals, then the terminal
-   redesign on top of it (see [terminal.md](terminal.md)).
+   redesign on top of it (see [terminal.md](terminal.md)). The workload host,
+   journals and terminal reattachment are implemented (protocol 1.3; see
+   Workloads), and so are supervised dogfood and e2e starts. Endpoint
+   workloads, per-workload resource limits and the remaining terminal
+   redesign are not.
 3. **Engines:** workload-stream transport per adapter, reattach before
    interrupted-turn consumption, bounded auto-resume.
 4. **Launch modes and upgrades:** Desktop as a service client with first-run
@@ -648,9 +719,8 @@ verification, and fault injection.
   ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
   hands generation 1 to 2 under keep-alive, fresh-connection, and
   slow-header HTTP load (requests whose headers are still arriving when
-  generation 1 drains) with no refused or reset connection, on the same four
-  ports, and checks the terminal, voice, and consent listeners on the new
-  generation. It also checks that a parked generation leaves the home, the
+  generation 1 drains) with no refused or reset connection, on the same three
+  ports, and checks the voice and consent listeners on the new generation. It also checks that a parked generation leaves the home, the
   temp root, and the engine registry untouched, and that the supervisor
   keeps its socket, token, and lock through a home schema migration. These
   are the cases tested, not a guarantee for every request: one still running
@@ -695,17 +765,52 @@ verification, and fault injection.
   in-app update's handoff is tested through its route with a real core link
   over a fake IPC channel, not through a real pull and build. The journey
   runs on Windows too, except the SIGSTOP cases; no Linux host ran it.
-- **Not covered: dogfood and e2e.** Both start Station with
-  `--lifecycle-journal`, which keeps the direct start, so neither the
-  owner's daily instance nor the e2e suite runs the supervisor. Supervising
-  them is its own change, estimated at 400 to 700 lines across four files:
-  the lifecycle journal's identity (`packages/shared/src/lifecycle-events.ts`)
-  must name the supervisor and each generation so `classifyLifecycleExit`
-  can tell a generation's exit during a handoff from the instance's; the
-  dogfood reconciler's prior-exit classification
-  (`scripts/station-dogfood-reconcile.mjs`) matches events by the recorded
-  pid; dogfood health's listener ownership
-  (`scripts/station-dogfood-health.mjs`) requires the recorded pid to be the
-  only listener, where the supervisor and the core both hold the sockets;
-  and the e2e runner's teardown (`scripts/run-e2e-suite.mjs`) kills the
-  recorded pid's process group, which no longer contains the core.
+- **Dogfood and e2e (#4135).** Both start Station with `--lifecycle-journal`,
+  which runs supervised like any other start. A supervised generation
+  stamps its lifecycle events with `supervisor: { pid, generation }` and
+  records its own `started` event. The events then belong to the instance
+  whose recorded pid is the supervisor's, and its own pid and build may
+  change at a handoff. Events without the stamp, from a direct start or an
+  older journal, still match by their own pid and sha.
+  `classifyLifecycleExit`
+  ([`lifecycle-events.ts`](../../packages/shared/src/lifecycle-events.ts))
+  and the dogfood reconciler's prior-exit classification
+  ([`station-dogfood-reconcile.mjs`](../../scripts/station-dogfood-reconcile.mjs))
+  read only the newest generation's exit as the instance's. An earlier
+  generation's drain is a handoff, never a clean stop or a crash. Dogfood
+  health
+  ([`station-dogfood-health.mjs`](../../scripts/station-dogfood-health.mjs))
+  accepts a supervised record's server ports held by the recorded
+  supervisor together with one co-owner whose parent is that supervisor.
+  Any other co-owner, or one whose parent cannot be read, still fails. The
+  e2e runner ([`run-e2e-suite.mjs`](../../scripts/run-e2e-suite.mjs)) checks
+  the supervisor's identity through `station supervisor status` and records
+  the serving generation's process identity in its run lease. Teardown
+  stops through the control channel (`station stop`), and the lease is
+  released only once the supervisor, the UI listener and that generation
+  are all gone. These are covered by unit tests of the classification,
+  health and e2e helpers. Neither a dogfood reconcile nor the e2e suite was
+  run against a supervised instance for this change.
+- **Phase 2 evidence (terminal workloads).** The package's real-process
+  tests
+  ([`workloads.test.ts`](../../packages/supervisor/src/__tests__/workloads.test.ts))
+  run a fixture core and a fixture workload host. A workload keeps its pid
+  and journal across a handoff. A 1.2 core, or a supervisor with no host,
+  is not granted workloads. Stopping the supervisor ends the host and its
+  workloads. A host killed outright reports every workload exited with
+  incomplete output, and the next `spawn` starts a new host. The production
+  host is tested with real PTYs
+  ([`supervisor-shell-host.process.test.ts`](../../src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts)).
+  There, a core restart (a second `TerminalSessions` on the same home)
+  reattaches the same shell, every record appears once and in order, and
+  output from while no core was attached is kept. A shell that ended while
+  detached reads as exited with its output. A command that ignores SIGTERM
+  is ended with a child of its own. A command past its output cap is
+  ended, with no more than the cap journaled. A journey
+  ([`supervisor-terminal.real.test.ts`](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts))
+  builds the supervisor and workload host bundles and a core from the
+  production terminal modules. It hands generation 1 to 2 while a shell
+  prints, then checks that the shell keeps its pid and that every printed
+  marker appears exactly once. Stopping the supervisor ends the shell. The
+  journey does not boot the whole core server or its authenticated
+  terminal routes.

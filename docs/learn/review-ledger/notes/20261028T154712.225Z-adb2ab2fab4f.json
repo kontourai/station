@@ -1,0 +1,7 @@
+{
+  "revision": "8c058b40ca260754e5793cce8863cd83ae7ed60b",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts with docs:mcp:generate after the connections/agent-configuration edits; the 2-line diff only refreshes the shipped topic text from those guides. This reference's claims about topics, tool names and read-only behavior are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

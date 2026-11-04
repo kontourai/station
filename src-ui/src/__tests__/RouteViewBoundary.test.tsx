@@ -3,7 +3,8 @@
  */
 
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { onlineManager } from '@tanstack/react-query';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Component, type ReactNode, useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -11,6 +12,7 @@ import {
   RouteViewBoundary,
 } from '../app-shell/RouteViewBoundary';
 import { routeTransitionStore } from '../app-shell/route-transition-store';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 
 class ThrowingView extends Component<{ error?: unknown }> {
@@ -199,6 +201,34 @@ describe('RouteViewBoundary', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
 
+    test('a failed chunk download offers its reload only once back online', () => {
+      // A reload while offline replaces the workspace with the offline reader.
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      onlineManager.setOnline(false);
+      try {
+        render(
+          <RouteViewBoundary routeKey="activity:all">
+            <ThrowingView
+              error={new Error('Failed to fetch dynamically imported module')}
+            />
+          </RouteViewBoundary>,
+        );
+
+        expect(screen.getByRole('alert').textContent).toContain(
+          'not saved on this device',
+        );
+        expect(
+          screen.queryByRole('button', { name: 'Reload Station' }),
+        ).toBeNull();
+        act(() => onlineManager.setOnline(true));
+        expect(
+          screen.getByRole('button', { name: 'Reload Station' }),
+        ).toBeTruthy();
+      } finally {
+        onlineManager.setOnline(true);
+      }
+    });
+
     test('an authority failure offers the connection, not a reload', () => {
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const opened = vi.fn();
@@ -220,6 +250,64 @@ describe('RouteViewBoundary', () => {
       );
       expect(opened).toHaveBeenCalled();
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+    });
+
+    // #4470. Placed before the test below, which replaces `window.location`.
+    test('a view failure offers Troubleshoot seeded with the route and the error', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      window.history.pushState({}, '', '/activity/all?session=secret#x');
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(
+          <RouteViewBoundary routeKey="activity:all">
+            <ThrowingView
+              error={
+                new TypeError(
+                  "Cannot read properties of undefined (reading 'id')\n    at View (/Users/alice/app.tsx:1:2)",
+                )
+              }
+            />
+          </RouteViewBoundary>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          {
+            route: '/activity/all',
+            errorSummary:
+              "TypeError: Cannot read properties of undefined (reading 'id')",
+          },
+        ]);
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
+    });
+
+    test('an authority failure offers Troubleshoot in its menu, seeded with the HTTP status', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      window.history.pushState({}, '', '/settings');
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(
+          <RouteViewBoundary routeKey="settings">
+            <ThrowingView error={new StationHttpError(403, 'forbidden')} />
+          </RouteViewBoundary>,
+        );
+        // Two labelled actions at most (#3045): Troubleshoot is in the menu.
+        expect(
+          screen.queryByRole('button', { name: 'Troubleshoot' }),
+        ).toBeNull();
+        fireEvent.click(
+          screen.getByRole('button', { name: 'More actions for this view' }),
+        );
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          { route: '/settings', errorSummary: 'HTTP 403: forbidden' },
+        ]);
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
     });
 
     test('a view failure retries by remounting the route, not by reloading', () => {

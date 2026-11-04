@@ -1,0 +1,7 @@
+{
+  "revision": "834f27383254392827cda61de98f426c278ad7d1",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"New macOS Keychain paragraph verified against profile-keyring-macos.ts: 5s non-interactive / 120s TTY timeouts, attribute-only status lookup, -w only for reads, remedy text matches KeychainAccessError.","inputs":["docs/reference/cli.md"]}
+  ]
+}

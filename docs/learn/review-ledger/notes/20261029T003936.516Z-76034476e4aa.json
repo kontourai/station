@@ -1,0 +1,9 @@
+{
+  "revision": "b10367104e4dc37d5d01b58fa3ad3a42ee734bcb",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the formatting-only preview-docs test delta: the registry-offered task-review, continue-interrupted-turn and visual-skills IDs and ordering are unchanged. The guide's UI-only consumer guidance remains accurate; preview docs check passed.","inputs":["docs/guides/feature-previews.md","scripts/__tests__/feature-preview-docs-check.test.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the formatting-only preview-docs test delta: the same registry-offered IDs and order remain. The settings table continues to describe the registered previews; preview docs check passed.","inputs":["docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts"]}
+  ]
+}

@@ -47,6 +47,7 @@ import type {
 } from '../provider-interfaces.js';
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
+import { mcpSubregistryIntegrationProviders } from './mcp-subregistry-provider.js';
 
 const logger = createLogger({ name: 'provider-registry' });
 
@@ -857,9 +858,13 @@ export function getIntegrationRegistryProvider(): IIntegrationRegistryProvider {
   if (entries.length === 0) {
     return createIntegrationRegistryProvider([
       new BuiltinIntegrationRegistryProvider(),
+      ...mcpSubregistryIntegrationProviders(),
     ]);
   }
-  providers.push(new BuiltinIntegrationRegistryProvider());
+  providers.push(
+    new BuiltinIntegrationRegistryProvider(),
+    ...mcpSubregistryIntegrationProviders(),
+  );
   return createIntegrationRegistryProvider(
     providers,
     undefined,

@@ -118,7 +118,7 @@ export function ProjectKnowledgeSources({
   return (
     <PageSection
       title="Documents and knowledge"
-      description="Keep useful documents with this Project. Agents can read permitted content when you ask; adding a library does not guarantee search or indexing is ready."
+      description="Agents can read permitted content when you ask. Search may not be ready right after adding."
     >
       <ProjectDocumentImport
         key={JSON.stringify([

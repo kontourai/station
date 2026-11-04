@@ -30,11 +30,18 @@ import {
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
-import { readLifecycleEvents } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLock,
+  readLifecycleEvents,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   admitStationRuntimeHome,
   resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  acquireStationHomeMaintenanceLease,
+  acquireStationHomeRuntimeLease,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import {
   ensureStationHomeSchemaSync,
   STATION_HOME_RESET_COMMAND,
@@ -53,8 +60,12 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../../src-server/utils/internal-api-token.js';
 import type { Logger } from '../../../../src-server/utils/logger.js';
+import { renderLaunchdPlist } from '../commands/service-launchd.js';
+import { renderSystemdUnit } from '../commands/service-systemd.js';
+import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
+  reapLongRunningFixtureChild,
   spawnLongRunningFixtureChild,
 } from './helpers/longrunning-fixture-child.js';
 
@@ -555,16 +566,47 @@ function currentServicePlatform(): 'darwin' | 'linux' | 'win32' {
   throw new Error(`unsupported test platform: ${process.platform}`);
 }
 
-function writeStaleServiceManifest(home: string, instanceId: string): string {
+/**
+ * A service the real unit writers rendered, with a pre-Interactive launchd
+ * ProcessType (systemd's stale Nice= comes from `systemctl cat`, below).
+ * `location` is what the unit runs: by default a source checkout.
+ */
+function writeStaleServiceManifest(
+  home: string,
+  instanceId: string,
+  location: Pick<
+    Parameters<typeof renderSystemdUnit>[0],
+    'installRoot' | 'kind' | 'nodePath' | 'repoPath'
+  > = { nodePath: '/usr/bin/node', repoPath: '/srv/station' },
+  stationRoot?: string,
+): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
   const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
+  const unit = {
+    ...location,
+    instanceId,
+    lifecycle: {
+      baseDir: home,
+      host: '127.0.0.1',
+      serverPort: 3141,
+      stationRoot,
+      uiPort: 3000,
+    } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
+    servicePath: '/usr/bin:/bin',
+  };
   writeFileSync(
     unitPath,
     platform === 'linux'
-      ? '[Service]\nExecStart=/station\nNice=10\n'
-      : '<plist><dict><key>ProcessType</key><string>Background</string></dict></plist>',
+      ? renderSystemdUnit(unit)
+      : renderLaunchdPlist({
+          ...unit,
+          label: `io.kontourai.station.${instanceId}`,
+        }).replace(
+          '<key>ProcessType</key><string>Interactive</string>',
+          '<key>ProcessType</key><string>Background</string>',
+        ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -626,11 +668,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     const probe = stoppedServiceProbe(command, args);
     if (probe) return probe;
     if (process.platform === 'darwin') {
-      return {
-        status: 0,
-        stderr: '',
-        stdout: JSON.stringify({ ProcessType: 'Background' }),
-      };
+      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
     }
     if (process.platform === 'win32') {
       return { status: 0, stderr: '', stdout: '7\n' };
@@ -638,7 +676,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     return {
       status: 0,
       stderr: '',
-      stdout: `# ${unitPath}\n[Service]\nExecStart=/station\nNice=10\n`,
+      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
     };
   });
 }
@@ -2077,6 +2115,58 @@ describe('lifecycle instance state', () => {
     }
   });
 
+  it('hands the production UI listener its script on stdin, not the command line', async () => {
+    // Windows refuses a command line over 32,767 characters with
+    // `spawn ENAMETOOLONG`; the ~32k-character listener script passed via
+    // `-e` crossed it once the install path exceeded a few dozen characters.
+    ensureDir(TEST_CWD);
+    ensureBuildOutputs('ui-stdin');
+    ensureDir(TEST_ALT_HOME);
+    const end = vi.fn();
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 43511, unref: vi.fn() })
+      .mockReturnValueOnce({
+        pid: 43512,
+        unref: vi.fn(),
+        stdin: { on: vi.fn(), end },
+      });
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+    ) => {
+      if (pid === 43511 || pid === 43512) return true;
+      throw new Error(`unexpected process.kill(${pid})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+    try {
+      await lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'ui-stdin',
+        serverPort: 3272,
+        uiPort: 5302,
+      });
+      const [command, args, options] = spawn.mock.calls[1] as [
+        string,
+        string[],
+        { stdio: unknown[] },
+      ];
+      expect(command).toBe(process.execPath);
+      expect(args).toEqual(['-']);
+      expect(options.stdio[0]).toBe('pipe');
+      expect(end).toHaveBeenCalledTimes(1);
+      const script = String(end.mock.calls[0]?.[0]);
+      // The real listener source, far beyond a short command line.
+      expect(script.length).toBeGreaterThan(20_000);
+      expect(script).toContain('__station/identity');
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it('recognizes and cleans up stale prior PID files', async () => {
     ensureDir(TEST_CWD);
     writeFileSync(TEST_PIDFILE, '99999');
@@ -2267,10 +2357,7 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it.each([
-    ['terminal', 3243],
-    ['voice', 3244],
-  ])(
+  it.each([['voice', 3244]])(
     'does not treat a %s-only listener as the instance, and never kills it (#3253)',
     async (_name, lingeringPort) => {
       ensureDir(TEST_CWD);
@@ -2707,7 +2794,7 @@ describe('lifecycle instance state', () => {
     ).toThrow('Invalid hosted probe authority in instance state');
   });
 
-  it('blocks starts whose requested ports overlap a sibling terminal or voice socket', async () => {
+  it('blocks starts whose requested ports overlap a sibling voice or consent socket', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('agent-crud');
     ensureDir(TEST_ALT_HOME);
@@ -2798,7 +2885,7 @@ describe('lifecycle instance state', () => {
       writeBuildManifest('collide-b');
       const base = await reserveFreePortBase();
       // The sibling started from another checkout, so this checkout holds no
-      // record of it: only the real listener on its terminal port exists.
+      // record of it: only its real listener on this port exists.
       const siblingPid = await spawnPortOwner(base);
       // The new server dies at once, as a Station does when its port is taken;
       // its UI child keeps running until the failed start rolls it back.
@@ -4262,6 +4349,137 @@ describe('homeReset (station#1913)', () => {
   });
 });
 
+describe('home mutation custody', () => {
+  it.each(['clean', 'reset'] as const)(
+    '%s preserves a leased home, then succeeds after the runtime releases it',
+    async (operation) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      ensureBuildOutputs('leased-home');
+      const sentinel = join(TEST_ALT_HOME, 'kept.txt');
+      writeFileSync(sentinel, 'retained runtime state');
+      const { lifecycle } = await loadLifecycleModule();
+      const runtime = acquireStationHomeRuntimeLease(TEST_ALT_HOME);
+      const mutate = async () => {
+        const options = {
+          homeSource: '--base' as const,
+          projectHome: TEST_ALT_HOME,
+          instanceName: 'leased-home',
+          serverPort: 3242,
+          uiPort: 5274,
+        };
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+          return undefined;
+        }
+        return lifecycle.homeReset({ ...options, confirm: true });
+      };
+      try {
+        await expect(mutate()).rejects.toMatchObject({
+          code: 'STATION_HOME_ACTIVE',
+        });
+        expect(readFileSync(sentinel, 'utf8')).toBe('retained runtime state');
+        expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+          true,
+        );
+        runtime.release();
+        const result = await mutate();
+        expect(existsSync(TEST_ALT_HOME)).toBe(false);
+        if (operation === 'reset') {
+          expect(result?.archived).toBe(true);
+          expect(
+            readFileSync(join(result!.archivePath!, 'kept.txt'), 'utf8'),
+          ).toBe('retained runtime state');
+        } else {
+          expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+            false,
+          );
+        }
+      } finally {
+        runtime.release();
+      }
+    },
+  );
+
+  it.each([
+    { operation: 'clean', failMutation: false },
+    { operation: 'reset', failMutation: false },
+    { operation: 'clean', failMutation: true },
+    { operation: 'reset', failMutation: true },
+  ] as const)(
+    '$operation excludes other maintenance through mutation and releases afterward (failure=$failMutation)',
+    async ({ operation, failMutation }) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      writeFileSync(join(TEST_ALT_HOME, 'kept.txt'), 'retained runtime state');
+      const actualFs = await vi.importActual<FsModule>('node:fs');
+      const mutationError = new Error('home mutation failed');
+      let inspected = false;
+      const inspectOwnership = () => {
+        inspected = true;
+        let competing:
+          | ReturnType<typeof acquireStationHomeMaintenanceLease>
+          | undefined;
+        let refusal: unknown;
+        try {
+          competing = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+            acquireMutationLock: (path) =>
+              acquireFileMutationLock(path, { timeoutMs: 0 }),
+          });
+        } catch (error) {
+          refusal = error;
+        } finally {
+          competing?.release();
+        }
+        expect(refusal).toMatchObject({
+          message: 'lifecycle journal lock is held by a live process',
+        });
+        if (failMutation) throw mutationError;
+      };
+      const { lifecycle } = await loadLifecycleModule({
+        fsOverrides: {
+          rmSync: (path, options) => {
+            if (operation === 'clean' && path === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.rmSync(path, options);
+          },
+          renameSync: (source, destination) => {
+            if (operation === 'reset' && source === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.renameSync(source, destination);
+          },
+        },
+      });
+      const options = {
+        homeSource: '--base' as const,
+        projectHome: TEST_ALT_HOME,
+        instanceName: 'owned-home',
+        serverPort: 3242,
+        uiPort: 5274,
+      };
+      const mutate = async () => {
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+        } else {
+          lifecycle.homeReset({ ...options, confirm: true });
+        }
+      };
+      if (failMutation) {
+        await expect(mutate()).rejects.toBe(mutationError);
+      } else {
+        await mutate();
+      }
+      expect(inspected).toBe(true);
+      expect(existsSync(TEST_ALT_HOME)).toBe(failMutation);
+      const maintenance = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+        acquireMutationLock: (path) =>
+          acquireFileMutationLock(path, { timeoutMs: 0 }),
+      });
+      maintenance.release();
+    },
+  );
+});
+
 describe('home verify (station#3218)', () => {
   it('refuses a home that does not exist instead of reporting it clean', async () => {
     // The operator trap: `--base` with a typo in it holds no stores, every
@@ -5273,12 +5491,20 @@ describe('upgrade', () => {
   });
 
   it.each([
-    { runtimeChannel: 'stable', releaseChannel: 'stable' },
-    { runtimeChannel: 'beta', releaseChannel: 'preview' },
-    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
+    { runtimeChannel: 'stable', releaseChannel: 'stable', launcher: 'station' },
+    {
+      runtimeChannel: 'beta',
+      releaseChannel: 'preview',
+      launcher: 'station-beta',
+    },
+    {
+      runtimeChannel: 'nightly',
+      releaseChannel: 'nightly',
+      launcher: 'station-nightly',
+    },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
-    async ({ runtimeChannel, releaseChannel }) => {
+    async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
@@ -5323,9 +5549,18 @@ describe('upgrade', () => {
 
       const execFileSync = vi.fn();
       const execSync = vi.fn();
+      // The unit runs this install's service launcher (#2675 D), installed
+      // through it, so it carries the root that launcher exports.
       const unitPath = writeStaleServiceManifest(
         stationHome,
         'packaged-guidance',
+        {
+          kind: 'archive',
+          installRoot,
+          nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+          repoPath: join(installRoot, 'current'),
+        },
+        join(TEST_ROOT, `root-${runtimeChannel}`),
       );
       const { lifecycle } = await loadLifecycleModule({
         cwd: release,
@@ -5374,8 +5609,11 @@ describe('upgrade', () => {
         expect(log.mock.calls.flat().join('\n')).toContain(
           'Service scheduling is stale for packaged-guidance',
         );
+        // The reinstall names the ring's launcher, which owns this install
+        // (#4189). A Windows remedy reads the manifest, which this fixture
+        // writes without the archive fields.
         expect(log.mock.calls.flat().join('\n')).toContain(
-          `station service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5902,6 +6140,9 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       upstreamPort,
       backendPrefixes:
         opts?.backendPrefixes ?? lifecycle.UI_PROXY_BACKEND_PREFIXES,
+      backendExcludedPrefixes: (
+        await import('../commands/ui-proxy-prefixes.js')
+      ).UI_PROXY_EXCLUDED_PREFIXES,
       backendNavigationPrefixes:
         opts?.backendNavigationPrefixes ??
         lifecycle.UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
@@ -6781,6 +7022,56 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     expect(upstreamHits).toEqual(['/observability/status']);
   });
 
+  it('outside OAuth and MCP paths never reach the UI proxy backend, including well-known and mutation fallbacks', async () => {
+    uiDir = makeTrackedUiDir('station-ui-outside-oauth-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('backend');
+    });
+    serverModule = await startServer();
+    for (const pathname of [
+      '/oauth/register',
+      '/oauth/authorize',
+      '/oauth/token',
+      '/mcp',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+      '/.well-known/oauth-authorization-server',
+      '/%6fauth/token',
+      '/.well-known/oauth-protected%2dresource/mcp',
+    ]) {
+      for (const method of ['GET', 'POST', 'OPTIONS']) {
+        const response = await fetch(
+          `http://127.0.0.1:${serverModule.port}${pathname}`,
+          { method, headers: { accept: 'application/json' } },
+        );
+        expect(response.status, `${method} ${pathname}`).toBe(404);
+      }
+    }
+    expect(upstreamHits).toHaveLength(0);
+    const { UI_PROXY_BACKEND_PREFIXES } = await import(
+      '../commands/ui-proxy-prefixes.js'
+    );
+    // A broader ancestor would forward the protected exact leaf too.
+    expect(
+      UI_PROXY_BACKEND_PREFIXES.some((prefix) => '/mcp'.startsWith(prefix)),
+    ).toBe(false);
+    for (const prefix of UI_PROXY_BACKEND_PREFIXES)
+      expect([
+        '/oauth',
+        '/mcp',
+        '/.well-known/oauth-protected-resource',
+        '/.well-known/oauth-authorization-server',
+      ]).not.toContain(prefix);
+    const response = await fetch(
+      `http://127.0.0.1:${serverModule.port}/.well-known/station/v1`,
+      { headers: { accept: 'application/json' } },
+    );
+    expect(response.status).toBe(200);
+    expect(upstreamHits).toEqual(['/.well-known/station/v1']);
+  });
+
   it('proxies the public environment handshake through the production UI listener', async () => {
     uiDir = mkdtempSync(join(tmpdir(), 'station-ui-'));
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
@@ -7406,12 +7697,71 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
 describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+  const makeUiDir = trackTempDirs();
+
+  function spawnUiScript(script: string) {
+    // Observe the child's real listener; a peer's HTTP response is not readiness.
+    const observeListening = `
+      (() => {
+        const http = require('node:http');
+        const createServer = http.createServer;
+        http.createServer = function (...args) {
+          const server = Reflect.apply(createServer, this, args);
+          server.once('listening', () => process.send({ port: server.address().port }));
+          return server;
+        };
+      })();
+    `;
+    const child = spawn(process.execPath, ['-e', observeListening + script], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
+      },
+    });
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    const listening = new Promise<number>((resolve, reject) => {
+      const deadline = setTimeout(
+        () => reject(new Error(`UI child did not listen: ${stderr}`)),
+        5000,
+      );
+      child.once('message', (message: unknown) => {
+        clearTimeout(deadline);
+        if (
+          typeof message === 'object' &&
+          message !== null &&
+          'port' in message &&
+          typeof message.port === 'number' &&
+          Number.isInteger(message.port) &&
+          message.port > 0 &&
+          message.port <= 65535
+        ) {
+          resolve(message.port);
+        } else {
+          reject(new Error('UI child did not report a bound port'));
+        }
+      });
+      child.once('error', (error) => {
+        clearTimeout(deadline);
+        reject(error);
+      });
+      child.once('close', (code, signal) => {
+        clearTimeout(deadline);
+        reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
+      });
+    });
+    return { child, listening, stderr: () => stderr };
+  }
+
   it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-spawn-'));
+    const uiDir = makeUiDir('station-ui-spawn-');
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -7449,29 +7799,18 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     const upstreamPort =
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
-    const uiPort = 39999 + (process.pid % 500);
     const script = lifecycle.buildUiServerScript({
       hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
       uiDir,
       upstreamPort,
-      uiPort,
+      uiPort: 0,
+      host: '127.0.0.1',
     });
 
-    const child = spawn(process.execPath, ['-e', script], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: {
-        ...process.env,
-        STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
-      },
-    });
-
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
+    const server = spawnUiScript(script);
 
     try {
+      const uiPort = await server.listening;
       const request = (path: string, headers: Record<string, string> = {}) =>
         new Promise<{ body: string; status: number }>((resolve, reject) => {
           const client = nodeRequest(
@@ -7493,20 +7832,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
           client.on('error', reject);
           client.end();
         });
-      // Wait for the spawned server to come up (bounded poll, not a fixed
-      // sleep — real process startup time varies).
-      const deadline = Date.now() + 5000;
-      let up = false;
-      while (Date.now() < deadline && !up) {
-        try {
-          const probe = await request('/');
-          if (probe.status === 200) up = true;
-        } catch {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      }
-      expect(up).toBe(true);
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       const staticRes = await request('/');
       expect(staticRes.status).toBe(200);
@@ -7518,7 +7844,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
       expect(upstreamTenant).toBe('alpha');
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
       // the connection. Same bytes the browser's derivation reads.
@@ -7528,7 +7854,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         ready: false,
         status: 'unavailable',
       });
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       const degradedRes = await request('/api/system/readiness', {
         'x-station-readiness-budget-ms': '300',
@@ -7538,25 +7864,25 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         ready: false,
         status: 'degraded',
       });
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
     } finally {
-      child.kill('SIGKILL');
-      upstream.close();
-      rmSync(uiDir, { recursive: true, force: true });
+      await reapLongRunningFixtureChild(server.child);
+      upstream.closeAllConnections();
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   }, 15_000);
 
   it('the globalThis.__name shim neutralizes an esbuild/keepNames-style __name(...)-wrapped binding spliced into the real generated script (code-review M2 residual-gap tripwire)', async () => {
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-name-shim-'));
+    const uiDir = makeUiDir('station-ui-name-shim-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
 
     const script = lifecycle.buildUiServerScript({
       uiDir,
       upstreamPort: 1, // unused — this probe never proxies a request
-      uiPort: 0, // placeholder, replaced per-attempt below
+      uiPort: 0,
+      host: '127.0.0.1',
     });
     const shimLiteral =
       'globalThis.__name = globalThis.__name || ((fn) => fn);';
@@ -7574,121 +7900,70 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     const probeStatement =
       'const stationNameShimProbe = __name(function stationNameShimProbe() { return 1; }, "stationNameShimProbe");';
 
-    async function runProbe(
-      scriptSource: string,
-      port: number,
-    ): Promise<{ up: boolean; stderr: string }> {
-      const withPort = scriptSource.replace(
-        /listen\(0,["']0\.0\.0\.0["']\)/,
-        `listen(${port},"0.0.0.0")`,
-      );
-      const child = spawn(process.execPath, ['-e', withPort], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-      let stderr = '';
-      child.stderr?.on('data', (chunk) => {
-        stderr += String(chunk);
-      });
-      try {
-        const deadline = Date.now() + 3000;
-        let up = false;
-        while (Date.now() < deadline && !up) {
-          try {
-            const res = await fetch(`http://127.0.0.1:${port}/`);
-            if (res.status === 200) up = true;
-          } catch {
-            await new Promise((r) => setTimeout(r, 100));
-          }
-        }
-        // Give a crashed process time to flush stderr even when it never
-        // came up.
-        if (!up) await new Promise((r) => setTimeout(r, 200));
-        return { up, stderr };
-      } finally {
-        child.kill('SIGKILL');
-      }
-    }
-
-    const portWithShim = 40899 + (process.pid % 300);
-    const portWithoutShim = portWithShim + 300;
-
+    const withShim = script.replace(
+      shimLiteral,
+      `${shimLiteral}\n${probeStatement}`,
+    );
+    const withShimServer = spawnUiScript(withShim);
     try {
       // With the shim present (real production shape): the __name(...)
       // call is neutralized and the server starts cleanly.
-      const withShim = script.replace(
-        shimLiteral,
-        `${shimLiteral}\n${probeStatement}`,
-      );
-      const withShimResult = await runProbe(withShim, portWithShim);
-      expect(withShimResult.stderr).toBe('');
-      expect(withShimResult.up).toBe(true);
-
-      // Negative control: without the shim, the same __name(...) call
-      // crashes the standalone process with a ReferenceError — proving the
-      // positive assertion above is meaningful (the shim is doing real
-      // work), not a tautology.
-      const withoutShim = script
-        .replace(shimLiteral, '')
-        .replace('const http=', `${probeStatement}\n    const http=`);
-      const withoutShimResult = await runProbe(withoutShim, portWithoutShim);
-      expect(withoutShimResult.up).toBe(false);
-      expect(withoutShimResult.stderr).toContain('__name is not defined');
+      const port = await withShimServer.listening;
+      expect((await fetch(`http://127.0.0.1:${port}/`)).status).toBe(200);
+      expect(withShimServer.stderr()).toBe('');
     } finally {
-      rmSync(uiDir, { recursive: true, force: true });
+      await reapLongRunningFixtureChild(withShimServer.child);
+    }
+
+    // Negative control: without the shim, the same __name(...) call
+    // crashes the standalone process with a ReferenceError — proving the
+    // positive assertion above is meaningful (the shim is doing real
+    // work), not a tautology.
+    const withoutShim = script
+      .replace(shimLiteral, '')
+      .replace('const http=', `${probeStatement}\n    const http=`);
+    const withoutShimServer = spawnUiScript(withoutShim);
+    try {
+      await expect(withoutShimServer.listening).rejects.toThrow(
+        '__name is not defined',
+      );
+      expect(withoutShimServer.child.exitCode).toBe(1);
+    } finally {
+      await reapLongRunningFixtureChild(withoutShimServer.child);
     }
   }, 15_000);
 
-  const makeUiDir = trackTempDirs();
-
   it('serves the nonce-bound __API_BASE__ bootstrap from the spawned script when an override is configured', async () => {
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
     const uiDir = makeUiDir('station-ui-override-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
-    const uiPort = 41499 + (process.pid % 300);
-    const child = spawn(
-      process.execPath,
-      [
-        '-e',
-        lifecycle.buildUiServerScript({
-          uiDir,
-          apiBaseOverride: 'http://example-override:9999',
-          upstreamPort: 1, // unused: this probe never proxies a request
-          uiPort,
-        }),
-      ],
-      { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+    const server = spawnUiScript(
+      lifecycle.buildUiServerScript({
+        uiDir,
+        apiBaseOverride: 'http://example-override:9999',
+        upstreamPort: 1, // unused: this probe never proxies a request
+        uiPort: 0,
+        host: '127.0.0.1',
+      }),
     );
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
 
     try {
-      let res: Response | null = null;
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline && !res) {
-        try {
-          res = await fetch(`http://127.0.0.1:${uiPort}/`);
-        } catch {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      }
-      expect(stderr).toBe('');
-      expect(res?.status).toBe(200);
-      const body = await res!.text();
+      const uiPort = await server.listening;
+      const res = await fetch(`http://127.0.0.1:${uiPort}/`);
+      expect(server.stderr()).toBe('');
+      expect(res.status).toBe(200);
+      const body = await res.text();
       const nonce = /<script nonce="([^"]+)">/.exec(body)?.[1];
       expect(nonce).toBeTruthy();
       expect(body).toBe(
         `<head><script nonce="${nonce}">window.__API_BASE__="http://example-override:9999";document.currentScript.remove()</script></head><body>app</body>`,
       );
-      expect(res!.headers.get('content-security-policy')).toContain(
+      expect(res.headers.get('content-security-policy')).toContain(
         `'nonce-${nonce}'`,
       );
     } finally {
-      child.kill('SIGKILL');
+      await reapLongRunningFixtureChild(server.child);
     }
   }, 15_000);
 });
@@ -7724,19 +7999,21 @@ describe('buildUiServerScript (injection-conditional API base)', () => {
   });
 });
 
-describe('validateLifecyclePorts (station#3677 five-port reservation)', () => {
+describe('validateLifecyclePorts (station#3677 port reservation)', () => {
   it('derives consent at server+3, validates an explicit override, and rejects every collision', async () => {
     const { lifecycle } = await loadLifecycleModule();
-    // Default derivation: server, terminal(+1), voice(+2), consent(+3), ui.
+    // Default derivation: server, voice(+2), consent(+3), ui.
     expect(() => lifecycle.validateLifecyclePorts(3141, 3000)).not.toThrow();
     // An explicit consent port gets the same validation.
     expect(() =>
       lifecycle.validateLifecyclePorts(3141, 3000, 3999),
     ).not.toThrow();
-    // Colliding with the terminal port refuses.
-    expect(() => lifecycle.validateLifecyclePorts(3141, 3000, 3142)).toThrow(
+    // Colliding with the voice port refuses.
+    expect(() => lifecycle.validateLifecyclePorts(3141, 3000, 3143)).toThrow(
       /distinct/,
     );
+    // The server port + 1 is not reserved.
+    expect(() => lifecycle.validateLifecyclePorts(3141, 3142)).not.toThrow();
     // A UI port equal to the DERIVED consent port refuses too.
     expect(() => lifecycle.validateLifecyclePorts(3141, 3144)).toThrow(
       /distinct/,
@@ -8194,10 +8471,15 @@ describe('lifecycle build + restart ergonomics', () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
     writeBuildManifest('loopback');
+    const uiStdinEnd = vi.fn();
     const spawn = vi
       .fn()
       .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 41002, unref: vi.fn() });
+      .mockReturnValueOnce({
+        pid: 41002,
+        unref: vi.fn(),
+        stdin: { on: vi.fn(), end: uiStdinEnd },
+      });
     const killSpy = vi
       .spyOn(process, 'kill')
       .mockImplementation((() => true) as typeof process.kill);
@@ -8237,7 +8519,7 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(spawn.mock.calls[1][1]?.[1])).toContain(
+      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
         'listen(5274,"127.0.0.1")',
       );
       expect(fetchMock).toHaveBeenCalledWith(
@@ -8252,12 +8534,12 @@ describe('lifecycle build + restart ergonomics', () => {
           signal: expect.any(AbortSignal),
         },
       );
-      // Terminal (+1) and voice (+2) are TCP-probed. The consent listener
-      // (+3, station#3677) deliberately is NOT: review MED 4 — a TCP probe
-      // proves only that SOMETHING accepted a socket, so the consent line
-      // derives from the runtime's own `/api/system/instance` self-report
-      // instead (asserted below).
-      expect(tcpConnect).toHaveBeenCalledWith({
+      // Voice (+2) is TCP-probed; nothing listens on +1. The consent
+      // listener (+3, station#3677) deliberately is NOT: review MED 4 — a TCP
+      // probe proves only that SOMETHING accepted a socket, so the consent
+      // line derives from the runtime's own `/api/system/instance`
+      // self-report instead (asserted below).
+      expect(tcpConnect).not.toHaveBeenCalledWith({
         host: '127.0.0.1',
         port: 3243,
       });
@@ -8512,6 +8794,68 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(existsSync(join(TEST_ALT_HOME, 'logs'))).toBe(false);
   });
 
+  it('gates a fresh home before spawn even when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    // An explicit log directory outside the home used to skip the CLI's gate,
+    // so the instance record a prebuilt archive keeps in `<home>/state/...`
+    // landed first and the server refused the home this start created.
+    const outsideLogs = join(TEST_ROOT, 'outside-logs');
+    ensureDir(outsideLogs);
+    writeBuildManifest('fresh-home-outside-log');
+    const markerAtSpawn: boolean[] = [];
+    const spawn = vi.fn(() => {
+      markerAtSpawn.push(
+        existsSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE)),
+      );
+      throw new Error('spawn is out of scope');
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await lifecycle
+      .start({
+        instanceName: 'fresh-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      })
+      .catch(() => {});
+
+    expect(markerAtSpawn).toEqual([true]);
+    expect(
+      JSON.parse(
+        readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf8'),
+      ),
+    ).toEqual({ version: STATION_HOME_SCHEMA_VERSION });
+  });
+
+  it('refuses an incompatible home before spawn when the log lives outside it (#4381)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_ALT_HOME, 'agents'));
+    const outsideLogs = join(TEST_ROOT, 'outside-logs-refused');
+    ensureDir(outsideLogs);
+    writeBuildManifest('incompatible-home-outside-log');
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+    });
+
+    await expect(
+      lifecycle.start({
+        instanceName: 'incompatible-home-outside-log',
+        baseDir: TEST_ALT_HOME,
+        logFile: join(outsideLogs, 'station.log'),
+        serverPort: 3264,
+        uiPort: 5296,
+      }),
+    ).rejects.toThrow('STATION_HOME_RESET_REQUIRED');
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(outsideLogs, 'station.log'))).toBe(false);
+  });
+
   it('names the supported reset command in the failure it throws (station#1913)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
@@ -8577,7 +8921,6 @@ describe('lifecycle build + restart ergonomics', () => {
 
   it.each([
     ['derived voice port out of range', 65_534, 3000],
-    ['UI overlaps terminal', 3242, 3243],
     ['UI overlaps voice', 3242, 3244],
     ['non-integer server port', 3242.5, 5274],
   ])('rejects %s before build or spawn', async (_label, serverPort, uiPort) => {
@@ -8594,10 +8937,10 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('cleans the complete instance when terminal readiness never arrives', async () => {
+  it('cleans the complete instance when voice readiness never arrives', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
-    writeBuildManifest('terminal-not-ready');
+    writeBuildManifest('voice-not-ready');
     const spawn = vi
       .fn()
       .mockReturnValueOnce({ pid: 44001, unref: vi.fn() })
@@ -8629,7 +8972,7 @@ describe('lifecycle build + restart ergonomics', () => {
         // Each refused probe spends a whole base budget, so the wait walks
         // through its bounded slow-boot extensions (#2964) and still gives up.
         now += 90_000;
-        socket.emit('error', new Error('seeded terminal refusal'));
+        socket.emit('error', new Error('seeded voice refusal'));
       });
       return socket;
     });
@@ -8647,7 +8990,7 @@ describe('lifecycle build + restart ergonomics', () => {
         // so with this clock frozen the capture blocked forever (station#1712).
         inspectProcessFingerprint: (pid: number) => ({
           pid,
-          startToken: 'terminal-not-ready-start',
+          startToken: 'voice-not-ready-start',
           commandDigest: 'c'.repeat(64),
         }),
       },
@@ -8658,24 +9001,22 @@ describe('lifecycle build + restart ergonomics', () => {
         lifecycle.start({
           baseDir: TEST_ALT_HOME,
           host: '127.0.0.1',
-          instanceName: 'terminal-not-ready',
+          instanceName: 'voice-not-ready',
           serverPort: 3242,
           uiPort: 5274,
         }),
-      ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3243');
+      ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3244');
       // start() hands the server child's liveness to the TCP waits (#2964):
-      // with it, the terminal port is probed again after the base deadline;
+      // with it, the voice port is probed again after the base deadline;
       // without it, the first refused probe would be the only one.
       // The mock declares no parameters, so its calls are read as unknowns.
-      const terminalProbes = (tcpConnect.mock.calls as unknown[][]).filter(
-        ([target]) => (target as { port?: number } | undefined)?.port === 3243,
+      const voiceProbes = (tcpConnect.mock.calls as unknown[][]).filter(
+        ([target]) => (target as { port?: number } | undefined)?.port === 3244,
       );
-      expect(terminalProbes.length).toBeGreaterThan(1);
+      expect(voiceProbes.length).toBeGreaterThan(1);
       expect(killProcessTree).toHaveBeenCalledWith(44001);
       expect(killProcessTree).toHaveBeenCalledWith(44002);
-      expect(existsSync(getInstanceStatePath('terminal-not-ready'))).toBe(
-        false,
-      );
+      expect(existsSync(getInstanceStatePath('voice-not-ready'))).toBe(false);
     } finally {
       dateSpy.mockRestore();
       killSpy.mockRestore();
@@ -8704,7 +9045,7 @@ describe('lifecycle build + restart ergonomics', () => {
       socket.setTimeout = vi.fn();
       queueMicrotask(() => {
         now += 90_000;
-        socket.emit('error', new Error('seeded terminal refusal'));
+        socket.emit('error', new Error('seeded voice refusal'));
       });
       return socket;
     });
@@ -8717,7 +9058,7 @@ describe('lifecycle build + restart ergonomics', () => {
         sleepSync: vi.fn((ms: number) => {
           now += ms;
         }),
-        // See the sibling terminal-not-ready case: the module's own
+        // See the sibling voice-not-ready case: the module's own
         // `sleepSync` binding is not what this override replaces, so without a
         // seeded fingerprint the capture spins on the frozen clock (#1712).
         inspectProcessFingerprint: (pid: number) => ({
@@ -8741,7 +9082,7 @@ describe('lifecycle build + restart ergonomics', () => {
 
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toContain(
-        'Timed out waiting for TCP listener 127.0.0.1:3243',
+        'Timed out waiting for TCP listener 127.0.0.1:3244',
       );
       expect((failure as Error).message).toContain(
         'Cleanup also failed: Failed to stop Station instance cleanup-also-fails.',
@@ -8754,7 +9095,7 @@ describe('lifecycle build + restart ergonomics', () => {
         ),
       ).toEqual([
         expect.stringContaining(
-          'Timed out waiting for TCP listener 127.0.0.1:3243',
+          'Timed out waiting for TCP listener 127.0.0.1:3244',
         ),
         expect.stringContaining(
           'Failed to stop Station instance cleanup-also-fails.',
@@ -9611,6 +9952,68 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect(existsSync(join(TEST_CWD, '.station'))).toBe(false);
       expect(existsSync(join(SECOND_VERSION, '.station'))).toBe(false);
     } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('restarts an instance whose UI listener outlived its core server instead of reporting it running (#4002)', async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const [serverPid, uiPid] = [41341, 41342];
+    const dead = new Set<number>();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && dead.has(pid)) throw new Error('gone');
+      return true;
+    }) as typeof process.kill);
+    const killProcessTree = vi.fn((pid: number) => {
+      dead.add(pid);
+    });
+    const target = { baseDir: TEST_ALT_HOME, serverPort: 3292, uiPort: 5324 };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const first = await loadLifecycleModule({
+        childProcessMock: {
+          execSync: vi.fn(() => ''),
+          spawn: readyStartMocks([serverPid, uiPid]),
+        },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await first.lifecycle.start(target);
+      // `kill -9` of the core server; the UI listener keeps running.
+      dead.add(serverPid);
+      log.mockClear();
+
+      const restartSpawn = readyStartMocks([41343, 41344]);
+      const second = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: restartSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await second.lifecycle.start(target);
+      const lines = log.mock.calls.map(([line]) => String(line));
+      expect(lines.some((line) => line.includes('Already running'))).toBe(
+        false,
+      );
+      expect(
+        lines.some((line) =>
+          line.includes(`server not running (pid ${serverPid}); restarting`),
+        ),
+      ).toBe(true);
+      // What remained of the old instance was stopped, then a new one started.
+      expect(killProcessTree).toHaveBeenCalledWith(uiPid);
+      expect(restartSpawn).toHaveBeenCalled();
+      const [record] = readdirSync(archiveStateDir(TEST_ALT_HOME));
+      expect(
+        JSON.parse(
+          readFileSync(join(archiveStateDir(TEST_ALT_HOME), record!), 'utf8'),
+        ).serverPid,
+      ).toBe(41343);
+    } finally {
+      log.mockRestore();
       killSpy.mockRestore();
     }
   });

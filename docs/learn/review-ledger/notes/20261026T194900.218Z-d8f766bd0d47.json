@@ -1,0 +1,21 @@
+{
+  "revision": "72530e0f569652fcfc89d726ec67e64b537c600f",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Bounded slice-2A export review: task-approval is a pure contracts subpath. Existing SDK/transport and server-owned admission descriptions remain accurate; no runtime producer or route is added.","inputs":["docs/architecture.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Bounded slice-2A review of ProjectTaskRoom and TaskReviewThreads: browser DTOs accept optional standing, startedBy, mentions and presence location. Existing runtime projection, v4 attachment fence, review-store and send behavior remain unchanged. v5 persistence/admission/fence wiring belongs to 2B; capabilities population belongs to 2D.","inputs":["docs/architecture/module-map.md","packages/contracts/src/project-task-room-browser.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the public export addition and attachment/mention sections. task-room-work exports, journal and delivery behavior remain unchanged. Structured room mentions are contract preparation only; current composer behavior is not upgraded by this lane.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the Task/Project Room, work identity and capability vocabulary against the new contracts reference section. Schema v5 and approval shapes do not change shipped work identity, notification or approval behavior; existing glossary prose remains accurate.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the public-interface reading path and evidence requirements against the added task-approval subpath. It still requires exact versions and authenticated runtime evidence; the contracts reference explicitly separates structural parsing from runtime authority, settlement and publication.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed v5 member and legacy principal parsing, v4 attachment compatibility, 32 mentions, bounded presence location, browser attribution, monotone format selection, the independently counted 330-item record, approval parser/refusals and required multiplayer review capabilities. Explicitly retains legacy producer compatibility and defers runtime fences/admission, capability population and approval arbitration. Focused parser tests passed; no server, provider or release behavior is claimed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/task-review.ts","packages/contracts/src/project-task-room.ts","packages/contracts/src/task-approval.ts","packages/contracts/src/__tests__/project-task-room.test.ts","packages/contracts/src/__tests__/task-approval.test.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the new subpath and contracts reference against this scope policy: all new helpers are pure and environment-free; no server, SDK or UI implementation is added. The direct domain-subpath and explicit compatibility instructions remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed source distribution and public subpath ownership after adding task-approval. The README already describes pure parsers and the difference between parsing, authorization and performed operations. No build output, service or npm publication is introduced.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]}
+  ]
+}

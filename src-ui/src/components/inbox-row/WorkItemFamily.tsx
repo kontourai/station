@@ -37,8 +37,8 @@ export function WorkItemFamily<T extends HomeWorkItem>({
   const noun =
     root.kind === 'task'
       ? members.length === 1
-        ? 'session'
-        : 'sessions'
+        ? 'work chat'
+        : 'work chats'
       : members.length === 1
         ? 'subtask'
         : 'subtasks';
@@ -65,7 +65,7 @@ export function WorkItemFamily<T extends HomeWorkItem>({
         <section
           id={id}
           className="inbox-row-family__children"
-          aria-label={`${root.kind === 'task' ? 'Sessions' : 'Subtasks'} of ${root.title}`}
+          aria-label={`${root.kind === 'task' ? 'Work chats' : 'Subtasks'} of ${root.title}`}
         >
           {members.map((item) => (
             <div key={item.id}>{renderRow(item)}</div>

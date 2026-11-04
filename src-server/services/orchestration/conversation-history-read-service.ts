@@ -47,6 +47,9 @@ export function deduplicateConversationItems(
 export class ConversationHistoryReadService {
   constructor(
     private readonly options: {
+      readDurabilityProfile?: Parameters<
+        typeof buildOrchestrationSessionSummary
+      >[0]['readDurabilityProfile'];
       eventStore: EventStore;
       canReadSession: (
         threadId: string,
@@ -124,6 +127,14 @@ export class ConversationHistoryReadService {
   }): ConversationHistoryPage {
     const page = this.readPage(input);
     const observedAt = new Date().toISOString();
+    const ownedWorkByThread = this.options.eventStore.ownedSessionActivities(
+      page.records.map((record) => record.threadId),
+    );
+    // One read for the page, not one per row.
+    const executionProviders =
+      this.options.eventStore.readConversationExecutionProviders(
+        page.records.map((record) => record.conversationId),
+      );
     const sessionItems = page.records.flatMap(
       (record): ConversationListItem[] => {
         const persisted = this.options.hydratePersistedSession(record.threadId);
@@ -134,6 +145,8 @@ export class ConversationHistoryReadService {
           1_000,
         );
         const summary = buildOrchestrationSessionSummary({
+          readOwnedWork: (threadId) => ownedWorkByThread.get(threadId),
+          readDurabilityProfile: this.options.readDurabilityProfile,
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -146,14 +159,23 @@ export class ConversationHistoryReadService {
             observedAt,
           ),
         });
+        const delegationTitle = derivedConversationTitle(
+          summary.delegation?.title,
+        );
         const item: ConversationListItem = {
           id: record.conversationId,
           source: 'runtime',
           // A personal pre-agent record is authorized before it reaches this
           // projection; Station is its explicit compatibility presentation.
           agentSlug: publicAgentIdFromRuntimeKey(record.agentSlug ?? 'station'),
-          title:
-            derivedConversationTitle(summary.delegation?.title) ?? record.title,
+          title: delegationTitle ?? record.title,
+          // #4266: where the title came from, so a client can tell a
+          // generated or start-supplied title from a prompt-derived one.
+          ...(delegationTitle
+            ? { titleSource: 'provider' as const }
+            : record.titleSource
+              ? { titleSource: record.titleSource }
+              : {}),
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
           messageCount: record.messageCount,
@@ -175,6 +197,10 @@ export class ConversationHistoryReadService {
         if (summary.projectSlug) item.projectSlug = summary.projectSlug;
         if (summary.lifecycleState)
           item.lifecycleState = summary.lifecycleState;
+        if (summary.lifecycleChangedAt)
+          item.lifecycleChangedAt = summary.lifecycleChangedAt;
+        const ran = executionProviders.get(record.conversationId);
+        if (ran?.length) item.executionProviders = ran;
         if (summary.pendingReview !== undefined)
           item.pendingReview = summary.pendingReview;
         const activity = this.options.readConversationActivity?.(

@@ -99,7 +99,7 @@
     {
       "id": "station.mobile-context.primary-actions",
       "family": "mobile-context",
-      "invariant": "Project and conversation switching remain directly reachable with readable context in the mobile dock header; opening a Project must not rebind the active conversation.",
+      "invariant": "Conversation switching stays direct in the mobile header. Project choice belongs to starting a chat; an active conversation keeps its binding when a Project is opened.",
       "module": "Mobile chat dock header",
       "interface": "ChatDockMobileHeader",
       "remediationOwner": "station#1540",
@@ -113,7 +113,7 @@
       "observation": {
         "kind": "vitest-file",
         "testFile": "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
-        "selector": "keeps project and conversation switching directly reachable with readable context"
+        "selector": "keeps conversation switching direct and leaves future-project choice out of the active chat"
       },
       "faultInjection": {
         "kind": "vitest-file",

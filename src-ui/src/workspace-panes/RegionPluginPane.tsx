@@ -64,7 +64,7 @@ function PluginOccurrenceRecord({ id }: { id: string }) {
     return (
       <Placeholder
         label="This pane is no longer available"
-        description="Station no longer remembers what this plugin pane showed. Close the tab, then open it again from the pane that opened it."
+        description="Station no longer knows what this pane showed. Close it and reopen it from where it came."
       />
     );
   return <PluginOccurrence id={id} state={state} />;
@@ -169,7 +169,7 @@ function PluginOccurrence({
         <RelatedPaneStrip instanceId={id} />
         <Placeholder
           label="This plugin pane is unavailable"
-          description="Its plugin is disabled, was removed or updated, or no longer offers this pane in this Project. The tab stays until you close it."
+          description="Its plugin is disabled, removed, updated, or no longer offers this pane here."
         />
       </div>
     );

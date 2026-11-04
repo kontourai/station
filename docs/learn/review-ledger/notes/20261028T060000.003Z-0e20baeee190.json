@@ -1,0 +1,7 @@
+{
+  "revision": "de061f38ec81d33da0ce7a2aa1d7b50956085cfc",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the WorkspaceVisualFileRefusal union, its status map and workspaceVisualFileUnavailableReason; traced against workspace-file-preview.ts, workspace-visual-file.ts and the route test.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ed443a489eedbcd3cdc43ca94c9c36bd0f7288ee",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated: Use Agent defaults on an engine override goes through the handoff only when the switch is open; otherwise the picker reset is disabled with a reason and the composer chip is hidden, never a model-only reset (ChatDockBody engineResetBlockedReason/onModelReset, ChatInputArea chip). Hidden-engine states named.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

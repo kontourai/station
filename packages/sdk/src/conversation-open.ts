@@ -4,6 +4,7 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { authenticatedFetch, type ClientRequestOptions } from './client/http';
 import { StationRequestTimeoutError } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
@@ -76,7 +77,7 @@ function parseConversationOpenResolution(
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (
-    !['resolved', 'missing-session', 'unavailable'].includes(
+    !['resolved', 'fork-ready', 'missing-session', 'unavailable'].includes(
       String(record.status),
     ) ||
     typeof record.canContinue !== 'boolean' ||
@@ -106,6 +107,18 @@ function parseConversationOpenResolution(
       'boolean'
   )
     return false;
+  // Optional (older servers omit it), but a present value must be the exact
+  // pair of booleans: a malformed one is a hostile shape, not "unknown".
+  if (record.callerAccess !== undefined) {
+    const access = record.callerAccess as Record<string, unknown> | null;
+    if (
+      !access ||
+      typeof access !== 'object' ||
+      typeof access.continue !== 'boolean' ||
+      typeof access.startChat !== 'boolean'
+    )
+      return false;
+  }
   const actions = record.recoveryActions as unknown[];
   if (
     actions.some(
@@ -114,7 +127,24 @@ function parseConversationOpenResolution(
     )
   )
     return false;
+  if (record.status === 'fork-ready') {
+    return (
+      record.currentSessionId === undefined &&
+      record.execution === undefined &&
+      transcript.available === true &&
+      transcript.owner === 'fork-context' &&
+      actions.length === 0 &&
+      (record.continuationPending === undefined ||
+        typeof record.continuationPending === 'boolean')
+    );
+  }
   if (record.status === 'resolved') {
+    // #4179: optional; a present value must be the boolean it claims to be.
+    if (
+      record.nextTurnStartsSession !== undefined &&
+      typeof record.nextTurnStartsSession !== 'boolean'
+    )
+      return false;
     if (
       record.execution !== undefined &&
       !validExecution(
@@ -162,6 +192,7 @@ function validExecution(
     'executionAgentId',
     'expectedDefinitionFingerprint',
     'provider',
+    'durability',
     'engineConnectionId',
     'model',
     'acceptedModel',
@@ -183,6 +214,7 @@ function validExecution(
     )
       return false;
   }
+  const durability = readProviderDurabilityProfile<unknown>(execution);
   const boundedText = (text: unknown) =>
     typeof text === 'string' &&
     text.length > 0 &&
@@ -205,6 +237,7 @@ function validExecution(
     execution.sessionId === sessionId &&
     execution.agentId === agentId &&
     parseEngineId(execution.provider) !== undefined &&
+    (durability === undefined || validDurabilityProfile(durability)) &&
     (execution.expectedDefinitionFingerprint === undefined ||
       (typeof execution.expectedDefinitionFingerprint === 'string' &&
         /^sha256:[a-f0-9]{64}$/.test(
@@ -216,4 +249,68 @@ function validExecution(
     (execution.acceptedModel === undefined ||
       boundedText(execution.acceptedModel))
   );
+}
+
+function validDurabilityProfile(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const profile = value as Record<string, unknown>;
+  const cells = [
+    'steerPlacement',
+    'crashContinuation',
+    'toolReplay',
+    'pendingApprovals',
+    'contextCarriage',
+    'fork',
+    'compaction',
+    'partialOutput',
+    'usage',
+  ];
+  if (Object.keys(profile).some((key) => !cells.includes(key))) return false;
+  for (const key of cells) {
+    const value = profile[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return false;
+    const cell = value as Record<string, unknown>;
+    if (
+      typeof cell.state !== 'string' ||
+      !['native', 'emulated', 'none'].includes(cell.state) ||
+      typeof cell.detail !== 'string'
+    )
+      return false;
+    const extra =
+      key === 'steerPlacement'
+        ? 'boundary'
+        : key === 'contextCarriage'
+          ? 'history'
+          : key === 'compaction'
+            ? 'owner'
+            : undefined;
+    if (
+      Object.keys(cell).some(
+        (field) => field !== 'state' && field !== 'detail' && field !== extra,
+      )
+    )
+      return false;
+    if (
+      key === 'steerPlacement' &&
+      cell.boundary !== undefined &&
+      (typeof cell.boundary !== 'string' ||
+        !['engine-defined', 'station-observed'].includes(cell.boundary))
+    )
+      return false;
+    if (
+      key === 'contextCarriage' &&
+      cell.history !== undefined &&
+      (typeof cell.history !== 'string' ||
+        !['station-memory', 'seed'].includes(cell.history))
+    )
+      return false;
+    if (
+      key === 'compaction' &&
+      (typeof cell.owner !== 'string' ||
+        !['station', 'engine', 'unknown'].includes(cell.owner))
+    )
+      return false;
+  }
+  return true;
 }

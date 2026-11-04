@@ -1,0 +1,7 @@
+{
+  "revision": "eaffce4633cd17bf4d3b8adc346b39ada3a5aa90",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the follow-up StreamingMessage fallback at eaffce4633c: callers without a tool renderer retain standalone reasoning visibility and its actual answer-arrival state. UI-block identity and rendering remain unchanged, so the current form/renderer claims still need no prose change. The extended whitespace-delta case failed before the fix and passed after; all eight focused activity/reasoning suites passed (280 tests, one existing todo).","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/StreamingMessage.tsx"]}
+  ]
+}

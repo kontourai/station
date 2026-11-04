@@ -40,6 +40,23 @@
 .usage-telemetry-disclosure__choices input {
   margin: var(--k-space-1) 0 0;
 }
+
+/* A choice this caller cannot make (the server would refuse it, or its access
+   is not known yet) must not read as selectable: dim the label and its
+   description, and drop the pointer. Also covers the whole fieldset while a
+   save is pending, which disables every input inside it. */
+.usage-telemetry-disclosure__choices label:has(input:disabled) {
+  color: var(--k-text-faint);
+  cursor: not-allowed;
+}
+
+.usage-telemetry-disclosure__choices label:has(input:disabled) small {
+  color: var(--k-text-faint);
+}
+
+.usage-telemetry-disclosure__choices input:disabled {
+  cursor: not-allowed;
+}
 .usage-telemetry-disclosure__included-content {
   margin-top: var(--k-space-3);
 }

@@ -3,6 +3,8 @@ import type {
   AttentionSourceUnavailable,
 } from '@kontourai/station-sdk';
 import { attentionCountLabel } from '../../utils/attention';
+import { useInboxContext } from '../notifications/inboxContext';
+import { snoozeMenuItems, useInboxSnooze } from '../notifications/snooze';
 import { Empty } from '../state';
 import { AttentionCard } from './AttentionCard';
 
@@ -56,6 +58,8 @@ export function AttentionSection({
    */
   unavailableSources?: readonly AttentionSourceUnavailable[];
 }) {
+  const contextFor = useInboxContext();
+  const snooze = useInboxSnooze();
   const countLabel = attentionCountLabel({
     // This page narrows by its history filters; the tray narrows by
     // truncation. `attentionCountLabel` names the fact, not the mechanism.
@@ -64,10 +68,18 @@ export function AttentionSection({
     pendingVisible,
   });
   return (
-    <section aria-labelledby="attention-heading">
-      <h2 id="attention-heading" className="notifications-page__section-title">
-        Needs attention {countLabel ? `(${countLabel})` : ''}
-      </h2>
+    <section
+      aria-labelledby="attention-heading"
+      className="notifications-page__section"
+    >
+      <div className="notifications-page__section-heading">
+        <h2
+          id="attention-heading"
+          className="notifications-page__section-title"
+        >
+          Needs attention {countLabel ? `(${countLabel})` : ''}
+        </h2>
+      </div>
       {unavailableSources.length > 0 ? (
         <p role="alert">{unavailableSourcesNotice(unavailableSources)}</p>
       ) : null}
@@ -89,6 +101,15 @@ export function AttentionSection({
             <AttentionCard
               key={item.id}
               item={item}
+              context={contextFor.forAttention(item)}
+              menuItems={
+                snooze.enabled
+                  ? snoozeMenuItems(
+                      (until) => snooze.attention(item, until),
+                      snooze.pending,
+                    )
+                  : []
+              }
               focused={
                 (item.kind === 'approval' &&
                   item.source.notificationId === focusedApprovalId) ||

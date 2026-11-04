@@ -1,0 +1,7 @@
+{
+  "revision": "5c3631951e5b27656f30daf8b207e438caf6e987",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the send-state list (Not sent/Retry never a second copy, attachments keep their draft until Station answers) against useChatInput's Send again restage: a restaged attachment gets a fresh stage id but the message is sent once; a failed restage returns text/file to the composer. Claims still hold.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

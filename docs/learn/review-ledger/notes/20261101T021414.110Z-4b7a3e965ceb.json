@@ -1,0 +1,41 @@
+{
+  "revision": "ae43dbf131f685ae1340e99c387bdfcf7a46c11b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed historical status and current orchestration routing against the sender delta; Continue uses the existing send path and does not revive the retired flag. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the session message delivery and outbound dispatch ownership against the Continue sender and projection changes; no ownership boundary changes. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed tool-policy delivery claims against the projection delta: it adds interrupted boundary metadata and does not alter tool grants or pre-tool decisions. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed form foreground sending and acceptance claims against the sender delta; composed Continue is a separate caller and preserves normal form sending. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed restart marker eligibility, fixed composed message, draft preservation and per-boundary key against ChatDockBody, interruptedTurnContinue, useChatInput and the sender; focused interruption and delivery tests executed. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed composed Continue, same-key replay, refusal and draft preservation against the sender delta and delivery tests; existing busy follow-up path remains. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed preview ownership and settings scope against the sender delta; the new feature consumes the existing preview state and does not change settings storage. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed feature-preview dependency and tool permission claims against the settings addition; Continue is an independent preview and does not change these controls. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/commands.md","note":"Reviewed slash command handling against the sender delta; composed Continue uses a fixed message and ordinary command expansion remains on the composer path. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed Session and tool availability claims against the conversation metadata and key helper additions; neither changes tool authority. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/guides/self-configuring-agent.md","packages/shared/src/conversation-message.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed settings and configuration scope against the ChatDockBody delta; Continue reads a feature-preview flag without introducing a configuration field. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed contract and chat surface boundaries against the sender and dock deltas; the Continue key and metadata do not change the public contract fields described here. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed SDK client and chat entry points against the sender delta; this UI-only option does not change the published SDK interface. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed normal Session sending and delivery lookup against the sender delta; Continue is an ordinary keyed send, not a new API route. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed visual skill draft handling against preserveComposer: composed Continue carries no staged skill and leaves the draft for the next ordinary send. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed Session and conversation concepts against the dock change; Continue resumes work as a new ordinary message in the existing conversation. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed first-chat send and Agent selection against the sender delta; ordinary composer sending and the documented setup remain unchanged. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed shared chat store and sending descriptions against the sender delta; existing host callbacks and SDK surface are unchanged. Source review and local focused tests only; hosted, live provider and device behavior not verified.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

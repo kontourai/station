@@ -11,6 +11,8 @@ import {
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPE_RELAY_MANAGE,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   type PairingScope,
   type PairingScopePreset,
   parsePairingScope,
@@ -136,8 +138,18 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     elevated: true,
   },
   {
+    token: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    ...scopeCopy(PAIRING_SCOPE_TELEMETRY_MANAGE),
+    elevated: true,
+  },
+  {
     token: PAIRING_SCOPE_RELAY_MANAGE,
     ...scopeCopy(PAIRING_SCOPE_RELAY_MANAGE),
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    ...scopeCopy(PAIRING_SCOPE_TERMINAL_OBSERVE),
     elevated: true,
   },
   {

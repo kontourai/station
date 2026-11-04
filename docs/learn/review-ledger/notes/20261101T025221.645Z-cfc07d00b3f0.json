@@ -1,0 +1,7 @@
+{
+  "revision": "f0f106971a474fba14956ab42f3cd10ebf91b44c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed mobile Inbox, draft project picker and active chat context against the cross-runtime journey and composer. The local PR smoke passed at 320, 390 and 412; physical device behavior was not assessed.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

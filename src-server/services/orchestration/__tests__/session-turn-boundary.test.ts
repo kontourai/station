@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  SESSION_TURN_ACCEPTED_CAPACITY,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -13,11 +17,9 @@ import {
   createSessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
   SESSION_START_INDETERMINATE_CODE,
-  SESSION_TURN_ACCEPTED_CAPACITY,
   SessionStartIndeterminateError,
   type SessionTurnBoundaryCoordinator,
-  type SessionTurnBoundaryRecord,
-} from '../session-turn-boundary.js';
+} from '../session-turn-boundary-binding.js';
 
 function terminal(threadId: string, turnId: string): CanonicalRuntimeEvent {
   return {
@@ -1316,6 +1318,44 @@ test('actual prepared claims accept reused native ids without old or untagged te
         inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
       },
     });
+  } finally {
+    store.close();
+  }
+});
+
+test('a delayed old invocation cannot retire a reused id while the new invocation starts under a backward clock', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const old = begunIntent(store, 'invocation-early-reuse', 'old');
+    expect(old.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const completedOld = old.event('old-completed');
+    store.appendEvent(completedOld);
+    expect(old.authority.observe(completedOld)).toEqual({ kind: 'applied' });
+
+    const current = begunIntent(store, 'invocation-early-reuse', 'new');
+    const duplicate = {
+      ...completedOld,
+      eventId: 'old-delayed',
+      createdAt: '2100-01-01T00:00:00Z',
+    };
+    store.appendEvent(duplicate);
+    expect(current.authority.observe(duplicate)).toEqual({ kind: 'applied' });
+    expect(
+      current.authority.hasPossibleEffect('invocation-early-reuse'),
+    ).toEqual({ kind: 'available', active: true });
+    expect(current.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const completedCurrent = current.event('current-completed');
+    store.appendEvent(completedCurrent);
+    expect(current.authority.observe(completedCurrent)).toEqual({
+      kind: 'applied',
+    });
+    expect(
+      current.authority.hasPossibleEffect('invocation-early-reuse'),
+    ).toEqual({ kind: 'available', active: false });
   } finally {
     store.close();
   }

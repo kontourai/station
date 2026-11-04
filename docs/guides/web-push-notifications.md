@@ -8,7 +8,8 @@ and push service; pairing or a successful send request is not a phone receipt.
 This guide covers browser Web Push, separately from the native Android FCM and
 iOS APNs channels. Normal runtime
 wiring disables Web Push when hosted-tenant execution is required: its routes
-return 404 and the delivery wiring is inactive. Personal-host operation and
+return 404, the delivery wiring is inactive, and the public handshake omits
+`capabilities.webPushNotifications`. Personal-host operation and
 [Device pairing](connections.md) are separate prerequisites from browser support.
 
 <a id="how-it-fits-together"></a>
@@ -123,9 +124,23 @@ The [audience resolver](../../src-server/services/notifications/delivery/audienc
 selects active personal-family devices with the required read eligibility. It
 excludes delegated Stations, pending enrollment and account-bound devices from
 this current family. Every named Session also requires the recipient's own
-principal to be able to read it, including legacy notifications. A reserved
-`principal` audience has no delivery implementation yet. Pairing alone is not
-sufficient audience membership.
+principal to be able to read it, including legacy notifications. Pairing alone
+is not sufficient audience membership.
+
+[NotificationService](../../src-server/services/notifications/notification-service.ts)
+delivers a `principal` audience synchronously to a separate private feed after
+a fresh check of that person's Project membership. A non-member is suppressed
+without a write; a failed write is returned to the producer. The membership check
+validates the supplied Project, not the producer’s authority, so every producer
+must derive the Project from its own authority, never from request input. The feed keeps the
+newest 100 records per person and scopes read and dismissal state to that person.
+Future-scheduled principal writes are refused; expiry is settled when the feed
+is next accessed. These records do not enter the owner feed or shared
+notification stream and do not trigger push. The authenticated person reads,
+marks read, and dismisses their own entries through the
+[person notification routes](../reference/api.md#person-notifications). A
+per-person notification preference, account-bound Device push, producers, and
+the corresponding inbox UI remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
@@ -139,7 +154,9 @@ property, not a guarantee of every browser's SSE/toast experience.
 Focus applies within the same principal; unbound owner-device identities are
 grouped, while tailnet-bound people remain distinct. A device whose credential
 was minted with home-possession (the desktop app's local grant, the local
-browser UI's bootstrap) reads as the operator for both its focus reports and
+browser UI's bootstrap), or one of the owner's own devices holding
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02),
+reads as the operator for both its focus reports and
 delivery, so its focus quiets the operator's other surfaces. Nothing yet ties a
 tailnet identity to the operator, so the owner's own tailnet-bound phone stays
 a separate person here. A focused document must

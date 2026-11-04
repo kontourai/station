@@ -63,8 +63,10 @@ this update replaces the app and its embedded server together. The webview
 holds no updater or process plugin permission; it reads the native state and
 asks the native shell to act.
 
-The panel's **Connected server** section reuses the Settings server controls
-and their permission and identity checks. An established built-in server
+The panel's server section, headed by the connection's name with the running
+version and one status badge, reuses the Settings server controls and their
+permission and identity checks. Its address, install facts and update history
+fold into a collapsed **Details**. An established built-in server
 explicitly uses the app update above, including its restart confirmation.
 An installed service or a remote server has its own labelled actions; there
 is no combined update request or requirement that app and server versions
@@ -324,7 +326,7 @@ latest upstream releases:
 - Rust `tauri` 2.12.1
 - Rust `tauri-build` 2.7.1
 - npm `@tauri-apps/api` `^2.12.4`
-- npm `@tauri-apps/cli` `^2.12.3`
+- npm `@tauri-apps/cli` `^2.12.4`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -344,9 +346,11 @@ works.
 
 ## Desktop Content Security Policy
 
-Station uses one explicit Tauri `app.security.csp` map and deliberately omits
-`devCsp`. Packaged assets receive that policy through Tauri; the external Vite
-development server imports the same map, sends it as an HTTP response header,
+Station uses an explicit Tauri `app.security.csp` map and deliberately omits
+`devCsp`. Windows overrides only its script/style sources with Wry's exact
+HTTP protocol alias; other platforms admit only the custom scheme. Packaged
+assets receive the resolved policy through Tauri; the external Vite
+development server imports the base map, sends it as an HTTP response header,
 and adds one process-random script nonce to its transformed nonce marker.
 Tauri asset-CSP mutation remains enabled, allowing its build to add the
 hashes/nonces that bundled assets require.
@@ -354,8 +358,8 @@ hashes/nonces that bundled assets require.
 | Directive | Rationale |
 | --- | --- |
 | `default-src 'none'` | Fail closed for any resource class Station has not named explicitly. |
-| `script-src 'self' 'wasm-unsafe-eval'` | Bundled UI/WebAssembly only; no remote scripts, `unsafe-inline`, or `unsafe-eval`. |
-| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. Fonts are self-hosted (#2648), so no external stylesheet origin is allowlisted. |
+| `script-src 'self' 'wasm-unsafe-eval' station-plugin:` | Bundled UI/WebAssembly and the installed-plugin protocol. The Windows overlay replaces the scheme with `http://station-plugin.localhost`; that HTTP alias is never admitted on other platforms. No loopback wildcard, `blob:`, `unsafe-inline`, or `unsafe-eval`. |
+| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
 | `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
@@ -371,12 +375,51 @@ response nonce as a page global at all (station#4287). Handing a nonce to
 plugin code let it mint further nonce'd scripts, remote ones included, so the
 policy constrained everything except the code it was written for.
 
-In the **desktop shell** that trusted bundle can be cross-origin — the document is Tauri's
-asset origin while the bundle lives on the configured Station server origin
-— so `'self'` cannot admit it and the fetched bytes are still inlined under
-the nonce Tauri replaces on Station's `data-station-csp-nonce` marker. That
-residual is disclosed rather than closed: closing it needs the desktop host to
-serve plugin bundles from the shell's own origin. The marker
+In the **desktop shell**, the document is Tauri's asset origin while the
+supervised server is `http://127.0.0.1:<port>`. The
+[`station-plugin` handler](../../src-desktop/src/plugin_bundle_protocol.rs)
+bridges only installed `bundle.js` and `bundle.css` assets. Its registration
+closure requires an allowed webview label (`main` or
+`workspace-pane-pop-out-<canonical-v4-UUID>`) **and** a per-launch capability
+before scheduling blocking work or reading credentials. A label identifies a
+webview, not a requesting frame. The capability is installed only in the top
+shell realm at the exact app origin; an explicit top-frame guard also covers
+WebView2's subframe injection of initialization scripts. Browser Preview and
+unknown labels, or missing/wrong capabilities even inside an allowed webview,
+receive an empty 403. A four-request limit **per label**, including queued work,
+returns 429 when that window is full without consuming another window's
+capacity. Each window's UI loads plugins sequentially.
+
+The capability is a per-launch 256-bit secret checked in constant time, not
+bound to label, path or port; those checks are separate. The UI loads
+script/stylesheet URLs with the supervised port and capability query. These
+loads do not navigate or store the URL in settings or routes. The URL can remain
+in element `src`/`href`, `data-station-plugin` markers and resource timing
+entries for the page's lifetime. Both elements and the protocol response use
+no-referrer policy; responses also use no-store. Pane details, Home-role recovery
+and reportable console capture redact native asset URLs through the shared redactor. Trusted
+shell code and developer tools, including the unchanged developer console, can
+still inspect the capability. No IPC command returns it. See the
+[plugin delivery boundary](plugins.md) for the pinned Tauri source,
+frame assumptions and remaining platform qualification. Rust
+requires the current local owner and active native profile to agree, reads the
+credential from native custody, disables redirects, caps decoded content at
+16 MiB, and revalidates authority after reading. No renderer headers or
+upstream response headers are forwarded. The installed endpoint checks its
+recorded content digest and current artifact before delivery.
+
+The external Vite development header retains the base policy, so Windows
+Vite-based plugin loading remains unavailable; packaged Windows assets use
+the platform overlay. Real-shell behavior requires separate qualification.
+
+Other paths, hosts, methods, encoded traversal and noncanonical port queries
+are refused before credential access. Draft revisions are not installed
+artifacts and remain refused on Desktop; use same-origin browser draft
+previews. A safe extension requires a separate Project/revision-bound path
+authorized by the draft contract, a server-side digest check, and the same
+webview gate, preferably with an isolated frame. Other cross-origin in-process
+scripts remain refused (#3001), and
+fetched bytes are never inlined under the shell nonce. The marker
 uses Tauri v2's `__TAURI_SCRIPT_NONCE__` build token, while the regression
 ratchet prevents its silent removal. Untrusted MCP `srcdoc` content never
 receives that shell nonce: interactive MCP Apps use the isolated frame origin,
@@ -385,8 +428,10 @@ Station's nonce to bypass its own domain allowlist. The policy does not grant
 remote scripts, extra native capabilities, a Tauri asset-CSP bypass, signing,
 notarization, release publication, auto-update, or mobile packaging.
 
-This trusted-registry path is distinct from isolated plugin frames. CSP is not
-an isolation boundary against code deliberately admitted to the shell realm.
+This trusted-registry path is distinct from isolated plugin frames. In-process
+plugins are not handed the nonce, but they run in the shell realm
+and can read DOM `.nonce` and reach Tauri internals. This is the existing
+in-process authority model; CSP does not isolate that code.
 Capabilities in `src-desktop/capabilities/` separately scope native IPC; do not
 widen them to make a build or plugin test pass.
 

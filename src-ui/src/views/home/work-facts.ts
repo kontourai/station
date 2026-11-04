@@ -1,3 +1,4 @@
+import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
@@ -69,6 +70,10 @@ export interface WorkFacts {
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
   activity?: WorkActivity;
+  ownedWorkState?: NonNullable<
+    OrchestrationSessionSummary['ownedWork']
+  >['state'];
+  ownedStopReasons?: readonly string[];
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -234,6 +239,10 @@ export function buildWorkFacts({
       if (attention) entry.attention = attention;
     }
     if (item.lifecycleLabel === 'Running') {
+      if (session?.ownedWork) {
+        entry.ownedWorkState = session.ownedWork.state;
+        entry.ownedStopReasons = ownedWorkUnknownReasons(session.ownedWork);
+      }
       const activity =
         workActivityFrom(session?.conversationActivity, session?.threadId) ??
         // The chat's own copy of the server record; a turn a Stop receipt
@@ -269,26 +278,30 @@ export function buildWorkFacts({
       facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
     }
   }
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const taskItems = items.filter((item) => item.kind === 'task');
   for (const item of items) {
-    if (
-      item.kind === 'task' ||
-      item.kind === 'remote-session' ||
-      facts.get(item.id)?.runRootId
-    )
-      continue;
-    const owners = items.filter(
-      (candidate) =>
-        candidate.kind === 'task' &&
-        candidate.taskSessionId &&
-        [
-          item.id,
-          item.chatSessionId,
-          item.orchestrationThreadId,
-          ...(item.orchestrationThreadIds ?? []),
-        ].includes(candidate.taskSessionId),
+    if (item.kind === 'task' || item.kind === 'remote-session') continue;
+    const identities = new Set([
+      item.id,
+      item.chatSessionId,
+      item.conversationId,
+      item.orchestrationThreadId,
+      ...(item.orchestrationThreadIds ?? []),
+    ]);
+    const owners = taskItems.filter((candidate) =>
+      [
+        candidate.taskSessionId,
+        ...(taskById.get(candidate.id)?.workChatConversationIds ?? []),
+      ].some((id) => id !== undefined && identities.has(id)),
     );
     if (owners.length === 1)
       facts.set(item.id, { ...facts.get(item.id), runRootId: owners[0].id });
+    else if (owners.length > 1) {
+      const entry = { ...facts.get(item.id) };
+      delete entry.runRootId;
+      facts.set(item.id, entry);
+    }
   }
   return facts;
 }

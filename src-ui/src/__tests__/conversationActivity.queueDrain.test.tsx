@@ -89,6 +89,10 @@ vi.mock('../contexts/ActiveChatsContext', async (importOriginal) => {
 
 import { QueuedMessages } from '../components/chat/QueuedMessages';
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
+import {
+  hydrateActiveChats,
+  serializeActiveChats,
+} from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import {
@@ -284,6 +288,35 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   activeChatsStore.removeChat(CONVERSATION);
+});
+
+test('a restored unscoped message cannot drain after revalidation or explicit Send now', async () => {
+  chatWithQueue(['saved without origin'], CHILD);
+  const restored = hydrateActiveChats(
+    serializeActiveChats(activeChatsStore.getSnapshot()),
+  )[CONVERSATION];
+  activeChatsStore.updateChat(CONVERSATION, {
+    ...restored,
+    conversationOpenPending: false,
+    conversationOpenFailed: false,
+    orchestrationStatus: 'running',
+    conversationActivity: closed(99),
+  });
+  const id =
+    activeChatsStore.getSnapshot()[CONVERSATION].queuedMessageMetadata?.[0]?.id;
+  if (!id) throw new Error('restored identity missing');
+  try {
+    drainQueuedMessageOnTurnCompleted(API, CONVERSATION, true, true);
+    expect(activeChatsStore.getSnapshot()[CONVERSATION].queuedMessages).toEqual(
+      ['saved without origin'],
+    );
+    await sendPendingMessageNow(API, CONVERSATION, id);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(mocks.interruptOrchestrationTurn).not.toHaveBeenCalled();
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+  } finally {
+    vi.clearAllTimers();
+  }
 });
 
 describe('#2309 the queue drains on the turn END event, routed by the frame binding', () => {

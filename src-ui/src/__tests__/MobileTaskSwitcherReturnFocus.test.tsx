@@ -5,7 +5,7 @@
 /**
  * archive#1245 — a call site the issue does not list, found by its sweep.
  *
- * `MobileTaskSwitcher` is hand-rolled rather than a `ResponsiveDialogSurface`
+ * `MobileInboxPanel` is hand-rolled rather than a `ResponsiveDialogSurface`
  * (its own comment says so, about the history layer), and its restore was
  * `requestAnimationFrame( => triggerRef.current?.focus)` — no `isConnected`
  * guard at all, the same shape as `CommandPalette`'s and worse than the one
@@ -23,7 +23,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act, createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
 const tasks: HomeWorkItem[] = [
@@ -70,11 +70,10 @@ function mountSheet(trigger: HTMLButtonElement, onClose = vi.fn()) {
   };
   triggerRef.current = trigger;
   const view = render(
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       open
       tasks={tasks}
       activeChatSessionId={null}
-      visualViewportStyle={{}}
       triggerRef={triggerRef}
       onClose={onClose}
       onFocusChat={vi.fn()}
@@ -86,7 +85,7 @@ function mountSheet(trigger: HTMLButtonElement, onClose = vi.fn()) {
   return { view, onClose };
 }
 
-describe('MobileTaskSwitcher return focus (station#1245)', () => {
+describe('MobileInboxPanel return focus (station#1245)', () => {
   test('restores focus to the trigger that opened it', () => {
     const header = document.createElement('header');
     const trigger = document.createElement('button');
@@ -97,9 +96,9 @@ describe('MobileTaskSwitcher return focus (station#1245)', () => {
     mountSheet(trigger);
     expect(document.activeElement).not.toBe(trigger);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close task switcher' }),
-    );
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+      key: 'Escape',
+    });
     act(() => {
       frame.callback?.(0);
     });
@@ -124,9 +123,9 @@ describe('MobileTaskSwitcher return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close task switcher' }),
-    );
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+      key: 'Escape',
+    });
     // Switching chat re-rendered the header the trigger lived in.
     bar.remove();
     act(() => {
@@ -150,9 +149,9 @@ describe('MobileTaskSwitcher return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close task switcher' }),
-    );
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+      key: 'Escape',
+    });
     bar.remove();
     composer.focus();
     act(() => {

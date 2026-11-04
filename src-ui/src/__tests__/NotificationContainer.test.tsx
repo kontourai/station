@@ -65,7 +65,30 @@ vi.mock('../contexts/NavigationContext', () => {
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { claimApprovalThreads } from '../components/status/approvalReveal';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { activeChatsStore } from '../contexts/active-chats-store';
+
+/**
+ * A `matchMedia` with the MediaQueryList shape the browser returns (the
+ * container's pointer hook subscribes to changes), answering per query: a
+ * coarse device matches `(pointer: coarse)` and not `(hover: hover)`.
+ */
+function matchMediaFor({ coarse }: { coarse: boolean }) {
+  return (query: string) => ({
+    matches: query.includes('pointer: coarse')
+      ? coarse
+      : query.includes('hover: hover')
+        ? !coarse
+        : false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
 
 describe('NotificationContainer', () => {
   afterEach(() => {
@@ -150,6 +173,114 @@ describe('NotificationContainer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(dismissToast).toHaveBeenCalledWith('turn-failed');
+  });
+
+  // #4470: Troubleshoot rides on every error toast at this one renderer.
+  describe('Troubleshoot on error toasts', () => {
+    test('an error toast offers Troubleshoot seeded with its message, then dismisses', () => {
+      window.history.pushState({}, '', '/agents/dev?tab=1');
+      notifications = [
+        {
+          id: 'save-failed',
+          type: 'error',
+          message:
+            'Could not save the agent: 500 Internal Server Error\nat save (/Users/alice/x.ts:1:2)',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [{ label: 'Retry', onClick: vi.fn() }],
+        },
+      ];
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(<NotificationContainer />);
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          {
+            route: '/agents/dev',
+            errorSummary: 'Could not save the agent: 500 Internal Server Error',
+          },
+        ]);
+        expect(dismissToast).toHaveBeenCalledWith('save-failed');
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
+    });
+
+    test('an error toast that already has two actions does not get a third', () => {
+      notifications = [
+        {
+          id: 'two-actions',
+          type: 'error',
+          message: 'Could not install the plugin.',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [
+            { label: 'Retry', onClick: vi.fn() },
+            { label: 'Open Plugins', onClick: vi.fn() },
+          ],
+        },
+      ];
+      render(<NotificationContainer />);
+      expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
+    });
+
+    test('warning toasts and the troubleshooting flow’s own error toasts do not offer it', () => {
+      notifications = [
+        {
+          id: 'warn',
+          type: 'warning',
+          message: 'Slow response',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+        {
+          id: 'troubleshoot-failed-toast',
+          type: 'error',
+          dedupeKey: 'troubleshoot-failed',
+          message: 'Troubleshooting couldn’t start.',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+      ];
+      render(<NotificationContainer />);
+      expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
+    });
+  });
+
+  describe('session shortcut hint', () => {
+    function renderTurnToast() {
+      notifications = [
+        {
+          id: 'turn-done',
+          type: 'turn-activity',
+          message: 'Turn finished',
+          timestamp: Date.now(),
+          dismissed: false,
+          conversationTitle: 'New chat',
+          sessionId: 'session-1',
+          onNavigate: vi.fn(),
+        },
+      ];
+      render(<NotificationContainer />);
+      return document.querySelector('.toast-card__shortcut');
+    }
+
+    test('a fine pointer shows the chord that switches to the chat', () => {
+      vi.stubGlobal('matchMedia', matchMediaFor({ coarse: false }));
+      expect(renderTurnToast()?.textContent).toMatch(/^(⌘|Ctrl\+)1$/);
+      vi.unstubAllGlobals();
+    });
+
+    // The phone report: "New chat Ctrl+1" on a touch device, a chord no
+    // finger can press.
+    test('a coarse pointer shows no keyboard chord', () => {
+      vi.stubGlobal('matchMedia', matchMediaFor({ coarse: true }));
+      expect(renderTurnToast()).toBeNull();
+      expect(screen.getByText('New chat')).toBeTruthy();
+      vi.unstubAllGlobals();
+    });
   });
 
   test('renders View and routes a notification navigateTo action', () => {
@@ -718,7 +849,7 @@ describe('NotificationContainer', () => {
   });
 
   test('a touch click reaches each visible notification immediately', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.stubGlobal('matchMedia', matchMediaFor({ coarse: true }));
     const onNavigate = vi.fn();
     notifications = ['a', 'b', 'c'].map((id) => ({
       id,

@@ -329,7 +329,7 @@ it('checks the actual capture manifest and recorded source bytes in the required
   let phase = 'reader';
   let diagnosticRecords = 0;
   const mark = (event: 'enter' | 'exit' | 'error', error?: unknown) => {
-    if (diagnosticRecords++ >= 13) return;
+    if (diagnosticRecords++ >= 19) return;
     writeSync(
       1,
       `@@STATION_LEARNING_MEDIA_PHASE@@${JSON.stringify({
@@ -370,14 +370,26 @@ it('checks the actual capture manifest and recorded source bytes in the required
     phase = 'read-review-state';
     mark('enter');
     // media.json metadata joined with each capture's review (#2936).
+    phase = 'read-review-state-history-false';
+    mark('enter');
     let state = readReviewState(process.cwd(), { history: false });
+    mark('exit');
+    phase = 'resolve-documentation-freshness';
+    mark('enter');
     const policy = resolveDocumentationFreshness({
       root: process.cwd(),
       env: JOB_ENV,
       ledger: state.ledger,
       media: state.media,
     });
-    if (policy.mode !== 'scoped') state = readReviewState(process.cwd());
+    mark('exit');
+    if (policy.mode !== 'scoped') {
+      phase = 'read-review-state-with-history';
+      mark('enter');
+      state = readReviewState(process.cwd());
+      mark('exit');
+    }
+    phase = 'read-review-state';
     const manifest = state.media;
     if (!manifest) throw new Error('The repository has no capture manifest');
     mark('exit');

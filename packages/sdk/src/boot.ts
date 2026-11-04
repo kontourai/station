@@ -34,6 +34,8 @@ export const BOOT_SEED_KEYS = {
 
 export interface BootPayload {
   version: number;
+  /** Missing on older servers. Only an explicit boolean true enables it. */
+  sharedRealtime?: boolean;
   sections: Record<string, { data?: any; error?: true }>;
 }
 

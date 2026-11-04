@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"viewedContentDigest / fetchRuntimeEventContent / computeViewedContentDigest claims re-checked: no SDK API or behavior change (server schema adds an explicit max matching the documented digest). No prose change.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

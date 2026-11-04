@@ -103,6 +103,11 @@ describe('Home names a model the same way its sibling card does (station#3391)',
     expect(label).toBe(startCardLabel('claude-opus-5[1m]'));
   });
 
+  test('#4402: a version dot is part of a readable name, not a provider qualifier', () => {
+    expect(prettifyModelId('gpt-6.1-sol')).toBe('GPT 6.1 Sol');
+    expect(continueCardLabel('gpt-6.1-sol', [])).toBe('GPT 6.1 Sol');
+  });
+
   test('a session with no model at all says so rather than inventing one', () => {
     expect(continueCardLabel('')).toBe('Model not reported');
   });
@@ -124,6 +129,8 @@ describe('Home names a model the same way its sibling card does (station#3391)',
     // card alone passes with the prettifier's guard removed, so it proves the
     // pair rather than either one (found by).
     expect(prettifyModelId('claude-')).toBe('claude-');
+    // A dot that is not a version number is still a qualifier.
+    expect(prettifyModelId('gpt-5.mini')).toBe('gpt-5.mini');
     expect(continueCardLabel('claude-', [])).toBe('claude-');
     // And a catalog entry still wins over both.
     expect(

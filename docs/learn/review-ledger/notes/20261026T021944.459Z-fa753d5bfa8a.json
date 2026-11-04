@@ -1,0 +1,11 @@
+{
+  "revision": "b60de165066d8c6d0ec22c7d23b59e9bfd00a9f6",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts delta adds eight Chat inventory drill-down screens; reduced-motion screens and their motion assertions are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"screenshots.spec.ts delta adds the inventory drill-down screens (captured real-server fixture, bounded transcript window, held event stream); the gallery capture, assertion and allowlist descriptions remain accurate.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts delta adds inventory drill-down screens; the telemetry scenes listed here are unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

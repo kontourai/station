@@ -43,7 +43,9 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { hasPrincipalNotificationAudience } from '@kontourai/station-shared/notification-envelope';
 import { type Context, Hono } from 'hono';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
@@ -130,7 +132,7 @@ function isPluginIdentityEvent(event: string): boolean {
   return event.startsWith('plugins:');
 }
 
-export function createEventRoutes({
+export function createEventStreamProducer({
   eventBus,
   getACPStatus,
   logger,
@@ -145,7 +147,6 @@ export function createEventRoutes({
   isPairedDeviceConnectionCurrent,
   writeSse,
 }: EventRouteDeps) {
-  const app = new Hono();
   const serialized = new WeakMap<object, string>();
   const serialize = (evt: object & { data?: Record<string, unknown> }) => {
     let data = serialized.get(evt);
@@ -156,227 +157,229 @@ export function createEventRoutes({
     return data;
   };
 
-  app.get('/', (c) => {
-    return streamSSE(c, async (stream) => {
-      let clientLease: ClientConnectionLease | undefined;
-      let settleUnauthorized: (() => void) | undefined;
-      let authorizationSettled = false;
-      let settleDisconnect: (() => void) | undefined;
-      const disconnected = new Promise<void>((resolve) => {
-        settleDisconnect = resolve;
-      });
-      stream.onAbort(() => settleDisconnect?.());
-      c.req.raw.signal.addEventListener('abort', () => settleDisconnect?.(), {
-        once: true,
-      });
+  return async (
+    c: Context,
+    stream: SSEStreamingApi,
+    writeFrameOverride?: (frame: {
+      event: string;
+      data: string;
+    }) => Promise<void>,
+    authorityOverride?: SessionReadAuthority,
+  ) => {
+    let clientLease: ClientConnectionLease | undefined;
+    let settleUnauthorized: (() => void) | undefined;
+    let authorizationSettled = false;
+    let settleDisconnect: (() => void) | undefined;
+    const disconnected = new Promise<void>((resolve) => {
+      settleDisconnect = resolve;
+    });
+    stream.onAbort(() => settleDisconnect?.());
+    c.req.raw.signal.addEventListener('abort', () => settleDisconnect?.(), {
+      once: true,
+    });
+    if (stream.aborted || c.req.raw.signal.aborted) return;
+    const writeFrame = async (frame: { event: string; data: string }) => {
+      if (isPairedDeviceConnectionCurrent?.(c.req.raw) === false) {
+        if (!authorizationSettled) {
+          authorizationSettled = true;
+          clientLease?.release();
+          settleUnauthorized?.();
+          void stream.close();
+        }
+        return Promise.reject(new Error('unauthorized'));
+      }
+      await (writeFrameOverride?.(frame) ??
+        writeSse?.(stream, frame) ??
+        stream.writeSSE(frame));
+      if (stream.aborted || stream.closed || c.req.raw.signal.aborted) {
+        settleDisconnect?.();
+        throw new Error('stream_closed');
+      }
+    };
+    const authority = authorityOverride ?? readAuthorityForRequest?.(c.req.raw);
+    sseOps.add(1, { op: 'connect' });
+    type BroadcastEvent = Parameters<Parameters<EventBus['subscribe']>[0]>[0];
+    const pendingEvents: Array<{
+      evt: BroadcastEvent;
+      data: string;
+      bytes: number;
+    }> = [];
+    let pendingBytes = 0;
+    let replayComplete = false;
+    let draining = false;
+    let resyncPending = false;
+    let stopped = false;
+    // /events carries ephemeral effects, not the durable orchestration log.
+    // Compact a slow reader's backlog into query recovery rather than retaining
+    // promise closures, pending authorization jobs, or missed toast payloads.
+    const resync = {
+      event: SERVER_EVENTS.DATA_CHANGED,
+      data: JSON.stringify({ resync: true }),
+    };
+    const drain = async () => {
+      if (draining || !replayComplete || stopped) return;
+      draining = true;
+      try {
+        while (!stopped && (resyncPending || pendingEvents.length > 0)) {
+          if (resyncPending) {
+            resyncPending = false;
+            await writeFrame(resync);
+            continue;
+          }
+          const next = pendingEvents.shift()!;
+          pendingBytes -= next.bytes;
+          let allowed = false;
+          try {
+            allowed = await canRelay(next.evt);
+          } catch {
+            // An unavailable per-event gate denies this event, not the stream.
+          }
+          if (allowed) {
+            if (stopped) return;
+            await writeFrame({ event: next.evt.event, data: next.data });
+          }
+        }
+      } catch {
+        stream.abort();
+        settleDisconnect?.();
+      } finally {
+        draining = false;
+      }
+    };
+    stream.onAbort(() => {
+      stopped = true;
+      pendingEvents.length = 0;
+      pendingBytes = 0;
+    });
+    const enqueue = (evt: BroadcastEvent) => {
+      if (stopped || resyncPending) return;
+      // Do not serialize an unsupported scoped channel, even for buffering.
       if (
-        (stream as unknown as { aborted?: boolean }).aborted ||
-        c.req.raw.signal.aborted
+        SERVER_EVENT_BROADCAST_SAFETY[evt.event] !== 'broadcast' &&
+        !isPluginIdentityEvent(evt.event) &&
+        !isPluginDraftEvent(evt.event) &&
+        !isNotificationEvent(evt.event) &&
+        !isApprovalEvent(evt.event) &&
+        !isUiNavigateEvent(evt.event) &&
+        !isAnswerAssessmentEvent(evt.event) &&
+        !isAnswerNarrativeEvent(evt.event)
       )
         return;
-      const writeFrame = async (frame: { event: string; data: string }) => {
-        if (isPairedDeviceConnectionCurrent?.(c.req.raw) === false) {
-          if (!authorizationSettled) {
-            authorizationSettled = true;
-            clientLease?.release();
-            settleUnauthorized?.();
-            void stream.close();
-          }
-          return Promise.reject(new Error('unauthorized'));
-        }
-        await (writeSse?.(stream, frame) ?? stream.writeSSE(frame));
-        if (
-          (stream as unknown as { aborted?: boolean; closed?: boolean })
-            .aborted ||
-          (stream as unknown as { aborted?: boolean; closed?: boolean })
-            .closed ||
-          c.req.raw.signal.aborted
-        ) {
-          settleDisconnect?.();
-          throw new Error('stream_closed');
-        }
-      };
-      const authority = readAuthorityForRequest?.(c.req.raw);
-      sseOps.add(1, { op: 'connect' });
-      type BroadcastEvent = Parameters<Parameters<EventBus['subscribe']>[0]>[0];
-      const pendingEvents: Array<{
-        evt: BroadcastEvent;
-        data: string;
-        bytes: number;
-      }> = [];
-      let pendingBytes = 0;
-      let replayComplete = false;
-      let draining = false;
-      let resyncPending = false;
-      let stopped = false;
-      // /events carries ephemeral effects, not the durable orchestration log.
-      // Compact a slow reader's backlog into query recovery rather than retaining
-      // promise closures, pending authorization jobs, or missed toast payloads.
-      const resync = {
-        event: SERVER_EVENTS.DATA_CHANGED,
-        data: JSON.stringify({ resync: true }),
-      };
-      const drain = async () => {
-        if (draining || !replayComplete || stopped) return;
-        draining = true;
-        try {
-          while (!stopped && (resyncPending || pendingEvents.length > 0)) {
-            if (resyncPending) {
-              resyncPending = false;
-              await writeFrame(resync);
-              continue;
-            }
-            const next = pendingEvents.shift()!;
-            pendingBytes -= next.bytes;
-            let allowed = false;
-            try {
-              allowed = await canRelay(next.evt);
-            } catch {
-              // An unavailable per-event gate denies this event, not the stream.
-            }
-            if (allowed) {
-              if (stopped) return;
-              await writeFrame({ event: next.evt.event, data: next.data });
-            }
-          }
-        } catch {
-          stream.abort();
-          settleDisconnect?.();
-        } finally {
-          draining = false;
-        }
-      };
-      stream.onAbort(() => {
-        stopped = true;
+      const data = serialize(evt);
+      const bytes = Buffer.byteLength(data);
+      if (
+        pendingEvents.length >= 1024 ||
+        pendingBytes + bytes > 8 * 1024 * 1024
+      ) {
         pendingEvents.length = 0;
         pendingBytes = 0;
-      });
-      const enqueue = (evt: BroadcastEvent) => {
-        if (stopped || resyncPending) return;
-        // Do not serialize an unsupported scoped channel, even for buffering.
-        if (
-          SERVER_EVENT_BROADCAST_SAFETY[evt.event] !== 'broadcast' &&
-          !isPluginIdentityEvent(evt.event) &&
-          !isPluginDraftEvent(evt.event) &&
-          !isNotificationEvent(evt.event) &&
-          !isApprovalEvent(evt.event) &&
-          !isUiNavigateEvent(evt.event) &&
-          !isAnswerAssessmentEvent(evt.event) &&
-          !isAnswerNarrativeEvent(evt.event)
-        )
-          return;
-        const data = serialize(evt);
-        const bytes = Buffer.byteLength(data);
-        if (
-          pendingEvents.length >= 1024 ||
-          pendingBytes + bytes > 8 * 1024 * 1024
-        ) {
-          pendingEvents.length = 0;
-          pendingBytes = 0;
-          resyncPending = true;
-        } else {
-          pendingEvents.push({ evt, data, bytes });
-          pendingBytes += bytes;
-        }
-        void drain();
-      };
-      const canRelay = async (evt: BroadcastEvent): Promise<boolean> => {
-        if (SERVER_EVENT_BROADCAST_SAFETY[evt.event] === 'broadcast')
-          return true;
-        if (isPluginIdentityEvent(evt.event))
-          return canReadPluginEvent?.(evt.event, evt.data, c) === true;
-        if (isPluginDraftEvent(evt.event)) {
-          try {
-            return (await canReadPluginDraftEvent?.(evt.data, c)) === true;
-          } catch {
-            return false;
-          }
-        }
-        if (isNotificationEvent(evt.event))
-          return canRelayNotificationEvent(
-            evt.event,
-            evt.data,
-            authority,
-            canReadNotificationEvent,
-          );
-        if (isApprovalEvent(evt.event))
-          return canRelayApprovalEvent(
-            evt.event,
-            evt.data,
-            authority,
-            canReadApprovalEvent,
-          );
-        if (isUiNavigateEvent(evt.event))
-          return canRelayUiNavigateEvent(authority, evt.data);
-        if (isAnswerAssessmentEvent(evt.event))
-          return canRelayAnswerAssessmentEvent(
-            evt.data,
-            authority,
-            canReadAnswerAssessmentEvent,
-          );
-        if (isAnswerNarrativeEvent(evt.event))
-          return canRelayAnswerNarrativeEvent(
-            evt.data,
-            authority,
-            canReadAnswerNarrativeEvent,
-          );
-        return false;
-      };
-
-      let unsub: (() => void) | undefined;
-      let keepAlive: ReturnType<typeof setInterval> | undefined;
-      try {
-        clientLease = connectClientSession?.(c.req.raw);
-        if (c.req.raw.signal.aborted) return;
-        // Subscribe before the first frame is written. Response headers therefore
-        // cannot become browser-visible until this connection is ready to observe
-        // live events. Events emitted while the initial snapshot is being built or
-        // written are buffered and flushed immediately after that snapshot.
-        unsub = eventBus.subscribe(enqueue);
-
-        // Replay current ACP state so clients that connect after startup get the truth
-        const acpStatus = getACPStatus();
-        await writeFrame({
-          event: SERVER_EVENTS.ACP_STATUS,
-          data: JSON.stringify(acpStatus),
-        });
-        replayComplete = true;
-        void drain();
-
-        // Not `sseKeepalive`: this stream's keepalive goes through
-        // `writeFrame`, which re-checks paired-device currency and can settle
-        // the disconnect, and touches the connection lease on a successful
-        // write. Writing straight to the stream would skip both.
-        let keepalivePending = false;
-        keepAlive = setInterval(() => {
-          if (keepalivePending || stopped) return;
-          keepalivePending = true;
-          writeFrame({ ...SSE_KEEPALIVE_FRAME })
-            .then(() => clientLease?.touch())
-            .catch(() => {})
-            .finally(() => {
-              keepalivePending = false;
-            });
-        }, SSE_KEEPALIVE_INTERVAL_MS);
-
-        try {
-          settleUnauthorized = () => settleDisconnect?.();
-          await disconnected;
-        } catch (e) {
-          logger.debug('SSE client disconnected', { error: e });
-          /* client disconnected */
-        }
-      } finally {
-        stopped = true;
-        pendingEvents.length = 0;
-        if (keepAlive) clearInterval(keepAlive);
-        unsub?.();
-        clientLease?.release();
-        logger.debug('SSE client disconnected');
+        resyncPending = true;
+      } else {
+        pendingEvents.push({ evt, data, bytes });
+        pendingBytes += bytes;
       }
-    });
-  });
+      void drain();
+    };
+    const canRelay = async (evt: BroadcastEvent): Promise<boolean> => {
+      if (SERVER_EVENT_BROADCAST_SAFETY[evt.event] === 'broadcast') return true;
+      if (isPluginIdentityEvent(evt.event))
+        return canReadPluginEvent?.(evt.event, evt.data, c) === true;
+      if (isPluginDraftEvent(evt.event)) {
+        try {
+          return (await canReadPluginDraftEvent?.(evt.data, c)) === true;
+        } catch {
+          return false;
+        }
+      }
+      if (isNotificationEvent(evt.event))
+        return canRelayNotificationEvent(
+          evt.event,
+          evt.data,
+          authority,
+          canReadNotificationEvent,
+        );
+      if (isApprovalEvent(evt.event))
+        return canRelayApprovalEvent(
+          evt.event,
+          evt.data,
+          authority,
+          canReadApprovalEvent,
+        );
+      if (isUiNavigateEvent(evt.event))
+        return canRelayUiNavigateEvent(authority, evt.data);
+      if (isAnswerAssessmentEvent(evt.event))
+        return canRelayAnswerAssessmentEvent(
+          evt.data,
+          authority,
+          canReadAnswerAssessmentEvent,
+        );
+      if (isAnswerNarrativeEvent(evt.event))
+        return canRelayAnswerNarrativeEvent(
+          evt.data,
+          authority,
+          canReadAnswerNarrativeEvent,
+        );
+      return false;
+    };
 
+    let unsub: (() => void) | undefined;
+    let keepAlive: ReturnType<typeof setInterval> | undefined;
+    try {
+      clientLease = connectClientSession?.(c.req.raw);
+      if (c.req.raw.signal.aborted) return;
+      // Subscribe before the first frame is written. Response headers therefore
+      // cannot become browser-visible until this connection is ready to observe
+      // live events. Events emitted while the initial snapshot is being built or
+      // written are buffered and flushed immediately after that snapshot.
+      unsub = eventBus.subscribe(enqueue);
+
+      // Replay current ACP state so clients that connect after startup get the truth
+      const acpStatus = getACPStatus();
+      await writeFrame({
+        event: SERVER_EVENTS.ACP_STATUS,
+        data: JSON.stringify(acpStatus),
+      });
+      replayComplete = true;
+      void drain();
+
+      // Not `sseKeepalive`: this stream's keepalive goes through
+      // `writeFrame`, which re-checks paired-device currency and can settle
+      // the disconnect, and touches the connection lease on a successful
+      // write. Writing straight to the stream would skip both.
+      let keepalivePending = false;
+      keepAlive = setInterval(() => {
+        if (keepalivePending || stopped) return;
+        keepalivePending = true;
+        writeFrame({ ...SSE_KEEPALIVE_FRAME })
+          .then(() => clientLease?.touch())
+          .catch(() => {})
+          .finally(() => {
+            keepalivePending = false;
+          });
+      }, SSE_KEEPALIVE_INTERVAL_MS);
+
+      try {
+        settleUnauthorized = () => settleDisconnect?.();
+        await disconnected;
+      } catch (e) {
+        logger.debug('SSE client disconnected', { error: e });
+        /* client disconnected */
+      }
+    } finally {
+      stopped = true;
+      pendingEvents.length = 0;
+      if (keepAlive) clearInterval(keepAlive);
+      unsub?.();
+      clientLease?.release();
+      logger.debug('SSE client disconnected');
+    }
+  };
+}
+
+export function createEventRoutes(deps: EventRouteDeps) {
+  const app = new Hono();
+  const produce = createEventStreamProducer(deps);
+  app.get('/', (c) => streamSSE(c, (stream) => produce(c, stream)));
   return app;
 }
 
@@ -467,6 +470,7 @@ function canRelayNotificationEvent(
       ) => boolean)
     | undefined,
 ): boolean {
+  if (hasPrincipalNotificationAudience(data)) return false;
   // Personal mode retains the existing broadcast contract. In hosted mode a
   // missing filter cannot become a notification-id/content disclosure.
   if (!authority) return canReadNotificationEvent === undefined;

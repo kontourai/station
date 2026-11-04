@@ -1,0 +1,7 @@
+{
+  "revision": "f98d3d8036428bf25e2225f02639b7134db2b628",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Source-impact review: the API reference documents issuer required with a client ID, writer-wide pins, registry stripping and RFC 9207 handling. Searched this document for MCP tool-server OAuth client, issuer, secret-binding reference, registry-install and required-integration claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

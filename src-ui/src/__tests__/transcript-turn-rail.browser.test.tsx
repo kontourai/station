@@ -27,6 +27,51 @@ const PHONE = {
 const userRow = (turn: number) =>
   `[data-transcript-row="turn-rail-session:message:u-${turn}"]`;
 
+test('Appearance answer widths change the rendered assistant bubble and preserve user width', async () => {
+  const { browser, page } = await turnRailBrowserFixture({
+    ...DESKTOP,
+    turns: 2,
+  });
+  try {
+    await page.waitForFunction(() => '__setAnswerText' in window);
+    await page.evaluate(() =>
+      (
+        window as unknown as { __setAnswerText(value: string): void }
+      ).__setAnswerText(
+        'A long answer should use the chosen reading width while the user bubble keeps its existing width. '.repeat(
+          40,
+        ),
+      ),
+    );
+    const widths = [];
+    for (const value of ['comfortable', 'wide', 'full']) {
+      await page.evaluate(
+        (width) =>
+          (
+            window as unknown as { __setAnswerWidth(value: string): void }
+          ).__setAnswerWidth(width),
+        value,
+      );
+      await page.waitForSelector(
+        `.chat-messages[data-answer-width="${value}"]`,
+      );
+      widths.push({
+        assistant: (await page
+          .locator('.message.assistant')
+          .last()
+          .boundingBox())!.width,
+        user: (await page.locator('.message.user').last().boundingBox())!.width,
+      });
+    }
+    expect(widths[1].assistant).toBeGreaterThan(widths[0].assistant);
+    expect(widths[2].assistant).toBeGreaterThan(widths[1].assistant);
+    expect(widths[1].user).toBe(widths[0].user);
+    expect(widths[2].user).toBe(widths[0].user);
+  } finally {
+    await browser.close();
+  }
+});
+
 function frames(page: Page, count = 12) {
   return page.evaluate(
     `new Promise((resolve) => { let left = ${count}; const tick = () => (--left ? requestAnimationFrame(tick) : resolve()); requestAnimationFrame(tick); })`,
@@ -203,7 +248,7 @@ test('Previous and Next turn step from the turn in view and keep focus', async (
   }
 });
 
-test('a phone gets no gutter; the turn steps sit with Scroll to bottom at 44px', async () => {
+test('a phone keeps turn browsing in the conversation menu and return-to-latest stays touch-sized', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
   try {
     await page.waitForSelector('.chat-messages');
@@ -213,58 +258,25 @@ test('a phone gets no gutter; the turn steps sit with Scroll to bottom at 44px',
         .locator('.transcript-turn-rail-host')
         .evaluate((host) => getComputedStyle(host).display),
     ).toBe('none');
-    await page.locator('.chat-messages').hover();
-    await page.mouse.wheel(0, -1500);
-    const previous = page.getByRole('button', { name: 'Previous turn' });
-    await previous.waitFor();
-    for (const name of ['Previous turn', 'Next turn', 'Scroll to bottom']) {
-      const box = (await page.getByRole('button', { name }).boundingBox())!;
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
-      expect(box.x + box.width).toBeLessThanOrEqual(390);
-    }
-    const before = await settledScrollTop(page);
-    await previous.click();
-    const after = await settledScrollTop(page);
-    expect(after).toBeLessThan(before);
-    expect(errors).toEqual([]);
-  } finally {
-    await browser.close();
-  }
-});
-
-test('#3862: at the latest message a phone keeps Previous turn at the end of the settings row, not a row of its own', async () => {
-  const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
-  try {
-    await page.waitForSelector('.chat-messages');
-    await settledScrollTop(page);
     expect(
-      await page.getByRole('button', { name: 'Scroll to bottom' }).count(),
+      await page.getByRole('button', { name: 'Previous turn' }).count(),
     ).toBe(0);
-    const previous = page.getByRole('button', { name: 'Previous turn' });
-    await previous.waitFor();
     expect(await page.getByRole('button', { name: 'Next turn' }).count()).toBe(
       0,
     );
-    const step = (await previous.boundingBox())!;
-    const chip = (await page
-      .getByRole('button', { name: 'Agent: Dev Agent' })
-      .boundingBox())!;
-    expect(step.width).toBeGreaterThanOrEqual(44);
-    expect(step.height).toBeGreaterThanOrEqual(44);
-    expect(step.x + step.width).toBeLessThanOrEqual(390);
-    // One row: the step shares the chip's line, after it.
-    expect(Math.abs(step.y - chip.y)).toBeLessThan(chip.height / 2);
-    expect(step.x).toBeGreaterThan(chip.x + chip.width);
-
-    const before = await settledScrollTop(page);
-    await previous.focus();
-    await page.keyboard.press('Enter');
-    const after = await settledScrollTop(page);
-    expect(after).toBeLessThan(before);
-    // The group grew to its away-from-the-end form around the same button.
+    await page.getByRole('button', { name: 'Browse turns' }).click();
+    const browserDialog = page.getByRole('dialog', { name: 'Browse turns' });
+    await browserDialog.waitFor();
+    await browserDialog.getByRole('button', { name: /Turn 1:/ }).click();
+    await browserDialog.waitFor({ state: 'hidden' });
+    await settledScrollTop(page);
     await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
-    expect(await activeLabel(page)).toBe('Previous turn');
+    const box = (await page
+      .getByRole('button', { name: 'Scroll to bottom' })
+      .boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
@@ -381,3 +393,43 @@ test('Escape dismisses a hover preview while focus stays in the composer', async
     await browser.close();
   }
 });
+
+test.each([
+  { width: 390, theme: 'dark' },
+  { width: 390, theme: 'light' },
+  { width: 1440, theme: 'dark' },
+  { width: 1440, theme: 'light' },
+])(
+  'short conversation navigation at $width px in $theme',
+  async ({ width, theme }) => {
+    const { browser, page, errors } = await turnRailBrowserFixture({
+      turns: 2,
+      viewport: { width, height: 844 },
+      dockHeight: 844,
+    });
+    try {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      await settledScrollTop(page);
+      const rail = page.getByRole('navigation', { name: 'Conversation turns' });
+      expect(await rail.isVisible()).toBe(width >= 560);
+      expect(await page.locator('.transcript-turn-rail__tick').count()).toBe(2);
+      if (width < 560) {
+        expect(
+          await page.getByRole('button', { name: 'Previous turn' }).count(),
+        ).toBe(0);
+        await page.getByRole('button', { name: 'Browse turns' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Browse turns' });
+        await dialog.waitFor();
+        await dialog.getByRole('button', { name: /Turn 1:/ }).click();
+        await dialog.waitFor({ state: 'hidden' });
+        await settledScrollTop(page);
+        await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);

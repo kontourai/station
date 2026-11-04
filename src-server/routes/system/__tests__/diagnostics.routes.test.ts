@@ -591,7 +591,7 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
     expect(text).toContain('[REDACTED]');
   });
 
-  test('(e) replacing the predicate changes the bound flag, Developer HTTP, and read_logs together', async () => {
+  test('(e) local rendering follows the bound flag; an ungranted tool remains denied', async () => {
     const directory = createTempLogDir();
     writeSecretDay(directory);
     const app = createApp(directory);
@@ -689,7 +689,8 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
       ).text();
       const toolOpened = (await tools.read_logs.handler({})).content[0].text;
       expect(developerOpened).toContain(SEEDED_API_KEY);
-      expect(toolOpened).toContain(SEEDED_API_KEY);
+      expect(toolOpened).not.toContain(SEEDED_API_KEY);
+      expect(toolOpened).toContain('Diagnostics log access is not granted');
     } finally {
       vi.unstubAllGlobals();
       if (previousApiBase === undefined) delete process.env.STATION_API_BASE;

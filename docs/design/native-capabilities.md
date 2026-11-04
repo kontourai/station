@@ -86,6 +86,28 @@ for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
 
+### Personal analytics requester consent
+
+[The requester adapter](../../src-ui/src/platform/native/requesterConsent.ts)
+selects the browser popup or native requester-session path. Browser review opens
+from the user's action, detaches its opener, and uses the separate consent
+origin. Native review uses the host's existing consent-dialog capability; that
+capability alone grants no decision authority.
+
+[The native requester owner](../../src-desktop/src/native_requester_consent.rs)
+captures a transaction cookie only from the known analytics approval creators.
+Pending custody is bounded, expiring and bound to the active profile, API origin
+and request ID. The secret and render nonce remain in the host. Generic native
+HTTP cannot relay consent routes or supply the requester-secret header, and the
+requester flow cannot fall back to operator consent. The server rechecks the
+exact transaction's requester session and unchanged target. Profile switching,
+expiry or revoked authority must refuse the decision rather than substitute a
+new identity.
+
+Route and adapter controls do not qualify Rust compilation, OS dialogs, physical
+mobile behavior or installed releases. See [source approval](../guides/monitoring.md#source-approval-review)
+and the separate native-shell evidence requirements.
+
 ### iOS relay URL intake
 
 The [native intake owner](../../src-desktop/src/native_relay_link_intake.rs)
@@ -206,9 +228,12 @@ Station health, authority and member Project/shared-work reads; fixed account
 challenge/exchange/revoke and invitation acceptance are separate control leaves.
 The separate closed management inventory adds relay setup/invitation/Device
 decisions and Project access administration without granting terminal, Agent
-or Task publication writes. The account-bound gate admits only exact native
-relay-management leaves with current Device/account proof and separate
-`relay:manage`; credential-only account-bound Devices remain refused.
+or Task publication writes. For relay management, the account-bound gate admits
+only exact native leaves with current Device/account proof and separate
+`relay:manage`; credential-only account-bound Devices remain refused on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
 Capabilities are neutral false without management authority. Account
 continuation and Project membership remain independent. A mounted
 consumer is not proof of a completed fresh native or physical Project journey.

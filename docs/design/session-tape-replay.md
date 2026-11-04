@@ -73,10 +73,12 @@ time the recording was played.
 
 Record a live conversation from chat developer settings to include committed
 history reads, runtime events, transport transitions, snapshots, and the
-initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
-20,000 frames. A server-event tape cannot reconstruct the original client's
-history responses or network timing; `coverage` distinguishes it from a
-client capture. Imported captures use the production history projector with
+initial visible state. The initial state, history reads and frames keep
+attachment names, types and references but never inline attachment bytes: a
+recorded `dataUrl` and a file part's `data:` URL are dropped. Capture is
+opt-in and stops explicitly at 16 MiB or 20,000 frames. A server-event tape
+cannot reconstruct the original client's history responses or network
+timing; `coverage` distinguishes it from a client capture. Imported captures use the production history projector with
 recorded reader responses and cannot issue live history requests.
 
 Archive loading reads the selected execution session in 100-event pages,
@@ -141,18 +143,22 @@ to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Queue vs steer
 
-Two Station nouns. The composer distinguishes native steering from safe stop-and-send;
+This section describes steering the parent turn. The separate child-targeted
+command and Station instruction journal are documented in the [Session API](../reference/session-api.md#lifecycle-control-commands); they do not change the parent transcript fold described here.
+
+Two Station nouns. The composer distinguishes native steering from Station-observed placement;
 the adapter mechanisms below do not by themselves establish the dock capability:
 
 | Noun | Station fact | When |
 | --- | --- | --- |
-| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Any engine when Queue is selected. |
+| **Queue** | The server inbox holds eligible input and places a **new** turn after terminal. | Any engine when Queue is selected. |
 | **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. |
 
-Native send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
+Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code and Codex; ACP uses a safe-waiting fallback because its capability matrix
-also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
+Code and Codex, and holds Station-owned steering for an observed post-tool
+boundary, otherwise a terminal. ACP uses a safe-waiting fallback because its
+capability matrix also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection
 (`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
 what the engine produced before it as its own assistant row, so the steer

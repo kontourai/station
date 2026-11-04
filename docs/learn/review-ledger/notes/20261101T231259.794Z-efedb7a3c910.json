@@ -1,0 +1,7 @@
+{
+  "revision": "f70b1b1e8b34eb485099c293b2cd2fbdfbe2dac1",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Refs #3568 and #3575. Re-read Engine-neutral failures and the keyed-input contract against da233f05d4c: INBOX_KEY_CONFLICT_CODE is now explicitly mapped to conflict, whose fixed retryable value is false. Added the missing diagnostic-table row and the independent literal wire expectation. The closed kinds, existing code spellings, failurePhase meanings and ban on automatic replay are unchanged. Source inventory plus wire-contract tests pass all 96 cases; the previously exhaustive wire list was reproduced red before the new expectation. This is a bounded classification review, not new engine or release qualification.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

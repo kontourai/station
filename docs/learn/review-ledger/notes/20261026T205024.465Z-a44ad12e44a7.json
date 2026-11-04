@@ -1,0 +1,13 @@
+{
+  "revision": "0a53cfa2ee01c828c609b8075f64b47377b0bd20",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked after the chat.css changes in fix round 2 (Load full content button styles, text-argument block, the one-line wait placeholder for spilled content); nothing this document describes changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Rechecked after the chat.css changes in fix round 2 (Load full content button styles, text-argument block, the one-line wait placeholder for spilled content); nothing this document describes changes.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked after the chat.css changes in fix round 2 (Load full content button styles, text-argument block, the one-line wait placeholder for spilled content); nothing this document describes changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked after the chat.css changes in fix round 2 (Load full content button styles, text-argument block, the one-line wait placeholder for spilled content); nothing this document describes changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

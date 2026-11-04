@@ -160,7 +160,7 @@ function ProjectS3SourceControls({
   return (
     <PageSection
       title="S3 prefixes (experimental)"
-      description="Read selected text objects without mounting, importing or indexing the bucket. This feature still needs real AWS acceptance verification."
+      description="Read selected text objects without importing or indexing the bucket. Not yet verified against real AWS."
     >
       <div className="project-sources__form">
         {!canRead ? (

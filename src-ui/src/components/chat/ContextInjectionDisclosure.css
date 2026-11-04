@@ -73,5 +73,5 @@
 .context-injection__qualification {
   margin: var(--k-space-2) 0 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }

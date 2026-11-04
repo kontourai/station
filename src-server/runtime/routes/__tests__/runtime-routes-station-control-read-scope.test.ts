@@ -24,18 +24,24 @@
  * operator's own UI (an operator credential, never `kind:'internal'`) is the
  * control that must not move.
  */
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { terminalScopeAllows } from '@kontourai/station-contracts/terminal-transport';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { WebSocket } from 'ws';
+import { z } from 'zod/v3';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
+import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
@@ -50,6 +56,7 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { terminalGatewayFor } from '../../../services/terminal/terminal-gateway.js';
 import {
   __resetStationControlStdioEntryForTests,
   api,
@@ -79,6 +86,59 @@ import {
 } from '../../mcp/station-knowledge-native-tools.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
+vi.mock(
+  '@kontourai/station-contracts/terminal-transport',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-contracts/terminal-transport')
+      >();
+    return {
+      ...actual,
+      terminalScopeAllows: vi.fn(actual.terminalScopeAllows),
+    };
+  },
+);
+
+const companionProbe = vi.hoisted(() =>
+  vi.fn(async () => ({
+    kind: 'unavailable',
+    checkedAt: '2026-10-23T00:00:00.000Z',
+    reason: 'container-daemon-unavailable',
+  })),
+);
+const companionInstall = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture installation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-install.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-install.js')
+    >()),
+    installTelemetryCompanion: companionInstall,
+  }),
+);
+vi.mock('../../../services/telemetry-companion.js', () => ({
+  readTelemetryCompanionPrerequisites: companionProbe,
+}));
+const companionPrepare = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture preparation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-archive.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-archive.js')
+    >()),
+    prepareTelemetryCompanionArchive: companionPrepare,
+  }),
+);
+
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -107,6 +167,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-read-scope';
+const TELEMETRY_OPERATOR_CREDENTIAL = 'test-only-telemetry-operator-credential';
 const A = LOCAL_OPERATOR_PRINCIPAL_ID;
 const B_REF = deploymentAccountPrincipal(
   'https://id.example.test',
@@ -128,11 +189,19 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     __resetStationControlStdioEntryForTests();
     delete process.env.STATION_API_BASE;
     for (const close of closers.splice(0)) await close();
+    vi.mocked(terminalScopeAllows).mockReset();
+    vi.restoreAllMocks();
   });
 
-  async function setup() {
+  async function setup(terminalProof = false) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-read-scope-');
+    const terminalA = join(home, 'terminal-a'),
+      terminalB = join(home, 'terminal-b');
+    if (terminalProof) {
+      mkdirSync(terminalA);
+      mkdirSync(terminalB);
+    }
 
     // Real session records: each session's owner is its start record.
     const store = new EventStore(join(home, 'orchestration.sqlite'));
@@ -206,10 +275,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const aProject = await projects.createProject({
       name: 'A private',
       slug: 'a-project',
+      ...(terminalProof && { workingDirectory: terminalA }),
     });
     const bProject = await projects.createProject({
       name: 'B shared',
       slug: 'b-project',
+      ...(terminalProof && { workingDirectory: terminalB }),
     });
     const membership = createProjectMembershipRuntime(
       home,
@@ -338,7 +409,13 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const eventBus = new EventBus();
     const monitoringEvents = new EventEmitter();
     const app = new Hono();
+    const scopedTerminals: Parameters<
+      typeof configureRuntimeRoutes
+    >[0]['scopedTerminals'] = {};
+    closers.push(() => scopedTerminals.sessions?.dispose());
     const context = deepStub({
+      ptyAdapter: new NodePtyAdapter(),
+      scopedTerminals,
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: undefined,
@@ -350,7 +427,8 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       eventBus,
       configLoader: {
         getProjectHomeDir: () => home,
-        loadAppConfig: () => ({}),
+        loadAppConfig: () =>
+          terminalProof ? { terminalShell: '/bin/sh' } : {},
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
@@ -379,19 +457,35 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       projectService: projects,
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         verifyOperatorCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL
-            ? 'orchestration:read orchestration:operate'
-            : undefined,
-        identifyDevice: () => undefined,
+          credential === TELEMETRY_OPERATOR_CREDENTIAL
+            ? 'orchestration:read orchestration:operate telemetry:manage'
+            : credential === OPERATOR_CREDENTIAL
+              ? `orchestration:read orchestration:operate${terminalProof ? ' terminal:operate' : ''}`
+              : undefined,
+        identifyDevice: ():
+          | {
+              id?: string;
+              kind?: 'device';
+              principalBinding?: { kind: 'account' };
+              credentialKind?: 'personal-token';
+            }
+          | undefined => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
-        devicePairing: deepStub({}),
+        credentialLocality: () => undefined,
+        devicePairing: deepStub({
+          identifyDevice: (_credential: string): { id: string } | undefined =>
+            undefined,
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -413,9 +507,22 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
+    if (terminalProof) {
+      const gateway = terminalGatewayFor(app);
+      if (!gateway)
+        throw new Error('Production terminal gateway was not registered');
+      if (!(server instanceof Server))
+        throw new Error('Fixture requires its HTTP/1 listener');
+      gateway.mount(server, { upgraded: () => undefined });
+      closers.unshift(() => gateway.stop());
+    }
 
     return {
+      app,
+      security: context.environmentSecurityService,
       base,
+      terminalA,
+      terminalB,
       eventBus,
       monitoringEvents,
       knowledge,
@@ -426,6 +533,172 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       bTask,
     };
   }
+
+  /** The production ticket mint, through the real HTTP admission. */
+  async function mintTicket(base: string, credential: string) {
+    const response = await fetch(`${base}/api/terminal/tickets`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${credential}`, origin: base },
+    });
+    const body = response.ok
+      ? ((await response.json()) as { data: { ticket: string } })
+      : undefined;
+    return { status: response.status, ticket: body?.data.ticket };
+  }
+  async function socket(base: string, credential: string, origin = base) {
+    const minted = await mintTicket(base, credential);
+    if (!minted.ticket) throw new Error(`ticket ${minted.status}`);
+    const ws = new WebSocket(
+      `${base.replace('http:', 'ws:')}/api/terminal/socket`,
+      ['station.terminal.v1', `station.terminal.ticket.${minted.ticket}`],
+      { origin },
+    );
+    closers.unshift(() => ws.terminate());
+    const frames: Array<{ type: string; requestId?: string; code?: string }> =
+      [];
+    ws.on('message', (raw, binary) => {
+      if (!binary)
+        frames.push(
+          z
+            .object({
+              type: z.string(),
+              requestId: z.string().optional(),
+              code: z.string().optional(),
+            })
+            .parse(JSON.parse(raw.toString())),
+        );
+    });
+    await once(ws, 'open');
+    return { ws, frames };
+  }
+
+  test.skipIf(process.platform === 'win32')(
+    'production terminal gateway admits only a ticket minted through HTTP admission',
+    async () => {
+      const { base, security } = await setup(true);
+      // No ticket: refused before any socket exists, even on loopback.
+      const bare = new WebSocket(
+        `${base.replace('http:', 'ws:')}/api/terminal/socket`,
+        ['station.terminal.v1'],
+      );
+      bare.on('error', () => undefined);
+      closers.unshift(() => bare.terminate());
+      const [, refused] = (await once(bare, 'unexpected-response')) as [
+        unknown,
+        { statusCode: number; resume(): void },
+      ];
+      refused.resume();
+      expect(refused.statusCode).toBe(401);
+      // The ticket carries the HTTP decision, so a WebView or tailnet Origin
+      // the allowlist does not know is admitted by the same rule.
+      const valid = await socket(
+        base,
+        OPERATOR_CREDENTIAL,
+        'capacitor://localhost',
+      );
+      await expect
+        .poll(
+          () => valid.frames.some((frame) => frame.type === 'authenticated'),
+          { timeout: 10000 },
+        )
+        .toBe(true);
+      expect(valid.ws.protocol).toBe('station.terminal.v1');
+      const authorization = vi
+        .spyOn(security, 'authorizeCredential')
+        .mockReturnValue(false);
+      expect((await mintTicket(base, OPERATOR_CREDENTIAL)).ticket).toBe(
+        undefined,
+      );
+      authorization.mockRestore();
+      expect((await mintTicket(base, 'wrong-operator-credential')).status).toBe(
+        401,
+      );
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'production terminal gateway consumes the per-operation scope decision',
+    async () => {
+      const { base, aProject } = await setup(true);
+      const client = await socket(base, OPERATOR_CREDENTIAL);
+      await expect
+        .poll(
+          () => client.frames.some((frame) => frame.type === 'authenticated'),
+          { timeout: 10000 },
+        )
+        .toBe(true);
+      // The shared policy is tested independently. This isolates the production
+      // caller's obligation to consume its current decision after authentication.
+      vi.mocked(terminalScopeAllows).mockReturnValue(false);
+      client.ws.send(
+        JSON.stringify({
+          type: 'list',
+          requestId: 'scoped-list',
+          projectId: aProject.id,
+          bindingKey: 'project',
+        }),
+      );
+      await expect
+        .poll(
+          () =>
+            client.frames.find((frame) => frame.requestId === 'scoped-list'),
+          { timeout: 10000 },
+        )
+        .toEqual({
+          type: 'error',
+          requestId: 'scoped-list',
+          code: 'terminal-refused',
+        });
+    },
+  );
+
+  // #3994 owner decision: the operator's own paired device (tied to no
+  // person) is the operator; the same device tied to a member is not.
+  test.each([
+    ["the operator's own", undefined, 200],
+    ["a member's", { kind: 'account' }, 'refused'],
+  ] as const)(
+    'production terminal ticket mint for %s paired device',
+    async (_name, principalBinding, status) => {
+      const { base, security } = await setup(true);
+      vi.spyOn(security, 'verifyOperatorCredential').mockReturnValue(false);
+      vi.spyOn(security, 'resolveGrantedScope').mockReturnValue(
+        'orchestration:read orchestration:operate terminal:operate',
+      );
+      const device = {
+        id: 'remote-device',
+        kind: 'device',
+        revokedAt: null,
+        ...(principalBinding && { principalBinding }),
+      };
+      vi.spyOn(security, 'identifyDevice').mockReturnValue(device as never);
+      vi.spyOn(security.devicePairing, 'identifyDevice').mockReturnValue({
+        id: 'remote-device',
+      } as never);
+      const minted = await mintTicket(base, OPERATOR_CREDENTIAL);
+      if (status === 200) expect(minted.status).toBe(200);
+      else {
+        // Refused at HTTP admission (account-bound) or by the operator gate.
+        expect([401, 403]).toContain(minted.status);
+        expect(minted.ticket).toBeUndefined();
+      }
+    },
+  );
+
+  test.each(['account', 'personal-token'] as const)(
+    'production terminal ticket mint refuses %s credentials',
+    async (kind) => {
+      const { base, security } = await setup(true);
+      vi.spyOn(security, 'identifyDevice').mockReturnValue(
+        kind === 'account'
+          ? { principalBinding: { kind: 'account' } }
+          : { credentialKind: 'personal-token' },
+      );
+      const minted = await mintTicket(base, OPERATOR_CREDENTIAL);
+      expect(minted.ticket).toBeUndefined();
+      expect([401, 403]).toContain(minted.status);
+    },
+  );
 
   type Caller =
     | { session: string; channel: StationControlMcpTokenChannel }
@@ -470,9 +743,221 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     return response.json();
   }
 
+  test('companion host prerequisites require the operator in person through the production auth boundary', async () => {
+    const { base } = await setup();
+    companionProbe.mockClear();
+    const path = '/api/operator/telemetry-companion/prerequisites';
+    expect(await asOperatorUi(base, path)).toEqual({
+      data: {
+        kind: 'unavailable',
+        checkedAt: '2026-10-23T00:00:00.000Z',
+        reason: 'container-daemon-unavailable',
+      },
+    });
+    expect(companionProbe).toHaveBeenCalledTimes(1);
+    expect(companionProbe).toHaveBeenLastCalledWith(undefined);
+    await asOperatorUi(base, `${path}?artifactEvidence=1`);
+    expect(companionProbe).toHaveBeenCalledTimes(2);
+    expect(companionProbe).toHaveBeenLastCalledWith(
+      expect.objectContaining({ installKind: expect.any(String) }),
+    );
+    const agentMarked = await fetch(`${base}${path}`, {
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+      },
+    });
+    expect(agentMarked.status).toBe(403);
+    for (const caller of [
+      BOUND_OPERATOR,
+      DELEGATED_OPERATOR,
+      ...Object.values(B_CALLERS),
+      'raw-token' as const,
+    ]) {
+      const response = await asTool(caller, path);
+      expect(response.data).toBeUndefined();
+      expect(response.code ?? response.error?.code).toBeTruthy();
+    }
+    expect(companionProbe).toHaveBeenCalledTimes(2);
+  });
+
+  test('archive preparation accepts operator identity or management authority while refusing agent calls', async () => {
+    const { base } = await setup();
+    companionPrepare.mockClear();
+    const path = '/api/operator/telemetry-companion/archive-preparations';
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          operationId: '01234567-89ab-4cde-8fab-0123456789ab',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionPrepare).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionPrepare).toHaveBeenCalledTimes(1);
+    const allowed = await post(TELEMETRY_OPERATOR_CREDENTIAL);
+    expect(allowed.status).toBe(503);
+    expect(await allowed.json()).toEqual({
+      error: { code: 'companion_preparation_unavailable' },
+    });
+    expect(companionPrepare).toHaveBeenCalledTimes(2);
+  });
+
+  test('installation admission retains operator identity and management scope while refusing agent calls', async () => {
+    const { base } = await setup();
+    companionInstall.mockClear();
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}/api/operator/telemetry-companion/installations`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          installationId: '01234567-89ab-4cde-8fab-0123456789ab',
+          preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+          host: 'selected-station',
+          storage: 'managed-docker-volumes',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(2);
+  });
+
   const conversationIds = (body: any): string[] =>
     ((body?.data?.items ?? []) as { id: string }[]).map((item) => item.id);
   const transcript = (body: any): string => JSON.stringify(body?.data ?? null);
+
+  test.skipIf(process.platform === 'win32')(
+    'personal-operator terminal authority is wired through production routes with Project and binding isolation',
+    async () => {
+      const { base, aProject, bProject, terminalA, terminalB } =
+        await setup(true);
+      const session = z.object({
+        success: z.literal(true),
+        data: z.object({
+          terminalId: z.string().uuid(),
+          projectId: z.string(),
+          cwd: z.string(),
+          status: z.string(),
+        }),
+      });
+      const journal = z.object({
+        success: z.literal(true),
+        data: z.object({
+          journal: z.object({
+            records: z.array(z.object({ data: z.string() })),
+          }),
+        }),
+      });
+      const call = (path: string, method = 'GET', body?: unknown) =>
+        fetch(`${base}/api/projects/${path}`, {
+          method,
+          headers: {
+            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+            'content-type': 'application/json',
+          },
+          ...(body !== undefined && { body: JSON.stringify(body) }),
+        });
+      const openedA = await call('a-project/terminal-sessions', 'POST', {
+        cols: 80,
+        rows: 24,
+      });
+      expect(openedA.status).toBe(200);
+      const a = session.parse(await openedA.json()).data;
+      expect(a.projectId).toBe(aProject.id);
+      expect(a.cwd).toBe(await realpath(terminalA));
+      const openedB = await call('b-project/terminal-sessions', 'POST', {
+        cols: 80,
+        rows: 24,
+      });
+      expect(openedB.status).toBe(200);
+      const b = session.parse(await openedB.json()).data;
+      expect(b.projectId).toBe(bProject.id);
+      expect(b.cwd).toBe(await realpath(terminalB));
+      expect(
+        (await call(`b-project/terminal-sessions/${a.terminalId}`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `a-project/terminal-sessions/${a.terminalId}?bindingKey=thread:a-agent`,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `b-project/terminal-sessions/${a.terminalId}/input`,
+            'POST',
+            { data: 'wrong Project\r' },
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            `a-project/terminal-sessions/${a.terminalId}/input`,
+            'POST',
+            { data: "pwd; printf '%s%s\\n' 'production:' 'terminal'\r" },
+          )
+        ).status,
+      ).toBe(200);
+      await expect
+        .poll(
+          async () =>
+            journal
+              .parse(
+                await (
+                  await call(`a-project/terminal-sessions/${a.terminalId}`)
+                ).json(),
+              )
+              .data.journal.records.map((row) => row.data)
+              .join(''),
+          { timeout: 10000 },
+        )
+        .toContain('production:terminal');
+      const text = journal
+        .parse(
+          await (
+            await call(`a-project/terminal-sessions/${a.terminalId}`)
+          ).json(),
+        )
+        .data.journal.records.map((row) => row.data)
+        .join('');
+      expect(text).toContain(await realpath(terminalA));
+      expect(text).not.toContain('wrong Project');
+      expect(
+        (await call(`a-project/terminal-sessions/${a.terminalId}`, 'DELETE'))
+          .status,
+      ).toBe(200);
+      expect(
+        (await call(`b-project/terminal-sessions/${b.terminalId}`, 'DELETE'))
+          .status,
+      ).toBe(200);
+    },
+  );
 
   test('conversations: B’s callers see B’s, never A’s; a bound operator sees A’s; the raw token none', async () => {
     const { base } = await setup();
@@ -658,7 +1143,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     expect(projects.filter((project) => 'runsAt' in project)).toEqual([]);
   });
 
-  test('read_logs: redacted for every caller but a bound operator', async () => {
+  test('read_logs: agent callers need a grant; the operator UI remains redacted', async () => {
     const { base } = await setup();
     const apiKeys = (body: any) =>
       ((body?.entries ?? []) as { config?: { apiKey?: string } }[]).map(
@@ -667,16 +1152,16 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     for (const [label, caller] of Object.entries({
       ...B_CALLERS,
       'delegated-custody operator': DELEGATED_OPERATOR,
+      'bound operator agent': BOUND_OPERATOR,
       'raw token': 'raw-token' as const,
     })) {
-      expect([
+      expect([label, await asTool(caller, '/api/diagnostics/logs')]).toEqual([
         label,
-        apiKeys(await asTool(caller, '/api/diagnostics/logs')),
-      ]).toEqual([label, ['[REDACTED]']]);
+        expect.objectContaining({
+          error: 'Diagnostics log access is not granted',
+        }),
+      ]);
     }
-    expect(
-      apiKeys(await asTool(BOUND_OPERATOR, '/api/diagnostics/logs')),
-    ).toEqual([LOG_SECRET]);
     // The operator credential carries no home-possession: redacted, as before.
     expect(apiKeys(await asOperatorUi(base, '/api/diagnostics/logs'))).toEqual([
       '[REDACTED]',
@@ -758,10 +1243,9 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     ]);
   });
 
-  test('operator-wide reads (job logs, achievements, SSH environments) need a bound operator caller', async () => {
+  test('operator-wide reads (achievements, SSH environments) need a bound operator caller', async () => {
     await setup();
     for (const path of [
-      '/scheduler/jobs/nightly/logs',
       '/api/analytics/achievements',
       '/api/environments/ssh/env-1',
     ]) {

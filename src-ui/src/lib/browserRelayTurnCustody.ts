@@ -1,7 +1,9 @@
 import type { SavedConnection } from '@kontourai/station-connect';
+import {
+  type StrictIndexedDbStore,
+  strictIndexedDbRequest,
+} from '@kontourai/station-shared/strict-indexeddb';
 
-const DATABASE = 'station-browser-relay-turn-custody-v1';
-const STORE = 'turn-configurations';
 const TURN_URL_MAX_LENGTH = 2048;
 const USERNAME_MAX_LENGTH = 512;
 const CREDENTIAL_MAX_LENGTH = 1024;
@@ -171,73 +173,17 @@ function unavailable() {
   return new Error('Browser TURN credential storage is unavailable.');
 }
 
+const TURN_CUSTODY: StrictIndexedDbStore = {
+  database: 'station-browser-relay-turn-custody-v1',
+  store: 'turn-configurations',
+  unavailable,
+};
+
 function transaction<T>(
   mode: IDBTransactionMode,
   apply: (store: IDBObjectStore) => IDBRequest<T> | undefined,
 ): Promise<T | undefined> {
-  if (!globalThis.isSecureContext || !globalThis.indexedDB)
-    return Promise.reject(unavailable());
-  return new Promise((resolve, reject) => {
-    let open: IDBOpenDBRequest;
-    try {
-      open = indexedDB.open(DATABASE, 1);
-    } catch {
-      reject(unavailable());
-      return;
-    }
-    open.onupgradeneeded = () => {
-      if (!open.result.objectStoreNames.contains(STORE))
-        open.result.createObjectStore(STORE);
-    };
-    open.onerror = open.onblocked = () => reject(unavailable());
-    open.onsuccess = () => {
-      const db = open.result;
-      db.onversionchange = () => db.close();
-      let tx: IDBTransaction;
-      try {
-        tx = db.transaction(
-          STORE,
-          mode,
-          mode === 'readwrite' ? { durability: 'strict' } : undefined,
-        );
-      } catch {
-        db.close();
-        reject(unavailable());
-        return;
-      }
-      if (mode === 'readwrite' && tx.durability !== 'strict') {
-        tx.abort();
-        db.close();
-        reject(unavailable());
-        return;
-      }
-      let result: T | undefined;
-      tx.onerror = () => reject(unavailable());
-      tx.onabort = () => {
-        db.close();
-        reject(unavailable());
-      };
-      tx.oncomplete = () => {
-        db.close();
-        resolve(result);
-      };
-      try {
-        const request = apply(tx.objectStore(STORE));
-        if (request) {
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          request.onerror = () => {
-            tx.abort();
-            reject(unavailable());
-          };
-        }
-      } catch {
-        tx.abort();
-        reject(unavailable());
-      }
-    };
-  });
+  return strictIndexedDbRequest(TURN_CUSTODY, mode, apply);
 }
 
 class IndexedDbBrowserRelayTurnStorage implements BrowserRelayTurnStorage {

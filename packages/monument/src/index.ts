@@ -9,6 +9,7 @@
  * adapter implements, and `@kontourai/monument/testing` the conformance suite
  * and crash-point store.
  */
+export type { SessionTurnBoundaryReadAuthority } from './boundary-reads.js';
 export type * from './commands.js';
 export {
   decideInboxCancel,
@@ -20,6 +21,11 @@ export {
   inboxHead,
 } from './decisions/inbox.js';
 export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
+export {
+  decideRecoveryTransition,
+  type RecoveryTransition,
+  type RecoveryTransitionIntent,
+} from './decisions/recovery.js';
 export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
@@ -87,3 +93,15 @@ export {
   startUnlessDelivered,
 } from './session-message-delivery.js';
 export { resolveKernelLimits } from './step.js';
+export {
+  awaitTurnResolution,
+  createPreparedTurnClaim,
+  createTurnDeduplicator,
+  type TurnClaim,
+  type TurnClaimInspection,
+  type TurnDedupHost,
+  type TurnDeduplicator,
+  type TurnIdempotencyPersistence,
+  TurnIdempotencySettledError,
+  TurnIdempotencyStore,
+} from './turn-dedup.js';

@@ -35,6 +35,7 @@ category.
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (archive#1423)
 - [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
 - [automations.md](automations.md) — Station Automations
+- [browser-device-ux-pass.md](browser-device-ux-pass.md) — Browser and Device UX pass
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (archive#1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (archive#1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
@@ -49,6 +50,7 @@ category.
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
+- [event-content-spill.md](event-content-spill.md) — Event content spill: keep runtime events small, store large values once
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
 - [hosted-execution-isolation.md](hosted-execution-isolation.md) — Hosted execution and plugin isolation
 - [identity.md](identity.md) — Design: Identity (pluggable sources, local-first invariant)
@@ -60,6 +62,7 @@ category.
 - [live-work-session.md](live-work-session.md) — Live-work session contract
 - [local-bootstrap-token.md](local-bootstrap-token.md) — Local-bootstrap token (archive#1991)
 - [local-model-tool-calling.md](local-model-tool-calling.md) — Local-model (Ollama) tool calling — how to do it best
+- [mcp-subregistry-curation.md](mcp-subregistry-curation.md) — MCP subregistries, Station curation and untrusted content
 - [mcp-ui-host.md](mcp-ui-host.md) — MCP Apps in Station
 - [mobile-credential-authority.md](mobile-credential-authority.md) — Mobile credential authority boundary
 - [modality-ladder.md](modality-ladder.md) — The modality ladder
@@ -71,6 +74,8 @@ category.
 - [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [outside-agent-mcp-r2b-evidence.md](outside-agent-mcp-r2b-evidence.md) — Outside-client passkey consent: R2b evidence
+- [outside-agent-mcp-r3-evidence.md](outside-agent-mcp-r3-evidence.md) — R3 outside-agent OAuth evidence
+- [outside-agent-mcp-r4a-evidence.md](outside-agent-mcp-r4a-evidence.md) — Outside-agent MCP R4a evidence
 - [outside-agent-mcp.md](outside-agent-mcp.md) — Outside-agent MCP with OAuth sign-in
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
@@ -100,6 +105,7 @@ category.
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
+- [station-routes.md](station-routes.md) — Station routes: one saved Station, many ways to reach it
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [strands-migration.md](strands-migration.md) — Strands Agents SDK Migration
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
@@ -107,5 +113,8 @@ category.
 - [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [terminal.md](terminal.md) — Integrated terminal
 - [tracker-backed-tasks.md](tracker-backed-tasks.md) — Tracker-backed Tasks
+- [troubleshoot-in-app.md](troubleshoot-in-app.md) — Design: troubleshoot with an agent
+- [verified-action-replay.md](verified-action-replay.md) — Verified replay of Agent browser actions
+- [walkthroughs.md](walkthroughs.md) — Walkthroughs
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

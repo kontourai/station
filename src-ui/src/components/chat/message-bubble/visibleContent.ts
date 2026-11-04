@@ -167,7 +167,9 @@ export function endedTurnStopDetail(
  * cut off (`[SYSTEM_EVENT] [TURN_INTERRUPTED] …`) when the row just above it
  * already says so: an empty row reads "Stopped / Station restarted mid-turn",
  * or a legacy row contains the notice text. Partial answers retain their
- * separate notice without appending recovery text to the answer.
+ * separate notice without appending recovery text to the answer. A dropped
+ * notice's interrupted-turn boundary moves to the row that now says it, so
+ * that row can offer Continue.
  */
 export function withoutRepeatedRestartNotice<
   M extends Pick<
@@ -178,25 +180,35 @@ export function withoutRepeatedRestartNotice<
     | 'turnEnded'
     | 'turnEndedReason'
     | 'turnStoppedBy'
+    | 'interruptedTurnBoundaryId'
   >,
 >(messages: readonly M[]): M[] {
-  return messages.filter((message, index) => {
+  const kept: M[] = [];
+  messages.forEach((message, index) => {
     const notice =
       message.role === 'user'
         ? /^\[SYSTEM_EVENT\]\s*\[TURN_INTERRUPTED\]\s*([\s\S]*)$/.exec(
             message.content ?? '',
           )?.[1]
         : undefined;
-    if (notice === undefined) return true;
     const previous = messages[index - 1];
-    if (previous?.role !== 'assistant') return true;
-    const saysRestart =
-      endedTurnStopDetail(previous)?.text === 'Station restarted mid-turn';
-    const saysNotice = Boolean(
-      notice.trim() && previous.content?.includes(notice.trim()),
-    );
-    return !(saysRestart || saysNotice);
+    const repeated =
+      notice !== undefined &&
+      previous?.role === 'assistant' &&
+      (endedTurnStopDetail(previous)?.text === 'Station restarted mid-turn' ||
+        Boolean(notice.trim() && previous.content?.includes(notice.trim())));
+    if (!repeated) {
+      kept.push(message);
+      return;
+    }
+    // An assistant row is never dropped, so it is the last one kept.
+    if (message.interruptedTurnBoundaryId)
+      kept[kept.length - 1] = {
+        ...previous,
+        interruptedTurnBoundaryId: message.interruptedTurnBoundaryId,
+      };
   });
+  return kept;
 }
 
 /**

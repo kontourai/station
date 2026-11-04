@@ -1,0 +1,7 @@
+{
+  "revision": "6710c2c1237c566900d4b462b206b7c0abc99434",
+
+  "notes": [
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked against the event-content-spill change (large runtime event values stored out of line, delta split and byte-based coalescer cap, approval viewedContentDigest gate, per-event residual refusal, removal of the Codex 48 KiB approval refusal, new runtime-event-content contracts/SDK subpaths): searched this document for claims about event ingress size limits, spilled content, delta caps, approval allow conditions, refusals and the listed subpaths. It states none that the changed inputs contradict. No update needed.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

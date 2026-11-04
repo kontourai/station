@@ -496,8 +496,16 @@ export function resolveDocumentationFreshness({
   const appendOnlyProblems = [];
   const layoutV3 = current.ledger?.layoutVersion === 3;
   if (layoutV3) {
+    // Resolve a mutable base at the point it would be read; never cache the
+    // result across resolver calls. Equal commits already share `previous`.
+    const baseCommit =
+      base === selection.mergeBase
+        ? base
+        : git(root, ['rev-parse', '--verify', `${base}^{commit}`]).trim();
     const baseState =
-      base === selection.mergeBase ? previous : readReviewStateAt(root, base);
+      baseCommit === selection.mergeBase
+        ? previous
+        : readReviewStateAt(root, base);
     appendOnlyProblems.push(
       ...appendOnlyNoteProblems(root, selection.mergeBase, {
         from: previous.ledger?.coverageBaseline,

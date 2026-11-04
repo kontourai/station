@@ -17,6 +17,7 @@ const RETIRED_MCP_DISCONNECT_TIMEOUT_MS = 2_000;
 export async function shutdownRuntimeServices({
   logger,
   timers,
+  stopHealthChecks,
   schedulerService,
   orchestrationService,
   attachedSessionFollowService,
@@ -34,8 +35,7 @@ export async function shutdownRuntimeServices({
   voiceService,
   mcpUiFrameServer,
   consentListener,
-  terminalWsServer,
-  terminalService,
+  terminalSessions,
   monitoringEmitter,
   sshEnvironmentService,
   configLoader,
@@ -44,8 +44,12 @@ export async function shutdownRuntimeServices({
 }: {
   logger: any;
   timers: NodeJS.Timeout[];
+  stopHealthChecks?: () => Promise<void>;
   schedulerService?: { stop(): Promise<void> };
-  orchestrationService?: { shutdown(): Promise<void> };
+  orchestrationService?: {
+    stopCascadeDelivery?(): void;
+    shutdown(): Promise<void>;
+  };
   attachedSessionFollowService?: { stop(): void };
   consoleBridgeService?: { stop(): Promise<void> };
   voltAgent?: { shutdown(): Promise<void> };
@@ -61,8 +65,7 @@ export async function shutdownRuntimeServices({
   voiceService: { stop(): Promise<void> };
   mcpUiFrameServer?: { close(): Promise<void> };
   consentListener?: { close(): Promise<void> };
-  terminalWsServer: { stop(): void | Promise<void> };
-  terminalService: { dispose(): Promise<void> };
+  terminalSessions?: { dispose(): Promise<void> };
   monitoringEmitter?: { flush(): Promise<void> };
   sshEnvironmentService?: { shutdown(): Promise<void> };
   /**
@@ -94,6 +97,7 @@ export async function shutdownRuntimeServices({
   logger.info('Shutting down Station Runtime...');
   // Fence admissions synchronously, before any unrelated shutdown awaits.
   const localMcpCleanup = mcpCustody?.shutdown();
+  orchestrationService?.stopCascadeDelivery?.();
 
   const failures: Error[] = [];
   const attempt = async (
@@ -117,6 +121,7 @@ export async function shutdownRuntimeServices({
 
   for (const timer of timers) clearTimeout(timer);
   timers.length = 0;
+  await attempt('runtimeHealthChecks.stop', stopHealthChecks);
 
   // Engine device-code logins are child processes waiting on a person. Their
   // own deadlines bound them, but a restart must not leave them running until
@@ -224,8 +229,7 @@ export async function shutdownRuntimeServices({
     'consentListener.close',
     consentListener ? () => consentListener.close() : undefined,
   );
-  await attempt('terminalWsServer.stop', () => terminalWsServer.stop());
-  await attempt('terminalService.dispose', () => terminalService.dispose());
+  await attempt('terminalSessions.dispose', () => terminalSessions?.dispose());
   await attempt('sshEnvironmentService.shutdown', () =>
     sshEnvironmentService?.shutdown(),
   );

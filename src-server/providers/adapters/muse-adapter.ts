@@ -34,6 +34,12 @@ import {
   terminateProcessTree,
 } from '../../services/infra/process-utils.js';
 import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+  sessionTempRoot,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
+import {
   adapterSessionStartDuration,
   adapterTurnDuration,
   providerOps,
@@ -118,7 +124,11 @@ export interface MuseAdapterOptions {
    * suite has to import `node:child_process` (the Vitest resource manifest
    * gate would then demand an explicit process-heavy classification).
    */
-  processFactory?: (args: string[], cwd?: string) => MuseSpawnResult;
+  processFactory?: (
+    args: string[],
+    cwd?: string,
+    tmpDir?: string,
+  ) => MuseSpawnResult;
   now?: () => Date;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
@@ -189,6 +199,8 @@ export interface MuseServeAdapterOptions {
   spawnHost?: (
     posture: MuseServeHostPosture,
     cwd?: string,
+    /** chat-host-images: the session's temp folder, the host's TMPDIR. */
+    tmpDir?: string,
   ) => MuseServeSpawnResult;
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
@@ -652,7 +664,12 @@ type MuseTurnSettleOutcome =
       outputText?: string;
     };
 
-function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
+function createMuseProcess(
+  args: string[],
+  cwd?: string,
+  /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
+  tmpDir?: string,
+): MuseSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
@@ -664,7 +681,7 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
     // off the service PATH can find its interpreter (see spawnCodexProcess).
     env: childProcessEnvironment({
       PATH: resolveAugmentedPathSync(),
-      TMPDIR: ensureEngineSpawnTmpDir(),
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -689,6 +706,7 @@ function createMuseServeHost(
   posture: MuseServeHostPosture,
   cwd?: string,
   dataHome?: string,
+  tmpDir?: string,
 ): MuseServeSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   if (dataHome) mkdirSync(dataHome, { recursive: true });
@@ -699,7 +717,7 @@ function createMuseServeHost(
       cwd,
       env: childProcessEnvironment({
         PATH: resolveAugmentedPathSync(),
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
         ...museServeEnvOverrides(dataHome),
       }),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -845,6 +863,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly processFactory: (
     args: string[],
     cwd?: string,
+    tmpDir?: string,
   ) => MuseSpawnResult;
   private readonly now: () => Date;
   private readonly newSessionId: () => string;
@@ -1087,6 +1106,9 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    // chat-host-images: prepared once, here; the serve host and every exec
+    // turn get this one folder, and none is created later in the session.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
     // #2452: a `muse serve` host first, when this runtime enables it. Any
     // failure to use it (no such subcommand, a failed handshake, a schema
     // this Station has not verified, a refused session start) falls back to
@@ -1097,7 +1119,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       | undefined;
     let serveUnavailable: string | undefined;
     if (this.options.serve && this.providerOverride !== 'echo') {
-      const candidate = this.createServeSession(input.threadId, input.cwd);
+      const candidate = this.createServeSession(
+        input.threadId,
+        input.cwd,
+        sessionTmpDir,
+      );
       try {
         serveStarted = await candidate.start({
           ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -1144,8 +1170,22 @@ export class MuseAdapter implements ProviderAdapterShape {
       modelId: input.modelId,
       stopped: false,
       ...(serve ? { serve } : {}),
+      ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
     };
     this.sessions.set(input.threadId, record);
+    // chat-host-images: the folder prepared at the start is recorded now that
+    // this record is the thread's session. An exec session spawns per turn,
+    // after the first turn's instruction is composed, so recording it here is
+    // what lets that instruction name it.
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
+    // The folder may have gone while the serve host started (an earlier
+    // session's queued removal); exec turns then get no session folder rather
+    // than a TMPDIR that does not exist.
+    if (sessionTmpDir && sessionTempRoot(input.threadId) !== sessionTmpDir)
+      delete record.tmpDir;
     const transportMetadata = serveStarted
       ? {
           museTransport: 'serve',
@@ -1256,18 +1296,19 @@ export class MuseAdapter implements ProviderAdapterShape {
   private createServeSession(
     threadId: string,
     cwd: string | undefined,
+    tmpDir: string | undefined,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
-      ((posture: MuseServeHostPosture, hostCwd?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome));
+      ((posture: MuseServeHostPosture, hostCwd?: string, hostTmpDir?: string) =>
+        createMuseServeHost(posture, hostCwd, serve.dataHome, hostTmpDir));
     return new MuseServeSession({
       threadId,
       now: this.now,
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
-      spawnHost: (posture) => spawnHost(posture, cwd),
+      spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(
@@ -1413,7 +1454,7 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(args, record.cwd);
+      spawned = this.processFactory(args, record.cwd, record.tmpDir);
     } catch (error) {
       cleanupImages();
       throw error;
@@ -1425,6 +1466,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     });
     const turn: MuseActiveTurn = {
       turnId,
+      ...(input.invocationId ? { invocationId: input.invocationId } : {}),
       process: spawned.process,
       release: () => {
         try {
@@ -1527,6 +1569,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       createdAt: this.now().toISOString(),
       method: 'turn.started',
       turnId,
+      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
       prompt: input.displayInput ?? input.input,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
       ...(Object.keys(turnStartedMetadata).length > 0
@@ -1556,6 +1599,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       ({ turnId } = await serve.sendTurn({
         prompt: input.input,
         displayPrompt: input.displayInput ?? input.input,
+        ...(input.invocationId ? { invocationId: input.invocationId } : {}),
         images: decoded.map((image) => ({
           mediaType: image.attachment.mimeType,
           base64: image.base64,
@@ -1683,12 +1727,21 @@ export class MuseAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     if (!record) return;
     record.stopped = true;
-    // Serve: the host ends with the session (its pending approvals resolve
-    // cancelled, running turns abort, running children settle unresolved).
-    // Teardown completes even when the host's termination is unconfirmed —
-    // the record is deleted and `session.exited` published below — and only
-    // then is the unconfirmed termination reported as a warning.
     const serveStop = await record.serve?.stop();
+    if (serveStop && !serveStop.terminationConfirmed) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_SERVE_STOP_UNCONFIRMED_CODE,
+        message:
+          'Muse host shutdown is unconfirmed. Station has kept this session and its process record; its stop is still pending.',
+      });
+      throw new Error('Muse session stop could not confirm host termination.');
+    }
     const turn = record.activeTurn;
     if (turn) {
       turn.interrupted = true;
@@ -1724,19 +1777,6 @@ export class MuseAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason: 'stopped',
     });
-    if (serveStop && !serveStop.terminationConfirmed) {
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: nowIso,
-        method: 'runtime.warning',
-        severity: 'warning',
-        code: MUSE_SERVE_STOP_UNCONFIRMED_CODE,
-        message:
-          "Station could not confirm that this session's Muse host process stopped. It is still tracked and is stopped the next time Station starts, if it is still running.",
-      });
-    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {
@@ -1764,6 +1804,9 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 
@@ -2394,6 +2437,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           createdAt: nowIso,
           method: 'turn.aborted',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           reason: outcome.abortReason,
         });
         break;
@@ -2407,6 +2451,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           ...providerFailureForCode(outcome.error.code),
           severity: 'error',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           // The bounded output-text detail and stderr tail ride the error
           // rather than a warning of their own: for a turn that died on an
           // expired key or an unknown model, this message is the ONLY
@@ -2424,6 +2469,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           createdAt: nowIso,
           method: 'turn.completed',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           finishReason: outcome.finishReason,
           ...(outcome.outputText === undefined
             ? {}

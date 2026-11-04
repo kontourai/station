@@ -5,8 +5,13 @@
  * a caller that passes reaches Station's browser-agent route carrying only
  * its credential, never an identity in the body.
  */
+
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { JSONRPCMessageSchema } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createStationBrowserMcpServer } from '../station-browser-mcp-server.js';
 import { registerBrowserTools } from '../station-control-browser-tools.js';
 import { StationControlToolRegistry } from '../station-control-mcp-server.js';
 import {
@@ -155,40 +160,149 @@ describe('station-control browser tools', () => {
     });
   });
 
-  test('a snapshot screenshot comes back as image content', async () => {
+  test('recording forwards only its selector and bounds for a bound caller', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, walkthroughId: 'clip' })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    expect(
+      parse(
+        await run(good, 'browser_record_to_task', {
+          browserSessionId: 'bs_x',
+          durationMs: 500,
+          maxBytes: 1024,
+          label: 'Clip',
+        }),
+      ),
+    ).toEqual({ ok: true, walkthroughId: 'clip' });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      'http://browser-tools.test/api/browser-agent/record-to-task',
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      browserSessionId: 'bs_x',
+      durationMs: 500,
+      maxBytes: 1024,
+      label: 'Clip',
+    });
+    expect(
+      parse(
+        await run(
+          { ...good, assurance: 'bearer-exposed' },
+          'browser_record_to_task',
+          { durationMs: 500 },
+        ),
+      ),
+    ).toMatchObject({ ok: false, code: 'caller-not-bound' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('MCP cancellation aborts the in-flight recording request', async () => {
+    const server = createStationBrowserMcpServer();
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const bridge: Parameters<typeof server.connect>[0] = {
+      start: () => serverSide.start(),
+      close: () => serverSide.close(),
+      send: (message: unknown) =>
+        serverSide.send(JSONRPCMessageSchema.parse(message)),
+    };
+    serverSide.onmessage = (message, extra) =>
+      bridge.onmessage?.(message, extra);
+    await server.connect(bridge);
+    const client = new Client({ name: 'recording-cancellation', version: '1' });
+    await client.connect(clientSide);
+    let started!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let requestAborted = false;
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              ok: true,
-              snapshot: '- button "Go" [ref=e1]',
-              screenshot: {
-                mimeType: 'image/jpeg',
-                data: 'AAAA',
-                width: 800,
-                height: 600,
-              },
-            }),
-          ),
-      ),
+      vi.fn((_url: string, init: RequestInit) => {
+        started();
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener(
+            'abort',
+            () => {
+              requestAborted = true;
+              reject(init.signal!.reason);
+            },
+            { once: true },
+          );
+        });
+      }),
     );
-    const result = await run(good, 'browser_snapshot', {
-      browserSessionId: 'bs_x',
-      screenshot: true,
-    });
-    expect(result.content[1]).toEqual({
-      type: 'image',
-      data: 'AAAA',
-      mimeType: 'image/jpeg',
-    });
-    expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
-      snapshot: '- button "Go" [ref=e1]',
-      screenshot: { mimeType: 'image/jpeg', width: 800 },
-    });
-    expect(result.content[0]!.text).not.toContain('AAAA');
+    const controller = new AbortController();
+    try {
+      const call = withStationControlCallerContext(
+        { token: 'caller-token', resolve: () => good },
+        () =>
+          client.callTool(
+            { name: 'browser_record_to_task', arguments: { durationMs: 700 } },
+            undefined,
+            { signal: controller.signal },
+          ),
+      );
+      await requested;
+      controller.abort();
+      await expect(call).rejects.toThrow();
+      await vi.waitFor(() => expect(requestAborted).toBe(true));
+    } finally {
+      controller.abort();
+      await client.close();
+      await server.close();
+    }
   });
+
+  test.each(['browser_snapshot', 'browser_capture_to_task'])(
+    '%s returns the screenshot as image content',
+    async (tool) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                ok: true,
+                snapshot: '- button "Go" [ref=e1]',
+                screenshot: {
+                  mimeType: 'image/jpeg',
+                  data: 'AAAA',
+                  width: 800,
+                  height: 600,
+                },
+              }),
+            ),
+        ),
+      );
+      const result = await run(good, tool, {
+        browserSessionId: 'bs_x',
+        ...(tool === 'browser_snapshot'
+          ? { screenshot: true }
+          : { label: 'After fix' }),
+      });
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+      expect(String(url)).toBe(
+        `http://browser-tools.test/api/browser-agent/${tool === 'browser_snapshot' ? 'snapshot' : 'capture-to-task'}`,
+      );
+      expect(JSON.parse(String(init?.body))).toEqual(
+        tool === 'browser_snapshot'
+          ? { browserSessionId: 'bs_x', screenshot: true }
+          : { browserSessionId: 'bs_x', label: 'After fix' },
+      );
+      expect(result.content[1]).toEqual({
+        type: 'image',
+        data: 'AAAA',
+        mimeType: 'image/jpeg',
+      });
+      expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
+        snapshot: '- button "Go" [ref=e1]',
+        screenshot: { mimeType: 'image/jpeg', width: 800 },
+      });
+      expect(result.content[0]!.text).not.toContain('AAAA');
+    },
+  );
 
   test('a Station without the browser route (hosted) says the browser is unavailable', async () => {
     vi.stubGlobal(

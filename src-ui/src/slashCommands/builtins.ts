@@ -5,6 +5,38 @@ import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
 import { registerCommand } from './registry';
 
+registerCommand(
+  'compact',
+  async ({ apiBase, chatState, sessionId, addEphemeralMessage }) => {
+    if (!chatState.conversationId) {
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: 'Start a conversation before compacting its context.',
+      });
+      return;
+    }
+    try {
+      const { compactConversation } = await import(
+        '../hooks/useContextCompaction'
+      );
+      await compactConversation(apiBase, chatState.conversationId);
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content:
+          'Compaction was requested. Its retained operation and transcript boundary show the outcome.',
+      });
+    } catch (error) {
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content:
+          error instanceof Error
+            ? error.message
+            : 'Compaction outcome is unknown. Inspect the retained operation before trying again.',
+      });
+    }
+  },
+);
+
 // MCP command
 registerCommand(
   'mcp',

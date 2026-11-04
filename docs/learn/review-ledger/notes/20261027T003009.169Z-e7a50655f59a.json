@@ -1,0 +1,45 @@
+{
+  "revision": "6dc83cdae89c031ac148486fb098469b0a22ebbe",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"queryDefaults.ts delta: added stationMutationDefaults() (networkMode 'always'); query defaults, including the transport_capacity no-retry rule, are unchanged. AccountPreferencesProvider.tsx delta: its save mutation now states networkMode 'online' explicitly, preserving the existing wait-in-memory-while-offline behavior against the new fail-fast app default.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/AccountPreferencesProvider.tsx","src-ui/src/lib/queryDefaults.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Updated the mutation paragraph: offline writes fail fast on the app clients, account preferences opt into waiting, and reconnect keeps a verified observation while re-reading a failed one (also on the health signal). AuthorityQueryContext.tsx delta: the observation retries on reconnect only when failed, a failed non-refused observation exposes reobserve(), and the authority client gained the mutation defaults; isolation, verification and quarantine rules are unchanged.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Collapsed cards still show elapsed time; only its tick source changed. AgentsWorkspacePane.tsx delta: Running rows read useElapsedClock instead of a private 1 s interval. SubagentTranscriptCard.tsx delta: its running clock reads useElapsedClock instead of a private ticker. BackgroundTasksSheet.tsx delta: Running rows read useElapsedClock instead of a private 1 s interval.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/workspace-panes/AgentsWorkspacePane.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Re-read the preferences paragraph: 'Offline mutations wait in memory and say they are not saved yet' still holds because the preferences mutation explicitly keeps networkMode 'online'. AccountPreferencesProvider.tsx delta: its save mutation now states networkMode 'online' explicitly, preserving the existing wait-in-memory-while-offline behavior against the new fail-fast app default.","inputs":["docs/design/settings-architecture.md","src-ui/src/contexts/AccountPreferencesProvider.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"ProjectTaskRoomConversation.tsx delta: its running-thread clock now reads useElapsedClock (paused while hidden) instead of a private 1 s interval; rendered times and room behavior are unchanged.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"AccountPreferencesProvider.tsx delta: its save mutation now states networkMode 'online' explicitly, preserving the existing wait-in-memory-while-offline behavior against the new fail-fast app default.","inputs":["docs/guides/connections.md","src-ui/src/contexts/AccountPreferencesProvider.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"queryDefaults.ts delta: added stationMutationDefaults() (networkMode 'always'); query defaults, including the transport_capacity no-retry rule, are unchanged. main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/lib/queryDefaults.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"ProjectTaskRoomConversation.tsx delta: its running-thread clock now reads useElapsedClock (paused while hidden) instead of a private 1 s interval; rendered times and room behavior are unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"ProjectTaskRoomConversation.tsx delta: its running-thread clock now reads useElapsedClock (paused while hidden) instead of a private 1 s interval; rendered times and room behavior are unchanged.","inputs":["docs/learn/walkthroughs.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"ProjectTaskRoomConversation.tsx delta: its running-thread clock now reads useElapsedClock (paused while hidden) instead of a private 1 s interval; rendered times and room behavior are unchanged.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"AuthorityQueryContext.tsx delta: the observation retries on reconnect only when failed, a failed non-refused observation exposes reobserve(), and the authority client gained the mutation defaults; isolation, verification and quarantine rules are unchanged. main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ProjectTaskRoomConversation.tsx delta: its running-thread clock now reads useElapsedClock (paused while hidden) instead of a private 1 s interval; rendered times and room behavior are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"main.tsx delta: only the bootstrap QueryClient's defaults gained stationMutationDefaults(); provider order, boot, theming and share-page mounting are unchanged, so this document's main.tsx claims remain accurate.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/work-board.md","note":"queryDefaults.ts delta: added stationMutationDefaults() (networkMode 'always'); query defaults, including the transport_capacity no-retry rule, are unchanged.","inputs":["docs/user/work-board.md","src-ui/src/lib/queryDefaults.ts"]}
+  ]
+}

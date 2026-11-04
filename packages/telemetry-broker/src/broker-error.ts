@@ -1,6 +1,8 @@
 export class BrokerError extends Error {
   constructor(
     readonly code:
+      | 'publication_suppressed'
+      | 'private_restore_unsupported'
       | 'source_unauthorized'
       | 'credentials_stale'
       | 'invalid_cursor'

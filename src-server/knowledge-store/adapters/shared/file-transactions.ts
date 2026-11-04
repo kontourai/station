@@ -18,6 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import { knowledgeStoreTransactionOps } from '../../../telemetry/metrics.js';
@@ -799,12 +800,7 @@ export class KnowledgeFileTransactions {
   }
 
   private syncDirectory(directory: string): void {
-    const descriptor = openSync(directory, constants.O_RDONLY);
-    try {
-      fsyncSync(descriptor);
-    } finally {
-      closeSync(descriptor);
-    }
+    fsyncDirectorySync(directory);
   }
 
   private assertNoSymlink(path: string): void {

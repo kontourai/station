@@ -320,6 +320,7 @@ describe('extension transcript markers (station#3415)', () => {
       ['codex-rollout', 'context-compacted', 'context-compacted'],
       ['grok-session', 'context-compacted', 'context-compacted'],
       ['grok-session', 'conversation-rewound', 'conversation-rewound'],
+      ['station-workload', 'command-oom-killed', 'workload-command-oom-killed'],
     ]);
     expect(
       extensionTranscriptMarker('codex-rollout', 'Context-Compacted'),

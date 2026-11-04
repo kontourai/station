@@ -3,13 +3,82 @@
 `@kontourai/agent-runtime` retains model requests and completed native streams
 for an authorized generation. The existing VoltAgent or Strands loop continues
 to choose model calls. This private workspace package is experimental Tier 1;
-it is not a released package or Station restart integration.
+it is not a released package. Station adopts its agent-turn protocol behind
+the **Crash-durable Station Agent** Feature Preview (off by default).
 
 The root entry exports the twelve model commands, coordinator, staged memory
 adapter, fixed policy and ordered outbox drain. `/sqlite` uses a host-supplied
 Node 24 `DatabaseSync`. `/ai-sdk`, `/voltagent` and `/strands` bind the pinned
 AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
+
+The public root also exports an agent-turn journal and recovery owner. Its
+separate `agent_steps_` namespace declares writer format `agent-steps/10` and
+leaves existing `runtime-model/1` records intact. An active conversation has
+one owner. Recovery requires a proven-dead owner and compares the complete
+observed fence inside the SQLite write transaction. A retained Station turn
+boundary grants no execution authority. Station boot calls this owner before
+ordinary interrupted-turn settlement. Station registers the actual VoltAgent and Strands stream entry points, tools,
+approval waits and provider transports. Disconnect transfers stream and native
+turn cleanup to the owner; explicit Stop records cancellation. Recovery waits
+for the original agent definition and Session, reauthorizes current access,
+then re-enters the framework with its retained history. Changed or unavailable
+configuration holds recovery. Only text turns are admitted by this preview.
+Writer 5 adds cancellation requests, terminal timestamps and retained transport
+frames. Writer 6 pins canonical Conversation affinity separately from the
+execution Session coordinate. It validates exact schemas from writers 1–5, preserves existing record
+bytes and adds new tables atomically. Legacy settled rows receive a migration
+observation timestamp rather than a reconstructed historical completion time.
+The prior writer refuses the new metadata; future writers refuse here too. Writer 7 moves effect inputs, partials and results into immutable content-addressed bodies; effect rows retain control headers and body references. Migration from writer 6 preserves each logical payload byte while changing its physical representation. Earlier turn records remain unchanged.
+
+Station retains one private SQLite connection per runtime owner. The connection tracks SQLite `data_version`, `total_changes()`, main/TEMP schema versions and a per-turn change cursor. Writer 8 adds an immutable SQL change journal populated by effect and approval triggers; its migration from writer 7 leaves existing payloads and headers unchanged. A peer or out-of-band local write validates only changed records and their approval links. Cursor acknowledgements remain inside the SQLite snapshot and are separate for each turn. Deleted recorded effects refuse; observing another turn cannot acknowledge unchecked changes. A schema change discards derived payload validation; opening and recovery retain full unresolved validation. Participant callbacks discard validation before checking their affected state. Healthy commands read indexed unfinished headers and only new/selected payloads. Cached validation never grants a dispatch, bypasses an ownership fence or changes FULL/WAL policy. The owner answers its own liveness locally; foreign owners still require the exact-process probe. Commands yield to the server between bounded slices.
+
+Stream prefixes commit in batches bounded by 16 ms, 64 KiB or 128 parts. A batch becomes visible only after its commit. EOF and tool-enabling suffixes flush the pending prefix; the suffix remains held until the complete model tape commits. A crash can lose an uncommitted batch, but cannot obtain another dispatch grant.
+
+`durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
+replacing the framework loop. Its completed tapes replay; its committed partials
+remain aborted audit data after takeover and never become model context. A
+possibly dispatched call becomes indeterminate. A pinned, never-dispatched call
+can still run with identical input. Tool-enabling stream parts remain held
+until the complete model tape commits.
+
+`lease.tool({ id, input, replay }, execute)` commits intent and a one-use grant
+before entering a tool. Recovery replays completed results, retries an interrupted
+`safe` call once under the new owner, and returns an interrupted/indeterminate
+result for an interrupted `unsafe` call. Concurrent identical calls join the
+same local execution. Changed input or a stale owner refuses. Unknown tools
+must default to `unsafe` in the host; replay safety is a trusted declaration.
+
+`lease.approval(tool, timeoutMs, wait)` persists a pending request before asking
+the host. Its identity and absolute deadline survive takeover. The host receives
+that identity and the remaining time when it reinstalls the wait; it must never
+substitute an automatic approval. New identities bind the complete durable turn
+key and tool ID, because native tool-call IDs are not global. Existing approval
+IDs are recovered by their tool binding without rewriting the record.
+`createAgentRuntime`'s optional `approvalSettled(spec, approval)` callback runs
+after the recorded decision commits (or when replaying a committed decision).
+It receives detached data and does not grant tool entry. A decision compares the current owner fence
+and approval revision, commits once, and cannot grant permission after the
+deadline. Pending, denied and expired approvals block the tool execution grant.
+Duplicate local waits join one request. A failed decision commit leaves the
+request pending, and a dead owner's late answer cannot resolve its successor's
+request. Station defaults new durable approval waits to ten minutes. Set `STATION_DURABLE_APPROVAL_TIMEOUT_MS` to an integer from 1000 through 86400000 to change new waits. Restart retains the recorded deadline, including when the setting changes; it neither renews nor grants an approval. Ordinary non-durable callers retain their existing timeout.
+ Writer 3 adds this table through an explicit atomic migration from
+writers 1 and 2 without rewriting their turn or effect records.
+
+Writer 4 adds immutable provider-session identities, one per scope and
+conversation. Later turns and takeover retain the identity; forks and children
+use new conversation identities and receive fresh ones. The model wrapper's
+`affinity` callback maps this opaque identity to the provider's supported options
+before pinning the request. It is not an idempotency key and never authorizes
+redispatch. Cache-hit behavior still requires provider evidence.
+
+New admission and opening also select suspect active headers. A damaged active
+header cannot hide a live run from conversation occupancy. Liveness callbacks
+must not mutate the transaction, and participant callbacks cannot change another
+run's unresolved membership. `auditSqliteAgentJournal` is a separate, read-only
+whole-store diagnostic: it checks all turn/effect/approval records and references,
+including settled history, without initializing or migrating a database.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
@@ -24,16 +93,20 @@ implicitly call it.
 
 The first `begin.execute` COMMIT acknowledgment permits one provider dispatch.
 An acknowledgment retry returns a receipt, never another dispatch grant.
-Recovery can resend and incur model billing again. Every visible prefix part
+After a committed dispatch grant, a lost outcome is indeterminate: recovery
+does not grant another dispatch without provider idempotency or result lookup,
+which this experimental runtime does not yet implement. A request pinned
+without a dispatch grant can still be dispatched after takeover. Every visible prefix part
 commits before projection. The ordered suffix beginning with a tool-enabling
 part or successful terminal remains held through EOF, strict tape validation,
 durable body put and complete COMMIT acknowledgment. Empty-prefix completion
 uses `lastPartialSequence: -1`; otherwise it is the last committed sequence.
 
-Actual tools refuse before their registered body and block the run, even when
+The legacy model-only consumers refuse tools before their registered body and block the run, even when
 the framework catches the refusal. Client-tool responses exercise the model
 commit barrier; they do not establish durable tools, results or approvals.
-There are no tool/approval commands, tool replay declarations or new agent loop.
+They do not supply the agent-turn tool protocol described above. No new agent
+loop is introduced; Station approval delivery remains an integration obligation.
 
 SQLite bodies are immutable, content-addressed BLOBs in the existing host
 connection's `agent_runtime_` namespace. Opening requires WAL, FULL synchronous
@@ -49,6 +122,82 @@ An optional generic participant `maintenance` stage joins actual compaction
 writes when the triggering command returns expired; normal `commit` still
 excludes refusals. Both run before COMMIT and roll back on failure. Closing
 a wrapper does not close the host connection.
+
+SQLite command validation is scoped to the requested run: current run/retired
+records, canonically routed receipts and outbox rows, their relationships, and
+referenced bodies. Every body read still checks the complete reference, byte
+length, digest and codec. New-run admission also checks global active-run
+capacity and same-scope conversation occupancy. Opening model storage selects
+open/running runs and suspect state/settlement headers through its index, then
+validates each selected run against the supported maximum of 128. A reduced
+`maxOpenRuns` applies to new admission; existing work remains recoverable and
+drainable above that session cap. Takeover validates the requested run before
+returning recovery authority. A record excluded by the open-time selector is
+checked when its run is read or through the explicit whole-store audit. Damage
+in unrelated settled records does not block an ordinary command on this run
+through an already-open storage handle. Reopening still refuses invalid JSON
+or suspect state/settlement headers in the unresolved selection. A shared body
+still refuses wherever a checked reference reads its damaged bytes.
+
+The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
+record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
+namespace checks include this index and refuse TEMP shadows and unexpected
+objects attached to runtime tables. Participants retain the real host connection.
+Every write compares the physical unresolved-index IDs across callbacks,
+allowing only the current run's unresolved-membership transition. This control
+query selects IDs without decoding unrelated JSON payloads; physical table-page
+I/O has not been verified through SQLite planner or I/O observations. Existing
+runs on an already-open handle can finish and drain when unrelated settled
+records acquire suspect headers; callback changes
+to that current membership still roll back. The complete ID walk is not truncated
+or refused merely because suspect membership exceeds 128, so its size can grow
+with corruption. New-run admission and storage opening retain strict suspect-header
+validation and the absolute supported bound. New admission still parses and
+schema/header-validates every selected active record, so its cost depends on
+the total active-record payload. Settled-history and single-run workloads do
+not qualify that active-set admission cost. Admission derives conversation
+occupancy from validated canonical IDs. Participant admission
+cannot replace the selected run's captured row bytes; commit cannot change its
+expected logical records. Such changes roll back. Current host admission is a
+detached observation at its existing point; native release still performs its
+own final current-authority checks. This is not continuous authorization across
+callbacks.
+
+`auditAgentRuntimeStore({ database, policy })`, exported by `/sqlite`, is an
+explicit quiescent diagnostic for an already prepared M1 store. Its exact
+`agent_runtime_unresolved` index must already exist; an ordinary M1 wrapper open
+prepares the index, while the audit never creates it. The diagnostic connection
+must be idle, outside an existing transaction, with WAL, `synchronous=FULL` and
+foreign keys enabled. The host owns opening/configuring that connection and
+quiescing its callbacks; the audit changes none of these settings.
+
+The audit uses a read-only transaction and `integrity_check`, compares indexed
+unresolved membership with a raw table scan and decoded headers, and checks the
+whole journal, applied projections and every BLOB, including orphans. It rejects
+duplicate control-header keys, nontext states, inconsistent state/settlement
+pairs and noninteger numeric settlement encodings when read. SQL/JavaScript
+header disagreement and stale index membership are reported offline. Physical receipt and outbox identity issues are enumerated independently
+where possible. Per-run and retired-key checks retain the shared receipt, outbox
+ordering and body-link validators without a redundant whole-state pass.
+
+Detected damage always yields `status: 'damaged'`, including native SQLite
+`CORRUPT` and `NOTADB` errors identified by the primary byte of Node's numeric
+`errcode`. Those engine errors report `DURABLE_SQLITE_DAMAGED`; an aborted scan
+still has incomplete enumeration. Enumeration completeness is
+independent: an undecodable record, aborted relationship pass or truncated issue
+list can yield `damaged` with `complete: false`. When SQL or a preparation
+prerequisite is unavailable and no damage has been established, status is
+`incomplete`; an unprepared namespace alone is not a damage verdict. Each issue
+has `disposition: 'damage' | 'unavailable'`, a category, code and optional hashed
+row identity, without stored payloads. The audit creates or repairs nothing.
+Inspect status, completeness and bounded issues together; incomplete enumeration
+is never clean. Receipts moved outside their canonical
+run range are audited as damage; losing a receipt does not remint an existing
+attempt's grant. These checks do not authenticate the file against coherent
+malicious rewrites or consistent rollback, or lock an external effect against
+cross-process changes. Whole-run JSON work and workload performance remain
+unqualified; scoping removes the requirement to validate unrelated settled
+history on each command.
 
 The SQLite projection sink retains raw partial audit and stable abort markers.
 A drain captures the initial committed outbox high-water position and applies
@@ -96,20 +245,107 @@ capability profiles, performance or release. See [CONTEXT.md](CONTEXT.md) for
 owners and [ADR 0005](../../docs/adr/0005-require-a-second-consumer-before-extraction.md)
 for the package boundary.
 
+Retention setup and drain are measured separately. The ordinary case covers
+10 turns ×80 effects; `turn-retention.process.test.ts` covers 60×80 in the
+process-heavy lane. Setup batches the production writer's normal row writes
+into one FULL transaction, then reopens and audits the journal. A small fidelity
+case compares all agent rows with individually committed commands, normalizing
+only generated affinity UUIDs, and verifies fewer native commits. Setup batching
+does not qualify per-command crash durability; separate SIGKILL probes own that
+proof. The drain uses real idle retention with unchanged 50 ms open/settle bounds
+and a separate 30-second total drain bound.
+
 First native dispatch compares the complete supported tool/schema order and
 sampling/configuration template with the retained entry, including known
 framework defaults. Volt tool schemas use the same pinned public Zod/AI SDK
 conversion as the real constructor. Fresh admission, selected implementation,
 writer generation and cancellation are checked after the final body-read await
 at the provider call. Staged memory owns detached commands/results and private
-participant views, then reauthorizes after asynchronous body validation.
+participant views, then reauthorizes after asynchronous body validation. Staged memory
+copies each resolved body before validation or another await, so later reader
+mutation cannot replace previously verified bytes.
 
 Admission always uses private retained entry bytes. The exposed `entryBytes`
 array is a detached presentation copy; mutating it changes no authorization or
-native request. Completed replay rechecks current binding, writer, model and
+native request. Startup and restore check the copied entry bytes against their
+length and digest; startup retains that copy across journal admission. The
+coordinator also verifies and copies request and replay bytes against the
+pinned or recorded body reference's length and digest before decoding them.
+Before dispatch it also binds the verified request bytes to the admitted input.
+Completed replay rechecks current binding, writer, model and
 cancellation after its last body-read await, before releasing a native part.
 Receipt validation correlates canonical generation/operation identity, legal
 command/result variants and owning pin/attempt/tape links. Historical receipts
 remain valid across later ownership/revision changes, while settled full answers
 expire at the replay cutoff even when unacknowledged projections prevent
 compaction. Authorized projection draining remains available after that cutoff.
+
+## Station agent turns
+
+Station consumes the package root and the explicit `/internal` host integration subpath; `scripts/agent-runtime-import-boundary-gate.mjs`
+checks both directions. Scripted native conformance runs at the real Station
+adapters, including tool effect counts, approval recovery and conservative
+model dispatch. These tests establish local SQLite and framework behavior;
+they do not establish live provider idempotency, cache benefit, operating-system
+crash durability or a published runtime release.
+
+The `/internal` subpath groups the unstable host/framework ABI: `agentWire` and `readAgentWire` retain native DTO bytes; `runWithProviderParent` and `nextProviderCallId` correlate nested provider calls; `journalAgentStreamPrefix` applies the commit-before-show batch barrier; `listSqliteAgentTurns` and the `readSqliteAgent*` views bind recovery and Station publication to the journal. These are no longer root exports. The import gate permits this one declared integration entry and rejects filesystem/deep-module imports.
+
+Native tools that cannot expose the durable execution port are refused before model dispatch. Ordinary engine calls retain their prior tool-return values; only restored durable results use the host decoder. Late transport frames wait for an in-flight terminal receipt so they use its committed owner fence.
+
+Writer 9 groups partial wire values into immutable bodies of at most 128 entries. Its migration preserves logical partial/input/result bytes and existing turn records while rewriting effect control headers to physical version 2. Previous body rows remain retained. The old writer refuses the new metadata.
+
+Historically, writer 10 stored only complete 128-entry partial groups as immutable bodies. An in-progress tail of at most 127 wire values is overwritten in its effect header and checked against its digest. The model stream flush limit is **1024 parts**, 64 KiB or 16 ms; writer-12 physical version 5 uses 1024-entry groups and compressed tails of at most 1023 entries, while older groups remain readable. The separate foreground frame transaction limit is **1024 frames**, 64 KiB or 16 ms. These are different limits.
+
+Large request/result bodies share immutable fragments of at most 16,384 UTF-16 code units behind a physical `agent-body/2` descriptor. The reconstructed logical wire keeps its original digest and byte length, including Unicode across fragment boundaries. Migration validates the frozen writer-9 schema and records before creating the chunk table and physical version-3 effect headers. Existing bodies and turn records remain retained; migration does not reclaim historical garbage.
+
+Change tracking keeps the newest receipt for every turn/kind/id. While full turn replay is retained, a receipt can be deleted only when a newer receipt for that same key exists. Terminal-turn expiry removes receipts only after its refusing terminal tombstone is recorded. The covering per-record change index serves selected-turn validation; a redundant turn-only index is removed. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt remains protected until that terminal-turn expiry transition. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
+
+The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control events share ordered batches with text; error and terminal events flush pending output first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
+
+The benchmark counts quiescent home bytes before its read-only table inspection creates diagnostic sidecars; those sidecar bytes are reported separately. The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`projectFrameBatch`, with 0, 5 and 20 ms token pacing. It reports total home bytes divided by emitted text bytes, journal/body/frame bytes, transient WAL peak, elapsed ratio, command and amortized projection costs, and event-loop stall. The fresh-journal workload budget is 128 KiB fixed + 16 KiB per model step + three times emitted text bytes; immutable body storage has a separate 8 KiB per-step + twice-text budget. `--chunks=100,400,1600,3200` includes ordinary long responses; the input accepts up to 16,384 chunks. `--delta-bytes=4` measures small deltas independently from the default 64-byte workload, and `dbstat` reports allocated bytes per table and index alongside logical payload bytes. These allowances include indexed frame/change metadata; they are not a claim that total disk usage is twice text, or that retained raw disk is bounded. TCP and the outer EventStore relay remain outside this benchmark. SDK tracing stays active; fixture traces and garbage are cleared between measurements, never within a measured turn.
+
+Writer 12 appends foreground frames to bounded binary compressed tail blocks across commits while preserving every
+frame's original ID, wire, timestamp, digest and position. A block holds up to 1024 frames (128 KiB of logical wires, except a single larger frame). Its shared prefix/suffix, one text blob and packed lengths avoid per-delta SSE/JSON envelopes. Legacy 128-frame blocks remain readable. Compressed timestamp and position vectors preserve each committed frame while coalescing interleaved groups. Nonterminal controls share ordered batches. An indexed group and
+ordinal locate individual frames without scanning previous blocks. Migration re-encodes legacy bodies under their unchanged logical digests, restores immutable guards inside the same transaction, and packs legacy frame rows, preserving their IDs, wires, positions and timestamps before removing the legacy frame table. The 1,048,576-frame ceiling remains reachable: compression
+reduces storage, not logical frame counts. Two reserved positions carry a typed
+`DURABLE_AGENT_FRAME_CAPACITY` error and the terminal marker. The chat route shows
+the fixed output-limit message and the owner settles the turn blocked.
+
+Body format `agent-body/3` packs adjacent text deltas without changing replay
+boundaries, compresses control data and overwritten tails, and shares content-addressed native text
+fragments with later model prompts. Repeated control subtrees and small history pages
+share immutable content-addressed nodes with binary compressed payloads in a recursive tree, so later prompts retain references to
+earlier history rather than another complete reference list. Node deletion is
+refused while any body or parent node references it. Complete model attempts store a checked prefix
+length and digest into their immutable output instead of retaining a second partial
+tape. Running and indeterminate attempts keep their exact committed partials.
+
+On turn admission or settlement, maintenance follows indexed expiry and zero-reference queues. Reference counts distinguish body, control-node and text-chunk identities, including equal digests across kinds. Only semantic input, output and partial-group references are counted; checksums are not body roots. A connection-scoped write permit protects counter mutations and is revoked before participant callbacks. Indexed delete guards refuse live payloads without rescanning effects or parent bodies. Migration from writer 11 validates its schema and seeds these indices once; writer 10 first retains its byte-preserving conversion.
+
+Every terminal state retains replay for seven days. Retirement records a refusing tombstone before incremental deletion. Retention runs in idle `setImmediate` callbacks, never inside admission or settlement and never while a turn is running. Each callback processes at most one turn, 16 rows per payload table and 32 unreachable payloads, checking a 10 ms work deadline between individual row deletions. SQLite FULL commits remain synchronous and cannot be interrupted by that cooperative deadline; idle maintenance is not a hard wall-clock latency guarantee. Closing cancels pending callbacks; later admission or settlement schedules further cleanup. Effect completion performs a separate garbage-only pass with a 2 ms budget; it evicts only reclaimed cache entries. Model-row compaction uses an explicit transactional delete/insert so reference-retirement triggers run without changing global SQLite recursive-trigger settings. Expired frames are synthesized from the durable retirement timestamp, leaving no stored frame rows per tombstone. Identity, input digest, fence, terminal state and affinity remain indefinitely to prevent redispatch. Running/uncertain nonterminal turns retain their recovery data. Expiry does not acknowledge an uncertain external effect, erase conversation history, or promise an immediate full filesystem shrink.
+
+Malformed compressed frame data becomes a typed `DURABLE_AGENT_FRAME_DAMAGED`; the journal remains fail-closed. Per-turn corruption quarantine is not implemented.
+
+Post-tool steer additions are captured lazily before dispatch. Recovery restores
+the same tool-anchored prompt additions and the deferred steer memory write without claiming the inbox again. Starting
+a whole new stream clears the prior stream's in-memory additions. Observed-event
+publication retries the actual append asynchronously for at most five seconds;
+SQLite's normal busy timeout is restored before synchronous observers run.
+
+New empty agent journals use 2 KiB SQLite pages to bound cold metadata overhead.
+Initialization restores WAL before creating turn tables; existing journal page geometry
+is retained. Control nodes use ordinary rowid tables to avoid index-page overflow.
+
+Private control-node keys store all 32 SHA-256 bytes; public wire digests and
+identities retain their original textual representation. The offline audit
+checks the binary keys against reconstructed node bytes and declared references.
+
+Native frame-group keys also retain their full 32-byte hash in a tagged binary
+encoding. Arbitrary caller IDs use lossless JSON-string encoding. The reader
+rejects noncanonical group encodings before reconstructing frame identities.
+
+Permanent local process probes SIGKILL the owner after 5, 130, 300, 389 and 1300 displayed deltas. They check exact saved text/control prefixes, stable identities and zero provider redispatch. They do not establish power-loss or whole-operating-system crash qualification.
+
+
+Writer-12 text fragments use binary compressed native wires, with content-defined boundaries from 4 to 16 Ki UTF-16 units. The logical wire digest and length remain unchanged. Migration validates each legacy TEXT chunk before rewriting its physical bytes. Frame blocks fill existing tails across transaction boundaries; the public foreground transaction limit remains 64 KiB. Vacuum follows SQLite's constant-time freelist metadata, including pages freed during effect completion.

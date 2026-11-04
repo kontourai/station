@@ -1,0 +1,11 @@
+{
+  "revision": "98b8ccf6a107008af05bc93c2a70ee4215a9ef6c",
+
+  "notes": [
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the browser test delta: the durable revision assertion now requires swsr-v2; no user-flow, authority, convergence, restart or synthetic-Agent fixture behavior changed. The complete collaboration browser file passed 2/2 using the same source bytes later committed at 98b8ccf6a107008af05bc93c2a70ee4215a9ef6c. It remains a local production-build fixture, not deployed/native/external-model qualification.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","tests/project-task-room-collaboration.spec.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Added the captured v1 writer snapshot/receipt as a direct evidence source for the compatibility explanation. The fixture was emitted by the unmodified writer on main base 03728690b3e878404c18fd28e02fe844f27ce383; its original shared revision, receipt identity and attestation binding remain verified by the new reader, including a new v2 child receipt. This adds evidence custody without changing receipt freezing or retention policy.","inputs":["docs/design/shared-working-state.md","src-server/domain/__fixtures__/shared-working-state-v1.json"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Added the captured v1 writer snapshot/receipt as a direct evidence source for the compatibility explanation. The fixture was emitted by the unmodified writer on main base 03728690b3e878404c18fd28e02fe844f27ce383; its original shared revision, receipt identity and attestation binding remain verified by the new reader, including a new v2 child receipt. This adds evidence custody without changing receipt freezing or retention policy.","inputs":["docs/design/revision-bound-evidence.md","src-server/domain/__fixtures__/shared-working-state-v1.json"]}
+  ]
+}

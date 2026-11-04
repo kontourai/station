@@ -3,13 +3,18 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { hasCapability } from './capability.js';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
   getSessionInventoryInput,
   SessionInventoryRequestError,
 } from './client/session-inventory';
+import {
+  fetchPublicStationCapabilities,
+  invalidatePublicStationCapabilities,
+} from './publicStationCapabilities.js';
 import {
   type ApiRequestScope,
   isApiRequestScope,
@@ -252,7 +257,51 @@ export function useSessionInventoryGroupPage(
   );
 }
 
-/** Input bodies are fetched only for the selected item under current authority. */
+/**
+ * Whether the host serves exact authored-input reads (#4129). `null` means its
+ * public handshake could not be read, so support is undetermined.
+ */
+export async function fetchSessionInventoryInputCapability(
+  apiBase: string,
+): Promise<boolean | null> {
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  return handshake
+    ? hasCapability(handshake, 'sessionInventoryInputRead')
+    : null;
+}
+
+/**
+ * - `checking`: the host's handshake has not answered yet; no read is sent.
+ * - `supported`: the host advertises the read.
+ * - `unsupported`: the host answered without it. It predates the read or is
+ *   a deployment that doesn't serve it (hosted, #4177), so every attempt
+ *   would 404 like a denial; none is sent.
+ * - `unknown`: the handshake could not be read. The read is still attempted;
+ *   its own outcome is the only evidence left.
+ */
+export type SessionInventoryInputHostSupport =
+  | 'checking'
+  | 'supported'
+  | 'unsupported'
+  | 'unknown';
+
+/**
+ * The outcome of the latest "check again" on an unsupported host:
+ * - `idle`: not rechecked, or the recheck found the host now serves the read
+ *   (or could not tell, so the read is attempted and reports for itself).
+ * - `checking`: the host is being asked again.
+ * - `still-unsupported`: it answered, and still does not serve the read
+ *   (an older host, or a deployment that never serves it).
+ */
+export type SessionInventoryInputHostRecheck =
+  | 'idle'
+  | 'checking'
+  | 'still-unsupported';
+
+/**
+ * Input bodies are fetched only for the selected item under current
+ * authority, and only from a host that has not said it lacks the read.
+ */
 export function useSessionInventoryInput(
   sessionId: string,
   eventId: string,
@@ -276,7 +325,21 @@ export function useSessionInventoryInput(
       requestScope.authorityKey,
     ],
   );
-  return useProtected(
+  const scoped = isApiRequestScope(requestScope);
+  const capability = useApiQuery(
+    ['session-inventory-input-capability', requestScope.apiBase],
+    () => fetchSessionInventoryInputCapability(requestScope.apiBase),
+    { enabled: scoped, staleTime: 60_000, retry: false },
+  );
+  const hostSupport: SessionInventoryInputHostSupport =
+    capability.data === true
+      ? 'supported'
+      : capability.data === false
+        ? 'unsupported'
+        : capability.data === null || capability.isError
+          ? 'unknown'
+          : 'checking';
+  const query = useProtected(
     key,
     (signal) =>
       getSessionInventoryInput(
@@ -288,8 +351,39 @@ export function useSessionInventoryInput(
       ),
     {
       enabled:
-        isApiRequestScope(requestScope) && !!sessionId && !!eventId && !!turnId,
+        scoped &&
+        (hostSupport === 'supported' || hostSupport === 'unknown') &&
+        !!sessionId &&
+        !!eventId &&
+        !!turnId,
       requestScope,
     },
   );
+  // The handshake is cached for the page's life once it names this flag's
+  // neighbours, so a host updated while the app stays open would keep reading
+  // as unsupported. Rechecking drops this host's cached handshake and asks
+  // again; a supported answer then enables the read. `hostRecheck` reports
+  // the press itself, so a host that still lacks it says so instead of the
+  // screen staying exactly as it was. It is keyed to the host it asked.
+  const { refetch: refetchCapability } = capability;
+  const [recheck, setRecheck] = useState<{
+    apiBase: string;
+    state: Exclude<SessionInventoryInputHostRecheck, 'idle'>;
+  } | null>(null);
+  const recheckHost = useCallback(async () => {
+    const apiBase = requestScope.apiBase;
+    setRecheck({ apiBase, state: 'checking' });
+    invalidatePublicStationCapabilities(apiBase);
+    const answer = await refetchCapability();
+    setRecheck((current) =>
+      current?.apiBase !== apiBase
+        ? current
+        : answer.data === false
+          ? { apiBase, state: 'still-unsupported' }
+          : null,
+    );
+  }, [refetchCapability, requestScope.apiBase]);
+  const hostRecheck: SessionInventoryInputHostRecheck =
+    recheck?.apiBase === requestScope.apiBase ? recheck.state : 'idle';
+  return { ...query, hostSupport, recheckHost, hostRecheck };
 }

@@ -2,6 +2,8 @@ import {
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
   LIVE_SURFACE_TEXT_MAX_LENGTH,
+  type LiveSurfaceAgentAction,
+  type LiveSurfaceCodec,
   type LiveSurfaceControlLease,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceInput,
@@ -18,9 +20,15 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
+import { useDocumentVisible } from '../lib/documentVisibility';
+import {
+  type LiveSurfaceStreamAdmission,
+  liveSurfaceStreamAdmission,
+} from './liveSurfaceStreamAdmission';
 
 /**
  * Viewer side of a live surface (#90): one authenticated, length-prefixed
@@ -36,6 +44,11 @@ import {
  *   and a producer with no viewers stops. Nothing streams to a pane nobody
  *   can see — it would spend the ~6-per-origin connection budget (ADR 0018)
  *   and the relay's bandwidth for nothing.
+ * - Admitted (#2760): a stream opens only with a slot from the per-origin
+ *   frame-stream admission (`liveSurfaceStreamAdmission.ts`), so input and
+ *   lease requests always have a connection. Past the cap the viewer reads
+ *   `queued` until a slot frees; it holds no slot while it waits to
+ *   reconnect.
  * - Reconnects with capped exponential backoff after a drop; a 404/403 is a
  *   typed terminal state, not something to hammer.
  * - Input is coalesced (consecutive moves collapse to the latest) and sent
@@ -56,10 +69,18 @@ import {
  *   walk it back behind a state record that already announced the handoff.
  * - Liveness counts BYTES, not records: a large frame still arriving over a
  *   slow relay is a live stream, not a stalled one.
+ * - Codec (#4418): with `acceptH264` the stream asks for H.264 access units
+ *   (`?codec=h264`). The frames' own `codec` says what arrived
+ *   (`activeCodec`). A refusal of the codec (or of an unknown key by a host
+ *   too old to name it), `declineH264` (the browser refused the profile or
+ *   keeps failing), and a hub downgrade to images all stop this page asking
+ *   for H.264 for that target (`liveSurfaceH264Declines`).
  */
 
 export type LiveSurfaceConnectionStatus =
   | 'connecting'
+  /** Waiting for a frame-stream slot on this origin (#2760). */
+  | 'queued'
   | 'live'
   | 'reconnecting'
   | 'suspended'
@@ -100,6 +121,8 @@ export interface UseLiveSurfaceOptions {
   apiBase: string;
   surfaceId: string;
   params?: Partial<LiveSurfaceStreamParams>;
+  /** While true the stream waits, reading as connecting, for final `params`. */
+  paramsPending?: boolean;
   /** Element whose on-screen visibility gates the stream. */
   visibilityRef: RefObject<Element | null>;
   onFrame: (frame: LiveSurfaceFrame) => void;
@@ -112,6 +135,11 @@ export interface UseLiveSurfaceOptions {
    * authorizer can admit that Project's admins to a device shared with it.
    */
   projectSlug?: string;
+  agentActionsEnabled?: boolean;
+  /** Ask for H.264 access units; the caller can decode them (#4418). */
+  acceptH264?: boolean;
+  /** Test seam; defaults to the page-wide frame-stream admission. */
+  streamAdmission?: LiveSurfaceStreamAdmission;
 }
 
 export interface UseLiveSurfaceResult {
@@ -131,6 +159,11 @@ export interface UseLiveSurfaceResult {
    */
   producerStatus: LiveSurfaceProducerStatus;
   inputNotice: LiveSurfaceInputNotice;
+  agentAction: { action: LiveSurfaceAgentAction; expiresAt: number } | null;
+  /** The codec of the last frame this viewer received, or null before one. */
+  activeCodec: LiveSurfaceCodec | null;
+  /** Stop asking for H.264 for this target and reconnect for images. */
+  declineH264: () => void;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
   /**
@@ -144,28 +177,25 @@ export interface UseLiveSurfaceResult {
    * that needs them (not input; the server caps it from their last input).
    */
   keepControlAlive: () => Promise<void>;
+  /** Reconnect now; a fresh stream also starts H.264 at a keyframe. */
   retry: () => void;
 }
 
 /** How long "the host is busy" stays up without a newer outcome. */
 const HOST_BUSY_NOTICE_MS = 5_000;
 
+/**
+ * Targets (`apiBase`, surface, Project context) this page has stopped asking
+ * for H.264, for the rest of the page's session: the browser refused the
+ * profile, the host refused the codec, or the hub switched a viewer to
+ * images because it could not keep up. Remembering it keeps a reconnect, or
+ * the pane reopening, from asking again and falling behind again.
+ */
+export const liveSurfaceH264Declines = new Set<string>();
+
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
 ] as const;
-
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(
-    () =>
-      typeof document === 'undefined' || document.visibilityState !== 'hidden',
-  );
-  useEffect(() => {
-    const update = () => setVisible(document.visibilityState !== 'hidden');
-    document.addEventListener('visibilitychange', update);
-    return () => document.removeEventListener('visibilitychange', update);
-  }, []);
-  return visible;
-}
 
 function useIntersecting(ref: RefObject<Element | null>): boolean {
   const [intersecting, setIntersecting] = useState(true);
@@ -194,6 +224,8 @@ function streamUrl(
   surfaceId: string,
   params: Partial<LiveSurfaceStreamParams> | undefined,
   projectSlug: string | undefined,
+  agentActionsEnabled: boolean,
+  h264: boolean,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
@@ -201,6 +233,8 @@ function streamUrl(
     if (value !== undefined) query.set(key, String(Math.round(value)));
   }
   if (projectSlug) query.set('projectSlug', projectSlug);
+  if (agentActionsEnabled) query.set('agentActions', '1');
+  if (h264) query.set('codec', 'h264');
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
@@ -251,10 +285,14 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     params,
+    paramsPending = false,
     visibilityRef,
     transport = authenticatedFetch,
     now = Date.now,
     projectSlug,
+    agentActionsEnabled = false,
+    acceptH264 = false,
+    streamAdmission = liveSurfaceStreamAdmission,
   } = options;
   const onFrameRef = useRef(options.onFrame);
   onFrameRef.current = options.onFrame;
@@ -262,6 +300,8 @@ export function useLiveSurface(
   nowRef.current = now;
   const transportRef = useRef(transport);
   transportRef.current = transport;
+  const admissionRef = useRef(streamAdmission);
+  admissionRef.current = streamAdmission;
 
   const documentVisible = useDocumentVisible();
   const intersecting = useIntersecting(visibilityRef);
@@ -280,8 +320,34 @@ export function useLiveSurface(
   const [producerStatus, setProducerStatus] =
     useState<LiveSurfaceProducerStatus>({});
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
+  const [agentAction, setAgentAction] = useState<{
+    action: LiveSurfaceAgentAction;
+    expiresAt: number;
+  } | null>(null);
+  const agentActionSequence = useRef(0);
+  // Reset transient action state when the viewed surface or capability changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: both values define the reset boundary.
+  useEffect(() => {
+    agentActionSequence.current = 0;
+    setAgentAction(null);
+  }, [surfaceId, agentActionsEnabled]);
   const [retryToken, setRetryToken] = useState(0);
+  const [activeCodec, setActiveCodec] = useState<LiveSurfaceCodec | null>(null);
+  /** Bumped when a decline must reconnect at once (it re-runs the stream). */
+  const [declineVersion, setDeclineVersion] = useState(0);
+  const targetKey = `${apiBase}\n${surfaceId}\n${projectSlug ?? ''}`;
+  /**
+   * Record a decline. `reconnect` re-opens the stream now, for images; a
+   * downgrade the hub already applied leaves the running stream alone, and
+   * only the next connection asks for images.
+   */
+  const declineH264For = useCallback((key: string, reconnect = true) => {
+    if (liveSurfaceH264Declines.has(key)) return;
+    liveSurfaceH264Declines.add(key);
+    if (reconnect) setDeclineVersion((version) => version + 1);
+  }, []);
   const epochRef = useRef(0);
+  const targetGenerationRef = useRef(0);
 
   const observeEpoch = useCallback((epoch: number) => {
     epochRef.current = Math.max(epochRef.current, epoch);
@@ -302,14 +368,31 @@ export function useLiveSurface(
       setStatus('suspended');
       return;
     }
+    // The caller is still settling what to ask for (the pane's size): open
+    // once, with the final parameters, rather than twice.
+    if (paramsPending) {
+      setStatus('connecting');
+      return;
+    }
     const abort = new AbortController();
+    const generation = targetGenerationRef.current;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const url = streamUrl(apiBase, surfaceId, params, projectSlug);
+    /** Each connection asks again whether H.264 is still wanted. */
+    const askH264 = () => acceptH264 && !liveSurfaceH264Declines.has(targetKey);
+    const urlFor = (h264: boolean) =>
+      streamUrl(
+        apiBase,
+        surfaceId,
+        params,
+        projectSlug,
+        agentActionsEnabled,
+        h264,
+      );
 
     const scheduleReconnect = () => {
-      if (stopped) return;
+      if (stopped || generation !== targetGenerationRef.current) return;
       setStatus('reconnecting');
       const delay =
         LIVE_SURFACE_RECONNECT_DELAYS_MS[
@@ -322,7 +405,33 @@ export function useLiveSurface(
       }, delay);
     };
 
+    let releaseSlot: (() => void) | null = null;
     const connect = async () => {
+      const h264 = askH264();
+      const url = urlFor(h264);
+      const release = await admissionRef.current.admit(
+        url,
+        abort.signal,
+        () => {
+          if (!stopped) setStatus('queued');
+        },
+      );
+      if (!release) return;
+      if (stopped) {
+        release();
+        return;
+      }
+      setStatus((current) => (current === 'queued' ? 'connecting' : current));
+      releaseSlot = release;
+      try {
+        await stream(url, h264);
+      } finally {
+        release();
+        if (releaseSlot === release) releaseSlot = null;
+      }
+    };
+
+    const stream = async (url: string, h264: boolean) => {
       let response: Response;
       try {
         response = await transportRef.current(url, {
@@ -332,6 +441,27 @@ export function useLiveSurface(
         });
       } catch {
         if (!abort.signal.aborted) scheduleReconnect();
+        return;
+      }
+      if (stopped || generation !== targetGenerationRef.current) return;
+      if (response.status === 400 && h264) {
+        // A refusal of the codec itself declines H.264 for this target: the
+        // host names the refused key (`field: 'codec'`). A host older than
+        // `?codec=` refuses it as an unknown key but names nothing, so an
+        // `invalid-request` naming no key is taken as that host too. A 400
+        // naming any other key is not about the codec: it reconnects as
+        // before. Never retry the refused request as it was.
+        const envelope = (await response.json().catch(() => {
+          void response.body?.cancel().catch(() => {});
+          return null;
+        })) as { code?: unknown; field?: unknown } | null;
+        if (stopped || generation !== targetGenerationRef.current) return;
+        if (
+          envelope?.code === 'invalid-request' &&
+          (envelope.field === 'codec' || envelope.field === undefined)
+        )
+          declineH264For(targetKey);
+        else scheduleReconnect();
         return;
       }
       if (response.status === 404) {
@@ -348,9 +478,11 @@ export function useLiveSurface(
       }
       const reader = response.body.getReader();
       const decoder = new LiveSurfaceRecordDecoder();
+      let receivedH264 = false;
       try {
         while (!stopped) {
           const chunk = await reader.read();
+          if (stopped || generation !== targetGenerationRef.current) break;
           if (chunk.done) break;
           if (chunk.value.byteLength > 0) setLastActivityAt(nowRef.current());
           for (const record of decoder.push(chunk.value)) {
@@ -358,6 +490,22 @@ export function useLiveSurface(
             attempt = 0;
             setStatus('live');
             if (record.kind === 'state') {
+              const actions = record.state.agentActions;
+              const latest = actions?.events.at(-1);
+              if (
+                agentActionsEnabled &&
+                actions &&
+                latest &&
+                latest.seq > agentActionSequence.current
+              ) {
+                agentActionSequence.current = latest.seq;
+                const age = Math.max(0, actions.now - latest.at);
+                if (age < 700)
+                  setAgentAction({
+                    action: latest,
+                    expiresAt: nowRef.current() + 700 - age,
+                  });
+              }
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
               setWedged(record.state.wedged === true);
@@ -399,6 +547,11 @@ export function useLiveSurface(
             } else {
               observeEpoch(record.header.epoch);
               setLastFrameAt(receivedAt);
+              setActiveCodec(record.header.codec);
+              // Images after H.264 on one stream: the hub switched this
+              // viewer down. Remember it, so reconnects ask for images.
+              if (record.header.codec === 'h264') receivedH264 = true;
+              else if (receivedH264) declineH264For(targetKey, false);
               onFrameRef.current({
                 header: record.header,
                 body: record.body,
@@ -421,18 +574,30 @@ export function useLiveSurface(
     return () => {
       stopped = true;
       abort.abort();
+      releaseSlot?.();
       if (timer) clearTimeout(timer);
     };
   }, [
     apiBase,
     surfaceId,
     paramsKey,
+    paramsPending,
     projectSlug,
+    agentActionsEnabled,
     visible,
     retryToken,
+    acceptH264,
+    declineVersion,
+    targetKey,
+    declineH264For,
     adoptLease,
     observeEpoch,
   ]);
+
+  const declineH264 = useCallback(
+    () => declineH264For(targetKey),
+    [declineH264For, targetKey],
+  );
 
   // ---- input -------------------------------------------------------------
   const queueRef = useRef<LiveSurfaceInput[]>([]);
@@ -441,6 +606,22 @@ export function useLiveSurface(
   /** Pressed when control changed hands; the server released them already. */
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
+  useLayoutEffect(() => {
+    targetGenerationRef.current += 1;
+    queueRef.current = [];
+    inFlightRef.current = false;
+    pressedRef.current.clear();
+    orphanedRef.current.clear();
+    epochRef.current = 0;
+    setLease(null);
+    setSelf(null);
+    setActiveCodec(null);
+    return () => {
+      targetGenerationRef.current += 1;
+      queueRef.current = [];
+    };
+  }, [apiBase, surfaceId, projectSlug]);
   const flushScheduledRef = useRef(false);
   const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -488,6 +669,7 @@ export function useLiveSurface(
       return;
     }
     inFlightRef.current = true;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(inputUrlRef.current, {
         method: 'POST',
@@ -497,6 +679,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceInputResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         // Not sent, and not replayed later onto a view that may have moved on.
         queueRef.current = [];
@@ -527,10 +710,12 @@ export function useLiveSurface(
         setInputNotice('input-failed');
       }
     } catch {
+      if (generation !== targetGenerationRef.current) return;
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
-      inFlightRef.current = false;
+      if (generation === targetGenerationRef.current)
+        inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
   }, [adoptLease, showHostBusy]);
@@ -569,6 +754,7 @@ export function useLiveSurface(
   );
 
   const claimControl = useCallback(async () => {
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -581,6 +767,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         showHostBusy();
         return;
@@ -591,7 +778,8 @@ export function useLiveSurface(
       if (!nextLease) return;
       adoptLease(nextLease);
     } catch {
-      setInputNotice('input-failed');
+      if (generation === targetGenerationRef.current)
+        setInputNotice('input-failed');
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
@@ -600,6 +788,7 @@ export function useLiveSurface(
   const releaseControl = useCallback(async () => {
     const current = leaseRef.current;
     if (!current) return;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -612,6 +801,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         showHostBusy();
         return;
@@ -621,13 +811,15 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
     } catch {
-      setInputNotice('input-failed');
+      if (generation === targetGenerationRef.current)
+        setInputNotice('input-failed');
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
   const keepControlAlive = useCallback(async () => {
     const current = leaseRef.current;
     if (!current) return;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -640,6 +832,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       const nextLease = envelope?.data
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
@@ -661,6 +854,9 @@ export function useLiveSurface(
     wedged,
     producerStatus,
     inputNotice,
+    agentAction,
+    activeCodec,
+    declineH264,
     sendInput,
     claimControl,
     releaseControl,

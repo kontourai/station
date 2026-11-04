@@ -27,6 +27,14 @@ let notificationsError: Error | null = null;
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
 
+// Snooze is a Feature Preview; off unless a test turns it on.
+let snoozePreviews: { id: string; enabled: boolean }[] = [];
+const snoozeAttention = vi.fn();
+const unsnoozeAttention = vi.fn();
+const snoozeNotification = vi.fn();
+
+import { chooseRowAction } from './helpers/row-menu';
+
 vi.mock('@kontourai/station-sdk', () => ({
   useNotificationsQuery: () => ({
     data: notifications,
@@ -34,6 +42,20 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
   }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
+  useDevicePresentation: () => undefined,
+  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+  useSnoozeAttentionItemMutation: () => ({
+    mutate: snoozeAttention,
+    isPending: false,
+  }),
+  useUnsnoozeAttentionItemMutation: () => ({
+    mutate: unsnoozeAttention,
+    isPending: false,
+  }),
+  useSnoozeNotificationMutation: () => ({
+    mutate: snoozeNotification,
+    isPending: false,
+  }),
   useOrchestrationSessionsQuery: () => ({ data: sessions, isSuccess: true }),
   useQueryClient: () => ({ invalidateQueries }),
   sendOrchestrationTurn: vi.fn(),
@@ -555,9 +577,10 @@ describe('NotificationsPage', () => {
       screen.getByRole('button', { name: 'Notification settings' }),
     );
 
+    // No `highlight`: it made Settings announce "Push notifications revealed
+    // in Settings." over a section the reader had simply asked to open.
     expect(navigate).toHaveBeenCalledWith('/settings', {
       view: 'notifications',
-      highlight: 'push-notifications',
     });
   });
 
@@ -1028,13 +1051,14 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Pairing request expired')).toBeTruthy();
-    fireEvent.click(screen.getByText('Dismiss'));
+    chooseRowAction('Dismiss');
     expect(dismiss).toHaveBeenCalledWith('notif-expired');
   });
 
-  // A terminal status (already dismissed/actioned) still gets no button —
-  // the fix widens the gate, it does not remove it.
-  test('an already-dismissed notification renders no Dismiss button', () => {
+  // A terminal status (already dismissed/actioned) still offers no dismiss —
+  // the fix widens the gate, it does not remove it. With snooze off the row
+  // has nothing else for its menu, so it renders no menu at all.
+  test('an already-dismissed notification offers no Dismiss', () => {
     notifications = [
       {
         id: 'notif-gone',
@@ -1051,7 +1075,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Old job notice')).toBeTruthy();
-    expect(screen.queryByText('Dismiss')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
   // archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
@@ -1077,7 +1101,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Needs attention (1)')).toBeTruthy();
-    fireEvent.click(screen.getByText('Dismiss'));
+    chooseRowAction('Dismiss');
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:thread-boom',
     );
@@ -1295,7 +1319,7 @@ describe('NotificationsPage attention count scope', () => {
     const page = renderPage();
     expect(attentionHeading()).toBe('Needs attention (2)');
 
-    fireEvent.click(screen.getAllByText('Dismiss')[0]);
+    chooseRowAction('Dismiss');
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:boom',
     );
@@ -1391,5 +1415,129 @@ describe('NotificationsPage attention count scope', () => {
 
     expect(bellBadgeCount()).toBeNull();
     expect(screen.getByText('All caught up')).toBeTruthy();
+  });
+});
+
+describe('NotificationsPage snoozed items (Feature Preview)', () => {
+  const stamp = new Date().toISOString();
+  const later = new Date(Date.now() + 5 * 3_600_000).toISOString();
+  beforeEach(() => {
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'session-failed:a',
+          kind: 'session-failed',
+          title: 'Live failure',
+          createdAt: stamp,
+          updatedAt: stamp,
+          openHref: '/?surface=activity&session=a',
+          source: { threadId: 'a' },
+        },
+        {
+          id: 'session-failed:b',
+          kind: 'session-failed',
+          title: 'Snoozed failure',
+          createdAt: stamp,
+          updatedAt: stamp,
+          openHref: '/?surface=activity&session=b',
+          source: { threadId: 'b' },
+          snoozedUntil: later,
+        },
+      ],
+    };
+    notifications = [
+      {
+        id: 'due',
+        source: 'scheduler',
+        category: 'job',
+        title: 'Backup finished',
+        priority: 'normal',
+        status: 'delivered',
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      {
+        id: 'later',
+        source: 'scheduler',
+        category: 'job',
+        title: 'Cost report',
+        priority: 'normal',
+        status: 'pending',
+        scheduledAt: later,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ];
+  });
+
+  test('with the preview on, snoozed rows leave their lists for one Snoozed section', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    renderPage();
+
+    const snoozed = screen.getByRole('region', { name: /Snoozed/ });
+    expect(within(snoozed).getByText('Snoozed failure')).toBeTruthy();
+    expect(within(snoozed).getByText('Cost report')).toBeTruthy();
+    const attentionSection = screen.getByRole('region', {
+      name: /Needs attention/,
+    });
+    expect(within(attentionSection).queryByText('Snoozed failure')).toBeNull();
+    // The activity count describes the activity shown, not the snoozed row.
+    expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
+
+    fireEvent.click(within(snoozed).getByRole('button', { name: 'Unsnooze' }));
+    expect(unsnoozeAttention).toHaveBeenCalledWith('session-failed:b');
+    snoozePreviews = [];
+  });
+
+  test('with the preview off there is no Snoozed section and no snooze control', () => {
+    snoozePreviews = [];
+    renderPage();
+    expect(screen.queryByRole('region', { name: /Snoozed/ })).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[0]);
+    expect(screen.queryByRole('menuitem', { name: /^1 hour/ })).toBeNull();
+  });
+
+  test('when everything is snoozed, filters stay reachable and clearing restores Unsnooze', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    attention = {
+      pendingCount: 0,
+      items: attention.items.filter((item) => item.snoozedUntil),
+    };
+    notifications = [];
+    renderPage();
+    expect(screen.queryByText('All caught up')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unsnooze' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
+      target: { value: 'no matching work' },
+    });
+    expect(screen.queryByRole('button', { name: 'Unsnooze' })).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+    expect(unsnoozeAttention).toHaveBeenCalledWith('session-failed:b');
+    snoozePreviews = [];
+  });
+
+  test('an overdue pending notification is activity, not snoozed', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    notifications = [
+      {
+        id: 'overdue',
+        source: 'scheduler',
+        category: 'job',
+        title: 'Overdue report',
+        priority: 'normal',
+        status: 'pending',
+        scheduledAt: new Date(Date.now() - 3_600_000).toISOString(),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ];
+    renderPage();
+    const activity = screen.getByRole('region', { name: /^Activity/ });
+    expect(within(activity).getByText('Overdue report')).toBeTruthy();
+    expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
+    snoozePreviews = [];
   });
 });

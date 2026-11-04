@@ -1,0 +1,7 @@
+{
+  "revision": "a6c7a264953e0fdfe3cdeeab7fc27ec7daa221b2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the changed phone entry journey: Inbox default, explicit Inbox icon, icon-only New chat, retained reader/draft, search and list position, and existing child/task detail routes. Kept task review, pairing, approval and deployment claims separate; no live provider or native-device acceptance is asserted.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/components/chat/chat.css","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

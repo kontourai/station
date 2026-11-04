@@ -6,6 +6,7 @@ import {
   stationTempRoot,
   sweepStationTempRoot,
 } from '@kontourai/station-shared/temp-dir';
+import { bindPinnedVitestChromium } from './scripts/lib/pinned-vitest-chromium.mjs';
 
 /**
  * Prefix for a run root. Kept distinct so the day-old sweep and any human
@@ -72,7 +73,21 @@ export default async function setup(): Promise<() => Promise<void>> {
     );
   }
 
-  return () => removeRunRoot(runRoot);
+  let restoreBrowserPath: () => void;
+  try {
+    restoreBrowserPath = bindPinnedVitestChromium(runRoot);
+  } catch (error) {
+    await removeRunRoot(runRoot);
+    throw error;
+  }
+
+  return async () => {
+    try {
+      await removeRunRoot(runRoot);
+    } finally {
+      restoreBrowserPath();
+    }
+  };
 }
 
 /**

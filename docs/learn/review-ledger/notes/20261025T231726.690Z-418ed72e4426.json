@@ -1,0 +1,7 @@
+{
+  "revision": "855d6be3d3d7bd8481aee2d1dc0b92eec3996b44",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the gallery artifact contract-test delta at 855d6be3d3d: the assertion now requires both gallery/ and the exact test-results/e2e-screenshot-*/station.log pattern. The always-run upload, capture-versus-diff distinction, no re-baseline on capture failure and diagnostic-only artifact status remain unchanged. The guide remains accurate without prose changes. The owner suite reproduced one failure before repair and passed all 94 tests afterward; this does not clear the separate hosted browser-smoke failure.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

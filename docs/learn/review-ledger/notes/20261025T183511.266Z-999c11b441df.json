@@ -1,0 +1,13 @@
+{
+  "revision": "7ddfd3ea54655c2441badf3f995e60abc73c06f3",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Source delta: docs/ui/responsive-action-surfaces.txt gains one covered entry, src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx (Chat inventory drill-down actions/footer), with its 390px browser and Chromium geometry evidence. Rechecked the passage that routes action surfaces to that inventory and describes what the responsive ratchet checks (coverage, evidence text, adoption); one more entry leaves it accurate. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Source delta: docs/ui/responsive-action-surfaces.txt gains one covered entry, src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx (Chat inventory drill-down actions/footer), with its 390px browser and Chromium geometry evidence. The theming guide states no claim about the action inventory's contents. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Source delta: docs/ui/responsive-action-surfaces.txt gains one covered entry, src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx (Chat inventory drill-down actions/footer), with its 390px browser and Chromium geometry evidence. The backend patterns page states no claim about the action inventory's contents. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Source delta: docs/ui/responsive-action-surfaces.txt gains one covered entry, src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx (Chat inventory drill-down actions/footer), with its 390px browser and Chromium geometry evidence. Its responsive references describe the inventory and ratchet generally, not an entry list or count. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

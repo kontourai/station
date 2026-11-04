@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Routing row for src-ui now also covers packages/basis-pane and packages/board-pane; matches the src-ui scope routes in scripts/agent-instructions-manifest.mjs (agent-instructions-gate passes).","inputs":["AGENTS.md","scripts/agent-instructions-manifest.mjs"]}
+  ]
+}

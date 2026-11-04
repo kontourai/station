@@ -1,0 +1,7 @@
+{
+  "revision": "7f48ffb78a96a65a64b6df64620d746aa7ef7e5c",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Round 2 recheck: station-docs-content.ts was regenerated (docs:mcp:generate, digest matches) after one module-map.md sentence changed in the delegated-results paragraph. This page describes the shipped docs bundle and its generation, not that paragraph, so it stays accurate.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

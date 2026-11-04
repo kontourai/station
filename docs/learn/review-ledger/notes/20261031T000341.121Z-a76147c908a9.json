@@ -1,0 +1,7 @@
+{
+  "revision": "2ef200dfcd6f0492a8806545cf2958755d4616cf",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed structured JSON and credential-ledger command redaction against verification-redaction and attachment persistence callers; the redaction regression suite passed, while coordinator tests timed out under host load.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-redaction.mjs"]}
+  ]
+}

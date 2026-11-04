@@ -23,6 +23,11 @@ import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -177,9 +182,11 @@ async function start(input: {
 }) {
   const process = new FakeCodexProcess();
   let spawnArgs: string[] | undefined;
+  let spawnTmpDir: string | undefined;
   const adapter = new CodexAdapter({
-    processFactory: (_env, args) => {
+    processFactory: (_env, args, tmpDir) => {
       spawnArgs = args;
+      spawnTmpDir = tmpDir;
       return process as never;
     },
     ...(input.connectionArgs
@@ -260,6 +267,7 @@ async function start(input: {
     sessionStarted,
     process,
     spawnArgs,
+    spawnTmpDir,
     adapter,
     cleanup,
   };
@@ -268,6 +276,8 @@ async function start(input: {
 function threadIdOf(result: Record<string, unknown>): unknown {
   return (result.thread as { id?: unknown } | undefined)?.id;
 }
+
+const makeSessionHome = trackTempDirs();
 
 describe('#2494: Codex confinement posture is read back from its response', () => {
   test('the captured 0.155.1 response really reports workspaceWrite for a workspace never start', async () => {
@@ -492,6 +502,42 @@ describe('#2494: Codex confinement posture is read back from its response', () =
         await run.cleanup();
       },
     );
+
+    test('chat-host-images: a session the preview admits spawns with its own TMPDIR, and a root there is still confined', async () => {
+      const home = makeSessionHome('codex-session-tmp-');
+      const previousHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = home;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'session-tmp',
+      );
+      try {
+        const own = sessionTmpDirPath('session-tmp', home);
+        const run = await start({
+          threadId: 'session-tmp',
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+          reported: workspaceWrite([own]),
+        });
+        expect(run.spawnTmpDir).toBe(own);
+        // The started session committed that folder as its image root.
+        expect(sessionTempRoot('session-tmp')).toBe(own);
+        expect(run.outcome).toEqual({ ok: true });
+        await run.cleanup();
+        const other = await start({
+          threadId: 'no-session-tmp',
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+        });
+        expect(other.spawnTmpDir).toBeUndefined();
+        await other.cleanup();
+      } finally {
+        uninstall();
+        if (previousHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousHome;
+      }
+    });
 
     test('the refusal names the operator-configured roots outside the workspace and how to fix it (D3)', async () => {
       const cargo = join(homedir(), '.cargo');

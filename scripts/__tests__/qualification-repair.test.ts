@@ -109,6 +109,12 @@ describe('qualification repair lifecycle', () => {
       '.veritas/authority/x',
       'src-ui/AGENTS.md',
       '../outside',
+      'src-server/services/automation/repair-publisher.ts',
+      'src-server/security/authority.ts',
+      'src-server/services/foo/grant-store.ts',
+      'packages/contracts/src/qualification-repair-policy.mjs',
+      'src-server/.git/config',
+      './src-server/fix.ts',
     ])
       expect(() => validateRepairPaths([path])).toThrow();
     expect(() => validateRepairPaths([])).toThrow();
@@ -788,6 +794,7 @@ fi
       expect(
         posted.filter((item) => item.path.endsWith('/pulls')).at(-1)?.body.head,
       ).toBe('repair/qualification-42-100-1');
+      expect(posted.some((item) => item.path.endsWith('/labels'))).toBe(false);
       git('reset', '--hard', sha);
       mkdirSync(join(repo, '.github'));
       writeFileSync(join(repo, '.github/unsafe.yml'), 'unsafe\n');
@@ -880,4 +887,104 @@ it('a deferral after a consumed attempt never permits an implicit second claim',
   expect(
     nextRepairState(deferred.state, red, { agent: true, retry: true }).action,
   ).toBe('claim');
+});
+
+describe('post-merge source qualification', () => {
+  it('dispatches fresh main qualification for numeric and Station repair branches only after same-repository merged-head success', async () => {
+    const root = makeTempDir('station-repair-after-merge-');
+    const head = 'a'.repeat(40);
+    const event = join(root, 'event.json');
+    writeFileSync(
+      event,
+      JSON.stringify({
+        workflow_run: {
+          event: 'push',
+          conclusion: 'success',
+          head_branch: 'main',
+          head_repository: { full_name: 'owner/repo' },
+          head_sha: head,
+        },
+      }),
+    );
+    const base = {
+      merged_at: '2026-10-31T12:00:00Z',
+      merge_commit_sha: head,
+      head: {
+        ref: 'repair/qualification-42-station-12345678-1234-4123-8123-123456789abc',
+        repo: { full_name: 'owner/repo' },
+      },
+    };
+    let pr: unknown = base;
+    const dispatched: unknown[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === 'GET' && req.url?.includes('/commits/')) {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify([pr]));
+        return;
+      }
+      if (
+        req.method === 'POST' &&
+        req.url?.endsWith('/main-qualification.yml/dispatches')
+      ) {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        dispatched.push(JSON.parse(body));
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Fixture listener unavailable');
+    try {
+      for (const [candidate, shouldDispatch] of [
+        [base, true],
+        [
+          {
+            ...base,
+            head: { ...base.head, ref: 'repair/qualification-42-99-1' },
+          },
+          true,
+        ],
+        [{ ...base, merged_at: null }, false],
+        [{ ...base, merge_commit_sha: 'b'.repeat(40) }, false],
+        [
+          { ...base, head: { ...base.head, repo: { full_name: 'fork/repo' } } },
+          false,
+        ],
+        [
+          { ...base, head: { ...base.head, ref: base.head.ref + '-suffix' } },
+          false,
+        ],
+        [{ ...base, head: { ...base.head, ref: 'feature/repair' } }, false],
+      ] as const) {
+        pr = candidate;
+        const before = dispatched.length;
+        await exec(process.execPath, [script, 'after-merge'], {
+          cwd: root,
+          env: {
+            ...process.env,
+            GH_TOKEN: 'synthetic-token',
+            GITHUB_REPOSITORY: 'owner/repo',
+            GITHUB_EVENT_PATH: event,
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          },
+          windowsHide: true,
+        });
+        expect(dispatched.length - before).toBe(shouldDispatch ? 1 : 0);
+      }
+      expect(dispatched).toEqual([
+        { ref: 'main', inputs: { force: true } },
+        { ref: 'main', inputs: { force: true } },
+      ]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

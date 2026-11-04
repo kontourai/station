@@ -5,9 +5,12 @@
  * proven is the retryer's behaviour, not the predicate in isolation.
  */
 
-import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, test } from 'vitest';
-import { stationQueryDefaults } from '../queryDefaults';
+import { onlineManager, QueryClient } from '@tanstack/react-query';
+import { afterEach, describe, expect, test } from 'vitest';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from '../queryDefaults';
 
 function codedError(code: string): Error {
   return Object.assign(new Error(`Native Station request failed: ${code}`), {
@@ -55,5 +58,54 @@ describe('stationQueryDefaults retry (station#2327)', () => {
         new Error('native Station request queue capacity reached'),
       ),
     ).toBe(2);
+  });
+});
+
+describe('stationMutationDefaults', () => {
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  async function offlineWrite(networkMode?: 'online') {
+    const client = new QueryClient({
+      defaultOptions: { mutations: stationMutationDefaults() },
+    });
+    onlineManager.setOnline(false);
+    let attempts = 0;
+    const settled = client
+      .getMutationCache()
+      .build(client, {
+        ...(networkMode ? { networkMode } : {}),
+        mutationFn: async () => {
+          attempts += 1;
+          throw new TypeError('Failed to fetch');
+        },
+      })
+      .execute(undefined)
+      .then(
+        () => 'resolved',
+        () => 'rejected',
+      );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const paused = client
+      .getMutationCache()
+      .getAll()
+      .some((mutation) => mutation.state.isPaused);
+    return { attempts, paused, settled, client };
+  }
+
+  test('an offline write fails now instead of waiting to replay on reconnect', async () => {
+    const write = await offlineWrite();
+    expect(write.attempts).toBe(1);
+    expect(write.paused).toBe(false);
+    await expect(write.settled).resolves.toBe('rejected');
+    write.client.clear();
+  });
+
+  test('a write that opts into waiting still pauses (the control)', async () => {
+    const write = await offlineWrite('online');
+    expect(write.attempts).toBe(0);
+    expect(write.paused).toBe(true);
+    write.client.clear();
   });
 });

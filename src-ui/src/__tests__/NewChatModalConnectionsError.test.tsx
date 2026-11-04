@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+} from '@testing-library/react';
+import type { ReactElement } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -21,6 +28,22 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Station config behind the No project folder hint (#4389): nothing saved.
+  useConfigQuery: () => ({
+    data: undefined,
+    error: null,
+    dataUpdatedAt: 0,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
     refetch: vi.fn(),
@@ -175,3 +198,12 @@ describe('NewChatModal connections read failure (#771)', () => {
     expect(screen.queryByText("Couldn't load engines or models")).toBeNull();
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

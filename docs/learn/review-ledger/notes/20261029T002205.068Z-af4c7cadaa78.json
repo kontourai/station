@@ -1,0 +1,7 @@
+{
+  "revision": "a8e493e0d4e57ef7ecf8e1bac53fad18f39c9759",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed turn-navigation visibility against ChatMessageList and TranscriptTurnRail: live navigation now starts with the first loaded user turn; replay remains excluded and the 560px/200px rail limits and phone Previous-turn fallback are unchanged. Inspected Chromium PNGs at 390px and 1440px in light and dark themes. Focused jsdom coverage passed; final browser interaction verification is tracked separately. No provider or release acceptance claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

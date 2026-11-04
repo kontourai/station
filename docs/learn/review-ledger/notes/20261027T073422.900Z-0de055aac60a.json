@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Catch-up refusal claim re-checked against lineage changes: only the seed message source changed (resolved, behind the same read check); delivery/refusal semantics unchanged. No prose change.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

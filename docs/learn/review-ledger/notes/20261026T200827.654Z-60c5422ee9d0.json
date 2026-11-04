@@ -1,0 +1,9 @@
+{
+  "revision": "ee1992268b60d691ab3335e4d1754d510b4776e5",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped #4055 fixture review: the existing reload-recovery browser test now opens the Conversation tab with a normal user click before accessing the message composer. Current Task workspace starts on Overview; draft custody, send authority, recovery review and lost-message idempotency assertions remain unchanged. This is a fixture prerequisite repair, not a new Task request transport or provider claim.","inputs":["docs/design/task-room-agent-requests.md","tests/task-room-reload-recovery.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Scoped #4055 review: restored the reload-recovery browser fixture prerequisite by opening Conversation before composer assertions. Suite ownership and declared coverage remain unchanged; credential-free Task Review ran separately with its explicit live-provider skip. Passing cases and failed prerequisite receipts are reported separately in the PR.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-room-reload-recovery.spec.ts"]}
+  ]
+}

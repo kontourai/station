@@ -18,14 +18,17 @@ import {
   useNotificationHistory,
   useToast,
 } from '../../contexts/ToastContext';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
+import { WarningGlyph } from '../icons/Glyph';
 import {
   focusRenderedApprovalCard,
   getApprovalClaims,
   OPEN_APPROVAL_QUEUE_EVENT,
   subscribeApprovalClaims,
 } from '../status/approvalReveal';
+import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import './NotificationContainer.css';
 import { selectToastStackItems } from './toast-stack-layout';
 
@@ -119,6 +122,14 @@ function ToastCard({
     };
   }, [notification.id, isApproval, isPairing]);
   const shortcut = getSessionShortcut(notification.sessionId);
+  // #4470: error toasts offer Troubleshoot here, at the one renderer, rather
+  // than at each of the call sites that raise one. Not when the toast already
+  // has two actions (#3045), and not on the flow's own failure toasts, or
+  // troubleshooting would offer itself.
+  const troubleshootable =
+    notification.type === 'error' &&
+    (notification.actions?.length ?? 0) < 2 &&
+    !notification.dedupeKey?.startsWith('troubleshoot-');
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   const headline =
@@ -160,6 +171,7 @@ function ToastCard({
           : '',
         isApproval ? 'toast-card--approval' : '',
         isPairing ? 'toast-card--pairing' : '',
+        isTurn ? 'toast-card--turn' : '',
         clickable ? 'toast-card--clickable' : '',
       ]
         .filter(Boolean)
@@ -210,10 +222,14 @@ function ToastCard({
           <div className="toast-card__message">
             {(notification.type === 'warning' ||
               notification.type === 'error') && (
-              <strong>
-                {notification.type === 'error' ? 'Error: ' : 'Warning: '}
+              <strong className="toast-card__severity">
+                <WarningGlyph />
+                {notification.type === 'error' ? 'Error:' : 'Warning:'}
               </strong>
             )}
+            {(notification.type === 'warning' ||
+              notification.type === 'error') &&
+              ' '}
             {headline}
           </div>
           {(notification.occurrences ?? 1) > 1 && (
@@ -278,9 +294,10 @@ function ToastCard({
         </button>
       </div>
 
-      {notification.actions && notification.actions.length > 0 && (
+      {((notification.actions && notification.actions.length > 0) ||
+        troubleshootable) && (
         <div className="toast-card__actions">
-          {notification.actions.map((action, index) => (
+          {(notification.actions ?? []).map((action, index) => (
             <Button
               key={`${action.label}-${index}`}
               variant={action.variant || 'secondary'}
@@ -301,6 +318,14 @@ function ToastCard({
               {notification.pendingAction === index ? 'Working…' : action.label}
             </Button>
           ))}
+          {troubleshootable && (
+            <TroubleshootAction
+              size="sm"
+              className="toast-card__action toast-card__action--secondary"
+              request={{ message: notification.message }}
+              onRequested={() => dismissToast(notification.id)}
+            />
+          )}
         </div>
       )}
 
@@ -382,6 +407,9 @@ export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
   const activeChatIds = useActiveChatIds();
+  // A finger has no keyboard chord to press: the card's ⌘1/Ctrl+1 hint is
+  // withheld on a coarse primary pointer rather than shown as dead text.
+  const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
@@ -539,7 +567,7 @@ export function NotificationContainer() {
   );
 
   const getSessionShortcut = (sessionId: string | undefined): string | null => {
-    if (!sessionId) return null;
+    if (!sessionId || coarsePointer) return null;
     const sessionIndex = activeChatIds.indexOf(sessionId);
     if (sessionIndex < 0 || sessionIndex >= 9) return null;
     const isMac = navigator.platform.toUpperCase().includes('MAC');

@@ -16,8 +16,15 @@
  *     filled it with ~790k entries.
  */
 
-import { mkdirSync, mkdtemp, mkdtempSync, rm, rmSync } from 'node:fs';
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import {
+  mkdirSync,
+  mkdtemp,
+  mkdtempSync,
+  rm,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { lstat, mkdir, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -27,6 +34,14 @@ const rmAsync = promisify(rm);
 
 /** Directory name used for the Station-owned temp root. */
 export const STATION_TEMP_ROOT_NAME = 'station';
+const RECOVERY_MARKER = '.station-retained-recovery';
+
+/** Retain a failed plugin installation's recovery material across sweeps. */
+export function retainStationTempRecovery(directory: string): void {
+  writeFileSync(join(directory, RECOVERY_MARKER), 'recovery required\n', {
+    mode: 0o600,
+  });
+}
 
 /**
  * Absolute path of the Station-owned temp root.
@@ -111,6 +126,15 @@ export async function sweepStationTempRoot(
     const target = join(root, entry);
     const info = await stat(target).catch(() => null);
     if (!info || info.mtimeMs > cutoff) continue;
+    if (entry.startsWith('plugin-install-') && info.isDirectory()) {
+      try {
+        await lstat(join(target, RECOVERY_MARKER));
+        continue;
+      } catch (error) {
+        // Never sweep recovery material if its marker cannot be inspected.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') continue;
+      }
+    }
     await rmAsync(target, { recursive: true, force: true }).catch(() => null);
     reclaimed += 1;
   }

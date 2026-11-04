@@ -1,0 +1,7 @@
+{
+  "revision": "f96106459eedca3b458054fbeabdc8e8d336af9b",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Source delta (#4178): the threat model's handshake example now shows compatibility.protocolVersion 4. This document's threat-model mentions concern automation authority, not the handshake example. No prose change.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

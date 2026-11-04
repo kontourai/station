@@ -1,0 +1,7 @@
+{
+  "revision": "ea41e796d3469125e24cb4b2fb237f16129007c0",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed the harness-only transport change at ea41e796d3469125e24cb4b2fb237f16129007c0 against the interactive atlas, review status, captures, lazy loading and immutable source snapshot claims. The production builder, client data and atlas.js are unchanged. The main fixture now serves its identical generated asset map and supporting source text through an ephemeral IPv4 loopback HTTP server instead of base64 CDP route fulfillment, while foreign requests still abort and server errors fail teardown. All seven cases and102existingexpectcalls remain; the immutable-source-snapshot case is byte-identical. Read-only exactc97producer measurement identified atlas-data78970248rawbytes/105293664base64bytes above the observed104857600pipe limit. ScopedBiome and source checks passed. The single focused run at ea41 exited1 before Chromium launch because this review note was missing; all7tests skipped, so repaired browser behavior remainsNOT_VERIFIED. Existing guide prose remains accurate, with no product runtime, native, release or main qualification claim.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
+  ]
+}

@@ -18,6 +18,7 @@ import {
   createPluginActivationSession,
 } from '../../../services/plugins/plugin-activation-composition.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   emittedPluginSettings,
   registerPluginConfigRoutes,
@@ -41,7 +42,7 @@ import {
 //   under a withholding gate, with no manifest-side remedy today. See
 //   `emittedPluginSettings`'s own docblock and the "false positives" describe
 //   block below.
-// - Value-shape axis (`redactSecrets`) — a lower-confidence second net for a
+// - Value-shape axis (`containsKnownCredential`) — a lower-confidence second net for a
 //   value that LOOKS credential-shaped under a non-secret-named field. A
 //   match here is warned but still emitted (not withheld), because it
 //   produces real false positives ("Basic plan", "Bearer token") and
@@ -118,6 +119,28 @@ describe('emittedPluginSettings (station#3576)', () => {
       expect(result).toEqual({ endpoint: 'AKIAABCDEFGHIJKLMNOP' });
       expect(logger.warn).toHaveBeenCalledOnce();
     });
+
+    test.each([
+      { query: '', warns: false },
+      { query: '?port=43123&mode=debug#public', warns: false },
+      { query: `?port=43123&capability=${'C'.repeat(43)}`, warns: true },
+      { query: '?port=43123&password=private-value', warns: true },
+    ])(
+      'native asset setting with query "$query" warns=$warns and still emits',
+      ({ query, warns }) => {
+        const logger = createLogger({ name: 'plugin-url-setting-test' });
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+        const endpoint = `http://station-plugin.localhost/api/plugins/demo/bundle.js${query}`;
+        const result = emittedPluginSettings(
+          'my-plugin',
+          [{ key: 'endpoint', label: 'Endpoint', type: 'string' }],
+          { endpoint },
+          logger,
+        );
+        expect(result).toEqual({ endpoint });
+        expect(warn).toHaveBeenCalledTimes(warns ? 1 : 0);
+      },
+    );
 
     test('a genuine false positive ("Basic plan") is NOT silently dropped', () => {
       const logger = { warn: vi.fn() };

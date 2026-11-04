@@ -1,0 +1,7 @@
+{
+  "revision": "6fa9f26d3959e3b874faab6d0d96c04b1506fa56",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Reviewed the decoder whitelist and independent Linux b6.1.1 gzip observations against pins. All four archives match compressed size and SHA-256 and contain libdav1d/libaom-av1 decoder strings. Acquisition regression and removal mutation passed. Linux execution remains unverified.","inputs":["docs/guides/local-speech.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/http-upload.ts","src-server/services/media-tools/media-input-policy.ts","src-server/services/transcription/__tests__/sherpa-queue.test.ts","src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts","src-server/services/media-tools/__tests__/fixtures/linux-av1-decoders.json"]}
+  ]
+}

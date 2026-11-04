@@ -1,4 +1,4 @@
-import type { AgentCapabilities } from '@agentclientprotocol/sdk';
+import type { AgentCapabilities } from '@agentclientprotocol/sdk/unstable';
 
 /**
  * #3411: how a capability probe obtains the ACP session it reads `modes` and

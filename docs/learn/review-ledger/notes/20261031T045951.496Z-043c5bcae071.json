@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed embedded mobile Inbox, explicit header icon/New chat, loaded-list search, retained scope/sections, two-line row titles, separate real recency and 44px controls. Updated swipe host name. Inspected 390/1440 dark/light row/card browser fixtures; no physical-device or installed-shell qualification.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

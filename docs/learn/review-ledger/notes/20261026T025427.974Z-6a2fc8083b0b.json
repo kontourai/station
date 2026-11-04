@@ -1,0 +1,7 @@
+{
+  "revision": "f96106459eedca3b458054fbeabdc8e8d336af9b",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Source delta (#4178): STATION_COMPAT_PROTOCOL_VERSION is 4; a protocol-4 client receives Session inventory thread-tool-result rows with terminalStatus 'unresolved' (listed and counted under Execution, shown as a neutral StatusBadge 'No result recorded'), older clients keep the omission; every inventory fold carries the client protocol and page cursors record events read; ThreadToolResultRow accepts 'unresolved'. Only a protocol pin in client-protocol-admission.test.ts changed; this guide states no protocol number. No prose change.","inputs":["docs/patterns/backend.md","src-server/runtime/__tests__/client-protocol-admission.test.ts"]}
+  ]
+}

@@ -43,9 +43,11 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getJson,
   isApiRequestScope,
+  mutateJson,
   StationRequestAuthorityError,
 } from '../client/http';
 import {
+  getChildWorkInstructions,
   getChildWorkTranscript,
   getConversationUsageTree,
   getOrchestrationConversationEventWindow,
@@ -55,9 +57,16 @@ import {
   inspectSteerInput as inspectSteerInputClient,
   type SessionBuilderRunView,
   type SessionFlowRunView,
+  type SteerChildWorkInput,
+  steerChildWork,
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import {
+  chooseSentTurnKey,
+  hasRecordedTurnFailure,
+  rememberSentTurnKey,
+} from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
@@ -553,7 +562,12 @@ const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
  * once and not polled.
  */
 export function useChildWorkTranscriptQuery(
-  input: { threadId: string; childId: string; enabled?: boolean },
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    requestScope?: ApiRequestScope;
+  },
   apiBase?: string,
 ) {
   return useInfiniteQuery({
@@ -562,6 +576,7 @@ export function useChildWorkTranscriptQuery(
       apiBase ?? 'default',
       input.threadId,
       input.childId,
+      ...(input.requestScope ? [input.requestScope.authorityKey] : []),
     ],
     enabled:
       (input.enabled ?? true) &&
@@ -574,11 +589,66 @@ export function useChildWorkTranscriptQuery(
         input.threadId,
         input.childId,
         { offset: pageParam, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
-        { signal },
+        {
+          signal,
+          ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+        },
       ),
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+  });
+}
+
+export function useChildWorkInstructionsQuery(
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    requestScope?: ApiRequestScope;
+    running?: boolean;
+  },
+  apiBase?: string,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'orchestration-child-work-instructions',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+      input.requestScope?.authorityKey ?? null,
+    ],
+    enabled: (input.enabled ?? true) && !!input.threadId && !!input.childId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      getChildWorkInstructions(
+        await resolveApiBase(apiBase),
+        input.threadId,
+        input.childId,
+        { offset: pageParam, limit: 10 },
+        {
+          signal,
+          ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+        },
+      ),
+    getNextPageParam: (page) => page.nextOffset,
+    retry: false,
+    refetchInterval: input.running ? 5_000 : false,
+  });
+}
+
+export function useSteerChildWorkMutation(
+  apiBase?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: async (input: SteerChildWorkInput) =>
+      steerChildWork(
+        await resolveApiBase(apiBase),
+        input,
+        requestScope ? { requestScope } : undefined,
+      ),
+    retry: false,
   });
 }
 
@@ -647,17 +717,19 @@ export async function dispatchOrchestrationCommand<T = unknown>(
    * that has to leave its pending state either way.
    */
   timeoutMs?: number,
+  opts?: Pick<ClientRequestOptions, 'requestScope'>,
 ): Promise<T> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/orchestration/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    },
-  );
+  const url = `${resolvedApiBase}/api/orchestration/commands`;
+  const deadline = timeoutMs !== undefined ? { timeoutMs } : {};
+  const response = opts?.requestScope
+    ? await mutateJson(url, 'POST', { ...opts, ...deadline }, command)
+    : await authenticatedFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        ...deadline,
+      });
   const result = (await response.json()) as {
     success: boolean;
     data?: T;
@@ -684,15 +756,16 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
- * True only for failures that PROVE the request never left this client:
- * request-construction errors and the connection-level refusals the runtime
- * names explicitly. A bare TypeError ('Failed to fetch') is NOT proof — the
- * browser uses it for post-send failures too.
+ * Errors recorded by keyed sends stay uncertain, even if reused for
+ * another call. Outside that set, only the explicit read-only refusal and
+ * named connection refusals prove no send. SyntaxError can come from parsing
+ * a response, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!(error instanceof Error) || hasRecordedTurnFailure(error)) return false;
   const name = error.name;
-  if (name === 'StationReadOnlyError' || name === 'SyntaxError') return true;
+  if (name === 'SyntaxError') return false;
+  if (name === 'StationReadOnlyError') return true;
   const message = error.message;
   return (
     /ECONNREFUSED|ENOTFOUND|ERR_NAME_NOT_RESOLVED|refused the connection/i.test(
@@ -1134,9 +1207,12 @@ export async function resolveOrchestrationRequest(input: {
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;
+  /** docs/design/event-content-spill.md: proof the full request was loaded. */
+  viewedContentDigest?: string;
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
+  requestScope?: ApiRequestScope;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
     {
@@ -1152,9 +1228,13 @@ export async function resolveOrchestrationRequest(input: {
         : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
+      ...(input.viewedContentDigest
+        ? { viewedContentDigest: input.viewedContentDigest }
+        : {}),
     },
     input.apiBase,
     input.timeoutMs,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
   );
 }
 
@@ -1182,23 +1262,29 @@ export async function sendOrchestrationTurn(input: {
   clientTurnId?: string;
   apiBase?: string;
 }) {
-  const apiBase = await resolveApiBase(input.apiBase);
-  return continueExecutionMessage(apiBase, input.threadId, {
-    message: input.text,
-    ...(input.attachments?.length ? { attachments: input.attachments } : {}),
-    ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-    ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
-    ...(input.modelId || Object.keys(input.modelOptions ?? {}).length > 0
-      ? {
-          model: {
-            ...(input.modelId ? { override: input.modelId } : {}),
-            ...(Object.keys(input.modelOptions ?? {}).length > 0
-              ? { options: input.modelOptions }
-              : {}),
-          },
-        }
-      : {}),
-  });
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    const apiBase = await resolveApiBase(input.apiBase);
+    return await continueExecutionMessage(apiBase, input.threadId, {
+      message: input.text,
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
+      clientTurnId,
+      ...(input.modelId || Object.keys(input.modelOptions ?? {}).length > 0
+        ? {
+            model: {
+              ...(input.modelId ? { override: input.modelId } : {}),
+              ...(Object.keys(input.modelOptions ?? {}).length > 0
+                ? { options: input.modelOptions }
+                : {}),
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
 }
 
 /**
@@ -1226,6 +1312,7 @@ export async function interruptOrchestrationTurn(input: {
   clientTurnId?: string;
   apiBase?: string;
   timeoutMs?: number;
+  requestScope?: ApiRequestScope;
 }): Promise<InterruptTurnResult> {
   return dispatchOrchestrationCommand<InterruptTurnResult>(
     {
@@ -1236,6 +1323,7 @@ export async function interruptOrchestrationTurn(input: {
     },
     input.apiBase,
     input.timeoutMs ?? STOP_REQUEST_BUDGET_MS,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
   );
 }
 

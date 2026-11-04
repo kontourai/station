@@ -1,0 +1,13 @@
+{
+  "revision": "47dc124dd2bde68abc79ca87fc5ef6a4470b64f0",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed the module-map native-return refusal delta against Projects/Tasks/Sessions and turn/Conversation wording here. Continuing can add a turn; no claim says every follow-up must be admitted. Explicit refusal for missing catch-up completion preserves these nouns and existing last-known/inbox explanations. No prose change needed; no rendered UI, provider or broader concept requalification.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed only dependency on module-map bytes after the native-return refusal clarification. Example still exports attributed canonical excerpts and recorded dependencies, marks evidence separately, and requires isolated authorized execution; no export/acquisition/grant/query behavior changes. No prose change required for this delta and no new live Kit/import/network consumer proof.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md","docs/learn/atlas.json"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed only the changed module-map continuation owner explanation: native-return failed/uncertain follow-up refuses before reuse. Existing instructions still require caller/domain ownership and focused behavioral evidence; no instruction or Protected Standards change, waiver or whole-server approval. Source and regression checked; no new service/provider/host qualification.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed only module-map native-return refusal delta and this file's instruction to avoid unsupported runtime claims. No UI state/navigation/styling contract or instruction changes; no new writable/continuable UI claim. No prose change required, policy grant, rendered-browser or device qualification.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md","src-ui/src/hooks/useUnsavedGuard.tsx"]}
+  ]
+}

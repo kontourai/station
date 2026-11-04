@@ -598,9 +598,8 @@ export function NativeRelayEnrollmentWizard({
         <h3>Approve this device</h3>
         <RelaySetupHelp label="About device approval">
           <p>
-            Sign in to request approval from the Station owner. After approval,
-            sign in again to open your shared projects. Device approval and
-            Project membership are separate permissions.
+            Sign in to request approval from the Station owner, then sign in
+            again to open your shared projects.
           </p>
         </RelaySetupHelp>
       </div>
@@ -866,12 +865,7 @@ export function NativeRelayEnrollmentWizard({
         </section>
       ) : null}
 
-      {phase === 'configured' ? (
-        <p role="status">
-          <strong>Device configured</strong>. Account sign-in and Project access
-          remain separate.
-        </p>
-      ) : null}
+      {phase === 'configured' ? <p role="status">Device configured.</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {setupDiagnostic ? (

@@ -915,19 +915,19 @@ describe('runCli', () => {
     );
   });
 
-  test('validates the five-port reservation before a destructive clean or start', async () => {
+  test('validates the port reservation before a destructive clean or start', async () => {
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
     lifecycle.validateLifecyclePorts.mockImplementation(
       (serverPort: number, uiPort: number) => {
-        if (serverPort + 3 > 65_535 || uiPort === serverPort + 1) {
-          throw new Error('invalid five-port reservation');
+        if (serverPort + 3 > 65_535 || uiPort === serverPort + 2) {
+          throw new Error('invalid port reservation');
         }
       },
     );
 
     await expect(
       runCli(['start', '--clean', '--force', '--port=65534']),
-    ).rejects.toThrow('invalid five-port reservation');
+    ).rejects.toThrow('invalid port reservation');
     expect(lifecycle.clean).not.toHaveBeenCalled();
     expect(lifecycle.start).not.toHaveBeenCalled();
   });

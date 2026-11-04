@@ -1,408 +1,229 @@
+import type { TerminalLaunchProfile } from '@kontourai/station-contracts/terminal-transport';
 import {
-  assertClientRawEgressAllowed,
+  authenticatedFetch,
   executeCodingCommand,
-  fetchTerminalPort,
+  type TerminalSession,
+  type TerminalSessionTarget,
 } from '@kontourai/station-sdk';
-import { FitAddon } from '@xterm/addon-fit';
-import { Terminal } from '@xterm/xterm';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import '@xterm/xterm/css/xterm.css';
 import {
-  activeChatsStore,
-  useActiveChatActions,
-} from '../../contexts/ActiveChatsContext';
+  type TerminalLinkTarget,
+  TerminalView,
+  type TerminalViewSession,
+  toTerminalViewSession,
+} from '@kontourai/station-sdk/terminal-view';
+import { useEffect, useRef, useState } from 'react';
+import { activeChatsStore } from '../../contexts/ActiveChatsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
-import { copyToClipboard } from '../../lib/clipboard';
+import {
+  describeOpenInRegionRefusal,
+  useOpenBrowserSessionInRegion,
+  useOpenFilePreviewInRegion,
+} from '../../contexts/useOpenInRegion';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { observeRootTheme } from '../../lib/root-theme';
-import {
-  BrowserWebSocketAuthGate,
-  isRemoteEndpoint,
-  websocketCloseError,
-} from '../../utils/browserWebSocketAuth';
+import { MAX_TERMINAL_QUOTE_CHARS } from '../../utils/answer-quotes';
+import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
+import { Button } from '../Button';
+import { ErrorState } from '../state';
 import { activeTerminalWriter } from './activeTerminal';
-import {
-  buildTerminalSelectionHandoff,
-  selectionContainsCredential,
-} from './terminalSelectionHandoff';
-import { readTerminalTheme } from './terminalTheme';
+import { terminalLinkRelativePath } from './terminalLinkPath';
+import { selectionContainsCredential } from './terminalSelectionHandoff';
+import { useTerminalSessionStore } from './terminalSessionStore';
 
-/** Server events that belong to one terminal session (`TerminalEvent`). */
-const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
-
+/**
+ * One terminal view on the shared SDK session store: the same-origin socket
+ * every operator device reaches (#3994). The server decides the program and
+ * working directory; this view names a session, or asks for a new one. It
+ * renders through the public `TerminalView`, the surface plugins also get.
+ */
 export function TerminalPanel({
   projectSlug,
   workingDir,
-  terminalId = 'default',
-  shell,
-  shellArgs,
+  target,
+  terminalId,
+  viewKey,
+  launch,
+  legacyTerminalId,
+  onOpened,
   isActive = false,
   attachOnly = false,
+  readOnly = false,
+  command = false,
+  ended,
+  onRestarted,
 }: {
   projectSlug: string;
   workingDir: string;
+  /** The session scope; absent while the Project is still loading. */
+  target: TerminalSessionTarget | undefined;
+  /** An existing session to attach to. */
   terminalId?: string;
-  shell?: string;
-  shellArgs?: string[];
+  /** Stable identity of this view (a tab id); a change starts a new view. */
+  viewKey?: string;
+  /** For a new session: a server-resolved program by name. */
+  launch?: TerminalLaunchProfile;
+  /** For a new session: import this pre-socket terminal's history once. */
+  legacyTerminalId?: string;
+  /** The server accepted a new session under this id. */
+  onOpened?: (terminalId: string) => void;
   /** Join a session the server started; never start a shell in its place. */
   attachOnly?: boolean;
+  /** Watch without typing, pasting or resizing, whatever the session allows. */
+  readOnly?: boolean;
+  /** A program without a terminal (a script), which writes bare line feeds. */
+  command?: boolean;
+  /** What to say once the program ends, instead of the shell's words. */
+  ended?: { message: string };
+  /** The session's program was run again. */
+  onRestarted?: () => void;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const {
-    apiBase,
-    connectionId,
-    credentialProvider: liveCredentials,
-  } = useApiBase();
-  const credential = liveCredentials.getCredential();
-  const protocolVersion = liveCredentials.getProtocolVersion();
-  const credentialProvider = useMemo(
-    () => ({
-      getCredential: () => credential,
-      getProtocolVersion: () => protocolVersion,
-    }),
-    [credential, protocolVersion],
-  );
+  const store = useTerminalSessionStore();
+  const { apiBase } = useApiBase();
+  const openFilePreview = useOpenFilePreviewInRegion();
+  const openBrowserSession = useOpenBrowserSessionInRegion();
   const activeChat = useNavigation((state) => state.activeChat);
-  const { getDraft, setDraft, updateChat } = useActiveChatActions();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
+  // Input only where the viewer may type; the session itself for reads.
+  const sessionRef = useRef<TerminalSession | null>(null);
+  const shownRef = useRef<TerminalSession | null>(null);
+  const [viewSession, setViewSession] = useState<TerminalViewSession | null>(
+    null,
+  );
   const [wsError, setWsError] = useState<string | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
+  const [exited, setExited] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const isMobile = useIsMobile();
+  const { terminalScreenReader } = useDeviceSettings();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
   // why, and what still works", never as a silent pane or a transport blip.
   const [unavailableReason, setUnavailableReason] = useState<string | null>(
     null,
   );
-  const [selection, setSelection] = useState('');
   const [handoffError, setHandoffError] = useState<string | null>(null);
-  // Populated by the WS effect; sends text to the PTY as if typed.
-  const sendTextRef = useRef<((text: string) => boolean) | null>(null);
-  const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
+  // The newest open options; a view does not restart when they change.
+  const intentRef = useRef({ terminalId, launch, legacyTerminalId, onOpened });
+  intentRef.current = { terminalId, launch, legacyTerminalId, onOpened };
+  const projectId = target?.projectId;
+  const bindingKey = target?.bindingKey;
+  const key = viewKey ?? terminalId;
 
-  // The canvas cannot follow the cascade: re-read the terminal variables
-  // after any light/dark, palette, accent or branding change on the root.
-  useEffect(
-    () =>
-      observeRootTheme(() => {
-        const terminal = terminalRef.current;
-        const container = containerRef.current;
-        if (terminal && container)
-          terminal.options.theme = readTerminalTheme(container);
-      }),
-    [],
-  );
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this socket with the same terminal identity.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this view with the same terminal identity.
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!projectId || !bindingKey) return;
     setUnavailableReason(null);
     setWsError(null);
     setConnected(false);
+    setExited(false);
 
-    // Bump the glyph size on a phone — xterm renders to a canvas, so the
-    // readable-text fix has to live in JS, not CSS. Read once at mount; a
-    // landscape phone counts, as it does for every other mobile affordance.
-    const isMobileViewport =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches;
-
-    const terminal = new Terminal({
-      cursorBlink: true,
-      convertEol: true,
-      fontSize: isMobileViewport ? 14 : 12,
-      fontFamily:
-        "'MesloLGS NF', 'MesloLGM Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', Menlo, courier-new, courier, monospace",
-      theme: readTerminalTheme(containerRef.current),
-    });
-    terminalRef.current = terminal;
-
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(containerRef.current);
-    fitAddon.fit();
-
-    let ws: WebSocket | null = null;
-    let sessionId: string | null = null;
-    let disposed = false;
-    let exited = false;
-    let cwdRequest = 0;
-    let resizeFrame: number | null = null;
-    let lastSize = { cols: terminal.cols, rows: terminal.rows };
-    const cwdRequests = new Map<string, (cwd: string | null) => void>();
-
-    const ensureTerminalSocketAllowed = (): boolean => {
-      try {
-        assertClientRawEgressAllowed(apiBase, 'terminal', connectionId);
-        return true;
-      } catch (error) {
-        ws?.close();
-        if (!disposed)
-          setUnavailableReason(
-            error instanceof Error
-              ? error.message
-              : 'Terminal connections are unavailable for the selected Station.',
-          );
-        return false;
-      }
+    const scope = { projectId, bindingKey };
+    const intent = intentRef.current;
+    if (store.failure) store.restart();
+    let session: TerminalSession | null = null;
+    let unsubscribe: (() => void) | undefined;
+    let reported = intent.terminalId;
+    const begin = (importHistory: boolean) => {
+      unsubscribe?.();
+      // The view sizes the session once it has measured its grid; the store
+      // sends the latest size when the session is ready.
+      session = intent.terminalId
+        ? store.attach(scope, intent.terminalId)
+        : attachOnly
+          ? null
+          : store.open(scope, {
+              cols: 80,
+              rows: 24,
+              ...(intent.launch && { launch: intent.launch }),
+              ...(importHistory &&
+                intent.legacyTerminalId && {
+                  legacyTerminalId: intent.legacyTerminalId,
+                }),
+            });
+      sessionRef.current = readOnly ? null : session;
+      shownRef.current = session;
+      const view = session
+        ? readOnly
+          ? watchOnly(toTerminalViewSession(session))
+          : toTerminalViewSession(session)
+        : null;
+      setViewSession(view && command ? startLinesAtFeeds(view) : view);
+      unsubscribe = session?.subscribe({ change: render });
+      if (session) render(session);
+      else setWsError('This terminal session is unavailable.');
     };
-
-    const connectWs = async () => {
-      if (!ensureTerminalSocketAllowed()) return;
-      let port: number;
-      try {
-        port = await fetchTerminalPort(apiBase);
-      } catch {
-        if (!disposed) setWsError('Terminal unavailable.');
+    const render = (current: TerminalSession) => {
+      if (current !== session) return;
+      if (current.terminalId && current.terminalId !== reported) {
+        reported = current.terminalId;
+        intentRef.current.onOpened?.(current.terminalId);
+      }
+      setConnected(current.state === 'ready');
+      setExited(current.status === 'exited' || current.status === 'failed');
+      if (current.state === 'failed') {
+        // Saved history nobody can prove this Project owns stays on disk;
+        // the tab still gets a fresh shell rather than a refusal.
+        if (
+          current.error?.code === 'refused' &&
+          !current.terminalId &&
+          intent.legacyTerminalId &&
+          !intent.terminalId
+        ) {
+          intent.legacyTerminalId = undefined;
+          queueMicrotask(() => begin(false));
+          return;
+        }
+        if (current.error?.code === 'pty-unavailable')
+          setUnavailableReason(current.error.message);
+        else setWsError(current.error?.message ?? 'Terminal unavailable.');
         return;
       }
-      if (disposed) return;
-      // Port discovery may await a routed application request. Recheck the
-      // selected binding directly before opening the raw WebSocket.
-      if (!ensureTerminalSocketAllowed()) return;
-
-      // Connect to the host the app was loaded from (e.g. the LAN IP on a
-      // phone), not `localhost` — on a remote device localhost is the device
-      // itself and never reaches the terminal server. The WS server binds
-      // 0.0.0.0, so the LAN host resolves correctly.
-      const base = new URL(apiBase, window.location.href);
-      const wsProto = base.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${wsProto}//${base.hostname}:${port}`);
-
-      const sendOpen = () => {
-        if (
-          !ensureTerminalSocketAllowed() ||
-          !ws ||
-          ws.readyState !== WebSocket.OPEN
-        )
-          return;
-        lastSize = { cols: terminal.cols, rows: terminal.rows };
-        ws.send(
-          JSON.stringify({
-            type: 'open',
-            projectSlug,
-            terminalId,
-            cwd: workingDir,
-            ...(shell && { shell }),
-            ...(shellArgs && { shellArgs }),
-            ...(attachOnly && { attachOnly: true }),
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }),
-        );
-      };
-      const authGate = new BrowserWebSocketAuthGate(
-        isRemoteEndpoint(apiBase, window.location.href),
-        credentialProvider,
-        sendOpen,
-        (message) => {
-          if (!disposed) setWsError(message);
-          ws?.close();
-        },
+      if (current.status === 'exited' || current.status === 'failed') {
+        setWsError(null);
+        return;
+      }
+      setWsError(
+        current.state === 'reconnecting' ? 'Terminal reconnecting…' : null,
       );
-
-      ws.onopen = () => {
-        if (!ensureTerminalSocketAllowed()) return;
-        authGate.open(ws!);
-      };
-
-      ws.onmessage = (event) => {
-        if (disposed) return;
-        if (!ensureTerminalSocketAllowed()) return;
-        if (authGate.consume(event.data as string)) return;
-        try {
-          const msg = JSON.parse(event.data as string);
-          // Defense in depth: session events for any other session (or before
-          // this panel's snapshot names its own) never reach this terminal.
-          if (
-            SESSION_EVENT_TYPES.has(msg.type) &&
-            (!sessionId || msg.sessionId !== sessionId)
-          )
-            return;
-          if (msg.type === 'snapshot') {
-            sessionId = msg.sessionId;
-            scheduleResize();
-            setConnected(true);
-            if (msg.history) terminal.write(msg.history);
-          } else if (msg.type === 'data') {
-            terminal.write(msg.data);
-          } else if (msg.type === 'cwd') {
-            const resolve = cwdRequests.get(msg.requestId);
-            if (resolve) {
-              cwdRequests.delete(msg.requestId);
-              resolve(typeof msg.cwd === 'string' ? msg.cwd : null);
-            }
-          } else if (msg.type === 'exited') {
-            exited = true;
-            setConnected(false);
-            setWsError('The shell has exited.');
-            terminal.write('\r\n[terminal exited]\r\n');
-          } else if (
-            msg.type === 'error' &&
-            msg.code === 'terminal-unavailable' &&
-            typeof msg.message === 'string'
-          ) {
-            // The server's PTY backend (node-pty) is unavailable (#1244).
-            // Surface the server's actionable reason and swap to the
-            // command-executor fallback, which runs without a PTY.
-            setUnavailableReason(msg.message);
-          }
-        } catch {
-          /* ignore malformed */
-        }
-      };
-
-      ws.onerror = () => {
-        if (!disposed) {
-          setConnected(false);
-          setWsError('Terminal disconnected.');
-        }
-      };
-      ws.onclose = (event) => {
-        if (!disposed && !exited) {
-          console.warn(`[Terminal] ${websocketCloseError(event.code)}`);
-          setConnected(false);
-          setWsError(websocketCloseError(event.code));
-        }
-      };
     };
-
-    connectWs();
-
-    const dataDispose = terminal.onData((data) => {
-      if (
-        ensureTerminalSocketAllowed() &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(JSON.stringify({ type: 'data', sessionId, data }));
-      }
-    });
-
-    // Expose a way to inject text into this PTY (read ws/sessionId at call time).
-    // Refuse once the PTY has exited so callers don't write into a dead shell.
-    sendTextRef.current = (text: string) => {
-      if (
-        ensureTerminalSocketAllowed() &&
-        !exited &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(JSON.stringify({ type: 'data', sessionId, data: text }));
-        return true;
-      }
-      return false;
-    };
-
-    getLiveCwdRef.current = () => {
-      if (
-        !ensureTerminalSocketAllowed() ||
-        !ws ||
-        ws.readyState !== WebSocket.OPEN ||
-        !sessionId ||
-        exited
-      ) {
-        return Promise.resolve(null);
-      }
-      const requestId = `${terminalId}:cwd:${cwdRequest++}`;
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          cwdRequests.delete(requestId);
-          resolve(null);
-        }, 1_000);
-        cwdRequests.set(requestId, (cwd) => {
-          clearTimeout(timeout);
-          resolve(cwd);
-        });
-        ws!.send(JSON.stringify({ type: 'cwd', sessionId, requestId }));
-      });
-    };
-
-    const selectionDispose = terminal.onSelectionChange(() => {
-      setSelection(terminal.hasSelection() ? terminal.getSelection() : '');
-      setHandoffError(null);
-    });
-
-    const scheduleResize = () => {
-      if (disposed || resizeFrame !== null) return;
-      resizeFrame = requestAnimationFrame(() => {
-        resizeFrame = null;
-        if (disposed) return;
-        const proposed = fitAddon.proposeDimensions();
-        if (!proposed) return;
-        if (proposed.cols !== terminal.cols || proposed.rows !== terminal.rows)
-          fitAddon.fit();
-        if (terminal.cols === lastSize.cols && terminal.rows === lastSize.rows)
-          return;
-        if (
-          ensureTerminalSocketAllowed() &&
-          ws?.readyState === WebSocket.OPEN &&
-          sessionId
-        ) {
-          ws.send(
-            JSON.stringify({
-              type: 'resize',
-              sessionId,
-              cols: terminal.cols,
-              rows: terminal.rows,
-            }),
-          );
-          lastSize = { cols: terminal.cols, rows: terminal.rows };
-        }
-      });
-    };
-    const observer = new ResizeObserver(scheduleResize);
-    if (containerRef.current) observer.observe(containerRef.current);
+    begin(true);
 
     return () => {
-      disposed = true;
-      dataDispose.dispose();
-      selectionDispose.dispose();
-      for (const resolve of cwdRequests.values()) resolve(null);
-      cwdRequests.clear();
-      observer.disconnect();
-      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
-      // Unmounting is presentation lifecycle, not terminal lifecycle. The
-      // server retains an unowned session briefly so the same identity can
-      // reconnect after a host tab switch, move, or layout navigation.
-      terminal.dispose();
-      terminalRef.current = null;
-      ws?.close();
-      sendTextRef.current = null;
-      getLiveCwdRef.current = null;
+      unsubscribe?.();
+      // Unmounting is presentation lifecycle, not terminal lifecycle: the
+      // shell keeps running and the next view resumes its output.
+      session?.detach();
+      sessionRef.current = null;
+      shownRef.current = null;
+      setViewSession(null);
     };
   }, [
-    apiBase,
-    connectionId,
-    credentialProvider,
-    projectSlug,
-    workingDir,
-    terminalId,
-    shell,
-    shellArgs,
+    store,
+    projectId,
+    bindingKey,
+    key,
+    attachOnly,
+    readOnly,
+    command,
     connectionAttempt,
   ]);
 
-  useEffect(() => {
-    if (!wsError) return;
-    const reconnect = () => setConnectionAttempt((attempt) => attempt + 1);
-    window.addEventListener('online', reconnect);
-    return () => window.removeEventListener('online', reconnect);
-  }, [wsError]);
+  // Mirror of the composer's unmount guard: blur never fires for an
+  // unmounted terminal, and a stuck terminalFocused would suppress every
+  // {not:'terminalFocused'} shortcut globally.
+  useEffect(() => () => setShortcutContext('terminalFocused', false), []);
 
-  const sendSelectionToChat = async () => {
-    // Read from xterm at the hand-off, rather than from selection state: this
-    // is the one complete, contiguous selection on which the credential scan
-    // must operate, even if PTY output arrived in multiple reads.
-    const terminalOutput = terminalRef.current?.getSelection() ?? '';
+  const sendSelectionToChat = async (terminalOutput: string) => {
+    // The view hands over its one complete selection, read from the
+    // emulator at the hand-off: the credential scan sees all of it even when
+    // the PTY delivered it across several reads.
     if (!terminalOutput) return;
     if (selectionContainsCredential(terminalOutput)) {
       setHandoffError(
@@ -410,54 +231,128 @@ export function TerminalPanel({
       );
       return;
     }
-    if (!activeChat) {
-      setHandoffError('Open a chat before sending terminal output to it.');
-      return;
-    }
-    const cwd = await getLiveCwdRef.current?.();
-    if (!cwd) {
+    if (terminalOutput.length > MAX_TERMINAL_QUOTE_CHARS) {
       setHandoffError(
-        'The terminal working directory is unavailable; output was not added to chat.',
+        `Select less: Add to chat takes up to ${MAX_TERMINAL_QUOTE_CHARS.toLocaleString()} characters.`,
       );
       return;
     }
-
-    const existingDraft =
-      activeChatsStore.getSnapshot()[activeChat]?.input ?? getDraft(activeChat);
-    const handoff = buildTerminalSelectionHandoff({
-      selection: terminalOutput,
-      cwd,
-    });
-    const nextDraft = existingDraft
-      ? `${existingDraft}\n\n${handoff}`
-      : handoff;
-    // Persist and project the same draft through the real composer seams.
-    // Neither operation dispatches a provider turn; sending remains the
-    // composer's explicit user action.
-    setDraft(activeChat, nextDraft);
-    updateChat(activeChat, { input: getDraft(activeChat) });
-    setHandoffError(null);
+    // The chats store keys a chat by its session id; the navigation may name
+    // it by its conversation id.
+    const chatKey = activeChat
+      ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
+      : undefined;
+    if (!chatKey || !activeChatsStore.getSnapshot()[chatKey]) {
+      setHandoffError('Open a chat before sending terminal output to it.');
+      return;
+    }
+    // A watch-only viewer may not read the host path, and a supervisor
+    // workload's is unknown; the output still goes, naming no directory.
+    const cwd = await shownRef.current?.cwd().catch(() => null);
+    // A chip in the composer, sent with the next message the person sends;
+    // nothing is dispatched here.
+    try {
+      chatDraftsStore.addQuote(chatKey, {
+        version: 1,
+        kind: 'terminal',
+        origin: apiBase,
+        ...(cwd ? { cwd } : {}),
+        excerpt: terminalOutput,
+      });
+      setHandoffError(null);
+    } catch (error) {
+      setHandoffError(
+        error instanceof Error
+          ? error.message
+          : 'Output was not added to chat.',
+      );
+    }
   };
 
-  const copySelection = async () => {
-    const terminalOutput = terminalRef.current?.getSelection() ?? '';
-    if (!terminalOutput) return;
+  // URLs open in the Browser pane and `path:line` in the file preview, the
+  // same placement a chat link takes.
+  const openLink = async (link: TerminalLinkTarget) => {
+    if (!projectId) return;
+    if (link.kind === 'url') {
+      if (!openBrowserSession) {
+        setHandoffError('The Browser pane cannot open here.');
+        return;
+      }
+      const api = browserPaneApi(apiBase, authenticatedFetch);
+      try {
+        const { browserSessionId } = await api.create({
+          projectSlug,
+          url: link.url,
+        });
+        const outcome = openBrowserSession({ projectId, browserSessionId });
+        if (outcome.ok) setHandoffError(null);
+        else {
+          // No pane shows it: close the session rather than leave it running.
+          void api.close(browserSessionId).catch(() => undefined);
+          setHandoffError(describeOpenInRegionRefusal(outcome.reason));
+        }
+      } catch (error) {
+        setHandoffError(
+          error instanceof Error ? error.message : 'The link could not open.',
+        );
+      }
+      return;
+    }
+    const cwd = await shownRef.current?.cwd().catch(() => null);
+    const path = terminalLinkRelativePath(workingDir, cwd ?? null, link.path);
+    if (!path) {
+      setHandoffError('That file is outside this Project.');
+      return;
+    }
+    if (!openFilePreview) {
+      setHandoffError('Files cannot open here.');
+      return;
+    }
+    const thread = bindingKey?.startsWith('thread:')
+      ? bindingKey.slice('thread:'.length)
+      : undefined;
+    const outcome = openFilePreview({
+      projectId,
+      projectSlug,
+      path,
+      lineRange: { start: link.line, end: link.line },
+      ...(thread ? { thread } : {}),
+    });
     setHandoffError(
-      (await copyToClipboard(terminalOutput))
-        ? null
-        : 'Unable to copy the terminal selection.',
+      outcome.ok ? null : describeOpenInRegionRefusal(outcome.reason),
     );
   };
 
   // Register as the active terminal writer only while this tab is visible, so
   // injected input always lands in the terminal the user is looking at.
+  const writerKey = key ?? 'terminal';
   useEffect(() => {
     if (!isActive) return;
-    activeTerminalWriter.setActive(terminalId, (text) =>
-      sendTextRef.current ? sendTextRef.current(text) : false,
+    activeTerminalWriter.setActive(writerKey, (text) =>
+      sessionRef.current ? sessionRef.current.write(text) : false,
     );
-    return () => activeTerminalWriter.clearActive(terminalId);
-  }, [isActive, terminalId]);
+    return () => activeTerminalWriter.clearActive(writerKey);
+  }, [isActive, writerKey]);
+
+  // The same session runs its program again; its new output follows here.
+  const restart = async () => {
+    setRestarting(true);
+    try {
+      const session = sessionRef.current;
+      if (!session) throw new Error('This terminal could not restart.');
+      await session.restart();
+      setHandoffError(null);
+      onRestarted?.();
+    } catch (error) {
+      setHandoffError(
+        error instanceof Error && error.message
+          ? error.message
+          : 'This terminal could not restart.',
+      );
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   if (unavailableReason) {
     // Loud degradation (#1244): name the reason, then keep the user working
@@ -472,73 +367,112 @@ export function TerminalPanel({
 
   return (
     <div className="coding-terminal-shell">
-      {wsError ? (
+      {exited ? (
+        <div className="coding-terminal-connection">
+          <ErrorState
+            variant="compact"
+            title={ended?.message ?? 'The shell has exited.'}
+            action={
+              readOnly || viewSession?.readOnly ? undefined : (
+                <Button
+                  size="sm"
+                  disabled={restarting}
+                  onClick={() => void restart()}
+                >
+                  {restarting
+                    ? 'Restarting…'
+                    : ended
+                      ? 'Restart'
+                      : 'Restart shell'}
+                </Button>
+              )
+            }
+          />
+        </div>
+      ) : wsError ? (
         <div className="coding-terminal-connection" role="alert">
           <span>{wsError}</span>
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
           >
             Reconnect terminal
-          </button>
+          </Button>
         </div>
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>
       ) : null}
-      {selection && (
-        <fieldset className="coding-terminal-selection-actions">
-          <legend>Terminal selection actions</legend>
-          <button type="button" onClick={() => void sendSelectionToChat()}>
-            Send to chat
-          </button>
-          <button type="button" onClick={() => void copySelection()}>
-            Copy
-          </button>
-        </fieldset>
-      )}
       {handoffError && <p role="alert">{handoffError}</p>}
       <div
-        ref={containerRef}
         className="coding-terminal"
-        role="application"
-        aria-label="Terminal"
         onFocusCapture={() => setShortcutContext('terminalFocused', true)}
         onBlurCapture={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null))
             setShortcutContext('terminalFocused', false);
         }}
-        onPointerDown={() => terminalRef.current?.focus()}
-      />
-      {isMobile && (
-        <div
-          className="coding-terminal-keys"
-          role="toolbar"
-          aria-label="Terminal keys"
-        >
-          {[
-            ['Interrupt (Ctrl+C)', 'Ctrl+C', '\u0003'],
-            ['Tab', 'Tab', '\t'],
-            ['Previous command', '↑', '\u001b[A'],
-            ['Next command', '↓', '\u001b[B'],
-          ].map(([label, text, input]) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              disabled={!connected}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                sendTextRef.current?.(input);
-                terminalRef.current?.focus();
-              }}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
-      )}
+      >
+        <TerminalView
+          session={viewSession}
+          label="Terminal"
+          touchKeys={isMobile}
+          screenReaderMode={terminalScreenReader}
+          notices={false}
+          onAddToChat={(text) => void sendSelectionToChat(text)}
+          onOpenLink={(link) => void openLink(link)}
+        />
+      </div>
     </div>
   );
+}
+
+/** `view` as an observer sees it: no input and no resize reach the session. */
+function watchOnly(view: TerminalViewSession): TerminalViewSession {
+  return {
+    get state() {
+      return view.state;
+    },
+    readOnly: true,
+    subscribe: (listener) => view.subscribe(listener),
+    write: () => false,
+    resize: () => {},
+  };
+}
+
+/**
+ * A program without a terminal writes bare line feeds, which move a terminal
+ * down without returning to the first column; here each also starts a line.
+ * Only the view changes: the journal keeps the program's own bytes.
+ */
+function startLinesAtFeeds(view: TerminalViewSession): TerminalViewSession {
+  return {
+    get state() {
+      return view.state;
+    },
+    get readOnly() {
+      return view.readOnly;
+    },
+    subscribe(listener) {
+      let afterReturn = false;
+      return view.subscribe({
+        output(bytes, kind) {
+          const lines: number[] = [];
+          for (const byte of bytes) {
+            if (byte === 0x0a && !afterReturn) lines.push(0x0d);
+            lines.push(byte);
+            afterReturn = byte === 0x0d;
+          }
+          listener.output(Uint8Array.from(lines), kind);
+        },
+        reset() {
+          afterReturn = false;
+          listener.reset?.();
+        },
+        state: (state, detail) => listener.state?.(state, detail),
+      });
+    },
+    write: (bytes) => view.write(bytes),
+    resize: (cols, rows) => view.resize(cols, rows),
+  };
 }
 
 // ─── Alternative command executor ────────────────────────────────────────────

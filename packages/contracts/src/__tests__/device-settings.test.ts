@@ -185,6 +185,9 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'experimentalFlowEnabled',
         'experimentalReadinessEnabled',
         'experimentalTrustEnabled',
+        // Station routes preview (docs/design/station-routes.md).
+        'experimentalStationRoutesEnabled',
+        'experimentalSheetGesturesEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.
@@ -194,10 +197,14 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // #3051 — the Coding layout's panels, per session.
         'layoutPanels',
         'chatReturnBehavior',
+        // #4377 — assistant answer width, synced per account.
+        'chatAnswerWidth',
         // Named color themes (docs/decisions/user-color-themes.md).
         'colorTheme',
         'colorThemeFlavor',
         'colorThemeAccent',
+        // #3994 — terminal screen reader mode, off by default.
+        'terminalScreenReader',
       ].sort(),
     );
   });
@@ -209,13 +216,15 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         definition.defaultValue,
       ]),
     );
-    expect(byKey.get('theme')).toBe('dark');
+    // #4407: no saved mode follows the device.
+    expect(byKey.get('theme')).toBe('system');
     expect(byKey.get('accentColor')).toBeNull();
     // `station` is today's look: an absent selection changes nothing.
     expect(byKey.get('colorTheme')).toBe('station');
     expect(byKey.get('colorThemeFlavor')).toBeNull();
     expect(byKey.get('colorThemeAccent')).toBeNull();
     expect(byKey.get('hapticsEnabled')).toBe(true);
+    expect(byKey.get('terminalScreenReader')).toBe(false);
     expect(byKey.get('featureSettings')).toEqual({
       ttsReadbackEnabled: false,
       pushNotificationsEnabled: false,

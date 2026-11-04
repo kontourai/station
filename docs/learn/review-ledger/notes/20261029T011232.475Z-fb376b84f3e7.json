@@ -1,0 +1,19 @@
+{
+  "revision": "ced2f38d1aca296073db086265ce61a6e955bd58",
+
+  "notes": [
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed the default-off Sheet gestures registry definition and inbox consumer. Updated its inventory row to include swipe-revealed Snooze and Dismiss; existing launch dispositions remain unchanged. Chromium evidence only; no native-device qualification.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed device preview rules against the extended Sheet gestures consumer. Developer tools and the independent device preview remain required; off retains Details actions. No new server operations, background work, costs or persisted preview schema. Guide remains accurate.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Traced touch reveal, long-press fallback, picker layering and lifecycle debounce against useInboxSwipe, InboxRow, MobileTaskSwitcher and inbox-dismissals. Added gesture behavior and Chromium evidence with physical-device limits. Inspected actual 390/1440 dark/light renders.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Changed settings contract fields are only Sheet gestures help/description. Starter prerequisites, first-run completion, Task dispatch, launch identity and resume paths remain unchanged; browser-local inbox visibility neither starts nor stops Starter work. No prose change required.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Regenerated settings registry from its contract: only Sheet gestures consequence copy changed. Setting ID, developer-tools section, deep link, defaults, enabled conditions, API access and response shape remain unchanged. Reference remains accurate.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced desktop X and mobile Details/swipe through InboxRow, both hosts, shared grouping/counts and bounded local dismissal storage. Documented Undo/Restore, identity promotion, reappearance and device-local persistence. Focused tests and Chromium touch/picker/hover journey pass; physical devices unverified.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/utils/inbox-dismissal-store.ts","src-ui/src/hooks/useInboxSwipe.ts","src-ui/src/contexts/active-chats-store.ts","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Traced default-off Sheet gestures device choice through useSheetGesturesPreview into both inbox hosts. Added left/right swipe, clock/X and Details fallback. Station-wide preview distinction and settings paths are unchanged; browser journey exercises enabled and disabled states.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]}
+  ]
+}

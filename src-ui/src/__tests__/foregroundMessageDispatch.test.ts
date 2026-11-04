@@ -136,6 +136,29 @@ describe('dispatchForeground target', () => {
     expect(attachmentQueueImported).not.toHaveBeenCalled();
   });
 
+  test('carries MCP prompt origin into the foreground send', async () => {
+    await dispatchForeground(
+      baseInput({
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+    );
+    expect(sendExecutionMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+      expect.anything(),
+    );
+  });
+
   test('a reconciled reference is sendable after reload without File bytes', async () => {
     await dispatchForeground(
       baseInput({

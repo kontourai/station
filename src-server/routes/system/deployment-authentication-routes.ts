@@ -21,6 +21,7 @@ import {
   RuntimeAuthFailureLimiter,
 } from '../../security/runtime-request-security.js';
 import { readVerifiedNativeVirtualApplicationRequest } from '../../services/connections/virtual-application.js';
+import { localAccountSignOutOrigin } from '../../services/identity/account-signout-origins.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 
@@ -33,6 +34,7 @@ export function createDeploymentAuthenticationRoutes(
     environment: unknown,
   ) => Promise<ProjectMembershipScope>,
   previewInvitation?: (token: string) => Promise<ProjectInvitationPreview>,
+  signOutBrowserOrigins: readonly string[] = [],
 ) {
   const app = new Hono();
   const attempts = new RuntimeAuthFailureLimiter({ maxFailures: 120 });
@@ -106,8 +108,15 @@ export function createDeploymentAuthenticationRoutes(
     if (!authentication)
       return c.json({ error: { code: 'authentication_not_configured' } }, 501);
     const origin = c.req.header('Origin');
-    const origins = authentication.allowedBrowserOrigins ?? [
-      authentication.publicOrigin,
+    const signOutOrigin = localAccountSignOutOrigin(
+      c.req.raw,
+      signOutBrowserOrigins,
+    );
+    const origins = [
+      ...(authentication.allowedBrowserOrigins ?? [
+        authentication.publicOrigin,
+      ]),
+      ...(signOutOrigin ? [signOutOrigin] : []),
     ];
     if (origin && !origins.includes(origin))
       return c.json({ error: { code: 'origin_forbidden' } }, 403);

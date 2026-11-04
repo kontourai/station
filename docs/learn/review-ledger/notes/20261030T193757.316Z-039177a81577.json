@@ -1,0 +1,7 @@
+{
+  "revision": "ee211ffd0bce3b72a799806ad1b3816ad557cf2e",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed station-control-operations-tools delta against knowledge guidance. The branch changes scheduler creation/update inputs and recorded conversation-target admission and carries operational tools in this shared module; no knowledge query, source selection, citation, entry permission or read contract changes. The knowledge guide references shared tool composition but its knowledge claims remain accurate. Merged docs, automation-target and conversation-dispatch suites passed66 tests; no live model/knowledge-provider claim.","inputs":["docs/guides/knowledge.md","src-server/tools/station-control-operations-tools.ts"]}
+  ]
+}

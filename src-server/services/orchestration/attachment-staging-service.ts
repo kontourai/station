@@ -369,12 +369,17 @@ export class AttachmentStagingService {
         record.binding = { ...binding };
         record.bindingExpiresAt = this.now() + this.ttlMs;
       }
-    return records.map((record) => {
-      return {
-        ...descriptorOf(record),
-        dataUrl: `data:${record.mimeType};base64,${record.bytes!.toString('base64')}`,
-      };
-    });
+    // Exactly `ChatAttachmentInput`. The stage's `clientAttachmentId` is a
+    // composer-side handle; spreading the whole descriptor leaked it into the
+    // turn input, which the strict retained-turn schema then refused when the
+    // turn's terminal retired its boundary.
+    return records.map(({ kind, name, mimeType, size, bytes }) => ({
+      kind,
+      name,
+      mimeType,
+      size,
+      dataUrl: `data:${mimeType};base64,${bytes!.toString('base64')}`,
+    }));
   }
 
   cleanup(): void {

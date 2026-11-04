@@ -132,7 +132,11 @@
 
     "src-ui/src/views/project-settings/ProjectS3Sources.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/tools/station-control-operations-tools.ts",
+
+    "src-server/tools/__tests__/station-control-operations-tools.test.ts"
   ],
 
   "checks": [

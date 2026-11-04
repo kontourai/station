@@ -392,7 +392,7 @@ export function resolveBuiltinCodingStack({
           ) : null}
           <ErrorState
             title="Coding file workspace unavailable"
-            description="The Workspace Composition file pane could not be admitted. Station did not fall back to the legacy Coding host."
+            description="The file pane couldn't load."
           />
         </>
       ),
@@ -441,7 +441,7 @@ export function resolveBuiltinCodingStack({
           ) : null}
           <ErrorState
             title="Coding Diff workspace unavailable"
-            description="The Workspace Composition Diff pane could not be admitted. Station did not fall back to the legacy Coding host."
+            description="The Diff pane couldn't load."
           />
         </>
       ),

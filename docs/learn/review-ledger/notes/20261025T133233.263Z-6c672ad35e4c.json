@@ -1,0 +1,7 @@
+{
+  "revision": "6f092921fff7bb9eed808eb51da726915ad768e9",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"EXECUTED: validated all 315 retained entries with the owning deploy-ledger validator and compared the generated Markdown byte-exactly with renderLedgerMarkdown. Both ledger inputs are unchanged by this feature branch against its task base. These are historical release records; this check does not renew registry, hosted publication, installed artifact or release qualification, and no Walkthroughs publication is claimed.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

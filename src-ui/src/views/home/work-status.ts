@@ -1,4 +1,7 @@
-import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
+import {
+  OWNED_WORK_STATUS_WORDS,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
 import { formatDuration } from '../../utils/relativeTime';
 import { type HomeWorkItem, TASK_AWAITS_ANSWER_LABEL } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
@@ -30,7 +33,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
  *  elsewhere                                     (Idle)
- *  N sub-agents, no progress, running            (Running)
+ *  N sub-agents, owned cleanup, no progress, running (Running)
  *  draft                                         (Drafts)
  *  done                                          (finished)
  *  idle                                          (Idle)
@@ -136,7 +139,8 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
           ? { rung: 'blocked', lane: 'needsYou', tone: 'attention', word }
           : { rung: 'waiting', lane: 'needsYou', tone: 'attention', word };
       case 'Running':
-        return { rung: 'running', lane: 'running', tone: 'active', word };
+        // Task progress does not establish a running engine turn. A working chat promotes its family.
+        return { rung: 'idle', lane: 'idle', tone: 'neutral', word };
       case 'Completed':
         return { rung: 'done', lane: 'finished', tone: 'neutral', word };
       case 'Stopped':
@@ -146,14 +150,14 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     }
   }
   if (item.controlMode === 'read-only-attached') {
-    // The row's meta line already names the app; the word says only that
-    // this Station cannot answer in it.
+    // Engine identity does not establish which app started this conversation.
+    // The word says only that this Station cannot answer in it.
     return {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
       word: SESSION_STATUS_WORDS.elsewhere,
-      reason: `Started in ${item.agentLabel}`,
+      reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
   switch (item.lifecycleLabel) {
@@ -195,6 +199,18 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         reason: item.unanswerableNotice,
       };
     case 'Running': {
+      const ownedState = facts?.ownedWorkState;
+      if (ownedState && ownedState !== 'running')
+        return {
+          rung: 'childWork',
+          lane: 'running',
+          tone: ownedState === 'unknown' ? 'caution' : 'active',
+          word: OWNED_WORK_STATUS_WORDS[ownedState],
+          detail:
+            ownedState === 'unknown'
+              ? facts?.ownedStopReasons?.join(' ')
+              : undefined,
+        };
       const activity = facts?.activity;
       const since = epochMs(activity?.turnStartedAt);
       const children = activity?.childWorkCount ?? 0;

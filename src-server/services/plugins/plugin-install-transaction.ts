@@ -1,4 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { assertRequiredSlotDefaultMutable } from '@kontourai/station-contracts/required-slots';
 import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
 import { retirePluginTelemetry } from '../plugin-telemetry-service.js';
@@ -34,7 +35,10 @@ import {
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
-import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  createStationTempDirSync,
+  retainStationTempRecovery,
+} from '@kontourai/station-shared/temp-dir';
 import {
   acquireAgentIdentityMutationLockAtHome,
   DefaultAgentMutationError,
@@ -42,7 +46,11 @@ import {
 } from '../../domain/agent-registry.js';
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { observeAppConfigFile } from '../../domain/config-loader-app.js';
-import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
+import {
+  publishPluginIntegrations,
+  restorePluginIntegrations,
+  saveIntegrationConfig,
+} from '../../domain/config-loader-storage.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
   pluginAgentInstallationBinding,
@@ -132,6 +140,20 @@ import {
   withPluginPublicationContext,
   withPluginRetirementScope,
 } from './plugin-install-publication.js';
+import { ensurePluginInstallTrustMigration } from './plugin-install-trust-migration.js';
+import {
+  defaultPluginInstallTrustPolicy,
+  type PluginInstallTrustPolicy,
+  pluginTrustRecordFor,
+  preparePluginInstallTrust,
+} from './plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  pluginTrustForInstalledBytes,
+  pluginTrustMigrationWitness,
+  readPluginTrustRecord,
+  writePluginTrustRecord,
+} from './plugin-install-trust-store.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
@@ -156,6 +178,7 @@ import {
   hasGrant,
   isPluginInstallAuthorityRecord,
   observePluginGrantRevisions,
+  PluginContentUnavailableError,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
   type PluginGrantMutationScope,
@@ -176,6 +199,7 @@ import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
 } from './plugin-public-server.js';
+import { recordRecoveryOwner } from './plugin-recovery-inventory.js';
 import { pluginInstallationGeneration } from './plugin-runtime-artifact.js';
 import {
   detectWorkspacePaneCatalogConflicts,
@@ -470,6 +494,8 @@ export interface PluginInstallTransactionDeps {
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
+  /** Install trust pins, lock and verifier; production uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -2591,7 +2617,7 @@ function readPluginOwnedIntegrationIds(
   return [...ids];
 }
 
-function backupPluginOwnedIntegrations(
+export function backupPluginOwnedIntegrations(
   projectIntegrationsDir: string,
   pluginName: string,
   backupRoot: string,
@@ -2611,51 +2637,16 @@ function backupPluginOwnedIntegrations(
   }
 }
 
-function restorePluginOwnedIntegrations(
-  projectIntegrationsDir: string,
+async function restorePluginOwnedIntegrations(
+  projectHomeDir: string,
   pluginName: string,
   backupRoot: string,
-): void {
-  for (const integrationId of readPluginOwnedIntegrationIds(
-    projectIntegrationsDir,
+): Promise<void> {
+  await restorePluginIntegrations({
+    projectHomeDir,
     pluginName,
-  )) {
-    assertPluginNameSegment(integrationId);
-    const target = join(projectIntegrationsDir, integrationId);
-    assertPathInside(projectIntegrationsDir, target, 'Integration target');
-    rmSync(target, { recursive: true, force: true });
-  }
-  const backupDir = join(backupRoot, 'integrations');
-  if (!existsSync(backupDir)) return;
-  for (const entry of readdirSync(backupDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    assertPluginNameSegment(entry.name);
-    const source = join(backupDir, entry.name);
-    const target = join(projectIntegrationsDir, entry.name);
-    assertPathInside(backupDir, source, 'Integration backup source');
-    assertPathInside(
-      projectIntegrationsDir,
-      target,
-      'Integration restore target',
-    );
-    mkdirSync(projectIntegrationsDir, { recursive: true });
-    cpSync(source, target, { recursive: true });
-  }
-}
-
-export function removePluginOwnedIntegrations(
-  projectIntegrationsDir: string,
-  pluginName: string,
-): void {
-  for (const integrationId of readPluginOwnedIntegrationIds(
-    projectIntegrationsDir,
-    pluginName,
-  )) {
-    assertPluginNameSegment(integrationId);
-    const target = join(projectIntegrationsDir, integrationId);
-    assertPathInside(projectIntegrationsDir, target, 'Integration target');
-    rmSync(target, { recursive: true, force: true });
-  }
+    backupDir: join(backupRoot, 'integrations'),
+  });
 }
 
 async function autoInstallCopiedIntegrationCommands(
@@ -2735,7 +2726,9 @@ async function installRequiredPluginTools(
         ? await registry.getToolDef(toolId)
         : null;
       if (toolDef) {
-        await saveIntegrationConfig(projectHomeDir, toolId, toolDef);
+        await saveIntegrationConfig(projectHomeDir, toolId, toolDef, {
+          externalDefaults: true,
+        });
       }
       toolResults.push({
         id: toolId,
@@ -3219,6 +3212,16 @@ async function installPluginFromSourceUnderContext(
     kind: 'no-operator-decision',
     caller: 'this caller',
   };
+  // #2998: freeze the pre-d1 migration set before this install can create
+  // anything, dependencies included, so nothing it adds is grandfathered.
+  await ensurePluginInstallTrustMigration({
+    projectHomeDir,
+    ...(deps.packageMcpJournal
+      ? { packageMcpJournal: deps.packageMcpJournal }
+      : {}),
+    logger,
+  });
+  const trustWitness = pluginTrustMigrationWitness(deps.packageMcpJournal);
   const skipSet = new Set<string>(skip || []);
   // Populated by `installPluginDependency` as it creates trees, and read only
   // by this function's rollback. Identity of what WE created, never a listing
@@ -3241,10 +3244,37 @@ async function installPluginFromSourceUnderContext(
   const { tempDir, tempName } = result;
   let grantScope: PluginGrantMutationScope | undefined;
   let backupRoot: string | null = null;
+  let retainBackup = false;
+  function recoveryRequired(
+    error: unknown,
+    rollbackError: unknown,
+  ): AggregateError {
+    retainBackup = true;
+    const backupId = backupRoot ? basename(backupRoot) : 'unavailable';
+    const errors = [error, rollbackError];
+    let markerFailure = '';
+    if (backupRoot) {
+      try {
+        retainStationTempRecovery(backupRoot);
+      } catch (markerError) {
+        errors.push(markerError);
+        markerFailure = '; retention marker failed';
+      }
+    }
+    logger.error('Plugin install recovery required', {
+      backupId,
+      backupPath: backupRoot,
+    });
+    return new AggregateError(
+      errors,
+      `Plugin install and rollback both failed; recovery required; backup id ${backupId}${markerFailure}`,
+    );
+  }
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
   // before the backup finishes (archive#1835 delta review).
   let backupComplete = false;
+  let integrationsPublished = false;
   let serverQuiescence: PluginPublicServerQuiescence | null = null;
   let eventSubscriptionQuiescence: { release(): void } | null = null;
   let releaseInstallPublication: (() => Promise<void>) | undefined;
@@ -3783,6 +3813,18 @@ async function installPluginFromSourceUnderContext(
         )
           throw new RegistryAcquisitionRefused('stale-review');
       }
+    // #2998: decide install trust from THIS acquisition's own verification,
+    // before any effect (the migration ran at entry).
+    const installTrust = await preparePluginInstallTrust({
+      projectHomeDir,
+      pluginName,
+      manifestName: manifest.name,
+      sourceDigest:
+        recovery?.originalSourceDigest ?? consentBasis.contentDigest,
+      registrySigner: registryAcquisition?.signer ?? null,
+      policy: deps.installTrust ?? defaultPluginInstallTrustPolicy(),
+      ...(trustWitness ? { witness: trustWitness } : {}),
+    });
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -3840,9 +3882,15 @@ async function installPluginFromSourceUnderContext(
     // releases. The lock is taken here rather than at the top of the function
     // because the plugin's NAME is not known until its manifest is read.
     return await withPluginContentLock(pluginsDir, pluginName, async () => {
+      // #2998: the bytes installed under this name, read under the lock.
+      const trustBytesBefore = computePluginContentDigest(
+        pluginsDir,
+        pluginName,
+      );
       try {
         const installBackupRoot = createStationTempDirSync('plugin-install');
         backupRoot = installBackupRoot;
+        recordRecoveryOwner(installBackupRoot, projectHomeDir);
         // Plugin directory + integrations are backed up BEFORE the grants
         // snapshot: backupPluginDurableState throws typed on a corrupt grants
         // store, and the destructive delete-and-restore rollback below is only
@@ -4150,16 +4198,20 @@ async function installPluginFromSourceUnderContext(
           logger,
         });
 
-        removePluginOwnedIntegrations(
-          join(projectHomeDir, 'integrations'),
+        const copiedIntegrations = await publishPluginIntegrations({
+          projectHomeDir,
           pluginName,
-        );
-        const copiedIntegrations = isAgentPlugin
-          ? []
-          : copyPluginIntegrations(
-              pluginDir,
-              join(projectHomeDir, 'integrations'),
-            );
+          ...(hadExistingPlugin && backupRoot
+            ? { backupRetiredTo: join(backupRoot, 'integrations') }
+            : {}),
+          ...(isAgentPlugin
+            ? {}
+            : {
+                stage: (stagingDir: string) =>
+                  copyPluginIntegrations(pluginDir, stagingDir),
+              }),
+        });
+        integrationsPublished = true;
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }
@@ -4407,6 +4459,39 @@ async function installPluginFromSourceUnderContext(
         });
         pluginInstalls.add(1, { plugin: pluginName });
 
+        // #2998: the last fallible step, so a failed write rolls the whole
+        // install back and an install never lands without its record.
+        const trustedDigest =
+          permissionArtifact?.digest ??
+          computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+        if (!trustedDigest) throw new PluginContentUnavailableError(pluginName);
+        // Decided from what this content lock saw: the record read now, and
+        // whether it described the bytes installed when the lock was taken.
+        // A record that survived an uninstall, or bytes placed by hand, is
+        // not an installation this record describes.
+        const previousTrust = readPluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          trustWitness,
+        );
+        if (previousTrust.state === 'unreadable')
+          throw new PluginTrustRecordNewerError(pluginName);
+        await writePluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          pluginTrustRecordFor(
+            { ...installTrust, previous: previousTrust },
+            trustedDigest,
+            new Date(),
+            {
+              installedBefore:
+                pluginTrustForInstalledBytes(previousTrust, trustBytesBefore)
+                  .state === 'recorded',
+            },
+          ),
+          trustWitness,
+        );
+
         dependencyLifecycle.commit?.();
         commitRemovedDependencies(retiredDependencyBackups);
         grantScope!.commit();
@@ -4540,11 +4625,12 @@ async function installPluginFromSourceUnderContext(
             // providers until the next restart. The lock's release forgets it
             // too, but that is after every read in here.
             forgetPluginContentDigest(pluginsDir, pluginName);
-            restorePluginOwnedIntegrations(
-              join(projectHomeDir, 'integrations'),
-              pluginName,
-              backupRoot,
-            );
+            if (integrationsPublished)
+              await restorePluginOwnedIntegrations(
+                projectHomeDir,
+                pluginName,
+                backupRoot,
+              );
             await restorePluginDurableState(
               projectHomeDir,
               backupRoot,
@@ -4612,10 +4698,7 @@ async function installPluginFromSourceUnderContext(
             await deps.settleProviderAdapterRetirements?.();
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
-            throw new AggregateError(
-              [error, rollbackError],
-              'Plugin install and rollback both failed.',
-            );
+            throw recoveryRequired(error, rollbackError);
           }
         } else {
           // Rollback failures must not REPLACE the original install failure —
@@ -4633,10 +4716,8 @@ async function installPluginFromSourceUnderContext(
                   );
               }
             } else rmSync(pluginDir, { recursive: true, force: true });
-            removePluginOwnedIntegrations(
-              join(projectHomeDir, 'integrations'),
-              pluginName,
-            );
+            if (integrationsPublished)
+              await publishPluginIntegrations({ projectHomeDir, pluginName });
             if (backupRoot && backupComplete) {
               await restorePluginDurableState(
                 projectHomeDir,
@@ -4666,10 +4747,7 @@ async function installPluginFromSourceUnderContext(
             });
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
-            throw new AggregateError(
-              [error, rollbackError],
-              'Plugin install and rollback both failed.',
-            );
+            throw recoveryRequired(error, rollbackError);
           }
         }
         throw error;
@@ -4680,7 +4758,7 @@ async function installPluginFromSourceUnderContext(
     await releaseInstallPublication?.();
     serverQuiescence?.release();
     eventSubscriptionQuiescence?.release();
-    if (backupRoot) {
+    if (backupRoot && !retainBackup) {
       rmSync(backupRoot, { recursive: true, force: true });
     }
     if (
@@ -4715,6 +4793,7 @@ async function uninstallInstalledPluginUnderContext(
 ): Promise<
   { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
 > {
+  assertRequiredSlotDefaultMutable(name, 'uninstall');
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4728,6 +4807,7 @@ async function uninstallInstalledPluginUnderContext(
     const installedName =
       resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
       name;
+    assertRequiredSlotDefaultMutable(installedName, 'uninstall');
     return await withPluginContentLock(deps.pluginsDir, installedName, () =>
       uninstallPluginUnderPublication(
         name,
@@ -4941,8 +5021,8 @@ async function uninstallPluginUnderPublication(
     // correct by luck rather than by construction; a restored tree is a
     // tree whose memoized digest must not be trusted, whoever wrote it.
     forgetPluginContentDigest(pluginsDir, pluginName);
-    restorePluginOwnedIntegrations(
-      join(projectHomeDir, 'integrations'),
+    await restorePluginOwnedIntegrations(
+      projectHomeDir,
       pluginName,
       backupRoot,
     );
@@ -5048,10 +5128,11 @@ async function uninstallPluginUnderPublication(
     }
 
     await grantScope.run(() => revokeAllGrants(projectHomeDir, pluginName));
-    removePluginOwnedIntegrations(
-      join(projectHomeDir, 'integrations'),
+    await publishPluginIntegrations({
+      projectHomeDir,
       pluginName,
-    );
+      backupRetiredTo: join(backupRoot, 'integrations'),
+    });
     if (managed) {
       lifecycle = await installationService!.withdraw(priorInstallation!);
       if (deps.packageMcpJournal)

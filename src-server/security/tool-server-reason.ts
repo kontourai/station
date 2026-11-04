@@ -1,7 +1,13 @@
 const FALLBACK_TOOL_SERVER_REASON =
   'protocol_error: Tool server returned an unexpected protocol response';
 
+export const OAUTH_CLIENT_ID_REQUIRED_REASON =
+  'client_id_required: This server does not register OAuth clients automatically; add your own client ID';
+export const OAUTH_CLIENT_CHANGED_REASON = 'OAuth client changed';
+
 const STATION_OWNED_TOOL_SERVER_REASONS = new Set([
+  OAUTH_CLIENT_ID_REQUIRED_REASON,
+  OAUTH_CLIENT_CHANGED_REASON,
   'invalid_client: OAuth client credentials were rejected',
   'invalid_grant: OAuth authorization grant was rejected or expired',
   'access_denied: OAuth authorization was denied',

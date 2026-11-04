@@ -27,6 +27,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import { useUserLookup } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
+  onlineManager,
   QueryClient,
   QueryClientProvider,
   useQuery,
@@ -47,7 +48,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // under test is the real one.
 import { _getApiBase } from '../../../packages/sdk/src/api-core';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
-import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
+import {
+  useAuthorityPersistence,
+  useClientBootstrapReadiness,
+} from '../contexts/AuthorityPersistenceContext';
 import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
@@ -243,7 +247,9 @@ function createHarness(): Harness {
 }
 
 function Probe() {
-  const { status, namespace, refused } = useAuthorityPersistence();
+  const { status, namespace, refused, reobserve } = useAuthorityPersistence();
+  const boot = useClientBootstrapReadiness();
+  (Probe as unknown as { reobserve?: () => void }).reobserve = reobserve;
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
   harness.activeClient = client;
@@ -287,6 +293,8 @@ function Probe() {
     <div
       data-testid="probe"
       data-status={status}
+      data-boot-status={boot.status}
+      data-shared-realtime={String(boot.sharedRealtime)}
       data-refused={String(refused === true)}
       data-namespace={namespace ?? ''}
       data-projects={
@@ -1104,6 +1112,63 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     },
   );
 
+  it.each([
+    [{ sharedRealtime: true }, 'true'],
+    [{}, 'false'],
+    [{ sharedRealtime: 'true' }, 'false'],
+  ])(
+    'settles boot capability only from a boolean advertisement: %s',
+    async (capability, expected) => {
+      const url = homeUrl('boot-capability');
+      const harness = createHarness();
+      harness.observationPlan.set('default', async () => OBS_DEFAULT);
+      const gate = deferred<void>();
+      stubFetch(async (requested) => {
+        if (requested === `${url}/api/boot`) {
+          await gate.promise;
+          return new Response(
+            JSON.stringify({ version: 1, sections: {}, ...capability }),
+          );
+        }
+        return new Response('not found', { status: 404 });
+      });
+      vi.mocked(resolveLocalUiSession).mockImplementation(async (base) =>
+        base === url ? { kind: 'authenticated' } : { kind: 'host-unavailable' },
+      );
+      const mounted = renderTree(harness, { localUiApiBase: url });
+      const { id } = await addHome('boot-capability', url);
+      harness.observationPlan.set(url, async () => OBS_A);
+      try {
+        await switchTo(id);
+        await waitFor(() =>
+          expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+        );
+        expect(probe().getAttribute('data-boot-status')).toBe('pending');
+        expect(probe().getAttribute('data-shared-realtime')).toBe('false');
+        await act(async () => gate.resolve());
+        await waitFor(() =>
+          expect(probe().getAttribute('data-boot-status')).toBe('settled'),
+        );
+        expect(probe().getAttribute('data-shared-realtime')).toBe(expected);
+        if (expected === 'true') {
+          const other = await addHome('boot-capability-other');
+          harness.observationPlan.set(other.url, async () => OBS_B);
+          await switchTo(other.id);
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+          );
+          await waitFor(() =>
+            expect(probe().getAttribute('data-boot-status')).toBe('settled'),
+          );
+          expect(probe().getAttribute('data-shared-realtime')).toBe('false');
+        }
+      } finally {
+        gate.resolve();
+        mounted.unmount();
+      }
+    },
+  );
+
   it("a delayed boot payload never seeds another identity's shelf", async () => {
     const urlA = homeUrl('homea');
     const harness = createHarness();
@@ -1111,6 +1176,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     const bootGate = deferred<unknown>();
     const bootPayload = {
       version: 1,
+      sharedRealtime: true,
       sections: {
         branding: { data: { success: true, data: { name: 'boot-A-marker' } } },
       },
@@ -1135,6 +1201,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
     const heldClient = harness.activeClient!;
+    expect(probe().getAttribute('data-boot-status')).toBe('pending');
+    expect(probe().getAttribute('data-shared-realtime')).toBe('false');
     // A's seed holds its boot fetch (at A's captured origin) open…
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
@@ -1155,6 +1223,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       bootGate.resolve(null);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(probe().getAttribute('data-boot-status')).toBe('settled');
+    expect(probe().getAttribute('data-shared-realtime')).toBe('false');
     expect(heldClient.getQueryData(['branding'])).toBeUndefined();
     expect(harness.activeClient?.getQueryData(['branding'])).toBeUndefined();
     expect(probe().getAttribute('data-projects')).toContain(idB);
@@ -1324,6 +1394,89 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       unmount();
     },
   );
+
+  it('a browser reconnect keeps the verified workspace: no re-read, same client', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    const client = harness.activeClient;
+    const reads = harness.observationCalls.length;
+    try {
+      // A Wi-Fi/cellular handoff: the browser goes offline, then online.
+      act(() => onlineManager.setOnline(false));
+      act(() => onlineManager.setOnline(true));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(probe().getAttribute('data-status')).toBe('verified');
+      expect(harness.activeClient).toBe(client);
+      expect(harness.observationCalls).toHaveLength(reads);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation is read again when the browser reconnects', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    try {
+      act(() => onlineManager.setOnline(false));
+      networkUp = true;
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('verified'),
+      );
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation offers a re-read that verifies; a refused one does not', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    const first = renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    const reobserve = (Probe as unknown as { reobserve?: () => void })
+      .reobserve;
+    expect(reobserve).toBeTypeOf('function');
+    networkUp = true;
+    act(() => reobserve?.());
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+    first.unmount();
+
+    harness.observationPlan.set('default', async () => {
+      throw UNAUTHORIZED;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-refused')).toBe('true'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+  });
 
   it('offline with no observation shows zero A rows and retains the blob byte-identical', async () => {
     const harness = createHarness();

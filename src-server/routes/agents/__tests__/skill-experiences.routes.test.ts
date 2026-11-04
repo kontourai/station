@@ -37,6 +37,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -399,16 +400,17 @@ class ExperienceAdapter extends GateTestAdapter {
   }
   override async startSession(input: ProviderSessionStartInput) {
     this.sessions.add(input.threadId);
-    this.events.push({
-      eventId: `${input.threadId}:configured`,
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      method: 'session.configured',
-      createdAt: new Date().toISOString(),
-      metadata: input.metadata,
-    });
-    return super.startSession(input);
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}`,
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        method,
+        createdAt: new Date().toISOString(),
+        metadata: input.metadata,
+      });
+    return { ...(await super.startSession(input)), metadata: input.metadata };
   }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
@@ -491,6 +493,7 @@ async function experienceRuntime(
     getProject: async (_access, slug) =>
       slug === 'project-one' ? { workingDirectory: fixture.home } : undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => {
       const root = fixture.store.conversationSessions(id)[0]?.sessionId ?? id;
       const event = [...fixture.store.listEvents(root)]
@@ -554,6 +557,9 @@ async function experienceRuntime(
     createConversationId: () => 'experience-session',
   };
   const routes = createOrchestrationRoutes(service, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+      fixture.home,
+    ),
     eventBus,
     logger: { debug: vi.fn() },
     getUserId: () => 'experience-owner',
@@ -581,6 +587,7 @@ async function selectedTurn(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      conversationId: 'experience-session',
       target: { environment: { kind: 'current' }, agent: 'claude' },
       message: 'Start this interview',
       clientTurnId: 'experience-client-turn',
@@ -784,6 +791,7 @@ test('canonical project chat shape resolves omitted Environment locally and refu
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'experience-session',
           target: {
             agent: agentId('claude'),
             workspace: { kind: 'project', projectSlug: 'project-one' },
@@ -1137,6 +1145,7 @@ test('initial and continued model input retain the declared attachment role assi
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'experience-session',
         target: { environment: { kind: 'current' }, agent: 'claude' },
         message: 'Compare the documents',
         clientTurnId: 'attachment-role-turn',

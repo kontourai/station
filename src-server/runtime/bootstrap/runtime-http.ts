@@ -22,6 +22,11 @@ import {
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
+import { UploadBodyLimitError } from '@kontourai/station-shared/http-upload';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
   redactDeep,
@@ -35,6 +40,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { jsonRevalidation } from '../../routes/conditional-get.js';
 import {
   clientProtocolApplies,
   evaluateClientProtocol,
@@ -46,6 +52,7 @@ import {
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
 import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
+import { outsideAgentTokenAudience } from '../../security/outside-agent-token-audience.js';
 import {
   type ExternalSurfaceCapabilityRule,
   isTelemetryIngestRoute,
@@ -83,6 +90,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import {
+  isAccountBindingConsentLeaf,
   isOperatorSessionLeaf,
   isOperatorSessionRead,
   OPERATOR_SESSION_COOKIE,
@@ -108,6 +116,10 @@ import {
 import type { Logger } from '../../utils/logger.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { isRouteError, type RouteError } from '../../utils/route-error.js';
+import {
+  codexToolRequestIsBound,
+  transferCodexToolRequestProof,
+} from '../mcp/codex-bound-request.js';
 import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
@@ -276,7 +288,17 @@ export function installStationEnvelopeMarker(
 ): void {
   if (envelopeMarkedApps.has(app)) return;
   envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    const upload = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    await next();
+    if (upload && c.res.status >= 400) c.header('Connection', 'close');
+  });
   app.use('*', outsideAgentReleaseGuard);
+  app.use('*', outsideAgentTokenAudience);
   app.use('*', async (c, next) => {
     await next();
     if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
@@ -314,6 +336,13 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof UploadBodyLimitError) {
+      c.header('Connection', 'close');
+      return c.json(
+        { error: { code: 'request_too_large', limit_bytes: err.limitBytes } },
+        413,
+      );
+    }
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
     // "authentication failed"), so a route that threw a typed 403 whose
@@ -409,14 +438,17 @@ export function configureRuntimeHttp({
     configureRuntimeRouteClassificationGate(app, security, routeLabeler);
     configureRuntimeSecurity(app, security, routeLabeler);
   } else {
-    app.use(
-      '*',
-      cors({
-        origin: resolveRuntimeCorsOrigin,
-        credentials: true,
-        // #2842: a cross-origin client must be able to read the marker.
-        exposeHeaders: [STATION_ENVELOPE_HEADER],
-      }),
+    const ordinaryCors = cors({
+      origin: resolveRuntimeCorsOrigin,
+      credentials: true,
+      exposeHeaders: [
+        STATION_ENVELOPE_HEADER,
+        'X-Station-General-Stream',
+        'X-Station-Client-Turn-Id',
+      ],
+    });
+    app.use('*', (c, next) =>
+      outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
     );
   }
 
@@ -447,6 +479,10 @@ export function configureRuntimeHttp({
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
     }
   });
+
+  // Innermost: it compares the body a handler produced for this caller, after
+  // every admission check above, and before the account guard re-checks it.
+  app.use('*', jsonRevalidation());
 }
 
 /**
@@ -863,6 +899,15 @@ async function admitNativeDeviceProofRequest(
   return c.res;
 }
 
+/** Exact declared leaves own their Origin, preflight, bearer and budgets after the compiled refusal. */
+function outsideProtocolOwnsAdmission(c: Context): boolean {
+  const capability = runtimeRouteCapability(c);
+  return (
+    capability?.capability === 'outside-mcp-token' ||
+    capability?.id.startsWith('public:outside-oauth-') === true
+  );
+}
+
 function configureRuntimeSecurity(
   app: RuntimeApp,
   security: RuntimeHttpSecurityOptions,
@@ -876,6 +921,7 @@ function configureRuntimeSecurity(
     security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
+    if (outsideProtocolOwnsAdmission(c)) return next();
     const origin = c.req.header('origin');
     if (origin && !allowedOrigins.has(origin)) {
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
@@ -885,7 +931,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}, X-Station-General-Stream, X-Station-Client-Turn-Id`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
@@ -909,6 +955,12 @@ function configureRuntimeSecurity(
         'Access-Control-Allow-Methods',
         'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
       );
+      // Without it the browser re-asks before nearly every cross-origin
+      // request, an extra round trip a phone pays on each poll. A cached
+      // answer cannot widen access: a request needing a header or method
+      // this one did not allow is preflighted again, and every response is
+      // still authorized on its own. Two hours is Chromium's ceiling.
+      c.header('Access-Control-Max-Age', '7200');
       return c.body(null, 204);
     }
 
@@ -923,6 +975,9 @@ function configureRuntimeSecurity(
       caller: c.req.header(INTERNAL_PROXY_CALLER_HEADER),
       token: c.req.header(INTERNAL_API_TOKEN_HEADER),
     });
+    const boundToken = c.req.header('x-station-control-caller-token');
+    const inProcessTool =
+      !!boundToken && codexToolRequestIsBound(c.req.raw, boundToken);
     const effectivePeerClass = classifyRuntimeCallerPeerClass({
       environment: c.env,
       header: (name) => c.req.header(name),
@@ -949,7 +1004,10 @@ function configureRuntimeSecurity(
     // headers are already set above, so a browser can read the refusal.
     if (
       producerSecret === undefined &&
-      clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')
+      clientProtocolApplies(
+        requiredCapability,
+        proxyCaller === 'loopback' || inProcessTool,
+      )
     ) {
       const refusal = evaluateClientProtocol(
         c.req.header(CLIENT_PROTOCOL_HEADER),
@@ -1071,8 +1129,10 @@ function configureRuntimeSecurity(
     if (
       requiredCapability.capability === 'public' ||
       requiredCapability.capability === 'mcp-token' ||
+      requiredCapability.capability === 'outside-mcp-token' ||
       requiredCapability.capability === 'webhook-token' ||
-      requiredCapability.capability === 'stage-grant'
+      requiredCapability.capability === 'stage-grant' ||
+      requiredCapability.capability === 'analytics-grant'
     ) {
       return next();
     }
@@ -1123,6 +1183,7 @@ function configureRuntimeSecurity(
       .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
     const admitOperatorSession = async (
       admittedDevice = false,
+      allowDeviceFallback = false,
     ): Promise<Response | undefined> => {
       if (
         !(
@@ -1151,13 +1212,15 @@ function configureRuntimeSecurity(
           tenant: getTenantRequestContext(c.req.raw),
         }));
       const refuse = () =>
-        c.json(
-          {
-            error: { code: 'operator_session_required' },
-            signInUrl: security.operatorSessions?.signInUrl ?? null,
-          },
-          admittedDevice || bindingDeviceAdmitted ? 403 : 401,
-        );
+        allowDeviceFallback
+          ? undefined
+          : c.json(
+              {
+                error: { code: 'operator_session_required' },
+                signInUrl: security.operatorSessions?.signInUrl ?? null,
+              },
+              admittedDevice || bindingDeviceAdmitted ? 403 : 401,
+            );
       if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
         return refuse();
       // Validate the binding credential through ordinary device admission on
@@ -1204,7 +1267,13 @@ function configureRuntimeSecurity(
       return c.res;
     };
     const inventorySignIn =
-      c.req.method === 'GET' && c.req.path === '/api/pairing/devices'
+      (c.req.method === 'GET' &&
+        ['/api/pairing/devices', '/api/pairing/requests'].includes(
+          c.req.path,
+        )) ||
+      (c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
+      isAccountBindingConsentLeaf(c.req.method, c.req.path)
         ? security.operatorSessions?.signInUrl
         : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
@@ -1257,21 +1326,21 @@ function configureRuntimeSecurity(
     // by `classifyAttestedProxyCaller`). Every other caller must present a
     // valid bearer or device-session credential below; absent and malformed
     // Authorization headers both fail with `authentication_required`.
-    if (proxyCaller === 'loopback' && credential === undefined) {
-      // The attested internal token is a process-local credential rather than
-      // a compatibility floor. Keep its existing bounded mutation budget
-      // identity without treating arbitrary loopback callers as principals.
-      // The token itself was minted at boot for this process; record that
-      // mint-time home-possession on the request principal so the one
-      // local-operator predicate can read it (never the proxy stamp).
+    if (
+      (inProcessTool || proxyCaller === 'loopback') &&
+      credential === undefined
+    ) {
+      // The exact in-process tool proof does not confer loopback locality or
+      // local-operator authority. Only the attested internal hop has those.
+      // Both paths use the existing bounded mutation budget.
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'internal',
-        credential: 'internal-token',
+        credential: inProcessTool ? 'in-process-bound-tool' : 'internal-token',
         authority: undefined,
         source: 'bearer',
-        locality: 'home-possession',
+        ...(inProcessTool ? {} : { locality: 'home-possession' as const }),
       });
-      bindRuntimeLocalOperator(c.req.raw);
+      if (!inProcessTool) bindRuntimeLocalOperator(c.req.raw);
       setBudgetPrincipal(
         c as unknown as PairingScopeContextStore,
         deriveBudgetPrincipal('loopback'),
@@ -1322,6 +1391,11 @@ function configureRuntimeSecurity(
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
+      // The pairing store owns which devices qualify; see
+      // `DevicePairingService.credentialHasOwnerStanding`.
+      const ownerStanding =
+        authority === 'device-credential' &&
+        security.resolveCredentialOwnerStanding?.(credential!) === true;
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
         credential: credential!,
@@ -1335,6 +1409,7 @@ function configureRuntimeSecurity(
         // possession proof behind it; the store never resolves that
         // combination, and this site refuses to construct it either.
         ...(locality && mintKind ? { mintKind } : {}),
+        ...(ownerStanding ? { standing: 'owner-device' as const } : {}),
       });
       bindRuntimeLocalOperator(c.req.raw);
       if (authority !== undefined) {
@@ -1360,8 +1435,18 @@ function configureRuntimeSecurity(
             path: c.req.path,
           },
           authority === 'operator-credential',
-          locality === 'home-possession',
+          locality === 'home-possession' || ownerStanding,
         );
+      if (
+        permitted &&
+        authority === 'device-credential' &&
+        operatorCookiePresent &&
+        c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)
+      ) {
+        const sessionResponse = await admitOperatorSession(true, true);
+        if (sessionResponse) return sessionResponse;
+      }
       if (!permitted) {
         const sessionResponse = await admitOperatorSession(
           authority === 'device-credential',
@@ -1395,6 +1480,19 @@ function configureRuntimeSecurity(
           {
             error: { code: 'insufficient_scope' },
             ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
+      }
+      if (isAccountBindingConsentLeaf(c.req.method, c.req.path)) {
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
+        if (sessionResponse) return sessionResponse;
+        return c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
           },
           403,
         );
@@ -1558,10 +1656,9 @@ function configureRuntimeSecurity(
     }
 
     // 2. Body-size check. Content-Length first (reject before any read); then a
-    //    bounded byte-counting read that catches a lying or absent
-    //    Content-Length. The body is re-buffered into a new Request so the
-    //    handler's `c.req.json()` reads the bounded copy — this is the same
-    //    buffering `c.req.json()` would do, just with a ceiling.
+    //    bounded byte counter catches a lying or absent Content-Length. Media
+    //    uploads remain lazy streams so route admission precedes every read.
+    //    Ordinary JSON mutations retain the existing buffered copy.
     const ceiling = budget.bodyByteCeiling(mutationClass, {
       method: c.req.method,
       path: c.req.path,
@@ -1586,7 +1683,17 @@ function configureRuntimeSecurity(
       }
     }
 
-    const bodyResult = await readBoundedBody(c.req.raw, ceiling);
+    const uploadPolicy = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    const boundedUpload =
+      uploadPolicy && c.req.raw.body
+        ? boundUploadStream(c.req.raw.body, ceiling)
+        : undefined;
+    const bodyResult =
+      boundedUpload?.stream ?? (await readBoundedBody(c.req.raw, ceiling));
     if (bodyResult === 'too-large') {
       requestBudgetOutcomes.add(1, {
         outcome: 'oversized',
@@ -1605,7 +1712,8 @@ function configureRuntimeSecurity(
     }
 
     // Replace the raw request so the handler reads the bounded body. The
-    // stream was consumed by the bounded read above, so even a zero-length
+    // ordinary stream was consumed above; uploads carry the lazy bound instead.
+    // Even a zero-length
     // body must be re-wrapped. Only a truly absent body stream ('no-stream')
     // needs no replacement. The replacement is built from the request's own
     // fields, never by passing `c.req.raw` itself into the `Request`
@@ -1625,6 +1733,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      transferCodexToolRequestProof(raw, c.req.raw);
       if (
         nativePeer &&
         !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)
@@ -1648,8 +1757,58 @@ function configureRuntimeSecurity(
       class: mutationClass,
       source: principal.source,
     });
-    return next();
+    await next();
+    if (boundedUpload?.exceeded()) {
+      c.header('Connection', 'close');
+      c.res = c.json(
+        { error: { code: 'request_too_large', limit_bytes: ceiling } },
+        413,
+      );
+    }
   });
+}
+
+function boundUploadStream(
+  source: ReadableStream<Uint8Array>,
+  maxBytes: number,
+) {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let total = 0;
+  let exceeded = false;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        reader ??= source.getReader();
+        try {
+          const result = await reader.read();
+          if (result.done) {
+            controller.close();
+            reader.releaseLock();
+            return;
+          }
+          total += result.value.byteLength;
+          if (total > maxBytes) {
+            exceeded = true;
+            controller.error(new UploadBodyLimitError(maxBytes));
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
+            return;
+          }
+          controller.enqueue(result.value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        if (reader) {
+          await reader.cancel(reason);
+          reader.releaseLock();
+        } else await source.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { stream, exceeded: () => exceeded };
 }
 
 type BoundedBodyResult = Uint8Array | 'too-large' | 'no-stream';
@@ -1838,6 +1997,7 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
+  /^\/api\/analytics\/recipient-candidates\/[^/]+\/(?:query|outcomes)\/?$/,
   /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes|\/visual)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
@@ -1878,6 +2038,13 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
   // (and any other reader of ['config']) must see the change.
   if (path.startsWith('/api/project-contributions/')) keys.push('config');
   if (path.includes('/projects')) keys.push('projects');
+  if (
+    /^\/api\/tasks(?:\/from-work-item|\/[^/]+\/(?:work-chats|dispatch|children|parent|title|status))?\/?$/.test(
+      path,
+    ) ||
+    /^\/api\/orchestration\/delegations\/?$/.test(path)
+  )
+    keys.push('tasks');
   if (path.includes('/knowledge')) keys.push('knowledge');
   if (path.includes('/registry')) keys.push('skills', 'integrations', 'agents');
 

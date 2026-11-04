@@ -71,6 +71,9 @@ test.describe
         repository,
         'reload-draft',
       );
+      await page
+        .getByRole('tab', { name: 'Conversation', exact: true })
+        .click();
       const input = page.getByRole('textbox', { name: 'Message the Task' });
       await expect(input).toBeEditable();
       await input.fill('Keep this draft through a reload; do not send it.');
@@ -90,7 +93,9 @@ test.describe
         saved.getByRole('button', { name: 'Restore saved draft' }),
       ).toBeEnabled();
       await expect(
-        page.getByRole('region', { name: 'Here now' }).getByRole('listitem'),
+        page
+          .getByRole('region', { name: 'Present in this Task' })
+          .getByRole('listitem'),
       ).toHaveCount(1);
       await expect(input).toBeDisabled();
       expect(writes).toBe(0);
@@ -175,6 +180,9 @@ test.describe
         repository,
         'reload-uncertain',
       );
+      await page
+        .getByRole('tab', { name: 'Conversation', exact: true })
+        .click();
       const input = page.getByRole('textbox', { name: 'Message the Task' });
       await expect(input).toBeEditable();
       const bodies: unknown[] = [];

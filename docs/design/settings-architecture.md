@@ -94,7 +94,7 @@ and compact switch sit beneath them.
 ## Experimental project tools
 
 Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
-and Trust preview switches. All three default off on each device; enabling
+Trust, Sheet gestures and Station routes preview switches. All five default off on each device; enabling
 Developer tools alone enables none of them. Disabling it withdraws previews
 without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
 and chat remain available. Pane discovery omits disabled previews, and restored
@@ -122,7 +122,7 @@ that every listed option has passed a live workflow.
 Personal display choices now belong to the authenticated person on this Station:
 theme, accent, named color theme (family, dark flavor and accent; see
 [user color themes](../decisions/user-color-themes.md)), chat font and
-reasoning/tool visibility, answer delivery, diff
+reasoning/tool visibility, answer delivery and width, diff
 style/wrapping, auto-hide, model-picker preferences, the conversation-delete
 confirmation and Developer navigation. The account preference contract is
 [`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
@@ -133,6 +133,11 @@ cached separately for first paint ([appearance cache](../../src-ui/src/lib/appea
 that cache is not a device setting and yields once the account answers or
 the page gets a definite "no person" (signed out, a refused credential; not
 while a session or relay account is still being checked).
+
+**Customize → Appearance → Answer width** offers Comfortable, Wide (default)
+and Full width. It changes assistant answers only; phone answers use the
+available width. The shared device-setting key `chatAnswerWidth` supplies the
+legacy/default value and participates in account preferences.
 
 Device scope retains microphone and output providers, push permission, haptics,
 Return behavior, keyboard shortcuts, panel dimensions/placement and navigation
@@ -241,8 +246,9 @@ products:
   ("saved to this device" vs a save-toast for server writes); contextual settings
   live with their entity, not in the global page.
 
-Deliberately skipped: multi-layer file-precedence stacks and org-policy
-constraint engines (Station has no org-policy tier yet); settings-sync services
+Deliberately skipped: multi-layer file-precedence stacks and general
+constraint engines (the one administrator-owned tier, the managed policy, is
+described in [Managed policy tier](#managed-policy-tier)); settings-sync services
 and encrypted account blobs (Station settings are server-authoritative per
 instance); per-setting analytics metadata; duplicated page-vs-modal settings
 implementations (observed in the wild as an explicit anti-pattern).
@@ -251,6 +257,27 @@ The consensus across all four products, independently arrived at: **settings are
 organized by scope — who or what a setting controls and where it lives — not by
 whichever page first needed them.** That is also exactly what #572 and #536 ask
 for.
+
+## Managed policy tier
+
+Status: the foundation shipped with #4516; managed settings land with #4517.
+The [decision record](../decisions/managed-policy.md) owns the rules, and the
+[administrator guide](../guides/managed-policy.md) owns rollout.
+
+A machine administrator can install one managed policy, which every Station
+server on that machine loads at startup. It is the outer bound on the scopes
+below, not a sixth scope: it has no settings screen of its own, and Station
+never writes its values into `app.json` or a project file. Precedence for a
+setting, highest first: managed lock > project > Station > environment >
+managed default > built-in default. Removing the policy and restarting brings
+back the user's own values.
+
+In the current build the policy's `settings` map must be empty, and the server
+refuses to start otherwise. Until #4517 routes managed values through
+`resolveEffectiveAppSetting` and the write paths, no setting is managed.
+Clients can already read the value-free summary at
+`GET /api/settings/managed-policy` (organization, support link, locked setting
+paths), which the "Managed by" presentation will use.
 
 ## 3. Target model: five scopes
 
@@ -353,23 +380,26 @@ The project selector appears only alongside model/workspace defaults and
 permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
-The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work in one compact row. In the desktop app, a desktop-update control sits
-above that row while an update is available, downloading or ready to install
-(#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
-in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
-no longer appear in Appearance; existing device values remain compatible.
+The sidebar footer places **Automations** and **Customize** on the left, with
+an icon-only **Updates** control immediately before the profile button on the
+right. Updates keeps its status in its accessible name and tooltip and shows
+an indicator when update details need attention. Live work and the separate
+Settings gear no longer appear in the footer. A collapsed workspace map puts
+Automations and Customize in its Sidebar utilities popup, while Updates and the
+profile button remain on the rail. The obsolete Open chats/Drafts section
+toggles no longer appear in Appearance; existing device values remain compatible.
 Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
 at their existing routes. Developer joins that chooser, before Settings, when
-enabled. Settings stays reachable from the footer gear, its keyboard shortcut
-and the command palette. The Appearance page owns light/dark mode, the color
+enabled. Settings stays reachable from the profile menu, Customize, its keyboard
+shortcut and the command palette. The Appearance page owns the mode (System, the
+default, which follows the device, or Light or Dark), the color
 theme, its flavor and its accent; Settings' Appearance topic keeps the mode
-toggle, the phone-only haptics row, and Theme and Accent color rows that link
-to the page. The footer replaces its
+toggle, the phone-only haptics row, the terminal screen reader mode row, and
+Theme and Accent color rows that link to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
-The Settings rail and phone picker stay within Settings; the panel's Settings
-gear remains available from management screens. Long permission and checkpoint
+The Settings rail and phone picker stay within Settings; from management screens
+Settings remains reachable through the account menu and Customize. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
 on the row. Registry remains reachable from Plugins and the command palette.
 
@@ -436,6 +466,14 @@ overridable set from its shape would present them as Station settings the
 moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
+
+A Project's new-chat selections (`defaultModelSelection`,
+`defaultApprovalMode`, `defaultApprovalModeSelection`;
+`packages/contracts/src/project-chat-defaults.ts`) are Project fields edited in
+Project settings → New chats, not entries in this list. A `last-used` choice
+has no Station-scope equivalent, so `GET /config/app?project=<slug>` reports
+`defaultApprovalMode` with its Station provenance even when a Project sets its
+own; the Project's answer is `GET /api/projects/:slug/chat-defaults`.
 
 `defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
 the workspace a new project chat starts in. Resolution is
@@ -708,7 +746,9 @@ Slices 1–2 are foundations; 3 is the visible revamp; 4–6 ride the new rails.
 
 ## 7. Non-goals
 
-- No org/enterprise policy tier — nothing demands it yet.
+- No general org-policy constraint engine. Organization-wide control is the
+  machine-level [managed policy tier](#managed-policy-tier) (#4515), which only
+  narrows; it is not a settings sync or account-policy service.
 - No cross-device settings sync service — Station settings
   are server-authoritative per instance; device settings are deliberately local.
 - No project-level `config` files for app settings — project scope stays entity

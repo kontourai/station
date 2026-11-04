@@ -12,6 +12,11 @@ import {
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
+  parseStationRoutesResponse,
+  STATION_ROUTES_PATH,
+  type StationRoute,
+} from '@kontourai/station-contracts/station-routes';
+import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,9 +33,9 @@ import {
 import {
   clearPendingExchange,
   decodeDevicePairingPayload,
+  describeAccessRequestFailure,
   describePairingRequestFailure,
   encodeDevicePairingPayload,
-  isTransportFailure,
   knownOperatorCli,
   loadPendingExchange,
   type PendingPairingExchange,
@@ -52,6 +57,12 @@ import {
   rememberPairingEndpoint,
   suggestPairingEndpoint,
 } from '../core/pairingEndpointSuggestion';
+import {
+  isPairableEndpoint,
+  type PairingRoute,
+  pairingRoutesFrom,
+  preferredPairingRoute,
+} from '../core/pairingRoutes';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -108,7 +119,15 @@ function canUseBrowserSession(endpoint: string): boolean {
  * full, untruncated string; any visual elision (the sibling `<code>`'s CSS
  * ellipsis) is display-only and never affects what gets copied.
  */
-function CopyCommandButton({ command }: { command: string }) {
+function CopyCommandButton({
+  command,
+  label = 'Copy',
+  fieldLabel = 'Command to copy',
+}: {
+  command: string;
+  label?: string;
+  fieldLabel?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
   const fallbackRef = useRef<HTMLTextAreaElement | null>(null);
@@ -159,14 +178,14 @@ function CopyCommandButton({ command }: { command: string }) {
         onClick={handleCopy}
         style={{ ...secondaryBtnStyle, whiteSpace: 'nowrap' }}
       >
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? 'Copied' : label}
       </button>
       {showFallback && (
         <textarea
           ref={fallbackRef}
           readOnly
           value={command}
-          aria-label="Command to copy"
+          aria-label={fieldLabel}
           rows={2}
           onFocus={(event) => event.currentTarget.select()}
           style={{
@@ -637,10 +656,10 @@ export function JoinDevicePairingPanel({
         deviceName,
         // A device asks for everything a device can have, never the default
         // grant's `access:manage`; the operator limits it when approving. An
-        // account-bound guest request asks for the plain Standard preset:
-        // its elevated grants are the operator's call.
+        // account-bound guest request starts read-only; wider access needs
+        // an explicit operator promotion after pairing.
         scope: accountBoundDeviceRequest
-          ? pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)
+          ? 'orchestration:read'
           : FULL_DEVICE_ACCESS_SCOPE,
         ...(accountBoundDeviceRequest
           ? {
@@ -713,16 +732,7 @@ export function JoinDevicePairingPanel({
       setPending(nextPending);
       onApprovalPending?.(nextPending);
     } catch (requestError) {
-      const status = (requestError as { status?: number }).status;
-      setError(
-        isTransportFailure(requestError)
-          ? describePairingRequestFailure(requestError)
-          : status === 403
-            ? 'This Station does not allow access requests from this app address.'
-            : status === 429
-              ? 'Too many access requests. Wait a moment, then try again.'
-              : 'Could not send your request. Check the connection and try again.',
-      );
+      setError(describeAccessRequestFailure(requestError));
     } finally {
       requestInFlight.current = false;
       setRequestingAccess(false);
@@ -1247,6 +1257,51 @@ function requestExpiryLabel(expiresAt: number, now: number): string {
     : `Expires in ${seconds}s`;
 }
 
+/** "Pair phone": the ways a phone can reach this Station, one tap each. */
+function PairingRouteChooser({
+  routes,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  routes: readonly PairingRoute[];
+  selected: string | undefined;
+  disabled: boolean;
+  onSelect: (route: PairingRoute) => void;
+}) {
+  return (
+    <fieldset className="pairing-routes">
+      <legend>Reach this Station through</legend>
+      {routes.map((route, index) => (
+        <label
+          key={route.url}
+          className="pairing-route"
+          data-selected={selected === route.url ? 'true' : undefined}
+        >
+          <input
+            type="radio"
+            name="pairing-route"
+            value={route.url}
+            checked={selected === route.url}
+            disabled={disabled}
+            onChange={() => onSelect(route)}
+          />
+          <span className="pairing-route__text">
+            <span className="pairing-route__label">{route.label}</span>
+            {routes.findIndex((other) => other.kind === route.kind) ===
+              index && (
+              <span className="pairing-route__hint">{route.hint}</span>
+            )}
+            <code className="pairing-route__url" title={route.url}>
+              {route.url}
+            </code>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 export function HostDevicePairingPanel({
   apiBase,
   publicEndpoint,
@@ -1256,7 +1311,14 @@ export function HostDevicePairingPanel({
   initialClientChannel = 'stable',
   onReconnect,
   renderPairingEndpointSuggestions,
+  quickPair = false,
 }: {
+  /**
+   * "Pair phone": open straight to a pairing code on the best route this
+   * Station reports, with every other reachable route one tap away. The
+   * access and address form stays available under "Other options".
+   */
+  quickPair?: boolean;
   renderPairingEndpointSuggestions?: (input: {
     apiBase: string;
     request: typeof fetch;
@@ -1323,7 +1385,39 @@ export function HostDevicePairingPanel({
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [operatorHandoff, setOperatorHandoff] = useState(false);
+  const [accountReview, setAccountReview] = useState<{
+    requestId: string;
+    url: string;
+  } | null>(null);
+  const [accountSignInUrl, setAccountSignInUrl] = useState<string | null>(null);
+  const [accountPasskeyRequired, setAccountPasskeyRequired] = useState<
+    string | null
+  >(null);
+  const [operatorLink, setOperatorLink] = useState<{
+    url: string;
+    review: boolean;
+    requestId?: string;
+    poll?: boolean;
+  } | null>(null);
+  const consentLink = useCallback(
+    (value: unknown) => {
+      try {
+        if (typeof value !== 'string') return null;
+        const url = new URL(value);
+        const app = new URL(apiBase);
+        return url.protocol === 'https:' &&
+          url.hostname === app.hostname &&
+          url.origin !== app.origin
+          ? url.href
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    [apiBase],
+  );
   const [reconnecting, setReconnecting] = useState(false);
+  const [creating, setCreating] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
   // connection's own URL, which is loopback on a desktop host and points the
@@ -1389,6 +1483,7 @@ export function HostDevicePairingPanel({
     async (path: string, init: RequestInit = {}) =>
       request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: { ...authHeaders(getCredential()), ...init.headers },
       }),
     [apiBase, getCredential, request],
@@ -1420,14 +1515,16 @@ export function HostDevicePairingPanel({
       const generation = ++refreshGeneration.current;
       try {
         const [requestResponse, deviceResponse] = await Promise.all([
-          authenticatedFetch('/api/pairing/requests'),
+          authenticatedFetch('/api/pairing/requests', {
+            headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+          }),
           authenticatedFetch('/api/pairing/devices', {
             headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
           }),
         ]);
         const [requestBody, deviceBody] = await Promise.all([
-          requestResponse.ok ? requestResponse.json() : undefined,
-          deviceResponse.ok ? deviceResponse.json() : undefined,
+          requestResponse.json().catch(() => undefined),
+          deviceResponse.json().catch(() => undefined),
         ]);
         if (generation !== refreshGeneration.current) return;
         if (
@@ -1441,6 +1538,11 @@ export function HostDevicePairingPanel({
           if (errorOwner.current !== 'action') {
             const authenticationFailed =
               requestResponse.status === 401 || deviceResponse.status === 401;
+            const signInUrl = consentLink(
+              requestBody?.signInUrl ?? deviceBody?.signInUrl,
+            );
+            if (signInUrl)
+              setOperatorLink({ url: signInUrl, review: false, poll: true });
             setAuthBlocked(authenticationFailed);
             setOperatorHandoff(!authenticationFailed);
             setError(
@@ -1461,14 +1563,27 @@ export function HostDevicePairingPanel({
           setAuthBlocked(false);
           setOperatorHandoff(false);
         }
-        if (requestBody) setRequests(requestBody.requests ?? []);
-        if (deviceBody) setDevices(deviceBody.devices ?? []);
+        if (requestResponse.ok && requestBody) {
+          setRequests(requestBody.requests ?? []);
+          setAccountReview((review) =>
+            review &&
+            (requestBody.requests ?? []).some(
+              (item: DevicePairingRequest) =>
+                item.requestId === review.requestId &&
+                item.status === 'pending',
+            )
+              ? review
+              : null,
+          );
+        }
+        if (deviceResponse.ok && deviceBody)
+          setDevices(deviceBody.devices ?? []);
       } catch {
         // Polling is best-effort. A later generation retries without allowing a
         // slow or failed response to overwrite newer inbox state.
       }
     },
-    [authenticatedFetch, setError],
+    [authenticatedFetch, consentLink, setError],
   );
 
   useEffect(() => {
@@ -1484,18 +1599,38 @@ export function HostDevicePairingPanel({
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!operatorLink?.review || !operatorLink.requestId) return;
+    if (
+      requests.some(
+        (request) =>
+          request.requestId === operatorLink.requestId &&
+          request.status === 'confirmed',
+      )
+    ) {
+      setOperatorLink(null);
+      setError(null);
+    }
+  }, [operatorLink, requests, setError]);
+
   const actOnRequest = async (
     request: DevicePairingRequest,
     action: 'approve' | 'deny',
   ) => {
     if (requestActionIdsRef.current.has(request.requestId)) return;
     setError(null);
+    setOperatorLink(null);
     refreshGeneration.current += 1;
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
+    let reviewWindow: Window | null = null;
     try {
       const bindPerson = personBindingRequests.has(request.requestId);
       const bindAccount = accountBindingRequests.has(request.requestId);
+      reviewWindow =
+        action === 'approve' && bindAccount
+          ? window.open('about:blank', '_blank')
+          : null;
       // An account binding confirms the request as asked; trimming is for an
       // ordinary device approval.
       const scope =
@@ -1512,18 +1647,103 @@ export function HostDevicePairingPanel({
       };
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
-          action === 'approve' ? '/confirm' : ''
+          action === 'approve'
+            ? bindAccount
+              ? '/account-consent'
+              : '/confirm'
+            : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' && Object.keys(body).length > 0
+          ...(action === 'approve' &&
+          (bindAccount || Object.keys(body).length > 0)
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify(bindAccount ? {} : body),
               }
             : {}),
         },
       );
+      if (action === 'approve' && bindAccount) {
+        if (response.status === 202) {
+          const result = await response.json();
+          const url = new URL(result.transaction?.reviewUrl);
+          const base = new URL(apiBase);
+          if (
+            result.status !== 'step_up_required' ||
+            typeof result.transaction?.id !== 'string' ||
+            !Number.isFinite(result.transaction?.expiresAt) ||
+            url.protocol !== 'https:' ||
+            url.hostname !== base.hostname ||
+            url.origin === base.origin
+          ) {
+            reviewWindow?.close();
+            throw new Error('Invalid consent review');
+          }
+          setAccountPasskeyRequired(null);
+          setAccountReview({ requestId: request.requestId, url: url.href });
+          if (reviewWindow) {
+            reviewWindow.opener = null;
+            reviewWindow.location.replace(url.href);
+          }
+          return;
+        }
+        reviewWindow?.close();
+        if (response.status === 401) {
+          setAuthBlocked(true);
+          setError(
+            "This device's access to this Station needs review. Reconnect it, then try again.",
+          );
+          return;
+        }
+        if (response.status === 403) {
+          const result = await response.json().catch(() => null);
+          const code =
+            typeof result?.error === 'string'
+              ? result.error
+              : result?.error?.code;
+          if (
+            code !== 'operator_session_required' &&
+            code !== 'insufficient_scope'
+          ) {
+            setError(
+              'This Station refused the account access review. Check the connection and try again.',
+            );
+            return;
+          }
+          try {
+            const url = new URL(result?.signInUrl);
+            setAccountSignInUrl(
+              url.protocol === 'https:' &&
+                url.hostname === new URL(apiBase).hostname
+                ? url.href
+                : null,
+            );
+          } catch {
+            setAccountSignInUrl(null);
+          }
+          setAccountPasskeyRequired(request.requestId);
+          return;
+        }
+        setError(
+          response.status === 404
+            ? 'Update this Station to approve account-bound access in the browser.'
+            : response.status === 409
+              ? 'Identity binding is no longer available for this request. Refresh the account, then pair again.'
+              : 'This account access review is unavailable. Try again.',
+        );
+        return;
+      }
+      if (response.status === 202 && action === 'approve') {
+        const result = await response.json();
+        const url =
+          result?.status === 'step_up_required'
+            ? consentLink(result.transaction?.reviewUrl)
+            : null;
+        if (!url) throw new Error('Invalid operator review');
+        setOperatorLink({ url, review: true, requestId: request.requestId });
+        return;
+      }
       if (!response.ok) {
         if (
           action === 'approve' &&
@@ -1537,15 +1757,20 @@ export function HostDevicePairingPanel({
         }
         // A refused approval names this host's own CLI (a Station that
         // predates it, or any other answer, falls back to `station`).
+        const refusal =
+          response.status === 403 && action === 'approve'
+            ? await response.json().catch(() => null)
+            : null;
+        const signInUrl = consentLink(refusal?.signInUrl);
+        if (signInUrl)
+          setOperatorLink({
+            url: signInUrl,
+            review: false,
+            requestId: request.requestId,
+          });
         const operatorCli =
           response.status === 403 && action === 'approve'
-            ? knownOperatorCli(
-                (
-                  (await response.json().catch(() => null)) as {
-                    operatorCli?: unknown;
-                  } | null
-                )?.operatorCli,
-              )
+            ? knownOperatorCli(refusal?.operatorCli)
             : undefined;
         setError(
           response.status === 401
@@ -1620,6 +1845,7 @@ export function HostDevicePairingPanel({
       }
       await refresh();
     } catch {
+      reviewWindow?.close();
       setError(
         `This Station could not ${action} that access request. Try again.`,
       );
@@ -1734,23 +1960,27 @@ export function HostDevicePairingPanel({
     }
   };
 
-  const createOffer = async () => {
+  const creatingOffer = useRef(false);
+  /** Resolves whether a pairing code now exists for `target`. */
+  const createOffer = async (target: string = endpoint): Promise<boolean> => {
+    if (creatingOffer.current) return false;
     pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
     setOperatorHandoff(false);
+    creatingOffer.current = true;
+    setCreating(true);
     try {
-      const address = new URL(endpoint);
-      if (
-        address.protocol !== 'https:' ||
-        address.username ||
-        address.password ||
-        isLoopbackUrl(address.href)
-      ) {
+      const address = new URL(target);
+      // A pairing code carries a secret, so the phone's decoder accepts only
+      // HTTPS; a loopback address would point the phone at itself.
+      if (!isPairableEndpoint(address.href)) {
         setError(
-          'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
+          isLoopbackUrl(address.href)
+            ? 'This address only works on this computer. Use an HTTPS address your phone can reach, such as Tailscale HTTPS.'
+            : 'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
         );
-        return;
+        return false;
       }
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1769,17 +1999,85 @@ export function HostDevicePairingPanel({
         setError(outcome.message);
         setAuthBlocked(outcome.auth);
         setOperatorHandoff(outcome.operatorHandoff ?? false);
-        return;
+        return false;
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
-      rememberPairingEndpoint(apiBase, endpoint);
+      rememberPairingEndpoint(apiBase, address.origin);
       setOffer(value);
+      return true;
     } catch {
       setError(
         'Could not create a pairing code. Check the connection and try again.',
       );
+      return false;
+    } finally {
+      creatingOffer.current = false;
+      setCreating(false);
     }
+  };
+  const createOfferRef = useRef(createOffer);
+  createOfferRef.current = createOffer;
+
+  // "Pair phone": learn every reachable route, then open on the best one.
+  const [routes, setRoutes] = useState<PairingRoute[] | null>(null);
+  const [showOtherOptions, setShowOtherOptions] = useState(!quickPair);
+  const [noHttpsRoute, setNoHttpsRoute] = useState(false);
+  const autoOfferAttempted = useRef(false);
+  useEffect(() => {
+    if (!quickPair) return;
+    let cancelled = false;
+    void (async () => {
+      let reported: StationRoute[] = [];
+      try {
+        const response = await authenticatedFetch(STATION_ROUTES_PATH);
+        if (response.ok)
+          reported =
+            parseStationRoutesResponse(await response.json())?.routes ?? [];
+      } catch {
+        // Routes are a convenience: the address this panel uses still counts.
+      }
+      if (!cancelled) setRoutes(pairingRoutesFrom(reported, publicEndpoint));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quickPair, authenticatedFetch, publicEndpoint]);
+  useEffect(() => {
+    if (!quickPair || routes === null || autoOfferAttempted.current) return;
+    autoOfferAttempted.current = true;
+    const preferred = preferredPairingRoute(
+      routes,
+      suggestPairingEndpoint(apiBase),
+    );
+    if (!preferred) {
+      // Guidance, not a failure: start from an empty address field rather
+      // than a loopback one the phone could never reach.
+      setNoHttpsRoute(true);
+      setEndpoint('');
+      setShowOtherOptions(true);
+      return;
+    }
+    setEndpoint(preferred.url);
+    void createOfferRef.current(preferred.url).then((created) => {
+      // A refusal or failure keeps its message and reveals the address and
+      // access form, so there is always a next step.
+      if (!created) setShowOtherOptions(true);
+    });
+  }, [quickPair, routes, apiBase]);
+  const selectRoute = async (route: PairingRoute) => {
+    if (creatingOffer.current || offer?.endpoint === route.url) return;
+    setEndpoint(route.url);
+    const previous = offer;
+    if (previous) {
+      setOffer(null);
+      // The replaced code must stop working; a failed cancel still expires.
+      void authenticatedFetch(
+        `/api/pairing/offers/${encodeURIComponent(previous.offerId)}`,
+        { method: 'DELETE' },
+      ).catch(() => undefined);
+    }
+    await createOffer(route.url);
   };
 
   const reconnect = async () => {
@@ -1853,17 +2151,27 @@ export function HostDevicePairingPanel({
               ) : (
                 <RequestedScopeChecklist
                   deviceName={request.deviceName}
-                  requestedScope={request.scope}
+                  requestedScope={
+                    request.requireAccountBinding ||
+                    accountBindingRequests.has(request.requestId)
+                      ? 'orchestration:read'
+                      : request.scope
+                  }
                   // An account binding confirms the request as asked, so its
                   // list shows everything kept, not an earlier untick.
                   kept={
+                    request.requireAccountBinding ||
                     accountBindingRequests.has(request.requestId)
-                      ? new Set(requestedScopeTokens(request.scope))
+                      ? new Set(requestedScopeTokens('orchestration:read'))
                       : keptScopeOf(request)
                   }
                   disabled={
                     requestActionIds.has(request.requestId) ||
                     accountBindingRequests.has(request.requestId)
+                  }
+                  allowLimit={
+                    !request.requireAccountBinding &&
+                    !accountBindingRequests.has(request.requestId)
                   }
                   onChange={(next) =>
                     setKeptScopes((current) =>
@@ -2014,16 +2322,17 @@ export function HostDevicePairingPanel({
                         {request.requireAccountBinding
                           ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
                           : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
-                        <span
-                          style={{ display: 'block', overflowWrap: 'anywhere' }}
-                        >
-                          Issuer: {request.accountCandidate.issuer}
-                          <br />
-                          Subject: {request.accountCandidate.subject}
-                        </span>
                       </small>
                     </span>
                   </label>
+                  <details>
+                    <summary>Account details</summary>
+                    <div style={{ overflowWrap: 'anywhere' }}>
+                      Account provider: {request.accountCandidate.issuer}
+                      <br />
+                      Account ID: {request.accountCandidate.subject}
+                    </div>
+                  </details>
                   {!request.requireAccountBinding &&
                     request.source === 'tailnet' &&
                     request.requester && (
@@ -2198,12 +2507,277 @@ export function HostDevicePairingPanel({
                   </button>
                 </>
               )}
+              {operatorLink?.requestId === request.requestId && (
+                <p role="status">
+                  {operatorLink.review
+                    ? 'Approval is pending passkey confirmation. '
+                    : ''}
+                  <a
+                    href={operatorLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {operatorLink.review
+                      ? 'Review and confirm with passkey'
+                      : 'Sign in as operator'}
+                  </a>
+                  {operatorLink.review
+                    ? ''
+                    : ', then return and approve again.'}
+                </p>
+              )}
             </div>
           ))}
+          {accountReview && (
+            <p role="status">
+              Waiting for passkey confirmation.{' '}
+              <a href={accountReview.url} target="_blank" rel="noreferrer">
+                Review access change
+              </a>
+            </p>
+          )}
+          {accountPasskeyRequired && (
+            <p role="status">
+              Approving an invited person’s browser needs an owner passkey.{' '}
+              {accountSignInUrl && (
+                <>
+                  <a href={accountSignInUrl} target="_blank" rel="noreferrer">
+                    Sign in as operator
+                  </a>{' '}
+                  or{' '}
+                  <a
+                    href={accountSignInUrl.replace(
+                      '/operator/sign-in',
+                      '/operator/passkeys/enroll',
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    enroll an owner passkey
+                  </a>
+                  , then approve again.{' '}
+                </>
+              )}
+              {!accountSignInUrl && (
+                <>
+                  Set <code>STATION_TRUSTED_CONSENT_ORIGIN</code> to the HTTPS
+                  DNS origin serving the consent listener on this Station’s
+                  browser host, then restart. Or run{' '}
+                  <code>
+                    station environment access approve {accountPasskeyRequired}{' '}
+                    --force --bind-account
+                  </code>{' '}
+                  on the Station host.{' '}
+                </>
+              )}
+              <a
+                href="https://github.com/kontourai/station/blob/main/docs/guides/operator-passkeys.md"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Passkey setup
+              </a>
+            </p>
+          )}
         </section>
       )}
-      {!offer ? (
+      {quickPair && (offer || !showOtherOptions) ? (
+        <div className="pairing-quick">
+          <div className="pairing-quick__routes">
+            {routes !== null && routes.length > 0 && (
+              <PairingRouteChooser
+                routes={routes}
+                selected={offer?.endpoint ?? (creating ? endpoint : undefined)}
+                disabled={creating}
+                onSelect={(route) => void selectRoute(route)}
+              />
+            )}
+          </div>
+          <div className="pairing-quick__code">
+            {offer && offer.expiresAt > now ? (
+              <>
+                <QRDisplay
+                  url={qrTarget === 'app' ? (pairingLink ?? payload) : payload}
+                  size={208}
+                />
+                <p className="pairing-quick__hint">
+                  {qrTarget === 'app'
+                    ? 'Scan with your phone’s camera to open Station.'
+                    : 'In Station on your phone, choose Scan a QR code.'}
+                </p>
+                <p className="pairing-quick__manual">
+                  <span>Code</span>
+                  <code>{offer.manualCode}</code>
+                </p>
+                <p className="pairing-quick__hint" aria-live="polite">
+                  {requestExpiryLabel(offer.expiresAt, now)}
+                </p>
+                <div className="pairing-quick__actions">
+                  {pairingLink && (
+                    <CopyCommandButton
+                      command={pairingLink}
+                      label="Copy link"
+                      fieldLabel="Pairing link to copy"
+                    />
+                  )}
+                  <CopyCommandButton
+                    command={offer.manualCode}
+                    label="Copy code"
+                    fieldLabel="Pairing code to copy"
+                  />
+                </div>
+              </>
+            ) : offer ? (
+              <>
+                <p role="status" className="pairing-quick__placeholder">
+                  This code expired.
+                </p>
+                <button
+                  type="button"
+                  style={primaryBtnStyle}
+                  disabled={creating}
+                  onClick={() => {
+                    const target = offer.endpoint;
+                    setOffer(null);
+                    void createOffer(target);
+                  }}
+                >
+                  New code
+                </button>
+              </>
+            ) : (
+              <p role="status" className="pairing-quick__placeholder">
+                {routes === null
+                  ? 'Finding the addresses your phone can use…'
+                  : creating
+                    ? 'Creating a pairing code…'
+                    : 'Choose how your phone reaches this Station.'}
+              </p>
+            )}
+          </div>
+          {offer ? (
+            <details className="pairing-quick__more">
+              <summary>More options</summary>
+              <div className="pairing-quick__more-body">
+                <p className="pairing-quick__hint">
+                  Access: {describeDeviceScope(offer.scope)}
+                </p>
+                <label className="pairing-quick__field">
+                  Scan with
+                  <select
+                    aria-label="Pairing QR destination"
+                    value={qrTarget}
+                    onChange={(event) =>
+                      setQrTarget(event.target.value as 'app' | 'scanner')
+                    }
+                    className="pairing-select"
+                  >
+                    <option value="app">Phone camera — open Station app</option>
+                    <option value="scanner">Scanner inside Station</option>
+                  </select>
+                </label>
+                <label className="pairing-quick__field">
+                  Station app on your phone
+                  <select
+                    aria-label="Pairing client channel"
+                    value={clientChannel}
+                    onChange={(event) =>
+                      setClientChannel(
+                        event.target.value as Exclude<
+                          PairingDeepLinkChannel,
+                          'dev'
+                        >,
+                      )
+                    }
+                    className="pairing-select"
+                  >
+                    <option value="stable">Station</option>
+                    <option value="beta">Station Beta</option>
+                    <option value="nightly">Station Nightly</option>
+                  </select>
+                </label>
+                {(downloads.ios || downloads.android) && (
+                  <p className="pairing-quick__links">
+                    {downloads.ios && (
+                      <a
+                        href={downloads.ios}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {clientChannel === 'stable'
+                          ? 'Download on the App Store'
+                          : 'Join the iPhone beta'}
+                      </a>
+                    )}
+                    {downloads.android && (
+                      <a
+                        href={downloads.android}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {clientChannel === 'stable'
+                          ? 'Get it on Google Play'
+                          : 'Join the Android beta'}
+                      </a>
+                    )}
+                  </p>
+                )}
+                <label className="pairing-quick__field">
+                  Browser app address
+                  <input
+                    aria-label="Browser app address"
+                    type="url"
+                    value={browserUrl}
+                    onChange={(event) => setBrowserUrl(event.target.value)}
+                    style={inputStyle}
+                  />
+                </label>
+                {browserPairingLink && (
+                  <CopyCommandButton
+                    command={browserPairingLink}
+                    label="Copy browser link"
+                    fieldLabel="Browser pairing link to copy"
+                  />
+                )}
+                <div className="pairing-quick__actions">
+                  <button
+                    type="button"
+                    className="pairing-link-btn"
+                    onClick={() => {
+                      const previous = offer;
+                      setOffer(null);
+                      setShowOtherOptions(true);
+                      void authenticatedFetch(
+                        `/api/pairing/offers/${encodeURIComponent(previous.offerId)}`,
+                        { method: 'DELETE' },
+                      ).catch(() => undefined);
+                    }}
+                  >
+                    Change access or address
+                  </button>
+                </div>
+              </div>
+            </details>
+          ) : (
+            <button
+              type="button"
+              className="pairing-link-btn pairing-quick__other"
+              onClick={() => setShowOtherOptions(true)}
+            >
+              Other options
+            </button>
+          )}
+        </div>
+      ) : !offer ? (
         <>
+          {noHttpsRoute && (
+            <p role="note" className="pairing-quick__notice">
+              Pairing by code needs an HTTPS address your phone can reach, such
+              as Tailscale HTTPS. On a local network, choose Nearby Stations on
+              the phone, or enter this Station's address there and request
+              access.
+            </p>
+          )}
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
             Create a single-use invitation with the access selected below.
             Anyone with it can pair until it expires.
@@ -2230,6 +2804,7 @@ export function HostDevicePairingPanel({
               >
                 <input
                   type="radio"
+                  style={{ accentColor: 'var(--accent-primary, #8b7cf6)' }}
                   name="pairing-scope-preset"
                   value={preset}
                   checked={scopePreset === preset}
@@ -2250,6 +2825,7 @@ export function HostDevicePairingPanel({
               Station address
               <input
                 aria-label="Pairing endpoint"
+                placeholder="https://"
                 inputMode="url"
                 autoCapitalize="none"
                 value={endpoint}
@@ -2281,7 +2857,12 @@ export function HostDevicePairingPanel({
               authenticatedFetch(String(input), init),
             onSuggest: acceptEndpointSuggestion,
           })}
-          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
+          <button
+            type="button"
+            onClick={() => void createOffer()}
+            disabled={creating}
+            style={primaryBtnStyle}
+          >
             Create pairing code
           </button>
         </>
@@ -2476,6 +3057,24 @@ export function HostDevicePairingPanel({
       {error && (
         <div className="pairing-error" role="alert">
           <p>{error}</p>
+          {operatorLink && !operatorLink.requestId && (
+            <p>
+              <a
+                href={operatorLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {operatorLink.review
+                  ? 'Review and confirm with passkey'
+                  : 'Sign in as operator'}
+              </a>
+              {operatorLink.review
+                ? ''
+                : operatorLink.poll
+                  ? ', then return and check the connection again.'
+                  : ', then return and approve again.'}
+            </p>
+          )}
           {authBlocked && onReconnect && (
             <button
               type="button"

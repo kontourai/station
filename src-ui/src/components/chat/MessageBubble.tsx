@@ -1,19 +1,35 @@
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
+import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
+import type { OverflowMenuHandle } from '../ActionOverflowMenu';
+import { Button } from '../Button';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CopyGlyph, InboxGlyph, PauseGlyph, TimeGlyph } from '../icons/Glyph';
+import {
+  BranchGlyph,
+  CopyGlyph,
+  InboxGlyph,
+  PauseGlyph,
+  TimeGlyph,
+} from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -25,7 +41,13 @@ import {
 } from './agent-message/IncomingAgentHeader';
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
-import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
+import {
+  type ForkTurnSource,
+  forkTurnSource,
+  type MessageResendRequest,
+  type MessageResendSource,
+} from './fork-turn-source';
+import { HostImagesContext, settledHostImages } from './HostImagesContext';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
@@ -35,6 +57,7 @@ import {
 } from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
+  describeModelOptions,
   resolveTurnEngine,
   resolveTurnEngineId,
   resolveTurnModelIdentity,
@@ -108,6 +131,11 @@ export interface MessageBubbleSession {
   projectSlug?: string;
   /** Present once a conversation can span replacement execution Sessions. */
   conversationId?: string;
+  /**
+   * The server's open-read answer on what this caller may do here; error
+   * copy in the bubble picks its hint by it (`chatErrorHintFor`).
+   */
+  callerAccess?: { continue: boolean; startChat: boolean };
   /** `activeSession.messages.length` — the row only needs to know if it is last. */
   messageCount: number;
   isThinking?: boolean;
@@ -182,6 +210,13 @@ interface MessageBubbleProps {
   /** #2216: nearest preceding completed assistant turn, if any. */
   userForkSource?: ForkTurnSource | null;
   onNewChatFromMessage?: (text: string) => void;
+  /**
+   * #4406: what Edit and resend (on the person's message) or Regenerate (on
+   * the answer it produced) sends again, and the fork point that keeps the
+   * original. Absent: the row offers neither.
+   */
+  resendSource?: MessageResendSource | null;
+  onResendFromMessage?: (request: MessageResendRequest) => void;
   onToolApproval?: (
     sessionId: string,
     agentSlug: string,
@@ -215,6 +250,8 @@ function MessageBubbleComponent({
   continuesTurn = false,
   userForkSource,
   onNewChatFromMessage,
+  resendSource,
+  onResendFromMessage,
   onToolApproval,
   anchorKey,
   owner,
@@ -226,6 +263,28 @@ function MessageBubbleComponent({
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
   const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  // A right-click on the bubble opens its own ⋯ — the user menu on a user
+  // bubble, the answer menu on an answer — with the rows that ⋯ shows. Only on
+  // the desktop layout and only for the pointer: a held finger in a message is
+  // text selection (and the quote toolbar reads that selection), and the
+  // phone has its own Details sheet. A link inside the bubble keeps its own
+  // menu (`NativeContextMenuGuard`), and selected text keeps the native one.
+  const userMenuHandle = useRef<OverflowMenuHandle>(null);
+  const answerMenuHandle = useRef<OverflowMenuHandle>(null);
+  const bubbleGesture = useContextMenuGesture({
+    enabled: !isMobile,
+    touchHold: false,
+    onOpen: () =>
+      (msg.role === 'user'
+        ? userMenuHandle
+        : answerMenuHandle
+      ).current?.open() ?? false,
+  });
+  const onBubbleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest('a[href]'))
+      return;
+    bubbleGesture.onContextMenu(event);
+  };
   const undelivered =
     msg.role === 'user' &&
     msg.clientId !== undefined &&
@@ -417,6 +476,11 @@ function MessageBubbleComponent({
     msg,
     exactCurrentSession ? { agentSlug: activeSession.agentSlug } : undefined,
   );
+  // #4406: an answer still being written has nothing settled to regenerate.
+  const regenerate =
+    isAssistant && !rowIsLiveTurn && resendSource && onResendFromMessage
+      ? () => onResendFromMessage({ ...resendSource, mode: 'regenerate' })
+      : undefined;
   const feedbackConversationId = replaying
     ? undefined
     : (activeSession.conversationId ?? activeSession.id);
@@ -453,13 +517,15 @@ function MessageBubbleComponent({
       : resolvedRowAgent;
   // A check-back Station sent is nobody's words: not the person's avatar.
   const stationCheckBack = msg.role === 'user' && msg.stationCheckBack === true;
+  const stationMemoryContinuation =
+    msg.role === 'user' && msg.stationMemoryContinuation === true;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
     </span>
   ) : isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
-  ) : stationCheckBack ? (
+  ) : stationCheckBack || stationMemoryContinuation ? (
     <TimeGlyph className="message__station-glyph" />
   ) : (
     <UserIcon size={20} />
@@ -474,11 +540,7 @@ function MessageBubbleComponent({
   // states the engine, the badge row states the model(s), and the card's
   // collapsed headline stands down for whatever they already said.
   const modelIdentity = resolveTurnModelIdentity(msg);
-  const modelOptionsTitle = msg.modelOptions
-    ? Object.entries(msg.modelOptions)
-        .map(([key, value]) => `${key}: ${String(value)}`)
-        .join(' · ')
-    : undefined;
+  const modelOptionsTitle = describeModelOptions(msg.modelOptions);
   // #2211: the settled row's reasoning moves out of the bubble into the turn
   // overflow menu. The reasoning part is the turn's record of what the model
   // thought, so it stays reachable per-row; the streaming row keeps its
@@ -558,10 +620,16 @@ function MessageBubbleComponent({
   // would draw a ⋯ that opens an empty menu.
   // The text actions need text; adding the input to a Task does not (an
   // image-only message is still an input a Task can hold).
+  // #4406: a message that did not send is discarded or kept, not re-sent.
+  const editAndResend =
+    msg.role === 'user' && resendSource && onResendFromMessage && !discardUnsent
+      ? () => onResendFromMessage({ ...resendSource, mode: 'edit' })
+      : undefined;
   const textMenuActions = Boolean(
     textContent &&
       ((userForkSource && onForkFromTurn) ||
         onNewChatFromMessage ||
+        editAndResend ||
         discardUnsent),
   );
   const userMessageMenu =
@@ -575,8 +643,10 @@ function MessageBubbleComponent({
             textContent && onNewChatFromMessage
               ? () => onNewChatFromMessage(textContent)
               : undefined,
+          onEditAndResend: textContent ? editAndResend : undefined,
           onDiscardUnsent: textContent ? discardUnsent : undefined,
           taskTarget: menuTaskTarget,
+          handleRef: userMenuHandle,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
           inline: isMobile,
@@ -662,6 +732,9 @@ function MessageBubbleComponent({
             messageIndex={idx}
             messagePreview={textContent.slice(0, 200)}
             agentSlug={rowAgentSlug}
+            turnId={msg.turnId}
+            sessionId={msg.sessionId}
+            projectSlug={activeSession.projectSlug}
           />
         )}
     </>
@@ -764,27 +837,16 @@ function MessageBubbleComponent({
         )}
       />
     ) : null;
-  // A settled answer's per-turn actions: the desktop footer row, or the phone
-  // sheet's action group.
-  const footerActions = (
+  // The answer's per-turn rows: the desktop footer's ⋯ menu, or on a phone
+  // rows of the answer sheet itself, below its summary (#4404 A40).
+  const turnActions = (
     <>
-      {developerToolsEnabled && msg.traceId && (
-        <a
-          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="message__trace"
-          title={`Trace: ${msg.traceId}`}
-        >
-          {msg.traceId.slice(-8)}
-        </a>
-      )}
-      {desktopCopy}
       {((msg.turnId &&
         answerSessionId &&
         msg.answerEligible === true &&
         (!isLastMessage || !activeSession.isThinking)) ||
         (turnForkSource && onForkFromTurn) ||
+        regenerate ||
         msg.provenance !== undefined ||
         reasoningContent !== undefined) && (
         <LazyBoundary
@@ -802,8 +864,11 @@ function MessageBubbleComponent({
                     projectId: activeSession.projectSlug,
                   }
                 : undefined,
-            forkSource: turnForkSource,
-            onForkFromTurn,
+            forkSource: isMobile ? undefined : turnForkSource,
+            onForkFromTurn: isMobile ? undefined : onForkFromTurn,
+            // Unlike the fork, the phone keeps Regenerate in this menu: its
+            // inline row holds only Copy and Branch.
+            onRegenerate: regenerate,
             provenance:
               msg.provenance !== undefined
                 ? {
@@ -828,17 +893,42 @@ function MessageBubbleComponent({
               reasoningContent !== undefined
                 ? { content: reasoningContent }
                 : undefined,
+            handleRef: answerMenuHandle,
+            // The phone sheet lists the rows itself (#4404 A40).
+            inline: isMobile,
           }}
           pending={null}
           unavailable={() => null}
         />
       )}
+    </>
+  );
+  // A settled answer's per-turn actions: the desktop footer row, or the phone
+  // sheet's action group.
+  const footerActions = (
+    <>
+      {developerToolsEnabled && msg.traceId && (
+        <a
+          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="message__trace"
+          title={`Trace: ${msg.traceId}`}
+        >
+          {msg.traceId.slice(-8)}
+        </a>
+      )}
+      {desktopCopy}
+      {!isMobile && turnActions}
       {textContent && feedbackConversationId && rowAgentSlug && (
         <MessageRating
           conversationId={feedbackConversationId}
           messageIndex={idx}
           messagePreview={textContent.slice(0, 200)}
           agentSlug={rowAgentSlug}
+          turnId={msg.turnId}
+          sessionId={msg.sessionId}
+          projectSlug={activeSession.projectSlug}
         />
       )}
     </>
@@ -936,7 +1026,13 @@ function MessageBubbleComponent({
     msg.role === 'user'
       ? [traceLink, userMessageMenu]
       : [metadataControls, hasTurnFooter ? footerActions : null];
-  const sheetAfter = msg.role === 'user' ? null : metadataAfter;
+  const sheetAfter =
+    msg.role === 'user' ? null : (
+      <>
+        {metadataAfter}
+        {hasTurnFooter ? turnActions : null}
+      </>
+    );
   // Only a user row's slots can all be empty; an answer's always carry its
   // identity and footer fragments, so it keeps its ⋯ as before.
   const sheetHasContent =
@@ -980,10 +1076,26 @@ function MessageBubbleComponent({
     isMobile && Number.isFinite(settledAt)
       ? messageTime(settledAt, Date.now())
       : '';
+  const inlineBranch =
+    isMobile && isAssistant && turnForkSource && onForkFromTurn ? (
+      <Button
+        variant="ghost"
+        className="message-details__copy"
+        aria-label="Branch from this answer"
+        title="Branch from this answer"
+        onClick={() => onForkFromTurn(turnForkSource)}
+      >
+        <BranchGlyph />
+      </Button>
+    ) : null;
   // An answer's copy and ⋯ share one quiet row with the turn's settle time;
   // the user's bubble keeps its controls beside it.
   const mobileDetails = isAssistant ? (
     <div className="message-meta">
+      {basisChip}
+      {inlineCopy}
+      {inlineBranch}
+      {details}
       {time && envelope && (
         <time
           className="message-meta__time"
@@ -993,9 +1105,6 @@ function MessageBubbleComponent({
           {time}
         </time>
       )}
-      {basisChip}
-      {inlineCopy}
-      {details}
     </div>
   ) : inlineCopy || details ? (
     <div className="message-actions">
@@ -1022,6 +1131,7 @@ function MessageBubbleComponent({
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
             isStreamingMessage={false}
+            callerAccess={activeSession.callerAccess}
           />
           {metadataControls}
           {metadataIdentity}
@@ -1046,6 +1156,7 @@ function MessageBubbleComponent({
       style={sender ? agentAccentStyle(sender) : undefined}
     >
       {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the right-click is a pointer shortcut to the bubble's own ⋯, which is the keyboard path to the same menu. */}
       <div
         style={{
           position: 'relative',
@@ -1056,9 +1167,17 @@ function MessageBubbleComponent({
             ? msg.role === 'user' && !sender && userControlCount > 0
               ? `calc(100% - ${8 + 44 * userControlCount}px)`
               : undefined
-            : '70%',
+            : msg.role === 'assistant' && !sender
+              ? undefined
+              : '70%',
         }}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack ? ' message--station-check-back' : ''}${
+        onContextMenu={onBubbleContextMenu}
+        // Only to learn whether a finger is down: its long-press is text
+        // selection, not the menu.
+        onPointerDown={bubbleGesture.onPointerDown}
+        onPointerUp={bubbleGesture.onPointerUp}
+        onPointerCancel={bubbleGesture.onPointerCancel}
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack || stationMemoryContinuation ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -1081,10 +1200,12 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
-        {stationCheckBack ? (
+        {stationCheckBack || stationMemoryContinuation ? (
           <div className="message__station-label">
             {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}
-            Scheduled check-back
+            {stationMemoryContinuation
+              ? 'Station continued after the engine ran out of memory'
+              : 'Scheduled check-back'}
           </div>
         ) : null}
         <div
@@ -1115,40 +1236,43 @@ function MessageBubbleComponent({
               {hasTurnFooter && !isMobile ? turnFooterBar : null}
             </div>
           ) : null}
-          <MessageContent
-            contentParts={
-              taskProposal
-                ? msg.contentParts?.map((part) =>
-                    part.type === 'text'
-                      ? {
-                          ...part,
-                          content: part.content?.replace(
-                            /```station-task-proposal\s*\n[\s\S]*?\n```/g,
-                            '',
-                          ),
-                        }
-                      : part,
-                  )
-                : msg.contentParts
-            }
-            messageKey={anchorKey}
-            textContent={
-              taskProposal
-                ? textContent.replace(
-                    /```station-task-proposal\s*\n[\s\S]*?\n```/g,
-                    '',
-                  )
-                : textContent
-            }
-            chatFontSize={chatFontSize}
-            showReasoning={showReasoning}
-            showToolDetails={showToolDetails}
-            isStreamingMessage={isStreamingMessage}
-            foldWork={foldWork}
-            onToolApproval={
-              onToolApproval ? handleContentToolApproval : undefined
-            }
-          />
+          <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>
+            <MessageContent
+              contentParts={
+                taskProposal
+                  ? msg.contentParts?.map((part) =>
+                      part.type === 'text'
+                        ? {
+                            ...part,
+                            content: part.content?.replace(
+                              /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                              '',
+                            ),
+                          }
+                        : part,
+                    )
+                  : msg.contentParts
+              }
+              messageKey={anchorKey}
+              textContent={
+                taskProposal
+                  ? textContent.replace(
+                      /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                      '',
+                    )
+                  : textContent
+              }
+              chatFontSize={chatFontSize}
+              showReasoning={showReasoning}
+              showToolDetails={showToolDetails}
+              isStreamingMessage={isStreamingMessage}
+              callerAccess={activeSession.callerAccess}
+              foldWork={foldWork}
+              onToolApproval={
+                onToolApproval ? handleContentToolApproval : undefined
+              }
+            />
+          </HostImagesContext.Provider>
           {taskProposal && msg.turnId && answerSessionId && (
             <TaskProposalCard
               proposal={taskProposal}

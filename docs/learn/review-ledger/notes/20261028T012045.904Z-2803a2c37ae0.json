@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"Copy-only delta in SharedAnswerView: the no-envelope line now reads 'This share has no provenance.' (the condition only proves the payload carries no envelope). No design claim about provenance rendering, refusal reasons or payload shape changes; prose accurate.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/views/share/SharedAnswerView.tsx"]}
+  ]
+}

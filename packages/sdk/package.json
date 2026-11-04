@@ -9,6 +9,8 @@
     "*.css"
   ],
   "exports": {
+    "./session-goals": "./src/session-goals.ts",
+    "./client/session-goals": "./src/client/session-goals.ts",
     "./tool-library": "./src/tool-library.ts",
     "./relay-management": "./src/relay-management.ts",
     "./agent": "./src/agent/index.ts",
@@ -17,12 +19,14 @@
     "./station-usage-query": "./src/query-domains/stationUsage.ts",
     "./usage-rollup-query": "./src/query-domains/usageRollup.ts",
     "./usage-export-query": "./src/query-domains/usageExport.ts",
+    "./private-insights-query": "./src/query-domains/privateInsights.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./coding-file-mentions-query": "./src/query-domains/chatRuntimeCoding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",
+    "./terminal-view": "./src/terminal-view/index.ts",
     "./task-outputs": "./src/task-outputs.ts",
     "./session-outputs": "./src/session-outputs.ts",
     "./session-inventory": "./src/session-inventory.ts",
@@ -59,6 +63,7 @@
     "./project-shared-tasks": "./src/client/project-shared-tasks.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
+    "./runtime-event-content": "./src/runtime-event-content.ts",
     "./resource-posture": "./src/query-domains/resourcePosture.ts",
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
@@ -80,7 +85,10 @@
     "./client/task-relationships": "./src/client/task-relationships.ts",
     "./engine-sign-in": "./src/engine-sign-in.ts",
     "./action-control": "./src/components/ActionControl.tsx",
-    "./action-control.css": "./src/components/ActionControl.css"
+    "./action-control.css": "./src/components/ActionControl.css",
+    "./client/project-working-configuration": "./src/client/project-working-configuration.ts",
+    "./client/learning-review": "./src/client/learning-review.ts",
+    "./learning-review-query": "./src/query-domains/learningReview.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -114,8 +122,8 @@
   },
   "dependencies": {
     "@kontourai/console-core": "^0.4.0",
-    "@kontourai/flow": "5.2.2",
-    "@kontourai/flow-agents": "6.5.1",
+    "@kontourai/flow": "5.4.0",
+    "@kontourai/flow-agents": "9.10.0",
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/station-shared": "^0.13.0",
     "@kontourai/surface": "^6.2.1",
@@ -128,7 +136,7 @@
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-query": "^5.105.0",
     "@types/react": "^19.3.0",
     "typescript": "7.0.2",
     "typescript-api": "npm:typescript@5.9.3",

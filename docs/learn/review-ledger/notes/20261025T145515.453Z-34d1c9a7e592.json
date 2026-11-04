@@ -1,0 +1,11 @@
+{
+  "revision": "d7b61cfa0afe3b754471a3715ddfddd1ac5d8b01",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the capture-content corruption control after upgrading the fixture to a complete PNG. The route test now flips one byte in a same-length copy after a successful authorized content read, so the byte-length guard cannot substitute for digest verification. It retains the real file, SQLite metadata, restart, Task isolation and contract-region checks. Public failure payload serialization and the earlier scoped capture documentation review are unchanged. Final behavior and fault receipts are reported separately; no real browser/provider or UI qualification is claimed.","inputs":["docs/architecture/module-map.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the capture-content corruption control after upgrading the fixture to a complete PNG. The route test now flips one byte in a same-length copy after a successful authorized content read, so the byte-length guard cannot substitute for digest verification. It retains the real file, SQLite metadata, restart, Task isolation and contract-region checks. Public failure payload serialization and the earlier scoped capture documentation review are unchanged. Final behavior and fault receipts are reported separately; no real browser/provider or UI qualification is claimed.","inputs":["docs/guides/browser-workspace.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the capture-content corruption control after upgrading the fixture to a complete PNG. The route test now flips one byte in a same-length copy after a successful authorized content read, so the byte-length guard cannot substitute for digest verification. It retains the real file, SQLite metadata, restart, Task isolation and contract-region checks. Public failure payload serialization and the earlier scoped capture documentation review are unchanged. Final behavior and fault receipts are reported separately; no real browser/provider or UI qualification is claimed.","inputs":["docs/reference/api.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]}
+  ]
+}

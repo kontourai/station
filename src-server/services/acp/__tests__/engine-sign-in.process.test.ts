@@ -9,10 +9,6 @@ import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type {
-  TerminalEvent,
-  TerminalOpenInput,
-} from '../../../domain/terminal-types.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import { BUILTIN_ACP_ENGINES } from '../../../providers/llm/builtin-acp-engines.js';
 import {
@@ -31,6 +27,7 @@ import {
 } from '../engine-credentials.js';
 import {
   ENGINE_SIGN_IN_TERMINAL_PROJECT,
+  ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
   type SignInTerminalHost,
 } from '../engine-sign-in.js';
@@ -101,32 +98,33 @@ function connection(id: string, command: string): ACPConnectionConfig {
   return { id, name: id, command, args: [], enabled: true };
 }
 
+type OpenedTerminal = Parameters<SignInTerminalHost['open']>[0] & {
+  terminalId: string;
+};
+
 /** A terminal host that records what it was asked to run. */
 function recordingTerminal() {
-  const opened: TerminalOpenInput[] = [];
-  const listeners = new Set<(event: TerminalEvent) => void>();
+  const opened: OpenedTerminal[] = [];
+  const exits = new Map<string, (exit: { exitCode: number | null }) => void>();
+  let next = 0;
   const host: SignInTerminalHost = {
     open: async (input) => {
-      opened.push(input);
-      return { sessionId: `${input.projectSlug}:${input.terminalId}` };
+      const terminalId = `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`;
+      opened.push({ ...input, terminalId });
+      return {
+        terminalId,
+        exited: new Promise((resolve) => exits.set(terminalId, resolve)),
+      };
     },
     close: async () => undefined,
-    subscribe: (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
   };
   return {
     host,
     opened,
-    exit: (input: TerminalOpenInput, exitCode: number) => {
-      for (const listener of listeners)
-        listener({
-          type: 'exited',
-          sessionId: `${input.projectSlug}:${input.terminalId}`,
-          exitCode,
-          signal: null,
-        });
+    exit: async (input: OpenedTerminal, exitCode: number) => {
+      exits.get(input.terminalId)?.({ exitCode });
+      // The exit is observed through the session's promise.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     },
   };
 }
@@ -165,14 +163,18 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     const attempt = await service.startTerminal(config, 'pi_terminal_login');
     expect(terminal.opened).toHaveLength(1);
     const [opened] = terminal.opened;
-    expect(opened.shell).toBe(pi.command);
+    expect(opened.launch.file).toBe(pi.command);
     // The protocol: the configured invocation plus the method's args.
-    expect(opened.shellArgs).toEqual(['--from-config', '--terminal-login']);
-    expect(opened.projectSlug).toBe(ENGINE_SIGN_IN_TERMINAL_PROJECT);
+    expect(opened.launch.args).toEqual(['--from-config', '--terminal-login']);
+    // A client attaches by the session id, under the sign-in scope.
     expect(attempt).toMatchObject({
       kind: 'terminal',
       state: 'running',
-      terminal: { projectSlug: ENGINE_SIGN_IN_TERMINAL_PROJECT },
+      terminal: {
+        projectSlug: ENGINE_SIGN_IN_TERMINAL_PROJECT,
+        ...ENGINE_SIGN_IN_TERMINAL_SCOPE,
+        terminalId: opened.terminalId,
+      },
     });
     // The descriptor's terms note reaches the method it names.
     expect(service.methodsView(config).methods?.[0]).toMatchObject({
@@ -181,7 +183,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       termsNotice: { provider: 'Anthropic' },
     });
 
-    terminal.exit(opened, 0);
+    await terminal.exit(opened, 0);
     expect(service.attempt('pi')?.state).toBe('succeeded');
     expect(await engineSignInStatus(config)).toMatchObject({
       state: 'authenticated',
@@ -198,7 +200,9 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     async (_how, end) => {
       const pi = engineProgram('pi-acp', 'pi-acp.json');
       const terminal = recordingTerminal();
-      let finishOpen!: (snapshot: { sessionId: string }) => void;
+      let finishOpen!: (
+        opened: Awaited<ReturnType<SignInTerminalHost['open']>>,
+      ) => void;
       let opening!: () => void;
       const opened = new Promise<void>((resolve) => {
         opening = resolve;
@@ -206,7 +210,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       const close = vi.fn(async () => undefined);
       terminal.host.close = close;
       terminal.host.open = (input) => {
-        terminal.opened.push(input);
+        terminal.opened.push({ ...input, terminalId: 'pending-session' });
         opening();
         return new Promise((resolve) => {
           finishOpen = resolve;
@@ -220,11 +224,17 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       await opened;
       end(service);
       const input = terminal.opened[0];
-      const sessionId = `${input.projectSlug}:${input.terminalId}`;
-      finishOpen({ sessionId });
+      let exited!: (exit: { exitCode: number | null }) => void;
+      finishOpen({
+        terminalId: input.terminalId,
+        exited: new Promise((resolve) => {
+          exited = resolve;
+        }),
+      });
       expect(await started).toMatchObject({ state: 'cancelled' });
-      expect(close).toHaveBeenCalledExactlyOnceWith(sessionId);
-      terminal.exit(input, 0);
+      expect(close).toHaveBeenCalledExactlyOnceWith(input.terminalId);
+      exited({ exitCode: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(
         (await engineSignInStatus(connection('pi', pi.command))).state,
       ).toBe('unknown');
@@ -302,7 +312,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     const config = connection('pi', pi.command);
     await service.startTerminal(config, 'pi_terminal_login');
     await service.refreshMethods({ ...config, args: ['--other-profile'] });
-    terminal.exit(terminal.opened[0], 0);
+    await terminal.exit(terminal.opened[0], 0);
     expect(service.attempt('pi')?.state).toBe('cancelled');
     expect((await engineSignInStatus(config)).state).toBe('unknown');
   });
@@ -313,7 +323,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     const service = new EngineSignInService({ terminal: terminal.host });
     const config = connection('pi', pi.command);
     await service.startTerminal(config, 'pi_terminal_login');
-    terminal.exit(terminal.opened[0], 1);
+    await terminal.exit(terminal.opened[0], 1);
     expect(service.attempt('pi')).toMatchObject({ state: 'failed' });
     expect((await engineSignInStatus(config)).state).toBe('unknown');
   });

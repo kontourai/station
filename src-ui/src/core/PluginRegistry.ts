@@ -15,7 +15,7 @@ import { createElement } from 'react';
 import { isolatedPluginLayout } from '../components/plugins/isolatedPluginLayout';
 import type { PluginFrameHostProps } from '../components/plugins/PluginFrameHost';
 import { nativePlatformPromise } from '../platform/native';
-import { resolveCspNonce } from '../utils/csp';
+import { desktopPluginBundleUrl } from '../platform/native/pluginBundleUrl';
 import { log } from '../utils/logger';
 import { ensurePluginSharedRuntimeReady } from './pluginSharedRuntime';
 import {
@@ -31,6 +31,50 @@ type PluginDisposer = () => void;
 
 /** Plugin discovery must never block the app shell indefinitely. */
 export const PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS = 8_000;
+/** Marks the script preloads `prefetchBundles` adds, removed once the pass ends. */
+const BUNDLE_PRELOAD_ATTRIBUTE = 'data-station-plugin-preload';
+
+/** A stylesheet download started ahead of its plugin's turn. */
+interface PrefetchedStylesheet {
+  /** Its text, within the plugin's own deadline, which starts on this call. */
+  read(): Promise<string>;
+}
+
+/**
+ * Starts the download now, and its deadline only when the plugin's turn
+ * reads it: when six connections are queued behind other bundles, a download
+ * that began early does not give its plugin less time than it had when loads
+ * waited in turn.
+ */
+function prefetchStylesheet(
+  url: string,
+  signal: AbortSignal,
+): PrefetchedStylesheet {
+  const controller = new AbortController();
+  const stop = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', stop, { once: true });
+  const text = authenticatedFetch(url, {
+    signal: controller.signal,
+    timeoutMs: null,
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
+      return res.text();
+    })
+    .finally(() => signal.removeEventListener('abort', stop));
+  // Awaited, and reported, by that plugin's own load.
+  text.catch(() => {});
+  return {
+    read() {
+      const deadline = AbortSignal.timeout(
+        PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+      );
+      const expire = () => controller.abort(deadline.reason);
+      deadline.addEventListener('abort', expire, { once: true });
+      return text.finally(() => deadline.removeEventListener('abort', expire));
+    },
+  };
+}
 
 export type PluginRegistryLoadState = 'loading' | 'ready' | 'degraded';
 export type PluginRegistrySettledLoadState = Exclude<
@@ -111,11 +155,7 @@ export function authorizesPluginLayout(
   );
 }
 
-/**
- * Whether a plugin bundle URL is admitted by the shell's own `script-src
- * 'self'` — the single fact that decides whether the bundle can be loaded as a
- * URL or has to be fetched as bytes and executed under the shell nonce.
- */
+/** Whether the shell's `script-src 'self'` admits this bundle URL. */
 function isSameOriginBundleUrl(url: string): boolean {
   if (typeof window === 'undefined' || !window.location?.origin) return false;
   try {
@@ -302,13 +342,16 @@ export class PluginRegistry {
       }
 
       let allBundlesLoaded = true;
+      const installable = (plugin: any) =>
+        plugin.hasBundle &&
+        (plugin.installationReadiness === undefined ||
+          plugin.installationReadiness?.state === 'ready');
+      const prefetchedCss =
+        remoteBrowserIsolation || remoteNativeIsolation
+          ? new Map<string, PrefetchedStylesheet>()
+          : this.prefetchBundles(plugins.filter(installable), apiBase, signal);
       for (const plugin of plugins) {
-        if (
-          !plugin.hasBundle ||
-          (plugin.installationReadiness !== undefined &&
-            plugin.installationReadiness?.state !== 'ready')
-        )
-          continue;
+        if (!installable(plugin)) continue;
         if (remoteBrowserIsolation || remoteNativeIsolation) {
           if (!this.registerIsolatedPlugin(plugin, registryGeneration)) {
             allBundlesLoaded = false;
@@ -323,6 +366,7 @@ export class PluginRegistry {
             apiBaseGeneration,
             signal,
             registryGeneration,
+            prefetchedCss.get(plugin.name),
           ))
         ) {
           allBundlesLoaded = false;
@@ -339,6 +383,11 @@ export class PluginRegistry {
       log.api('[PluginRegistry] Failed to initialize:', e);
       this.failure = 'registry-unavailable';
       return 'degraded';
+    } finally {
+      for (const link of document.head.querySelectorAll(
+        `link[${BUNDLE_PRELOAD_ATTRIBUTE}]`,
+      ))
+        link.remove();
     }
   }
 
@@ -425,25 +474,68 @@ export class PluginRegistry {
     );
   }
 
+  /**
+   * Starts every installed bundle's stylesheet fetch, and a preload of its
+   * script, before the first is applied: N plugins cost about one download's
+   * round trip instead of 2N in a row. Applying and executing still happen
+   * one bundle at a time in registry order (`loadPlugin`), so each
+   * registration is still read at its own script's load event (archive#4302).
+   * Desktop delivery resolves its asset URLs one at a time and is left alone.
+   */
+  private prefetchBundles(
+    plugins: any[],
+    apiBase: string,
+    signal: AbortSignal,
+  ): Map<string, PrefetchedStylesheet> {
+    const css = new Map<string, PrefetchedStylesheet>();
+    if (this.nativeHost && !this.remoteProfile) return css;
+    for (const plugin of plugins) {
+      const base = `${apiBase}/api/plugins/${encodeURIComponent(plugin.name)}`;
+      css.set(plugin.name, prefetchStylesheet(`${base}/bundle.css`, signal));
+      const script = `${base}/bundle.js`;
+      if (!isSameOriginBundleUrl(script)) continue;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'script';
+      link.href = script;
+      link.referrerPolicy = 'no-referrer';
+      link.setAttribute(BUNDLE_PRELOAD_ATTRIBUTE, '');
+      document.head.appendChild(link);
+    }
+    return css;
+  }
+
   private async loadPlugin(
     pluginMeta: any,
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
     registryGeneration = this.registryGeneration,
+    prefetchedCss?: PrefetchedStylesheet,
   ): Promise<boolean> {
     const name = pluginMeta.name;
     try {
-      // Load CSS first, then JS bundle
+      const desktopDelivery = this.nativeHost && !this.remoteProfile;
+      const assetUrl = async (asset: 'bundle.js' | 'bundle.css') => {
+        if (desktopDelivery) {
+          const url = await desktopPluginBundleUrl(apiBase, name, asset);
+          if (!url) throw new Error('Unsupported Desktop plugin origin.');
+          return url;
+        }
+        return `${apiBase}/api/plugins/${encodeURIComponent(name)}/${asset}`;
+      };
+      // Load CSS first, then JS bundle.
       await this.loadCSS(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.css`,
+        await assetUrl('bundle.css'),
         apiBase,
         apiBaseGeneration,
         signal,
+        INSTALLED_BUNDLE_MARKER,
+        desktopDelivery,
+        prefetchedCss,
       );
 
-      // Load JS bundle
-      const bundleUrl = `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.js`;
+      const bundleUrl = await assetUrl('bundle.js');
 
       // Whatever is already on the window before this load begins. A bundle
       // the registry disowned (timeout, abort, error) still executes, and it
@@ -459,6 +551,8 @@ export class PluginRegistry {
         apiBase,
         apiBaseGeneration,
         signal,
+        INSTALLED_BUNDLE_MARKER,
+        desktopDelivery,
       );
       if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
         return true;
@@ -529,34 +623,10 @@ export class PluginRegistry {
   }
 
   /**
-   * Executes one plugin bundle in the shell's own realm.
-   *
-   * A SAME-ORIGIN bundle is loaded BY URL and is given no nonce
-   * (archive#4287). The HTTP shell serves
-   * `script-src 'self' 'nonce-<per-response>' 'wasm-unsafe-eval'`; this used to
-   * fetch the bundle's bytes and run them as an inline `<script>` carrying that
-   * nonce, and code holding a nonce can mint further nonce'd scripts — remote
-   * ones included — so the policy constrained everything except the code it was
-   * written for. `'self'` admits a same-origin `<script src>` on its own, and
-   * the browser sends the shell's HttpOnly device-session cookie with a
-   * same-origin subresource request, so the bundle still loads authenticated
-   * and the route is unchanged.
-   *
-   * What this does NOT do, and must not be described as doing: it does not stop
-   * a plugin running code it chose after install. A plugin holding
-   * `plugin.server` serves its own `/api/plugins/:name/*` routes, which are
-   * same-origin and therefore admitted by `'self'` exactly as this bundle is.
-   * What it restores is the narrower property the policy already advertises:
-   * no UNDECLARED REMOTE script.
-   *
-   * A CROSS-ORIGIN bundle URL still takes the fetch-and-inline path and still
-   * receives the shell nonce. That is the desktop app: its window is Tauri's
-   * asset origin (`WebviewUrl::App("index.html")`) while the bundle lives on
-   * the supervised server's loopback origin, so `'self'` does not admit the
-   * URL; and its credential is held in Rust behind the native transport, so a
-   * webview-issued `<script src>` would not be authenticated either. Closing it
-   * there needs the desktop host to serve plugin bundles from the shell's own
-   * origin — not a looser route here.
+   * Same-origin scripts need no nonce and carry the browser's session cookie.
+   * Desktop installed assets use the bounded host-authenticated protocol.
+   * Other cross-origin bundles are refused; plugins are not handed the shell nonce.
+   * In-process code can still read DOM .nonce and reach Tauri internals.
    */
   private async loadScript(
     url: string,
@@ -565,7 +635,11 @@ export class PluginRegistry {
     apiBaseGeneration: number,
     signal: AbortSignal,
     marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
+    desktopDelivery = false,
   ): Promise<PluginBundleExports | undefined> {
+    if (!desktopDelivery && !isSameOriginBundleUrl(url)) {
+      throw new Error('Cross-origin plugin bundles are not supported.');
+    }
     // Plugin-only shared modules are fetched on demand; the bundle's require
     // shim reads them synchronously once it executes, so resolve them first.
     if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
@@ -583,25 +657,10 @@ export class PluginRegistry {
         return {};
       };
     }
-    if (isSameOriginBundleUrl(url)) {
-      return await this.executeBundleByUrl(
-        url,
-        readRegistration,
-        signal,
-        marker,
-      );
-    }
-    return await this.executeBundleInline(
-      url,
-      readRegistration,
-      apiBase,
-      apiBaseGeneration,
-      signal,
-      marker,
-    );
+    return await this.executeBundleByUrl(url, readRegistration, signal, marker);
   }
 
-  /** Same-origin bundle: the browser fetches it, `'self'` admits it, no nonce. */
+  /** The browser loads the admitted URL; plugin script elements are not assigned a nonce. */
   private async executeBundleByUrl(
     url: string,
     readRegistration: () => PluginBundleExports | undefined,
@@ -610,8 +669,9 @@ export class PluginRegistry {
   ): Promise<PluginBundleExports | undefined> {
     // An already-aborted signal never fires `abort`, so without this the
     // script would be appended and run after the caller had given up.
-    if (signal.aborted) throw new Error(`Aborted loading: ${url}`);
+    if (signal.aborted) throw new Error('Plugin bundle loading was aborted.');
     const script = document.createElement('script');
+    script.referrerPolicy = 'no-referrer';
     script.src = url;
     // Bundles execute in registry order today because each load is awaited;
     // keep that ordering explicit rather than depending on the await alone.
@@ -659,12 +719,14 @@ export class PluginRegistry {
         // later write — including a disowned bundle finishing at last — stand
         // in for it.
         const handleLoad = () => settle(undefined, readRegistration());
-        const handleError = () => settle(new Error(`Failed to load: ${url}`));
-        const handleAbort = () => settle(new Error(`Aborted loading: ${url}`));
+        const handleError = () =>
+          settle(new Error('Plugin bundle failed to load.'));
+        const handleAbort = () =>
+          settle(new Error('Plugin bundle loading was aborted.'));
         // A script element that never fires either event would leave plugin
         // discovery pending forever; the inventory deadline applies here too.
         timer = setTimeout(
-          () => settle(new Error(`Timed out loading: ${url}`)),
+          () => settle(new Error('Plugin bundle loading timed out.')),
           PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
         );
         script.addEventListener('load', handleLoad);
@@ -675,48 +737,60 @@ export class PluginRegistry {
     );
   }
 
-  /** Cross-origin bundle (the desktop shell): bytes fetched, run under the nonce. */
-  private async executeBundleInline(
-    url: string,
-    readRegistration: () => PluginBundleExports | undefined,
-    apiBase: string,
-    apiBaseGeneration: number,
-    signal: AbortSignal,
-    marker: BundleNodeMarker,
-  ): Promise<PluginBundleExports | undefined> {
-    const response = await authenticatedFetch(url, {
-      signal,
-      timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
-    });
-    if (!response.ok) throw new Error(`Failed to load: ${url}`);
-    const source = await response.text();
-    if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
-      return undefined;
-    const script = document.createElement('script');
-    script.textContent = `${source}\n//# sourceURL=${url}`;
-    script.setAttribute(marker.attribute, marker.value(url));
-    const nonce = resolveCspNonce();
-    if (nonce) script.nonce = nonce;
-    document.head.appendChild(script);
-    // An inline classic script evaluates synchronously during the append, so
-    // this read is the same instant-of-execution capture the URL path gets
-    // from its `load` handler.
-    return readRegistration();
-  }
-
   private async loadCSS(
     url: string,
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
     marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
+    desktopDelivery = false,
+    prefetched?: PrefetchedStylesheet,
   ): Promise<void> {
-    const res = await authenticatedFetch(url, {
-      signal,
-      timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
-    });
-    if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
-    const css = await res.text();
+    if (desktopDelivery) {
+      if (
+        signal.aborted ||
+        !this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)
+      )
+        return;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.referrerPolicy = 'no-referrer';
+      link.href = url;
+      link.setAttribute(marker.attribute, marker.value(url));
+      await new Promise<void>((resolve, reject) => {
+        const settle = (error?: Error) => {
+          clearTimeout(timer);
+          link.removeEventListener('load', loaded);
+          link.removeEventListener('error', failed);
+          signal.removeEventListener('abort', aborted);
+          if (error) {
+            link.remove();
+            reject(error);
+          } else resolve();
+        };
+        const loaded = () => settle();
+        const failed = () =>
+          settle(new Error('Desktop plugin stylesheet failed.'));
+        const aborted = () =>
+          settle(new Error('Desktop plugin stylesheet aborted.'));
+        const timer = setTimeout(failed, PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS);
+        link.addEventListener('load', loaded);
+        link.addEventListener('error', failed);
+        signal.addEventListener('abort', aborted);
+        document.head.appendChild(link);
+      });
+      return;
+    }
+    const css = prefetched
+      ? await prefetched.read()
+      : await (async () => {
+          const res = await authenticatedFetch(url, {
+            signal,
+            timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+          });
+          if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
+          return res.text();
+        })();
     if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)) return;
     if (!css.trim()) return;
     const style = document.createElement('style');
@@ -738,12 +812,10 @@ export class PluginRegistry {
    */
   async executesBundlesInProcess(): Promise<boolean> {
     const apiBase = this.apiBase;
-    if (!apiBase || typeof window === 'undefined') return false;
+    if (!apiBase || !isSameOriginBundleUrl(apiBase)) return false;
     const nativeHost = (await this.platformPromise).platform === 'tauri';
-    if (apiBase !== this.apiBase) return false;
-    if (nativeHost && this.remoteProfile) return false;
-    if (isLoopbackPluginOrigin(apiBase)) return true;
-    return nativeHost && this.allowRemoteBundles;
+    if (apiBase !== this.apiBase || nativeHost) return false;
+    return isLoopbackPluginOrigin(apiBase);
   }
 
   /**

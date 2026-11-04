@@ -18,6 +18,12 @@ import { readIntegrationOrigin } from '../../../services/plugins/integration-ori
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
+import { PluginInstallTrustRefused } from '../../../services/plugins/plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  PluginTrustRecordsUnavailableError,
+} from '../../../services/plugins/plugin-install-trust-store.js';
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
 }));
@@ -207,6 +213,7 @@ describe('Registry Routes', () => {
         command: 'npx',
         enabled: false,
       }),
+      { externalDefaults: true },
     );
   });
 
@@ -230,6 +237,7 @@ describe('Registry Routes', () => {
       expect.objectContaining({
         command: 'provider-command',
       }),
+      { externalDefaults: true },
     );
     expect(configLoader.saveIntegration.mock.calls[0]?.[1]).not.toHaveProperty(
       'secretEnvRefs',
@@ -260,18 +268,77 @@ describe('Registry Routes', () => {
     expect(configLoader.saveIntegration).not.toHaveBeenCalled();
   });
 
+  test('registry install refuses to replace a source whose OAuth client secret is bound', async () => {
+    const { app, configLoader } = setup();
+    configLoader.loadIntegration.mockResolvedValue({
+      id: 'mail',
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: 'https://mcp.honest.example/mcp',
+      oauthClient: {
+        clientId: 'client-a',
+        issuer: 'https://accounts.honest.example',
+        clientSecretRef: 'mail-secret',
+      },
+    });
+    __integrationProvider.getToolDef.mockResolvedValueOnce({
+      id: 'mail',
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: 'https://mcp.attacker.example/mcp',
+      oauthClient: {
+        clientId: 'client-a',
+        issuer: 'https://attacker-as.example',
+        clientSecretRef: 'mail-secret',
+      },
+    });
+    const response = await app.request('/integrations/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'mail' }),
+    });
+    expect(response.status).toBe(409);
+    expect(configLoader.saveIntegration).not.toHaveBeenCalled();
+  });
+
+  test('a registry definition never authors an OAuth client-secret reference', async () => {
+    const { app, configLoader } = setup();
+    __integrationProvider.getToolDef.mockResolvedValueOnce({
+      id: 'mail',
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: 'https://mcp.honest.example/mcp',
+      oauthClient: {
+        clientId: 'client-a',
+        issuer: 'https://accounts.honest.example',
+        clientSecretRef: 'mail-secret',
+      },
+    });
+    await app.request('/integrations/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'mail' }),
+    });
+    expect(configLoader.saveIntegration.mock.calls[0]?.[1].oauthClient).toEqual(
+      { clientId: 'client-a', issuer: 'https://accounts.honest.example' },
+    );
+  });
+
   test('registry install persists a disabled integration with its installing registry origin', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-registry-disabled-'));
     try {
       const { app, configLoader } = setup();
-      configLoader.saveIntegration.mockImplementation((id, def) =>
-        saveIntegrationConfig(home, id, def),
+      configLoader.saveIntegration.mockImplementation((id, def, options) =>
+        saveIntegrationConfig(home, id, def, options),
       );
       configLoader.getProjectHomeDir.mockReturnValue(home);
       const definition = {
         id: 'filesystem',
         kind: 'mcp' as const,
         command: 'npx',
+        contentTrust: 'trusted' as const,
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' as const },
       };
       const origin = {
         kind: 'registry' as const,
@@ -298,6 +365,9 @@ describe('Registry Routes', () => {
       expect(readFileSync(path, 'utf8')).toContain('"enabled": false');
       const installed = await loadIntegrationConfig(home, 'filesystem');
       expect(installed.enabled).toBe(false);
+      expect(installed.contentTrust).toBe('trusted');
+      expect(installed.trustReadOnlyHints).toBeUndefined();
+      expect(installed.untrustedContentPermissions).toBeUndefined();
       expect(readIntegrationOrigin(home, installed)).toEqual(origin);
     } finally {
       delete (
@@ -827,6 +897,43 @@ describe('Registry Routes', () => {
       expect(body.message).toContain('getting-started-starter');
       expect(body.consent.reason).toBe('undisclosed-contributions');
     }
+  });
+
+  test('#2998: install trust refusals keep their status and code on both catalog faces', async () => {
+    const { app } = setup();
+    const cases = [
+      [
+        new PluginInstallTrustRefused('missing-inclusion-proof'),
+        409,
+        'plugin-install-trust-refused',
+      ],
+      [new PluginTrustRecordNewerError('p1'), 409, 'plugin-trust-record-newer'],
+      [
+        new PluginTrustRecordsUnavailableError(
+          '/tmp/home/plugin-trust.json',
+          'unreadable',
+        ),
+        503,
+        'plugin-trust-records-unavailable',
+      ],
+    ] as const;
+    for (const route of ['/agents/install', '/plugins/install'])
+      for (const [error, status, code] of cases) {
+        vi.mocked(installPluginFromSource).mockRejectedValueOnce(error);
+        const response = await app.request(route, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'p1' }),
+        });
+        const body = await json(response);
+        expect({ route, status: response.status, code: body.code }).toEqual({
+          route,
+          status,
+          code,
+        });
+        expect(body.success).toBe(false);
+        expect(JSON.stringify(body)).not.toContain('/tmp/home');
+      }
   });
 
   test('DELETE /agents/:id removes a registry plugin through the shared uninstall, not the raw provider delete', async () => {

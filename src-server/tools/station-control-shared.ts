@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
+import { bindCodexToolRequest } from '../runtime/mcp/codex-bound-request.js';
 import {
   outsideStationServerScope,
   stationServerScopeHeaders,
@@ -22,6 +23,22 @@ const callerBindings = new AsyncLocalStorage<{
   binding: string;
   isCurrent: () => boolean;
 }>();
+const directToolRequests = new AsyncLocalStorage<{
+  token: string;
+  current: () => boolean;
+  dispatch: (request: Request) => Promise<Response>;
+}>();
+
+export function withCodexDirectToolRequests<T>(
+  context: {
+    token: string;
+    current: () => boolean;
+    dispatch: (request: Request) => Promise<Response>;
+  },
+  operation: () => T,
+): T {
+  return directToolRequests.run(context, operation);
+}
 // A stdio child has no verified HTTP bearer. Its process is already created
 // for one Station connection; this immutable random binding prevents two
 // children from sharing a continuation capability. HTTP's verified token hash
@@ -327,7 +344,8 @@ export function resolveControlApiBase(env: NodeJS.ProcessEnv = process.env) {
  * instance's actually-bound port.
  */
 export async function api(path: string, opts?: RequestInit) {
-  const res = await fetch(`${resolveControlApiBase()}${path}`, {
+  const direct = directToolRequests.getStore();
+  const init: RequestInit = {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
@@ -336,7 +354,16 @@ export async function api(path: string, opts?: RequestInit) {
       ...executionContextHeaders(),
       ...opts?.headers,
     },
-  });
+  };
+  let res: Response;
+  if (direct) {
+    if (!direct.current()) throw new Error('bound-tool-request-refused');
+    const request = new Request(`${resolveControlApiBase()}${path}`, init);
+    bindCodexToolRequest(request, direct.token, direct.current);
+    res = await direct.dispatch(request);
+  } else {
+    res = await fetch(`${resolveControlApiBase()}${path}`, init);
+  }
   return res.json() as Promise<any>;
 }
 
@@ -422,6 +449,8 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
       success: false;
       error: string;
       code?: string;
+      previewId?: string;
+      settingsPath?: string;
       outcome?: 'failed' | 'indeterminate';
       retryable?: false;
       data?: unknown;
@@ -432,6 +461,8 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
   } catch (err) {
     const typed = err as {
       code?: unknown;
+      previewId?: unknown;
+      settingsPath?: unknown;
       outcome?: unknown;
       retryable?: unknown;
       receipt?: unknown;
@@ -471,6 +502,12 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Request failed',
+      ...(err instanceof Error &&
+      typed.code === 'feature_preview_disabled' &&
+      typeof typed.previewId === 'string' &&
+      typeof typed.settingsPath === 'string'
+        ? { previewId: typed.previewId, settingsPath: typed.settingsPath }
+        : {}),
       ...(err instanceof Error && typeof typed.code === 'string'
         ? { code: typed.code }
         : {}),

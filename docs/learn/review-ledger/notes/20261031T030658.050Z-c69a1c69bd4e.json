@@ -1,0 +1,7 @@
+{
+  "revision": "a6c7a264953e0fdfe3cdeeab7fc27ec7daa221b2",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the mobile Inbox entry amendment against the real Chat workspace, overlay state owner, mobile header and embedded panel. Explicit conversation URLs reveal readers, Inbox coverage suspends viewed/focus claims, and existing region placement/task navigation remain authoritative. The older dated placement measurements are not renewed.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/SubagentTranscriptCard.css","src-ui/src/components/chat/chat.css","src-ui/src/utils/child-work-display.ts","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

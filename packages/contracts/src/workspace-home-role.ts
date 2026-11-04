@@ -288,6 +288,8 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   conversationId: 'Durable conversation identifiers',
   conversationUpdatedAt: 'When each conversation last changed',
   acknowledgedAt: 'When you last opened each conversation',
+  terminalAt: 'When each conversation finished',
+  executionProviders: 'Which engines each conversation ran on',
   cwdLabel: 'Working-directory hints for sessions',
   turnProgress:
     'Last-progress times and quiet-turn observations for active sessions',

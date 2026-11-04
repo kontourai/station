@@ -1,0 +1,7 @@
+{
+  "revision": "8f20590c99310b1caeb1d34c058c8ac4de800c2e",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Round 2: brief wording change only (package import examples); theming unaffected.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]}
+  ]
+}

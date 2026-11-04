@@ -1,0 +1,7 @@
+{
+  "revision": "a560a1867644c1ca3f246db948666394bdcf71e8",
+
+  "notes": [
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed gate-for wrapper reporting against desktop agent guidance and the actual pre-push hook; desktop evidence requirements are unchanged. No device qualification is inferred.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]}
+  ]
+}

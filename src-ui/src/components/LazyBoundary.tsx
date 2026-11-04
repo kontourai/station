@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import { markTranscriptPhase } from './chat/transcriptLayoutTrace';
+import './LazyBoundary.css';
 
 type AnyLoad = () => Promise<{ default: ComponentType<any> }>;
 type AnyLazy = LazyExoticComponent<ComponentType<any>>;
@@ -60,6 +61,27 @@ function forgetLazy(load: AnyLoad, component: AnyLazy) {
   if (sharedLazy.get(load) === component) sharedLazy.delete(load);
 }
 
+/**
+ * The chunk-failure row the boundary renders by default. Exported so a
+ * consumer with its own chrome around a lazy surface (the conversation
+ * history's header and close button) renders the same row in its
+ * `unavailable` slot instead of copying the markup — one place changes when
+ * this block's UX does.
+ */
+export function LazyBoundaryError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="lazy-boundary__error" role="alert">
+      <span>Unable to load this part of Station.</span>
+      <button type="button" onClick={onRetry}>
+        Retry
+      </button>
+      <button type="button" onClick={() => window.location.reload()}>
+        Reload
+      </button>
+    </div>
+  );
+}
+
 interface LazyImportErrorBoundaryProps {
   children: ReactNode;
   onError: () => void;
@@ -90,17 +112,7 @@ class LazyImportErrorBoundary extends Component<
       if (this.props.unavailable) {
         return this.props.unavailable(this.props.onRetry);
       }
-      return (
-        <div className="lazy-boundary__error" role="alert">
-          <span>Unable to load this part of Station.</span>
-          <button type="button" onClick={this.props.onRetry}>
-            Retry
-          </button>
-          <button type="button" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </div>
-      );
+      return <LazyBoundaryError onRetry={this.props.onRetry} />;
     }
 
     return this.props.children;

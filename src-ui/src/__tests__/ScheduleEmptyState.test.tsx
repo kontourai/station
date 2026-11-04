@@ -16,9 +16,7 @@ describe('ScheduleEmptyState', () => {
       />,
     );
     expect(
-      screen.getByText(
-        'No scheduled jobs yet. Pick a template to get started:',
-      ),
+      screen.getByText('No automations yet. Pick a template to get started:'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Clear filter' })).toBeNull();
   });
@@ -33,7 +31,7 @@ describe('ScheduleEmptyState', () => {
       />,
     );
     expect(
-      screen.getByText('Nothing in scheduled jobs matches “nightly”'),
+      screen.getByText('Nothing in automations matches “nightly”'),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
     expect(onClearFilter).toHaveBeenCalledOnce();

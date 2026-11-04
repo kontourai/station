@@ -1,0 +1,7 @@
+{
+  "revision": "2d1884e85f1798e215583b54e63f51d4bc8e482c",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed ConnectionSmoke cleanup against the stop-session resolver and shared retirement deadline: confirmed adapter absence after stale-binding removal preserves the diagnostic; active or unknown ownership retains recovery state and cleanup-failed includes the original failure. Expanded owner regression failed before repair (621 passed, 1 failed), then all 622 passed; independent active-binding mutation produced 6 failures and restored run passed 622. Windows Codex startup and live smoke remain unqualified.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/connection-smoke.ts"]}
+  ]
+}

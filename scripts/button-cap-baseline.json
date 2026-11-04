@@ -15,7 +15,7 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx :: ConversationHandoffDialog :: div.conversation-handoff-dialog__actions",
+      "row": "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx :: ConversationHandoffDialog :: ResponsiveSurfaceActions.conversation-handoff-dialog__actions",
       "labelledActions": 3
     },
     {

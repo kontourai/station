@@ -69,9 +69,9 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
       break;
     case 'schedule':
       contextual.push({
-        label: 'Schedule a recurring task',
+        label: 'Set up an automation',
         prompt:
-          'Help me set up a scheduled job. Ask me what I want to run and when.',
+          'Help me set up an automation. Ask me what I want to run and when.',
       });
       break;
     case 'connections-models':
@@ -98,7 +98,7 @@ function sectionLabel(view: NavigationView): string | null {
     case 'developer':
       return 'Developer';
     case 'schedule':
-      return 'Schedule';
+      return 'Automations';
     case 'settings':
       return 'Settings';
     case 'appearance':

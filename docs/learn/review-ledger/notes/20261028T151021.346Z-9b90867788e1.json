@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Source-impact review: the API reference adds a Remote OAuth client subsection; the contracts table names the OAuth client-secret grant and oauthClient; the SDK reference adds the OAuth client-secret functions and authorize scopes; station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh. Searched this document for MCP tool-server OAuth, client registration, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

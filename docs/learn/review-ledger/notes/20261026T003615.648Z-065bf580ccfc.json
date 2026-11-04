@@ -1,0 +1,7 @@
+{
+  "revision": "5f84f9776c2bd50b80f4bfca82706d1072a0467c",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Scoped review of inherited generated release-ledger inputs: inspected the schema explanation and generator validation, projection-only role, per-entry source/workflow/caveat fields, and independent publication/ledger failure language. This records source review only; no registry, hosted workflow, artifact availability, or deployment was verified in this fix round. Historical release claims and qualification caveats remain historical.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

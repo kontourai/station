@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed shared status fixture changes and ChatDock against Project/Task/Session/turn distinctions and last-known observation claims. Inbox presentation and Run finished do not create a durable Task or turn a child execution end into successful task outcome. Reader cover suppresses viewing; authority/epoch history fence preserves freshness.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

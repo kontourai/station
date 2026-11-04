@@ -11,6 +11,9 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
   [
     ['foreground_invocation_unavailable', 'conflict', false],
     ['delegation_attempt_capacity', 'busy', true],
+    ['create_request_capacity', 'busy', true],
+    ['create_request_conflict', 'conflict', false],
+    ['create_request_indeterminate', 'indeterminate', false],
     ['continuation_place_refused', 'input_unsupported', false],
     ['SESSION_START_INDETERMINATE', 'indeterminate', false],
     ['delegation_files_unsupported', 'input_unsupported', false],
@@ -45,6 +48,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['client_protocol_unsupported', 'input_unsupported', false],
     ['client_turn_in_flight', 'busy', true],
     ['client_turn_input_conflict', 'conflict', false],
+    ['inbox_key_conflict', 'conflict', false],
     ['client_turn_input_unsupported', 'input_unsupported', false],
     ['client_turn_settled', 'conflict', false],
     ['confined_full_access_unavailable', 'permission_denied', false],
@@ -66,8 +70,10 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['continuation_workspace_unbound', 'input_unsupported', false],
     ['continuation_workspace_worktree_gone', 'input_unsupported', false],
     ['continuation_workspace_worktree_moved', 'input_unsupported', false],
+    ['conversation-context-unavailable', 'conflict', false],
     ['engine-decision-not-sent', 'warning', false],
     ['engine-decision-unacknowledged', 'warning', false],
+    ['engine-memory-exhausted', 'engine_crashed', true],
     ['engine-session-binding-dead', 'session_gone', false],
     ['engine-turn-failed', 'provider_error', false],
     ['engine-sign-in-required', 'auth', false],
@@ -93,6 +99,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['principal_unresolved', 'auth', false],
     ['project_identity_not_prepared', 'input_unsupported', false],
     ['provider-plan-quota-exhausted', 'quota_exhausted', false],
+    ['provider_model_unavailable', 'model_unavailable', false],
+    ['sandbox_unavailable', 'permission_denied', false],
     ['provider_session_start_failed', 'unavailable', true],
     ['provider_session_starting', 'busy', true],
     ['provider_turn_in_progress', 'busy', true],
@@ -102,6 +110,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['session_recovery_failed', 'unavailable', true],
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
+    ['workload-command-oom-killed', 'warning', false],
   ];
 
 describe('provider failure wire contract', () => {

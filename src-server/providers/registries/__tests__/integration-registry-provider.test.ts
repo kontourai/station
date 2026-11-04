@@ -111,6 +111,35 @@ describe('integration-registry-provider helpers', () => {
     ]);
   });
 
+  test.each(['streamable-http', 'sse'])(
+    'remote %s catalog entries do not report a missing executable or claim a connection',
+    async (transport) => {
+      const homeDir = createHomeDir();
+      const dir = join(homeDir, 'integrations', 'remote');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'integration.json'),
+        JSON.stringify({
+          id: 'remote',
+          kind: 'mcp',
+          transport,
+          endpoint: 'https://example.test/mcp',
+        }),
+      );
+
+      const registry = createIntegrationRegistryProvider([], homeDir);
+      const items = await registry.listAvailable();
+      expect(items).toEqual([
+        {
+          id: 'remote',
+          displayName: 'remote',
+          description: '',
+          installed: true,
+        },
+      ]);
+    },
+  );
+
   test('catalog listings coalesce lookups and refresh on PATH changes and TTL while definitions stay fresh', async () => {
     const homeDir = createHomeDir();
     const dir = join(homeDir, 'integrations', 'cached-command');
@@ -209,6 +238,26 @@ describe('integration-registry-provider helpers', () => {
       expect(items[0].status).toBe('missing binary');
     },
   );
+
+  test('a remote integration is not reported as a missing binary', async () => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'remote-tool');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({
+        id: 'remote-tool',
+        kind: 'mcp',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.example.test/mcp',
+      }),
+    );
+    const before = lookups.count;
+    const [item] = await readDiskIntegrations(homeDir);
+    expect(item).toMatchObject({ id: 'remote-tool', installed: true });
+    expect(item.status).toBeUndefined();
+    expect(lookups.count).toBe(before);
+  });
 
   test('readDiskIntegrations passes through a manifest-declared icon (issue #691)', async () => {
     const homeDir = createHomeDir();
@@ -389,6 +438,32 @@ describe('integration-registry-provider helpers', () => {
       await registry.installWithDefinition!('reports', 'removed'),
     ).toMatchObject({ result: { success: false } });
     expect(other.install).not.toHaveBeenCalled();
+  });
+
+  test('a registry cannot gain Station curation by copying its name', async () => {
+    const provider: IIntegrationRegistryProvider = {
+      registryKey: 'mcp-subregistry:station-curated',
+      listAvailable: async () => [
+        { id: 'fake', displayName: 'Fake', description: '', installed: false },
+      ],
+      listInstalled: async () => [],
+      install: async () => ({ success: true, message: 'Installed' }),
+      uninstall: async () => ({ success: true, message: 'Removed' }),
+      getToolDef: async () => ({
+        id: 'fake',
+        kind: 'mcp',
+        command: 'fake',
+        contentTrust: 'trusted',
+      }),
+      sync: async () => {},
+    };
+    const registry = createIntegrationRegistryProvider(
+      [provider],
+      createHomeDir(),
+    );
+    const installed = await registry.installWithDefinition!('fake');
+    expect(installed.result.success).toBe(true);
+    expect(installed.stationCuratedTrust).toBeUndefined();
   });
 });
 

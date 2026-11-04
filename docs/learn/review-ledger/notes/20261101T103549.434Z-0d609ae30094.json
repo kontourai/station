@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Updated the Windows portable floor paragraph to name the owned-process registry suite and the birth-helper parity test. Changed sources: new tests for staging the Windows birth helper; owned-process-windows.test.ts is classified as a real-process suite; test:windows:portable additionally runs owned-process-windows.test.ts. No remaining claim here contradicts them.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/__tests__/portable-server-archive.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

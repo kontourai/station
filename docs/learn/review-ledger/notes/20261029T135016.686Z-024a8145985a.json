@@ -1,0 +1,7 @@
+{
+  "revision": "b9a951449251da359b7f62b17d807cbca68b219e",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Source-impact review: mcp-service.ts passes the OAuth provider fetch guard to every connect that uses an OAuth provider. Searched this document for MCP transport, OAuth request and issuer pin claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

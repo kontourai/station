@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock.tsx only withholds onExecutionModelSelect when conversationCanMutate is false; pane relationship and handoff/draft key claims are unaffected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "907e710118d97e3a1e1d4473451197395b00f28d",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Third round changes only comments and the Linux fixture's launch swap limit (MemorySwapMax=1048576 instead of 0); the guide's protection bullets still match controlPlaneProperties exactly, and the guide makes no claim about the fixture's launch properties.","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Third round: the fixture still exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup; its server unit now launches with 1 MiB swap rather than none, which no module-map sentence describes.","inputs":["docs/architecture/module-map.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Third round touches only comments and the fixture's launch swap limit; the design note states neither.","inputs":["docs/design/process-supervisor.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Third round: no claim in testing.md about the workload fixture's launch properties; the link to workload budgets stays accurate.","inputs":["docs/guides/testing.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Third round: the child-workload leaf is unchanged.","inputs":["packages/shared/README.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

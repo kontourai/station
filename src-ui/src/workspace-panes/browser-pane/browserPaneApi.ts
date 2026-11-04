@@ -3,7 +3,10 @@ import type {
   BrowserConsoleView,
   BrowserLocalTargetSuggestionsView,
   BrowserLocalTargetView,
+  BrowserNavigationView,
+  BrowserNetworkView,
   BrowserPaneAccessView,
+  BrowserPickedElementView,
   BrowserSessionView,
   BrowserUrlRejectionView,
   BrowserViewportView,
@@ -72,6 +75,8 @@ async function call<T>(
 const enc = encodeURIComponent;
 
 export const browserPaneKeys = {
+  navigation: (apiBase: string, id: string) =>
+    ['browser-pane', apiBase, 'navigation', id] as const,
   access: (apiBase: string, projectSlug: string) =>
     ['browser-pane', apiBase, 'access', projectSlug] as const,
   acquisition: (apiBase: string) =>
@@ -102,6 +107,12 @@ export interface BrowserProjectSettingsView {
 export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
   const root = `${apiBase}/api/browser`;
   return {
+    navigation: (id: string, signal?: AbortSignal) =>
+      call<BrowserNavigationView>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/navigation`,
+        { signal },
+      ),
     access: (projectSlug: string, signal?: AbortSignal) =>
       call<BrowserPaneAccessView>(
         fetcher,
@@ -157,7 +168,7 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
       }),
     history: (
       browserSessionId: string,
-      action: 'back' | 'forward' | 'reload',
+      action: 'back' | 'forward' | 'reload' | 'hard-reload' | 'stop',
       generation?: number,
     ) =>
       call<BrowserSessionView>(
@@ -182,6 +193,28 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
             generation === undefined ? { viewport } : { viewport, generation },
         },
       ),
+    zoom: (browserSessionId: string, factor: number, generation?: number) =>
+      call<BrowserSessionView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/zoom`,
+        {
+          method: 'POST',
+          body: generation === undefined ? { factor } : { factor, generation },
+        },
+      ),
+    appearance: (
+      browserSessionId: string,
+      scheme: 'system' | 'light' | 'dark',
+      generation?: number,
+    ) =>
+      call<BrowserSessionView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/appearance`,
+        {
+          method: 'POST',
+          body: generation === undefined ? { scheme } : { scheme, generation },
+        },
+      ),
     /** A person's answer to the dialog the page holds for them. */
     answerDialog: (
       browserSessionId: string,
@@ -199,6 +232,126 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         `${root}/sessions/${enc(browserSessionId)}/console${after === undefined ? '' : `?after=${after}`}`,
         { signal },
       ),
+    network: (browserSessionId: string, after: number, signal?: AbortSignal) =>
+      call<BrowserNetworkView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/network?after=${after}`,
+        { signal },
+      ),
+    pick: (
+      browserSessionId: string,
+      point: { x: number; y: number },
+      generation: number,
+      screenshot: boolean,
+      expectedScroll?: { x: number; y: number },
+      signal?: AbortSignal,
+    ) =>
+      call<BrowserPickedElementView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/pick`,
+        {
+          method: 'POST',
+          body: {
+            ...point,
+            generation,
+            screenshot,
+            ...(expectedScroll ? { expectedScroll } : {}),
+          },
+          signal,
+        },
+      ),
+    startRecording: (id: string, generation: number, taskSessionId?: string) =>
+      call<{ recordingId: string }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings`,
+        {
+          method: 'POST',
+          body: { generation, ...(taskSessionId ? { taskSessionId } : {}) },
+        },
+      ),
+    recordingStatus: (id: string, recordingId: string, signal?: AbortSignal) =>
+      call<{
+        id: string;
+        state: 'starting' | 'recording' | 'encoding' | 'ready' | 'failed';
+        error?: string;
+        task?:
+          | { kind: 'ready'; taskId: string }
+          | { kind: 'unavailable'; reason: string };
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
+        { signal },
+      ),
+    stopRecording: (id: string, recordingId: string) =>
+      call<void>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/stop`,
+        { method: 'POST', body: {} },
+      ),
+    cancelRecording: (id: string, recordingId: string) =>
+      call<void>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
+        { method: 'DELETE' },
+      ),
+    publishRecordingToTask: (id: string, recordingId: string) =>
+      call<{ walkthroughId: string }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/task`,
+        { method: 'POST', body: {} },
+      ),
+    recordingFrames: (id: string, recordingId: string) =>
+      call<{
+        frames: Array<{
+          data: string;
+          atMs: number;
+          capturedAt: string;
+          url: string;
+          viewport: { width: number; height: number };
+        }>;
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/frames`,
+      ),
+    recordingVideo: async (
+      id: string,
+      recordingId: string,
+      signal?: AbortSignal,
+    ): Promise<Blob> => {
+      const response = await fetcher(
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/video`,
+        { signal },
+      );
+      const unavailable = () =>
+        new BrowserApiError(
+          response.status,
+          'recording-unavailable',
+          undefined,
+        );
+      if (
+        !response.ok ||
+        !(response.headers.get('content-type') ?? '').startsWith('video/webm')
+      )
+        throw unavailable();
+      const reader = response.body?.getReader();
+      if (!reader) throw unavailable();
+      const parts: Uint8Array<ArrayBuffer>[] = [];
+      let total = 0;
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          total += next.value.byteLength;
+          if (total > 16 * 1024 * 1024) throw new Error('Recording too large.');
+          parts.push(new Uint8Array(next.value));
+        }
+      } catch (error) {
+        await reader.cancel().catch(() => {});
+        throw error;
+      }
+      if (!total) throw unavailable();
+      return new Blob(parts, { type: 'video/webm' });
+    },
     /** The page as an image (PNG, or JPEG for a very large page). */
     screenshot: async (browserSessionId: string): Promise<Blob> => {
       const response = await fetcher(
@@ -217,6 +370,25 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         throw new BrowserApiError(response.status, code);
       }
       return response.blob();
+    },
+    annotationScreenshot: async (
+      browserSessionId: string,
+    ): Promise<{ blob: Blob; scroll: { x: number; y: number } }> => {
+      const result = await call<{
+        image: string;
+        mimeType: 'image/png' | 'image/jpeg';
+        scroll: { x: number; y: number };
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/screenshot?annotation=1`,
+      );
+      const bytes = Uint8Array.from(atob(result.image), (character) =>
+        character.charCodeAt(0),
+      );
+      return {
+        blob: new Blob([bytes], { type: result.mimeType }),
+        scroll: result.scroll,
+      };
     },
     reopen: (browserSessionId: string) =>
       call<BrowserSessionView>(
@@ -309,6 +481,12 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
   if (!(error instanceof BrowserApiError))
     return 'Station could not reach the browser.';
   switch (error.code) {
+    case 'feature_preview_disabled':
+      return 'Enable Browser experience in Settings → Advanced → Feature previews.';
+    case 'not-supported':
+      return 'This Station cannot perform that Browser action. Update the Station host.';
+    case 'control-interrupted':
+      return 'Browser control changed before the action finished.';
     case 'url-not-allowed':
       return error.detail?.urlRejection
         ? describeUrlRefusal(error.detail.urlRejection, typed)

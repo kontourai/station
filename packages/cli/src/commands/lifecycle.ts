@@ -21,6 +21,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -39,12 +40,21 @@ import {
   relative,
   resolve,
 } from 'node:path';
+import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -90,11 +100,17 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
 import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  UI_IMMUTABLE_ASSET_PATTERN,
+  uiDocumentContentSecurityPolicy,
+} from '@kontourai/station-shared/ui-document-policy';
+import { WORKLOAD_HOST_BUNDLE_NAME } from '@kontourai/station-supervisor/protocol';
 import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
@@ -138,8 +154,8 @@ import {
 } from './platform.js';
 import type { CommandRunner } from './service.js';
 import {
-  renderServiceInstallRemedy,
   renderServiceStatusCommand,
+  resolveInstalledServiceRemedy,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
 import {
@@ -154,7 +170,10 @@ import {
   runSupervisorHandoff,
   SUPERVISOR_BUNDLE_FILENAME,
 } from './supervisor-launch.js';
-import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './ui-proxy-prefixes.js';
 import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
@@ -183,6 +202,8 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export { UI_PROXY_BACKEND_PREFIXES };
@@ -212,6 +233,7 @@ interface UiServerDeps {
   upstreamPort: number;
   /** Bare backend prefixes to proxy instead of 404ing (see {@link UI_PROXY_BACKEND_PREFIXES}). */
   backendPrefixes: string[];
+  backendExcludedPrefixes?: readonly string[];
   /** Backend-owned HTML paths that bypass the navigation SPA fallback. */
   backendNavigationPrefixes?: string[];
   readinessFile?: string;
@@ -226,6 +248,17 @@ interface UiServerDeps {
   trustedTailscaleServeOrigin?: string;
   /** Plain validated projection: no parser or live registry crosses serialization. */
   hostedTenantAuthorities?: Record<string, string>;
+}
+
+/**
+ * The UI document rules shared with the web service worker
+ * (`@kontourai/station-shared/ui-document-policy`). Module imports do not
+ * survive `toString` serialization, so the spawned listener receives them as
+ * dependencies like everything else; the in-process wrapper supplies them.
+ */
+interface UiRequestHandlerDeps extends UiServerDeps {
+  immutableAsset: RegExp;
+  documentCsp: (scriptNonce?: string) => string;
 }
 
 /**
@@ -254,6 +287,23 @@ interface UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
+  return createUiRequestHandler(
+    {
+      immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
+      documentCsp: uiDocumentContentSecurityPolicy,
+      ...deps,
+    },
+    (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+  );
+}
+
+function createUiRequestHandler(
+  deps: UiRequestHandlerDeps,
+  uploadPolicy: (
+    method: string,
+    path: string,
+  ) => typeof MEDIA_UPLOAD_POLICIES.walkthrough | undefined,
+) {
   const {
     http,
     crypto,
@@ -264,12 +314,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
     inject,
     upstreamPort,
     backendPrefixes,
+    backendExcludedPrefixes = [],
     backendNavigationPrefixes = [],
     readinessFile,
     identity,
     internalApiToken,
     trustedTailscaleServeOrigin,
     hostedTenantAuthorities,
+    immutableAsset,
+    documentCsp,
   } = deps;
   const canonicalRoot = fs.realpathSync(dir);
   const containedAsset = (rawUrl: string) => {
@@ -520,23 +573,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
   const READINESS_IDENTITY_BUDGET_MAX_MS = 40_000;
   const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
-    'Content-Security-Policy': [
-      "default-src 'none'",
-      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
-      // Fonts are self-hosted (#2648) — no external font origins.
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' http: https: ws: wss:",
-      "frame-src 'self' blob: http: https:",
-      "worker-src 'self' blob:",
-      "manifest-src 'self'",
-      "object-src 'none'",
-      "base-uri 'none'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-    ].join('; '),
+    'Content-Security-Policy': documentCsp(nonce),
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
   });
@@ -571,7 +608,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     status: number,
   ) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
+    const upload = uploadPolicy(
+      res.req.method ?? '',
+      (res.req.url ?? '/').split('?')[0],
+    );
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      ...(upload ? { Connection: 'close' } : {}),
+    });
     res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
   };
   const proxyToBackend = (
@@ -586,6 +631,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     const tailscaleIngress = trustedTailscaleIdentity(req);
     if (tailscaleIngress?.rejected) {
       res.writeHead(403, {
+        Connection: 'close',
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       });
@@ -651,7 +697,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
         JSON.stringify(ingressIdentity),
       ).toString('base64url');
     }
+    const mediaUpload = uploadPolicy(
+      req.method ?? '',
+      (req.url ?? '/').split('?')[0],
+    );
+    let upstreamResponded = false;
     let timedOut = false;
+    let upstreamResponse: import('node:http').IncomingMessage | undefined;
     const proxyReq = http.request(
       {
         host: '127.0.0.1',
@@ -659,45 +711,68 @@ export function uiRequestHandler(deps: UiServerDeps) {
         path: req.url,
         method: req.method,
         headers,
-        timeout: PROXY_UPSTREAM_TIMEOUT_MS,
+        timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
-        // The idle timeout above exists to bound the connection/header
-        // phase against a wedged upstream — it must not keep running once a
-        // genuine streaming response is underway, or it will always lose
-        // the race against a periodic heartbeat exactly as long as itself
-        // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
-        // now, the moment headers confirm this is an SSE stream; a non-SSE
-        // response that hangs mid-body still keeps the timeout's
-        // protection, since SSE is the only response shape here designed to
-        // idle for tens of seconds at a time.
-        const contentType = proxyRes.headers['content-type'];
-        if (
-          typeof contentType === 'string' &&
-          contentType.startsWith('text/event-stream')
-        ) {
-          proxyReq.setTimeout(0);
+        upstreamResponse = proxyRes;
+        try {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            proxyRes.destroy();
+            proxyReq.destroy();
+            return;
+          }
+          upstreamResponded = true;
+          // The idle timeout above exists to bound the connection/header
+          // phase against a wedged upstream — it must not keep running once a
+          // genuine streaming response is underway, or it will always lose
+          // the race against a periodic heartbeat exactly as long as itself
+          // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
+          // now, the moment headers confirm this is an SSE stream; a non-SSE
+          // response that hangs mid-body still keeps the timeout's
+          // protection, since SSE is the only response shape here designed to
+          // idle for tens of seconds at a time.
+          const contentType = proxyRes.headers['content-type'];
+          if (
+            typeof contentType === 'string' &&
+            contentType.startsWith('text/event-stream')
+          ) {
+            proxyReq.setTimeout(0);
+          }
+          res.writeHead(proxyRes.statusCode || 502, {
+            ...proxyRes.headers,
+            ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
+              ? { connection: 'close' }
+              : {}),
+          });
+          // Pipe without buffering so SSE chunks stream through as they
+          // arrive instead of waiting for the upstream stream to end.
+          proxyRes.pipe(res);
+          // An upstream error arriving *after* headers are already flushed
+          // (mid-stream, e.g. the backend process dies mid-SSE) can't be
+          // turned into a fresh status code — just tear the client-facing
+          // response down instead of leaving it hanging open.
+          proxyRes.on('error', () => {
+            if (!res.writableEnded) res.destroy();
+          });
+        } catch (error) {
+          proxyRes.destroy();
+          answerRequestFailure(res, error);
         }
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
-        // Pipe without buffering so SSE chunks stream through as they
-        // arrive instead of waiting for the upstream stream to end.
-        proxyRes.pipe(res);
-        // An upstream error arriving *after* headers are already flushed
-        // (mid-stream, e.g. the backend process dies mid-SSE) can't be
-        // turned into a fresh status code — just tear the client-facing
-        // response down instead of leaving it hanging open.
-        proxyRes.on('error', () => {
-          if (!res.writableEnded) res.destroy();
-        });
       },
     );
+    req.once('end', () => {
+      if (mediaUpload && !upstreamResponded)
+        proxyReq.setTimeout(mediaUpload.responseMs);
+    });
     proxyReq.on('timeout', () => {
       timedOut = true;
       proxyReq.destroy(new Error('Upstream request timed out'));
     });
     proxyReq.on('error', () => {
+      if (res.writableEnded || res.destroyed) return;
       if (res.headersSent) {
-        if (!res.writableEnded) res.end();
+        upstreamResponse?.unpipe(res);
+        res.destroy();
         return;
       }
       if (timedOut) {
@@ -718,34 +793,44 @@ export function uiRequestHandler(deps: UiServerDeps) {
       }
       answerHostUnavailable(res, 503);
     });
-    // Propagate a client-initiated disconnect upstream. `stream.pipe()`
-    // only forwards data one direction — it never tears down the *source*
-    // when the destination closes without erroring, so without this, every
-    // routine client disconnect (tab close, navigation, an SSE
-    // `EventSource`'s own periodic reconnect cycle — all normal on every
-    // one of this proxy's SSE endpoints: `/events`, `/scheduler/events`,
-    // `/monitoring/events`, `/api/orchestration/events`) leaves the
-    // upstream connection (and whatever backend work/timers it's driving)
-    // open indefinitely.
-    //
-    // Deliberately `res.on('close', ...)` ONLY — not `req.on('close'/
-    // 'aborted', ...)`. Verified empirically (a standalone repro, not just
-    // reasoned about): once `req.pipe(proxyReq)` below starts consuming a
-    // body-less GET/HEAD request (every SSE endpoint), the *request*'s
-    // `'close'` fires almost immediately — as soon as its (empty) readable
-    // side is drained — regardless of whether the client is still
-    // connected; wiring an unconditional abort to it broke every proxied
-    // request, aborting the upstream call before the real response ever
-    // arrived. `'aborted'` doesn't fire at all for a genuine mid-stream
-    // client-destroy in the same repro. `res`'s `'close'` is the reliable
-    // signal: it reflects the underlying socket's actual lifecycle (fires
-    // with `writableEnded === false` only on a real premature disconnect —
-    // before headers, mid-stream, or otherwise — and with `writableEnded
-    // === true`, a no-op below, on every normal completion).
-    res.on('close', () => {
-      if (!res.writableEnded && !proxyReq.destroyed) proxyReq.destroy();
-    });
+    // A local receive timeout can finish the response before the body ends.
+    // Release forwarding on that finish, or on a client disconnect. Request
+    // 'close' alone also fires for fully consumed bodies and cannot own this.
+    const stopForwarding = () => {
+      if ((!req.complete || !res.writableEnded) && !proxyReq.destroyed) {
+        req.unpipe(proxyReq);
+        proxyReq.destroy();
+      }
+    };
+    res.once('finish', stopForwarding);
+    res.once('close', stopForwarding);
     req.pipe(proxyReq);
+  };
+
+  const answerRequestFailure = (
+    res: import('node:http').ServerResponse,
+    error: unknown,
+  ) => {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : 'UNKNOWN';
+    console.error(`UI request failed (${code})`);
+    if (res.writableEnded || res.destroyed) return;
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-store',
+      Connection: 'close',
+    });
+    res.end('Internal server error');
   };
 
   const serve = (
@@ -753,6 +838,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     const u = (req.url ?? '/').split('?')[0];
     const resolved = containedAsset(u === '/' ? '/index.html' : u);
     if (resolved.rejected) {
@@ -832,10 +918,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
         .relative(canonicalRoot, p)
         .split(path.sep)
         .join('/');
-      const immutable =
-        /^assets\/(?:[\w-]+\/)*[\w.-]+-[A-Za-z0-9_-]{8,}\.[\w]+$/.test(
-          relative,
-        );
+      const immutable = immutableAsset.test(relative);
       const quality = new Map<string, number>();
       for (const item of (req.headers['accept-encoding'] ?? '').split(',')) {
         const [coding, ...parameters] = item.trim().toLowerCase().split(';');
@@ -909,9 +992,22 @@ export function uiRequestHandler(deps: UiServerDeps) {
         res.end();
         return;
       }
-      res.writeHead(200, { ...headers, 'Content-Length': info.size });
-      if (req.method === 'HEAD') res.end();
-      else fs.createReadStream(p).pipe(res);
+      if (req.method === 'HEAD') {
+        res.writeHead(200, { ...headers, 'Content-Length': info.size });
+        res.end();
+      } else {
+        const stream = fs.createReadStream(p);
+        stream.once('error', (error) => answerRequestFailure(res, error));
+        res.once('close', () => stream.destroy());
+        stream.once('open', () => {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            stream.destroy();
+            return;
+          }
+          res.writeHead(200, { ...headers, 'Content-Length': info.size });
+          stream.pipe(res);
+        });
+      }
     }
   };
 
@@ -972,12 +1068,19 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
+    const respond = (state: 'ready' | 'degraded' | 'unavailable') => {
+      try {
+        callback(state);
+      } catch (error) {
+        answerRequestFailure(res, error);
+      }
+    };
     if (!declaredReady()) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     if (!internalApiToken) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     let settled = false;
@@ -987,7 +1090,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      callback(state);
+      respond(state);
     };
     const request = http.request(
       {
@@ -1066,6 +1169,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     html: boolean,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     res.writeHead(503, {
       'Content-Type': html ? 'text/html; charset=utf-8' : 'application/json',
       'Cache-Control': 'no-store',
@@ -1080,71 +1184,97 @@ export function uiRequestHandler(deps: UiServerDeps) {
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
-    const hostedTenant = resolvedHostedTenant(req);
-    let tenantId: string | undefined;
-    if (hostedTenant.enabled) {
-      if ('error' in hostedTenant) {
-        res.writeHead(421, {
-          'Content-Type': 'application/json',
+    res.on('error', () => res.destroy());
+    try {
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        decodedPath = '';
+      }
+      if (
+        !decodedPath ||
+        backendExcludedPrefixes.some(
+          (prefix) =>
+            decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+        )
+      ) {
+        res.writeHead(404, {
+          'Content-Type': 'text/plain',
           'Cache-Control': 'no-store',
         });
-        res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
+        res.end('Not found');
         return;
       }
-      tenantId = hostedTenant.tenantId;
-    }
-    const pathname = (req.url ?? '/').split('?')[0];
-    if (pathname === '/__station/identity') {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      });
-      res.end(JSON.stringify(identity ?? null));
-      return;
-    }
-    if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
-        if (state === 'unavailable') {
-          unavailable(res, false);
+      const hostedTenant = resolvedHostedTenant(req);
+      let tenantId: string | undefined;
+      if (hostedTenant.enabled) {
+        if ('error' in hostedTenant) {
+          res.writeHead(421, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
           return;
         }
-        // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
-        // confirmed, and a checker that reads only the status code (a load
-        // balancer, an orchestrator probe) cannot tell a busy backend from a
-        // wedged one — a 200 here would report a hung event loop healthy
-        // forever. Every in-repo checker requires `status: 'ready'`, so the
-        // body is where the distinction lives for anything that can read it.
-        res.writeHead(state === 'ready' ? 200 : 503, {
+        tenantId = hostedTenant.tenantId;
+      }
+      const pathname = (req.url ?? '/').split('?')[0];
+      if (pathname === '/__station/identity') {
+        res.writeHead(200, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
         });
-        res.end(
-          JSON.stringify(
-            state === 'ready'
-              ? { ready: true, status: 'ready' }
-              : { ready: false, status: 'degraded' },
-          ),
+        res.end(JSON.stringify(identity ?? null));
+        return;
+      }
+      if (pathname === '/api/system/readiness') {
+        checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
+          if (res.headersSent || res.writableEnded || res.destroyed) return;
+          if (state === 'unavailable') {
+            unavailable(res, false);
+            return;
+          }
+          // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
+          // confirmed, and a checker that reads only the status code (a load
+          // balancer, an orchestrator probe) cannot tell a busy backend from a
+          // wedged one — a 200 here would report a hung event loop healthy
+          // forever. Every in-repo checker requires `status: 'ready'`, so the
+          // body is where the distinction lives for anything that can read it.
+          res.writeHead(state === 'ready' ? 200 : 503, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(
+            JSON.stringify(
+              state === 'ready'
+                ? { ready: true, status: 'ready' }
+                : { ready: false, status: 'degraded' },
+            ),
+          );
+        });
+        return;
+      }
+      const isNavigation =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (req.headers.accept ?? '').startsWith('text/html');
+      if (readinessFile && isNavigation) {
+        // #263: a degraded backend still gets the app shell. The recovery
+        // document is for a backend that is down or is not ours; replacing the
+        // whole UI because the host is slow is what made a running Station look
+        // dead. Serving the shell grants nothing new: API calls are proxied (and
+        // bounded) exactly as they are for any other page load.
+        checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
+          state === 'unavailable'
+            ? unavailable(res, true)
+            : serve(req, res, tenantId),
         );
-      });
-      return;
+        return;
+      }
+      serve(req, res, tenantId);
+    } catch (error) {
+      answerRequestFailure(res, error);
     }
-    const isNavigation =
-      (req.method === 'GET' || req.method === 'HEAD') &&
-      (req.headers.accept ?? '').startsWith('text/html');
-    if (readinessFile && isNavigation) {
-      // #263: a degraded backend still gets the app shell. The recovery
-      // document is for a backend that is down or is not ours; replacing the
-      // whole UI because the host is slow is what made a running Station look
-      // dead. Serving the shell grants nothing new: API calls are proxied (and
-      // bounded) exactly as they are for any other page load.
-      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
-        state === 'unavailable'
-          ? unavailable(res, true)
-          : serve(req, res, tenantId),
-      );
-      return;
-    }
-    serve(req, res, tenantId);
   };
 }
 
@@ -1182,6 +1312,72 @@ export function buildUiBootstrapScript(opts: {
     'document.currentScript.remove()',
   ].join(';');
   return `<script>${statements}</script>`;
+}
+
+/**
+ * #3994: forward the terminal socket's WebSocket upgrade through the UI
+ * server to the API listener, so a browser that reached Station through this
+ * proxy (a tailnet name, a reverse proxy, a phone) opens the same-origin
+ * socket. Only that exact path is forwarded; every other upgrade is dropped.
+ * The socket is admitted by the single-use ticket the gateway redeems, never
+ * by this hop, so every `x-station-*`, `tailscale-*` and forwarding header is
+ * stripped rather than attested. Self-contained: it is serialized into the
+ * spawned server with `Function.prototype.toString`.
+ */
+export function configureTerminalUpgrade(
+  server: {
+    on(
+      event: 'upgrade',
+      listener: (
+        request: import('node:http').IncomingMessage,
+        socket: import('node:stream').Duplex,
+        head: Buffer,
+      ) => void,
+    ): unknown;
+  },
+  net: { connect(port: number, host: string): import('node:net').Socket },
+  upstreamPort: number,
+): void {
+  const terminalSocketPath = '/api/terminal/socket';
+  server.on('upgrade', (request, socket, head) => {
+    if (
+      request.url !== terminalSocketPath ||
+      String(request.headers.upgrade ?? '').toLowerCase() !== 'websocket'
+    ) {
+      socket.destroy();
+      return;
+    }
+    const lines = [`GET ${terminalSocketPath} HTTP/1.1`];
+    for (let index = 0; index < request.rawHeaders.length; index += 2) {
+      const name = request.rawHeaders[index] ?? '';
+      const lower = name.toLowerCase();
+      if (
+        lower === 'host' ||
+        lower === 'forwarded' ||
+        lower.startsWith('x-forwarded-') ||
+        lower.startsWith('x-station-') ||
+        lower.startsWith('tailscale-')
+      )
+        continue;
+      lines.push(`${name}: ${request.rawHeaders[index + 1] ?? ''}`);
+    }
+    lines.push(`Host: 127.0.0.1:${upstreamPort}`);
+    const upstream = net.connect(upstreamPort, '127.0.0.1');
+    const close = () => {
+      socket.destroy();
+      upstream.destroy();
+    };
+    upstream.once('connect', () => {
+      upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+      if (head.length) upstream.write(head);
+      upstream.pipe(socket);
+      socket.pipe(upstream);
+    });
+    upstream.on('error', close);
+    upstream.on('close', close);
+    socket.on('error', close);
+    socket.on('close', close);
+  });
 }
 
 /**
@@ -1231,14 +1427,24 @@ export function buildUiServerScript(opts: {
     const inject=${JSON.stringify(inject)};
     const upstreamPort=${JSON.stringify(opts.upstreamPort)};
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
+    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
+    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
+    const classifyMediaUpload=${mediaUploadPolicy.toString()};
+    const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
+    const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
+    (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
+    (${configureHttpKeepAlive.toString()})(server);
+    (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
+    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
@@ -1501,7 +1707,6 @@ function getInstanceServicePorts(
 ): number[] {
   return [
     record.serverPort,
-    record.serverPort + 1,
     record.serverPort + 2,
     record.consentPort ?? record.serverPort + 3,
     record.uiPort,
@@ -1516,6 +1721,26 @@ function getInstanceServicePorts(
  */
 function isInstanceRunning(record: InstanceStateRecord): boolean {
   return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
+}
+
+/**
+ * Whether the record's core server is still running: its recorded pid is
+ * alive and, when the start captured a fingerprint, still the same process
+ * (a reused pid is not this server). For a supervised record the pid is the
+ * supervisor's, which owns the core while it lives. An identity that cannot
+ * be read counts as alive: only a proven absence may restart an instance.
+ *
+ * `isInstanceRunning` keeps its either-pid rule for `stop` and reclaim, so a
+ * half-dead instance stays stoppable; `start` asks this one before it reports
+ * an instance as already running (#4002).
+ */
+function isInstanceServerAlive(record: InstanceStateRecord): boolean {
+  if (!isProcessAlive(record.serverPid)) return false;
+  if (!record.serverFingerprint || !record.serverPid) return true;
+  const actual = inspectProcessFingerprint(record.serverPid);
+  return (
+    !actual || fingerprintMatchesRecorded(actual, record.serverFingerprint)
+  );
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -1760,7 +1985,6 @@ function unreadableStateRecordIsDead(path: string): boolean {
       isProcessAlive(parsed.uiPid ?? null) ||
       findListeningPidsForPorts([
         serverPort,
-        serverPort + 1,
         serverPort + 2,
         parsed.consentPort ?? serverPort + 3,
         parsed.uiPort ?? DEFAULT_UI_PORT,
@@ -2629,7 +2853,7 @@ export function validateLifecyclePorts(
 ): void {
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65_532) {
     throw new Error(
-      `Invalid server port ${serverPort}. Expected an integer from 1 through 65532 so terminal, voice, and consent ports remain in range.`,
+      `Invalid server port ${serverPort}. Expected an integer from 1 through 65532 so voice and consent ports remain in range.`,
     );
   }
   if (!Number.isInteger(uiPort) || uiPort < 1 || uiPort > 65_535) {
@@ -2646,16 +2870,10 @@ export function validateLifecyclePorts(
       `Invalid consent port ${consentPort}. Expected an integer from 1 through 65535.`,
     );
   }
-  const ports = [
-    serverPort,
-    serverPort + 1,
-    serverPort + 2,
-    consentPort,
-    uiPort,
-  ];
+  const ports = [serverPort, serverPort + 2, consentPort, uiPort];
   if (new Set(ports).size !== ports.length) {
     throw new Error(
-      `Station listener ports must be distinct: server ${serverPort}, terminal ${serverPort + 1}, voice ${serverPort + 2}, consent ${consentPort}, UI ${uiPort}.`,
+      `Station listener ports must be distinct: server ${serverPort}, voice ${serverPort + 2}, consent ${consentPort}, UI ${uiPort}.`,
     );
   }
 }
@@ -2663,7 +2881,7 @@ export function validateLifecyclePorts(
 function formatReservedPorts(
   record: Pick<InstanceStateRecord, 'serverPort' | 'uiPort' | 'consentPort'>,
 ): string {
-  return `${record.serverPort} (server), ${record.serverPort + 1} (terminal), ${record.serverPort + 2} (voice), ${record.consentPort ?? record.serverPort + 3} (consent), ${record.uiPort} (ui)`;
+  return `${record.serverPort} (server), ${record.serverPort + 2} (voice), ${record.consentPort ?? record.serverPort + 3} (consent), ${record.uiPort} (ui)`;
 }
 
 function assertNoPortConflicts(
@@ -2727,7 +2945,6 @@ function assertNoRegistryPortConflicts(
       if (birthProvesReuse(instance.birth, instance.pid)) continue;
       const band = [
         instance.port,
-        instance.port + 1,
         instance.port + 2,
         instance.consentPort ?? instance.port + 3,
         ...(instance.uiPort === undefined ? [] : [instance.uiPort]),
@@ -4364,8 +4581,117 @@ export async function awaitReadiness(
 }
 
 /**
+ * A connect failure as text. Connecting to `localhost` tries every address it
+ * resolves to (Node's happy-eyeballs), and when all of them refuse the error
+ * is an AggregateError whose own message is empty — which printed as `()`
+ * (#4382). Name the inner failures, or at least the code, instead.
+ */
+export function describeSocketError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error) || 'connection failed';
+  if (error.message) return error.message;
+  if (error instanceof AggregateError) {
+    const inner = [
+      ...new Set(
+        error.errors
+          .map((cause) =>
+            cause instanceof Error
+              ? cause.message || (cause as NodeJS.ErrnoException).code
+              : String(cause),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (inner.length > 0) return inner.join('; ');
+  }
+  return (error as NodeJS.ErrnoException).code ?? 'connection failed';
+}
+
+/** How much of a server log's end `lastFatalServerLogLine` reads. */
+const FATAL_LOG_TAIL_BYTES = 64 * 1024;
+const LIFECYCLE_START_HEADER = /^--- \S+ station lifecycle start /;
+// `Error: STATION_HOME_RESET_REQUIRED: …`, `Error: listen EADDRINUSE …`,
+// `TypeError: …`: the first line of an uncaught error a failed boot prints.
+const FATAL_LOG_LINE =
+  /^(?:Uncaught )?(?:[A-Za-z]*Error|[A-Z][A-Z0-9_]{3,}): \S/;
+const LOG_LEVEL_FATAL_LINE = /\b(?:FATAL|ERROR)\b.*\(station\)/;
+/** ANSI colour codes (ESC [ … m) the server's pretty logger writes. */
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * The last fatal-looking line the managed server wrote to `logFile` since this
+ * start's header, or null when there is none or the log is unreadable. A
+ * server that exits before it listens leaves its cause only there, and the
+ * start failure used to say nothing about it (#4382).
+ */
+export function lastFatalServerLogLine(logFile: string): string | null {
+  let text: string;
+  try {
+    const fd = openSync(logFile, fsConstants.O_RDONLY);
+    try {
+      const { size } = fstatSync(fd);
+      const length = Math.min(size, FATAL_LOG_TAIL_BYTES);
+      const buffer = Buffer.alloc(length);
+      readSync(fd, buffer, 0, length, size - length);
+      text = buffer.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(ANSI_ESCAPE, ''));
+  let from = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (LIFECYCLE_START_HEADER.test(lines[index])) {
+      from = index + 1;
+      break;
+    }
+  }
+  // A fail-closed refusal names its own cause; a later generic logger line
+  // (`FATAL … (station)`) must not hide it. The server writes the refusal
+  // as its own line, then the logger repeats it with paths redacted, so a
+  // line that starts with the marker wins over a later copy inside one.
+  const marker = `${MANAGED_POLICY_INVALID_MARKER}:`;
+  for (const own of [true, false]) {
+    for (let index = lines.length - 1; index >= from; index -= 1) {
+      const text = lines[index].trimStart();
+      const at = own
+        ? text.startsWith(marker)
+          ? 0
+          : -1
+        : text.indexOf(marker);
+      if (at >= 0) {
+        const line = text.slice(at).trim();
+        return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+      }
+    }
+  }
+  for (let index = lines.length - 1; index >= from; index -= 1) {
+    const line = lines[index].trim();
+    if (FATAL_LOG_LINE.test(line) || LOG_LEVEL_FATAL_LINE.test(line)) {
+      return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a failed start adds after its own message: the server's last fatal
+ * log line, when there is one, and where the log is (#4382).
+ */
+export function serverStartFailureContext(logFile: string): string[] {
+  const fatal = lastFatalServerLogLine(logFile);
+  return [
+    ...(fatal ? [`Last server error: ${fatal}`] : []),
+    `Server log: ${logFile}`,
+  ];
+}
+
+/**
  * Waits for a TCP listener the managed server opens beside its API port (the
- * terminal and voice sockets). With `childAlive` it takes the same bounded
+ * voice socket). With `childAlive` it takes the same bounded
  * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
  * and its identity wait is still legitimately extending, a flat 90 s here
  * failed the start first ("Timed out waiting for TCP listener") on loaded
@@ -4419,7 +4745,7 @@ export async function waitForTcpOk(
         socket.once('connect', () => finish({ ok: true }));
         socket.once('timeout', () => finish({ ok: false, failure: 'timeout' }));
         socket.once('error', (error) =>
-          finish({ ok: false, failure: error.message }),
+          finish({ ok: false, failure: describeSocketError(error) }),
         );
       },
     );
@@ -4496,16 +4822,25 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const hostedProbeHeaders = hostedProbeAuthority
     ? { Host: hostedProbeAuthority }
     : undefined;
-  const runningMatch = ensureSingleMatch(
+  let runningMatch = ensureSingleMatch(
     listRunningInstances({ projectHome }).filter((record) =>
       matchesSelector(record, normalizedSelector),
     ),
     'start',
   );
-  // The home schema gate runs in the logDirectoryIsInsideHome block below —
-  // after the recursive mkdir, because the gate requires the home's parent to
-  // exist and a custom --base path may have a multi-level missing ancestor
-  // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
+  // A record whose UI listener outlived its core server is not running: it
+  // would answer "Already running" while nothing serves the API (#4002).
+  // Stop what remains, which also frees its ports, and start it afresh.
+  if (runningMatch && !isInstanceServerAlive(runningMatch)) {
+    console.log(
+      `Instance ${runningMatch.instanceId}: server not running (pid ${runningMatch.serverPid ?? 'unrecorded'}); restarting`,
+    );
+    stopRecord(runningMatch, false, 'recovery');
+    runningMatch = null;
+  }
+  // The home schema gate runs below, before the log directory and the
+  // instance record are written (#1570 review; supersedes the earlier
+  // pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
   const warnStale = () => {
@@ -4599,18 +4934,22 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
 
+  // An empty home directory is gate-safe scaffolding, and the recursive
+  // mkdir must come first: the gate requires the home's parent to exist, and
+  // a custom --base path may have a multi-level missing ancestor chain.
+  mkdirSync(projectHome, { recursive: true, mode: 0o700 });
+  // Writing logs/ into a home the server has not gated yet would make a
+  // brand-new home fail the #1560 schema gate on first boot (#1570). So would
+  // the instance record a prebuilt archive keeps in `<home>/state/<channel>`
+  // for a home that is its own Station root (`--temp-home`, `--home=<dir>`),
+  // whatever the log location (#4381). The CLI ships in lockstep with the
+  // server, so running the same gate here either bootstraps the marker or
+  // fails closed with the server's exact error — before anything is written
+  // or spawned.
+  ensureStationHomeSchemaSync(projectHome);
+
   let logDirectory = requestedLogDirectory;
   if (logDirectoryIsInsideHome) {
-    // An empty home directory is gate-safe scaffolding, and the recursive
-    // mkdir must come first: the gate requires the home's parent to exist,
-    // and a custom --base path may have a multi-level missing ancestor chain.
-    mkdirSync(projectHome, { recursive: true, mode: 0o700 });
-    // Writing logs/ into a home the server has not gated yet would make a
-    // brand-new home fail the #1560 schema gate on first boot (#1570). The
-    // CLI ships in lockstep with the server, so running the same gate here
-    // either bootstraps the marker or fails closed with the server's exact
-    // error — before anything is written or spawned.
-    ensureStationHomeSchemaSync(projectHome);
     let current = resolve(projectHome);
     for (const segment of homeRelation.split(/[\\/]+/).filter(Boolean)) {
       current = join(current, segment);
@@ -4918,11 +5257,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
             (fsConstants.O_NOFOLLOW ?? 0),
         )
       : null;
-    uiProc = spawn(
-      watchPlan?.ui.command ?? process.execPath,
-      watchPlan?.ui.args ?? [
-        '-e',
-        buildUiServerScript({
+    // The production listener reads its source from stdin (`node -`), not
+    // `-e`: the serialized script is ~32k characters, and Windows refuses a
+    // command line over 32,767 (CreateProcess -> `spawn ENAMETOOLONG`) once
+    // the install path is longer than a few dozen characters.
+    const uiScript = watchPlan
+      ? null
+      : buildUiServerScript({
           uiDir: join(CWD, buildPaths.ui),
           apiBaseOverride,
           upstreamPort: serverPort,
@@ -4939,15 +5280,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           hostedTenantAuthorities: hostedTenantRegistry
             ? { ...hostedTenantRegistry.authorityToTenant }
             : undefined,
-        }),
-      ],
+        });
+    uiProc = spawn(
+      watchPlan?.ui.command ?? process.execPath,
+      watchPlan?.ui.args ?? ['-'],
       {
         cwd: CWD,
         // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
         // the production UI listener has none and stays silent.
         stdio: withLauncherChannel(
           uiLogDescriptor === null
-            ? 'ignore'
+            ? ['pipe', 'ignore', 'ignore']
             : ['ignore', uiLogDescriptor, uiLogDescriptor],
         ),
         detached: true,
@@ -4977,6 +5320,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       },
     );
     if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
+    if (uiScript !== null && uiProc.stdin) {
+      // A listener that dies before reading surfaces through readiness.
+      uiProc.stdin.on('error', () => {});
+      uiProc.stdin.end(uiScript);
+    }
     uiProc.unref();
     uiProc.channel?.unref();
 
@@ -5061,11 +5409,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           readinessHeaders,
           { childAlive: childAliveProbe(serverProc.pid), signal },
         ),
-      (signal) =>
-        waitForTcpOk(host, serverPort + 1, STARTUP_READINESS_TIMEOUT_MS, {
-          childAlive: childAliveProbe(serverProc.pid),
-          signal,
-        }),
       (signal) =>
         waitForTcpOk(host, serverPort + 2, STARTUP_READINESS_TIMEOUT_MS, {
           childAlive: childAliveProbe(serverProc.pid),
@@ -5171,7 +5514,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // tense is true when it prints.
     warnOnSharedHome(instanceId, projectHome);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = [
+      error instanceof Error ? error.message : String(error),
+      ...serverStartFailureContext(logFile),
+    ].join('\n');
     try {
       stop({ generation });
     } catch (cleanupError) {
@@ -5339,6 +5685,89 @@ export async function restart(opts: StopOptions = {}): Promise<void> {
   );
 }
 
+/** What `station doctor` reports about one running instance's shell host (#3994). */
+export interface TerminalShellHostReport {
+  instanceId: string;
+  /** The PTY workload host bundle beside the server bundle the supervisor runs. */
+  hostBundle: boolean;
+  supervised: boolean;
+  /**
+   * `granted`: shells are supervisor workloads and survive core restarts.
+   * `not-granted`: the supervisor answered without granting `workloads`.
+   * `unknown`: it did not answer, or predates reporting grants.
+   */
+  workloads: 'granted' | 'not-granted' | 'unknown';
+  /** The supervisor's workload host is configured and running. */
+  hostAvailable: boolean | null;
+  detail: string;
+}
+
+/**
+ * The shell host of each running instance: whether its supervisor granted
+ * the core `workloads`, and whether the PTY host bundle is present. Read-only:
+ * it reclaims no stale record and only asks a supervisor for its status.
+ */
+export function inspectTerminalShellHosts(
+  projectHome: string | undefined,
+): TerminalShellHostReport[] {
+  return listRunningInstances({ reclaimStale: false, projectHome }).map(
+    (record) => {
+      const serverDir = resolveBuildPaths(record.instanceId).server;
+      const hostBundle = [CWD, record.cwd].some((root) =>
+        existsSync(join(root, serverDir, WORKLOAD_HOST_BUNDLE_NAME)),
+      );
+      const base = {
+        instanceId: record.instanceId,
+        hostBundle,
+        supervised: record.supervised === true,
+      };
+      if (!record.supervised)
+        return {
+          ...base,
+          workloads: 'not-granted' as const,
+          hostAvailable: null,
+          detail: 'started without the supervisor',
+        };
+      const result = requestSupervisorSync(
+        supervisorTarget(record),
+        'status',
+        5_000,
+      );
+      const reply = result.messages.find(
+        (message) => message.type === 'status.result',
+      );
+      if (reply?.type !== 'status.result')
+        return {
+          ...base,
+          workloads: 'unknown' as const,
+          hostAvailable: null,
+          detail: `supervisor did not report its status: ${result.detail || 'no answer'}`,
+        };
+      const { active, workloadHost } = reply.status;
+      if (!active || active.capabilities === undefined)
+        return {
+          ...base,
+          workloads: 'unknown' as const,
+          hostAvailable: workloadHost?.available ?? null,
+          detail: active
+            ? 'supervisor predates reporting granted capabilities'
+            : 'no active core generation',
+        };
+      const granted = active.capabilities.includes('workloads');
+      return {
+        ...base,
+        workloads: granted ? ('granted' as const) : ('not-granted' as const),
+        hostAvailable: workloadHost?.available ?? null,
+        detail: granted
+          ? 'shells are supervisor workloads'
+          : workloadHost?.available === false
+            ? 'the supervisor has no workload host'
+            : 'the core did not ask for workloads',
+      };
+    },
+  );
+}
+
 /** `station supervisor status`: what the instance's supervisor reports. */
 export function supervisorStatus(
   opts: StopOptions & { json?: boolean } = {},
@@ -5439,8 +5868,14 @@ export async function clean(
   }
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
-  rmSync(projectHome, { recursive: true, force: true });
-  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'clean');
+    rmSync(projectHome, { recursive: true, force: true });
+    removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  } finally {
+    maintenance.release();
+  }
   console.log('  ✓ Cleaned');
 }
 
@@ -5472,23 +5907,31 @@ export function homeReset(options: HomeResetOptions = {}): HomeResetResult {
   }
 
   assertStationHomeInactive(projectHome, 'reset');
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'reset');
+    if (options.ifIncompatible && !stationHomeSchemaNeedsReset(projectHome)) {
+      return { archived: false, projectHome };
+    }
+    if (!existsSync(projectHome)) {
+      return { archived: false, projectHome };
+    }
 
-  if (!existsSync(projectHome)) {
-    return { archived: false, projectHome };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
+    for (let suffix = 1; existsSync(archivePath); suffix += 1) {
+      archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
+    }
+    renameSync(projectHome, archivePath);
+    return { archived: true, archivePath, projectHome };
+  } finally {
+    maintenance.release();
   }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
-  for (let suffix = 1; existsSync(archivePath); suffix += 1) {
-    archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
-  }
-  renameSync(projectHome, archivePath);
-  return { archived: true, archivePath, projectHome };
 }
 
 function assertStationHomeInactive(
   projectHome: string,
-  operation: 'backup' | 'reset' | 'restore',
+  operation: 'backup' | 'clean' | 'reset' | 'restore',
 ): void {
   const normalizedSelector = normalizeSelector({ baseDir: projectHome });
   const runningMatches = listRunningInstances({ projectHome }).filter(
@@ -5878,8 +6321,11 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         baseDir?: unknown;
         features?: unknown;
         host?: unknown;
+        installRoot?: unknown;
+        kind?: unknown;
         platform?: unknown;
         serverPort?: unknown;
+        stationRoot?: unknown;
         taskName?: unknown;
         uiPort?: unknown;
         unitPath?: unknown;
@@ -5909,11 +6355,25 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         console.log(
           `\nService scheduling is stale for ${manifest.instanceId} (${scheduling.observed}, expected ${scheduling.expected}).`,
         );
-        const remedy = renderServiceInstallRemedy(manifest, stationHome);
+        // From the installed unit itself: it is named by instance id
+        // alone, so this home's manifest may not describe it (#4189).
+        const remedy = resolveInstalledServiceRemedy(
+          {
+            ...manifest,
+            platform: manifest.platform,
+            taskName:
+              typeof manifest.taskName === 'string'
+                ? manifest.taskName
+                : undefined,
+            unitPath: manifest.unitPath,
+          },
+          stationHome,
+          { fs: { readFileSync }, run: runServiceProbe },
+        );
         console.log(
-          remedy
-            ? `Run "${remedy}" to update the registration; upgrade does not reinstall services automatically.`
-            : 'The installed registration does not record every setting, so Station will not suggest a reinstall command. Inspect its manifest before reinstalling; upgrade does not reinstall services automatically.',
+          remedy.command
+            ? `Run "${remedy.command}" to update the registration; upgrade does not reinstall services automatically.`
+            : `Station will not suggest a reinstall command: ${remedy.reason} Upgrade does not reinstall services automatically.`,
         );
       } else if (scheduling.status === 'unknown') {
         console.log(

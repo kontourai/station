@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Compared the proposed tenant and execution isolation boundary to runtime bootstrap delta: personal conversation Knowledge owner filtering is not a plugin sandbox or hosted isolation proof. No sandbox or hosted journey run.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Compared candidate/applied policy, acquisition and content-bound grant authority with bootstrap delta: conversation file-memory owner authorization does not change registry trust application or signing. No hosted trust adapter qualification run.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Compared personal conversation family and hosted/member distinctions with bootstrap owner callback: the callback delegates personal file-owner access to the same sharing authority without merging identities or changing membership. No two-human/device journey run.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Compared dispatch resolution, cancellation and indeterminate effect rules to bootstrap delta: conversation Knowledge owner filtering does not change dispatcher composition or provider-start semantics. No provider dispatch run.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Compared public adapter composition, Project-bound review resolution and absent-provider refusal with bootstrap delta: conversation Knowledge owner filtering does not affect Flow review continuation. No Survey or cross-harness run.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

@@ -494,6 +494,13 @@ describe('handoff and continuation seeds (#3164)', () => {
         projectRuntimeEventsToMessages(
           store.listEvents(threadId).map((event) => event.payload),
         ),
+      // As production composes it: seeds read content stored out of line.
+      readSessionSeedMessages: (threadId): ConversationMessage[] =>
+        projectRuntimeEventsToMessages(
+          store
+            .resolveEventContent(store.listEvents(threadId))
+            .map((event) => event.payload),
+        ),
       listSessionReadModel: async () => [],
       canReadSession: () => true,
     });

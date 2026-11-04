@@ -372,8 +372,9 @@ function hasExecutableNoDiffNotVerified(shell) {
 
 /**
  * `continue-on-error` on a step that runs the code under test would let a
- * real failure report green. Artifact uploads are observational and are the
- * sole exemption: an upload quota failure must not rewrite the work verdict.
+ * real failure report green. An observational artifact upload or the exact
+ * optional Chromium restore may fail without rewriting the work verdict;
+ * Chromium installation and all tests remain required.
  */
 export function findVerdictBearingContinueOnError(workflowText) {
   const lines = workflowText.split('\n');
@@ -388,7 +389,18 @@ export function findVerdictBearingContinueOnError(workflowText) {
     if (/^\s*continue-on-error:\s*true\s*$/m.test(body)) {
       const isArtifactUpload = /uses:\s*actions\/upload-artifact/.test(body);
       const runsCommand = /^\s*run:/m.test(body);
-      if (!isArtifactUpload || runsCommand) offenders.push(stepName);
+      let optionalChromiumRestore = false;
+      try {
+        const parsed = load(body, { schema: JSON_SCHEMA });
+        optionalChromiumRestore =
+          Array.isArray(parsed) &&
+          parsed.length === 1 &&
+          isOptionalChromiumCacheRestore(parsed[0]);
+      } catch {
+        // A malformed step cannot acquire the optional-restore exemption.
+      }
+      if ((!isArtifactUpload || runsCommand) && !optionalChromiumRestore)
+        offenders.push(stepName);
     }
     stepIndent = null;
     stepName = null;
@@ -416,10 +428,14 @@ export function findVerdictBearingContinueOnError(workflowText) {
   return offenders;
 }
 
-/** The admission guard of every fast-checks part job that needs `classify`. */
+/**
+ * The admission guard of every fast-checks part job that needs `classify`.
+ * A pull request also needs `pr-admission` to succeed, so a confirmed merge
+ * conflict defers the plan and statics instead of spending runner time.
+ */
 export const REQUIRED_FAST_CHECKS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
  * The required `fast-checks` aggregator's guard (#2709): the same event
@@ -517,7 +533,7 @@ function sameList(left, right) {
 
 /**
  * A job- or step-level continue-on-error, except on a diagnostics-only
- * artifact upload (the same exemption as findVerdictBearingContinueOnError).
+ * artifact upload or the exact optional Chromium restore.
  * The plan and receipt uploads are verdict-bearing and checked by name.
  */
 export const MERGE_INTEGRATION_DECISION_STEP = Object.freeze({
@@ -534,6 +550,31 @@ export const MERGE_INTEGRATION_DECISION_STEP = Object.freeze({
   run: 'node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"',
 });
 
+/** This restore is optional; the following Chromium install remains required. */
+export function isOptionalChromiumCacheRestore(step) {
+  return (
+    step?.name === 'Restore trusted Chromium cache' &&
+    step?.uses ===
+      'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9' &&
+    step?.['continue-on-error'] === true &&
+    [
+      undefined,
+      `\${{ steps.mode.outputs.legacy == 'true' }}`,
+      `\${{ steps.slice.outputs.empty == 'false' }}`,
+    ].includes(step?.if) &&
+    Object.keys(step).sort().join(',') ===
+      (step.if === undefined
+        ? 'continue-on-error,name,uses,with'
+        : 'continue-on-error,if,name,uses,with') &&
+    Object.keys(step.with ?? {})
+      .sort()
+      .join(',') === 'key,path' &&
+    step.with.path === '~/.cache/ms-playwright' &&
+    step.with.key ===
+      `station-playwright-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('pnpm-lock.yaml') }}`
+  );
+}
+
 function swallowsFailure(job) {
   return (
     job?.['continue-on-error'] !== undefined ||
@@ -541,6 +582,7 @@ function swallowsFailure(job) {
       job.steps.some(
         (step) =>
           step?.['continue-on-error'] !== undefined &&
+          !isOptionalChromiumCacheRestore(step) &&
           !(
             typeof step?.uses === 'string' &&
             step.uses.startsWith('actions/upload-artifact@') &&
@@ -624,7 +666,7 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
       !part ||
       part.if !== REQUIRED_FAST_CHECKS_CONDITION ||
       swallowsFailure(part) ||
-      !sameList(needsList(part), ['classify'])
+      !sameList(needsList(part), ['classify', 'pr-admission'])
     )
       findings.push(
         `Required ${partId} must admit PR and merge candidates without swallowing failures.`,

@@ -1,5 +1,6 @@
 /** Code-block chrome, imported by the asynchronous markdown renderer. */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
 import { Button } from '../Button';
@@ -18,12 +19,23 @@ export function CodeBlockFrame({
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [repeatActions, setRepeatActions] = useState(false);
+  // #4407: long lines wrap on a phone, where a sideways scroll hides most of
+  // each line; elsewhere they scroll. Wrap overrides either for this block.
+  const isMobile = useIsMobile();
+  const [wrapChoice, setWrapChoice] = useState<boolean | null>(null);
+  const wrapped = wrapChoice ?? isMobile;
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return;
     const viewport = body.closest<HTMLElement>('.chat-messages');
     const measure = () => {
-      const pageHeight = viewport?.clientHeight || window.innerHeight;
+      // The footer repeats Copy only for a block taller than what the reader
+      // can see. A reading viewport squeezed below half the window (a dock
+      // mid-relayout after a rotation, #4392) is not that page: measured
+      // against it, every short block grew a second bar (#4393).
+      const pageHeight = viewport
+        ? Math.max(viewport.clientHeight, window.innerHeight / 2)
+        : window.innerHeight;
       setRepeatActions(body.getBoundingClientRect().height > pageHeight);
     };
     const observer = new ResizeObserver(measure);
@@ -70,9 +82,23 @@ export function CodeBlockFrame({
     copyResetRef.current = window.setTimeout(() => setCopyState('idle'), 1500);
   }, [code]);
 
-  const actions = (
-    <ResponsiveSurfaceActions className="code-block-actions">
-      <span>{lang}</span>
+  // The footer carries Copy alone: a second language label read as a second
+  // header (#4393).
+  const actions = (footer: boolean) => (
+    <ResponsiveSurfaceActions
+      className={`code-block-actions${footer ? ' code-block-actions--footer' : ''}`}
+    >
+      {!footer && <span>{lang}</span>}
+      {!footer && (
+        <Button
+          variant="ghost"
+          aria-pressed={wrapped}
+          title="Wrap long lines"
+          onClick={() => setWrapChoice(!wrapped)}
+        >
+          Wrap
+        </Button>
+      )}
       <Button
         variant="ghost"
         onClick={() => void handleCopy()}
@@ -97,8 +123,8 @@ export function CodeBlockFrame({
     </ResponsiveSurfaceActions>
   );
   return (
-    <div className="code-block-frame">
-      {actions}
+    <div className="code-block-frame" data-wrap={wrapped ? '' : undefined}>
+      {actions(false)}
       <div ref={bodyRef} className="code-block-body">
         {html ? (
           <div dangerouslySetInnerHTML={{ __html: html }} />
@@ -108,7 +134,7 @@ export function CodeBlockFrame({
           </pre>
         )}
       </div>
-      {repeatActions && actions}
+      {repeatActions && actions(true)}
     </div>
   );
 }

@@ -28,7 +28,9 @@ import {
   type SupervisorEvent,
   type SupervisorState,
   type SupervisorToCoreMessage,
+  type WorkloadEventMessage,
 } from './protocol.ts';
+import type { WorkloadReply } from './workload-host.ts';
 
 export interface Clock {
   now(): number;
@@ -130,6 +132,15 @@ export interface GenerationManagerOptions {
    * leave connections to the kernel backlog.
    */
   catchConnections?: { spares: number; createCatcher: CatcherFactory };
+  /**
+   * Protocol 1.3: the workload host. A generation that announces `workloads`
+   * is granted it in `promote` while the host is available, and its
+   * `workload.request` messages are relayed here.
+   */
+  workloads?: {
+    readonly available: boolean;
+    request(request: unknown, reply: (reply: WorkloadReply) => void): void;
+  };
 }
 
 /** How long a handoff waits for the draining generation's `listener.spare` answers. */
@@ -183,6 +194,10 @@ interface Generation {
   adoptsConnections: boolean;
   /** It announced `handoff-events` when parked (protocol 1.2). */
   handoffEvents: boolean;
+  /** It announced `workloads` when parked (protocol 1.3). */
+  workloads: boolean;
+  /** `promote` granted it `workloads`. */
+  workloadsGranted: boolean;
   /** Held listeners it listens on: bound itself, or reported listening. */
   listening: Set<string>;
   /** A failed trial being ended: it gets no held connections. */
@@ -275,6 +290,8 @@ export class GenerationManager {
   >();
   private failures: number[] = [];
   private consecutiveFailures = 0;
+  /** Failures since a generation last reached `serving`. */
+  private unservedFailures = 0;
   private lastBackoffMs: number | null = null;
   private stableTimer: unknown = null;
   private stopping = false;
@@ -410,9 +427,9 @@ export class GenerationManager {
     this.trial = trial;
     progress('trial-started', trial.id);
 
-    const parked = await this.waitForState(
+    const parked = await this.waitForDeadline(
       trial,
-      ['parked'],
+      'parked',
       this.handoffConfig.parkTimeoutMs,
     );
     if (parked !== 'ok' || this.stopping) {
@@ -449,9 +466,9 @@ export class GenerationManager {
 
     this.promote(trial);
     progress('promoted', trial.id);
-    const ready = await this.waitForState(
+    const ready = await this.waitForDeadline(
       trial,
-      ['serving'],
+      'serving',
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
@@ -552,6 +569,7 @@ export class GenerationManager {
       state: gen.state,
       bootId: gen.bootId,
       port: gen.port,
+      ...(gen.workloadsGranted ? { capabilities: ['workloads'] } : {}),
     };
   }
 
@@ -592,6 +610,8 @@ export class GenerationManager {
       exitCode: null,
       adoptsConnections: false,
       handoffEvents: false,
+      workloads: false,
+      workloadsGranted: false,
       listening: new Set(),
       retiring: false,
       notify: new Set(),
@@ -677,6 +697,9 @@ export class GenerationManager {
           gen.handoffEvents =
             Array.isArray(message.capabilities) &&
             message.capabilities.includes('handoff-events');
+          gen.workloads =
+            Array.isArray(message.capabilities) &&
+            message.capabilities.includes('workloads');
           this.setGenerationState(gen, 'parked');
         }
         return;
@@ -732,8 +755,65 @@ export class GenerationManager {
         );
         return;
       }
+      case 'workload.request':
+        this.onWorkloadRequest(gen, message);
+        return;
       default:
       // Minor versions may add messages; ignore what this version does not know.
+    }
+  }
+
+  /** Protocol 1.3: relays a granted generation's workload request to the host. */
+  private onWorkloadRequest(
+    gen: Generation,
+    message: Record<string, unknown>,
+  ): void {
+    if (typeof message.id !== 'string') return;
+    const id = message.id;
+    const answer = (reply: WorkloadReply) => {
+      if (gen.state !== 'exited') {
+        gen.proc.send({ type: 'workload.response', id, ...reply });
+      }
+    };
+    const host = this.options.workloads;
+    if (!host || !gen.workloadsGranted) {
+      answer({
+        ok: false,
+        code: 'bad-request',
+        message: 'workloads were not granted to this generation',
+      });
+      return;
+    }
+    // A draining generation still finishes in-flight terminal requests and
+    // flushes its journals as it detaches.
+    if (
+      gen.state !== 'promoted' &&
+      gen.state !== 'serving' &&
+      gen.state !== 'draining'
+    ) {
+      answer({
+        ok: false,
+        code: 'unavailable',
+        message: `generation ${gen.id} is ${gen.state}`,
+      });
+      return;
+    }
+    host.request(message.request, answer);
+  }
+
+  /**
+   * Protocol 1.3: a workload event goes to every granted generation that is
+   * promoted or serving. One that is parked or draining reads the journal
+   * once it attaches, so it misses nothing.
+   */
+  sendWorkloadEvent(event: WorkloadEventMessage): void {
+    for (const gen of [this.active, this.trial]) {
+      if (
+        gen?.workloadsGranted &&
+        (gen.state === 'promoted' || gen.state === 'serving')
+      ) {
+        gen.proc.send(event);
+      }
     }
   }
 
@@ -809,7 +889,13 @@ export class GenerationManager {
 
   private promote(gen: Generation): void {
     const names = [...this.listeners.keys()];
-    gen.proc.send({ type: 'promote', listeners: names });
+    gen.workloadsGranted =
+      gen.workloads && this.options.workloads?.available === true;
+    gen.proc.send({
+      type: 'promote',
+      listeners: names,
+      ...(gen.workloadsGranted ? { capabilities: ['workloads'] } : {}),
+    });
     for (const [name, { handle }] of this.listeners) {
       gen.proc.send({ type: 'listener.adopt', name }, handle);
     }
@@ -818,6 +904,7 @@ export class GenerationManager {
 
   private commitActive(gen: Generation): void {
     this.active = gen;
+    this.unservedFailures = 0;
     this.setState('serving');
     this.clearStableTimer();
     this.stableTimer = this.clock.setTimeout(() => {
@@ -842,16 +929,16 @@ export class GenerationManager {
   private async launchActive(entry: string): Promise<Generation | null> {
     const gen = this.launch(entry);
     this.trial = gen;
-    const parked = await this.waitForState(
+    const parked = await this.waitForDeadline(
       gen,
-      ['parked'],
-      this.handoffConfig.parkTimeoutMs,
+      'parked',
+      this.handoffConfig.bootParkTimeoutMs,
     );
     if (parked === 'ok' && !this.stopping) {
       this.promote(gen);
-      const ready = await this.waitForState(
+      const ready = await this.waitForDeadline(
         gen,
-        ['serving'],
+        'serving',
         this.handoffConfig.readinessTimeoutMs,
       );
       if (ready === 'ok' && !this.stopping) {
@@ -890,8 +977,12 @@ export class GenerationManager {
     }
   }
 
-  /** Counts a failure; waits out the backoff. False when giving up or stopping. */
-  /** Counts one failure; false when that exhausts the failure budget. */
+  /**
+   * Counts one failure; false when that exhausts the failure budget. Failures
+   * with no generation serving between them count even when long boot
+   * deadlines spread them past the window, so a core that never comes up
+   * still gives up.
+   */
   private noteFailure(): boolean {
     const now = this.clock.now();
     this.failures = this.failures.filter(
@@ -899,8 +990,10 @@ export class GenerationManager {
     );
     this.failures.push(now);
     this.consecutiveFailures += 1;
-    if (this.failures.length >= this.restartConfig.maxFailures) {
-      this.giveUp();
+    this.unservedFailures += 1;
+    const failures = Math.max(this.failures.length, this.unservedFailures);
+    if (failures >= this.restartConfig.maxFailures) {
+      this.giveUp(failures);
       return false;
     }
     return true;
@@ -922,10 +1015,9 @@ export class GenerationManager {
     return !this.stopping;
   }
 
-  private giveUp(): void {
+  private giveUp(failures: number): void {
     if (this.gaveUp) return;
     this.gaveUp = true;
-    const failures = this.failures.length;
     this.log(`giving up after ${failures} failures`);
     this.emit({ type: 'gave-up', failures });
     this.options.onGiveUp?.(failures);
@@ -1299,6 +1391,23 @@ export class GenerationManager {
     return this.waitForState(gen, ['exited'], timeoutMs).then(
       (result) => result !== 'timeout',
     );
+  }
+
+  /** Waits for `target`, logging a missed deadline; the caller ends the generation. */
+  private async waitForDeadline(
+    gen: Generation,
+    target: 'parked' | 'serving',
+    timeoutMs: number,
+  ): Promise<WaitResult> {
+    const result = await this.waitForState(gen, [target], timeoutMs);
+    if (result === 'timeout') {
+      const missed =
+        target === 'parked'
+          ? `did not park within ${timeoutMs}ms (park deadline)`
+          : `was not ready within ${timeoutMs}ms (readiness deadline)`;
+      this.log(`generation ${gen.id} ${missed}; ending it`);
+    }
+    return result;
   }
 
   private waitForState(

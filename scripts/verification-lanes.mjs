@@ -137,7 +137,10 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     command: 'npm run test:full:process-exclusive:raw',
     privateScript: 'test:full:process-exclusive:raw',
     weight: 60,
-    timeoutMs: 4 * 60_000,
+    // The serial corpus reached its terminal result in 402s after the hosted
+    // four-minute fence killed the 1,026-part outbox keeper mid-run. This is
+    // an aggregate execution fence; individual test deadlines stay unchanged.
+    timeoutMs: 10 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-coordinator-exclusive',

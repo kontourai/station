@@ -1,10 +1,9 @@
 /**
  * Pure helper deriving the Voice WebSocket URL from the resolved API base,
  * the *real* Voice WS port fetched from the backend, and the current page
- * location — mirrors `TerminalPanel.tsx`'s existing correct pattern
- * (`new URL(apiBase, window.location.href)` for the host + a
- * protocol-derived `ws:`/`wss:` scheme + `fetchTerminalPort`/`fetchVoicePort`
- * for the real port) instead of the old `new URL(apiBase)` (throws for a
+ * location (`new URL(apiBase, window.location.href)` for the host + a
+ * protocol-derived `ws:`/`wss:` scheme + `fetchVoicePort` for the real port)
+ * instead of the old `new URL(apiBase)` (throws for a
  * relative/empty `apiBase`), hardcoded `ws://` (blocked as mixed content
  * under an `https:` page), and `apiBase`-port-plus-2 arithmetic (wrong by
  * default: see below).

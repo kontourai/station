@@ -6,7 +6,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
-import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
 import {
@@ -45,10 +45,20 @@ test.each([
   // The receiver contribution query is a POST-carried read: no invalidation,
   // or the query refetches itself. The offer PUT is a real config mutation.
   ['POST', '/api/project-contributions/query', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/outcomes', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/query', 200, []],
   ['PUT', '/api/project-contributions/offer', 200, ['config']],
   ['GET', '/api/projects/demo', 200, []],
   ['PATCH', '/api/projects/demo', 200, ['projects']],
   ['POST', '/api/projects', 201, ['projects']],
+  ['POST', '/api/orchestration/delegations', 200, ['tasks']],
+  ['POST', '/api/tasks/task-1/work-chats', 200, ['tasks']],
+  ['DELETE', '/api/tasks/task-1/work-chats', 200, ['tasks']],
+  ['GET', '/api/tasks', 200, []],
+  ['POST', '/api/tasks/task-1/room/live', 200, []],
+  ['POST', '/api/tasks/task-1/room/edit-plan', 200, []],
+  ['POST', '/api/tasks/task-1/room/batches', 200, []],
+  ['DELETE', '/api/tasks/task-1/work-chats', 409, ['tasks']],
   ['POST', '/api/projects/demo/plugin-draft/lease/extra', 200, ['projects']],
   ['PUT', '/api/projects/demo/plugin-draft/lease', 200, ['projects']],
   ['PUT', '/api/projects/demo/file-preview/changes', 200, ['projects']],
@@ -673,3 +683,25 @@ describe('resolveRuntimeCorsOrigin', () => {
     );
   });
 });
+
+test.each(['oat_', 'ort_', 'oac_'])(
+  'live audience middleware permits a 43-character Station token starting with %s',
+  async (prefix) => {
+    const token = prefix + 'a'.repeat(39);
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger: createCapturingLogger(),
+      eventBus: new EventBus(),
+      security: {
+        verifyCredential: (candidate) => candidate === token,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+    });
+    app.get('/api/projects', (c) => c.json({ success: true }));
+    const response = await app.request('http://station.test/api/projects', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+  },
+);

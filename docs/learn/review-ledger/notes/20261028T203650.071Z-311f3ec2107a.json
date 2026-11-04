@@ -1,0 +1,9 @@
+{
+  "revision": "f7c82c17c01e6604b5bc1596b1bc5f9bedb35e74",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the one-line ComposerChoice.css motion correction: literal linear becomes var(--ease-linear), declared as linear in tokens.css and already used by the same scroll cue in index.css. Scroll-driven animation, layout, touch targets, captions and picker behavior are unchanged. The motion ratchet now passes without raising a baseline; existing documentation claims remain accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerChoice.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the one-line ComposerChoice.css motion correction: literal linear becomes var(--ease-linear), declared as linear in tokens.css and already used by the same scroll cue in index.css. Scroll-driven animation, layout, touch targets, captions and picker behavior are unchanged. The motion ratchet now passes without raising a baseline; existing documentation claims remain accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.css"]}
+  ]
+}

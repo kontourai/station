@@ -221,6 +221,33 @@ describe('ChatInputArea', () => {
     expect(textarea.placeholder).toBe('Loading chat…');
   });
 
+  test('a composer whose sending the server refused invites no typing', () => {
+    renderChatInputArea({
+      disabled: true,
+      sendRefused: true,
+      sendBlockedReason: "You can read this chat but can't send to it.",
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('');
+    expect(
+      screen.getByText("You can read this chat but can't send to it."),
+    ).toBeTruthy();
+  });
+
+  test('#4403: the composer keeps one name whatever its placeholder says', () => {
+    // The placeholder varies with the turn and is empty while sending is
+    // refused; a screen reader must still hear what the field is.
+    renderChatInputArea();
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeTruthy();
+    cleanup();
+    renderChatInputArea({
+      disabled: true,
+      sendRefused: true,
+      sendBlockedReason: "You can read this chat but can't send to it.",
+    });
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeTruthy();
+  });
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});
@@ -1030,13 +1057,13 @@ describe('ChatInputArea', () => {
     });
 
     const agent = screen.getByRole('button', {
-      name: 'Agent: Codex reviewer. Wait for the current turn to finish.',
+      name: 'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     }) as HTMLButtonElement;
     expect(agent.getAttribute('aria-disabled')).toBe('true');
     agent.focus();
     expect(document.activeElement).toBe(agent);
     expect(agent.title).toBe(
-      'Agent: Codex reviewer. Wait for the current turn to finish.',
+      'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     );
     fireEvent.click(agent);
     expect(document.activeElement).toBe(agent);
@@ -1114,17 +1141,14 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    expect(
-      await screen.findByRole('dialog', { name: 'Choose model' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
+    // #4403: the popover is the one dialog; the picker inside is not another.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,
     ).toBe('keep this draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    expect(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Thinking effort' })).toBeTruthy();
   });
 
   test('#1291 anchors the model popover from the start (left) edge, matching its left-edge trigger', () => {
@@ -1253,6 +1277,42 @@ describe('ChatInputArea', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Use default model' }));
     expect(onModelReset).toHaveBeenCalledOnce();
+  });
+
+  test('a reset waiting on the turn stays in place, unavailable, with its reason', () => {
+    const onModelReset = vi.fn();
+    renderChatInputArea({
+      currentModel: 'override-model',
+      currentModelSource: 'session override',
+      onModelReset,
+      modelResetDisabledReason: 'Wait for the current turn to finish.',
+    });
+
+    const reset = screen.getByRole('button', { name: 'Use default model' });
+    expect(reset.getAttribute('aria-disabled')).toBe('true');
+    const describedBy = reset.getAttribute('aria-describedby');
+    expect(
+      describedBy && document.getElementById(describedBy)?.textContent,
+    ).toBe('Wait for the current turn to finish.');
+    fireEvent.click(reset);
+    expect(onModelReset).not.toHaveBeenCalled();
+  });
+
+  test('a reset the conversation cannot take is not offered as a chip', () => {
+    renderChatInputArea({
+      currentModel: 'override-model',
+      currentModelSource: 'session override',
+      onModelReset: vi.fn(),
+      modelResetDisabledReason:
+        'This conversation can’t change its engine right now.',
+      modelResetOffered: false,
+    });
+
+    // The picker's own reset states the reason as text
+    // (SessionModelPicker "a refused reset is disabled and states why").
+    expect(screen.queryByRole('button', { name: 'Use default model' })).toBe(
+      null,
+    );
   });
 
   test.each([
@@ -1629,7 +1689,7 @@ describe('ChatInputArea', () => {
       renderChatInputArea(props);
       const chip = screen.getByRole('button', { name: /^Approval mode:/ });
       expect(chip.getAttribute('aria-label')).toMatch(
-        /Engine default — OpenCode's own settings/,
+        /Default — OpenCode's own settings/,
       );
       fireEvent.click(chip);
       await screen.findByRole('radiogroup', { name: 'Approval mode' });

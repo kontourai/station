@@ -317,7 +317,10 @@ export default function FilePreviewContent({
         <div className="file-preview__text">
           {kind === 'markdown' ? (
             <div className="file-preview__markdown">
-              <LazyMarkdown components={previewMarkdownComponents}>
+              <LazyMarkdown
+                softBreaks={false}
+                components={previewMarkdownComponents}
+              >
                 {text.text}
               </LazyMarkdown>
             </div>

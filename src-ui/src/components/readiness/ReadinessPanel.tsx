@@ -178,7 +178,7 @@ function ReadinessBody({
         <Empty
           variant="compact"
           label="No working directory"
-          description="This project has no working directory yet. Set one to track Veritas merge readiness for the workspace."
+          description="Set one to track merge readiness."
         />
       );
     }
@@ -186,7 +186,7 @@ function ReadinessBody({
       <Empty
         variant="compact"
         label="Veritas not configured"
-        description={`Track merge readiness for this workspace — evidence checks, policy, and a "why is this allowed to merge?" trail, right next to the editor.`}
+        description="Track evidence checks and policy for merging."
         action={renderSetup?.(data.reason)}
       />
     );

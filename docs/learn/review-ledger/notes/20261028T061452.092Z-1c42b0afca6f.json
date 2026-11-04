@@ -1,0 +1,7 @@
+{
+  "revision": "7bf4145b5134038c1e5d20977f033493d2194818",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Baseline change moves one inherited menu-row finding from the deleted FileTreeContextMenu to the shared ContextMenu that replaces it (net zero); the guide's policy (inherited debt, reason stated in the PR) is unchanged.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene-baseline.json"]}
+  ]
+}

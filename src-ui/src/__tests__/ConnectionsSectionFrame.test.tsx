@@ -92,6 +92,9 @@ vi.mock('../views/connections-hub/AddMachineModal', () => ({
   AddMachineModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="chooser" /> : null,
 }));
+vi.mock('../views/connections-hub/IntegrationStatusSection', () => ({
+  IntegrationStatusSection: () => <div data-testid="integration-status-slot" />,
+}));
 
 import { ConnectionsSectionFrame } from '../views/ConnectionsSectionFrame';
 
@@ -125,6 +128,7 @@ describe('ConnectionsSectionFrame', () => {
         .getAllByRole('tab')
         .map((element) => element.textContent?.match(/^[A-Za-z]+/)?.[0]),
     ).toEqual(['Models', 'Engines', 'Tools', 'Knowledge', 'Computers']);
+    expect(screen.getByTestId('integration-status-slot')).toBeTruthy();
   });
 
   test('the Models count is the Models list, read from the same route', () => {

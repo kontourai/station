@@ -1,14 +1,17 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
 import { rebuildOrClearRuntimeProjections } from '../../../runtime/bootstrap/runtime-projection-recovery.js';
+import { recordIntegrationOrigin } from '../../../services/plugins/integration-origin.js';
 
 // Spread the real module rather than enumerating instruments by hand: this
 // list grew to 14 and still went stale when the route recorded
@@ -268,6 +271,7 @@ describe('Tool Routes', () => {
     expect(body.success).toBe(true);
     expect(svc.saveIntegration).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'new', enabled: false }),
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -305,12 +309,15 @@ describe('Tool Routes', () => {
         env: { API_TOKEN: 'write-boundary-canary' },
       }),
     });
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'secure',
-      kind: 'mcp',
-      secretEnv: { API_TOKEN: 'write-boundary-canary' },
-      enabled: false,
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'secure',
+        kind: 'mcp',
+        secretEnv: { API_TOKEN: 'write-boundary-canary' },
+        enabled: false,
+      },
+      { personChange: true, explicitFields: [] },
+    );
     expect(svc.saveIntegration.mock.calls[0]?.[0]).not.toHaveProperty('env');
   });
 
@@ -721,14 +728,17 @@ describe('Tool Routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      transport: 'stdio',
-      command: 'example-mcp',
-      description: 'After',
-      env: { API_TOKEN: 'secret-value' },
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'example-mcp',
+        description: 'After',
+        env: { API_TOKEN: 'secret-value' },
+      },
+      { personChange: true, explicitFields: [] },
+    );
   });
 
   test('PUT /:id ignores caller probe replacement and preserves service-owned state', async () => {
@@ -766,6 +776,7 @@ describe('Tool Routes', () => {
         description: 'After',
         probe: serviceProbe,
       }),
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -823,11 +834,14 @@ describe('Tool Routes', () => {
       body: JSON.stringify({ env: { API_TOKEN: 'replacement-secret' } }),
     });
 
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      secretEnv: { API_TOKEN: 'replacement-secret' },
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        secretEnv: { API_TOKEN: 'replacement-secret' },
+      },
+      { personChange: true, explicitFields: [] },
+    );
   });
 
   test('PUT /:id treats an explicit empty env object as a no-op', async () => {
@@ -844,11 +858,14 @@ describe('Tool Routes', () => {
       body: JSON.stringify({ env: {} }),
     });
 
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      secretEnv: {},
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        secretEnv: {},
+      },
+      { personChange: true, explicitFields: [] },
+    );
   });
 
   test('PUT /:id removes only explicitly named secret keys', async () => {
@@ -864,12 +881,15 @@ describe('Tool Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ removeSecretEnvKeys: ['TOKEN_A'] }),
     });
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      env: { TOKEN_A: 'a', TOKEN_B: 'b' },
-      removeSecretEnvKeys: ['TOKEN_A'],
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        env: { TOKEN_A: 'a', TOKEN_B: 'b' },
+        removeSecretEnvKeys: ['TOKEN_A'],
+      },
+      { personChange: true, explicitFields: [] },
+    );
   });
 
   test('GET /:serverId/ui/:toolName resolves MCP UI metadata', async () => {
@@ -1443,5 +1463,382 @@ describe('Tool Routes', () => {
     );
     expect(byId['station-docs']).toBe(true);
     expect(byId['mcp-1']).toBe(false);
+  });
+});
+
+describe('untrusted-content permission changes (#3483)', () => {
+  const makeTempDir = trackTempDirs();
+  const request = (
+    app: ReturnType<typeof createToolRoutes>,
+    method: 'PUT' | 'POST',
+    body: unknown,
+  ) =>
+    app.request(method === 'PUT' ? '/mail' : '/', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  test('PUT and POST attribute the change to the authenticated request principal', async () => {
+    const svc = createMockMCPService();
+    svc.getIntegration.mockResolvedValue({ id: 'mail', kind: 'mcp' });
+    const app = createToolRoutes(svc as any, vi.fn(), {
+      // The connected-account resolver answers undefined for hosted
+      // requests; attribution must not depend on it.
+      resolveAccountPrincipalId: () => undefined,
+      resolveRequestPrincipalId: () => 'person-1',
+    });
+    expect(
+      (await request(app, 'PUT', { contentTrust: 'trusted' })).status,
+    ).toBe(200);
+    expect(svc.saveIntegration.mock.calls[0][1]).toEqual({
+      changedBy: 'person-1',
+      personChange: true,
+      explicitFields: ['contentTrust'],
+    });
+    expect(
+      (
+        await request(app, 'POST', {
+          id: 'mail',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://mail.example.test/mcp',
+          contentTrust: 'untrusted',
+        })
+      ).status,
+    ).toBe(200);
+    expect(svc.saveIntegration.mock.calls[1][1]).toEqual({
+      changedBy: 'person-1',
+      personChange: true,
+      explicitFields: ['contentTrust'],
+    });
+  });
+
+  const def = {
+    id: 'mail',
+    kind: 'mcp' as const,
+    transport: 'streamable-http' as const,
+    endpoint: 'https://mail.example.test/mcp',
+  };
+
+  test('a person explicitly resetting an already-default hint records a receipt', async () => {
+    const home = makeTempDir('station-explicit-reset-route-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() } as any,
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      resolveRequestPrincipalId: () => 'person-1',
+    });
+    expect(
+      (await request(app, 'PUT', { trustReadOnlyHints: false })).status,
+    ).toBe(200);
+    const stored = await loader.loadIntegration('mail');
+    expect(stored.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'person-1',
+      trustReadOnlyHints: false,
+    });
+  });
+
+  test('the config writer records changes, keeps history across replacement and ignores caller receipts', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
+    });
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    await loader.saveIntegration(
+      'mail',
+      {
+        ...def,
+        contentTrust: 'untrusted',
+        untrustedContentPermissions: { tools: { send_draft: 'deny' } },
+      },
+      { changedBy: 'person-1' },
+    );
+    // A whole-definition replacement (POST, registry reinstall) that carries
+    // forged receipts and drops the setting.
+    await loader.saveIntegration(
+      'mail',
+      {
+        ...def,
+        untrustedContentChanges: [
+          { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
+        ],
+      },
+      { changedBy: 'person-2' },
+    );
+    const stored = await loader.loadIntegration('mail');
+    expect(stored.untrustedContentChanges).toEqual([
+      { at: expect.any(String), contentTrust: 'untrusted' },
+      {
+        at: expect.any(String),
+        by: 'person-1',
+        contentTrust: 'untrusted',
+        trustReadOnlyHints: false,
+        permissions: { tools: { send_draft: 'deny' } },
+      },
+      {
+        at: expect.any(String),
+        by: 'person-2',
+        contentTrust: 'trusted',
+        permissions: {},
+        trustReadOnlyHints: false,
+      },
+    ]);
+  });
+
+  test('an unrelated write leaves no receipt, and update callbacks keep history', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
+    });
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    await loader.saveIntegration('mail', {
+      ...def,
+      contentTrust: 'untrusted',
+      description: 'Mail',
+    });
+    await loader.updateIntegration('mail', (current) => ({
+      ...current,
+      untrustedContentChanges: [],
+      trustReadOnlyHints: true,
+    }));
+    expect(
+      (await loader.loadIntegration('mail')).untrustedContentChanges,
+    ).toEqual([
+      { at: expect.any(String), contentTrust: 'untrusted' },
+      { at: expect.any(String), trustReadOnlyHints: true },
+    ]);
+  });
+
+  test('the stored definition refuses an unknown permission value', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
+    });
+    await expect(
+      loader.saveIntegration('mail', {
+        ...def,
+        untrustedContentPermissions: { default: 'sometimes' as any },
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('legacy trust settings that need a person (#3483)', () => {
+  const makeTempDir = trackTempDirs();
+  const legacy = {
+    id: 'mail',
+    kind: 'mcp' as const,
+    transport: 'streamable-http' as const,
+    endpoint: 'https://mail.example.test/mcp',
+    contentTrust: 'trusted',
+    untrustedContentPermissions: {
+      default: 'allow',
+      tools: { send_reply: 'deny' },
+    },
+    trustReadOnlyHints: true,
+    untrustedContentPersonOwned: [
+      'contentTrust',
+      'permissions',
+      'trustReadOnlyHints',
+    ],
+  };
+
+  async function fixture(
+    principal: string | null = 'human:local:operator',
+    operator = true,
+  ) {
+    const home = makeTempDir('station-trust-review-');
+    await mkdir(join(home, 'integrations', 'mail'), { recursive: true });
+    await writeFile(
+      join(home, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify(legacy),
+    );
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      authorizeOperator: async () => {
+        if (!operator) throw new Error('forbidden');
+      },
+      resolveRequestPrincipalId: () => principal ?? undefined,
+    });
+    const decide = (decision: string) =>
+      app.request('/mail/trust-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      });
+    return { home, loader, app, decide };
+  }
+
+  const expectedFields = [
+    { field: 'contentTrust', value: 'trusted' },
+    {
+      field: 'permissions',
+      value: { default: 'allow', tools: { send_reply: 'deny' } },
+    },
+    { field: 'trustReadOnlyHints', value: true },
+  ];
+
+  test('is listed and shown as needing review, never applied', async () => {
+    const { app, loader } = await fixture();
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; trustReview?: unknown; enabled?: boolean }>;
+    };
+    expect(list.data.find((item) => item.id === 'mail')).toMatchObject({
+      enabled: false,
+      trustReview: { fields: expectedFields },
+    });
+    const detail = (await json(await app.request('/mail'))) as {
+      data: Record<string, unknown>;
+    };
+    expect(detail.data).toMatchObject({
+      id: 'mail',
+      enabled: false,
+      trustReview: { fields: expectedFields },
+    });
+    expect(detail.data.untrustedContentPermissions).toBeUndefined();
+    expect(detail.data.trustReadOnlyHints).toBeUndefined();
+    await expect(loader.loadIntegration('mail')).rejects.toThrow(
+      /ownership cannot be verified/,
+    );
+  });
+
+  test('only the operator, signed in as a person, can decide', async () => {
+    for (const [principal, operator] of [
+      [null, true],
+      ['agent:station:worker', true],
+      ['human:local:operator', false],
+    ] as const) {
+      const { decide, loader } = await fixture(principal, operator);
+      expect((await decide('keep')).status).toBe(403);
+      await expect(loader.loadIntegration('mail')).rejects.toThrow(
+        /ownership cannot be verified/,
+      );
+    }
+    const { decide } = await fixture();
+    expect((await decide('widen')).status).toBe(400);
+  });
+
+  test('keeping the settings makes them person-owned with a receipt', async () => {
+    const { decide, loader, app } = await fixture();
+    expect((await decide('keep')).status).toBe(200);
+    const kept = await loader.loadIntegration('mail');
+    expect(kept).toMatchObject({
+      contentTrust: 'trusted',
+      untrustedContentPermissions: {
+        default: 'allow',
+        tools: { send_reply: 'deny' },
+      },
+      trustReadOnlyHints: true,
+    });
+    expect(kept.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'human:local:operator',
+      contentTrust: 'trusted',
+      permissions: { default: 'allow', tools: { send_reply: 'deny' } },
+      trustReadOnlyHints: true,
+    });
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; trustReview?: unknown }>;
+    };
+    expect(list.data.find((item) => item.id === 'mail')?.trustReview).toBe(
+      undefined,
+    );
+    expect((await decide('keep')).status).toBe(409);
+  });
+
+  test('resetting returns them to Station defaults with a receipt', async () => {
+    const { decide, loader } = await fixture();
+    expect((await decide('reset')).status).toBe(200);
+    const reset = await loader.loadIntegration('mail');
+    expect(reset.untrustedContentPermissions).toBeUndefined();
+    expect(reset.trustReadOnlyHints).toBeUndefined();
+    expect(reset.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'human:local:operator',
+      permissions: {},
+      trustReadOnlyHints: false,
+    });
+  });
+});
+
+describe('external engine coverage of the untrusted-content permission (#3483)', () => {
+  const makeTempDir = trackTempDirs();
+  test('is derived from each server’s transport and delivery', async () => {
+    const home = makeTempDir('station-engine-coverage-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    const remote = (id: string, extra: Partial<ToolDef> = {}): ToolDef => ({
+      id,
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: `https://${id}.example.test/mcp`,
+      ...extra,
+    });
+    await loader.saveIntegration(
+      'signed-in',
+      remote('signed-in', { credentialOwnership: { owner: 'principal' } }),
+    );
+    await loader.saveIntegration('open-remote', remote('open-remote'));
+    const catalog = remote('from-catalog');
+    await loader.saveIntegration('from-catalog', catalog);
+    recordIntegrationOrigin(home, catalog, {
+      kind: 'registry',
+      registryId: 'mcp-subregistry:station-curated',
+    });
+    await loader.saveIntegration('local', {
+      id: 'local',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+    });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const app = createToolRoutes(service, vi.fn());
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; engineCoverage?: unknown }>;
+    };
+    const coverage = Object.fromEntries(
+      list.data.map((item) => [item.id, item.engineCoverage]),
+    );
+    const of = (claude: string, codex: string, acp: string) => [
+      { engine: 'claude', coverage: claude },
+      { engine: 'codex', coverage: codex },
+      { engine: 'acp', coverage: acp },
+    ];
+    expect(coverage['signed-in']).toEqual(
+      of('station-gated', 'station-gated', 'not-delivered'),
+    );
+    expect(coverage['open-remote']).toEqual(
+      of('engine-direct', 'engine-direct', 'not-delivered'),
+    );
+    expect(coverage['from-catalog']).toEqual(
+      of('not-delivered', 'not-delivered', 'not-delivered'),
+    );
+    expect(coverage.local).toEqual(
+      of('engine-direct', 'engine-direct', 'engine-direct'),
+    );
+    const detail = (await json(await app.request('/open-remote'))) as {
+      data: { engineCoverage?: unknown };
+    };
+    expect(detail.data.engineCoverage).toEqual(coverage['open-remote']);
   });
 });

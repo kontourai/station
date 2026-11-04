@@ -50,19 +50,18 @@ export function AttachmentPreviewMenu({
         {attachments.map((att) => (
           <div key={att.id} className="attachment-menu__item" data-attachment>
             {att.preview ? (
-              <img
-                src={att.preview}
-                alt={att.name}
-                className="attachment-menu__thumbnail"
+              <button
+                type="button"
+                className="attachment-menu__thumbnail-button"
                 onClick={() => onPreviewImage(att.preview!)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onPreviewImage(att.preview!);
-                  }
-                }}
-                title="Click to preview"
-              />
+                title="Preview image"
+              >
+                <img
+                  src={att.preview}
+                  alt={att.name}
+                  className="attachment-menu__thumbnail"
+                />
+              </button>
             ) : (
               <div className="attachment-menu__file-icon">
                 <DocumentGlyph />

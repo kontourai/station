@@ -403,8 +403,6 @@ test('runtime shutdown fences admission immediately and retains live projection 
     acpBridge: { shutdown: vi.fn(async () => undefined) },
     feedbackService: { stop: vi.fn() },
     voiceService: { stop: vi.fn(async () => undefined) },
-    terminalWsServer: { stop: vi.fn() },
-    terminalService: { dispose: vi.fn(async () => undefined) },
     configLoader: { dispose: vi.fn(async () => undefined) },
   });
   expect(() => custody.acquire('other', 'probe')).toThrow();

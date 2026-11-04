@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Source-impact review: station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh; engine-mcp-oauth.ts only gives its providers the configured OAuth client and counts a configured client as known OAuth. Searched this document for MCP tool-server OAuth, client registration, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/engine-mcp-oauth.ts"]}
+  ]
+}

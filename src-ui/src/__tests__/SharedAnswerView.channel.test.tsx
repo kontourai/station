@@ -134,7 +134,7 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
         coordinate: COORDINATE,
         supersession: 'superseded',
       },
-      expect: /a later entry superseding that one/i,
+      expect: /a later entry supersedes it/i,
     },
     {
       name: 'not-in-channel',
@@ -152,7 +152,7 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
     {
       name: 'history-not-served',
       channel: { status: 'unavailable', reason: 'history-not-served' },
-      expect: /does not serve channel history to this page/i,
+      expect: /doesn't serve channel history to this page/i,
     },
     {
       name: 'coordinate-mismatch',
@@ -201,7 +201,9 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
 
     expect(notInChannel).not.toBe(predates);
     expect(notInChannel).toMatch(/not committed to a channel log/i);
-    expect(predates).toMatch(/nobody looked/i);
+    // "Unknown" is an admitted gap; not-in-channel is a fact.
+    expect(predates).toMatch(/Unknown: .*before this Station recorded/i);
+    expect(notInChannel).not.toMatch(/Unknown/i);
   });
 
   it('an unrecognised reason still says something, and claims nothing', async () => {

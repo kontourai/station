@@ -7,7 +7,7 @@ row that matches the job you are doing.
 | --- | --- | --- |
 | Product evaluators and end users | [../README.md](../README.md), [user/getting-started.md](user/getting-started.md), [user/concepts.md](user/concepts.md) | Public |
 | Company and project integrators | [guides/integrating-station.md](guides/integrating-station.md) | Public repository guide; hosted target distinguished from supported behavior |
-| Operators | [guides/deployment.md](guides/deployment.md), [guides/machine-relationships.md](guides/machine-relationships.md), [guides/operator-passkeys.md](guides/operator-passkeys.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
+| Operators | [guides/deployment.md](guides/deployment.md), [guides/managed-policy.md](guides/managed-policy.md), [guides/machine-relationships.md](guides/machine-relationships.md), [guides/operator-passkeys.md](guides/operator-passkeys.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
 | Release operators | [guides/releasing.md](guides/releasing.md), [guides/ecosystem-packaging.md](guides/ecosystem-packaging.md), [guides/store-entry.md](guides/store-entry.md), [guides/store-listing.md](guides/store-listing.md) | Owner-gated Homebrew, public installer plumbing, and store consoles |
 | Agent application authors | [guides/agent-development.md](guides/agent-development.md), [reference/sdk.md](reference/sdk.md#agent-development-entry) | Repository only |
 | Plugin authors | [guides/plugins.md](guides/plugins.md), [guides/build-your-first-plugin.md](guides/build-your-first-plugin.md), [reference/sdk.md](reference/sdk.md), [guides/authoring-skill-experiences.md](guides/authoring-skill-experiences.md) | Repository only |
@@ -75,13 +75,18 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
+- **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser and Device clips, authorized reads, limits and media dependencies.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
-- **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
+- **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.
+- **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions, live viewing and artifact previews.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
+- **[Browser, device and Walkthrough reference](reference/browser-and-devices.md)** — authority rules, limits, timeouts, refusal codes, storage and evidence behind the three guides above.
+- **[Outside-agent OAuth](reference/outside-agent-oauth.md)** — inert R3 protocol contract and exposure limits; R6 owns enablement.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
-- **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
-- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — request-authorized committed-order receipt pages, focused server/client evidence, and pending grant, deletion, restore, durable sync and deployment acceptance.
+- **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, companion host prerequisites, dashboard limits, and the generated [metric declarations](reference/metrics.md).
+- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — verified-person source consent, committed-order receipts and invalidations, bounded durable sync/indexing, saved Personal views and restore activation; deployed, clone/mirror and native acceptance remain separate.
 - **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
 - **[Cedar policy foundation](reference/cedar-policy.md)** — server-local evaluator contract, bounds and packaged probe.
 - **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
@@ -139,10 +144,12 @@ design records. The pre-public repository audit,
 `docs/repo-audit-2026-06-26.md`, stays in the maintainers' archive repository
 (`kontourai/station-archive`, referenced as `archive#N`).
 User-facing docs not named in the audience table:
+[user/automations.md](user/automations.md),
 [user/native-recovery.md](user/native-recovery.md),
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
 [user/work-board.md](user/work-board.md),
-[user/personal-boards.md](user/personal-boards.md), and
+[user/personal-boards.md](user/personal-boards.md),
+[user/houston.md](user/houston.md), and
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
@@ -186,3 +193,6 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+For focused Task context, reviewed learning and model-use limits, see
+[Bounded agent work](guides/agent-efficiency.md).

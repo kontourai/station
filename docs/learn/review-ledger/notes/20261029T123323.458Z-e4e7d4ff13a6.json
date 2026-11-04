@@ -1,0 +1,13 @@
+{
+  "revision": "2564cce3ca60b83438ae4362eaa37b3476f86df4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed TaskReviewClips.tsx after the pre-push copy correction: the empty state now asks the lead agent to record a clip. The documented Task scope, preview gates, pagination and on-demand video cleanup are unchanged; the Review component suite passed 19 tests.","inputs":["docs/architecture/module-map.md","src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed TaskReviewClips.tsx after the pre-push copy correction: the empty state now asks the lead agent to record a clip. The documented Task scope, preview gates, pagination and on-demand video cleanup are unchanged; the Review component suite passed 19 tests.","inputs":["docs/guides/browser-workspace.md","src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed TaskReviewClips.tsx after the pre-push copy correction: the empty state now asks the lead agent to record a clip. The documented Task scope, preview gates, pagination and on-demand video cleanup are unchanged; the Review component suite passed 19 tests.","inputs":["docs/guides/walkthroughs.md","src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed TaskReviewClips.tsx after the pre-push copy correction: the empty state now asks the lead agent to record a clip. The documented Task scope, preview gates, pagination and on-demand video cleanup are unchanged; the Review component suite passed 19 tests.","inputs":["docs/user/settings.md","src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"]}
+  ]
+}

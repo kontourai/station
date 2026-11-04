@@ -59,4 +59,59 @@ describe('useCloseShortcut', () => {
     expect(onClose).not.toHaveBeenCalled();
     input.remove();
   });
+
+  // #4383: Settings › Filter settings, Ctrl+A then Ctrl+X closed Settings and
+  // threw the typed filter away instead of cutting it.
+  test('Cmd/Ctrl+X inside a text field cuts instead of closing the view', () => {
+    const onClose = vi.fn();
+    renderHook(() => useCloseShortcut(onClose), { wrapper });
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.value = 'theme';
+    document.body.append(input);
+    input.focus();
+    input.select();
+
+    const mac = navigator.platform.toUpperCase().includes('MAC');
+    const cut = new KeyboardEvent('keydown', {
+      key: 'x',
+      metaKey: mac,
+      ctrlKey: !mac,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      input.dispatchEvent(cut);
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    // Left for the browser's own Cut.
+    expect(cut.defaultPrevented).toBe(false);
+    input.remove();
+  });
+
+  test('Cmd/Ctrl+X on a non-text control still closes the view', () => {
+    const onClose = vi.fn();
+    renderHook(() => useCloseShortcut(onClose), { wrapper });
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    document.body.append(checkbox);
+    checkbox.focus();
+
+    const mac = navigator.platform.toUpperCase().includes('MAC');
+    act(() => {
+      checkbox.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'x',
+          metaKey: mac,
+          ctrlKey: !mac,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    checkbox.remove();
+  });
 });

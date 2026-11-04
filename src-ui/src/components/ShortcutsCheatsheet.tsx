@@ -1,12 +1,12 @@
 import './ShortcutsCheatsheet.css';
+import { terminalViewShortcuts } from '@kontourai/station-sdk/terminal-view';
 import {
   findShortcutConflicts,
+  formatShortcutChord,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
-import {
-  ResponsiveDialogCloseButton,
-  ResponsiveDialogSurface,
-} from './ResponsiveDialogSurface';
+import { listedShortcuts } from '../contexts/listedShortcuts';
+import { Dialog } from './Dialog';
 import { groupShortcuts } from './shortcuts-cheatsheet-utils';
 import { Empty } from './state';
 
@@ -19,12 +19,12 @@ export function ShortcutsCheatsheet({
   isOpen,
   onClose,
 }: ShortcutsCheatsheetProps) {
-  const { getAllShortcuts, getDisplay } = useShortcutRegistry();
+  const { getAllShortcuts, getDisplay, isMac } = useShortcutRegistry();
 
   if (!isOpen) return null;
 
   const shortcuts = getAllShortcuts();
-  const groups = groupShortcuts(shortcuts);
+  const groups = groupShortcuts(listedShortcuts(shortcuts));
   const conflicts = findShortcutConflicts(shortcuts).filter(
     (conflict) => conflict.ambiguous,
   );
@@ -41,23 +41,21 @@ export function ShortcutsCheatsheet({
      * dismissal, and mobile keyboard containment) for every other dialog; it
      * owns this one now too, and the duplicate listener is gone rather than
      * ordered against.
+     *
+     * #4384: the `.modal-content` / `.modal-header` chrome this used lost its
+     * styles, so the sheet rendered with no panel at all — rows floating over
+     * the page, the close button under the title, the list cut off. `Dialog`
+     * is the one Station dialog chrome: an opaque framed panel, a header close
+     * button, and a body that scrolls.
      */
-    <ResponsiveDialogSurface
-      layer="dialog"
+    <Dialog
+      title="Keyboard shortcuts"
+      closeLabel="Close keyboard shortcuts"
       onClose={onClose}
-      ariaLabel="Keyboard shortcuts"
-      overlayClassName="modal-overlay"
-      panelClassName="modal-content shortcuts-cheatsheet"
       initialFocusPolicy="panel"
+      panelClassName="shortcuts-cheatsheet"
     >
-      <div className="modal-header">
-        <h2>Keyboard Shortcuts</h2>
-        <ResponsiveDialogCloseButton
-          onClick={onClose}
-          label="Close keyboard shortcuts"
-        />
-      </div>
-      <div className="modal-body shortcuts-cheatsheet__body">
+      <div className="shortcuts-cheatsheet__body">
         {conflicts.length > 0 ? (
           <p className="shortcuts-cheatsheet__conflicts" role="alert">
             {conflicts.length === 1
@@ -98,7 +96,27 @@ export function ShortcutsCheatsheet({
             </div>
           ))
         )}
+        {/* The keys a focused terminal keeps; not rebindable. */}
+        <div className="shortcuts-cheatsheet__group">
+          <h3 className="shortcuts-cheatsheet__category">In a terminal</h3>
+          <div className="shortcuts-cheatsheet__list">
+            {terminalViewShortcuts(isMac).map((shortcut) => (
+              <div key={shortcut.id} className="shortcuts-cheatsheet__row">
+                <span className="shortcuts-cheatsheet__desc">
+                  {shortcut.description}
+                </span>
+                <kbd className="shortcuts-cheatsheet__kbd">
+                  {shortcut.chords
+                    .map((chord) =>
+                      formatShortcutChord(chord.modifiers, chord.key, isMac),
+                    )
+                    .join(' then ')}
+                </kbd>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </ResponsiveDialogSurface>
+    </Dialog>
   );
 }

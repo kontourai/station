@@ -17,6 +17,10 @@
  */
 import { z } from 'zod';
 
+import {
+  BROWSER_RECORD_MAX_DURATION_MS,
+  BROWSER_RECORD_MAX_ENCODED_BYTES,
+} from './station-browser-policy.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import {
   api,
@@ -136,7 +140,8 @@ type ToolContent =
 async function callBrowser(
   operation: string,
   body: Record<string, unknown>,
-): Promise<{ content: ToolContent[] }> {
+  signal?: AbortSignal,
+): Promise<{ content: ToolContent[]; isError?: boolean }> {
   let caller: StationControlCaller | null;
   try {
     caller = await requireStationControlCaller();
@@ -151,8 +156,15 @@ async function callBrowser(
     response = await api(`${BROWSER_AGENT_API_PATH}/${operation}`, {
       method: 'POST',
       body: JSON.stringify(body),
+      signal,
     });
   } catch {
+    if (signal?.aborted)
+      return jsonToolResult({
+        ok: false,
+        code: 'cancelled',
+        message: 'Recording was cancelled.',
+      });
     return jsonToolResult({
       ok: false,
       code: 'unavailable',
@@ -194,7 +206,9 @@ async function callBrowser(
       ],
     };
   }
-  return jsonToolResult(result);
+  return result.code === 'feature_preview_disabled'
+    ? { ...jsonToolResult(result), isError: true }
+    : jsonToolResult(result);
 }
 
 export function registerBrowserTools(registry: StationControlToolRegistry) {
@@ -297,6 +311,67 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
       callBrowser('resize', {
         browserSessionId: args.browserSessionId,
         viewport: VIEWPORT_PRESETS[args.preset],
+      }),
+  );
+
+  registry.tool(
+    'browser_capture_to_task',
+    'Save a Screen in the bound Task, pinned to its clean workspace commit. Commit changes first; submodules are refused. Omit browserSessionId only with one live session in your Project profile. Returns captureId, commit, digest and the image.',
+    {
+      browserSessionId: sessionId.optional(),
+      label: z.string().min(1).max(120).optional(),
+    },
+    async (args) =>
+      callBrowser('capture-to-task', {
+        ...(args.browserSessionId !== undefined
+          ? { browserSessionId: args.browserSessionId }
+          : {}),
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      }),
+  );
+
+  registry.tool(
+    'browser_record_to_task',
+    'Record the Browser viewport into the bound Task as a Walkthrough pinned to its clean workspace commit. Commit changes first.',
+    {
+      browserSessionId: sessionId.optional(),
+      durationMs: z.number().int().min(1).max(BROWSER_RECORD_MAX_DURATION_MS),
+      maxBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(BROWSER_RECORD_MAX_ENCODED_BYTES)
+        .optional(),
+      label: z.string().min(1).max(120).optional(),
+    },
+    async (args, context) =>
+      callBrowser(
+        'record-to-task',
+        {
+          durationMs: args.durationMs,
+          ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {}),
+          ...(args.browserSessionId !== undefined
+            ? { browserSessionId: args.browserSessionId }
+            : {}),
+          ...(args.label !== undefined ? { label: args.label } : {}),
+        },
+        context?.mcpReq.signal,
+      ),
+  );
+
+  registry.tool(
+    'browser_network',
+    "Read a bounded page of redacted network metadata for a Browser session. Requires Let agents run JavaScript in this Project's pages (browserEvaluate).",
+    {
+      browserSessionId: sessionId,
+      after: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    },
+    async (args) =>
+      callBrowser('network', {
+        browserSessionId: args.browserSessionId,
+        ...(args.after !== undefined ? { after: args.after } : {}),
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
       }),
   );
 

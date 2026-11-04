@@ -35,6 +35,16 @@ Station's API.
 
 ## Architecture
 
+Station uses the SDK 2 app API through `@agentclientprotocol/sdk/unstable`
+while continuing to speak ACP v1. That profile retains the provider routing
+and session features Station already consumes; it does not select draft ACP v2.
+`ACPProcess` sends requests and notifications through the app connection, and
+`createACPClientApp` registers the file, terminal, approval and session callbacks.
+Vendor extension request fallbacks still pass through Station's inbound-extension
+policy; notification fallbacks keep their existing adapter path. Selecting this
+SDK profile grants no additional engine authority.
+
+
 ```mermaid
 graph TD
     UI["Station UI\n(React)\nOrchestration chat"]
@@ -45,7 +55,7 @@ graph TD
     Runtime["External engine process\n(e.g. kiro-cli)"]
 
     UI -- "GET /api/orchestration/events\n(SSE)" --> Server
-    UI -- "POST /api/orchestration/chat\n{target: Environment + Agent, message}" --> Server
+    UI -- "POST /api/orchestration/chat\n{target: Environment + Agent, message, clientTurnId}" --> Server
     Server -- "resolve Agent binding" --> Orchestration
     Orchestration -- "internal provider:'acp'" --> Adapter
     Adapter -- "ACP over stdio\n(ndjson)" --> Bridge
@@ -195,7 +205,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Plan Rendering
 
-`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). Plain prose does not clobber a typed plan artifact, and neither does the turn completing (a plan sent mid-turn, before the answer is committed, stays on the surface). Prose that itself reads as a plan (for example a numbered list in the answer) does replace it, while streaming or when its turn completes, the same rule the heuristic parser applies to every provider; a later turn without a plan leaves the typed plan in place.
+`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A plan too large to keep inside one event, or an entry whose text is, arrives with a reference in its place ([event content spill](../design/event-content-spill.md)); the Plan tab shows the preview and offers Load full content. Plain prose does not clobber a typed plan artifact, and neither does the turn completing (a plan sent mid-turn, before the answer is committed, stays on the surface). Prose that itself reads as a plan (for example a numbered list in the answer) does replace it, while streaming or when its turn completes, the same rule the heuristic parser applies to every provider; a later turn without a plan leaves the typed plan in place.
 
 ### Extension Rendering
 
@@ -701,6 +711,11 @@ DELETE /acp/connections/:id/sign-in/attempt Cancel it (engine:login)
 PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine's credentialEnvVars (engine:login)
 DELETE /acp/connections/:id/credentials/:name  Remove it (engine:login)
 ```
+
+The operator in person (the operator credential, or a credential minted by
+proving possession of this Station's home, such as the host browser's sign-in
+link) needs no `engine:login` grant for these routes, as the view's
+`allowed.signIn` reports.
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
 command for Station to run, so a paired device needs the operator's

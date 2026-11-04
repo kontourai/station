@@ -74,6 +74,11 @@ function canonicalJson(value: unknown, ancestors = new Set<object>()): string {
   }
 }
 
+/** Digest a JSON request without silently dropping unsupported input. */
+export function chatTurnSubmissionDigest(value: unknown): string {
+  return `station-chat-submission/v1:sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+
 /** Own JSON intent without JSON.stringify silently discarding unsupported values. */
 export function snapshotTurnSubmissionValue<T>(value: T): T {
   return JSON.parse(canonicalJson(value));
@@ -175,6 +180,7 @@ export function directTurnSubmissionDigest(
 /** Foreground identity is shared by live sends and their durable inbox placement. */
 export function foregroundTurnSubmissionDigest(input: {
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   target: ExecutionTarget;
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
@@ -198,6 +204,9 @@ export function foregroundTurnSubmissionDigest(input: {
       : {}),
     scope: {
       target: input.target,
+      ...(input.mcpPromptOrigin
+        ? { mcpPromptOrigin: input.mcpPromptOrigin }
+        : {}),
       ephemeral: input.ephemeral ?? false,
       expectedInputRequest: input.expectedInputRequest ?? null,
       setApprovalMode: input.setApprovalMode ?? null,

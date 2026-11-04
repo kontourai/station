@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Component/style section now states the scan covers pane packages and rejects role=alert elements holding a button; checked against ROOTS, the alert-with-action visitor and its child-process tests.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene-baseline.json","scripts/component-style-hygiene.mjs"]}
+  ]
+}

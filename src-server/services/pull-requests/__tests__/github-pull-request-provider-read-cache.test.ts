@@ -364,7 +364,7 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
     await provider.listPullRequests(station, openQuery);
     expect(gh.count('pr list')).toBe(2);
     expect(gh.listCalls()[1]).toContain(
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     );
     // A write invalidates the narrow read too.
     await provider.mergePullRequest(station, '7', { method: 'squash' });

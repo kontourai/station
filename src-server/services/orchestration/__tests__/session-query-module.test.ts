@@ -4,6 +4,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { conversationToThread } from '@kontourai/station-shared/thread-projection';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  conversationTitle,
   createSessionQueryModule,
   MAX_ASSISTANT_TURN_EVENTS,
 } from '../session-query-module.js';
@@ -1375,4 +1376,23 @@ describe('SessionQueryModule', () => {
       ).resolves.toEqual({ status: 'corrupt' });
     },
   );
+});
+
+describe('conversationTitle (#4266)', () => {
+  const user = (text: string) =>
+    ({ role: 'user', parts: [{ type: 'text', text }] }) as never;
+
+  test('skips a low-content message for the next one that names something', () => {
+    expect(
+      conversationTitle([user('Continue'), user('Fix the dock header')]),
+    ).toBe('Fix the dock header');
+  });
+
+  test('a thread that only said "Continue" takes the session\'s own title', () => {
+    expect(conversationTitle([user('Continue')], 'Fix the dock header')).toBe(
+      'Fix the dock header',
+    );
+    // With nothing better, the low-content message still stands.
+    expect(conversationTitle([user('Continue')])).toBe('Continue');
+  });
 });

@@ -1,0 +1,11 @@
+{
+  "revision": "954475a853894fa1636309c1952357bf41d3e588",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added engine-memory-exhausted (engine_crashed, retryable true) and workload-command-oom-killed (warning, retryable false) rows to the diagnostic-code table, checked against PROVIDER_FAILURE_KINDS and PROVIDER_FAILURE_RETRYABLE in provider-failure.ts and against the codex transport, which emits the first as a runtime.error with providerFailure('engine_crashed') and the second as a runtime.warning. workload_settings_invalid is excluded in the inventory guard as application configuration, which the guard paragraph already names.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider-failure.ts","scripts/__tests__/provider-failure-inventory.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Stale on provider-failure.ts and the inventory guard: the two new code mappings change StationHttpError.kind only for an HTTP error carrying those codes, and no route answers with either (they are runtime event codes). Searched this document for engine-memory-exhausted, workload-command-oom-killed, workload_settings_invalid and PROVIDER_FAILURE_KINDS: no matches, so no claim affected. The workload SDK reads now pass a request deadline on, as the guide's other query domains do.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts","scripts/__tests__/provider-failure-inventory.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Stale on path-read-pin-boundary.test.ts: this change adds one DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS entry (workload-budget.test.ts lists its temporary config directory). The guide's rule that every real walk is a repo scan or classified (around line 1749) is unchanged and this entry follows it.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

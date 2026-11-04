@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
             actorId: 'actor-peer',
             kind: 'human',
             label: 'Participant peer',
+            standing: 'member',
           },
           work: {
             sessionId: 'generation-1',
@@ -82,6 +83,14 @@ beforeEach(() => {
 });
 
 describe('ProjectTaskRoomPresence', () => {
+  test('shows the member avatar in the compact stack only with collaboration enabled', () => {
+    const view = render(<ProjectTaskRoomPresence taskId="task-1" compact />);
+    expect(screen.queryByText('Participant peer')).toBeNull();
+    view.rerender(
+      <ProjectTaskRoomPresence taskId="task-1" compact showMembers />,
+    );
+    expect(screen.getByText('Participant peer')).toBeTruthy();
+  });
   test('marks the actual published participant layout with server actor identities', async () => {
     const marks: unknown[] = [];
     const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>

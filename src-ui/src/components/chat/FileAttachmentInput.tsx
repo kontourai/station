@@ -104,6 +104,11 @@ export function FileAttachmentInput({
         onChange={handleFileSelect}
         className="attachment-input"
         disabled={disabled || !canAttach}
+        // #4403: the Attach button below is the control; this input is only
+        // what it clicks. Exposed, it was a second, 1x1 "Choose File" button
+        // in every composer. Same treatment as the Home composer's input.
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
       <button

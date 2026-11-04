@@ -165,6 +165,39 @@ export interface TaskOpenQuestion {
 }
 
 export interface TaskMemoryStore {
+  recordQuestionWakeRoute(
+    input: TaskMemoryIncarnation & {
+      clientTurnId: string;
+      key: string;
+      version: number;
+      action: string;
+      ownerUserId: string;
+      conversationId: string;
+    },
+  ): boolean;
+  questionWakeRoute(
+    clientTurnId: string,
+  ):
+    | (TaskMemoryIncarnation & { ownerUserId: string; conversationId: string })
+    | undefined;
+  /** Committed question versions are the durable wake outbox, including the commit-to-submit gap. */
+  pendingQuestionWakes(
+    limit?: number,
+  ): { incarnation: TaskMemoryIncarnation; record: TaskMemoryRecord }[];
+  acknowledgeQuestionWake(
+    input: TaskMemoryIncarnation & {
+      key: string;
+      version: number;
+      action: string;
+    },
+  ): void;
+  deferQuestionWake(
+    input: TaskMemoryIncarnation & {
+      key: string;
+      version: number;
+      action: string;
+    },
+  ): void;
   updateSummary(
     input: WriteContext & {
       readonly text: string;
@@ -371,6 +404,17 @@ export function createSqliteTaskMemoryStore(
 ): TaskMemoryStore {
   const now = options.now ?? (() => new Date());
   const caps = TASK_MEMORY_LIMITS.liveRecords;
+  db.exec(`CREATE TABLE IF NOT EXISTS task_question_wake_acknowledgements (
+    task_id TEXT NOT NULL, task_created_at TEXT NOT NULL, record_key TEXT NOT NULL,
+    version INTEGER NOT NULL, action TEXT NOT NULL,
+    PRIMARY KEY(task_id,task_created_at,record_key,version,action));
+    CREATE INDEX IF NOT EXISTS idx_task_question_wake_versions ON task_record_versions(kind,action,task_id,task_created_at,ordinal);`);
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS task_question_wake_retries(task_id TEXT NOT NULL,task_created_at TEXT NOT NULL,record_key TEXT NOT NULL,version INTEGER NOT NULL,action TEXT NOT NULL,next_at INTEGER NOT NULL,PRIMARY KEY(task_id,task_created_at,record_key,version,action));`,
+  );
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS task_question_wake_routes(client_turn_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,task_created_at TEXT NOT NULL,record_key TEXT NOT NULL,version INTEGER NOT NULL,action TEXT NOT NULL,owner_user_id TEXT NOT NULL,conversation_id TEXT NOT NULL);`,
+  );
 
   /** Runs `body` in one IMMEDIATE transaction after the authority re-check. */
   const transact = <T>(
@@ -568,6 +612,102 @@ export function createSqliteTaskMemoryStore(
       return { revisions: rows.map(summaryFromRow), total };
     },
 
+    recordQuestionWakeRoute(input) {
+      db.prepare(
+        'INSERT OR IGNORE INTO task_question_wake_routes(client_turn_id,task_id,task_created_at,record_key,version,action,owner_user_id,conversation_id) VALUES(?,?,?,?,?,?,?,?)',
+      ).run(
+        input.clientTurnId,
+        input.taskId,
+        input.taskCreatedAt,
+        input.key,
+        input.version,
+        input.action,
+        input.ownerUserId,
+        input.conversationId,
+      );
+      const row = db
+        .prepare(
+          'SELECT task_id,task_created_at,owner_user_id,conversation_id FROM task_question_wake_routes WHERE client_turn_id=?',
+        )
+        .get(input.clientTurnId) as {
+        task_id: string;
+        task_created_at: string;
+        owner_user_id: string;
+        conversation_id: string;
+      };
+      return (
+        row.task_id === input.taskId &&
+        row.task_created_at === input.taskCreatedAt &&
+        row.owner_user_id === input.ownerUserId &&
+        row.conversation_id === input.conversationId
+      );
+    },
+    questionWakeRoute(clientTurnId) {
+      const row = db
+        .prepare(
+          'SELECT task_id,task_created_at,owner_user_id,conversation_id FROM task_question_wake_routes WHERE client_turn_id=?',
+        )
+        .get(clientTurnId) as
+        | {
+            task_id: string;
+            task_created_at: string;
+            owner_user_id: string;
+            conversation_id: string;
+          }
+        | undefined;
+      return row
+        ? {
+            taskId: row.task_id,
+            taskCreatedAt: row.task_created_at,
+            ownerUserId: row.owner_user_id,
+            conversationId: row.conversation_id,
+          }
+        : undefined;
+    },
+    pendingQuestionWakes(limit = 64) {
+      const bound = Math.min(128, Math.max(1, Math.trunc(limit)));
+      return (
+        db
+          .prepare(`SELECT ${RECORD_COLUMNS}, v.task_created_at FROM task_record_versions v
+        LEFT JOIN task_question_wake_acknowledgements a ON a.task_id=v.task_id AND a.task_created_at=v.task_created_at
+          AND a.record_key=v.record_key AND a.version=v.version AND a.action=v.action
+        LEFT JOIN task_question_wake_retries r ON r.task_id=v.task_id AND r.task_created_at=v.task_created_at AND r.record_key=v.record_key AND r.version=v.version AND r.action=v.action
+        WHERE v.kind='question' AND (v.action='answer' OR (v.action='set' AND v.author_kind='session')) AND a.task_id IS NULL
+        AND (r.next_at IS NULL OR r.next_at<=?) ORDER BY v.created_at,v.task_id,v.ordinal LIMIT ?`)
+          .all(now().getTime(), bound) as (RecordRow & {
+          task_created_at: string;
+        })[]
+      ).map((row) => ({
+        incarnation: {
+          taskId: row.task_id,
+          taskCreatedAt: row.task_created_at,
+        },
+        record: recordFromRow(row),
+      }));
+    },
+    acknowledgeQuestionWake(input) {
+      db.prepare(`INSERT OR IGNORE INTO task_question_wake_acknowledgements(task_id,task_created_at,record_key,version,action)
+        SELECT task_id,task_created_at,record_key,version,action FROM task_record_versions
+        WHERE task_id=? AND task_created_at=? AND kind='question' AND record_key=? AND version=? AND action=?`).run(
+        input.taskId,
+        input.taskCreatedAt,
+        input.key,
+        input.version,
+        input.action,
+      );
+    },
+    deferQuestionWake(input) {
+      db.prepare(
+        `INSERT INTO task_question_wake_retries(task_id,task_created_at,record_key,version,action,next_at) VALUES(?,?,?,?,?,?) ON CONFLICT(task_id,task_created_at,record_key,version,action) DO UPDATE SET next_at=excluded.next_at`,
+      ).run(
+        input.taskId,
+        input.taskCreatedAt,
+        input.key,
+        input.version,
+        input.action,
+        now().getTime() + 60_000,
+      );
+    },
     writeRecord(input) {
       const checked = checkTaskRecordWrite(input.write);
       if (!checked.ok) return { kind: 'refused', refusal: checked.refusal };

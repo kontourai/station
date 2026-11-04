@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -11,10 +12,14 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { CreateRequestClaims } from '../../orchestration/create-request-claims.js';
 import { WorktreeProvisioningService } from '../../projects/worktree-provisioning-service.js';
 import {
   createConversationHandoffIntent,
@@ -69,6 +74,7 @@ function dependencies(): ExecutionTargetExecutionDependencies {
           },
         }) as any,
     ),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: vi.fn(async () => null),
     startSession: vi.fn(async () => undefined),
     sendTurn: vi.fn(async () => ({ turnId: 'provider-turn-1' })),
@@ -76,7 +82,194 @@ function dependencies(): ExecutionTargetExecutionDependencies {
   };
 }
 
+const makeCreateHome = trackTempDirs();
+
 describe('executeForegroundMessage', () => {
+  test('durably marks a claimed foreground create before the real session-start port', async () => {
+    const home = makeCreateHome('foreground-create-mark-');
+    const deps = dependencies();
+    deps.startSession = vi.fn(async (_access, start) => {
+      const rows = JSON.parse(
+        readFileSync(join(home, 'create-request-claims.json'), 'utf8'),
+      ).claims;
+      expect(Object.values(rows)).toEqual([
+        expect.objectContaining({
+          sessionId: start.threadId,
+          starting: true,
+        }),
+      ]);
+      return undefined;
+    });
+    const receipt = await new CreateRequestClaims(home).run(
+      {
+        kind: 'foreground',
+        principal: undefined,
+        authority: sessionReadAuthorityFromRequest(
+          'test-user',
+          undefined,
+          undefined,
+        ),
+        requestKey: 'first-key',
+        intent: { message: 'first' },
+        hasSessionStartRecord: () => false,
+      },
+      (conversationId) =>
+        executeForegroundMessage(
+          {
+            userId: 'test-user',
+            conversationId,
+            clientTurnId: 'first-key',
+            message: 'first',
+            target: {
+              environment: { kind: 'current' },
+              agent: agentId('station'),
+            },
+          },
+          deps,
+        ),
+    );
+    expect(receipt).toMatchObject({ providerTurnId: 'provider-turn-1' });
+    expect(deps.startSession).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['station-memory', 'seed'] as const)(
+    'context carriage follows the declared %s ownership instead of the provider name',
+    async (history) => {
+      const deps = dependencies();
+      const adapter = deps.getProviderAdapter('station-agent')!;
+      deps.getProviderAdapter = () => ({
+        ...adapter,
+        metadata: {
+          ...adapter.metadata,
+          durability: {
+            ...STATION_ENGINE_DURABILITY,
+            contextCarriage: {
+              ...STATION_ENGINE_DURABILITY.contextCarriage,
+              history,
+            },
+          },
+        },
+      });
+      deps.nativeMemoryOwnsTranscript = true;
+      deps.readSessionBinding = async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+        userId: 'test-user',
+      });
+      deps.resolveConversationSession = async () => ({
+        sessionId: 'conversation:test',
+        startRequired: false,
+        transcriptSeed: 'authorized prior transcript',
+      });
+      await executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'continue',
+        },
+        deps,
+      );
+      expect(vi.mocked(deps.sendTurn).mock.calls[0][1].ambientContext).toBe(
+        history === 'station-memory'
+          ? undefined
+          : 'authorized prior transcript',
+      );
+    },
+  );
+
+  test('carries a prompt origin to the authorized local turn and refuses a remote target', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+      userId: 'test-user',
+    }));
+    const input = {
+      userId: 'test-user',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('station'),
+      },
+      conversationId: 'conversation:test',
+      message: 'MCP prompt',
+      mcpPromptOrigin: { serverId: 'mail', name: 'summarize', untrusted: true },
+    };
+    await executeForegroundMessage(input, deps);
+    expect(deps.sendTurn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ mcpPromptOrigin: input.mcpPromptOrigin }),
+    );
+    deps.resolveEnvironmentAccess = async () =>
+      ({
+        apiBase: 'https://remote.example',
+        environmentId: 'remote',
+        environmentName: 'Remote',
+        kind: 'remote',
+        requestOptions: {},
+      }) as any;
+    await expect(executeForegroundMessage(input, deps)).rejects.toThrow(
+      /cannot be safely carried to another Station/,
+    );
+  });
+  // #4162: `resolution` names the Agent's binding at send time. Only a send
+  // that started its Session may let a client read it as that Session's
+  // engine; a turn sent to a running Session (possibly on an older engine)
+  // must not claim it.
+  describe('sessionStarted', () => {
+    const send = (deps: ReturnType<typeof dependencies>) =>
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'hello',
+        },
+        deps,
+      );
+    const bound = (deps: ReturnType<typeof dependencies>) => {
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      return deps;
+    };
+
+    test('marks a new conversation as started', async () => {
+      const handle = await send(dependencies());
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('marks a successor Session as started', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test:successor');
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('leaves a turn sent to a running Session unmarked', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test',
+        startRequired: false,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test');
+      expect(handle).not.toHaveProperty('sessionStarted');
+    });
+  });
+
   test('keyed foreground owns raw intent before target authorization awaits', async () => {
     const deps = dependencies();
     deps.getAgent = async () => ({
@@ -378,6 +571,23 @@ describe('executeForegroundMessage', () => {
         },
         deps,
       );
+
+    test('records a coordinator tools restart on the successor start', async () => {
+      const deps = restartDependencies();
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+        coordinatorToolsRestart: true,
+      }));
+      await send(deps);
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          threadId: 'conversation:test:successor',
+          metadata: expect.objectContaining({ coordinatorToolsRestart: true }),
+        }),
+      );
+    });
 
     test('stops the predecessor only after the successor has started', async () => {
       const deps = restartDependencies();

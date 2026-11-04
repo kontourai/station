@@ -17,6 +17,7 @@ describe('Vitest in-flight reporter', () => {
     const output: string[] = [];
     const reporter = new VitestInflightReporter({
       intervalMs: 30_000,
+      now: () => 0,
       write: (message: string) => {
         output.push(message);
         return true;
@@ -34,8 +35,8 @@ describe('Vitest in-flight reporter', () => {
       reporter.onTestRunEnd();
 
       expect(output).toEqual([
-        '[vitest-progress] in-flight: a.test.ts\n',
-        '[vitest-progress] final in-flight: a.test.ts\n',
+        '[vitest-progress] in-flight: a.test.ts {stage=running; elapsedMs=0; cases=unknown; hooks=unknown}\n',
+        '[vitest-progress] final in-flight: a.test.ts {stage=running; elapsedMs=0; cases=unknown; hooks=unknown}\n',
       ]);
       expect(reporter.timer).toBeNull();
     } finally {
@@ -53,21 +54,99 @@ describe('Vitest in-flight reporter', () => {
       },
     });
     for (let index = 0; index < 18; index += 1) {
-      reporter.onTestModuleStart(
-        testModule(
-          `/repo/${index}`,
-          `${String(index).padStart(2, '0')}-module\n${'x'.repeat(300)}`,
-        ),
+      const module = testModule(
+        `/repo/${index}`,
+        `${String(index).padStart(2, '0')}-module\n${'x'.repeat(300)}`,
       );
+      reporter.onTestModuleStart(module);
+      for (let activity = 0; activity < 4; activity++) {
+        const testCase = {
+          id: `${activity}\n${'c'.repeat(100)}`,
+          module,
+          type: 'test' as const,
+        };
+        reporter.onTestCaseReady(testCase);
+        reporter.onHookStart({ entity: testCase, name: 'afterEach' });
+      }
     }
 
     reporter.emit('[vitest-progress] in-flight:');
 
     expect(output).toHaveLength(1);
     expect(output[0]).not.toContain('\nxx');
+    expect(output[0]).not.toContain('\ncc');
     expect(output[0]).toContain('00-module ');
     expect(output[0]).toContain('... +2\n');
-    expect(output[0]!.length).toBeLessThan(4_500);
+    expect(output[0]).toContain('|+2');
+    expect(output[0]!.length).toBeLessThan(9_000);
+  });
+
+  test('keeps queued modules separate and records only observed case and hook intervals', () => {
+    let now = 0;
+    const output: string[] = [];
+    const reporter = new VitestInflightReporter({
+      now: () => now,
+      write: (message: string) => {
+        output.push(message);
+        return true;
+      },
+    });
+    const module = {
+      ...testModule('/repo/z.test.ts', 'z.test.ts'),
+      type: 'module' as const,
+      id: 'module-id',
+    };
+    const testCase = { id: 'case-id', module, type: 'test' as const };
+    const hook = { entity: testCase, name: 'afterEach' as const };
+    reporter.onTestModuleQueued(module);
+    now = 20;
+    reporter.emit('[vitest-progress] in-flight:');
+    expect(output.at(-1)).toContain(
+      'stage=queued; elapsedMs=20; cases=unknown; hooks=unknown',
+    );
+    reporter.onTestModuleCollected(module);
+    now = 35;
+    reporter.emit('[vitest-progress] in-flight:');
+    expect(output.at(-1)).toContain('stage=collected; elapsedMs=15');
+    reporter.onTestModuleStart(module);
+    reporter.onTestCaseReady(testCase);
+    now = 50;
+    reporter.onHookStart(hook);
+    now = 75;
+    reporter.emit('[vitest-progress] in-flight:');
+    expect(output.at(-1)).toContain(
+      'stage=running; elapsedMs=40; cases=case-id@40ms; hooks=afterEach@25ms',
+    );
+    reporter.onHookEnd(hook);
+    reporter.onTestCaseResult(testCase);
+    reporter.onTestModuleEnd(module);
+    reporter.emit('[vitest-progress] in-flight:');
+    expect(output.at(-1)).toContain(
+      'unknown (no observed module; teardown unobserved)',
+    );
+    expect(output.at(-1)).not.toContain('case-id');
+    expect(output.at(-1)).not.toContain('afterEach');
+  });
+
+  test('keeps running work visible ahead of a bounded queue and disposes the run timer', () => {
+    const output: string[] = [];
+    const reporter = new VitestInflightReporter({
+      now: () => 0,
+      write: (message: string) => {
+        output.push(message);
+        return true;
+      },
+    });
+    reporter.onTestRunStart();
+    for (let index = 0; index < 20; index++) {
+      reporter.onTestModuleQueued(testModule(`/repo/a${index}`, `a${index}`));
+    }
+    reporter.onTestModuleStart(testModule('/repo/z', 'z-running'));
+    reporter.emit('[vitest-progress] in-flight:');
+    expect(output.at(-1)).toContain('z-running {stage=running;');
+    expect(output.at(-1)).toContain('... +5');
+    reporter.onTestRunEnd();
+    expect(reporter.timer).toBeNull();
   });
 
   /**

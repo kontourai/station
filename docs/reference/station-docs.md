@@ -63,6 +63,25 @@ because its documentation was retrieved.
 
 A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
 
+Walkthroughs turn a local video into a versioned transcript and selected frames.
+Use `station walkthrough import <file> --project <slug>`, then list/show, or
+`list_walkthroughs` and `get_walkthrough` on station-control. Reads need Project
+view authority; imports need drive. MCP returns images in pages of at most four.
+Missing media tools or speech models refuse the import and list the consented
+downloads. Walkthroughs is a default-off Feature Preview: enable it in
+Settings → Advanced → Feature previews, then consent with
+`station media-tools download --yes`. CLI and MCP calls preserve the typed
+`feature_preview_disabled` refusal while off. MCP tools remain advertised and
+recheck through the live server routes at call time. The personal-host runtime
+shares one downloader and recognizer; hosted and published behavior remain unverified. See [Walkthrough imports](../guides/walkthroughs.md).
+
+The sensitive `browser_record_to_task` tool can also save a silent Browser clip
+to the bound lead Session's Task. With Walkthroughs and Task review previews on,
+open it under Review's Screens. Cancelling the call, closing the Browser, or
+stopping Station cancels an in-progress recording and removes its staging.
+This path uses Task-scoped reads, separate from Project imports; see
+[Task clips](../guides/walkthroughs.md#record-a-task-clip).
+
 Projects scope Agent selection. A Project can filter global Agents, and an
 Agent may name an owning Project. Project-owned Agents are excluded from global
 selection. A missing owner can be surfaced as an orphan finding instead of
@@ -99,6 +118,7 @@ Engines use different transports, including native SDKs, headless processes,
 and the Agent Client Protocol. The user-facing identity is the engine's name.
 The runtime-owned Station Agent is a role, not a synonym for Station's engine;
 its selected execution engine determines the available delivery mechanisms.
+People see it as **Station Assistant** (#4388); its id stays `station`.
 
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
@@ -202,7 +222,15 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
+The Inbox groups a Task's authorized work chats beneath its outcome, including independent Task-room Agent requests and linked conversations. A chat associated with several Tasks stays separate. Selecting a Task reveals Overview; selecting a work chat opens that conversation. Running counts reflect actual chats rather than Task status.
+
+The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation. The Project shared-work projection includes human messages and the document, not Agent answers. An admitted member of the exact shared Task can also read the personal Task room's published history, including room-published Agent answers; private Session access remains separately authorized. Linking a child Task or work chat does not publish it, grant access or complete its parent.
+
+With the **Chat apps** Feature Preview on, expand **Details → Written to the
+issue** to load Station-recorded outbound attempts and linked retries. Empty
+history does not prove that no external write happened. Task-bound chat and
+tracker producers are pending; existing unbound PR actions and external `gh`
+commands do not populate this log. See [Task guidance](../guides/starter-work.md#start-your-first-task).
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
@@ -219,10 +247,18 @@ An agent on any engine can declare a pull request it opened with the Station Con
 ## Scheduled jobs and notifications
 
 A scheduled job can use a cron expression, a fixed interval (`every`), or a
-one-time timestamp (`at`); manual runs are also supported. The built-in
-scheduler invokes an Agent with unattended-deny approval policy and records
-its scheduler outcome.
+one-time timestamp (`at`); manual runs are also supported. The product calls
+these Automations. A job with a `target` runs each time as a turn in its
+conversation, on that conversation's engine and approval mode, and its result
+is in the chat; a job without one invokes a Station-engine Agent with
+unattended-deny approval policy and writes its output to a file. Either way
+the scheduler records its outcome. See [Automations](../user/automations.md).
 See the [scheduler API](api.md#scheduler) for exact inputs and outcomes.
+
+Previously written server logs may still contain automation names and errors.
+Upgrading does not rewrite those files; review access to retained files and
+collector copies. The active UTC day is retained even if retention limits are
+lowered. See [server log retention](config.md#logging).
 
 Scheduler receipts describe the observed execution outcome. They do not attach
 a Flow run or prove the requested business result by themselves. Inspect the

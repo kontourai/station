@@ -7,3 +7,28 @@
   flex-shrink: 0;
   overflow-wrap: anywhere;
 }
+
+.layout-view-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+}
+
+.layout-view-pending > button {
+  align-self: flex-start;
+}
+
+.layout-view-state {
+  margin: var(--k-space-3);
+}
+
+/* Outside a dialog footer the shared actions row is a plain block, so the
+   two recovery buttons sat flush against each other. */
+.layout-view-state .responsive-surface-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--k-space-2);
+}

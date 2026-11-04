@@ -13,12 +13,24 @@ import type {
   PortabilityImportLedgerEntry,
 } from '@kontourai/station-contracts/portability';
 import {
+  assertToolOAuthClientWritable,
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
   type ToolDef,
+  withoutToolBindingReferences,
+  withStationIntegrationTrustDefaults,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  migrateIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLock,
+  acquireFileMutationLockAsync,
+} from '@kontourai/station-shared/lifecycle-events';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import {
   ToolServerCredentialStore,
   toolServerIntegrationMutationLockPath,
@@ -110,12 +122,27 @@ export function listIntegrations(
   return readdirSync(integrationsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => {
-      const def = JSON.parse(
-        readFileSync(
-          join(integrationsDir, entry.name, 'integration.json'),
-          'utf-8',
-        ),
-      ) as ToolDef;
+      const release = acquireFileMutationLock(
+        toolServerIntegrationMutationLockPath(projectHome, entry.name),
+      );
+      let def: ToolDef;
+      try {
+        const raw = JSON.parse(
+          readFileSync(
+            join(integrationsDir, entry.name, 'integration.json'),
+            'utf-8',
+          ),
+        ) as ToolDef;
+        def = applyIntegrationTrustOverlay(
+          {
+            ...raw,
+            contentTrust: stationCuratedContentTrust(raw) ?? 'trusted',
+          },
+          migrateIntegrationTrustOverlay(projectHome, entry.name, raw),
+        );
+      } finally {
+        release();
+      }
       // Directory identity is authoritative. A manifest field cannot select
       // another server's credential namespace during export.
       def.id = entry.name;
@@ -169,8 +196,9 @@ export function listIntegrations(
       }
       delete def.storedEnvNames;
       delete def.secretEnv;
-      delete def.secretEnvRefs;
-      return def;
+      // Binding references (env and OAuth client secret) name this Station's
+      // secret bindings and never travel in a portable artifact.
+      return withoutToolBindingReferences(def);
     })
     .sort((a, b) => a.id.localeCompare(b.id)) as ToolDef[];
 }
@@ -197,7 +225,21 @@ export async function writeIntegration(
     const previous = existsSync(path)
       ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
       : undefined;
-    const persisted = { ...def };
+    assertToolOAuthClientWritable(previous, def);
+    const overlay = migrateIntegrationTrustOverlay(projectHome, id, previous);
+    const effectivePrevious = previous
+      ? applyIntegrationTrustOverlay(previous, overlay)
+      : undefined;
+    const persisted = withUntrustedContentChange(
+      effectivePrevious,
+      withStationIntegrationTrustDefaults(
+        def,
+        effectivePrevious,
+        stationCuratedContentTrust(def),
+      ),
+      undefined,
+      new Date(),
+    );
     const previousNames = previous?.storedEnvNames ?? [];
     const refs = new Set(previousNames);
     for (const [name, secret] of Object.entries(secrets)) {
@@ -205,6 +247,11 @@ export async function writeIntegration(
       refs.add(name);
     }
     delete persisted.env;
+    delete persisted.untrustedContentPermissions;
+    delete persisted.trustReadOnlyHints;
+    delete persisted.untrustedContentChanges;
+    delete persisted.untrustedContentPersonOwned;
+    persisted.contentTrust = stationCuratedContentTrust(def) ?? 'trusted';
     delete persisted.secretEnv;
     delete persisted.storedEnvNames;
     delete persisted.requiredEnvNames;
@@ -229,7 +276,10 @@ export function validateIntegrationImport(id: string, def: ToolDef): void {
   if (!isSafeToolServerId(id))
     throw new Error(`Invalid tool-server import id: ${JSON.stringify(id)}`);
   const secrets = { ...(def.env ?? {}), ...(def.secretEnv ?? {}) };
-  if (Object.keys(def.secretEnvRefs ?? {}).length > 0) {
+  if (
+    Object.keys(def.secretEnvRefs ?? {}).length > 0 ||
+    def.oauthClient?.clientSecretRef !== undefined
+  ) {
     throw new Error(
       'Portable integration artifacts cannot import secret binding references; establish bindings through the destination operator flow.',
     );

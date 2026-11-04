@@ -15,6 +15,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  isDocumentVisible,
+  subscribeDocumentVisibility,
+} from '../lib/documentVisibility';
 
 type AuthStatus = ContractAuthStatus['status'] | 'loading';
 
@@ -121,8 +125,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void checkStatus();
-    const interval = setInterval(checkStatus, MS_PER_MINUTE);
-    return () => clearInterval(interval);
+    // An explicit refetch bypasses React Query's hidden-page pause, so the
+    // minute check skips a hidden page and runs once when it is shown again.
+    const interval = setInterval(() => {
+      if (isDocumentVisible()) void checkStatus();
+    }, MS_PER_MINUTE);
+    const stopWatchingVisibility = subscribeDocumentVisibility(() => {
+      if (isDocumentVisible()) void checkStatus();
+    });
+    return () => {
+      clearInterval(interval);
+      stopWatchingVisibility();
+    };
   }, [checkStatus]);
 
   useEffect(() => {

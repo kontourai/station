@@ -140,3 +140,24 @@ describe('files sent with a start', () => {
     );
   });
 });
+
+describe('the Permissions pick rides the selection', () => {
+  test('a pick is read with the selection', () => {
+    expect(
+      readNewChatIntent(
+        event({ selection: { context: 'alpha', approvalMode: 'never' } }),
+      ).selection,
+    ).toEqual({ context: 'alpha', approvalMode: 'never' });
+  });
+  test('an unknown pick refuses the whole selection, never a default start', () => {
+    const intent = readNewChatIntent(
+      event({
+        startWithDefault: true,
+        selection: { context: 'alpha', approvalMode: 'everything' },
+      }),
+    );
+    expect(intent.selection).toBeUndefined();
+    expect(intent.selectionInvalid).toBe(true);
+    expect(intent.startWithDefault).toBe(false);
+  });
+});

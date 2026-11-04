@@ -1,5 +1,7 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
+import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
+import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
@@ -10,11 +12,17 @@ import {
 } from './provider.js';
 import type { ProviderFailure } from './provider-failure.js';
 import type {
+  RuntimeEventContentRef,
+  RuntimeEventSpilledContent,
+  SpillableText,
+} from './runtime-event-content.js';
+import type {
   SessionLifecycleState,
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
 import type { StationControlRefusalView } from './station-control-refusal.js';
+import type { PricingSnapshot, UsageReceipt } from './usage-rollup.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -318,6 +326,13 @@ export interface CanonicalRuntimeEventBase {
    * is not (attribution, never authorization).
    */
   principal?: PrincipalRef;
+  /**
+   * Set only by EventStore when it stored one or more of this event's large
+   * content values out of line (docs/design/event-content-spill.md). Those
+   * fields then hold a `RuntimeEventContentRef`; resolve it before treating
+   * the value as complete. Never accepted from a producer.
+   */
+  spilledContent?: RuntimeEventSpilledContent;
 }
 
 export interface SessionStartedEvent extends CanonicalRuntimeEventBase {
@@ -388,10 +403,18 @@ export interface SessionExitedEvent extends CanonicalRuntimeEventBase {
   reason?: string;
 }
 
+/** Durable cancellation intent; it makes no assertion that an engine has stopped. */
+export interface SessionCancellationRequestedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.cancellation-requested';
+  sessionId: string;
+  action: 'stop' | 'cancel';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
-  prompt?: string;
+  prompt?: SpillableText;
   /**
    * The idempotency key of the send this turn came from
    * (`OrchestrationSendTurnInput.clientTurnId`), stamped by Station when the
@@ -424,7 +447,7 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * normal send-turn composition choke point instead of persisting a second
    * copy of the composed model input.
    */
-  ambientContext?: string;
+  ambientContext?: SpillableText;
   metadata?: Record<string, unknown>;
 }
 
@@ -440,7 +463,7 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * stop. It does not change the turn's outcome: the turn still completed.
    */
   stopReason?: string;
-  outputText?: string;
+  outputText?: SpillableText;
   /**
    * station#1182: additive, back-compat (absent on every event persisted
    * before this field existed). Carries `reportedModel` when an adapter can
@@ -459,7 +482,7 @@ export interface TurnAbortedEvent extends CanonicalRuntimeEventBase {
    * Set ONLY by `InterruptedTurnRecovery.consume()` (station#2235). Marks
    * this abort as synthesized crash recovery, not the engine's own terminal
    * fact for the turn. The boundary-retirement machinery
-   * (`session-turn-boundary.ts`'s `observe()` and the event store's
+   * (the Monument boundary's `observe()` and the event store's
    * `reconcileSessionTurnTerminalsFromEvents`) ignores a marked abort, so
    * the recovery's own boundary row survives until its explicit resolve and
    * the crash-window retry chain (banner, FileMemory marker, explicit
@@ -554,6 +577,24 @@ export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
   delta: string;
 }
 
+/**
+ * Images the turn's reply named by host path, copied into the attachment
+ * store once the turn settled (`chat-host-images` Feature Preview; see
+ * `chat-host-images.ts`). Station writes this event itself after the turn's
+ * `turn.completed`; one from an engine is discarded.
+ *
+ * `attachments` carry data URLs only on the way in: the EventStore stores
+ * the bytes, binds each to this thread and persists `blobRef` instead, as
+ * for a `tool.completed`'s images. `sources` maps each named path to an
+ * attachment or to the reason it was not kept.
+ */
+export interface ContentHostImagesEvent extends CanonicalRuntimeEventBase {
+  method: 'content.host-images';
+  turnId: string;
+  attachments?: PersistedChatAttachment[];
+  sources: ChatHostImageSource[];
+}
+
 export interface ContentReasoningDeltaEvent extends CanonicalRuntimeEventBase {
   method: 'content.reasoning-delta';
   /**
@@ -644,6 +685,12 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
   /**
+   * The claude.ai page a Claude Code `Artifact` publish produced, read by
+   * the Claude adapter from the tool's structured output (never its text)
+   * and admitted only as an https://claude.ai URL. See `claude-artifact.ts`.
+   */
+  claudeArtifact?: ClaudeArtifactLink;
+  /**
    * A station-control tool's refusal, read from its whole result before a
    * history window cut it to an excerpt (which no longer parses). Bounded;
    * see `station-control-refusal.ts`.
@@ -722,7 +769,7 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    */
   status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
-  error?: string;
+  error?: SpillableText;
   /** See {@link ToolProgressEvent.outputReceipt}. */
   outputReceipt?: ToolOutputReceipt;
   /**
@@ -770,7 +817,7 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
-  description?: string;
+  description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;
 }
@@ -931,6 +978,10 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
+  reasoningTokens?: number;
+  /** Contemporaneous route observation, never reconstructed from the current connection. */
+  servingRoute?: UsageReceipt['route'];
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
@@ -952,19 +1003,7 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must never fill it later from a live catalog: this is the historical
    * estimate's immutable provenance.
    */
-  pricingSnapshot?: {
-    id: string;
-    capturedAt: string;
-    /** Catalog authority captured at ingestion, never recovered on read. */
-    source?: string;
-    currency: string;
-    provider: string;
-    model: string;
-    inputPerMillion?: number;
-    outputPerMillion?: number;
-    cacheReadPerMillion?: number;
-    cacheWritePerMillion?: number;
-  };
+  pricingSnapshot?: PricingSnapshot;
   /**
    * Cost in USD **as the provider reported it** (station#1299 item 4).
    *
@@ -1214,7 +1253,9 @@ export interface WorkflowStateChangedEvent extends CanonicalRuntimeEventBase {
 export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface PlanEntry {
-  content: string;
+  /** A single entry too large to keep inline is stored out of line
+   * (docs/design/event-content-spill.md). */
+  content: SpillableText;
   status: PlanEntryStatus;
 }
 
@@ -1227,7 +1268,7 @@ export interface PlanEntry {
  */
 export interface PlanUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'plan.updated';
-  entries: PlanEntry[];
+  entries: PlanEntry[] | RuntimeEventContentRef;
 }
 
 /**
@@ -1275,6 +1316,8 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
   sourceSessionId?: string;
   /** Native provider fork is exceptional; Station transcript replay is explicit. */
   continuation?: 'native' | 'replay-seed';
+  /** Immutable, actor-bound imported context in this EventStore; not a provider Session. */
+  contextDigest?: string;
 }
 
 export type CanonicalRuntimeEvent =
@@ -1282,6 +1325,7 @@ export type CanonicalRuntimeEvent =
   | SessionConfiguredEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
+  | SessionCancellationRequestedEvent
   | TurnStartedEvent
   | TurnCompletedEvent
   | TurnAbortedEvent
@@ -1289,6 +1333,7 @@ export type CanonicalRuntimeEvent =
   | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
+  | ContentHostImagesEvent
   | ToolStartedEvent
   | ToolProgressEvent
   | ToolCompletedEvent
@@ -1319,5 +1364,5 @@ export type ProviderRuntimeErrorBody = Omit<
 >;
 
 export type ProviderRuntimeEvent =
-  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent | ContentHostImagesEvent>
   | ProviderRuntimeErrorEvent;

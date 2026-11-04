@@ -2,6 +2,8 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
+  ForegroundMessageQueuedError,
+  queueExecutionMessage,
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
 import { skillExperienceAttachmentInputs } from '@kontourai/station-shared/skill-experience-values';
@@ -13,7 +15,7 @@ import { resolveTurnModel } from './turnModel';
  * attachment mapping beside the canonical `/api/orchestration/chat` call and
  * is loaded only when a user actually sends a message.
  */
-export async function dispatchForeground(input: {
+type ForegroundInput = {
   apiBase: string;
   sessionId: string;
   agentSlug: string;
@@ -40,7 +42,14 @@ export async function dispatchForeground(input: {
    */
   setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
   setApprovalModeBasedOn?: number | null;
+  /**
+   * The person's personal per-engine default on a chat's first send: a hint
+   * the server applies below the Agent's and the Project's defaults, never a
+   * pick (`recordPersonalApprovalDefault`).
+   */
+  personalApprovalDefault?: import('@kontourai/station-contracts/provider').ApprovalMode;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   ambientContext?: string;
@@ -51,7 +60,9 @@ export async function dispatchForeground(input: {
   skillExperienceAttachmentAssignments?: Record<string, string[]>;
   requestScope?: import('@kontourai/station-sdk/client').ClientRequestOptions['requestScope'];
   signal?: AbortSignal;
-}) {
+};
+
+async function foregroundRequest(input: ForegroundInput) {
   // #2436: the pick travels as the message's own `setApprovalMode` with its
   // basis, never as a model option. It survives the `engine-selected` branch
   // below: resetting the model does not withdraw an approval pick.
@@ -149,78 +160,134 @@ export async function dispatchForeground(input: {
     throw new Error(
       'Composer files must have distinct identities before assigning visual skill roles.',
     );
-  return sendExecutionMessage(
-    input.apiBase,
-    {
-      target: {
-        ...(!input.projectSlug ||
-        input.executionAgentId ||
-        input.executionOnCurrentStation
-          ? { environment: { kind: 'current' as const } }
-          : {}),
-        agent: input.executionAgentId
-          ? {
-              kind: 'agent-execution-override',
-              agent: agentId(input.agentSlug),
-              executionAgent: agentId(input.executionAgentId),
-              ...(input.expectedDefinitionFingerprint
-                ? {
-                    expectedDefinitionFingerprint:
-                      input.expectedDefinitionFingerprint,
-                  }
-                : {}),
-            }
-          : agentId(input.agentSlug),
-        ...(input.expectedEngine &&
-        (!input.projectSlug ||
-          input.executionAgentId ||
-          input.executionOnCurrentStation)
-          ? { expectedEngine: input.expectedEngine }
-          : {}),
-        ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
-          ? {
-              model: {
-                ...(requestedModel ? { override: requestedModel } : {}),
-                ...(modelOptions ? { options: modelOptions } : {}),
-              },
-            }
-          : {}),
-        ...(input.projectSlug
-          ? {
-              workspace: {
-                kind: 'project' as const,
-                projectSlug: input.projectSlug,
-              },
-            }
-          : {}),
-      },
-      message: input.message,
-      conversationId: input.conversationId ?? input.sessionId,
-      ...attachmentDispatch,
-      ambientContext: input.ambientContext,
-      clientTurnId: input.clientTurnId,
-      automaticBackground: input.automaticBackground,
-      ...(input.skillExperience
+  const body = {
+    target: {
+      ...(!input.projectSlug ||
+      input.executionAgentId ||
+      input.executionOnCurrentStation
+        ? { environment: { kind: 'current' as const } }
+        : {}),
+      agent: input.executionAgentId
         ? {
-            skillExperience: {
-              ...input.skillExperience,
-              ...(input.skillExperienceAttachmentRoles?.length
-                ? {
-                    attachmentInputs: skillExperienceAttachmentInputs(
-                      input.skillExperienceAttachmentRoles,
-                      outgoingAttachmentIds,
-                      input.skillExperienceAttachmentAssignments,
-                    ),
-                  }
-                : {}),
+            kind: 'agent-execution-override' as const,
+            agent: agentId(input.agentSlug),
+            executionAgent: agentId(input.executionAgentId),
+            ...(input.expectedDefinitionFingerprint
+              ? {
+                  expectedDefinitionFingerprint:
+                    input.expectedDefinitionFingerprint,
+                }
+              : {}),
+          }
+        : agentId(input.agentSlug),
+      ...(input.expectedEngine &&
+      (!input.projectSlug ||
+        input.executionAgentId ||
+        input.executionOnCurrentStation)
+        ? { expectedEngine: input.expectedEngine }
+        : {}),
+      ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
+        ? {
+            model: {
+              ...(requestedModel ? { override: requestedModel } : {}),
+              ...(modelOptions ? { options: modelOptions } : {}),
             },
           }
         : {}),
-      ...approvalPick,
+      ...(input.projectSlug
+        ? {
+            workspace: {
+              kind: 'project' as const,
+              projectSlug: input.projectSlug,
+            },
+          }
+        : {}),
     },
-    {
+    message: input.message,
+    ...(input.mcpPromptOrigin
+      ? { mcpPromptOrigin: input.mcpPromptOrigin }
+      : {}),
+    conversationId: input.conversationId ?? input.sessionId,
+    ...attachmentDispatch,
+    ambientContext: input.ambientContext,
+    clientTurnId: input.clientTurnId,
+    automaticBackground: input.automaticBackground,
+    ...(input.skillExperience
+      ? {
+          skillExperience: {
+            ...input.skillExperience,
+            ...(input.skillExperienceAttachmentRoles?.length
+              ? {
+                  attachmentInputs: skillExperienceAttachmentInputs(
+                    input.skillExperienceAttachmentRoles,
+                    outgoingAttachmentIds,
+                    input.skillExperienceAttachmentAssignments,
+                  ),
+                }
+              : {}),
+          },
+        }
+      : {}),
+    ...approvalPick,
+    ...(input.personalApprovalDefault &&
+    input.personalApprovalDefault !== 'connection-default' &&
+    input.setApprovalMode === undefined
+      ? { personalApprovalDefault: input.personalApprovalDefault }
+      : {}),
+  };
+  return {
+    body,
+    options: {
       signal: input.signal,
       ...(input.requestScope ? { requestScope: input.requestScope } : {}),
     },
+  };
+}
+
+export async function dispatchForeground(input: ForegroundInput) {
+  const { body, options } = await foregroundRequest(input);
+  return sendExecutionMessage(input.apiBase, body, options);
+}
+
+export async function dispatchPossiblyQueuedForeground(input: ForegroundInput) {
+  const { body, options } = await foregroundRequest(input);
+  try {
+    const receipt = await sendExecutionMessage(
+      input.apiBase,
+      { ...body, whenBusy: 'queue' },
+      options,
+    );
+    return { outcome: 'started' as const, receipt };
+  } catch (error) {
+    if (error instanceof ForegroundMessageQueuedError) {
+      if (
+        error.receipt.clientTurnId === input.clientTurnId &&
+        error.receipt.conversationId === input.conversationId &&
+        error.receipt.entry.message === input.message
+      )
+        return error.receipt;
+      throw new Error('Station did not confirm this message identity.');
+    }
+    throw error;
+  }
+}
+
+export async function dispatchQueuedForeground(input: ForegroundInput) {
+  const { body, options } = await foregroundRequest(input);
+  if (
+    body.setApprovalMode !== undefined ||
+    body.setApprovalModeBasedOn !== undefined
+  )
+    throw new Error(
+      'Apply the pending approval choice before queuing a follow-up.',
+    );
+  return queueExecutionMessage(
+    input.apiBase,
+    {
+      ...body,
+      setApprovalMode: undefined,
+      setApprovalModeBasedOn: undefined,
+    },
+    options,
   );
 }

@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
+import {
+  STATION_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -137,6 +141,142 @@ describe('fetchConversationById distinguishes a miss from a failure', () => {
       agentSlug: 'codex',
     });
   });
+});
+
+describe('conversation-open callerAccess', () => {
+  const unavailable = (callerAccess?: unknown) => ({
+    status: 'unavailable',
+    canContinue: false,
+    recoveryActions: ['retry', 'start-new'],
+    conversation: { id: 'c', title: 'Cool', agentSlug: 'codex' },
+    transcript: { available: false, owner: 'runtime' },
+    answerability: { answerable: true },
+    ...(callerAccess === undefined ? {} : { callerAccess }),
+  });
+  const respond = (data: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+  test('passes the server-reported access through and tolerates its absence', async () => {
+    _setApiBase('https://station.example.test');
+    respond(unavailable({ continue: false, startChat: true }));
+    await expect(resolveConversationOpen('c')).resolves.toMatchObject({
+      callerAccess: { continue: false, startChat: true },
+    });
+    // An older server omits it: still a valid resolution, access unknown.
+    respond(unavailable());
+    const resolution = await resolveConversationOpen('c');
+    expect(resolution.callerAccess).toBeUndefined();
+  });
+
+  test('rejects a malformed access value rather than reading it as unknown', async () => {
+    _setApiBase('https://station.example.test');
+    for (const callerAccess of [
+      { continue: 'yes', startChat: true },
+      { continue: true, startChat: 'yes' },
+      { continue: true },
+      null,
+    ]) {
+      respond(unavailable(callerAccess));
+      await expect(
+        resolveConversationOpen('c'),
+        JSON.stringify(callerAccess),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  });
+});
+
+describe('conversation-open adapter durability', () => {
+  test.each([
+    { name: 'older host', durability: undefined, accepted: true },
+    {
+      name: 'Station declaration',
+      durability: STATION_ENGINE_DURABILITY,
+      accepted: true,
+    },
+    {
+      name: 'native declaration',
+      durability: STEERING_ENGINE_DURABILITY,
+      accepted: true,
+    },
+    ...[
+      null,
+      {},
+      { ...STATION_ENGINE_DURABILITY, steerPlacement: { state: 'native' } },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        compaction: { state: 'none', detail: 'test', owner: 'guessed' },
+      },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        steerPlacement: {
+          state: 'native',
+          detail: 'test',
+          boundary: 'guessed',
+        },
+      },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        steerPlacement: { state: { toString: 'native' }, detail: 'test' },
+      },
+    ].map((durability, index) => ({
+      name: `malformed declaration ${index}`,
+      durability,
+      accepted: false,
+    })),
+  ])(
+    'opens $name only when the declaration is valid',
+    async ({ durability, accepted }) => {
+      _setApiBase('https://station.example.test');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                status: 'resolved',
+                currentSessionId: 'c',
+                canContinue: true,
+                recoveryActions: [],
+                answerability: { answerable: true },
+                conversation: { id: 'c', title: 'Chat', agentSlug: 'codex' },
+                transcript: {
+                  available: true,
+                  owner: 'runtime',
+                  messageCount: 1,
+                },
+                execution: {
+                  sessionId: 'c',
+                  agentId: 'codex',
+                  provider: 'codex',
+                  durability,
+                },
+              },
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      );
+      const request = resolveConversationOpen('c');
+      if (!accepted) {
+        await expect(request).rejects.toMatchObject({
+          kind: 'invalid-response',
+        });
+        return;
+      }
+      const result = await request;
+      if (result.status !== 'resolved')
+        throw new Error('Expected a resolved conversation.');
+      expect(result.execution?.durability).toEqual(durability);
+    },
+  );
 });
 
 describe('conversation intent summary normalization', () => {
@@ -638,6 +778,80 @@ test('conversation open accepts declared execution metadata and refuses wrong-ch
       await expect(
         resolveConversationOpen('conversation', 'https://station.example'),
       ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('conversation open accepts a boolean or absent nextTurnStartsSession and refuses any other shape (#4179)', async () => {
+  const data = {
+    status: 'resolved',
+    currentSessionId: 'child-b',
+    canContinue: true,
+    recoveryActions: [],
+    answerability: { answerable: true },
+    conversation: { id: 'conversation', title: 'Restored', agentSlug: 'agent' },
+    transcript: { available: true, owner: 'runtime', messageCount: 2 },
+  };
+  const answer = (response: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(Response.json({ success: true, data: response })),
+    );
+  try {
+    for (const response of [
+      data,
+      { ...data, nextTurnStartsSession: true },
+      { ...data, nextTurnStartsSession: false },
+    ]) {
+      answer(response);
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).resolves.toEqual(response);
+    }
+    for (const nextTurnStartsSession of ['true', 1, null, {}]) {
+      answer({ ...data, nextTurnStartsSession });
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('fork-ready opening accepts saved context and refuses invented runtime bindings', async () => {
+  const data = {
+    status: 'fork-ready',
+    conversation: { id: 'fork', title: 'Saved fork', agentSlug: 'codex' },
+    transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  };
+  try {
+    for (const extra of [
+      {},
+      { currentSessionId: 'invented' },
+      { execution: { sessionId: 'invented' } },
+    ]) {
+      const response = { ...data, ...extra };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
+      );
+      const opened = resolveConversationOpen('fork', 'https://station.example');
+      if (Object.keys(extra).length === 0)
+        await expect(opened).resolves.toEqual(data);
+      else
+        await expect(opened).rejects.toMatchObject({
+          kind: 'invalid-response',
+        });
     }
   } finally {
     vi.unstubAllGlobals();

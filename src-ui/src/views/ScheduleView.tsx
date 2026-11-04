@@ -186,12 +186,12 @@ export function ScheduleView() {
             if (authority) schedulerJobDialogStore.open({ authority });
           }}
         >
-          Add job
+          New automation
         </Button>
       </PageFrameActions>
 
       {isLoading || loadingStats || loadingStatus ? (
-        <SkeletonBlock count={4} label="Loading scheduler" />
+        <SkeletonBlock count={4} label="Loading automations" />
       ) : (
         <>
           <ScheduleStats

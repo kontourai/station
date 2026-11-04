@@ -90,6 +90,7 @@ type RecoverableRoomHistory = Omit<ProjectTaskRoomAuthority, 'append'> &
   Pick<ProjectTaskRoomHistory, 'append'> &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
+type RequestCapability = BrowserCapability | 'edit-plan' | 'other';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
@@ -141,13 +142,30 @@ interface RequestPrincipal {
   readonly deviceId: string;
   readonly policyRevision: string;
   readonly displayName?: string;
+  readonly member?: true;
 }
 export interface ProjectTaskRoomRequestAuthority {
+  /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
+  isCurrent?(
+    request: Request,
+    principal: RequestPrincipal,
+    taskId: string,
+    capability: RequestCapability,
+  ): boolean;
   resolve(
     request: Request,
+    taskId: string,
+    capability: RequestCapability,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
 interface ProjectTaskRoomRuntimeDeps {
+  readonly subscribeMembershipChanges?: (
+    listener: (change: {
+      projectId: string;
+      principalId: string;
+      revision: number;
+    }) => void,
+  ) => () => void;
   readonly attachments?: TaskRoomAttachments;
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
@@ -194,6 +212,8 @@ interface ProjectTaskRoomRuntimeDeps {
   readonly readExecutionBinding?: (
     sessionId: string,
   ) => { readonly projectId: string; readonly taskId: string } | undefined;
+  readonly conversationOfSession?: (sessionId: string) => string;
+  readonly currentConversationSessionId?: (conversationId: string) => string;
   /** #4003 Task memory; absent, memory reads and writes are unavailable. */
   readonly memory?: TaskMemoryStore;
   /**
@@ -207,7 +227,10 @@ interface ProjectTaskRoomRuntimeDeps {
     };
     readonly record: TaskMemoryRecord;
   }) => Promise<unknown> | unknown;
-  readonly readDisplayName?: (id: string) => Promise<string | undefined>;
+  readonly readDisplayName?: (
+    id: string,
+    taskId: string,
+  ) => Promise<string | undefined>;
   readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
   readonly readAgentAnswers?: (input: {
     sessionId: string;
@@ -215,6 +238,10 @@ interface ProjectTaskRoomRuntimeDeps {
   }) => Promise<
     readonly { turnId: string; text: string; occurredAt: string }[]
   >;
+  readonly onAnswerUnavailable?: (
+    error: TaskRoomAnswerUnavailableError,
+    taskId: string,
+  ) => void;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
   /** Test-only crash boundary for durable publication recovery proofs. */
@@ -240,6 +267,7 @@ interface IssuedEditPlan {
   readonly scope: { projectId: string; taskId: string; documentId: string };
   readonly principal: RequestPrincipal;
   readonly issuedAt: number;
+  readonly onlyIfEmpty?: true;
 }
 interface LiveMaterialAuthority {
   readonly principal: RequestPrincipal;
@@ -258,6 +286,8 @@ interface PersistedLiveRoomRecovery {
 interface RoomSubscriber {
   readonly request: Request;
   readonly emit: (event: unknown) => void;
+  readonly principal: RequestPrincipal;
+  unsubscribeMembership?: () => void;
   ready: boolean;
   pending: unknown[];
 }
@@ -363,6 +393,16 @@ type LiveCommandInput = {
   outcome?: 'completed' | 'failed' | 'cancelled';
 };
 
+export class TaskRoomAnswerUnavailableError extends Error {
+  constructor(
+    readonly sessionId: string,
+    readonly turnId: string,
+  ) {
+    super('Completed Task answer is unavailable.');
+    this.name = 'TaskRoomAnswerUnavailableError';
+  }
+}
+
 export class ProjectTaskRoomRuntime {
   readonly #deps: ProjectTaskRoomRuntimeDeps;
   readonly #issued = new Map<string, IssuedGrant>();
@@ -442,15 +482,18 @@ export class ProjectTaskRoomRuntime {
     const agents = new Set<string>();
     const sessions = new Set<string>();
     for (const record of result.records) {
-      if (
-        record.principal.kind === 'operator' &&
-        !people.has(record.principal.operatorId)
-      ) {
-        people.add(record.principal.operatorId);
+      if (record.principal.kind !== 'agent') {
+        const personId =
+          record.principal.kind === 'member'
+            ? record.principal.principalId
+            : record.principal.operatorId;
+        if (people.has(personId)) continue;
+        people.add(personId);
         const name = await this.#deps.readDisplayName?.(
-          record.principal.operatorId,
+          personId,
+          record.scope.taskId,
         );
-        if (name) this.#displayNames.set(record.principal.operatorId, name);
+        if (name) this.#displayNames.set(personId, name);
       } else if (record.principal.kind === 'agent') {
         if (!agents.has(record.principal.agentId)) {
           agents.add(record.principal.agentId);
@@ -654,6 +697,7 @@ export class ProjectTaskRoomRuntime {
       scope: association.document,
       intentId: plan.batch.intentId,
       intentDigest: plan.batch.digest,
+      coalesceRevisionPublication: true,
       actorId,
       actorLabel: input.agentId,
       actorKind: 'agent',
@@ -710,13 +754,6 @@ export class ProjectTaskRoomRuntime {
       ),
     });
     await this.#notify(association.document, { type: 'document', ...result });
-    const revisionEvidence = await this.#drainRevisionPublication({
-      taskId: input.taskId,
-      scope: association.document,
-      systemRecovery: true,
-    });
-    if (revisionEvidence.kind === 'linked')
-      await this.#publishHistory(association.document);
     return {
       kind: result.kind,
       revision: result.revision,
@@ -745,7 +782,9 @@ export class ProjectTaskRoomRuntime {
     const scope = this.#scope(taskId);
     if (!scope) return { kind: 'unavailable', reason: 'the Task has no room' };
     const document = { ...scope, documentId: documentIdFor(scope) };
-    const result = await this.#deps.working.read({ scope: document });
+    const result = await this.#deps.working.read({
+      scope: document,
+    });
     const current = this.#scope(taskId);
     if (
       !current ||
@@ -767,7 +806,11 @@ export class ProjectTaskRoomRuntime {
         kind: 'unavailable',
         reason: 'the Task document is unavailable',
       };
-    return { kind: 'available', revision: result.revision, text: result.text };
+    return {
+      kind: 'available',
+      revision: result.revision,
+      text: result.text,
+    };
   }
 
   /**
@@ -987,12 +1030,119 @@ export class ProjectTaskRoomRuntime {
    * immutable journal record of this incarnation, so the incarnation check
    * covers it.
    */
-  async #sessionMemoryAccess(
-    sessionId: string,
-  ): Promise<TaskMemoryAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+  async #sessionMemoryAccess(sessionId: string) {
     const memory = this.#deps.memory;
-    if (this.#closed || this.#deps.hosted?.() || !memory)
-      return { kind: 'unavailable' };
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#sessionTaskAccess(sessionId);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  async #personMemoryAccess(taskId: string, request: Request) {
+    const memory = this.#deps.memory;
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#personTaskAccess(taskId, request);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  personTaskReviewAccess(input: { taskId: string; request: Request }) {
+    return this.#personTaskAccess(input.taskId, input.request);
+  }
+
+  /** Context placement uses the current lead or immutable independent request, without granting review rights. */
+  sessionTaskContextAccess(sessionId: string) {
+    return this.#sessionTaskAccess(sessionId);
+  }
+
+  async sessionTaskReviewAccess(sessionId: string) {
+    const access = await this.#sessionTaskAccess(sessionId);
+    if (access.kind !== 'granted') return access;
+    const workspace = JSON.stringify(
+      this.#deps.taskGraph.readTaskView(access.write.taskId)?.workspaceBinding,
+    );
+    const isLead = () => {
+      const task = this.#deps.taskGraph.readTaskView(access.write.taskId);
+      return Boolean(
+        task?.sessionId &&
+          this.#currentSessionMatches(task.sessionId, sessionId) &&
+          JSON.stringify(task.workspaceBinding) === workspace,
+      );
+    };
+    if (!isLead()) return { kind: 'no-task' as const };
+    return {
+      ...access,
+      write: {
+        ...access.write,
+        beforeCommit: () => isLead() && access.write.beforeCommit(),
+      },
+    };
+  }
+
+  async readPlanForReview(taskId: string, request: Request) {
+    const access = await this.#personTaskAccess(taskId, request);
+    if (access.kind !== 'granted') return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async readPlanForSessionReview(taskId: string, sessionId: string) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    if (access.kind !== 'granted' || access.write.taskId !== taskId)
+      return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async readPlanOrdinalsForReview(
+    taskId: string,
+    request: Request,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const access = await this.#personTaskAccess(taskId, request);
+    return access.kind === 'granted'
+      ? this.#readReviewPlanOrdinals(access, revision, revisions)
+      : undefined;
+  }
+
+  async readPlanOrdinalsForSessionReview(
+    taskId: string,
+    sessionId: string,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    return access.kind === 'granted' && access.write.taskId === taskId
+      ? this.#readReviewPlanOrdinals(access, revision, revisions)
+      : undefined;
+  }
+
+  async #readReviewPlanOrdinals(
+    access: TaskReviewAccess,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const scope = this.#scope(access.write.taskId);
+    if (!scope) return undefined;
+    const result = await this.#deps.working.readRevisionOrdinals({
+      scope: { ...scope, documentId: documentIdFor(scope) },
+      revision,
+      revisions,
+    });
+    return access.write.beforeCommit() && result.kind === 'available'
+      ? result.revisionOrdinals
+      : undefined;
+  }
+
+  async #readReviewPlan(access: TaskReviewAccess) {
+    const result = await this.readTaskDocumentForBrief(access.write.taskId);
+    const scope = this.#scope(access.write.taskId);
+    if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
+      return { kind: 'unavailable' as const };
+    return { ...result, documentId: documentIdFor(scope) };
+  }
+
+  async #sessionTaskAccess(
+    sessionId: string,
+  ): Promise<TaskReviewAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
     const binding = this.#readExecutionBinding(sessionId);
     if (binding === 'unavailable') return { kind: 'unavailable' };
     if (!binding) return { kind: 'no-task' };
@@ -1007,10 +1157,11 @@ export class ProjectTaskRoomRuntime {
     )
       return { kind: 'no-task' };
     const { task, scope } = association;
-    const lead = task.sessionId === sessionId;
+    const lead = Boolean(
+      task.sessionId && this.#currentSessionMatches(task.sessionId, sessionId),
+    );
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'no-task' },
       write: {
         projectId: scope.projectId,
@@ -1018,7 +1169,11 @@ export class ProjectTaskRoomRuntime {
         taskCreatedAt: task.createdAt,
         author: { kind: 'session', sessionId },
         beforeCommit: () => {
-          if (this.#closed) return false;
+          if (
+            this.#closed ||
+            !this.#currentSessionMatches(sessionId, sessionId)
+          )
+            return false;
           const nowBinding = this.#readExecutionBinding(sessionId);
           const now = this.#deps.taskGraph.readTaskView(task.id);
           const nowScope = this.#scope(task.id);
@@ -1029,7 +1184,11 @@ export class ProjectTaskRoomRuntime {
               nowBinding.projectId === binding.projectId &&
               now &&
               now.createdAt === task.createdAt &&
-              (!lead || now.sessionId === sessionId) &&
+              (!lead ||
+                Boolean(
+                  now.sessionId &&
+                    this.#currentSessionMatches(now.sessionId, sessionId),
+                )) &&
               nowScope &&
               sameScope(nowScope, scope),
           );
@@ -1039,24 +1198,22 @@ export class ProjectTaskRoomRuntime {
   }
 
   /** A person's write access: the same request authority as document edits. */
-  async #personMemoryAccess(
+  async #personTaskAccess(
     taskId: string,
     request: Request,
   ): Promise<
-    TaskMemoryAccess | { readonly kind: 'not-found' | 'unavailable' }
+    TaskReviewAccess | { readonly kind: 'not-found' | 'unavailable' }
   > {
-    const memory = this.#deps.memory;
-    if (!memory) return { kind: 'unavailable' };
     const authorized = await this.#authorizedDocumentWithPrincipal(
       taskId,
       request,
+      'edit-plan',
     );
     const task = this.#deps.taskGraph.readTaskView(taskId);
     const scope = this.#scope(taskId);
     if (!authorized || !task || !scope) return { kind: 'not-found' };
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'not-found' },
       write: {
         projectId: scope.projectId,
@@ -1071,6 +1228,12 @@ export class ProjectTaskRoomRuntime {
           const nowScope = this.#scope(task.id);
           return Boolean(
             !this.#closed &&
+              this.#deps.requestAuthority.isCurrent?.(
+                request,
+                authorized.principal,
+                taskId,
+                'edit-plan',
+              ) === true &&
               now &&
               now.createdAt === task.createdAt &&
               nowScope &&
@@ -1291,7 +1454,13 @@ export class ProjectTaskRoomRuntime {
           sessionId: request.sessionId,
         });
         if (!durable) continue;
-        await this.publishAgentAnswers(taskId, request.sessionId);
+        try {
+          await this.publishAgentAnswers(taskId, request.sessionId);
+        } catch (error) {
+          if (!(error instanceof TaskRoomAnswerUnavailableError)) throw error;
+          this.#deps.onAnswerUnavailable?.(error, taskId);
+          continue;
+        }
         const started: PendingAgentLifecycle = {
           taskId,
           sessionId: request.sessionId,
@@ -1408,10 +1577,38 @@ export class ProjectTaskRoomRuntime {
         scope: { ...scope, documentId: documentIdFor(scope) },
         historyOpened: true,
       });
+    const viewer = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    const writer = await this.#principal(
+      input.request,
+      input.taskId,
+      'message-write',
+    );
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    if (!viewer || !current || !samePrincipal(viewer, current))
+      return { kind: 'not-found' };
     return {
       ...opened,
       revisionLinksAvailable: this.#deps.revisionEvidence?.available() === true,
-    } as typeof opened & { readonly revisionLinksAvailable: boolean };
+      roomCapabilities: {
+        messageWrite: !!writer && samePrincipal(viewer, writer),
+        // The account-bound allowlist does not admit the batch settlement leaf.
+        documentWrite: !viewer.member,
+      },
+    } as typeof opened & {
+      readonly revisionLinksAvailable: boolean;
+      readonly roomCapabilities: {
+        messageWrite: boolean;
+        documentWrite: boolean;
+      };
+    };
   }
 
   /**
@@ -1826,7 +2023,9 @@ export class ProjectTaskRoomRuntime {
     currentSharedRead?: () => Promise<boolean>;
   }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (
       !scope ||
       !principal ||
@@ -1844,7 +2043,11 @@ export class ProjectTaskRoomRuntime {
       input.taskId,
       input.request,
     );
-    const currentPrincipal = await this.#principal(input.request);
+    const currentPrincipal = await this.#principal(
+      input.request,
+      input.taskId,
+      'history-read',
+    );
     if (
       !currentScope ||
       !currentPrincipal ||
@@ -1871,8 +2074,14 @@ export class ProjectTaskRoomRuntime {
      */
     onDurableSettlementForDiagnostic?: () => void;
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const plan = this.#plans.get(input.intentId);
     if (!plan) {
@@ -1890,6 +2099,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -1938,6 +2148,7 @@ export class ProjectTaskRoomRuntime {
             input.request,
             scope,
             principal,
+            'edit-plan',
           ))
         )
           return { kind: 'not-found' } as const;
@@ -1956,13 +2167,19 @@ export class ProjectTaskRoomRuntime {
       return { kind: 'rejected' as const };
     // The grant is checked immediately before the private atomic commit; a
     // revocation during planning therefore cannot settle a previously-issued plan.
-    const current = await this.#principal(input.request);
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'edit-plan',
+    );
     if (!current || !samePrincipal(current, plan.principal))
       return { kind: 'not-found' as const };
-    const result = await this.#deps.working.settle({
+    const settlement = {
       scope,
       intentId: input.intentId,
       intentDigest: input.intentDigest,
+      coalesceRevisionPublication: true,
+      ...(plan.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
       actorId: actorIdFor(plan.principal),
       actorLabel: plan.principal.operatorId,
       publicationPrincipal: {
@@ -1978,8 +2195,41 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ),
-    });
+    } as const;
+    let result = await this.#deps.working.settle(settlement);
+    if (
+      result.kind === 'rejected' &&
+      result.reason === 'revision-publication-pending'
+    ) {
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+          'edit-plan',
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      await this.#drainRevisionPublication({
+        taskId: input.taskId,
+        request: input.request,
+        scope,
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+          'edit-plan',
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      result = await this.#deps.working.settle(settlement);
+    }
     // Do not accept or publish a result that crossed an asynchronous worker
     // boundary after its initiating paired-device grant was revoked.
     if (
@@ -1988,6 +2238,7 @@ export class ProjectTaskRoomRuntime {
         input.request,
         scope,
         plan.principal,
+        'edit-plan',
       ))
     )
       return { kind: 'not-found' } as const;
@@ -1996,18 +2247,73 @@ export class ProjectTaskRoomRuntime {
       await this.#notify(scope, { type: 'document', ...result });
       if (result.kind === 'committed')
         this.#deps.afterRevisionPublicationStep?.('document-commit');
-      const revisionEvidence = await this.#drainRevisionPublication({
-        taskId: input.taskId,
-        request: input.request,
-        scope,
-      });
-      return { ...result, revisionEvidence };
+      const discover = await this.#issue(
+        input.taskId,
+        input.request,
+        'discover',
+      );
+      if (discover) await this.#history.open({ grant: discover });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      return { ...result, revisionEvidence: { kind: 'unavailable' as const } };
     }
     if (result.kind === 'conflict')
       return { kind: 'rejected', reason: 'idempotency-conflict' } as const;
     return result.kind === 'unavailable'
       ? ({ kind: 'unavailable' } as const)
       : result;
+  }
+
+  /** Freeze only the exact revision requested by a consumer, before it links. */
+  async freezeDocumentRevision(input: {
+    taskId: string;
+    documentId: string;
+    workingRevision: string;
+    beforeCommit: () => boolean;
+  }): Promise<boolean> {
+    const scope = this.#scope(input.taskId);
+    if (
+      !scope ||
+      this.#closed ||
+      this.#deps.hosted?.() ||
+      !input.beforeCommit() ||
+      documentIdFor(scope) !== input.documentId
+    )
+      return false;
+    // Refuse before claiming: a claim the bridge cannot drain blocks every
+    // later save in this room until evidence becomes available again.
+    if (!this.#deps.revisionEvidence?.available()) return false;
+    const document = { ...scope, documentId: input.documentId };
+    const task = this.#deps.taskGraph.readTaskView(input.taskId);
+    if (!task) return false;
+    const initialPrincipal = {
+      operatorId: task.createdBy,
+      deviceId: 'initial-revision',
+      policyRevision: this.#roomPolicyRevision(scope),
+    };
+    const requested = await this.#deps.working.requestRevisionPublication?.({
+      scope: document,
+      workingRevision: input.workingRevision,
+      initialPrincipal,
+      initialActorId: actorIdFor({ kind: 'granted', ...initialPrincipal }),
+      beforeCommit: async () => input.beforeCommit(),
+    });
+    if (!input.beforeCommit()) return false;
+    if (requested?.kind === 'existing')
+      return (
+        this.#deps.revisionEvidence?.matchesCommittedRevision?.({
+          scope: document,
+          workingRevision: input.workingRevision,
+          evidenceRevision: requested.evidenceRevision,
+        }) === true
+      );
+    if (requested?.kind !== 'requested') return false;
+    const result = await this.#drainRevisionPublication({
+      taskId: input.taskId,
+      scope: document,
+      systemRecovery: true,
+      expectedWorkingRevision: input.workingRevision,
+    });
+    return input.beforeCommit() && result.kind === 'linked';
   }
 
   async #drainRevisionPublication(input: {
@@ -2017,6 +2323,7 @@ export class ProjectTaskRoomRuntime {
     historyOpened?: boolean;
     systemRecovery?: boolean;
     expectedIntentId?: string;
+    expectedWorkingRevision?: string;
   }): Promise<
     | { readonly kind: 'linked'; readonly revisionId: string }
     | { readonly kind: 'unavailable' }
@@ -2029,12 +2336,19 @@ export class ProjectTaskRoomRuntime {
       // turn before the synchronous ledger restore in available()/freeze().
       // Persistence remains awaited; delivery is not evidence-link completion.
       await new Promise<void>((resolve) => setImmediate(resolve));
-      if (this.#closed || !bridge.available()) return { kind: 'unavailable' };
+      if (this.#closed) return { kind: 'unavailable' };
       const read = await this.#deps.working.readRevisionPublication({
         scope: input.scope,
       });
       if (read.kind !== 'available') return { kind: 'unavailable' };
       const publication = read.publication;
+      if (
+        publication.freezeRequested === false ||
+        (input.expectedWorkingRevision &&
+          publication.workingRevision !== input.expectedWorkingRevision) ||
+        !bridge.available()
+      )
+        return { kind: 'unavailable' };
       if (
         input.expectedIntentId &&
         publication.intentId !== input.expectedIntentId
@@ -2043,6 +2357,13 @@ export class ProjectTaskRoomRuntime {
       let revisionId = publication.evidenceRevision;
       if (!revisionId) {
         const recorded = bridge.recordPublication(publication);
+        if (recorded.kind === 'refused') {
+          await this.#deps.working.releaseRevisionPublication?.({
+            scope: input.scope,
+            intentId: publication.intentId,
+          });
+          return { kind: 'unavailable' };
+        }
         if (recorded.kind !== 'recorded') return { kind: 'unavailable' };
         revisionId = recorded.revisionId;
         this.#deps.afterRevisionPublicationStep?.('freeze');
@@ -2118,20 +2439,13 @@ export class ProjectTaskRoomRuntime {
   }
 
   /**
-   * Why a proposal brief cannot seed a new Task document, checked before the
-   * Task exists (#4007): the document's own bound, then the Station-wide
-   * revision ledger as room admission counts it (#4055). Advisory: a write
-   * between this check and the seed is still refused by the seed itself.
+   * Check the document's own bounds before creating a Task (#4007).
+   * Seeding keeps an unlinked candidate and does not reserve ledger capacity.
    */
   async proposalBriefRefusal(
     text: string,
   ): Promise<RevisionEvidenceAdmissionRefusal | null> {
-    const document = taskRoomDocumentSeedRefusal(text);
-    if (document || this.#closed || this.#deps.hosted?.()) return document;
-    const usage = await this.#deps.working.revisionLedgerUsage?.();
-    return usage?.kind === 'available'
-      ? taskRoomDocumentSeedRefusal(text, usage)
-      : null;
+    return taskRoomDocumentSeedRefusal(text);
   }
 
   /**
@@ -2183,8 +2497,14 @@ export class ProjectTaskRoomRuntime {
     onlyIfEmpty?: boolean;
     selection: { anchor: number; focus: number };
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const snapshot = await this.#deps.working.privateSnapshot({ scope });
     if (!snapshot) return { kind: 'unavailable' } as const;
@@ -2226,6 +2546,7 @@ export class ProjectTaskRoomRuntime {
       scope,
       principal,
       issuedAt: Date.now(),
+      ...(input.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
     });
     return {
       kind: 'planned' as const,
@@ -2239,7 +2560,9 @@ export class ProjectTaskRoomRuntime {
 
   async recovery(input: { taskId: string; request: Request }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const stored = await this.#deps.working.readRecovery({ scope });
     if (
@@ -2292,7 +2615,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     if (!(await this.#recoverPending(document)))
@@ -2643,7 +2966,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     const key = documentKey(document);
@@ -2651,64 +2974,92 @@ export class ProjectTaskRoomRuntime {
     const subscriber: RoomSubscriber = {
       request: input.request,
       emit: input.emit,
+      principal,
       ready: false,
       pending: [],
     };
     subscribers.add(subscriber);
     this.#subscribers.set(key, subscribers);
-    if (!this.#unwatchWorking)
-      this.#unwatchWorking = this.#deps.working.watch(() => {
-        void this.#publishWorkingChanges();
-      });
-    if (!(await this.#recoverPending(document))) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    const now = Date.now();
-    const entry = this.#liveEntry(document, now);
-    const authorization: LiveWorkAuthorization = {
-      actorId: actorIdFor(principal),
-      scope: entry.room.scope,
-      capabilities: new Set(['read']),
-    };
-    const documentProjection = await this.#deps.working.read({
-      scope: document,
-      ...(input.after ? { after: input.after } : {}),
-    });
-    if (
-      !(await this.#sameAuthorizedDocument(
-        input.taskId,
-        input.request,
-        document,
-        principal,
-      ))
-    ) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    return {
-      kind: 'subscribed' as const,
-      initial: {
-        type: 'snapshot',
-        generation: entry.generation,
-        viewerActorId: actorIdFor(principal),
-        live: this.#liveSnapshot(entry, authorization, now),
-        document: documentProjection,
-      },
-      unsubscribe: () => {
+    try {
+      subscriber.unsubscribeMembership =
+        this.#deps.subscribeMembershipChanges?.((change) => {
+          if (change.principalId !== principal.operatorId) return;
+          void this.#subscriberAuthorized(document, subscriber)
+            .catch(() => false)
+            .then((authorized) => {
+              if (!authorized && subscribers.has(subscriber)) {
+                this.#deliver(subscriber, { type: 'terminal' });
+                this.#removeSubscriber(document, subscriber);
+              }
+            });
+        });
+      if (!this.#unwatchWorking)
+        this.#unwatchWorking = this.#deps.working.watch(() => {
+          void this.#publishWorkingChanges();
+        });
+      if (!(await this.#recoverPending(document))) {
         this.#removeSubscriber(document, subscriber);
-      },
-      activate: () => {
-        subscriber.ready = true;
-        for (const event of subscriber.pending.splice(0))
-          subscriber.emit(event);
-      },
-    };
+        return { kind: 'not-found' } as const;
+      }
+      const now = Date.now();
+      const entry = this.#liveEntry(document, now);
+      const authorization: LiveWorkAuthorization = {
+        actorId: actorIdFor(principal),
+        scope: entry.room.scope,
+        capabilities: new Set(['read']),
+      };
+      const documentProjection = await this.#deps.working.read({
+        scope: document,
+        ...(input.after ? { after: input.after } : {}),
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          document,
+          principal,
+        ))
+      ) {
+        this.#removeSubscriber(document, subscriber);
+        return { kind: 'not-found' } as const;
+      }
+      return {
+        kind: 'subscribed' as const,
+        initial: {
+          type: 'snapshot',
+          generation: entry.generation,
+          viewerActorId: actorIdFor(principal),
+          live: this.#liveSnapshot(entry, authorization, now),
+          document: documentProjection,
+        },
+        unsubscribe: () => {
+          this.#removeSubscriber(document, subscriber);
+        },
+        activate: () => {
+          subscriber.ready = true;
+          for (const event of subscriber.pending.splice(0))
+            subscriber.emit(event);
+        },
+      };
+    } catch (error) {
+      this.#removeSubscriber(document, subscriber);
+      throw error;
+    }
   }
 
   /** SSE cadence rechecks the same request authority even when the document is idle. */
   async subscriptionAlive(input: { taskId: string; request: Request }) {
-    return Boolean(await this.#authorizedDocument(input.taskId, input.request));
+    const document = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+    );
+    if (!document) return false;
+    const subscriber = [
+      ...(this.#subscribers.get(documentKey(document)) ?? []),
+    ].find((item) => item.request === input.request);
+    return subscriber
+      ? this.#subscriberAuthorized(document, subscriber)
+      : false;
   }
 
   /**
@@ -2728,7 +3079,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return false;
     const entry = this.#live.get(documentKey(document));
@@ -2816,7 +3167,11 @@ export class ProjectTaskRoomRuntime {
         input.request,
       );
       const principal = document
-        ? await this.#principal(input.request)
+        ? await this.#principal(
+            input.request,
+            entry.room.scope.taskId,
+            'history-read',
+          )
         : undefined;
       if (
         !taskScope ||
@@ -2940,6 +3295,9 @@ export class ProjectTaskRoomRuntime {
     this.#activeLiveRecovery.clear();
     this.#unwatchWorking?.();
     this.#unwatchWorking = undefined;
+    for (const subscribers of this.#subscribers.values())
+      for (const subscriber of subscribers)
+        subscriber.unsubscribeMembership?.();
     this.#subscribers.clear();
     this.#documentNotificationChains.clear();
     this.#notificationChains.clear();
@@ -3084,7 +3442,11 @@ export class ProjectTaskRoomRuntime {
     const before = this.#deps.taskGraph.readTaskView(taskId);
     const scope = this.#scope(taskId);
     if (!before || !scope) return undefined;
-    if (before.agentId && before.sessionId === sessionId)
+    if (
+      before.agentId &&
+      before.sessionId &&
+      this.#currentSessionMatches(before.sessionId, sessionId)
+    )
       return {
         task: before,
         scope,
@@ -3093,7 +3455,7 @@ export class ProjectTaskRoomRuntime {
       };
     const request = (await this.#deps.readAgentRequests?.(taskId))?.find(
       (candidate) =>
-        candidate.sessionId === sessionId &&
+        this.#currentSessionMatches(candidate.sessionId, sessionId) &&
         candidate.taskCreatedAt === before.createdAt,
     );
     const task = this.#deps.taskGraph.readTaskView(taskId);
@@ -3137,7 +3499,8 @@ export class ProjectTaskRoomRuntime {
       !scope ||
       task.id !== input.taskId ||
       task.agentId !== input.agentId ||
-      task.sessionId !== input.sessionId ||
+      !task.sessionId ||
+      !this.#currentSessionMatches(task.sessionId, input.sessionId) ||
       task.projectId !== scope.projectId
     )
       return undefined;
@@ -3146,6 +3509,19 @@ export class ProjectTaskRoomRuntime {
       scope,
       document: { ...scope, documentId: documentIdFor(scope) },
     };
+  }
+
+  #currentSessionMatches(reference: string, candidate: string): boolean {
+    if (
+      !this.#deps.conversationOfSession ||
+      !this.#deps.currentConversationSessionId
+    )
+      return reference === candidate;
+    const conversation = this.#deps.conversationOfSession(reference);
+    return (
+      this.#deps.conversationOfSession(candidate) === conversation &&
+      this.#deps.currentConversationSessionId(conversation) === candidate
+    );
   }
 
   #publishAgentPresence(input: {
@@ -3313,7 +3689,11 @@ export class ProjectTaskRoomRuntime {
     // every live effect mints its grant from a fresh canonical request check.
     const grant = await this.#issue(taskId, request, capability);
     if (!grant) return undefined;
-    const current = await this.#principal(request);
+    const current = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     return current && samePrincipal(authority.principal, current)
       ? grant
       : undefined;
@@ -3372,7 +3752,11 @@ export class ProjectTaskRoomRuntime {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
     if (!scope) return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     if (!principal) return undefined;
     const token = randomUUID();
     // Grants span only the one request → history-worker operation. Keep their
@@ -3501,7 +3885,18 @@ export class ProjectTaskRoomRuntime {
       ? entry.room.snapshotAfterMutation(authorization, now)
       : entry.room.snapshot(authorization, now);
     if (read.outcome !== 'available') return read;
-    const participants = [...read.snapshot.participants];
+    const participants = read.snapshot.participants.map((participant) => {
+      const token = entry.ttlAuthorities.get(participant.actor.actorId);
+      const principal = token
+        ? entry.authorities.get(token)?.principal
+        : undefined;
+      return principal?.member
+        ? {
+            ...participant,
+            actor: { ...participant.actor, standing: 'member' as const },
+          }
+        : participant;
+    });
     for (const participant of entry.agentParticipants.values())
       if (
         !participants.some(
@@ -3665,6 +4060,8 @@ export class ProjectTaskRoomRuntime {
     document: { projectId: string; taskId: string; documentId: string },
     subscriber: RoomSubscriber,
   ) {
+    subscriber.unsubscribeMembership?.();
+    subscriber.unsubscribeMembership = undefined;
     const key = documentKey(document);
     const subscribers = this.#subscribers.get(key);
     if (!subscribers) return;
@@ -3684,7 +4081,7 @@ export class ProjectTaskRoomRuntime {
     for (const subscriber of [...subscribers]) {
       const projected = await this.#subscriberEvent(
         document,
-        subscriber.request,
+        subscriber,
         event,
       );
       if (projected === undefined) {
@@ -3698,11 +4095,11 @@ export class ProjectTaskRoomRuntime {
   }
   #subscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ) {
     const project = () =>
-      this.#projectSubscriberEvent(document, request, event);
+      this.#projectSubscriberEvent(document, subscriber, event);
     // Document delivery remains independent; only mutable live projections
     // must wait for a prepared/armed material transition to settle.
     return event &&
@@ -3714,14 +4111,19 @@ export class ProjectTaskRoomRuntime {
 
   async #projectSubscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ): Promise<unknown | undefined> {
     const current = await this.#authorizedDocumentWithPrincipal(
       document.taskId,
-      request,
+      subscriber.request,
     );
-    if (!current || !sameDocument(current.document, document)) return undefined;
+    if (
+      !current ||
+      !sameDocument(current.document, document) ||
+      !samePrincipal(current.principal, subscriber.principal)
+    )
+      return undefined;
     if (
       !event ||
       typeof event !== 'object' ||
@@ -3755,10 +4157,17 @@ export class ProjectTaskRoomRuntime {
   }
   async #subscriberAuthorized(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
   ) {
-    const current = await this.#authorizedDocument(document.taskId, request);
-    return Boolean(current && sameDocument(current, document));
+    const current = await this.#authorizedDocumentWithPrincipal(
+      document.taskId,
+      subscriber.request,
+    );
+    return Boolean(
+      current &&
+        sameDocument(current.document, document) &&
+        samePrincipal(current.principal, subscriber.principal),
+    );
   }
   async #publishHistory(document: {
     projectId: string;
@@ -3768,6 +4177,11 @@ export class ProjectTaskRoomRuntime {
     const subscribers = this.#subscribers.get(documentKey(document));
     if (!subscribers) return;
     for (const subscriber of [...subscribers]) {
+      if (!(await this.#subscriberAuthorized(document, subscriber))) {
+        this.#deliver(subscriber, { type: 'terminal' });
+        this.#removeSubscriber(document, subscriber);
+        continue;
+      }
       const result = await this.history({
         taskId: document.taskId,
         request: subscriber.request,
@@ -4160,9 +4574,9 @@ export class ProjectTaskRoomRuntime {
       const projection = await this.#deps.working.read({ scope });
       for (const subscriber of [...subscribers]) {
         // Every externally-observed update is reauthorized at delivery time.
-        if (!(await this.#subscriberAuthorized(scope, subscriber.request))) {
+        if (!(await this.#subscriberAuthorized(scope, subscriber))) {
           this.#deliver(subscriber, { type: 'terminal' });
-          subscribers.delete(subscriber);
+          this.#removeSubscriber(scope, subscriber);
           continue;
         }
         this.#deliver(subscriber, { type: 'document', ...projection });
@@ -4192,19 +4606,28 @@ export class ProjectTaskRoomRuntime {
   #roomPolicyRevision(scope: ProjectTaskRoomScope): string {
     return `${PROJECT_TASK_ROOM_POLICY_REVISION}:${scope.projectId}:${scope.taskId}`;
   }
-  async #authorizedDocument(taskId: string, request: Request) {
-    return (await this.#authorizedDocumentWithPrincipal(taskId, request))
-      ?.document;
+  async #authorizedDocument(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
+    return (
+      await this.#authorizedDocumentWithPrincipal(taskId, request, capability)
+    )?.document;
   }
   /**
    * A content delivery needs both the exact current document scope and its
    * principal. Resolve them once: running the same paired-request authority
    * twice serially turns one required recheck into avoidable delivery latency.
    */
-  async #authorizedDocumentWithPrincipal(taskId: string, request: Request) {
+  async #authorizedDocumentWithPrincipal(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
     if (this.#closed || this.#deps.hosted?.() || !this.#scope(taskId))
       return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(request, taskId, capability);
     if (!principal) return undefined;
     const scope = this.#scope(taskId)!;
     return {
@@ -4221,10 +4644,11 @@ export class ProjectTaskRoomRuntime {
     request: Request,
     expectedDocument: { projectId: string; taskId: string; documentId: string },
     expectedPrincipal: RequestPrincipal,
+    capability: RequestCapability = 'history-read',
   ) {
     const [document, principal] = await Promise.all([
-      this.#authorizedDocument(taskId, request),
-      this.#principal(request),
+      this.#authorizedDocument(taskId, request, capability),
+      this.#principal(request, taskId, capability),
     ]);
     return Boolean(
       document &&
@@ -4233,9 +4657,17 @@ export class ProjectTaskRoomRuntime {
         samePrincipal(principal, expectedPrincipal),
     );
   }
-  async #principal(request: Request): Promise<RequestPrincipal | undefined> {
+  async #principal(
+    request: Request,
+    taskId: string,
+    capability: RequestCapability,
+  ): Promise<RequestPrincipal | undefined> {
     try {
-      const result = await this.#deps.requestAuthority.resolve(request);
+      const result = await this.#deps.requestAuthority.resolve(
+        request,
+        taskId,
+        capability,
+      );
       if (result.kind !== 'granted') return undefined;
       if (result.displayName)
         this.#displayNames.set(result.operatorId, result.displayName);
@@ -4300,11 +4732,7 @@ export class ProjectTaskRoomRuntime {
           receiptId: issued.receiptId,
           capability: required,
           scope: currentScope,
-          principal: {
-            kind: 'operator',
-            operatorId: principal.operatorId,
-            deviceId: principal.deviceId,
-          },
+          principal: roomPersonPrincipal(principal),
           policyRevision: this.#roomPolicyRevision(currentScope),
         },
       };
@@ -4312,7 +4740,11 @@ export class ProjectTaskRoomRuntime {
     if (!issued.request) return { kind: 'revoked' };
     if (issued.currentSharedRead && !(await issued.currentSharedRead()))
       return { kind: 'revoked' };
-    const currentPrincipal = await this.#principal(issued.request);
+    const currentPrincipal = await this.#principal(
+      issued.request,
+      issued.scope.taskId,
+      roomRequestCapability(issued.capability),
+    );
     const settledScope = this.#scope(issued.scope.taskId);
     if (
       !settledScope ||
@@ -4330,11 +4762,7 @@ export class ProjectTaskRoomRuntime {
         receiptId: issued.receiptId,
         capability: required,
         scope: settledScope,
-        principal: {
-          kind: 'operator',
-          operatorId: currentPrincipal.operatorId,
-          deviceId: currentPrincipal.deviceId,
-        },
+        principal: roomPersonPrincipal(currentPrincipal),
         policyRevision: this.#roomPolicyRevision(settledScope),
       },
     };
@@ -4371,8 +4799,33 @@ function sameScope(a: ProjectTaskRoomScope, b: ProjectTaskRoomScope) {
     a.taskId === b.taskId
   );
 }
+function roomRequestCapability(capability: RoomCapability): RequestCapability {
+  if (capability === 'lifecycle-append') return 'history-read';
+  if (capability === 'revision-link') return 'edit-plan';
+  return capability === 'discover' ||
+    capability === 'history-read' ||
+    capability === 'message-write'
+    ? capability
+    : 'other';
+}
+function roomPersonPrincipal(
+  principal: RequestPrincipal,
+): ProjectTaskRoomPrincipal {
+  return principal.member
+    ? {
+        kind: 'member',
+        principalId: principal.operatorId,
+        deviceId: principal.deviceId,
+      }
+    : {
+        kind: 'operator',
+        operatorId: principal.operatorId,
+        deviceId: principal.deviceId,
+      };
+}
 function samePrincipal(a: RequestPrincipal, b: RequestPrincipal) {
   return (
+    a.member === b.member &&
     a.operatorId === b.operatorId &&
     a.deviceId === b.deviceId &&
     a.policyRevision === b.policyRevision
@@ -4389,9 +4842,15 @@ function sameDocument(
   );
 }
 /** A live actor is a paired-device identity, never the first room caller. */
-function actorIdFor(principal: RequestPrincipal) {
+function actorIdFor(
+  principal:
+    | RequestPrincipal
+    | Extract<ProjectTaskRoomPrincipal, { kind: 'operator' | 'member' }>,
+) {
+  const personId =
+    principal.kind === 'member' ? principal.principalId : principal.operatorId;
   return `human:${createHash('sha256')
-    .update(`${principal.operatorId}\u0000${principal.deviceId}`)
+    .update(`${personId}\u0000${principal.deviceId}`)
     .digest('hex')}`;
 }
 
@@ -4473,6 +4932,7 @@ function parsePersistedRecovery(value: unknown):
         ...(Object.hasOwn(item.principal, 'displayName')
           ? ['displayName']
           : []),
+        ...(Object.hasOwn(item.principal, 'member') ? ['member'] : []),
       ]) ||
       item.principal.kind !== 'granted' ||
       !boundedId(item.principal.operatorId) ||
@@ -4480,6 +4940,7 @@ function parsePersistedRecovery(value: unknown):
       !boundedId(item.principal.policyRevision) ||
       (item.principal.displayName !== undefined &&
         !boundedId(item.principal.displayName)) ||
+      (item.principal.member !== undefined && item.principal.member !== true) ||
       authorities.has(item.token)
     )
       return undefined;
@@ -4489,6 +4950,7 @@ function parsePersistedRecovery(value: unknown):
         operatorId: item.principal.operatorId,
         deviceId: item.principal.deviceId,
         policyRevision: item.principal.policyRevision,
+        ...(item.principal.member === true ? { member: true as const } : {}),
         ...(typeof item.principal.displayName === 'string'
           ? { displayName: item.principal.displayName }
           : {}),
@@ -4557,9 +5019,12 @@ function parsePendingAgentLifecycle(
     : undefined;
 }
 
-interface TaskMemoryAccess {
-  readonly kind: 'granted';
+interface TaskMemoryAccess extends TaskReviewAccess {
   readonly memory: TaskMemoryStore;
+}
+
+export interface TaskReviewAccess {
+  readonly kind: 'granted';
   /** What a write the in-transaction re-check stopped reports. */
   readonly staleOutcome: { readonly kind: 'no-task' | 'not-found' };
   readonly write: {
@@ -4638,6 +5103,9 @@ function projectHistory(
         .map((record: any) => ({
           actor: {
             kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+            ...(!guest && record.principal.kind === 'member'
+              ? { standing: 'member' }
+              : {}),
             id:
               record.principal.kind === 'agent'
                 ? agentActorId(
@@ -4653,8 +5121,17 @@ function projectHistory(
                   : (agentName(record.principal.agentId) ??
                     record.principal.agentId)
                 : guest
-                  ? `Participant ${createHash('sha256').update(`${record.principal.operatorId}\u0000${record.principal.deviceId}`).digest('hex').slice(-12)}`
-                  : (displayName(record.principal.operatorId) ?? 'Teammate'),
+                  ? `Participant ${createHash('sha256')
+                      .update(
+                        `${record.principal.kind === 'member' ? record.principal.principalId : record.principal.operatorId}\u0000${record.principal.deviceId}`,
+                      )
+                      .digest('hex')
+                      .slice(-12)}`
+                  : (displayName(
+                      record.principal.kind === 'member'
+                        ? record.principal.principalId
+                        : record.principal.operatorId,
+                    ) ?? 'Teammate'),
           },
           sequence: record.envelope.seq,
           occurredAt: record.envelope.proposal.happenedAt,
@@ -4737,6 +5214,7 @@ function projectBody(value: any): unknown {
       kind: value.kind,
       text: value.text,
       ...(value.attachments ? { attachments: value.attachments } : {}),
+      ...(value.mentions ? { mentions: value.mentions } : {}),
     };
   if (value?.kind === 'live-work-started')
     return {

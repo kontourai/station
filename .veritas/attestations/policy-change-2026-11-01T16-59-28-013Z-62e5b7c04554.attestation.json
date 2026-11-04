@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-11-01T16:59:28.013Z",
+  "repoStandardsHash": "sha256:802a52f82eca278223e6710bf02338be5d034122f666b1fad21667afdd71a9dd",
+  "repoMapHash": "sha256:c509a7c4abc7ca3c67d79a4b73616e6e01cee7474f520ea75f490e45f4985482",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+  "validUntilDays": 90,
+  "notes": "The turn-boundary files moved to Monument; the added artifact paths carry the existing session-transition coverage to the new locations.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+    "approvalRef": "owner (Brian Anderson) approved via orchestrator, 2026-11-01",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "31d90825b870466824b81891433fb65f75ded0b845deeb100c69b31c13a7aeb1",
+        "validUntil": "2027-01-30T16:59:28.013Z"
+      },
+      "createdAt": "2026-11-01T16:59:28.013Z",
+      "updatedAt": "2026-11-01T16:59:28.013Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+      "claimId": "veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "The turn-boundary files moved to Monument; the added artifact paths carry the existing session-transition coverage to the new locations.",
+      "observedAt": "2026-11-01T16:59:28.013Z",
+      "collectedBy": "codex",
+      "integrityRef": "31d90825b870466824b81891433fb65f75ded0b845deeb100c69b31c13a7aeb1",
+      "metadata": {
+        "actor": {
+          "id": "codex",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-11-01T16:59:28.013Z",
+        "validUntil": "2027-01-30T16:59:28.013Z",
+        "contentHash": "31d90825b870466824b81891433fb65f75ded0b845deeb100c69b31c13a7aeb1"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554",
+      "status": "proposed",
+      "actor": "codex",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-11-01T16-59-28-013Z-62e5b7c04554"
+      ],
+      "createdAt": "2026-11-01T16:59:28.013Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "721c3a4e4d93f9e98d767b57f3afdca26f75df41468be60205559aa1ef13828b"
+  }
+}

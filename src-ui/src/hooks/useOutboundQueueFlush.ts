@@ -12,6 +12,7 @@
  * owns.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
+import { isSteerConflictCode } from '@kontourai/station-contracts/provider';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -19,7 +20,10 @@ import {
   isTurnInFlight,
 } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
-import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import {
+  conversationCanMutate,
+  conversationOpenPhase,
+} from '../contexts/conversation-open-policy';
 import type {
   HeldOutboundIntent,
   OutboundDispatchTurn,
@@ -55,7 +59,10 @@ function heldOutboundIntents(
         : {}),
     };
     const held: Array<
-      readonly [string, { id: string; delivery?: string } | undefined]
+      readonly [
+        string,
+        { id: string; delivery?: string; originUnverified?: true } | undefined,
+      ]
     > = chat.queuedMessages.map(
       (content, index) =>
         [content, chat.queuedMessageMetadata?.[index]] as const,
@@ -66,7 +73,7 @@ function heldOutboundIntents(
         chat.pendingQueueDispatch.metadata,
       ]);
     for (const [content, metadata] of held) {
-      if (!metadata || metadata.delivery) continue;
+      if (!metadata || metadata.delivery || metadata.originUnverified) continue;
       intents.push({ ...base, clientTurnId: metadata.id, content });
     }
   }
@@ -143,6 +150,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
   stationRef.current = {
     apiBase,
     ...(environmentId ? { environmentId } : {}),
+    ...(namespace && authorityStatus === 'verified'
+      ? { authorityNamespace: namespace }
+      : {}),
   };
   const { status } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -262,10 +272,13 @@ export function useOutboundQueueFlush(apiBase: string): void {
           const reconciled =
             mode === 'full'
               ? await outboundDispatch.reconcile(
-                  (turn) => {
+                  async (turn) => {
                     if (!current())
                       throw new Error('Automatic delivery observation paused');
-                    return lookupTurnDelivery(apiBase)(turn);
+                    const answer = await lookupTurnDelivery(apiBase)(turn);
+                    if (!current())
+                      throw new Error('Automatic delivery observation paused');
+                    return answer;
                   },
                   { station },
                 )
@@ -309,13 +322,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
               reconcileRetryDelayMs.current = 0;
             }
           }
-          // A chat with a turn running is not sent to: its send would only be
-          // deferred (the end of the turn starts the next pass).
+          // A known busy conversation can accept a durable inbox handoff.
+          // A busy chat without a conversation still waits for its first turn.
           const blockedSessionIds = new Set(
             Object.entries(activeChatsStore.getSnapshot())
               .filter(
                 ([, chat]) =>
-                  !conversationCanMutate(chat) || isTurnInFlight(chat),
+                  (!conversationCanMutate(chat) &&
+                    conversationOpenPhase(chat) !== 'busy') ||
+                  (isTurnInFlight(chat) && !chat.conversationId),
               )
               .map(([sessionId]) => sessionId),
           );
@@ -323,11 +338,59 @@ export function useOutboundQueueFlush(apiBase: string): void {
             async (turn, claim) => {
               if (!current()) return { kind: 'deferred' as const };
               const chat = activeChatsStore.getSnapshot()[turn.sessionId];
-              if (chat && !conversationCanMutate(chat)) {
+              if (
+                chat &&
+                !conversationCanMutate(chat) &&
+                conversationOpenPhase(chat) !== 'busy'
+              ) {
                 return {
                   kind: 'deferred' as const,
                   reason: 'Conversation open state is not currently mutable.',
                 };
+              }
+              if (chat && isTurnInFlight(chat) && !chat.conversationId) {
+                return {
+                  kind: 'deferred' as const,
+                  reason: 'Waiting for the conversation identity.',
+                };
+              }
+              if (turn.inboxSteerHead) {
+                if (!turn.conversationId)
+                  return {
+                    kind: 'refused' as const,
+                    reason: 'The steer has no conversation identity.',
+                  };
+                const { submitConversationSteer } = await import(
+                  '@kontourai/station-sdk/client'
+                );
+                try {
+                  await submitConversationSteer(apiBase, turn.conversationId, {
+                    key: turn.clientTurnId,
+                    message: turn.content,
+                    expectedHead: turn.inboxSteerHead,
+                  });
+                  if (!current()) return { kind: 'unanswered' as const };
+                  return { kind: 'queued' as const };
+                } catch (error) {
+                  const refusal = error as {
+                    code?: unknown;
+                    stationEnvelope?: unknown;
+                  };
+                  if (
+                    refusal?.stationEnvelope === true &&
+                    (refusal.code === 'inbox_stale_head' ||
+                      refusal.code === 'conversation_inbox_full' ||
+                      isSteerConflictCode(refusal.code))
+                  )
+                    return {
+                      kind: 'refused' as const,
+                      reason:
+                        error instanceof Error
+                          ? error.message
+                          : 'Station refused the steer.',
+                    };
+                  return { kind: 'unanswered' as const };
+                }
               }
               const result = await sendMessage(
                 turn.sessionId,
@@ -431,7 +494,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 .retiredKeys()
                 .catch(() => undefined);
               if (!active) return;
-              projectOutboundQueueEntries(entries, retired);
+              projectOutboundQueueEntries(
+                entries.filter(
+                  (entry) =>
+                    !entry.inboxSteerHead ||
+                    (!!namespace &&
+                      entry.station?.authorityNamespace === namespace),
+                ),
+                retired,
+              );
               // "Sending" holds only while the window sending it runs, and a
               // window that closes or crashes says nothing; the same goes for
               // a copy another window holds. While any row depends on a
@@ -539,7 +610,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
       if (deferredRetry) clearTimeout(deferredRetry.timer);
       unsubscribe();
     };
-  }, [status, triggerFlush]);
+  }, [status, triggerFlush, namespace]);
 
   // A pass defers a chat whose conversation is not writable yet (a reload
   // re-proves the open conversation before it may send), and nothing else
@@ -591,9 +662,12 @@ export function useOutboundQueueFlush(apiBase: string): void {
       noteCurrentStation({
         apiBase,
         ...(environmentId ? { environmentId } : {}),
+        ...(namespace && authorityStatus === 'verified'
+          ? { authorityNamespace: namespace }
+          : {}),
       });
     });
-  }, [apiBase, environmentId, reconcileScope]);
+  }, [apiBase, environmentId, namespace, authorityStatus, reconcileScope]);
 
   // Held follow-ups live in the tab's session storage; their durable copy is
   // kept in the outbox, so closing the app does not lose them. One write at a

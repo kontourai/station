@@ -13,6 +13,7 @@ import {
   useApiMutation,
   useApiQuery,
 } from '../query-core';
+import { StationStepUpRequiredError } from './stationPeople';
 
 interface PairedDevicesResponse {
   devices?: PairedDevice[];
@@ -129,6 +130,7 @@ export class DevicePairingRequestActionError extends Error {
   constructor(
     readonly status: number,
     readonly code?: string,
+    readonly signInUrl?: string,
   ) {
     super(
       code
@@ -143,14 +145,19 @@ async function pairingActionError(
   response: Response,
 ): Promise<DevicePairingRequestActionError> {
   let code: string | undefined;
+  let signInUrl: string | undefined;
   try {
-    const body = (await response.json()) as { error?: unknown };
+    const body = (await response.json()) as {
+      error?: unknown;
+      signInUrl?: unknown;
+    };
     if (typeof body.error === 'string') code = body.error;
+    if (typeof body.signInUrl === 'string') signInUrl = body.signInUrl;
   } catch (error) {
     rethrowDeadline(error);
     // Non-JSON failure body; the status alone is the signal.
   }
-  return new DevicePairingRequestActionError(response.status, code);
+  return new DevicePairingRequestActionError(response.status, code, signInUrl);
 }
 
 /**
@@ -171,13 +178,39 @@ export async function confirmDevicePairingRequest(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/pairing/requests/${encodeURIComponent(requestId)}/confirm`,
     scope === undefined
-      ? { method: 'POST' }
+      ? { method: 'POST', credentials: 'include' }
       : {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ scope }),
         },
   );
+  if (response.status === 202) {
+    const body: unknown = await response.json();
+    if (typeof body !== 'object' || body === null || !('transaction' in body))
+      throw new Error('Invalid step-up response');
+    const transaction = body.transaction;
+    if (
+      !('status' in body) ||
+      body.status !== 'step_up_required' ||
+      typeof transaction !== 'object' ||
+      transaction === null ||
+      !('id' in transaction) ||
+      typeof transaction.id !== 'string' ||
+      !('reviewUrl' in transaction) ||
+      typeof transaction.reviewUrl !== 'string' ||
+      !('expiresAt' in transaction) ||
+      typeof transaction.expiresAt !== 'number' ||
+      !Number.isFinite(transaction.expiresAt)
+    )
+      throw new Error('Invalid step-up response');
+    throw new StationStepUpRequiredError({
+      id: transaction.id,
+      reviewUrl: transaction.reviewUrl,
+      expiresAt: transaction.expiresAt,
+    });
+  }
   if (!response.ok) throw await pairingActionError(response);
 }
 

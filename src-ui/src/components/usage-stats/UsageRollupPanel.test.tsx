@@ -53,6 +53,17 @@ const result = vi.hoisted(() => ({
         },
       },
     ],
+    taskOutcomes: [
+      {
+        stationId: 'local',
+        taskId: 'task one',
+        receiptCount: 1,
+        state: 'available',
+        taskCreatedAt: '2026-08-01T00:00:00.000Z',
+        status: 'done',
+        reportedCostBuckets: [{ amount: 0, currency: 'USD' }],
+      },
+    ],
     receipts: [
       {
         id: 'receipt',
@@ -61,6 +72,17 @@ const result = vi.hoisted(() => ({
         conversationId: 'conversation/one',
         taskId: 'task one',
         pricing: { status: 'unpriced' },
+        reportedCost: { amount: 0, currency: 'USD' },
+        retailEquivalent: {
+          state: 'available',
+          amount: 2.35,
+          currency: 'USD',
+          basis: {
+            routeId: 'provider-direct',
+            tariffId: 'tariff-1',
+            sourceUrl: 'https://provider.example/pricing',
+          },
+        },
       },
     ],
   },
@@ -171,4 +193,24 @@ describe('UsageRollupPanel (station#4135)', () => {
       result.data.coverage = savedCoverage;
     }
   });
+});
+
+test('keeps Task workflow state, retail equivalent, engine cost and unknown account/quota dimensions separate', () => {
+  render(<UsageRollupPanel />);
+  expect(
+    screen.getByRole('heading', { name: 'Task outcomes and recorded cost' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Done')).toBeTruthy();
+  expect(screen.getByText('0.0000 USD')).toBeTruthy();
+  expect(
+    screen.getByText(/result quality is not independently evaluated/),
+  ).toBeTruthy();
+  expect(screen.getByText('Account charges')).toBeTruthy();
+  expect(screen.getByText('Subscription fee allocation')).toBeTruthy();
+  expect(screen.getByText('Quota consumption')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Receipt drilldown (1)' }),
+  );
+  expect(screen.getByText(/Published-rate retail: 2.350000 USD/)).toBeTruthy();
+  expect(screen.getByText(/Account charge: Not reported/)).toBeTruthy();
 });

@@ -17,6 +17,13 @@ barrel with selected helpers and contract re-exports, not a browser-safe catalog
 of every export. [package.json](./package.json) is the entry-point inventory;
 Node/filesystem helpers and browser-safe projections have different requirements.
 
+The Node-only `/http-upload` leaf configures receive deadlines for the API and
+serialized CLI listener from the shared media route policy. It observes socket
+bytes without draining bodies before admission and leaves socket timeout values
+intact. Refused uploads half-close and discard input within a one-second/1 MiB
+bound (plus one socket chunk); reads pause at the byte cap.
+See [Walkthrough limits](../../docs/guides/walkthroughs.md#limits-and-storage).
+
 ## Installation
 
 ```bash
@@ -132,7 +139,9 @@ read the module before using one in a browser bundle.
   import helpers).
 - Browser and identifiers: `/return-focus` (focus restoration for dismissible
   surfaces), `/native-shell-origin` (packaged shell origins), `/random-id`
-  (correlation ids outside a secure context), `/setup-import-bounds`.
+  (correlation ids outside a secure context), `/setup-import-bounds`,
+  `/authored-input` (whether a turn start carries authored input, shared by the
+  Session inventory listing, its exact read, and the SDK).
 
 ## License
 

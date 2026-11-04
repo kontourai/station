@@ -3,7 +3,7 @@
 On phones, the **Settings section** picker lists topics; computers show the
 same topics in a navigation rail. Both stay within Settings. General is the
 default. Customize opens management destinations from a separate sidebar-footer
-button beside Schedule and Settings, or from Sidebar utilities when the
+button beside Automations and Settings, or from Sidebar utilities when the
 workspace map is collapsed. Route changes still use the
 unsaved-changes guard. When a dialog is open, section navigation updates its
 selection without scrolling or focusing the page behind that dialog.
@@ -15,8 +15,10 @@ explains the URL, catalog endpoint, and how to use its results.
 
 **General → Your account** has the stable section id `account-preferences`.
 Its personal engine defaults have ids `personal-codex-approval`,
-`personal-claude-approval` and `personal-muse-approval`; migration is
-`account-preference-sync`. Portable settings retain their existing ids and now
+`personal-claude-approval` and `personal-muse-approval` (the Muse row renders
+only on a Station with a Muse engine, or while a saved Muse default remains,
+so a link to it elsewhere opens the section without a row to reveal);
+migration is `account-preference-sync`. Portable settings retain their existing ids and now
 report `account` scope. This means account storage on the connected Station when
 identity is verified, with a device-local fallback for callers without a person.
 See [the settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
@@ -84,9 +86,11 @@ Moves so far:
 
 ### Developer previews
 
-Advanced → Developer tools reveals three independent, default-off device opt-ins:
-`experimental-flow`, `experimental-readiness`, and `experimental-trust`.
-`surface-trust` is visible only with the Trust preview enabled. Search and the
+Advanced → Developer tools reveals five independent, default-off device opt-ins:
+`experimental-flow`, `experimental-readiness`, `experimental-trust`,
+`experimental-station-routes`, and `experimental-sheet-gestures`.
+`surface-trust` is visible only with the Trust preview enabled, and the
+Devices page's `station-routes` section only with the Station routes preview. Search and the
 command palette omit hidden preview settings. A deep link to an opted-out
 control announces that the tool is off rather than waiting for a missing row.
 The registry remains a build-wide inventory; its presence does not mean a row
@@ -121,7 +125,7 @@ Read `GET /config/app` for values.
       {
         "id": "default-max-turns",
         "label": "Default max turns",
-        "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
+        "help": "Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.",
         "scope": "station",
         "section": "agent-runs",
         "route": "/settings?view=agent-runs&highlight=default-max-turns",

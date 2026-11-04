@@ -1,0 +1,31 @@
+{
+  "revision": "9a0f4bcf764f14d01d4988402d816476a73e12bd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. Rewrote the Continue sentence: every send under the key (tap, Retry, outbox replay) leaves the composer out; only a person's tap starts it, and the outbox may replay an unanswered tap under the same key. Checked against sendMessage preserveComposer derivation and useOutboundQueueFlush replay call.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. Reworded the composed-message sentence (every send under that key leaves the composer out); claims match the replay and refusal tests.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No routing claim affected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No module claim affected.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No form re-entry claim affected.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No settings claim affected.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No command claim affected.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No contract claim affected.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No SDK claim affected.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No session API claim affected.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No skill-experience claim affected.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No getting-started claim affected.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Review round 4: useActiveChatSessionMessaging changed only a comment (the queue drain sends via dispatchForeground without touching the composer, so it is not claimed to pass through the key derivation); behavior unchanged from round 3. No SDK README claim affected.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/design/knowledge-foundation.md","note":"Reviewed transaction publication and conversation-root bootstrap against the Windows fsync helper and registration delta. Corrected Windows directory-sync and prepared-journal recovery claims; flag still gates personal root creation, and owner callback constrains file-memory reads. Source inspection only; no power-loss qualification.","inputs":["docs/design/knowledge-foundation.md","src-server/knowledge-store/adapters/shared/file-transactions.ts","src-server/knowledge-store/conversation-root-bootstrap.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed KnowledgeFileTransactions publication/recovery against shared Windows helper, SessionQuery and conversation-root wiring against personal-owner filter, Agent grant update gate and plugin command admission against runtime and resolver. Corrected directory fsync platform limit and Project/Task authorization; regenerated MCP topic. Source inspection only; no live device or power-loss qualification.","inputs":["docs/architecture/module-map.md","src-server/knowledge-store/adapters/conversation-store.ts","src-server/knowledge-store/adapters/shared/file-transactions.ts","src-server/knowledge-store/conversation-root-bootstrap.ts","src-server/routes/agents/agents.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/agents/agent-service.ts"]}
+  ]
+}

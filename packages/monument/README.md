@@ -30,7 +30,35 @@ directory and checks all of this.
 | `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, message delivery decisions and sequencing, and the in-memory adapter | none |
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
+| `@kontourai/monument/recovery` | Recovery claim protocol, commands, and memory/SQLite adapters | Node 24 (`node:crypto`) |
+| `@kontourai/monument/session-boundary` | Host-bound turn authority and claims | Node 24 (`node:crypto`, `node:util`) |
+| `@kontourai/monument/session-control` | Request-key identity, digest and keyed execution | Node 24 (`node:crypto`) |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
+
+Adapter authors must implement
+`turnDedup.evictResolved({ maxEntries, minResolvedEntries, resolvedRetentionMs? }, now)`
+and accept the optional resolution time on `turnDedup.put` in
+`KernelTransaction`. Custom adapters must implement timed retention before
+enabling that limit. SQLite's owned schema adds `resolved_at`; a bound host
+supplies its own nullable column. This source compatibility change is
+separate from on-disk compatibility.
+
+## Recovery storage
+
+`RecoveryStoragePort` executes one typed recovery command at a time. Its
+in-memory volume retains committed records across handles; the SQLite adapter
+binds a host-owned table and creates no schema. The host supplies row mapping,
+a projection and a fixed, trusted SQL predicate for its source-terminal
+facts. SQLite requires WAL and a positive busy timeout, sets and checks
+`synchronous = FULL`, and runs each command in a transaction. A host may opt
+into a nested savepoint; it owns the outer commit and must wait for that commit
+before performing effects. Closing the adapter fences that handle without
+closing the host's SQLite connection.
+
+`registerRecoveryConformance` in the testing entry point exercises memory and
+SQLite harnesses, including Station's migrated table and simulated failure
+before commit or after acknowledgement is lost. Those tests do not prove
+physical power-loss durability or provider effects.
 
 ## Message delivery
 
@@ -72,7 +100,8 @@ ordering contract; Station's mounted route tests also inspect its real SQLite
 key row when each effect port is entered. Adapter conformance remains the
 contract for storage commands; this primitive adds none.
 
-This completes only the delivery primitive of #3565. Recovery-ledger core remains separate extraction work. The package remains private
+This completes the delivery primitive of #3565. The recovery claim protocol and
+storage commands are also in the package. The package remains private
 `0.1.0` until its reviewed functional release.
 
 ## Steer receipts
@@ -85,8 +114,8 @@ never reclaimed: the engine may already have accepted it.
 `steerReceipts.confirm` changes only an unconfirmed row with the same digest.
 It answers `stale` for a missing, changed-input or already-confirmed row and
 never replaces a confirmed turn. `steerReceipts.read` returns `confirmed` with
-the turn only for the matching digest, `indeterminate` for any other retained
-row, or `absent`. These commands do not place a steer or authorize a replay.
+the turn for a matching confirmed row, `indeterminate` for a matching pending
+row, `conflict` for a different digest, or `absent`. These commands do not place a steer or authorize a replay.
 Only the host's explicit thread deletion calls `steerReceipts.forgetThread`;
 there is no age-based expiry. All receipt command strings must be well-formed
 Unicode. Lone surrogates throw before receipt access or participant callbacks;
@@ -112,7 +141,14 @@ Station binds `orchestration_steer_inputs` on its existing EventStore connection
 keeps its original input/target digest, authorization and engine invocation,
 and maps the results to its existing steer outcomes. Host transaction rollback
 also rolls back receipt writes. This extraction does not implement durable
-steer input storage or post-tool placement; those remain #3568 work.
+steer input storage or post-tool placement by itself. Station's separate
+conversation inbox now owns that text, head fence and placement. Display notes
+have a separate `inboxMaxDisplay` capacity (50 by default) and use
+`inboxSettledRetentionMs` expiry on submission; matching retained keys remain
+idempotent at capacity. Steer replay fences remain until inbox deletion. See the
+[Session API](../../docs/reference/session-api.md#submit-steer-follow-up-or-display-input). Separately,
+Station owns a child-instruction journal and target-bound child-steer keys around
+the same receipt primitive; that journal is not a Monument storage command.
 
 ## The port
 
@@ -144,6 +180,31 @@ adapter requires agreement with the owner JSON marker, so an older writer
 replacing the owner does not leave trusted stale proof. Owned SQLite tables
 upgrade additively on open. Older binaries and callers without digests cannot
 enforce this contract; legacy rows remain unknown.
+
+The synchronous `TurnIdempotencyStore` and `createTurnDeduplicator` compose
+these commands for hosts with synchronous transaction access. The host
+supplies owner identity, liveness, conflict errors, metrics, and private
+prepared-claim custody; the package does not probe a process or retain host
+credentials. This helper does not replace the Promise-based storage port.
+
+`turnDedupMaxEntries` remains a soft cap on all dedup rows. Only resolved rows
+can be evicted, oldest first; each eviction leaves an expired-key tombstone.
+An optional `turnDedupMinResolvedEntries` stops eviction once that many resolved
+rows remain. The floor must be a positive integer no greater than the soft cap;
+omitting it preserves the original all-row policy. A host may instead set
+`turnDedupResolvedRetentionMs` to retain each resolved row for that wall-clock
+duration after resolution, regardless of count. Legacy rows without a resolution
+time start a fresh window on first observation. Station uses seven days; live
+windows and unresolved rows can grow without bound. An older writer may evict below the window or floor unless the host fences
+its deletes. Station fences legacy resolved-row deletion with transaction-scoped
+permits; arbitrary older writes are not generally fenced. Writers with tombstone support still leave expired-key
+tombstones under their retention rules; writers from before #3559 may not.
+For timed retention, a SQLite host binding must supply a nullable
+`resolvedAtColumn`. The host must clear it when an older writer changes the
+row without updating the timestamp. A host that fences resolved-row deletes
+can bind a distinct `deletionPermitTable` with a `dedup_key` primary key;
+the kernel uses it only within the deletion transaction. A forward wall-clock step can shorten the
+elapsed window; this policy is not a trusted-clock guarantee.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL

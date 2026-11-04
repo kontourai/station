@@ -36,6 +36,14 @@ export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
 export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
+/** Corners pointing out — grow a surface to full screen (#4391). */
+export const ExpandGlyph = /* @__PURE__ */ glyph(
+  'M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10',
+);
+/** Corners pointing in — return a full-screen surface to its peek size. */
+export const RestoreGlyph = /* @__PURE__ */ glyph(
+  'M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5',
+);
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
@@ -110,6 +118,9 @@ export const EngineGlyph = /* @__PURE__ */ glyph(
 /** An arrow leaving a box: opens on the forge, in the browser. */
 export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
   'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
+);
+export const LinkGlyph = /* @__PURE__ */ glyph(
+  'm6 10 4-4M6.5 5.5l2-2a2.8 2.8 0 0 1 4 4l-2 2m-1 1-2 2a2.8 2.8 0 0 1-4-4l2-2',
 );
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
@@ -206,8 +217,14 @@ export const PlugGlyph = /* @__PURE__ */ glyph(
 export const QuestionGlyph = /* @__PURE__ */ glyph(
   'M5.7 5.5A2.5 2.5 0 1 1 9 7.9c-.8.3-1 .8-1 1.6M8 12.5h.01',
 );
+export const RecordGlyph = /* @__PURE__ */ glyph(
+  'M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3Z',
+);
 export const RefreshGlyph = /* @__PURE__ */ glyph(
   'M13 5V2.5L11.3 4A5.5 5.5 0 0 0 3 6m0 5v2.5L4.7 12A5.5 5.5 0 0 0 13 10',
+);
+export const ReopenGlyph = /* @__PURE__ */ glyph(
+  'M3 2.5V6h3.5M3.3 5.7A5 5 0 1 1 3 10.5',
 );
 export const ReturnGlyph = /* @__PURE__ */ glyph(
   'M5 4 2.5 6.5 5 9m-2.5-2.5H10a3 3 0 0 1 3 3V12',

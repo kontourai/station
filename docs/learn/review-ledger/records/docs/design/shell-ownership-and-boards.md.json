@@ -46,7 +46,9 @@
 
     "docs/user/personal-boards.md",
 
-    "src-ui/src/__tests__/session-follow-reader.browser.test.tsx"
+    "src-ui/src/__tests__/session-follow-reader.browser.test.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebar.test.tsx"
   ],
 
   "checks": [

@@ -1,0 +1,45 @@
+{
+  "revision": "d297b75ac5d5e156419c457b81b93f7e82947252",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Starter Work guide: Codex child-steer method and service child dispatch/runtime-conversation classification do not change attached-session adoption, first continuation or starter launch ownership. No provider or installed journey executed.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Theming guide: pairing table only adds an orchestration-read child instruction leaf; theme tokens, CSS selection and mobile focus behavior are unrelated. No browser or device theme run.","inputs":["docs/guides/theming.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Work Board security guide: new child command/read route does not change trusted Pane boundary, pinned-reference resolver or Home grant. No board UI or authorization run.","inputs":["docs/guides/work-board-security.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Workspace package guide: child command and instruction GET do not change encrypted Git package import, authenticated target Project registration or explicit no-session-migration boundary. No cross-host transfer run.","inputs":["docs/guides/workspace-packages.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Walkthroughs: reviewed request-inspection caption against unchanged attention/dialog/fixture owners and inspected existing PNG and video frames; service delta adds child steering and runtime conversation classification, not request inspection. Historical controlled-provider and navigation limits remain; no new live capture.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Backend patterns: added paired read leaf retains route-family plus object authorization composition; general route/service/adapter and protocol admission guidance unchanged. No exhaustive backend or live access audit.","inputs":["docs/patterns/backend.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Frontend patterns: new server pairing leaf does not alter SDK request owner, authority-key cache partition or React query guidance. No UI, device or accessibility test.","inputs":["docs/patterns/frontend.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Agent smoke confidence: adapter shape adds child steer, route and real-service fixture add separate child command/read; existing one-turn smoke, its distinct setup and mutation-budget exemptions remain unchanged. New child command is not an exempt listed operation. No real model smoke performed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/adapter-shape.ts","src-server/routes/orchestration/__tests__/orchestration.routes.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"CLI reference: scoped-thread policy adds steerChildWork parent thread field; CLI command syntax, token scope and operate stream contracts do not change. No CLI live execution.","inputs":["docs/reference/cli.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"SDK reference: child command and instruction GET are distinct from documented steerOrchestrationTurn and inspectOrchestrationSteerInput; their receipt/retry semantics and request authority remain as written. No SDK installed package or provider run.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Skill experiences reference: additional child command/read does not change canonical skillExperience foreground chat admission, pinned-source checks or existing request identity ownership. No visual skill or engine journey run.","inputs":["docs/reference/skill-experiences.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Station Docs reference: module map and generated topic add child instruction journal/target-bound claims and remove opt-in qualifier from preview registry; manual describes compiled documentation and source-evidence limits consistently. Generator output inspected in candidate diff; no live MCP or release qualification.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Usage telemetry: service child steering and runtime-conversation point resolution do not modify publisher tiers, content-free envelope or consent/acknowledgement owners. No telemetry delivery run.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"User concepts: module map child-journal clarification and new child command/read do not change Project, Task, Session, turn or conversation concepts; capability does not grant access. No UI or device journey.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Getting started: runtime conversation lookup now resolves runtime-owned IDs under request authority first and returns 404 on denial; first-chat and saved-conversation guidance makes no conflicting storage-order claim. Child steering service additions do not alter documented onboarding. No installed or provider run.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Personal Boards: scoped-thread policy adds child steering scoped to parent; board pins, person-owned saved Boards and live read authority are separate and unchanged. No Board UI run.","inputs":["docs/user/personal-boards.md","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Workspace checkpoints: child command/read and runtime conversation classification do not change checkpoint preview, authority, Git-state validation or restore effects. No restore run.","inputs":["docs/user/workspace-checkpoints.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Self-configuring Agent example: Codex child steering and forwarded caller recheck do not add tools or broaden the example Agent default scope; actual workspace, skill and delegation permissions remain independently required. No Agent or provider run.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture review: viewed existing PNG showing fixture file-read request scope with Deny and Approve once; SHA-256 matches media manifest. Traced attention route, exact-request fixture and RequestInspectionDialog: separate response mutation and Close remain; changed service branches concern child steer and runtime lookup. Historical chrome and controlled-provider limits retained; no new capture or device qualification.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture review: inspected 14.2-second video contact sheet and final frame: request opens, identity expands, inspector closes with request still pending. SHA-256 matches manifest. Dialog and controlled request fixture retain separate inspection/decision paths; changed service child steer/runtime lookup does not alter this path. Historical chrome and fixture limits retained; no fresh browser or device run.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

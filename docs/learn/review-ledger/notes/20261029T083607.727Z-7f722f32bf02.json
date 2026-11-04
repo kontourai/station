@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed TerminalSessions and transport ownership against channel, SDK and gateway tests; unrelated module behavior unchanged.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts","src-server/services/terminal/terminal-channel-connection.ts"]}
+  ]
+}

@@ -62,7 +62,8 @@ const IOS_VERIFICATION_PREFIXES = Object.freeze([
  * What `cargo test --manifest-path src-desktop/Cargo.toml --no-run` reads on
  * the Windows PR floor, so a change outside this set cannot alter its verdict.
  * Beyond the crate itself: build.rs reads the root package.json's
- * engines.node, lib.rs `include_str!`s a CLI source file, the Android keyring
+ * engines.node, lib.rs `include_str!`s a CLI source file, the plugin bundle
+ * protocol `include_str!`s the shell's capability installer, the Android keyring
  * patch is a path dependency cargo must resolve on every target, and
  * tauri.windows.conf.json bundles schemas/ as a resource tauri-build checks.
  * Any Cargo manifest, lockfile, toolchain file or `.cargo/` config anywhere
@@ -75,6 +76,7 @@ const DESKTOP_RUST_FILES = new Set([
   'scripts/classify-ci-change.mjs',
   'package.json',
   'packages/cli/src/commands/profile-store.ts',
+  'src-ui/src/platform/native/pluginBundleCapability.js',
   'scripts/prepare-desktop-rust-resources.mjs',
   'scripts/lib/desktop-node-runtime.mjs',
   'scripts/lib/portable-server-archive.mjs',

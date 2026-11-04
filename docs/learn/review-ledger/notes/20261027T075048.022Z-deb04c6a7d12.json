@@ -1,0 +1,7 @@
+{
+  "revision": "ffcad1231a417dd91cd913d62ab5ba551ae85022",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"Viewed the capture: the Inspect request dialog for a small inline fixture_read approval (Deny / Approve once). This round's orchestration-service change only adds a seed-only resolving reader for engine transcript seeds; the request inspection view, its content and its actions are unaffected. No re-capture.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

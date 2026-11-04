@@ -132,8 +132,11 @@ export function useSubmitTaskRoomAgentRequestMutation(
       return result;
     },
     onSettled: () =>
-      cache.invalidateQueries({
-        queryKey: requestKey(taskId, incarnation, scope),
-      }),
+      Promise.all([
+        cache.invalidateQueries({
+          queryKey: requestKey(taskId, incarnation, scope),
+        }),
+        cache.invalidateQueries({ queryKey: ['tasks'] }),
+      ]),
   });
 }

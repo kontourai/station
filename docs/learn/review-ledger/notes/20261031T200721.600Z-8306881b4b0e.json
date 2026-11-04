@@ -1,0 +1,9 @@
+{
+  "revision": "1d3c3f87500d5e867fe539750da10557c8882992",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Bounded review of auth changes to module-map and Settings after main549. Member passkeys and the corrected SDK ceremony guidance do not enable efficiency previews or grant engine tool authority. Progressive tools, learning and isolated-repair source/profile/review/publication grants remain independent and off by default. Reviewed these changed input claims; no broader container/live-model/physical-device qualification is inferred.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md","docs/user/settings.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed unchanged SDK instructions against the canonical SDK reference correction. Public stable account-authentication exports and layering remain unchanged. runAccountOperation forwards a structured body and optional invitation header without ambient operator authentication; the reference now distinguishes four two-step ceremonies and single-call list/remove bodies. Server owner regressions cover the actual bodies; SDK caller evidence remains separate from real browser/authenticator acceptance. No policy text or instruction is changed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

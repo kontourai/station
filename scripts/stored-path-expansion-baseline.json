@@ -444,6 +444,21 @@
       "entry": "src-server/services/projects/project-session-directory.ts :: workingDirectory :: currentProject.workingDirectory !== project.workingDirectory ||",
       "category": 1,
       "reason": "Raw metadata equality detects a Project edit while asynchronous resource verification is in flight. This comparison never accesses a filesystem; ProjectResourceResolver separately expands and verifies the execution resource. Expanding both values here could hide a stored-byte change."
+    },
+    {
+      "entry": "packages/cli/src/commands/session-reads.ts :: workingDirectory :: ...(row.workingDirectory ? { workingDirectory: row.workingDirectory } : {}),",
+      "category": 1,
+      "reason": "Session activity row from the targeted (possibly remote) Station, printed or re-emitted as JSON verbatim. Never used for local filesystem access; local tilde expansion would use the wrong host namespace."
+    },
+    {
+      "entry": "packages/cli/src/commands/session-reads.ts :: workingDirectory :: : row.workingDirectory",
+      "category": 1,
+      "reason": "Session activity row from the targeted (possibly remote) Station, printed or re-emitted as JSON verbatim. Never used for local filesystem access; local tilde expansion would use the wrong host namespace."
+    },
+    {
+      "entry": "packages/cli/src/commands/session-reads.ts :: workingDirectory :: ? ` ${row.workingDirectory}`",
+      "category": 1,
+      "reason": "Session activity row from the targeted (possibly remote) Station, printed or re-emitted as JSON verbatim. Never used for local filesystem access; local tilde expansion would use the wrong host namespace."
     }
   ]
 }

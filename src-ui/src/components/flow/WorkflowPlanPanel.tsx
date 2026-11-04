@@ -3,11 +3,13 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import type { ChatMessage } from '../../types';
 import {
+  canonicalPlanArtifact,
   deriveLatestPlanArtifactFromMessages,
   type PlanArtifact,
 } from '../../utils/planArtifacts';
 import { ActionRow } from '../ActionRow';
 import { LazyMarkdown } from '../chat/LazyMarkdown';
+import { LoadFullContent } from '../chat/LoadFullContent';
 import { Empty } from '../state';
 
 type WorkflowPlanStepStatus = 'completed' | 'in_progress' | 'pending';
@@ -24,6 +26,8 @@ export interface WorkflowPlanArtifact {
   rawText: string;
   steps: WorkflowPlanStep[];
   updatedAt?: number;
+  /** Entries stored out of line, loadable on request. */
+  spilled?: PlanArtifact['spilled'];
 }
 
 const MARKDOWN_STEP_PATTERN = /^\s*(?:[-*]|\d+\.)\s+\[(x|X| |>)\]\s+(.+)$/;
@@ -254,6 +258,7 @@ export function toWorkflowPlanArtifact(
     rawText: artifact.rawText,
     steps,
     updatedAt: artifact.updatedAt ? Date.parse(artifact.updatedAt) : undefined,
+    ...(artifact.spilled ? { spilled: artifact.spilled } : {}),
   };
 }
 
@@ -326,15 +331,48 @@ export function deriveWorkflowRuntimeStrip(
   return null;
 }
 
-export function WorkflowPlanPanel({
-  artifact,
-  sessionTitle,
-  runtimeState,
-}: {
+type WorkflowPlanPanelProps = {
   artifact: WorkflowPlanArtifact | null;
   sessionTitle?: string | null;
   runtimeState?: WorkflowPlanRuntimeState;
-}) {
+};
+
+/**
+ * docs/design/event-content-spill.md: a plan whose entries are stored out of
+ * line shows their previews with "Load full content"; once loaded, the panel
+ * shows the whole plan.
+ */
+export function WorkflowPlanPanel(props: WorkflowPlanPanelProps) {
+  const spilled = props.artifact?.spilled;
+  if (!spilled) return <WorkflowPlanPanelView {...props} />;
+  return (
+    <LoadFullContent threadId={spilled.threadId} value={spilled.entries}>
+      {(full) => (
+        <WorkflowPlanPanelView
+          {...props}
+          artifact={
+            full === undefined
+              ? props.artifact
+              : toWorkflowPlanArtifact(
+                  canonicalPlanArtifact(
+                    full,
+                    props.artifact?.updatedAt
+                      ? new Date(props.artifact.updatedAt).toISOString()
+                      : new Date(0).toISOString(),
+                  ),
+                )
+          }
+        />
+      )}
+    </LoadFullContent>
+  );
+}
+
+function WorkflowPlanPanelView({
+  artifact,
+  sessionTitle,
+  runtimeState,
+}: WorkflowPlanPanelProps) {
   const [activeView, setActiveView] = useState<'steps' | 'markdown'>('steps');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
     'idle',

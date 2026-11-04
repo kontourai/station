@@ -125,7 +125,7 @@ import {
   resolveConversationOpenAuthoritatively,
   retryActiveConversationForDock,
 } from '../components/chat-dock/conversationOpenController';
-import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { workObservation } from '../contexts/work-observation';
@@ -169,13 +169,12 @@ function MobileSwitcher() {
   const items = useInboxWorkItems(AGENTS, SESSIONS);
   const workFacts = useWorkFacts(items, SESSIONS);
   return (
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       open
       tasks={items}
       workFacts={workFacts}
       activeChatSessionId={null}
       openChatSessionIds={[CHAT_TAB]}
-      visualViewportStyle={{}}
       triggerRef={createRef<HTMLButtonElement>()}
       onClose={vi.fn()}
       onFocusChat={vi.fn()}

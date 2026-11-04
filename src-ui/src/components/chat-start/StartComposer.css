@@ -1,7 +1,7 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
    query: the bar is one flex line that wraps. On a desktop the chips and
    [attach mic ⋯ Start] share one line. When they do not fit (a phone), the
-   chips keep row one, on one line, each shrinking to an ellipsis, and
+   chips scroll on row one without wrapping, and
    [attach mic ⋯ … Start] takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
@@ -23,12 +23,59 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--k-text);
-  font-size: var(--k-text-xl);
+  font-size: var(--k-text-2xl);
+  font-weight: 500;
 }
+.start-composer__destination h2 .start-composer__project {
+  display: inline-flex;
+  vertical-align: baseline;
+  padding-inline: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
+}
+.start-composer__destination h2 .start-composer__project > svg,
+.start-composer__destination h2 .start-composer__project > .project-icon {
+  display: none;
+}
+.start-composer__without-project {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+}
+.start-composer__location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-composer__location .start-composer__station {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+}
+.start-composer__folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-composer .composer-choice {
+  border-color: transparent;
+  background: transparent;
+}
+.start-composer .chat-input__chip-caption {
+  display: none;
+}
+/* Project lives in the heading; Station lives below the composer. */
 .start-composer__project,
 .start-composer__station {
   min-height: 44px;
   max-width: 100%;
+}
+.start-composer__destination .start-composer__project,
+.start-composer__destination .start-composer__station {
   border-color: transparent;
   background: transparent;
   color: var(--k-text-muted);
@@ -38,6 +85,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* "Runs on …" with nothing else to choose is plain text, not a control: it
+   keeps the chip's metrics (`.choice-trigger` on a span; hover styling is
+   button-only) so the row does not jump when a choice appears, without the
+   caret or pointer. */
+.start-composer__station--fixed {
+  cursor: default;
+  /* A span does not get the global `button { line-height: 1.4 }`, so its
+     text sat about 1px below the Project chip's beside it. */
+  line-height: 1.4;
+}
+.start-composer__station-mark {
+  flex: none;
 }
 .start-composer__project:disabled {
   opacity: 1;
@@ -59,10 +119,6 @@
 }
 .start-composer__box:focus-within {
   border-color: var(--k-focus);
-}
-.start-composer__box .start-composer__input:focus-visible {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
 }
 .start-composer--compact .start-composer__destination {
   justify-content: flex-start;
@@ -110,11 +166,6 @@
   border: 0;
 }
 .start-composer__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--k-space-2);
-  min-width: 0;
   /* Grows far more than the actions, so on a shared line the actions keep
      their own width and sit together at the end. */
   flex: 1000 1 auto;
@@ -225,7 +276,7 @@
   text-decoration: line-through;
 }
 .start-composer__context-label {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 .start-composer__context-detail {
@@ -364,6 +415,14 @@
 .start-menu__list .new-chat-modal__dropdown-item-label {
   flex: 0 0 auto;
   max-width: 60%;
+}
+/* A Station row's kind: quiet text beside the name, not a path. */
+.start-menu__detail {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* An icon and a colour dot take the same 24px column, so names line up. */
 .start-menu__mark {

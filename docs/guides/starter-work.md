@@ -81,6 +81,20 @@ Project. **Details** contains identity, local workspace metadata, Basis,
 references and inspection.
 Subtask completion does not automatically complete its parent.
 
+The Inbox presents a Task with its authorized work chats underneath, including
+independent Agent requests from the Task Room. Selecting the Task reveals
+Overview; selecting a work chat opens that conversation. A conversation linked
+to multiple Tasks stays separate. Running counts reflect actual chats, so an
+in-progress Task alone does not add another running item.
+
+With the **Chat apps** Feature Preview enabled, open **Details → Written to
+the issue** to load the Task's recorded outbound attempts. Each entry names its
+target, time, outcome and any failure; retry links connect it to the original
+attempt. An empty history means no writes were recorded by this seam, not that
+no external writes happened. Task-bound chat delivery and tracker status
+producers are still pending; external `gh` commands and existing unbound PR
+actions do not populate this history.
+
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.
 

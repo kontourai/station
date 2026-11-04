@@ -106,14 +106,14 @@ describe('SharedWorkingState', () => {
     state.apply(operations[0], authorization);
     state.apply(operations[1], authorization);
 
-    expect(state.resync(base, 2, [1])).toMatchObject({
+    expect(state.resync(base, 2, [2])).toMatchObject({
       outcome: 'delta',
       operations: [operations[0], operations[1]],
     });
-    expect(state.resync(base, 1, [1]).outcome).toBe('snapshot');
+    expect(state.resync(base, 1, [2]).outcome).toBe('snapshot');
     expect(state.resync(base, 2, [99])).toEqual({
       outcome: 'unsupported_version',
-      supportedVersions: [1],
+      supportedVersions: [2],
     });
 
     const beforeCompaction = state.revision;
@@ -122,7 +122,7 @@ describe('SharedWorkingState', () => {
     expect(new SharedWorkingState({ scope, snapshot }).revision).toBe(
       beforeCompaction,
     );
-    expect(state.resync(base, 10, [1]).outcome).toBe('snapshot');
+    expect(state.resync(base, 10, [2]).outcome).toBe('snapshot');
   });
 
   test('keeps cached revisions aligned with digest participants, not history', () => {
@@ -200,7 +200,7 @@ describe('SharedWorkingState', () => {
       reason: 'malformed',
     });
     expect(
-      state.apply({ ...operation, schemaVersion: 2 }, authorization),
+      state.apply({ ...operation, schemaVersion: 99 }, authorization),
     ).toEqual({
       outcome: 'rejected',
       reason: 'unsupported_version',
@@ -208,8 +208,12 @@ describe('SharedWorkingState', () => {
   });
 
   test('negotiates the Station schema and does not silently downlevel', () => {
-    expect(negotiateSharedWorkingStateVersion([2, 1])).toBe(1);
-    expect(negotiateSharedWorkingStateVersion([2])).toBeNull();
+    expect(negotiateSharedWorkingStateVersion([2, 1])).toBe(2);
+    expect(negotiateSharedWorkingStateVersion([1])).toBeNull();
+    expect(new SharedWorkingState({ scope }).resync(null, 0, [1])).toEqual({
+      outcome: 'unsupported_version',
+      supportedVersions: [2],
+    });
   });
 
   test('uses UTF-16 code-unit ordering independent of locale and delivery order', () => {
@@ -262,7 +266,7 @@ describe('SharedWorkingState', () => {
     const source = new SharedWorkingState({ scope });
     const base = source.revision;
     source.apply(insert('op-replayed', 'actor-a', null, 'r'), authorization);
-    const delta = source.resync(base, 1, [1]);
+    const delta = source.resync(base, 1, [2]);
     expect(delta.outcome).toBe('delta');
     const recoveringPorts = createSharedWorkingState({ scope });
     const recovering = recoveringPorts.live;
@@ -313,16 +317,17 @@ describe('SharedWorkingState', () => {
       reason: 'operation_equivocation',
     });
     const base = new SharedWorkingState({ scope }).revision;
-    const delta = state.resync(base, 1, [1]);
+    const delta = state.resync(base, 1, [2]);
     expect(delta.outcome).toBe('delta');
     if (delta.outcome === 'delta') {
       (delta.operations[0] as { text: string }).text = 'mutated-return';
     }
-    expect(state.resync(base, 1, [1])).toMatchObject({
+    expect(state.resync(base, 1, [2])).toMatchObject({
       operations: [expect.objectContaining({ text: 'm' })],
     });
     const snapshot = state.snapshot();
-    (snapshot.atoms[0] as { value: string }).value = 'x';
+    if (snapshot.schemaVersion !== 2) throw new Error('expected run snapshot');
+    (snapshot.runs[0] as { text: string }).text = 'x';
     expect(state.text()).toBe('m');
   });
 
@@ -356,14 +361,15 @@ describe('SharedWorkingState', () => {
     });
     state.apply(insert('op-snapshot', 'actor-a', null, 's'), authorization);
     const snapshot = state.snapshot();
+    if (snapshot.schemaVersion !== 2) throw new Error('expected run snapshot');
     const faults = [
       { ...snapshot, checkpointRevision: 'not-the-revision' },
-      { ...snapshot, atoms: [{ ...snapshot.atoms[0], after: 'missing' }] },
+      { ...snapshot, runs: [{ ...snapshot.runs[0], after: 'missing:0' }] },
       {
         ...snapshot,
-        atoms: [{ ...snapshot.atoms[0], after: snapshot.atoms[0].id }],
+        runs: [{ ...snapshot.runs[0], after: 'op-snapshot:0' }],
       },
-      { ...snapshot, atoms: [{ ...snapshot.atoms[0], deleted: 'false' }] },
+      { ...snapshot, runs: [{ ...snapshot.runs[0], text: false }] },
       { ...snapshot, knownOperations: [] },
       {
         ...snapshot,
@@ -390,7 +396,7 @@ describe('SharedWorkingState', () => {
       ]),
       authorization,
     );
-    expect(state.resync(oldRevision, 100, [1]).outcome).toBe('snapshot');
+    expect(state.resync(oldRevision, 100, [2]).outcome).toBe('snapshot');
 
     const large = new SharedWorkingState({ scope });
     const text = 'x'.repeat(20_000);
@@ -411,7 +417,7 @@ describe('SharedWorkingState', () => {
     source.live.apply(child, authorization);
     expect(source.live.text()).toBe(peer.text());
     expect(source.live.revision).not.toBe(peer.revision);
-    const update = source.live.resync(peer.revision, 10, [1]);
+    const update = source.live.resync(peer.revision, 10, [2]);
     expect(update.outcome).toBe('snapshot');
     if (update.outcome !== 'snapshot')
       throw new Error('expected pending snapshot');
@@ -443,7 +449,7 @@ describe('SharedWorkingState', () => {
       insert('op-delta-root', 'actor-a', null, 'r'),
       authorization,
     );
-    const delta = source.live.resync(pendingRevision, 2, [1]);
+    const delta = source.live.resync(pendingRevision, 2, [2]);
     expect(delta.outcome).toBe('delta');
     if (delta.outcome === 'delta') {
       expect(delta.operations).toHaveLength(2);
@@ -473,7 +479,7 @@ describe('SharedWorkingState', () => {
       epochFive,
     );
     expect(
-      rejectedSource.live.resync(rejectedPendingRevision, 10, [1]).outcome,
+      rejectedSource.live.resync(rejectedPendingRevision, 10, [2]).outcome,
     ).toBe('snapshot');
   });
 
@@ -502,7 +508,7 @@ describe('SharedWorkingState', () => {
       insert('op-barrier-root', 'actor-a', null, 'r', [], 2),
       epochTwo,
     );
-    const update = source.live.resync(peerPendingRevision, 10, [1]);
+    const update = source.live.resync(peerPendingRevision, 10, [2]);
     expect(update.outcome).toBe('snapshot');
     if (update.outcome !== 'snapshot')
       throw new Error('expected barrier snapshot');
@@ -606,9 +612,16 @@ describe('SharedWorkingState', () => {
       ),
     ).toEqual({ outcome: 'rejected', reason: 'deferred_limit_exceeded' });
     const snapshot = new SharedWorkingState({ scope }).snapshot();
-    (snapshot as { atoms: unknown }).atoms = [
-      { id: 'op-unicode:0', after: null, value: '\ud800', deleted: false },
-    ] as never;
+    if (snapshot.schemaVersion !== 2) throw new Error('expected run snapshot');
+    (snapshot as { runs: unknown }).runs = [
+      {
+        operationId: 'op-unicode',
+        start: 0,
+        after: null,
+        text: '\ud800',
+        length: 1,
+      },
+    ];
     expect(() => new SharedWorkingState({ scope, snapshot })).toThrow();
   });
 
@@ -622,5 +635,86 @@ describe('SharedWorkingState', () => {
     const restored = new SharedWorkingState({ scope, snapshot });
     expect(restored.text()).toHaveLength(20_000);
     expect(restored.revision).toBe(state.revision);
+  });
+  test('random concurrent inserts and deletes converge to the reference RGA with and without compaction', () => {
+    for (let seed = 1; seed <= 40; seed += 1) {
+      let random = seed;
+      const pick = (bound: number) => {
+        random = (Math.imul(random, 1664525) + 1013904223) >>> 0;
+        return random % bound;
+      };
+      const sequence: TextDocumentOperation[] = [];
+      const atoms = new Map<
+        string,
+        { id: string; after: string | null; value: string; deleted: boolean }
+      >();
+      for (let index = 0; index < 60; index += 1) {
+        const id = `random-${seed}-${index}`;
+        const ids = [...atoms.keys()];
+        if (ids.length > 0 && pick(3) === 0) {
+          const target = Array.from(
+            { length: 1 + pick(5) },
+            () => ids[pick(ids.length)],
+          );
+          const operation: TextDocumentOperation = {
+            ...insert(id, 'actor-a', null, 'unused'),
+            kind: 'delete',
+            target: [...new Set(target)],
+          };
+          sequence.push(operation);
+          for (const id of operation.target) atoms.get(id)!.deleted = true;
+        } else {
+          let after =
+            ids.length === 0 || pick(4) === 0 ? null : ids[pick(ids.length)];
+          const text = ['abc', '😀é', 'xy', 'Z'][pick(4)];
+          sequence.push(
+            insert(id, pick(2) ? 'actor-a' : 'actor-b', after, text),
+          );
+          for (const [offset, value] of [...text].entries()) {
+            const atom = `${id}:${offset}`;
+            atoms.set(atom, { id: atom, after, value, deleted: false });
+            after = atom;
+          }
+        }
+      }
+      // An independent per-character RGA oracle retains deleted values.
+      const expected: string[] = [];
+      const visit = (after: string | null) => {
+        for (const atom of [...atoms.values()]
+          .filter((atom) => atom.after === after)
+          .sort((a, b) => compareWorkingStateIds(a.id, b.id))) {
+          if (!atom.deleted) expected.push(atom.value);
+          visit(atom.id);
+        }
+      };
+      visit(null);
+      const plain = new SharedWorkingState({ scope });
+      for (const operation of sequence)
+        expect(plain.apply(operation, authorization).outcome).toBe('applied');
+      const shuffled = [...sequence];
+      for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const other = pick(index + 1);
+        [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+      }
+      let compacted = new SharedWorkingState({ scope });
+      for (const [index, operation] of shuffled.entries()) {
+        expect(compacted.apply(operation, authorization).outcome).not.toBe(
+          'rejected',
+        );
+        expect(compacted.apply(operation, authorization).outcome).toBe(
+          'duplicate',
+        );
+        if (index % 3 === 0) {
+          const revision = compacted.revision;
+          const snapshot = compacted.compact();
+          expect(snapshot.revision).toBe(revision);
+          compacted = new SharedWorkingState({ scope, snapshot });
+        }
+      }
+      expect(plain.text(), `seed ${seed}`).toBe(expected.join(''));
+      expect(compacted.text(), `seed ${seed}`).toBe(expected.join(''));
+      expect(compacted.snapshot(), `seed ${seed}`).toEqual(plain.snapshot());
+      expect(compacted.revision).toBe(plain.revision);
+    }
   });
 });

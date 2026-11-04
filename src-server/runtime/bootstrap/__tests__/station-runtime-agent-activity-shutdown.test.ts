@@ -25,7 +25,12 @@ describe('StationRuntime shutdown', () => {
     });
     runtime.projectRoomRuntime = { close: closeRoom };
     runtime.projectMembership = { close: () => closed.push('membership') };
-    runtime.orchestrationEventStore = { close: () => closed.push('sessions') };
+    runtime.orchestrationEventStore = {
+      close: () => {
+        closed.push('sessions');
+        return { kind: 'closed' as const };
+      },
+    };
     const shutdown = runtime.shutdown().catch(() => {});
     await vi.waitFor(() => expect(closeRoom).toHaveBeenCalledOnce());
     expect(closed).toEqual([]);

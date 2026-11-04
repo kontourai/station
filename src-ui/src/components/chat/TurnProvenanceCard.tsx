@@ -617,7 +617,7 @@ export function TurnProvenanceCard({
       >
         <p className="turn-provenance__unreadable">
           Provenance was recorded in a format this version of Station cannot
-          read. Nothing about this answer is being claimed from it.
+          read.
         </p>
       </section>
     );

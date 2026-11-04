@@ -17,8 +17,9 @@ mobile continuity baseline; the earlier reconnect work is recorded in
 
 Tool-server OAuth credentials are plaintext JSON with mode `0600` under
 `<home>/security/` (`tool-server-credentials.json` and
-`tool-server-principal-credentials.json`). Same-user processes, including agents
-outside macOS Seatbelt confinement, can read remote tokens directly. Remote MCP
+`tool-server-principal-credentials.json`). Same-user host processes without
+filesystem confinement, including Agent processes with those host permissions,
+can read remote tokens directly. Remote MCP
 proxy delivery does not provide encryption at rest or protection from same-user
 filesystem access. See [connected accounts](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent).
 
@@ -97,6 +98,14 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
+The Project sharing setting uses a transaction-bound consent session and the
+separate review page to isolate its decision from app-origin scripts. This is
+not a fresh passkey assertion or proof of human presence or same-machine
+location: a caller holding the operator credential can automate the HTTP
+review and decision, and a holder of the exact transaction cookie can decide
+that transaction. Browser Origin and Fetch Metadata do not authenticate raw
+HTTP callers. The S4 passkey ceremony below is a stronger, separate authority.
+
 Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
 `STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
 (an IP-only Station has no remote operator sign-in). A paired browser opens an
@@ -142,12 +151,18 @@ every read, so a revoked binding cannot resume after restart.
 `__Host-station-operator` is Secure, HttpOnly, SameSite=Strict, Path=/, with no
 Domain. A hostname cookie also reaches the app on another port. That is an
 accepted read disclosure: app-origin plugin code can read
-`GET /api/pairing/devices`, `GET /api/operator/passkeys` and
+`GET /api/pairing/devices`, `GET /api/pairing/requests`, `GET /api/operator/passkeys` and
 `GET /api/operator/session` while the session is live. Exact-leaf admission
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
-admission runs first; an operator cookie cannot block that authority. The
+admission runs first; an invalid operator cookie cannot block that authority. For
+pairing approval, a valid operator session takes precedence so its decision
+requires a separate passkey review. The
 session path verifies the binding Device and enforces alias/account policy.
-S4 admits exact scope/revoke/removal, group, token and passkey-revocation requests
+The account-binding consent leaf explicitly selects the operator session even
+when the Device could otherwise approve pairing, and does not accept the Device
+credential as a substitute for the session or the consent-origin assertion.
+S4 admits exact scope/revoke/removal, group, token, passkey-revocation and
+ordinary Device pairing-approval requests
 only to create a transaction: 202, with no mutation. The owning session alone can
 read or review it. Its canonical fingerprint and one-use render nonce bind a
 fresh UV assertion on the consent origin to that exact action. Only
@@ -156,9 +171,35 @@ native consent cannot substitute. The initiating live session may deny through
 the same exact consent-origin and one-use nonce checks without a passkey. Denial
 is terminal and cannot commit a write; a later approval is refused.
 Commit rechecks expected target state and live
-session authority. There is no step-up window. Step-up and automatic status or
+session authority. Account-bound approval also rechecks the provider session,
+issuer and subject before committing the still-pending request. There is no step-up window. Step-up and automatic status or
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
+
+Turning on Project sharing (#4306) uses the same S4 transaction.
+`POST /api/projects/:slug/access/enable` still commits directly only for the
+operator credential, a `home-possession` grant or a Device with
+[owner-device standing](#owner-device-standing-2026-11-02). A paired Device that ordinary
+admission lets post that leaf, and that presents an operator session bound to
+the same Device, receives `202` and a `project-sharing-enable` transaction
+instead. Its fingerprint pins the slug, the local Project id and the owner, the
+principal that Device resolves to. The review names that owner. The S4 rules
+apply unchanged: one fresh UV assertion on the consent origin, a one-use render
+nonce, the owning session alone, and no step-up window. At commit Station
+rechecks the reviewed owner, the Device credential and the live session (bound
+Device, passkey, credential epoch, expiry). It checks the session again inside
+the Project lease, where the membership service calls `operator()`. A Project
+owner or admin without a session, a different Device carrying the session
+cookie, an agent-originated request and a delegation grant keep the existing
+`403`. `GET /api/projects/:slug/access/enablement` reports which path applies
+to the caller and reads no Project data. A committed enable writes
+`station.project_sharing.enabled` (actor, local Project id, transaction id)
+through the runtime logger, like `station.device_access.changed`. It adds no
+usage-telemetry event. Two residual risks: app-origin plugin code can open such
+a review, as with other S4 requests, but cannot approve it; and the owner is
+the Device's resolved principal. Behind Tailscale Serve with WhoIs that is the
+tailnet person; a Device with no person binding owns as itself, so revoking
+that Device leaves the Project without a reachable owner.
 
 Sign-out remains on the consent origin with its own one-use page nonce and exact
 Origin/Fetch Metadata checks. Remote revoke-all is a follow-up; both API DELETE
@@ -205,8 +246,9 @@ malformed identity never produce verified provenance.
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
-| Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
-| Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
+| Voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
+| `WS /api/terminal/socket` on the main API listener | `401` before upgrade unless it redeems a single-use ticket | Same | Same; the ticket's minting request must be the operator in person or one of the operator's own paired devices ([terminal socket](#terminal-socket-on-operator-devices-3994)) |
+| Voice WebSocket paths other than health | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
 Account-bound Knowledge access is limited to GET/HEAD source capabilities,
 root and adapter listings, record listings/details, graph reads and exact
@@ -237,9 +279,52 @@ current canonical Conversation lineage and reader access. Ordinary account membe
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
 
+The personal Task-room leaves separately compose current Device scope and
+account standing with the exact shared Task incarnation and Project membership.
+`view` permits reads and presence, `discuss` permits messages, and `edit`
+permits edit planning. The account-bound allowlist excludes batch settlement,
+attachments, memory, review and agent requests. A changed membership revision
+invalidates the captured stream admission; an in-process notification prompts
+closure and the idle cadence rechecks within its 15-second interval. Per-delivery
+checks remain. Neither the member preview nor a Task share grants host execution
+or access to a private Session.
+
 Previously verified cookie sessions require the provider's synchronous live witness at
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
+
+On the scoped surfaces below, a currently witnessed local-account cookie session
+supplies the acting person. A verified Serve WhoIs identity is ingress
+provenance and does not establish membership or link people. Device and account
+bindings must agree, and an account cannot borrow an operator or another Device
+grant. Revoked sessions fail closed. Without an account session, existing
+WhoIs and Device attribution remains unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting operator or Device caught by the scoped
+local-account rule is refused with `403 account_identity_conflict`. The local
+account's `POST /api/account-auth/sign-out` remains available to end that
+account session; it does not revoke the Device credential. For local accounts,
+the route and provider accept an exact Station-allowed browser Origin for that
+operation only. Missing or untrusted Origins remain refused, and the exception
+does not widen sign-in or other account operations. Account-tied personal tokens
+retain their separate conflict refusal described below.
+
+An approved account-bound Device exchange can supersede a Device with the same
+client-instance correlation only when both approved account issuer and subject
+match, in addition to the existing ingress replacement domain. A different
+account or an unbound Device is not superseded by that exchange. WhoIs and the
+correlation alone do not link accounts or grant authority.
+
 
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
@@ -257,16 +342,35 @@ exact instance destination grants, never account, Project or peer inference gran
 See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
 for the status/probe boundary and failure limits.
 
+The companion host-prerequisite GET has `orchestration:read` scope and an
+additional current operator-in-person check before the bounded local Docker
+probe and before its response. A read scope alone never admits an ordinary
+paired Device or agent. It returns capability metadata, not credentials,
+installation authority or personal analytics access. No bootstrap grant was
+expanded for this route. The archive-preparation POST separately requires
+`telemetry:manage`. Existing operator identities act by identity; an eligible
+human device needs both explicit operator promotion to that permission and a
+current verified operator role. Actor eligibility is checked before and after
+asynchronous role resolution, and preparation rechecks authority at effect
+boundaries. Agents and delegation callers are refused. The permission is absent
+from presets/defaults; `home:control` remains a continuity fence. Preparation
+accepts an operation UUID, not caller commands, URLs, paths or signing policy.
+It grants no sending, personal-source or service-activation authority.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
-endpoint has a separately minted, scoped MCP query token. That exception does
+endpoint has a separately minted, scoped MCP credential in a query or header.
+Credentials for Station tools added solely by coordinator designation recheck
+that designation and are revoked on removal or replacement; independently
+authored Agent or Project grants are separate. A process-local generation
+fences a provider start that outlives the designation change. That exception does
 not permit an operator or Device credential in a URL. Inbound webhooks verify
 their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
 only its exact short-lived upload.
 
-The terminal and voice listeners still accept their direct-loopback business
-path without the remote first-frame credential check. Browser-shaped upgrades
+The voice listener still accepts its direct-loopback business path without
+the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
 authorization and is not a paired-Device scope boundary.
@@ -283,7 +387,7 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 2,
+    "protocolVersion": 4,
     "minClientProtocol": 1,
     "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
@@ -431,15 +535,35 @@ qualification receipt. See [the connection controls](../guides/connections.md#in
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
-are the supported request contracts established from the live runtime callers:
+are the supported request contracts; source composition and live consumer
+qualification remain separate evidence:
 
 | Consumer | Explicit credential path | Missing or malformed credential |
 | --- | --- | --- |
 | Browser UI, desktop shell, and mobile shell | Device-session cookie after the public pairing/access-request exchange; the desktop may use its native request broker | Protected route returns `401 authentication_required`; public pairing paths remain available |
 | CLI | `--credential`, `STATION_API_CREDENTIAL`, or an OS-keyring-backed paired profile credential | The command reaches the same `401`; the CLI must pair or supply a credential |
-| `station-control` MCP | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects it as ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Station-owned `station-control` runtime | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Explicit local external MCP client | Independently revocable, header-only scoped lease from the personal-host operator setup surface | The MCP endpoint refuses missing, expired, revoked or out-of-scope leases; no internal token is exported |
 | SSH delegation | Paired outbound peer bearer attached to the tunnel request | The remote runtime returns `401`; a tunnel alone grants no API authority |
 | Station-owned UI/Tailscale proxy | It always classifies browser traffic as remote and relays its device-session cookie or bearer; the shared token carries only bounded proxy metadata | `401`; a loopback socket, Host, or SSH forward never becomes internal authority |
+
+External-client setup requires the file-proven personal-host operator and
+`access:manage`, with current device/account/group authority checked after body
+consumption and again during lease verification. It binds an existing recorded,
+operator-owned Session and its current Project; it creates no Session or
+Environment. Tools are explicitly selected from `read_conversation`, `board_read`
+and `board_pin`, with a 60–3600 second lifetime. Board tools remain self-owned
+rather than Project-partitioned. Each request and call rechecks
+recorded ownership and Project identity. These leases use loopback transport,
+remain `delegated-custody`, and cannot satisfy browser tools' bound-caller rule.
+Explicit revoke, expiry and process restart invalidate them. Session revocation
+removes existing client leases; an operator may deliberately issue a new lease
+against a retained stopped Session record afterwards. That is record binding,
+not Session liveness. See the [Session API](../reference/session-api.md#external-clients-using-station-tools)
+for the setup contract and [CLI](../reference/cli.md#mcp-clients) for private-file
+configuration. Browser/plugin consent flows retain their existing transactions;
+this personal-host surface grants no remote OAuth/TLS or external-execution
+ownership.
 
 The public pairing, access-request, exchange, proof, liveness, share-token, and
 MCP-token routes remain separately declared authentication contracts; this
@@ -454,12 +578,16 @@ proof), not the boolean feature flags below — see
 The top-level `capabilities` (station#1095) is additive and entirely
 optional: every key is an optional boolean, and a host may omit the whole
 object. Absence of the object, or of a specific key, always means
-"unsupported" — either the host predates this field, or it never seeded that
-flag — never an error. This is the client feature-detection story for a
-rolling upgrade: a client checks `capabilities.<name> === true` instead of
-branching on a version number. Station's own seeded flags live in one
-registry,
-`src-server/capabilities/station-capability-flags.ts`; the sdk exposes a
+"unsupported" — either the host predates this field, it never seeded that
+flag, or its deployment mode cannot serve the route behind it — never an error.
+This is the client feature-detection story for a rolling upgrade: a client
+checks `capabilities.<name> === true` instead of branching on a version number.
+Station's own seeded flags live in one registry,
+`src-server/capabilities/station-capability-flags.ts`, whose resolver withdraws
+a flag in a deployment mode that refuses every call to its route (hosted mode
+omits `sessionInventoryInputRead`, `webPushNotifications`, `connectionRoutes` and `coordinatorSession`). That discloses nothing new: a hosted
+Station answers the handshake only through tenant ingress and refuses an
+unadmitted caller with 421 `tenant_context_required`; the sdk exposes a
 `hasCapability(descriptor, name)` accessor (`@kontourai/station-sdk`) that
 treats every absence case as `false`.
 
@@ -483,7 +611,8 @@ contracts retain their own admission and body/rate limits.
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
 caught by a streaming byte counter that aborts past the ceiling and re-buffers
-the bounded body for the handler — `Content-Length` alone is not trusted.
+the bounded body for ordinary handlers. The two media upload paths below
+retain a lazy bounded stream — `Content-Length` alone is not trusted.
 
 **Rate budget.** The budget key is the **server-derived principal**, never a
 caller-supplied header, body field, or query parameter. A budget keyed on
@@ -525,6 +654,63 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+Task Review Walkthrough list, manifest, frame and video reads inherit the Task
+family's `orchestration:read` tier and independently recheck person-review
+authority, the Task incarnation and the live Walkthroughs preview. They refuse
+Station-internal requests and use `no-store`; video reads verify the retained
+length and digest. The sensitive Browser recording tool requires a bound lead
+Session and publishes only after authority and clean-workspace rechecks. A clip
+can expose page contents and is served through that Task's authorized reads.
+Device session enumeration, capture and recording require `terminal:operate`
+in addition to current Task, Project and device authority. A Device recording
+or agent log sample holds the device input lease and refuses a human-held lease;
+log output is bounded and can contain private application data. Project app
+staging and Task reproduction capture also require `terminal:operate`, plus
+current Project, Device and Task authority. Workspace staging refuses symlinks
+and escapes; uploads and host-side installation are bounded. A reproduction
+attachment includes a screenshot and app logs, so Task readers can see those
+contents. A lost response after installation or Task publication may leave the
+effect unconfirmed; the caller must inspect the device or Task before retrying.
+
+The default-off Browser artifacts preview admits element picking only from a
+current person with Browser view authority. Requests that may originate from
+an Agent are refused, even when page evaluation is enabled. A pick can expose
+element attributes and computed styles beyond visible pixels, so sharing its
+image and description with a conversation remains an explicit action. Network
+diagnostics retain only bounded in-memory metadata, without headers or bodies;
+URL credentials, query values and fragments are removed. Agent network reads
+also require **Let agents run JavaScript in this Project's pages**
+(`browserEvaluate`). These boundaries do
+not establish hostile-page or released-package qualification.
+
+Person-initiated Browser recording is a separate action behind the same
+preview. Start, stop, status, cancellation and video reads require current
+person and Browser authority; a recording ID is not authority. Capture is
+bounded and rechecks its session, preview and authority before publication.
+Temporary frames are private to a generated staging directory and are removed
+on ordinary completion or cancellation. A process crash can leave that staging
+directory; no automatic crash cleanup is claimed. A saved WebM can expose page
+content and is not automatically published to a Task.
+
+The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
+`POST /api/transcription` uploads also retain the standard principal rate
+bucket. Their body ceilings derive from their owning upload limits: 512 MiB
+for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
+methods retain their ordinary ceilings; a large upload is not a rate exemption.
+Only these media uploads get the extended receive policy: 60-second progress/idle
+bounds, a two-hour Walkthrough total and a 60-second transcription total.
+Authentication, principal rate admission and declared-size checks precede route
+admission. Preview and Project/authority refusals, and the importer's two-slot
+capacity refusal, precede body reads and close the connection. The middleware
+passes a lazy byte-counting stream; admitted routes stream to disk with their
+own bounds. Ordinary mutation ceilings and buffering remain unchanged.
+The API and built-UI listeners retain header limits and socket timeout values.
+Node's server-wide parser total is finite at two hours; a shared per-request timer
+retains ordinary receives' 300-second total, counting header receipt. This timer
+can fire before Node's periodic timeout sweep would have done so. See
+[Walkthrough limits](../guides/walkthroughs.md#limits-and-storage) and
+[local speech](../guides/local-speech.md) for processing and proxy deadlines.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
@@ -712,7 +898,9 @@ also labels producer rows as external, unverified data. Paired credentials with
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in
-that UI. Neither preset grants pairing management. Ordinary paired credentials
+that UI. Neither preset carries pairing management as a scope. A Standard
+Device the owner paired for themself reaches it through
+[owner-device standing](#owner-device-standing-2026-11-02); other paired credentials
 are refused on the pairing family even if they carry inherited `access:manage`.
 There are explicit exceptions in
 [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts):
@@ -740,11 +928,13 @@ a host session must not convey `relay:manage`, `access:approve` or
 `consent:decide` authority to invitees. It can narrow a pending grant or remove
 an existing permission; retaining an existing protected permission is not a new
 promotion. Raw operator request-time approval and explicitly promoted
-`access:devices` administrators retain their existing authority. Ordinary
-Devices with inherited `access:manage` remain refused. This deliberately trusts
+`access:devices` administrators retain their existing authority. Devices
+without owner-device standing that carry inherited `access:manage` remain refused. This deliberately trusts
 the host-issued browser session, including code on its origin, with Device
-administration; the native consent broker still requires `local-grant`, so
-browser custody never becomes native consent authority. The chosen
+administration. The operator native-consent path still requires `local-grant`;
+the separate personal-analytics requester path uses only its transaction-bound,
+host-retained session and cannot borrow operator authority. Browser Device
+administration custody grants neither native path. The chosen
 scope is shown before the grant is created and again on the resulting offer.
 
 Operator-created invitations can record approval at creation (`approval:
@@ -857,9 +1047,197 @@ Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
 methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
-The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
-requires `orchestration:operate`; both refuse an account-bound device and any
-personal access token whatever its scope (#3586). Pairing-family routes
+Child-work instruction history inherits `orchestration:read`, but the bounded,
+separately paged read also checks current principal and Session/child ownership
+before and after reading; unavailable ownership returns 404 with no-store.
+The `steerChildWork` command requires current Session read and mutation authority.
+For forwarded Station-control callers, the ingress guard re-resolves and
+re-authorizes the caller after asynchronous adapter resolution and before
+dispatch. A claimed instruction with an uncertain acknowledgement stays
+indeterminate instead of being sent again. The Station-owned journal is deleted
+with the Session while client-input key tombstones prevent cross-Session reuse.
+These are source boundaries, not native-device or hosted journey qualification.
+The #3994 socket at `/api/terminal/socket` uses the main API listener. Since
+part b2 it is admitted before its upgrade by a single-use ticket minted by
+`POST /api/terminal/tickets` through the ordinary HTTP admission pipeline (see
+[Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)).
+It admits the operator in person and the operator's own paired devices, even
+on loopback. Project/binding
+session checks, replay acknowledgement, strict input sequencing and bounded
+credit apply before terminal effects/output. The `terminal:observe` token
+is explicit operator promotion only and changes no preset or default grant.
+Members' devices, account principals, personal access tokens, agents and
+plugins remain refused. The
+[transport boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1)
+separates real-socket fixture evidence from live remote qualification.
+The socket additionally admits only HTTP/HTTPS OSC 8 link metadata and
+discards a current observer's complete mouse/focus input reports. Core retention
+reserves configured journal/tail limits against global budgets; request-triggered
+eviction requires operate authority on the victim's stored Project/binding and
+never chooses a live session. POSIX scoped-session cleanup freezes and kills
+discovered owned descendant groups. The retained legacy listener and raw history
+remain separately owned during migration; these changes do not qualify
+physical native, Windows/ConPTY, account or broker terminal admission. Personal
+access tokens and account-bound Devices are refused at the ticket mint.
+
+### Terminal socket on operator devices (#3994)
+
+Owner decision (2026-10-31): every one of the operator's own paired devices
+counts as the operator for `terminal:operate` and `terminal:observe`, whether
+it reaches Station through a same-origin reverse proxy, a tailnet name, the
+relay's HTTP route or a native shell. "Own" is server-derived on every check
+([`isOperatorsOwnDevice`](../../src-server/security/coding-authority.ts)): a
+`device` credential whose current record is tied to no person, is not a
+delegation grant, is not a personal access token and is not revoked. A device
+tied to another person (a member, #3557) is refused, as are the internal
+principal and any request that may be an agent's; #2497 confinement for
+non-operator members is a separate program and is not widened here.
+
+- **Admission before upgrade.** A client first calls
+  `POST /api/terminal/tickets`, which requires the operator test above, a
+  current principal and at least `terminal:observe` (the pairing table refuses
+  personal tokens). The response is a 32-byte random ticket, valid for 30
+  seconds and redeemable once. The client offers it as a WebSocket subprotocol
+  (`station.terminal.ticket.<ticket>`) beside `station.terminal.v1`; the server
+  selects only `station.terminal.v1`, so the ticket is never echoed, never
+  enters a URL, access log or referrer, and only its SHA-256 digest is kept.
+  Redemption consumes it whether or not the upgrade then succeeds. An upgrade
+  without exactly one valid ticket gets `401` before any socket, parser or
+  timer exists, so an unauthenticated peer cannot hold a pending slot.
+- **Not a credential.** The ticket is not an operator or Device credential: it
+  authorizes one upgrade for 30 seconds and carries the minting Request as the
+  socket principal. Every later operation re-checks that principal as current
+  and re-reads its device record and scope; revoking or rebinding the device
+  refuses the next operation and its output. A socket's maximum lifetime is one
+  hour (close `4000`), after which the client reconnects with a new ticket.
+- **Origin.** Ticket-bound upgrades do not consult the browser Origin
+  allowlist. The ticket is obtainable only through an authenticated,
+  CORS-governed HTTP request, so a cross-site page cannot ride ambient cookies
+  to a socket; native WebViews and tailnet or proxy hostnames (whose Origin
+  the old allowlist did not know, the cause of the phone's close `1006`/`403`)
+  are admitted through the same HTTP decision that admits their other requests.
+- **Native shells.** Desktop, iOS and Android fetch the ticket through their
+  host-owned native HTTP transport, so the renderer never holds the bearer, and
+  open the socket to the selected direct origin. No Rust WebSocket bridge
+  exists. Physical-device qualification is recorded with the change, not here.
+- **Fairness and reserved slots.** At most 64 sockets in total and eight per
+  identity (a device id, else a digest of the credential). Eight slots are
+  reserved for the operator in person, so the operator's own devices, or a
+  runaway client, cannot lock the host's own browser or desktop out. Each
+  identity may hold eight unredeemed tickets (256 in total).
+- **Relay and shared addresses.** No admission state is keyed by network
+  address. A relay, reverse proxy, tailnet exit or carrier NAT shared by
+  several devices therefore cannot be blocked by one of them, and a failed
+  redemption backs nothing off. Guessing a ticket is infeasible (256 bits);
+  the mint itself sits behind the ordinary HTTP authentication limits.
+- **Liveness.** The server pings every 15 seconds and terminates a peer that
+  missed the previous pong. Every capacity or lifetime close terminates a peer
+  that ignores the close handshake after one second.
+- **UI server hop.** The CLI's UI server forwards only the
+  `/api/terminal/socket` upgrade to the loopback API listener and strips every
+  `x-station-*`, `tailscale-*` and forwarding header; it attests nothing. The
+  ticket is the only admission, so a forged proxy header gains no authority.
+- **Broker routes.** A browser broker route (WebRTC DataChannel) has no
+  WebSocket path to Station; the client refuses raw terminal egress there
+  before minting a ticket. That egress stays closed until a broker transport
+  for the socket exists and this model is updated.
+- **Agent commands and restart.** On a personal host an ACP engine's
+  terminals are command sessions in the same store, recorded under the
+  agent session's Project (or a reserved `.agent-terminals` Project) and its
+  `thread:<id>` binding. The operator, and their own devices with
+  `terminal:observe`, can therefore read an agent command's sanitized output,
+  and with `terminal:operate` type into its input; no other principal gains
+  either. The agent's requested directory must lie inside its session's
+  directory. `restart` requires `terminal:operate`, re-resolves the launch
+  profile instead of storing a program, keeps the directory inside the
+  binding, and refuses server-owned launches and command sessions other than
+  package scripts, which it resolves again by name.
+- **History and restore (#3994).** `GET /api/terminal/history` needs
+  `terminal:observe` and `DELETE` needs `terminal:operate`, both refusing
+  personal tokens and requiring the same operator test; usage lists only
+  sessions the caller may observe and clearing only those it may operate. The
+  usage answer names the history directory, a host path the operator already
+  sees in Settings. Moving that directory is a settings write an agent is
+  refused; it must be absolute. A shell reopened after its host restarted is a
+  login shell in its recorded directory, only while its Project exists; no
+  command, agent or server-owned launch is replayed. `adopt` on the existing
+  open route grants nothing new: it returns a running shell in the same
+  binding under the same operate check.
+- **Scripts and agent runs (#3994).** Listing a binding's package scripts
+  needs `terminal:observe`; running one needs `terminal:operate` and runs only
+  a name the binding's `package.json` declares, through a package manager the
+  server finds. An agent's `terminal_run` records a request and runs nothing.
+  `POST /api/terminal/runs/:runId/approve` needs `terminal:operate`, the same
+  operator test and sending to the conversation, refuses personal tokens and
+  any request that may be an agent's, and starts that one command once as the
+  approving person in the agent's thread binding. It refuses a directory that
+  no longer resolves to the one shown, and remembers no approval. The command
+  is the agent's text, run by the platform shell with the person's authority,
+  so the exact command and directory on the card are the control.
+
+### Owner-device standing (2026-11-02)
+
+Owner decision (2026-11-02): on a personal Station, the owner's own paired
+devices act as the owner by default, so a single developer never meets an
+"operator required" refusal from their own laptop or phone. Multiplayer
+authority (people, groups, sharing) starts mattering only once the owner
+shares a Project or invites someone.
+
+**Who holds it.** Server-derived on every request by
+[`DevicePairingService.credentialHasOwnerStanding`](../../src-server/services/ssh/device-pairing-service.ts)
+and bound once at the auth boundary as `standing: 'owner-device'`: a current
+`device` credential that is tied to no person, is not a delegation, a
+personal access token, a relay alias, a home-possession credential or a
+device still finishing relay enrollment, **and whose effective scope already
+carries `orchestration:operate` and `terminal:operate`**. A hosted tenant
+never grants it. Read-only and single-purpose grants (`read-only`,
+`delegation`, `inference`, `home-transfer`) never hold it. Revoking,
+rebinding or narrowing the device removes it on the next request.
+
+**Why it adds little reach.** A device holding `terminal:operate` already
+has an interactive shell on the host as the Station account (#3994). Anything
+the operator in person can do through the API, that shell can already do.
+The standing removes refusals rather than granting a new capability.
+
+**What it grants.** Exactly the standing of Station's own launcher browser
+on the host (`ui-bootstrap`):
+
+- it resolves to `human:local:operator`, so operator-principal gates pass;
+  every act still carries the device's id in its client origin (principals.md
+  R1);
+- it satisfies the home-operator checks (`isBoundRuntimeOwner`, the
+  Project-membership `operator()` check, the telemetry-companion,
+  relay-management and engine sign-in leaves), and "the operator in person"
+  for commands, working folders and full access. A full-access grant still
+  names the device as grantor, so revoking it resets what it granted (#1796);
+- `resolveGrantedScope` reports `access:manage` for it, derived per request
+  and never stored, so the `access:manage` route tier admits it. No other
+  tier widens;
+- `credentialMayManagePairing` admits it, so it can pair a phone (a
+  pre-approved single-use offer), read pending requests and the device
+  inventory, approve requests, and change or revoke ordinary devices, with
+  the host browser's limits: device grants only, never a delegation, never a
+  protected administration or consent scope
+  (`isProtectedPairingPromotionScope`, and the existing `access:devices` and
+  `home:control` refusals).
+
+**What it does not grant.** No mint-time possession proof: everything keyed
+on `isBoundLocalGrantMintedOperator` (native consent custody, outside-agent
+host proof, Station-control external clients, plugin host approval while the
+consent listener is down, binding a verified person at approval) stays
+host-only or passkey step-up. The raw operator credential's device-admin
+routes, operator passkeys, people, groups and tokens keep their S4 passkey
+step-up. It never becomes an `operator-session`.
+
+**Residual.** A stolen, unlocked owner device is the owner until it is
+revoked, as it already was through its terminal. Same-origin plugin code on
+an owner device's app origin can reach the same API the device can; that
+residual is the host launcher browser's, now extended to the owner's other
+devices. Revoke a lost device from any other owner device or from the host.
+
+The voice WebSocket requires `orchestration:operate` and refuses an
+account-bound device and any personal access token whatever its scope (#3586). The terminal socket ticket
+requires `terminal:observe` or `terminal:operate` and refuses the same callers. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
@@ -867,9 +1245,8 @@ log — rather than defaulting to allowed; a test enumerates the live route
 surface against the table so a new authenticated route shipped without a
 scope entry is caught before merge. A read-only credential can therefore read
 and stream permitted HTTP state but receives `403 insufficient_scope` for
-pairing-scoped mutations. The remote terminal first-frame check refuses it
-because it lacks `terminal:operate`; the retained direct-loopback WebSocket
-path in the matrix is a separate exception. Although the Station operator bootstrap credential
+pairing-scoped mutations. The terminal socket ticket mint refuses it because it
+lacks `terminal:observe` and `terminal:operate`. Although the Station operator bootstrap credential
 is not itself a pairing grant,
 [`resolveGrantedScope`](../../src-server/services/ssh/environment-security-service.ts)
 reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
@@ -891,13 +1268,19 @@ Engines run as commands (the `/acp/connections/:id/sign-in*` and
 `/credentials/:name` leaves, [acp-sign-in.ts](../../src-server/routes/connections/acp-sign-in.ts))
 have no profiles: their sign-in acts on the engine's own login on the host.
 Starting, reading or cancelling one, and storing or removing an engine key, are
-`engine:login` leaves with the same operator exception; a request that may be
-an agent's is refused. A terminal sign-in runs the connection's own program
+`engine:login` leaves whose exception is the operator in person: the operator
+credential, a home-possession credential (the host browser's sign-in link,
+the desktop app) or a Device with [owner-device standing](#owner-device-standing-2026-11-02), as the handler and its view's `allowed.signIn` read it. The
+profile leaves above keep the verified-operator exception. A request that may
+be an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
 request, so a paired device also needs both `coding:exec` and
-`terminal:operate` to start it; attaching also needs `terminal:operate`. Its
-session is closed at a 15-minute deadline and its terminal reopens only while
-it runs (`attachOnly`), never as a fresh shell. Any other
+`terminal:operate` to start it. Since #3994 b2 it is a server-owned
+`TerminalSessions` launch under a scope no Project can take; a client attaches
+to it by id through the terminal socket, with the operator test above and
+`terminal:operate` to type. Its
+session is closed at a 15-minute deadline and the view only attaches while
+it runs (`attachOnly`), never opening a fresh shell. Any other
 method goes to ACP `authenticate` on a short-lived process with a five-minute
 deadline; only https links from its stderr are relayed, and the server opens
 none. The attempt read is `engine:login` because it carries those links. A
@@ -924,13 +1307,40 @@ credential/account and owner/source facts before queued chunks leave. Cursor
 fields and request-supplied identifiers confer no authority.
 
 This source path is not a companion analytics grant. It does not reuse a peer,
-provider, product or OTel credential for private sync. Grants and person-scoped
-destination custody, deletion/restore invalidation and receiver indexing remain
-open under #3459/#3460. Focused mounted-route and runtime-composition controls
-have exercised scope, queued revocation and cumulative-history refusal with
-controlled identity fixtures. They do not establish live enrollment, deployment,
-measured query performance or new person-identity assurance. See
-[the API reference](../reference/api.md#export-retained-canonical-usage-observations).
+provider, product or OTel credential for private sync. The separately enrolled
+flow binds current source consent to one verified person/tenant/owner set and
+receiving public keys, delivers a purpose-specific encrypted credential, then
+requires separate exact-origin review before sending it. A key-possession proof
+is not remote-person authentication. Explicit sync, invalidation replay and
+bounded receiver indexing preserve source/receiver epochs and current access
+checks; a saved view or historical receipt grants no read authority.
+
+Normal home restore and in-place update rollback publish fresh recovery
+provenance. Private approvals, receiving keys and export epochs bind to that
+activation, so copied pre-revocation state cannot reactivate them. Legacy unbound
+records refuse rather than being silently adopted. Generic stream identity is
+unchanged. This negative fence is not canonical clone/mirror identity, source
+shutdown proof or a companion database restore certificate.
+
+Requester-only native consent retains the transaction secret and render nonce
+in the native host, bound to profile, origin, request and expiry. Generic native
+HTTP refuses the consent route family and requester-secret header; operator or
+promoted Device authority cannot decide a personal transaction instead.
+Current runtime/person/source checks fence queued private responses. Observed
+source or person denial invalidates retained UI snapshots, so a later outage
+cannot revive a known-denied copy.
+
+Controlled mounted-route, recovery, receiver-store and SDK tests exercise these
+boundaries. They do not establish real two-Station TLS enrollment, a new identity
+assurance, arbitrary raw-clone detection, native OS-dialog behavior, deployed
+storage durability or installed/release acceptance. Optional immutable
+`terminal-outcomes/v1` grants now admit content-free completed/aborted/failed
+retained summaries in Personal Insights and Profile. Reads require current
+source/person authority and a synchronized checkpoint; coverage remains unknown.
+See [private terminal observations](../guides/monitoring.md#optional-private-terminal-observations).
+Personal incident detail remains unfinished. See
+[the API reference](../reference/api.md#export-retained-canonical-usage-observations)
+and [source approval](../guides/monitoring.md#source-approval-review).
 
 ### Coding routes: command execution and client paths (#2412)
 
@@ -949,8 +1359,9 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   operator or explicitly granted device administrator), and revokes it by turning the switch off; the grant is
   stored on the device's record in the pairing registry, like every other
   promoted token. The operator in person never needs it: the operator
-  credential, and credentials minted by proving possession of this Station's
-  home (the desktop app's local grant or the host browser's bootstrap), provided
+  credential, credentials minted by proving possession of this Station's
+  home (the desktop app's local grant or the host browser's bootstrap), and
+  Devices with [owner-device standing](#owner-device-standing-2026-11-02), provided
   the request is not acting for an Agent. The
   [coding authority check](../../src-server/security/coding-authority.ts)
   rejects internal-token and Agent-originated requests before testing operator
@@ -1177,8 +1588,10 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The check fails closed: a request is refused unless it is Station's own
   server code or the operator in person or a device holding `coding:exec`, so
   a kind of caller added later is refused until it is decided. `terminal:operate`
-  is not the authority: a `delegation` device and a `standard` device alike
-  need the grant. A `kind: 'project'` target is already confined to that
+  is not the authority by itself: a `delegation` device, a device tied to a
+  person and any other `standard` device need the grant. The owner's own
+  standard Device counts as the operator in person through
+  [owner-device standing](#owner-device-standing-2026-11-02). A `kind: 'project'` target is already confined to that
   Project's folder and is unchanged, and a station-control tool call is
   confined by `scopeDispatch`. Not a folder choice, so unchanged: the
   Project-confined coding routes and the Task `workspaceBinding` paths (below).
@@ -1215,7 +1628,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access;
+    default approval mode (the Station's, or a Project's new-chat mode through
+    `PUT /api/projects/:slug`) to full access;
   - `/api/secret-bindings`, which the default grant reaches (it includes
     `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
     `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
@@ -1746,7 +2160,9 @@ machine", and the difference is the residue, stated without softening:
   existing trust boundary — the same user can already read the local-grant
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
-  Logs, `read_logs` over pairing, a scoped grant that cannot spawn a shell).
+  Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
+  are denied unless an operator grants their verified bound session; the grant
+  is not available to caller-less or weaker-assurance channels.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 
@@ -1827,13 +2243,14 @@ require an exact allowed browser `Origin`; originless mutations fail closed.
 Operator and Device credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
 subprotocols, or public handshake responses are forbidden.
 
-Remote terminal and voice WebSockets send this as the first application frame:
+The voice WebSocket sends this as the first application frame (the terminal
+socket uses a single-use ticket instead; see [Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)):
 
 ```json
 {"type":"auth","protocolVersion":1,"credential":"<credential>"}
 ```
 
-No terminal or voice business state is allocated before successful
+No voice business state is allocated before successful
 authentication. Success returns
 `{"type":"authenticated","protocolVersion":1}`. Invalid, oversized, late,
 or repeated frames close the socket with a deterministic secret-free reason;
@@ -1871,7 +2288,8 @@ final for that offer and returns only a fixed error code to the requester. An
 issued device credential can use ordinary HTTP, SSE, and WebSocket surfaces up
 to whatever scope its grant carries (see "Scope model" above), except that an
 account-bound device never opens the terminal or voice WebSocket (#3586). Ordinary
-presets do not admit pairing management. An explicit `access:approve` promotion
+presets do not carry pairing management; only
+[owner-device standing](#owner-device-standing-2026-11-02) admits it for the owner's own Devices. An explicit `access:approve` promotion
 opens only pending-request list/confirm/deny, while local-home minted credentials
 have their separate route-scoped exception. Neither exception follows merely
 from carrying inherited `access:manage`. Per-device
@@ -2033,3 +2451,23 @@ clears on explicit deletion, sign-out or authority changes. A disconnected brows
 cannot learn about a remote revocation until reconnect. Live protected query
 shelves still require fresh authority observation. The worker caches an anonymous
 static shell and anonymous assets, never authenticated navigation or API bodies.
+The browser's own HTTP cache may keep authenticated JSON reads and attachment
+bytes under `private, no-cache` with `Vary: Authorization, Cookie`. Each reuse
+is revalidated at the host, which authorizes the request before answering
+`304`, so a kept copy is never shown to a caller the host would refuse. The
+bytes remain on that browser profile's disk like any other cached response.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.
+
+## Operator-owned Device Browser viewing
+
+The personal-host Browser and Device agent-reveal reads may opt into distinct operator-device view standing for a current unbound Device paired by the operator, subject to its granted scope. This view standing is not operator authority: Task Review captures, Browser input and mutations, Device drive and administration remain separately authorized. A Device that also holds [owner-device standing](#owner-device-standing-2026-11-02) is the operator for those checks. Revocation, rebinding, person binding, delegation and agent-originated credentials do not retain this standing; publication rechecks the current credential and Device record.

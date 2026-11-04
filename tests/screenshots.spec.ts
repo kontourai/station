@@ -4,11 +4,17 @@ import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
+import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  auditGalleryScreen,
+  type GalleryUiAudit,
+} from './helpers/gallery-ui-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
@@ -124,14 +130,19 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
 function fulfillGalleryStationHandshake(
   route: Route,
   boundedHistory = false,
+  extraCapabilities: PublicStationHandshake['capabilities'] = {},
 ): Promise<void> {
+  const capabilities = {
+    ...(boundedHistory ? { sessionEventWindow: true } : {}),
+    ...extraCapabilities,
+  };
   return route.fulfill({
     json: {
       schemaVersion: 1,
       environmentId: GALLERY_ENVIRONMENT_ID,
       authentication: { scheme: 'bearer', protocolVersion: 1 },
       transports: { http: 1, sse: 1, websocket: 1 },
-      ...(boundedHistory ? { capabilities: { sessionEventWindow: true } } : {}),
+      ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
       compatibility: {
         serverVersion: '0.0.0-screenshot-gallery',
         protocolVersion: 1,
@@ -1094,8 +1105,8 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     );
     await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
   } else {
-    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
+    const picker = page.getByRole('region', { name: 'Inbox', exact: true });
     await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
     await expect(picker.getByTestId('inbox-row-status')).toContainText(
       'Last known:',
@@ -1151,11 +1162,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     };
   });
   try {
-    const removeHandshake = await withRoute(
-      page,
-      '**/.well-known/station/v1',
-      (route) => fulfillGalleryStationHandshake(route, true),
-    );
     let historyFailed = true;
     let historyReads = 0;
     let releaseHistory!: () => void;
@@ -1275,10 +1281,13 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         animations: 'disabled',
       });
       if (width === 390) {
-        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await page
+          .getByRole('button', { name: /^(Inbox|Back to chat)$/ })
+          .click();
+        const picker = page.getByRole('region', { name: 'Inbox', exact: true });
         await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
-        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+        // History recovery cannot clear the independent failed inventory.
+        await expect(picker.getByTestId('inbox-row-status')).toContainText(
           'Last known:',
         );
         await page.screenshot({
@@ -1303,7 +1312,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       releaseHistory();
       await removeOpen();
       await removeHistory();
-      await removeHandshake();
     }
     if (width > 600) {
       let releaseInventory!: () => void;
@@ -1328,26 +1336,41 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       );
       try {
         await expect(
-          page.getByText("Couldn't refresh. Showing the last known list."),
+          page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeVisible();
-        await page
-          .getByRole('button', { name: 'Refresh inbox', exact: true })
+        const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
+        await inbox
+          .getByRole('button', { name: 'Inbox actions', exact: true })
           .click();
-        const refreshing = page.getByRole('button', {
-          name: 'Refreshing inbox',
+        await page
+          .getByRole('menuitem', { name: 'Refresh inbox', exact: true })
+          .click();
+        await inbox
+          .getByRole('button', { name: 'Inbox actions', exact: true })
+          .click();
+        const refreshing = page.getByRole('menuitem', {
+          name: 'Refreshing…',
           exact: true,
         });
+        await expect(refreshing).toBeVisible();
         await expect(refreshing).toBeDisabled();
         await expect.poll(() => inventoryReads).toBe(1);
-        for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+        // Each attempt reaches the real disabled menu item and must fail
+        // actionability for that reason, without issuing another read.
+        for (let i = 0; i < 5; i++) {
+          await expect(refreshing.click({ timeout: 200 })).rejects.toThrow(
+            /not enabled/,
+          );
+        }
         expect(inventoryReads).toBe(1);
         releaseInventory();
         await expect(
-          page.getByText("Couldn't refresh. Showing the last known list."),
+          page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeHidden();
         await expect(
-          page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+          page.getByRole('menuitem', { name: 'Refresh inbox', exact: true }),
         ).toBeEnabled();
+        await page.keyboard.press('Escape');
         const row = page
           .locator('.chat-dock-inbox [data-testid="inbox-row"]')
           .filter({ hasText: 'Mismatch demo chat' });
@@ -1366,6 +1389,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
           inventoryReads,
           pendingActivations: 6,
+          pendingRefreshDisabled: true,
         });
       } finally {
         releaseInventory();
@@ -1501,6 +1525,11 @@ function overlayDockProjectMismatchHooks(
       ];
       if (resyncOnly) {
         cleanups.push(
+          // The history and scheduler readers share the host capability cache.
+          // Advertise the fixture's history support before either can read it.
+          await withRoute(page, '**/.well-known/station/v1', (route) =>
+            fulfillGalleryStationHandshake(route, true),
+          ),
           await withRoute(page, '**/api/conversations**', async (route) => {
             if (
               new URL(route.request().url()).pathname !== '/api/conversations'
@@ -1529,11 +1558,18 @@ function overlayDockProjectMismatchHooks(
         ).toBeVisible();
         if ((page.viewportSize()?.width ?? 0) > 600) {
           await expect(
-            page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+            page
+              .getByRole('complementary', { name: 'Inbox chats' })
+              .getByRole('button', { name: 'Inbox actions', exact: true }),
           ).toBeVisible();
           await expect(
-            page.getByText("Couldn't refresh. Showing the last known list."),
+            page.getByText('Couldn’t refresh the inbox.', { exact: true }),
           ).toBeVisible({ timeout: 15_000 });
+          await expect(
+            page
+              .getByRole('complementary', { name: 'Inbox chats' })
+              .getByRole('button', { name: 'Retry', exact: true }),
+          ).toBeVisible();
         }
         return;
       }
@@ -1547,51 +1583,24 @@ function overlayDockProjectMismatchHooks(
       await expect(
         page.locator('.chat-dock-inbox__item').first(),
       ).toContainText('Mismatch demo chat', { timeout: 10_000 });
-      // The active session (project-b) renders first with no binding
-      // bound yet (archive#4525: the badge no longer follows the active
-      // session at all). Binding to Project A through the real picker
-      // interaction is what produces the mismatch, exactly as a user
-      // reaching this state would.
-      //
-      // #1552 D3 dropped the visible "No project" label — the unbound chip is
-      // the folder glyph alone, named for what pressing it does — so the
-      // unbound state is the accessible NAME now, and the empty text is
-      // asserted beside it so this cannot pass on a chip that renders nothing.
-      const badge = page.locator('.chat-dock__project-badge');
-      await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
-        timeout: 10_000,
-      });
-      await expect(badge).toHaveText('');
-      await badge.click();
-      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
-        timeout: 10_000,
-      });
-      const projectRead = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === '/api/projects/project-a',
+      // Choosing the next chat's Project must not reassign the open chat.
+      const context = page.locator(
+        '.session-context-card:not(.session-context-card--sheet)',
       );
-      await page.getByRole('button', { name: 'Switch to Project A' }).click();
-      expect(
-        (await projectRead).status(),
-        'selected Project detail must be available',
-      ).toBe(200);
-      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden({
-        timeout: 10_000,
-      });
-      // The badge now names the BOUND project (by design it never
-      // follows the active session) — while the facts
-      // row leads with the session's own, muted, differing project name.
-      // Scoped to the badge's own class: the project sidebar (seeded
-      // from the same `/api/projects` mock) also renders a same-named
-      // button.
       await expect(
-        page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
-      ).toBeVisible({ timeout: 10_000 });
-      // The badge is New's destination now; the chat's own project is its
-      // session context card's, so the bar prints no "This chat" lead-in.
+        context.getByText('Project B', { exact: true }),
+      ).toBeVisible();
+      const draft = await openGalleryNewChatDraft(page);
+      await chooseGalleryNewChatProject(page, draft, 'Project A');
+      await draft.press('Escape');
+      await expect(draft).toBeHidden();
       await expect(
-        page.locator('.chat-dock__project-session-name'),
-      ).toHaveCount(0);
+        context.getByText('Project B', { exact: true }),
+      ).toBeVisible();
+      await expect(context.getByText('Project A', { exact: true })).toHaveCount(
+        0,
+      );
+      await expect(page.locator('.chat-dock__project-badge')).toHaveCount(0);
       await expect(
         page.getByRole('button', {
           name: 'Status unavailable — resync this conversation',
@@ -1653,33 +1662,65 @@ function overlayDockProjectMismatchHooks(
   };
 }
 
-/**
- * Shared `beforeGoto`/`afterGoto` shape for a screen whose ONLY dock-gallery
- * fixture is a seeded `/api/projects` list (both `overlay-dock-project-bound`
- * and `overlay-project-switcher-populated`) — clears storage, registers the
- * list, runs the caller's own assertions, then unregisters it (see
- * `withRoute`'s doc comment for why that last step matters).
- */
+/** Open the real inline draft before choosing its future Project. */
+async function openGalleryNewChatDraft(page: Page): Promise<Locator> {
+  await page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first()
+    .click();
+  const draft = page.getByRole('region', { name: 'New chat', exact: true });
+  await expect(draft).toBeVisible();
+  return draft;
+}
+
+async function chooseGalleryNewChatProject(
+  page: Page,
+  draft: Locator,
+  name: string,
+): Promise<void> {
+  await draft.getByRole('button', { name: /^Project: / }).click();
+  const picker = page.getByRole('dialog', {
+    name: 'Choose project',
+    exact: true,
+  });
+  await expect(picker).toBeVisible();
+  await picker.getByRole('button', { name }).click();
+  await expect(picker).toBeHidden();
+  await expect(
+    draft.getByRole('button', {
+      name: `Project: ${name}`,
+      exact: true,
+    }),
+  ).toBeVisible();
+}
+
+/** Keep selected Project list/detail fixtures alive until the capture finishes. */
 function withGalleryProjectsList(
   projects: GalleryProjectFixture[],
   assertions: (page: Page) => Promise<void>,
-): Pick<Screen, 'beforeGoto' | 'afterGoto'> {
-  let cleanup: (() => Promise<void>) | null = null;
+): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
+  let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
       await clearDockGalleryStorage(page);
-      cleanup = await withRoute(
-        page,
-        '**/api/projects',
-        projectsListFixture(projects),
-      );
-    },
-    afterGoto: async (page) => {
-      try {
-        await assertions(page);
-      } finally {
-        await cleanup?.();
+      cleanups = [
+        await withRoute(page, '**/api/projects', projectsListFixture(projects)),
+      ];
+      for (const project of projects) {
+        cleanups.push(
+          await withRoute(
+            page,
+            `**/api/projects/${project.slug}`,
+            projectDetailFixture(project),
+          ),
+        );
       }
+    },
+    afterGoto: assertions,
+    cleanup: async () => {
+      for (const cleanup of cleanups) await cleanup();
+      cleanups = [];
     },
   };
 }
@@ -2157,6 +2198,29 @@ function telemetryConsentScreens(): Screen[] {
               await expect(outbox.locator('pre')).toContainText(
                 'station_daily',
               );
+              // Rest the Operator select just below the pinned toolbar, so no
+              // control is left partly behind it (the judge credits no
+              // scroll position).
+              await page
+                .getByRole('combobox', { name: 'Operator telemetry' })
+                .evaluate((select) => {
+                  const bar = document.querySelector('.app-toolbar');
+                  const barBottom = bar?.getBoundingClientRect().bottom ?? 0;
+                  let scroller: Element | null = select.parentElement;
+                  while (
+                    scroller &&
+                    !(
+                      /(auto|scroll)/.test(
+                        getComputedStyle(scroller).overflowY,
+                      ) && scroller.scrollHeight > scroller.clientHeight
+                    )
+                  )
+                    scroller = scroller.parentElement;
+                  (scroller ?? document.scrollingElement)?.scrollBy(
+                    0,
+                    select.getBoundingClientRect().top - barBottom - 8,
+                  );
+                });
             }
           }
         },
@@ -2167,6 +2231,320 @@ function telemetryConsentScreens(): Screen[] {
       } satisfies Screen;
     }),
   );
+}
+
+const INVENTORY_CONVERSATION = 'gallery-inventory-conversation';
+const galleryInventory = JSON.parse(
+  readFileSync(
+    join(process.cwd(), 'tests/fixtures/gallery-session-inventory.json'),
+    'utf8',
+  ),
+) as { inventory: unknown; input: { input: { prompt: string } } };
+
+/**
+ * Chat inventory's item drill-down (#4169) at 390 and 1440, dark and light,
+ * in two states: the authored input read back from a host that advertises
+ * `sessionInventoryInputRead`, and an older host whose handshake lacks it
+ * ("This Station can't show input details", since #4197). The inventory and input bodies are
+ * the real server's responses for one authored turn
+ * (`fixtures/gallery-session-inventory.json`, captured from #4169's
+ * chat-inventory-drilldown-mobile journey, with only the session id
+ * replaced); the chat around them is the gallery's runtime conversation
+ * fixture.
+ */
+function inventoryDrilldownScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      (['read', 'older-host'] as const).map((state): Screen => {
+        let cleanups: (() => Promise<void>)[] = [];
+        const device = viewport === MOBILE ? 'mobile' : 'desktop';
+        const json = (data: unknown) => async (route: Route) => {
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          await route.fulfill({ json: { success: true, data } });
+        };
+        return {
+          name: `inventory-drilldown-${state}-${theme}-${device}`,
+          title: `Chat inventory drill-down — ${state}, ${theme} (${device})`,
+          path: `/?dock=open&chat=${INVENTORY_CONVERSATION}`,
+          viewport,
+          beforeGoto: async (page) => {
+            await clearDockGalleryStorage(page);
+            // The live server's event stream does not know this fixture
+            // chat; left open, its snapshot raced the fixture transcript and
+            // sometimes emptied the chat behind the reader. Hold the stream
+            // open and silent, on this chat's URL only (init scripts outlive
+            // the screen).
+            await page.addInitScript((conversation) => {
+              if (
+                new URLSearchParams(location.search).get('chat') !==
+                conversation
+              )
+                return;
+              const original = window.fetch.bind(window);
+              window.fetch = async (input, init) => {
+                const url =
+                  input instanceof Request ? input.url : String(input);
+                if (
+                  new URL(url, location.href).pathname !==
+                  '/api/orchestration/events'
+                )
+                  return original(input, init);
+                return new Response(
+                  new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      init?.signal?.addEventListener(
+                        'abort',
+                        () => controller.close(),
+                        { once: true },
+                      );
+                    },
+                  }),
+                  { headers: { 'Content-Type': 'text/event-stream' } },
+                );
+              };
+            }, INVENTORY_CONVERSATION);
+            await seedActiveChatSession(page, {
+              conversationId: INVENTORY_CONVERSATION,
+              agentSlug: 'demo-agent',
+              title: 'Inventory demo chat',
+            });
+            await mockRuntimeConversation(page, {
+              id: INVENTORY_CONVERSATION,
+              agentSlug: 'demo-agent',
+              title: 'Inventory demo chat',
+              provider: 'claude',
+              model: 'test-model',
+              canContinue: true,
+              turns: () =>
+                buildLongSessionTurns({
+                  threadId: INVENTORY_CONVERSATION,
+                  provider: 'claude',
+                  turnCount: 1,
+                  replyText: () => 'Inventory fixture answered.',
+                }),
+            });
+            cleanups = [
+              await withRoute(
+                page,
+                '**/api/orchestration/sessions/read-model',
+                orchestrationSessionFixture({
+                  threadId: INVENTORY_CONVERSATION,
+                }),
+              ),
+              await withRoute(
+                page,
+                `**/api/orchestration/sessions/${INVENTORY_CONVERSATION}/inventory?**`,
+                json(galleryInventory.inventory),
+              ),
+              await withRoute(
+                page,
+                `**/api/orchestration/sessions/${INVENTORY_CONVERSATION}/inputs/**`,
+                json(galleryInventory.input),
+              ),
+            ];
+            // Both hosts serve the bounded transcript window the fixture
+            // answers; only the newer one also serves exact input reads.
+            cleanups.push(
+              await withRoute(page, '**/.well-known/station/v1', (route) =>
+                fulfillGalleryStationHandshake(
+                  route,
+                  true,
+                  state === 'read' ? { sessionInventoryInputRead: true } : {},
+                ),
+              ),
+            );
+          },
+          afterGoto: async (page) => {
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            // The chat behind the reader has read its transcript from the
+            // fixture window, so its status is settled and the same every run.
+            await expect(
+              page.getByText('Inventory fixture answered.', { exact: true }),
+            ).toBeVisible({ timeout: 20_000 });
+            // Both layouts open the full reader through conversation overflow;
+            // the context card's button opens compact answer inspection.
+            if (viewport === MOBILE) {
+              const { chatActions, inventoryRow } =
+                phoneChatInventoryControls(page);
+              await chatActions.click();
+              await inventoryRow.click();
+            } else {
+              await page
+                .locator('#chat-dock')
+                .getByRole('button', { name: 'More dock actions', exact: true })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Chat inventory', exact: true })
+                .click();
+            }
+            const reader = page.getByRole('dialog', {
+              name: 'Chat inventory',
+              exact: true,
+            });
+            await expect(reader).toBeVisible();
+            const toggle = reader.getByRole('button', {
+              name: /^Authored message (View|Hide) details$/,
+            });
+            await toggle.click();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            const details = reader.getByRole('region', {
+              name: 'Authored message details',
+            });
+            if (state === 'read')
+              await expect(details.locator('pre')).toHaveText(
+                galleryInventory.input.input.prompt,
+              );
+            else
+              await expect(
+                details.getByText("This Station can't show input details"),
+              ).toBeVisible();
+            // Photograph the drill-down itself: on a phone it sits below the
+            // reader's summary inside the reader's own scroller.
+            await details.evaluate((element) =>
+              element.scrollIntoView({ block: 'end' }),
+            );
+            await expect(
+              details.getByRole('button', {
+                name: 'Open session',
+                exact: true,
+              }),
+            ).toBeInViewport({ ratio: 1 });
+            await expect(
+              state === 'read'
+                ? details.locator('pre')
+                : details.getByText("This Station can't show input details"),
+            ).toBeInViewport({ ratio: 1 });
+            // The drawer must have finished opening before the shot.
+            await expect
+              .poll(async () => (await reader.boundingBox())?.x ?? -1)
+              .toBeGreaterThanOrEqual(0);
+          },
+          cleanup: async () => {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+          },
+        };
+      }),
+    ),
+  );
+}
+
+/**
+ * The Station switcher with a desktop's worth of saved Stations: the active
+ * one, two that answer and two whose connections are refused, at 390 and 1440
+ * in both themes, plus the inline forget confirmation. Every extra Station is
+ * routed here, because the gallery answers the public handshake on any
+ * origin. Extra profiles join the gallery's own seed only on this screen's
+ * URL, and only once, since init scripts outlive the screen.
+ */
+function stationSwitcherScreens(): Screen[] {
+  const online = 'https://online.gallery.test';
+  const offline = 'https://offline.gallery.test';
+  const shots = [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme) => ({
+      viewport,
+      theme,
+      armed: false,
+    })),
+  );
+  shots.push({ viewport: DESKTOP, theme: 'dark', armed: true });
+  return shots.map(({ viewport, theme, armed }): Screen => {
+    const device = viewport === MOBILE ? 'mobile' : 'desktop';
+    const name = `station-switcher${armed ? '-forget' : ''}-${theme}-${device}`;
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name,
+      title: `Station switcher${armed ? ' — forget' : ''}, ${theme} (${device})`,
+      path: '/?gallery=station-switcher',
+      viewport,
+      beforeGoto: async (page) => {
+        const answer = (route: Route) => route.fulfill({ status: 200 });
+        const refuse = (route: Route) => route.abort('connectionrefused');
+        await page.route(`${online}/**`, answer);
+        await page.route(`${offline}/**`, refuse);
+        cleanups = [
+          () => page.unroute(`${online}/**`, answer),
+          () => page.unroute(`${offline}/**`, refuse),
+        ];
+        await page.addInitScript(
+          ({ activeId, stations }) => {
+            if (
+              new URLSearchParams(location.search).get('gallery') !==
+              'station-switcher'
+            )
+              return;
+            const key = 'station-connect-connections';
+            const ids = new Set(stations.map(([id]) => id));
+            const saved = JSON.parse(localStorage.getItem(key) ?? '[]').filter(
+              (connection: { id: string }) => !ids.has(connection.id),
+            );
+            const template = saved.find(
+              (connection: { id: string }) => connection.id === activeId,
+            );
+            localStorage.setItem(
+              key,
+              JSON.stringify([
+                ...saved,
+                ...stations.map(([id, name, url]) => ({
+                  ...template,
+                  id,
+                  name,
+                  url,
+                  environmentId: null,
+                  credentialRef: { ...template.credentialRef, id },
+                  lastSuccessAt: undefined,
+                })),
+              ]),
+            );
+            localStorage.setItem(
+              'station.switcher.recent',
+              JSON.stringify([activeId, 'media', 'build']),
+            );
+          },
+          {
+            activeId: GALLERY_CONNECTION_ID,
+            stations: [
+              ['build', 'Build box', `${online}/build`],
+              ['media', 'Media server', online],
+              ['laptop', 'Laptop', offline],
+              ['dev', 'Old dev instance', `${offline}/dev`],
+            ],
+          },
+        );
+      },
+      afterGoto: async (page) => {
+        if (theme === 'light')
+          await page.evaluate(() =>
+            document.documentElement.setAttribute('data-theme', 'light'),
+          );
+        await page.getByTestId('app-toolbar-connection').click();
+        const menu = page.getByRole('menu', { name: 'Choose Station' });
+        await expect(
+          page.getByRole('searchbox', { name: 'Find a Station' }),
+        ).toBeFocused();
+        await expect(
+          menu.getByRole('menuitemradio', { name: 'Media server — Online' }),
+        ).toBeVisible();
+        await expect(
+          menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
+        ).toBeVisible();
+        if (armed) {
+          await menu
+            .getByRole('menuitemradio', { name: /^Old dev instance/ })
+            .press('Delete');
+          await expect(
+            menu.getByRole('menuitem', { name: 'Forget Old dev instance' }),
+          ).toBeFocused();
+        }
+      },
+      cleanup: async () => {
+        for (const cleanup of cleanups.splice(0)) await cleanup();
+      },
+    };
+  });
 }
 
 const SCREENS: Screen[] = [
@@ -2348,16 +2726,19 @@ const SCREENS: Screen[] = [
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
       await expect(
-        page.getByRole('heading', { name: 'What would you like to do?' }),
+        page.getByRole('heading', { name: 'Start your first conversation' }),
       ).toBeVisible();
       await expect(
         page.getByRole('heading', { name: "What's next?" }),
       ).toHaveCount(0);
+      // A fresh gallery home has no other Station to run on, so "Runs on"
+      // names this one as plain text: no control to open.
       await expect(
-        page.getByRole('button', {
-          name: 'Run a task on a Station; current Station: Gallery host',
-        }),
+        page.getByText('Runs on Gallery host', { exact: true }),
       ).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Runs on / })).toHaveCount(
+        0,
+      );
     },
   },
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
@@ -2422,7 +2803,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'schedule',
       title: 'Schedule',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       // archive#4464: without this, ScheduleView hits the live (unmocked)
       // scheduler/system endpoints on a freshly booted temp-home server —
@@ -2526,7 +2907,32 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Home',
     path: '/',
     viewport: MOBILE,
-    afterGoto: (page) => assertNoStrayProjectModal(page),
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      // Exercise the two-line heading seen with the hosted runner's fonts.
+      const style = await page.addStyleTag({
+        content: '.home-view__welcome h1 { max-width: 250px !important; }',
+      });
+      try {
+        const heading = page.locator('.home-view__welcome h1');
+        const action = page.locator('.home-view__action').nth(1);
+        const dock = page.locator('.chat-dock.is-collapsed');
+        await expect(heading).toBeVisible();
+        await expect(action).toBeVisible();
+        await expect(dock).toBeVisible();
+        const headingBox = await heading.boundingBox();
+        const actionBox = await action.boundingBox();
+        const dockBox = await dock.boundingBox();
+        expect(headingBox!.height).toBeGreaterThan(35);
+        expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+          dockBox!.y,
+        );
+      } finally {
+        await style.evaluate((element) => {
+          element.parentNode?.removeChild(element);
+        });
+      }
+    },
   },
   {
     name: 'mobile-agents',
@@ -2788,7 +3194,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-loading',
       title: 'Reduced motion — Schedule loading',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       // This screen's whole point is capturing the skeleton itself (with the
@@ -2826,7 +3232,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-modal',
       title: 'Reduced motion — Schedule modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       beforeGoto: async (page) => {
@@ -2835,7 +3241,7 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
           // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
@@ -3121,6 +3527,46 @@ const SCREENS: Screen[] = [
       });
       await starter.click();
       await expect(starter).toHaveAttribute('aria-pressed', 'true');
+      // Where the wheel scroll and the click's scroll-into-view stop varies
+      // run to run, and with it which controls are on screen (the identity
+      // icon's visible initials flickered in and out of axe's view). Pin the
+      // modal's scroller to its exact end, where the layout choices sit, and
+      // then wait for it to settle.
+      await starter.evaluate((element) => {
+        for (
+          let node = element.parentElement;
+          node;
+          node = node.parentElement
+        ) {
+          const { overflowY } = getComputedStyle(node);
+          if (
+            (overflowY === 'auto' || overflowY === 'scroll') &&
+            node.scrollHeight > node.clientHeight
+          ) {
+            node.scrollTop = node.scrollHeight;
+            return;
+          }
+        }
+        throw new Error('New Project layout choices have no scroll container');
+      });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () =>
+                new Promise<boolean>((settled) => {
+                  const positions = () =>
+                    Array.from(document.querySelectorAll('*'))
+                      .filter((el) => el.scrollTop > 0)
+                      .map((el) => el.scrollTop)
+                      .join(',');
+                  const before = positions();
+                  setTimeout(() => settled(positions() === before), 200);
+                }),
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true);
     },
   },
   {
@@ -3143,7 +3589,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-add-job-modal',
       title: 'Overlay — Add Job modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanup = await seedScheduleScreenshotApi(page);
@@ -3151,14 +3597,17 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           await expect(page.locator('.station-dialog__overlay')).toBeVisible({
             timeout: 10_000,
           });
           await expect(page.locator('.schedule__modal')).toBeVisible();
           await expect(
-            page.getByRole('button', { name: 'Add Job', exact: true }),
+            page.getByRole('button', {
+              name: 'Create automation',
+              exact: true,
+            }),
           ).toBeDisabled();
         } finally {
           await cleanup();
@@ -3171,7 +3620,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-confirm-dialog',
       title: 'Overlay — Destructive confirm (Delete Job)',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanups = [
@@ -3232,55 +3681,60 @@ const SCREENS: Screen[] = [
   // row (`overlay-mobile-sheet` above is deliberately empty-state), so
   // those states would be invisible in the build gallery. These
   // three make them visible.
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map(
+      (viewport): Screen => ({
+        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        title: `New chat — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            await expect(
+              draft.getByRole('heading', {
+                name: /What would you like to do.*Demo Project/,
+              }),
+            ).toBeVisible();
+            await expect(
+              draft.getByRole('textbox', { name: 'What would you like done?' }),
+            ).toBeVisible();
+            const location = draft.locator('.start-composer__location');
+            await expect(location).toBeInViewport();
+            const bounds = await location.boundingBox();
+            expect(bounds).not.toBeNull();
+            expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+              viewport.height,
+            );
+          },
+        ),
+      }),
+    ),
+  ),
   {
     name: 'overlay-dock-project-bound',
-    title: 'Overlay — Chat dock with a bound project',
+    title: 'New chat — Project chosen before starting',
     path: '/?dock=open',
     viewport: DESKTOP,
     ...withGalleryProjectsList(
       [{ slug: 'demo-project', name: 'Demo Project' }],
       async (page) => {
         await assertNoStrayProjectModal(page);
-        // Drives the REAL picker interaction (archive#4524's "Switch to
-        // <project>" row) rather than pre-seeding the persisted binding
-        // directly — localStorage/sessionStorage seeded via
-        // `page.addInitScript` proved unreliable across this gallery's
-        // page-long-lived, multi-navigation run (accumulated init scripts
-        // across screens raced the app's own project-confirmation effect
-        // live). This is both more robust and a stronger proof: it
-        // exercises the exact fixed code path
-        // (`ChatDock.handleSwitchProject` -> `chrome.setActiveProjectSlug`),
-        // not a hand-written substitute for its effect.
-        // #1552 D3: unbound is the chip's accessible name, not its text.
-        const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
-          timeout: 10_000,
-        });
-        await expect(badge).toHaveText('');
-        await badge.click();
-        await expect(
-          page.getByRole('dialog', { name: 'Projects' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await page
-          .getByRole('button', { name: 'Switch to Demo Project' })
-          .click();
-        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
-          { timeout: 10_000 },
-        );
-        // Scoped to the badge's own class: the project sidebar (seeded
-        // from the same `/api/projects` mock) also renders a same-named
-        // button.
-        await expect(
-          page.locator('.chat-dock__project-badge', {
-            hasText: 'Demo Project',
-          }),
-        ).toBeVisible({ timeout: 10_000 });
+        const draft = await openGalleryNewChatDraft(page);
+        await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+        await expect(page.locator('.chat-dock__project-badge')).toHaveCount(0);
       },
     ),
   },
   {
     name: 'overlay-dock-project-mismatch',
-    title: 'Overlay — Chat dock, session/badge project mismatch',
+    title: 'Chat — Original Project retained after choosing a new-chat Project',
     path: '/?dock=open&chat=gallery-mismatch-conversation',
     viewport: DESKTOP,
     ...overlayDockProjectMismatchHooks(),
@@ -3299,27 +3753,23 @@ const SCREENS: Screen[] = [
   })),
   {
     name: 'overlay-project-switcher-populated',
-    title: 'Overlay — Project switcher sheet with a real project row',
+    title: 'New chat — Populated Project picker',
     path: '/?dock=open',
     viewport: DESKTOP,
     ...withGalleryProjectsList(
       [{ slug: 'demo-project', name: 'Demo Project' }],
       async (page) => {
         await assertNoStrayProjectModal(page);
-        // archive#4524: the row's action is "Switch to <project>" (rebinds
-        // the dock, no chat creation) — not the retired "Continue in
-        // <project>" (which always opened the New Chat modal).
-        // #1552 D3: the unbound chip is named for its action, not for the
-        // absence it used to print.
-        const trigger = page.getByRole('button', { name: 'Choose a project' });
-        await trigger.waitFor({ timeout: 10_000 });
-        await trigger.click();
+        const draft = await openGalleryNewChatDraft(page);
+        await draft.getByRole('button', { name: /^Project: / }).click();
+        const picker = page.getByRole('dialog', {
+          name: 'Choose project',
+          exact: true,
+        });
+        await expect(picker).toBeVisible();
         await expect(
-          page.getByRole('dialog', { name: 'Projects' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect(
-          page.getByRole('button', { name: 'Switch to Demo Project' }),
-        ).toBeVisible({ timeout: 10_000 });
+          picker.getByRole('button', { name: 'Demo Project' }),
+        ).toBeVisible();
       },
     ),
   },
@@ -3518,6 +3968,8 @@ const SCREENS: Screen[] = [
       },
     } satisfies Screen;
   })(),
+  ...inventoryDrilldownScreens(),
+  ...stationSwitcherScreens(),
 ];
 
 async function statusRasterState(page: Page) {
@@ -3594,6 +4046,14 @@ interface Shot {
     appMainClientHeight: number;
     documentScrollY: number;
   };
+  /**
+   * Product assertions on the photographed state (hit targets, horizontal
+   * overflow, blocking axe). Recorded, not judged, here: the pixels are valid
+   * whatever they find, and `scripts/gallery-ui-findings.mjs` judges them
+   * against the shrink-only allowlist. An audit that threw is an `error`,
+   * which that judge fails rather than reading as "no findings".
+   */
+  uiAudit?: GalleryUiAudit | { error: string };
 }
 
 function escapeHtml(value: string): string {
@@ -3663,9 +4123,21 @@ ${tiles}
 }
 
 test('build gallery — capture key screens', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && browserErrors.length < 10)
+      browserErrors.push(message.text().slice(0, 1000));
+  });
+  page.on('pageerror', (error) => {
+    if (browserErrors.length < 10)
+      browserErrors.push((error.stack ?? error.message).slice(0, 1000));
+  });
   const requestedScreens = parseRequestedScreens(
     process.env.STATION_E2E_SCREENS,
   );
+  // gate:for routes UI paths to screens through these entry modules; a screen
+  // without them would be invisible to that routing.
+  assertGalleryScreenSourcesCover(SCREENS.map((screen) => screen.name));
   let selectedScreens = SCREENS;
   if (requestedScreens) {
     const knownNames = new Set(SCREENS.map((screen) => screen.name));
@@ -3852,9 +4324,11 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   try {
     for (const screen of selectedScreens) {
+      browserErrors.length = 0;
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
       let rasterDiagnostic: Shot['rasterDiagnostic'];
+      let uiAudit: Shot['uiAudit'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -3863,6 +4337,26 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
+        // Delivery is live-only. Observe this document's general-event stream
+        // before navigation so the POST cannot beat its subscription.
+        const notificationStream = [
+          'motion-reduced-notification',
+          'overlay-toast',
+          'overlay-toast-action',
+        ].includes(screen.name)
+          ? page.waitForResponse(
+              (response) => {
+                const url = new URL(response.url());
+                return (
+                  response.status() === 200 &&
+                  (url.pathname === '/events' ||
+                    (url.pathname === '/api/orchestration/events' &&
+                      url.searchParams.get('includeGeneral') === '1'))
+                );
+              },
+              { timeout: 10_000 },
+            )
+          : null;
         // #1650: the ORDER of everything below lives in
         // `runScreenshotCaptureSequence` so it is a unit a test can execute —
         // a passing gallery run compares pixels and can never report a step
@@ -3918,6 +4412,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           // a precondition of the refactor rather than a property of the file.
           afterGoto: screen.afterGoto
             ? async () => {
+                await notificationStream;
                 await screen.afterGoto?.(page);
               }
             : null,
@@ -4046,6 +4541,23 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        // Audit the photographed state, before any post-shot interaction.
+        try {
+          uiAudit = await auditGalleryScreen(page, screen.name);
+        } catch (error) {
+          uiAudit = {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        if (screen.name === 'telemetry-feedback-mobile') {
+          const extensionFailure = page
+            .getByTestId('toast-card')
+            .filter({ hasText: 'Extensions unavailable' });
+          if (await extensionFailure.count())
+            throw new Error(
+              `Extension registry failed during capture. Browser errors: ${JSON.stringify(browserErrors)}`,
+            );
+        }
         if (
           screen.name === 'desktop-conversation-resync' ||
           screen.name === 'mobile-conversation-resync'
@@ -4059,6 +4571,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           controls,
           layout,
           rasterDiagnostic,
+          uiAudit,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -4117,15 +4630,18 @@ test('build gallery — capture key screens', async ({ page }) => {
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }) => ({
               file,
               ok,
               name: screen.name,
+              viewport: screen.viewport,
               error: error ?? null,
               sha256,
               controls,
               layout,
               rasterDiagnostic,
+              uiAudit,
             }),
           ),
         },

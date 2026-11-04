@@ -214,6 +214,21 @@ export function mapToolCompletionStatus(
   return 'error';
 }
 
+const STATION_SET_PAYLOAD_FIELDS = [
+  'inputRequest',
+  'mcpElicitation',
+  'questionnaire',
+] as const;
+
+function withoutStationFields(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!STATION_SET_PAYLOAD_FIELDS.some((key) => key in params)) return params;
+  const copy = { ...params };
+  for (const key of STATION_SET_PAYLOAD_FIELDS) delete copy[key];
+  return copy;
+}
+
 export function mapServerRequestToEvent(
   threadId: string,
   requestId: string,
@@ -221,7 +236,11 @@ export function mapServerRequestToEvent(
   params: unknown,
   createdAt: string,
 ): RequestOpenedEvent | null {
-  const payload = isRecord(params) ? params : {};
+  // Codex payloads carry the app-server's raw params. A param named like a
+  // field Station sets itself would be read as Station's own: a form an
+  // approval is not, exempting it from the load-before-allow gate. Only the
+  // adapter sets these (see `item/tool/requestUserInput` below).
+  const payload = withoutStationFields(isRecord(params) ? params : {});
   switch (method) {
     case 'item/tool/requestUserInput': {
       const inputRequest = codexInputRequest(payload);

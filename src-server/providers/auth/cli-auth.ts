@@ -7,6 +7,7 @@ import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdi
 import { throwIfAborted } from '../../utils/bounded-async.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
+import { cliInvocation } from './windows-cli-invocation.js';
 
 const CLI_PROBE_TIMEOUT_MS = 10_000;
 const LOGIN_PATH_RESOLVE_TIMEOUT_MS = 5_000;
@@ -401,18 +402,23 @@ export async function runCliCommand(
           TMPDIR: augmented.TMPDIR,
         })
       : augmented;
-    const { stdout, stderr } = await execFile(command, args, {
-      encoding: 'utf-8',
-      // User-managed launchers may resolve the real CLI through mise/npx.
-      // Keep the probe bounded, but allow that indirection to finish on a
-      // cold cache (observed at ~6s on the media-server dogfood host).
-      timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
-      ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
-      ...(bounds?.killSignal ? { killSignal: bounds.killSignal } : {}),
-      windowsHide: true,
-      signal,
-      env,
-    });
+    const invocation = cliInvocation(command, args);
+    const { stdout, stderr } = await execFile(
+      invocation.command,
+      invocation.args,
+      {
+        encoding: 'utf-8',
+        // User-managed launchers may resolve the real CLI through mise/npx.
+        // Keep the probe bounded, but allow that indirection to finish on a
+        // cold cache (observed at ~6s on the media-server dogfood host).
+        timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
+        ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
+        ...(bounds?.killSignal ? { killSignal: bounds.killSignal } : {}),
+        windowsHide: true,
+        signal,
+        env,
+      },
+    );
     return {
       stdout,
       stderr,

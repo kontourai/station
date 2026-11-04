@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -72,9 +78,34 @@ describe('FeaturePreviewRegistry', () => {
   test('a bound consumer enters the catalog before its branch runs', () => {
     const registry = new FeaturePreviewRegistry(home(), logger);
 
-    expect(registry.list()).toEqual([]);
+    expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
+    ]);
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
     expect(selectProbe(probe)).toBe('skipped');
@@ -85,9 +116,16 @@ describe('FeaturePreviewRegistry', () => {
     const first = new FeaturePreviewRegistry(directory, logger);
     const firstProbe = bindProbe(first);
     expect(selectProbe(firstProbe)).toBe('skipped');
+    expect(first.generation('probe')).toBe(0);
 
     await first.setEnabled('probe', true);
     expect(selectProbe(firstProbe)).toBe('probed');
+    expect(first.generation('probe')).toBe(1);
+    await first.setEnabled('probe', false);
+    await first.setEnabled('probe', true);
+    expect(first.generation('probe')).toBe(3);
+    if (process.platform !== 'win32')
+      expect(statSync(join(directory, 'config')).mode & 0o077).toBe(0);
 
     // A new registry is the restart boundary: it must read the durable state,
     // then the same consuming path (not a hand-built response) changes.
@@ -104,7 +142,20 @@ describe('FeaturePreviewRegistry', () => {
       JSON.stringify({ orphaned: { enabled: true } }),
     );
 
-    expect(registry.list()).toEqual([]);
+    expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({
+        id: 'continue-interrupted-turn',
+        enabled: false,
+      }),
+      expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({ id: 'visual-skills', enabled: false }),
+      expect.objectContaining({
+        id: 'integration-content-trust',
+        enabled: false,
+      }),
+    ]);
     await expect(registry.setEnabled('orphaned', false)).rejects.toBeInstanceOf(
       FeaturePreviewNotOfferedError,
     );

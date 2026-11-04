@@ -121,12 +121,26 @@ PostgreSQL store returns a commit receipt for retained source/event identities.
 This optional product path does not feed canonical EventStore accounting or
 establish collector delivery. Settings health describes the current process;
 connection checks do not substitute for an accepted observation or downstream
-query. Personal analytics continues to consume canonical usage receipts.
+query. Personal analytics consumes canonical usage receipts through separate
+verified-person source consent, encrypted receiving custody and explicit sync.
+Bounded indexes/summaries and saved Personal views reuse those current-source
+checks. Operator product incident reports expose retained build/classification
+cohorts; local drafts/references neither reveal private source identity nor
+publish externally. Normal restore and update rollback invalidate copied private
+grants/keys through an activation fence, not through generic stream identity.
+These source boundaries do not establish deployed/native or release qualification;
+see [monitoring](guides/monitoring.md).
 
-Terminal and voice use dedicated WebSocket listeners and are not represented
-by the HTTP/SSE arrow. Browser/Device frames use a binary HTTP stream. A
-same-origin UI/API proxy does not by itself expose the dedicated socket ports;
-transport-specific configuration and platform qualification remain necessary.
+Voice uses a dedicated WebSocket listener and is not represented by the
+HTTP/SSE arrow. The Coding terminal uses `/api/terminal/socket` on the API listener, admitted by a
+single-use ticket from an ordinary authenticated request, so it follows the API
+through proxies, tailnet names and native transports; a browser broker route
+has no socket path yet. See
+[operator devices and the Coding cutover](design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
+Browser/Device frames use a binary HTTP stream. The lifecycle UI proxy forwards
+only the terminal socket's upgrade; it does not expose dedicated socket ports or
+bridge other upgrades, and each route still needs transport configuration and
+platform qualification.
 
 ### Station-engine chat topology
 
@@ -163,7 +177,8 @@ These are navigation entry points, not an exhaustive inventory:
 ConfigLoader reads and writes JSON configuration and watches supported Agent and
 integration changes; it is not the storage owner for all product state.
 SchedulerService supports the configured cron, interval and one-shot contracts,
-not just cron. MonitoringEmitter publishes to its own monitoring EventEmitter
+not just cron, and a job's optional `target` runs each occurrence as a turn in a
+conversation (Automations) rather than as a Station-engine file run. MonitoringEmitter publishes to its own monitoring EventEmitter
 and persistence callback, not the orchestration EventBus. Follow each owner
 before treating a similarly named helper as the current implementation.
 

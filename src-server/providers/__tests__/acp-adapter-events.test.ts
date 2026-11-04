@@ -1,4 +1,7 @@
-import type { PermissionOption, StopReason } from '@agentclientprotocol/sdk';
+import type {
+  PermissionOption,
+  StopReason,
+} from '@agentclientprotocol/sdk/unstable';
 import { describe, expect, test } from 'vitest';
 import type {
   CanonicalRuntimeEvent,

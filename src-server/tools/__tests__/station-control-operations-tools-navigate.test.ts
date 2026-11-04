@@ -114,6 +114,7 @@ describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {
       const result = await tools.send_message({
         agent: 'my-agent',
         message: 'hello',
+        clientTurnId: 'caller-key',
         navigate: true,
       });
       const body = parseResult(result) as {
@@ -124,6 +125,7 @@ describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {
       expect(navigateTo).toHaveBeenCalledWith('/agents/my-agent');
       expect(executeExecutionTargetMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          clientTurnId: 'caller-key',
           clientOrigin: {
             version: 1,
             actor: { kind: 'internal' },

@@ -64,12 +64,15 @@ export function ConnectedSessionInventory({
   currentProjectId,
   initialScope,
   onDismiss,
+  titleOwner,
 }: {
   sessionId: string;
   currentProjectId?: string;
   /** A caller-captured occurrence is authoritative over this surface's old whole-session default. */
   initialScope?: SessionInventoryScope;
   onDismiss?(): void;
+  /** `host` when the caller's chrome already titles this surface (#4176). */
+  titleOwner?: 'pane' | 'host';
 }) {
   const requestScope = useHostRequestAuthorityScope();
   const previousAuthority = useRef(requestScope);
@@ -101,6 +104,7 @@ export function ConnectedSessionInventory({
       initialScope={initialScope}
       onDismiss={onDismiss}
       requestScope={requestScope}
+      titleOwner={titleOwner}
     />
   );
 }
@@ -111,12 +115,14 @@ function ConnectedSessionInventorySurface({
   requestScope,
   initialScope,
   onDismiss,
+  titleOwner,
 }: {
   sessionId: string;
   currentProjectId?: string;
   requestScope: { apiBase: string; authorityKey: string };
   initialScope?: SessionInventoryScope;
   onDismiss?(): void;
+  titleOwner?: 'pane' | 'host';
 }) {
   const initial = useMemo<SessionInventorySelection>(
     () => ({
@@ -287,6 +293,7 @@ function ConnectedSessionInventorySurface({
       ) : null}
       <SessionInventory
         model={model}
+        titleOwner={titleOwner}
         onSelect={(next) => commitSessionInventorySelection(selectionKey, next)}
         scopeOptions={[
           { kind: 'whole-session', sessionId: selection.scope.sessionId },

@@ -1,0 +1,19 @@
+{
+  "revision": "243b5950c1329b095a728ef4e8b2d5e954250101",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-reviewed the Project checkout freshness section against the round-6 reader: absolute update command and its refusal only when both ahead and behind; FETCH_HEAD counted only when it lists the upstream tip (heuristic stated); identity walks before and after each record read with the swap-and-restore residual stated; 15 s whole-read deadline answering unreadable; ten-second cache. Matches project-checkout-freshness.ts and its tests.","inputs":["docs/reference/api.md","src-server/services/projects/project-checkout-freshness.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The project-checkout-freshness row is unaffected: the module change only reworded the updateCommand comment (absolute path, refusal when both ahead and behind).","inputs":["docs/reference/contracts.md","packages/contracts/src/project-checkout-freshness.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked the hook section: ProjectsContext now passes refetchOnMount and refetchOnWindowFocus true with staleTime 10_000, as the section now says.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"The Stale checkout warning paragraph is unaffected: the notice change only shows the will-refuse line when the checkout is both ahead and behind, which the paragraph does not describe.","inputs":["docs/user/settings.md","src-ui/src/views/project-settings/ProjectCheckoutFreshnessNotice.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md only changed its Project checkout freshness section; nothing this document cites from api.md changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md only changed its Project checkout freshness section; nothing this guide cites from api.md changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"ProjectSettingsView.test.tsx only gained stale checkout warning cases; the knowledge-section behavior this guide cites is unchanged.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

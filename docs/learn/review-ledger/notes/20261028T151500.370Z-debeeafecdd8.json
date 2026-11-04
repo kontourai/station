@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Edited the secret-binding and tool rows for the OAuth client-secret grant and oauthClient. Checked against both contract modules. Other inputs: the contracts table names the OAuth client-secret grant and oauthClient; secret-binding adds the mcp-integration-oauth-client grant and oauthClientGrants; station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh.","inputs":["docs/reference/contracts.md","packages/contracts/src/secret-binding.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

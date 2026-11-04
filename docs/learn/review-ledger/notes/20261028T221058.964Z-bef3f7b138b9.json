@@ -1,0 +1,45 @@
+{
+  "revision": "9c90541e400b7fd13de0768d15db09b9716dc2e0",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked this document's claims against the change: config.md only changed the checkoutStaleAfterDays row to say the days threshold also covers an old fetch. Nothing it states about those sources changed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked this document's claims against the change: the app schema only changed the checkoutStaleAfterDays description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/design/plugin-installation-lifecycle.md","schemas/app.schema.json"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked this document's claims against the change: the app schema only changed the checkoutStaleAfterDays description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/design/registry-trust-policy.md","schemas/app.schema.json"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked this document's claims against the change: config.md only changed the checkoutStaleAfterDays row to say the days threshold also covers an old fetch; the settings registry only changed the checkoutStaleAfterDays help and description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked this document's claims against the change: the settings registry only changed the checkoutStaleAfterDays help and description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked this document's claims against the change: api.md only changed its Project checkout freshness section (behindSince, fetch-age, config-refused, fetch records, ten-second cache). Nothing it states about those sources changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked this document's claims against the change: the settings registry only changed the checkoutStaleAfterDays help and description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/guides/discord-gateway.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked this document's claims against the change: settings.md only changed the Stale checkout warning paragraph (old fetch, not-compared lines). Nothing it states about those sources changed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked this document's claims against the change: api.md only changed its Project checkout freshness section (behindSince, fetch-age, config-refused, fetch records, ten-second cache); sdk.md only changed the checkout freshness hook staleTime to 10 seconds. Nothing it states about those sources changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked this document's claims against the change: ProjectSettingsView.test.tsx only gained stale checkout warning cases. Nothing it states about those sources changed.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked this document's claims against the change: the app schema only changed the checkoutStaleAfterDays description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/guides/plugins.md","schemas/app.schema.json"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed the Project checkout freshness section against the final reader: unknown reasons incl. config-refused and the no-upstream cases (unconfigured, missing remote, missing ref via show-ref --verify, non-ref value), behindSince as the later of first-parent committer date and reflog move past HEAD (32 entries), upstreamFetchedAt records (worktree/common FETCH_HEAD, upstream reflog, remote HEAD reflog; links refused; only for an upstream from a remote), commits/age/fetch-age, 10 s cache with unreadable not remembered, and the get_project merge. Matches the code and its tests.","inputs":["docs/reference/api.md","packages/contracts/src/config.ts","src-server/services/projects/project-checkout-freshness.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked both threshold rows against the registry, schema and resolveProjectCheckoutStaleThresholds; the days row now also covers fetch age, as projectCheckoutStaleReasons applies it.","inputs":["docs/reference/config.md","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","schemas/app.schema.json"]},
+
+    {"path":"docs/reference/contracts.md","note":"The project-checkout-freshness row still names the view, its three statuses, the defaults and both helpers; the module change only added fetch-age, config-refused and behindSince, which the row does not enumerate.","inputs":["docs/reference/contracts.md","packages/contracts/src/project-checkout-freshness.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the hook section against the client, hook and ProjectsContext; staleTime is 10_000 and null still means 404/501.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked this document's claims against the change: the generated registry only carries that same days-threshold copy change. Nothing it states about those sources changed.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked this document's claims against the change: AppConfig only changed the checkoutStaleAfterDays doc comment. Nothing it states about those sources changed.","inputs":["docs/reference/shared.md","packages/contracts/src/config.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked this document's claims against the change: the app schema only changed the checkoutStaleAfterDays description to include going without a fetch. Nothing it states about those sources changed.","inputs":["docs/reference/usage-telemetry.md","schemas/app.schema.json"]},
+
+    {"path":"docs/user/settings.md","note":"Re-reviewed the Stale checkout warning paragraph against the notice component: thresholds incl. an old fetch, copy-only command, local-refs-only counts, the not-compared line for refused config and the could-not-compare line for unreadable, and what shows nothing. Matches.","inputs":["docs/user/settings.md","src-ui/src/views/project-settings/ProjectCheckoutFreshnessNotice.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked this document's claims against the change: sdk.md only changed the checkout freshness hook staleTime to 10 seconds. Nothing it states about those sources changed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

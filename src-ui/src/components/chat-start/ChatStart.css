@@ -35,11 +35,6 @@
   align-items: center;
   gap: var(--k-space-2);
 }
-.chat-start__recent ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
 .chat-start__recent-heading h4 {
   margin-block: var(--k-space-3);
 }
@@ -48,4 +43,93 @@
 }
 .chat-start__body p {
   color: var(--k-text-muted);
+}
+
+/* Setup feedback precedes the centered New Chat composer. */
+.new-chat-draft__body {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-height: 44px;
+  padding-block: clamp(0px, calc(10cqh - 2rem), var(--k-space-4));
+}
+.new-chat-draft__lead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  /* Centred while the body has room; scrolls with it when setup fills it. */
+  margin-block: auto;
+  text-align: center;
+}
+.new-chat-draft__lead:empty {
+  display: none;
+}
+.new-chat-draft__body .chat-start__setup {
+  padding-block: 0;
+}
+.new-chat-draft__body .chat-start__recent-heading h4 {
+  margin-block: 0;
+}
+.new-chat-draft__lead .button.task-chat-start__chip {
+  align-self: center;
+  margin-inline: 0;
+}
+.chat-start__body .new-chat-draft__lead p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.new-chat-modal > .start-composer {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  margin-block: auto;
+  z-index: 1;
+  background: var(--k-bg);
+  padding: var(--k-space-5) var(--k-space-4)
+    max(var(--k-space-5), var(--safe-bottom, 0px));
+}
+/* A short dock (a desktop bottom dock at its normal height) keeps the body
+   readable: the draft's text box shrinks with the draft's height (`cqh` of
+   the `new-chat-draft` container), from its usual three lines to one, never
+   below the 44px target. */
+.new-chat-modal > .start-composer .start-composer__input {
+  min-height: 2.75rem;
+  height: clamp(2.75rem, 100cqh - 25rem, 6rem);
+}
+/* A file drag covers the whole draft, including the composer. */
+.new-chat-modal[data-file-drag]::after {
+  content: "";
+  position: absolute;
+  inset: var(--k-space-1);
+  z-index: 2;
+  border: 2px dashed var(--k-focus);
+  border-radius: var(--k-radius-md);
+  pointer-events: none;
+}
+.new-chat-draft__body:has(> .new-chat-draft__lead:only-child:empty) {
+  display: none;
+}
+.new-chat-modal > .start-composer {
+  gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
+  padding-block-start: clamp(var(--k-space-2), 4cqh, var(--k-space-5));
+  padding-block-end: max(
+    clamp(var(--k-space-2), 4cqh, var(--k-space-5)),
+    var(--safe-bottom, 0px)
+  );
+}
+.new-chat-modal .start-composer__destination {
+  padding-block: clamp(0px, calc(10cqh - 2rem), var(--k-space-5));
+}
+.new-chat-modal .start-composer__destination h2 {
+  font-size: clamp(var(--k-text-lg), 6cqh, var(--k-text-2xl));
+}
+.new-chat-modal .start-composer__box {
+  gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
+}
+
+.new-chat-modal .start-composer__destination h2,
+.new-chat-modal .start-composer__without-project {
+  flex-basis: auto;
 }

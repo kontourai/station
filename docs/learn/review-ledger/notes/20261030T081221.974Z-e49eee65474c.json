@@ -1,0 +1,7 @@
+{
+  "revision": "45b48e68f080e07fb5c19a19802fa252fd91c255",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the child instruction guidance against the card and panel: delivered Station copies become expandable while the provider transcript is open, uncertain instructions and engine prompts stay visible, and the original send authority and retained-key behavior are unchanged. Focused React tests passed; live and native verification are separate.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

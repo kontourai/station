@@ -1,0 +1,15 @@
+{
+  "revision": "dca223fdd0759fc4552901a48702b4744bf65dd9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the changed production-boundary read-scope test: ungranted agents now receive diagnostics refusal; scheduler log admission is covered separately by seeded-run authority tests. Focused suites passed 125 tests; bypassing diagnostics admission failed, restoration passed. No hosted or live-device evidence. Knowledge and terminal route evidence remains in the test and notification/scheduler claims retain their owners.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the changed production-boundary read-scope test: ungranted agents now receive diagnostics refusal; scheduler log admission is covered separately by seeded-run authority tests. Focused suites passed 125 tests; bypassing diagnostics admission failed, restoration passed. No hosted or live-device evidence. Terminal operator and socket admission assertions are unchanged.","inputs":["docs/design/terminal.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the changed production-boundary read-scope test: ungranted agents now receive diagnostics refusal; scheduler log admission is covered separately by seeded-run authority tests. Focused suites passed 125 tests; bypassing diagnostics admission failed, restoration passed. No hosted or live-device evidence. Knowledge caller ownership and MCP boundary assertions are unchanged.","inputs":["docs/guides/knowledge.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the changed production-boundary read-scope test: ungranted agents now receive diagnostics refusal; scheduler log admission is covered separately by seeded-run authority tests. Focused suites passed 125 tests; bypassing diagnostics admission failed, restoration passed. No hosted or live-device evidence. Person notification feed and scheduler run-read descriptions remain accurate.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the changed production-boundary read-scope test: ungranted agents now receive diagnostics refusal; scheduler log admission is covered separately by seeded-run authority tests. Focused suites passed 125 tests; bypassing diagnostics admission failed, restoration passed. No hosted or live-device evidence. The documented bound-session grant and redacted operator UI remain accurate.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]}
+  ]
+}

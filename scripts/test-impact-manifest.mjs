@@ -799,6 +799,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   // of them: #3170 broke it that way and it first failed in qualification.
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  // Walks src-ui/src/components/coding-layout for imports of terminal
+  // internals; a new Coding file has no import edge to this suite (#3994).
+  'packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts',
   // Scans src-server, packages/shared/src and packages/cli/src for Station
   // home-root literals the store registry must list (#2675 D1).
   'packages/shared/src/__tests__/station-home-store-registry.test.ts',
@@ -806,6 +809,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  // Scans source trees for coordinator product names outside their copy owner.
+  'scripts/__tests__/coordinator-product-names.test.ts',
   // Walks tests/ to refuse a whole-URL glob for the server update check (#3851).
   'scripts/__tests__/core-update-route.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
@@ -830,6 +835,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for hasCapability gates and
+  // .capabilities.<flag> reads that must have a flag-table row (#4177).
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   // Walks src-server/knowledge-store and src-server/services/knowledge for raw
   // fs mutations that bypass the file-transaction seam.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
@@ -856,6 +864,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
   'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  // Walks src-ui/src for font sizes under the 12px floor (#4403).
+  'src-ui/src/__tests__/minimum-text-size.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
   'src-ui/src/__tests__/plain-language-policy.test.ts',

@@ -13,4 +13,25 @@ export {
 } from './memory.js';
 export { drainModelOutbox } from './outbox.js';
 export { DEFAULT_MODEL_POLICY, type ModelPolicy } from './policy.js';
+export type { DurableApproval } from './turn-approvals.js';
+export {
+  type AgentJournal,
+  type AgentJournalContext,
+  type AgentJournalParticipant,
+  type AgentJournalProtocol,
+  type AgentTurnRecord,
+  type AgentTurnSpec,
+  auditSqliteAgentJournal,
+  openSqliteAgentJournal,
+} from './turn-journal.js';
+export { durableLanguageModel } from './turn-model.js';
+export type { AgentFrame } from './turn-projection.js';
+export {
+  type AgentToolIntent,
+  type AgentTurnLease,
+  createAgentRuntime,
+  currentAgentTurn,
+  type InterruptedToolResult,
+  runWithAgentTurn,
+} from './turn-runtime.js';
 export type * from './types.js';

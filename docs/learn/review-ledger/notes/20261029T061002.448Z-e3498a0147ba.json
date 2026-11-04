@@ -1,0 +1,11 @@
+{
+  "revision": "b5c026f33157da93c2918686f32e81a2c72b20cd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the direct child-process classification, two-worker process-heavy scheduling and bounded timeout guidance against the FIFO fixture and manifest entry. The new fixture uses a disposable home and bounded child; this does not establish full regression or performance results.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the manifest delta against the agent-runtime resource and recovery context. It adds only the independent account-sharing FIFO fixture to process-heavy; no agent-runtime owner or lifecycle contract changed. No agent-runtime suite was rerun.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the child-process classification and bounded child requirements against the FIFO test and process-heavy manifest entry. The normative script instructions remain unchanged; the focused manifest and custody suites passed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

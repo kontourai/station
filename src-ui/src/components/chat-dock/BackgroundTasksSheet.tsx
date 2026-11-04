@@ -4,9 +4,10 @@
 // the entry chunk.
 
 import type { RefObject } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useChatBackgroundTasks } from '../../hooks/useBackgroundTasks';
+import { useElapsedClock } from '../../hooks/useElapsedClock';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -65,15 +66,10 @@ export function BackgroundTasksSheet({
   const agents = useAgents();
   const { running, finished } = useChatBackgroundTasks(chatThreadId);
   const [sections, setSections] = useState<SectionState>(readSectionState);
-  const [now, setNow] = useState(() => Date.now());
-
-  // Shared 1s ticker for every Running row's elapsed time — only while this
-  // sheet is mounted (it is only ever mounted while open; see the lazy
-  // Suspense gate in ChatDock.tsx).
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // The shared elapsed clock for every Running row, only while this sheet is
+  // mounted (it is only ever mounted while open; see the lazy Suspense gate in
+  // ChatDock.tsx). It holds no timer while the page is hidden.
+  const now = useElapsedClock();
 
   const toggleFinished = () => {
     setSections((current) => {

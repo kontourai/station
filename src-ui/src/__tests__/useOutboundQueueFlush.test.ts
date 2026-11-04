@@ -5,6 +5,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   _resetOutboundQueueChangeChannel,
@@ -16,11 +17,16 @@ import {
 
 const sendMessage = vi.fn();
 const getTurnDelivery = vi.fn();
+const listConversationInbox = vi.fn();
+const submitConversationSteer = vi.fn();
 const connection = vi.hoisted(() => ({ status: 'connected' }));
 
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   getTurnDelivery: (...args: unknown[]) => getTurnDelivery(...args),
+  listConversationInbox: (...args: unknown[]) => listConversationInbox(...args),
+  submitConversationSteer: (...args: unknown[]) =>
+    submitConversationSteer(...args),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -56,6 +62,291 @@ describe('useOutboundQueueFlush', () => {
     activeChatsStore.removeChat('session-1');
     _resetOutboundQueueStorage();
   });
+
+  it('reconciles an unanswered inbox steer by its exact inbox entry', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    await outboundDispatch.recordUnanswered({
+      clientTurnId: 'steer-key',
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      agentSlug: 'codex',
+      content: 'change course',
+      inboxSteerHead: '["session-1",1]',
+      station: {
+        apiBase: 'http://api.test',
+        authorityNamespace: 'authority-1',
+      },
+    });
+    listConversationInbox.mockResolvedValueOnce([
+      {
+        clientTurnId: 'steer-key',
+        conversationId: 'conversation-1',
+        kind: 'steer',
+        ownedByCaller: true,
+        message: 'change course',
+        expectedHead: '["session-1",1]',
+        state: 'queued',
+      },
+    ]);
+    renderHook(() => useOutboundQueueFlush('http://api.test'), {
+      wrapper: ({ children }) =>
+        createElement(
+          AuthorityPersistenceContext.Provider,
+          {
+            value: {
+              status: 'verified',
+              namespace: 'authority-1',
+              observation: null,
+            },
+          },
+          children,
+        ),
+    });
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+    expect(listConversationInbox).toHaveBeenCalled();
+    expect(getTurnDelivery).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries an absent inbox steer with its original key and head', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    await outboundDispatch.recordUnanswered({
+      clientTurnId: 'steer-retry',
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      agentSlug: 'codex',
+      content: 'change course',
+      inboxSteerHead: '["session-1",1]',
+      station: {
+        apiBase: 'http://api.test',
+        authorityNamespace: 'authority-1',
+      },
+    });
+    listConversationInbox.mockResolvedValueOnce([]);
+    submitConversationSteer.mockResolvedValueOnce({ state: 'queued' });
+    renderHook(() => useOutboundQueueFlush('http://api.test'), {
+      wrapper: ({ children }) =>
+        createElement(
+          AuthorityPersistenceContext.Provider,
+          {
+            value: {
+              status: 'verified',
+              namespace: 'authority-1',
+              observation: null,
+            },
+          },
+          children,
+        ),
+    });
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+    expect(submitConversationSteer).toHaveBeenCalledWith(
+      'http://api.test',
+      'conversation-1',
+      {
+        key: 'steer-retry',
+        message: 'change course',
+        expectedHead: '["session-1",1]',
+      },
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(['inbox_key_conflict', 'client_turn_input_conflict'])(
+    'holds a definitive %s steer conflict as not sent instead of automatically retrying',
+    async (code) => {
+      let stored: unknown;
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+      await outboundDispatch.recordUnanswered({
+        clientTurnId: 'conflicted-steer',
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        agentSlug: 'codex',
+        content: 'change course',
+        inboxSteerHead: '["session-1",1]',
+        station: {
+          apiBase: 'http://api.test',
+          authorityNamespace: 'authority-1',
+        },
+      });
+      listConversationInbox.mockResolvedValue([]);
+      submitConversationSteer.mockRejectedValue(
+        Object.assign(new Error('Key names different input'), {
+          code,
+          stationEnvelope: true,
+        }),
+      );
+      renderHook(() => useOutboundQueueFlush('http://api.test'), {
+        wrapper: ({ children }) =>
+          createElement(
+            AuthorityPersistenceContext.Provider,
+            {
+              value: {
+                status: 'verified',
+                namespace: 'authority-1',
+                observation: null,
+              },
+            },
+            children,
+          ),
+      });
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toMatchObject([
+          { clientTurnId: 'conflicted-steer', status: 'failed' },
+        ]),
+      );
+      expect(submitConversationSteer).toHaveBeenCalledTimes(1);
+      expect(sendMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps a failed steer replay for another lookup rather than claiming non-delivery', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    await outboundDispatch.recordUnanswered({
+      clientTurnId: 'steer-unanswered-again',
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      agentSlug: 'codex',
+      content: 'change course',
+      inboxSteerHead: '["session-1",1]',
+      station: {
+        apiBase: 'http://api.test',
+        authorityNamespace: 'authority-1',
+      },
+    });
+    listConversationInbox.mockResolvedValueOnce([]);
+    submitConversationSteer.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    renderHook(() => useOutboundQueueFlush('http://api.test'), {
+      wrapper: ({ children }) =>
+        createElement(
+          AuthorityPersistenceContext.Provider,
+          {
+            value: {
+              status: 'verified',
+              namespace: 'authority-1',
+              observation: null,
+            },
+          },
+          children,
+        ),
+    });
+    await waitFor(() =>
+      expect(submitConversationSteer).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toMatchObject([
+        {
+          status: 'invoking',
+          awaitingLookup: true,
+          inboxSteerHead: '["session-1",1]',
+        },
+      ]),
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { expectedHead: '["session-1",2]', ownedByCaller: true },
+    { expectedHead: '["session-1",1]', ownedByCaller: false },
+  ])(
+    'does not retire or replay an inbox steer without exact ownership and head proof',
+    async ({ expectedHead, ownedByCaller }) => {
+      let stored: unknown;
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+      await outboundDispatch.recordUnanswered({
+        clientTurnId: 'steer-head-conflict',
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        agentSlug: 'codex',
+        content: 'change course',
+        inboxSteerHead: '["session-1",1]',
+        station: {
+          apiBase: 'http://api.test',
+          authorityNamespace: 'authority-1',
+        },
+      });
+      listConversationInbox.mockResolvedValueOnce([
+        {
+          clientTurnId: 'steer-head-conflict',
+          conversationId: 'conversation-1',
+          kind: 'steer',
+          ownedByCaller,
+          message: 'change course',
+          expectedHead,
+          state: 'sent',
+        },
+      ]);
+      renderHook(() => useOutboundQueueFlush('http://api.test'), {
+        wrapper: ({ children }) =>
+          createElement(
+            AuthorityPersistenceContext.Provider,
+            {
+              value: {
+                status: 'verified',
+                namespace: 'authority-1',
+                observation: null,
+              },
+            },
+            children,
+          ),
+      });
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toMatchObject([
+          { status: 'may-have-started' },
+        ]),
+      );
+      expect(submitConversationSteer).not.toHaveBeenCalled();
+      expect(sendMessage).not.toHaveBeenCalled();
+    },
+  );
 
   it('surfaces a durable-settlement outage without invoking transport', async () => {
     renderHook(() => useOutboundQueueFlush('http://api.test'));
@@ -719,10 +1010,11 @@ describe('useOutboundQueueFlush', () => {
       },
     });
     activeChatsStore.updateChat('session-1', {
-      queuedMessages: ['held one', 'steering one'],
+      queuedMessages: ['held one', 'steering one', 'unscoped legacy input'],
       queuedMessageMetadata: [
         { id: 'held-key', mode: 'queue' },
         { id: 'steer-key', mode: 'steer', delivery: 'steering' },
+        { id: 'legacy-key', mode: 'queue', originUnverified: true },
       ],
     });
     renderHook(() => useOutboundQueueFlush('http://api.test'));
@@ -889,6 +1181,48 @@ describe('useOutboundQueueFlush', () => {
         await vi.dynamicImportSettled();
       });
     };
+
+    it('keeps observing a queued unanswered send until Station starts it without resending', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow();
+      let started = false;
+      getTurnDelivery.mockImplementation(
+        async (_api, conversationId, clientTurnId) => ({
+          outcome: started ? 'started' : 'queued',
+          conversationId,
+          clientTurnId,
+          ...(started
+            ? { sessionId: conversationId, turnId: 'recovered-turn' }
+            : {}),
+        }),
+      );
+      const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      try {
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: 'key-orphan',
+            status: 'invoking',
+          }),
+        ]);
+        started = true;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5_000);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        expect(
+          activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
+        ).toEqual([]);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        await settleImports();
+        vi.useRealTimers();
+      }
+    });
 
     it.each([
       'hidden',
@@ -1436,8 +1770,9 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     });
     // X (chat 1) was deferred first, Y (chat 2) 150ms later.
     stored = [row('x', 'session-1', now - 150), row('y', 'session-2', now)];
-    // X's chat now has a turn running, so X's retry finds it blocked.
+    // X's conversation is still resolving, so its retry finds it blocked.
     activeChatsStore.updateChat('session-1', {
+      conversationOpenPending: true,
       conversationId: 'session-1',
       conversationActivity: {
         conversationId: 'session-1',
@@ -1488,11 +1823,8 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     reads.mockRestore();
   }, 10_000);
 
-  it('a chat with a turn running is not sent to, and its message goes as soon as the turn ends', async () => {
-    sendMessage.mockResolvedValue({
-      kind: 'accepted',
-      providerTurnId: 'provider-after',
-    });
+  it('hands a busy conversation to the inbox once', async () => {
+    sendMessage.mockResolvedValue({ kind: 'queued' });
     // The server's record: a turn is open in this conversation.
     activeChatsStore.updateChat('session-1', {
       conversationId: 'session-1',
@@ -1508,18 +1840,9 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
       },
     } as never);
     renderHook(() => useOutboundQueueFlush('http://api.test'));
-    await waitFor(() =>
-      expect(
-        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
-      ).toHaveLength(1),
-    );
-    await settle(500);
-    expect(sendMessage).not.toHaveBeenCalled();
-    // The turn ends: the record no longer has an open turn.
-    activeChatsStore.updateChat('session-1', {
-      conversationActivity: { conversationId: 'session-1', asOfSequence: 2 },
-    } as never);
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    await settle(500);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(sendMessage.mock.calls[0]?.[6]).toBe('busy');
   });
 });

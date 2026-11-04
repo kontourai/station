@@ -34,7 +34,7 @@ import {
  */
 const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // Started in another app; this Station cannot answer in it.
-  external: new Set(['Elsewhere']),
+  external: new Set(['Read only']),
   // You owe this session something. Which thing you owe is the refinement;
   // "Waiting on you" is the generic rung when no kind was recorded. The
   // ladder's "Queued to send" is also a Needs-you word, but it comes from a
@@ -48,15 +48,22 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
     'Blocked',
     'Waiting on you',
   ]),
-  // In flight. The only words that may claim work is happening.
-  running: new Set(['Running', 'No progress', '1 sub-agent']),
+  // Busy execution or retained cleanup; custody words do not claim progress.
+  running: new Set([
+    'Running',
+    'No progress',
+    '1 sub-agent',
+    'Stopping',
+    'Waiting on another Station process',
+    'Unknown',
+  ]),
   // Idle or stranded — not finished, not in flight, not yours to discharge.
-  // "Elsewhere" belongs to this lane by design (archive#1783: an
+  // "Read only" belongs to this lane by design (archive#1783: an
   // unanswerable session did not FINISH, it stopped being reachable, so it
   // is not filed under Just finished). "Running" is deliberately absent: an
   // idle lane whose row says Running is the owner's "Active with no
   // activity" complaint in the other direction.
-  idle: new Set(['Idle', 'Elsewhere']),
+  idle: new Set(['Idle', 'Read only']),
   // Over. The refinement is which ending.
   recentlyFinished: new Set(['Done', 'Stopped', 'Failed']),
   // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
@@ -99,6 +106,32 @@ const UNANSWERABLE = {
  * empty and no state is unrepresented.
  */
 const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
+  ...(['stopping', 'waiting-on-peer', 'unknown'] as const).map((state) =>
+    session({
+      threadId: `cleanup-${state}`,
+      lifecycleState: 'running',
+      status: 'closed',
+      hasActiveTurn: false,
+      ownedWork: {
+        state,
+        ownLifecycleState: 'canceled',
+        runningChildCount: 0,
+        pendingStopCount: 1,
+        pendingStops: [
+          {
+            custody:
+              state === 'stopping'
+                ? 'local'
+                : state === 'waiting-on-peer'
+                  ? 'peer'
+                  : 'unknown',
+            reason: 'retained-owner',
+            count: 1,
+          },
+        ],
+      },
+    }),
+  ),
   // A1 shape 1 (#1069): lane Idle, row used to say "Running".
   session({
     threadId: 'a1-idle-running',
@@ -303,7 +336,7 @@ describe('a row word can never contradict its lane heading', () => {
     expect(wordOf('a1-closed-while-running')).toBe('Done');
 
     expect(laneOf('a1-unanswerable')).toBe('idle');
-    expect(wordOf('a1-unanswerable')).toBe('Elsewhere');
+    expect(wordOf('a1-unanswerable')).toBe('Read only');
   });
 
   test('the lane headings are the shared names', () => {
@@ -344,7 +377,7 @@ describe('a row status word never contradicts its lane', () => {
   const WORD_VOCABULARY: Record<string, ReadonlySet<string>> = {
     needsYou: new Set(['Waiting on you']),
     running: new Set(['Running']),
-    idle: new Set(['Idle', 'Elsewhere']),
+    idle: new Set(['Idle', 'Read only']),
     drafts: new Set(['Draft']),
     finished: new Set(['Done', 'Failed', 'Stopped']),
   };
@@ -444,7 +477,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Engine complete', 'Done'],
   ['Engine running', 'Running'],
   ['Tool activity running', 'Running · tool'],
-  ["Can't answer here", 'Elsewhere'],
+  ["Can't answer here", 'Read only'],
   ['sub-agents running', 'N sub-agents'],
   ['sub-agent running', 'N sub-agents'],
   ['Background work running', 'Running'],
@@ -580,7 +613,7 @@ describe('one vocabulary on the work surfaces', () => {
       "'Needs approval'",
       "'Needs answer'",
       "'Interrupted'",
-      "'Elsewhere'",
+      "'Read only'",
       "'Idle'",
       "'Done'",
     ];

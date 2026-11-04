@@ -1,0 +1,7 @@
+{
+  "revision": "9128f1b7bc74e32df7d9c6eac5836ea0afcc0183",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the Codex stderr transport and adapter logging change against this document’s provider, session and failure claims. Diagnostic lines now produce one content-free server log per process instead of session warnings; protocol errors and process-exit handling are unchanged. No prose change needed. Focused adapter and transport tests passed; live restart experiments do not establish a durable history guarantee.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/codex-adapter-transport.ts","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

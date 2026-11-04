@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { STATION_COMPAT_PROTOCOL_VERSION } from '@kontourai/station-contracts/environment-security';
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import {
@@ -137,7 +138,7 @@ test.each([false, true])(
       new Headers(fetch.mock.calls[1][1].headers).get(
         'X-Station-Client-Protocol',
       ),
-    ).toBe(advertised ? '3' : null);
+    ).toBe(advertised ? String(STATION_COMPAT_PROTOCOL_VERSION) : null);
     fireEvent.click(screen.getByRole('button', { name: 'Remove grant' }));
     await screen.findByText('Telemetry destination grant removed.');
     expect(fetch.mock.calls[3][0]).toBe(
@@ -151,7 +152,7 @@ test.each([false, true])(
       new Headers(fetch.mock.calls[3][1].headers).get(
         'X-Station-Client-Protocol',
       ),
-    ).toBe(advertised ? '3' : null);
+    ).toBe(advertised ? String(STATION_COMPAT_PROTOCOL_VERSION) : null);
     expect(screen.queryByRole('button', { name: 'Remove grant' })).toBeNull();
   },
 );

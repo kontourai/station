@@ -450,7 +450,7 @@ test.describe
         .first();
       await expect(newChat).toBeVisible({ timeout: 20_000 });
       await newChat.click();
-      const startDialog = page.getByRole('dialog', {
+      const startDialog = page.getByRole('region', {
         name: 'New chat',
         exact: true,
       });

@@ -1,0 +1,9 @@
+{
+  "revision": "f49e4cf3c33e9d317e86215dd17c536be439653e",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the historical rollout status and link to the session API after the Codex stderr clarification; the ADR makes no current stderr claim. Source review only.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed Codex stderr draining, the content-free once-per-process logger callback, configWarning projection and exit failure paths against codex-adapter-transport.ts, codex-adapter.ts and codex-adapter-notifications.ts. Focused Codex suites passed; no live provider run.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-types.ts"]}
+  ]
+}

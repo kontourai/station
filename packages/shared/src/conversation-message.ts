@@ -1,6 +1,11 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
-import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
+import type { RuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
+import type {
+  CanonicalRuntimeEvent,
+  EngineToolKind,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
   ToolRequestServerGrant,
@@ -58,6 +63,8 @@ export interface MessagePart {
   /** Provider output retained in its original JSON-compatible shape. */
   output?: unknown;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  /** A Claude Code Artifact publish's claude.ai page (see `ToolCompletedEvent`). */
+  claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
   error?: string;
   cancelled?: boolean;
   isError?: boolean;
@@ -109,6 +116,24 @@ export interface MessagePart {
    */
   approvalEventId?: string;
   /**
+   * docs/design/event-content-spill.md: the stored `request.opened` this
+   * approval answers, set only when its content (or the bound call's
+   * arguments) was stored out of line. A surface must load it whole before
+   * it offers Allow.
+   */
+  approvalContentEvent?: CanonicalRuntimeEvent;
+  /**
+   * docs/design/event-content-spill.md: a text part that shows a spilled
+   * prompt or reply's preview names the reference, so a surface can load
+   * the rest on demand.
+   */
+  spilledText?: { threadId: string; ref: RuntimeEventContentRef };
+  /**
+   * The thread whose content store holds the references inside this tool
+   * part's `args` or `output`, set only when they hold any.
+   */
+  contentThreadId?: string;
+  /**
    * The tool name that `request.opened`'s payload reported, if any — the name
    * an adapter records a session grant under. The session-grant button names
    * THIS, never `toolName`: for a nameless ACP or Codex call `toolName` is
@@ -151,6 +176,9 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   parts: MessagePart[];
   metadata?: {
+    /** Immutable copied-context receipt; it is not an execution or read grant. */
+    forkOrigin?: { eventId: string; digest: string };
+    forkSourceMessageId?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
@@ -169,6 +197,17 @@ export interface ConversationMessage {
      * person, written by nobody. Shown as Station's, not the person's.
      */
     stationCheckBack?: true;
+    /**
+     * Station's continuation after the engine was killed for memory
+     * (`isStationMemoryContinuationTurn`). Shown as Station's.
+     */
+    stationMemoryContinuation?: true;
+    /**
+     * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
+     * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The
+     * chat's Continue keys its send on it.
+     */
+    interruptedTurnBoundaryId?: string;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */
@@ -218,5 +257,39 @@ export interface ConversationMessage {
      * second store — see `packages/contracts/src/turn-provenance.ts`.
      */
     provenance?: TurnProvenanceEnvelope;
+    /**
+     * chat-host-images: images this turn's reply named by host path, each
+     * mapped to the attachment Station stored, or to why it did not. A
+     * projection of the turn's `content.host-images` events.
+     */
+    hostImages?: ChatHostImageMap;
   };
+}
+
+const TURN_INTERRUPTED_CONTINUE_KEY_PREFIX = 'continue-interrupted:';
+
+/**
+ * The send key of Continue for one interrupted turn, derived from its
+ * boundary so every tap, on any device, names the same turn and the
+ * server's turn deduplication admits it once.
+ */
+export function turnInterruptedContinueClientTurnId(
+  boundaryId: string,
+): string {
+  return `${TURN_INTERRUPTED_CONTINUE_KEY_PREFIX}${boundaryId}`;
+}
+
+/**
+ * The boundary a Continue send key names, or undefined for any other key:
+ * the inverse of `turnInterruptedContinueClientTurnId`.
+ */
+export function turnInterruptedContinueBoundaryId(
+  clientTurnId: string | undefined,
+): string | undefined {
+  if (!clientTurnId?.startsWith(TURN_INTERRUPTED_CONTINUE_KEY_PREFIX))
+    return undefined;
+  const boundaryId = clientTurnId.slice(
+    TURN_INTERRUPTED_CONTINUE_KEY_PREFIX.length,
+  );
+  return boundaryId || undefined;
 }

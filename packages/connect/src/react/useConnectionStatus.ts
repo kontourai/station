@@ -3,6 +3,7 @@ import {
   type ConnectionHealthCheckResult,
   ConnectionHealthCoordinator,
   type ConnectionHealthCoordinatorOptions,
+  type ConnectionRouteResult,
 } from '../core/ConnectionHealthCoordinator';
 import type { ConnectionFailureReason, ConnectionStatus } from '../core/types';
 import { useConnections } from './ConnectionsContext';
@@ -45,6 +46,8 @@ export interface ConnectionStatusResult {
     end: string;
     reason: ConnectionFailureReason;
   }>;
+  /** Per-route outcome of the last completed check (Station routes). */
+  routes: ReadonlyArray<ConnectionRouteResult>;
   recheck: () => void;
 }
 
@@ -70,6 +73,8 @@ function registryEntry(
     coordinator,
     refs: 0,
     subscribe: (listener) => {
+      // React can replay a subscription while retaining the memoized entry.
+      if (!registry.has(key)) registry.set(key, entry);
       entry.refs += 1;
       const unsubscribe = coordinator.subscribe(listener);
       return () => {

@@ -38,7 +38,10 @@ export function attentionRequestReference(
 
 export class RequestEventGuardError extends Error {
   constructor(
-    readonly code: 'request_event_changed' | 'request_verification_unavailable',
+    readonly code:
+      | 'request_event_changed'
+      | 'request_verification_unavailable'
+      | 'request_content_not_loaded',
     message: string,
   ) {
     super(message);

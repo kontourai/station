@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { resolve as resolveFilesystemPath } from 'node:path';
+import { type SessionStartBoundaryClaim } from '@kontourai/monument/session-boundary';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -31,10 +32,7 @@ import type { DispatchCwdAdmission } from './dispatch-cwd-admission.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
-import {
-  type SessionStartBoundaryClaim,
-  SessionStartIndeterminateError,
-} from './session-turn-boundary.js';
+import { SessionStartIndeterminateError } from './session-turn-boundary-binding.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -150,8 +148,15 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Derived from the saved fork owner; retains the actual requester for the spawn recheck. */
+  forkContextRequester?: {
+    userId?: string;
+    tenantExecutionContext?: TenantExecutionContext;
+  };
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
   sessionStartAdmission?: SessionStartBoundaryClaim;
+  /** Server-only final start admission; never accepted from a command body. */
+  beforeProviderStart?: (threadId: string) => void;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: { projectId: string; taskId: string };
   /**
@@ -159,7 +164,12 @@ export type SessionCommandInternalOptions = {
    * `TASK_BRIEF_METADATA_KEY` after the reserved-key strip; the first turn
    * composes it. Never accepted from public JSON.
    */
-  taskBrief?: { digest: string; text: string };
+  taskBrief?: {
+    digest: string;
+    text: string;
+    mandatoryContextDigest?: string;
+    learningContributions?: import('@kontourai/station-contracts/learning-review').LearningReviewTaskContext['contributions'];
+  };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
@@ -210,6 +220,11 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /**
+   * A person's own interactive chat, derived by the `/chat` route
+   * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.
+   */
+  personChatStart?: true;
   /** Opaque controller capability; only the foreground route can carry it. */
 };
 
@@ -323,7 +338,13 @@ interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       tenant: TenantExecutionContext | undefined,
       startInput: OrchestrationStartSessionInput,
-    ): void;
+      /**
+       * The principal that requested the start: a fork's admitted requester
+       * (its context names the fork owner instead), else the dispatching
+       * principal; undefined for an internal start.
+       */
+      startedBy: string | undefined,
+    ): void | Promise<void>;
   };
   launchPolicy: {
     assertStartAllowed(
@@ -394,6 +415,8 @@ interface SessionCommandDependencies {
     recordStarted(
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
+      context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): void;
     ensureStartedSessionCurrent(
       adapter: ProviderAdapterShape,
@@ -736,17 +759,23 @@ export function createSessionCommandModule(
           internal,
         );
         try {
-          deps.launchPolicy.recordStarted(adapter, startInput);
-          await deps.launchPolicy.ensureStartedSessionCurrent(
+          deps.launchPolicy.recordStarted(
             adapter,
-            session,
-            startInput.signal,
+            startInput,
+            context,
+            internal,
           );
-          deps.sessionState.attachStarted(
+          await deps.sessionState.attachStarted(
             session,
             adapter,
             context.tenantExecutionContext,
             startInput,
+            internal?.forkContextRequester?.userId ?? context.userId,
+          );
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);

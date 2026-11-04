@@ -1,6 +1,11 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
+import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
+import {
+  type ProjectChatDefaultsView,
+  projectLastUsedModelFor,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -17,6 +22,8 @@ import type { ACPSelectionConnection } from '../../hooks/useNewChatSelectionMode
 import {
   acpAdvertisedModels,
   connectionStatusLabel,
+  type EffectiveModel,
+  type EffectiveModelSource,
   guaranteeConcreteModel,
   resolveEffectiveModel,
   runtimeCatalogSourceLabel,
@@ -54,8 +61,10 @@ export const NO_PROJECT_LABEL = 'No project';
  * The precedence below is a mirror of the server's, not a second opinion:
  * `orchestration-service.ts`'s `resolveStartSessionCwd` turns a project's
  * `workingDirectory` into the session's `cwd`. With none, a non-ACP engine
- * gets the home folder there (`project_without_directory` /
- * `unbound_chat`), while ACP is left to `acp-adapter.ts`, which resolves
+ * gets the home folder there for a Project with no folder
+ * (`project_without_directory`) and, for a chat with no Project, a private
+ * scratch folder unless the Station chose home (#4389,
+ * `no-project-chat-folder.ts`), while ACP is left to `acp-adapter.ts`, which resolves
  * `input.cwd || connectionCwd`, else a private Station-managed workspace
  * for the session (`managed-acp-workspace.ts`, archive#1403) — never home.
  * So a project directory outranks a connection default (verified live:
@@ -233,10 +242,16 @@ export function resolveNewChatWorkspaceHint({
   agent,
   project,
   acpConnections,
+  noProjectChatFolder,
 }: {
   agent: AgentData | undefined;
   project: ProjectMetadata | undefined;
   acpConnections: ACPSelectionConnection[];
+  /**
+   * #4389: set only when the start is a No project chat: this Station's
+   * `AppConfig.noProjectChatFolder`, `'private'` when it stores none.
+   */
+  noProjectChatFolder?: NoProjectChatFolder;
 }): NewChatWorkspaceHint {
   if (project?.runsAt?.kind === 'unavailable') {
     return { kind: 'unavailable', reason: project.runsAt.reason };
@@ -262,6 +277,12 @@ export function resolveNewChatWorkspaceHint({
   // The server leaves an ACP engine's fallback to its adapter, which makes a
   // private workspace rather than using home.
   if (agent?.engineConnectionType === 'acp') return { kind: 'managed' };
+  // #4389: a chat with no Project gets its own private folder too, unless
+  // this Station chose the home folder (`AppConfig.noProjectChatFolder`).
+  // Only a caller starting a No project chat passes this; a Project with no
+  // folder still runs in the home folder.
+  if (noProjectChatFolder && noProjectChatFolder !== 'home')
+    return { kind: 'managed' };
 
   return { kind: 'home' };
 }
@@ -312,6 +333,55 @@ export function newChatLastChosenModel(
   }
   return lastChosenModelByBinding[buildLastChosenModelBindingKey(agent)];
 }
+
+/**
+ * What the start composer says about a model a `last-used` Project chose or
+ * could not use, or `undefined` when there is nothing to say: no Project, a
+ * `fixed` Project, or a model the person picked in this draft.
+ */
+export function newChatProjectModelNote({
+  projectChatDefaults,
+  agentSlug,
+  effectiveModel,
+  chosen,
+}: {
+  projectChatDefaults?: ProjectChatDefaultsView;
+  agentSlug?: string;
+  effectiveModel?: Pick<
+    EffectiveModel,
+    'source' | 'unavailableProjectLastUsed'
+  >;
+  chosen: boolean;
+}): string | undefined {
+  if (
+    chosen ||
+    !projectChatDefaults ||
+    projectChatDefaults.model.selection !== 'last-used' ||
+    !effectiveModel
+  )
+    return undefined;
+  if (effectiveModel.source === 'project last used')
+    return 'The model your last chat in this project started with.';
+  const fallback = FALLBACK_MODEL_SOURCE_TEXT[effectiveModel.source];
+  if (effectiveModel.unavailableProjectLastUsed)
+    return `Your last model in this project (${effectiveModel.unavailableProjectLastUsed}) is no longer offered, so this chat starts on ${fallback}.`;
+  if (!projectLastUsedModelFor(projectChatDefaults, agentSlug))
+    return `No chat with this Agent has been recorded in this project yet, so this chat starts on ${fallback}.`;
+  return undefined;
+}
+
+/** Where a fallback model came from, as the note above names it. */
+const FALLBACK_MODEL_SOURCE_TEXT: Record<EffectiveModelSource, string> = {
+  'session override': 'the model you chose',
+  'project last used': 'the model last used here',
+  'last chosen': 'your last pick for this app',
+  'project default': 'the project default model',
+  runtime: 'the model the app reports',
+  'agent default': 'the Agent default model',
+  'connection default': 'the connection default model',
+  'first available': 'the first model offered',
+  unknown: 'the default model',
+};
 
 export function scheduleSelectedAgentVisibility(
   element: HTMLButtonElement | null,
@@ -385,6 +455,7 @@ export function resolveNewChatDefaultSelection({
   modelConnections,
   acpConnections,
   projectDefaultModel,
+  projectChatDefaults,
   lastChosenModelByBinding = {},
   preferredAgentSlug,
 }: {
@@ -393,6 +464,8 @@ export function resolveNewChatDefaultSelection({
   modelConnections: ConnectionConfig[];
   acpConnections: ACPSelectionConnection[];
   projectDefaultModel?: string;
+  /** The selected Project's new-chat defaults, when a Project is selected. */
+  projectChatDefaults?: ProjectChatDefaultsView;
   preferredAgentSlug?: string;
   lastChosenModelByBinding?: LastChosenModelMap;
 }) {
@@ -423,6 +496,11 @@ export function resolveNewChatDefaultSelection({
     )?.currentValue,
     advertisedModels: acpAdvertisedModels(acpConnection),
     projectDefaultModel: newChatProjectDefaultModel(agent, projectDefaultModel),
+    projectLastUsedModel: projectLastUsedModelFor(
+      projectChatDefaults,
+      agent?.slug,
+    )?.modelId,
+    newChat: true,
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });
   return {

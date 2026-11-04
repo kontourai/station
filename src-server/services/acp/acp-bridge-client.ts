@@ -1,10 +1,11 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import * as pathModule from 'node:path';
 import {
-  type Client,
   type CreateTerminalRequest,
   type CreateTerminalResponse,
+  client,
   type KillTerminalRequest,
+  methods,
   type ReadTextFileRequest,
   type ReadTextFileResponse,
   type ReleaseTerminalRequest,
@@ -17,21 +18,82 @@ import {
   type WaitForTerminalExitRequest,
   type WaitForTerminalExitResponse,
   type WriteTextFileRequest,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { ApprovalRegistry } from '../approvals/approval-registry.js';
 import type {
+  ACPClientCallbacks,
   ExtendedCreateTerminalRequest,
   ExtendedRequestPermissionRequest,
   ManagedTerminal,
 } from './acp-bridge-types.js';
+import {
+  type AcpSessionTerminals,
+  limitAcpOutput,
+} from './acp-session-terminals.js';
 
 type ACPStreamWriter = (chunk: any) => Promise<void>;
+
+function extensionParams(params: unknown): Record<string, unknown> {
+  if (params === undefined) return {};
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) {
+    throw RequestError.invalidParams(
+      undefined,
+      'Extension params must be an object.',
+    );
+  }
+  return params as Record<string, unknown>;
+}
+
+/** Bind Station's callbacks to the SDK's validated v1 app dispatch. */
+export function createACPClientApp(callbacks: ACPClientCallbacks) {
+  return client()
+    .onNotification(methods.client.session.update, ({ params }) =>
+      callbacks.sessionUpdate(params),
+    )
+    .onRequest(methods.client.session.requestPermission, ({ params }) =>
+      callbacks.requestPermission(params),
+    )
+    .onRequest(methods.client.fs.readTextFile, ({ params }) =>
+      callbacks.readTextFile(params),
+    )
+    .onRequest(methods.client.fs.writeTextFile, ({ params }) =>
+      callbacks.writeTextFile(params),
+    )
+    .onRequest(methods.client.terminal.create, ({ params }) =>
+      callbacks.createTerminal(params),
+    )
+    .onRequest(methods.client.terminal.output, ({ params }) =>
+      callbacks.terminalOutput(params),
+    )
+    .onRequest(methods.client.terminal.release, ({ params }) =>
+      callbacks.releaseTerminal(params),
+    )
+    .onRequest(methods.client.terminal.waitForExit, ({ params }) =>
+      callbacks.waitForTerminalExit(params),
+    )
+    .onRequest(methods.client.terminal.kill, ({ params }) =>
+      callbacks.killTerminal(params),
+    )
+    .onRequest('*', ({ method, params }) =>
+      callbacks.extMethod(method, extensionParams(params)),
+    )
+    .onNotification('*', ({ method, params }) =>
+      callbacks.extNotification(method, extensionParams(params)),
+    );
+}
 
 interface ACPBridgeClientContext {
   cwd: string;
   terminals: Map<string, ManagedTerminal>;
+  /**
+   * #3994: when present, terminals are command sessions in the core's
+   * `TerminalSessions` (journaled, confined to `cwd`, visible to the user).
+   * Absent where a host has no terminal sessions (hosted mode): `terminals`
+   * holds plain child processes instead.
+   */
+  sessionTerminals?: AcpSessionTerminals;
   approvalRegistry: ApprovalRegistry;
   getActiveWriter: () => ACPStreamWriter | null;
   nextTerminalId: () => string;
@@ -104,7 +166,9 @@ function assertClientFileAccess(
   return normalized;
 }
 
-export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
+export function createACPBridgeClient(
+  context: ACPBridgeClientContext,
+): ACPClientCallbacks {
   return {
     sessionUpdate: async (params: SessionNotification) => {
       await context.onSessionUpdate(params);
@@ -145,6 +209,9 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
           cwd: context.cwd,
           terminals: context.terminals,
           nextTerminalId: context.nextTerminalId,
+          ...(context.sessionTerminals && {
+            sessionTerminals: context.sessionTerminals,
+          }),
         },
       );
     },
@@ -152,6 +219,8 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
     terminalOutput: async (
       params: TerminalOutputRequest,
     ): Promise<TerminalOutputResponse> => {
+      if (context.sessionTerminals?.has(params.terminalId))
+        return context.sessionTerminals.output(params.terminalId);
       const term = context.terminals.get(params.terminalId);
       if (!term) {
         // Same class as the inbound-extension fabrication this change
@@ -168,9 +237,10 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
           `unknown terminal '${params.terminalId}'`,
         );
       }
+      const limited = limitAcpOutput(term.output, term.outputByteLimit);
       return {
-        output: term.output,
-        truncated: false,
+        output: limited.output,
+        truncated: limited.truncated,
         // `exited` — not `exitCode !== null` — decides whether an exit status
         // exists. A child killed by a signal has a null exitCode and HAS
         // exited; the old test reported it as still running.
@@ -181,6 +251,10 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
     },
 
     releaseTerminal: async (params: ReleaseTerminalRequest) => {
+      if (context.sessionTerminals?.has(params.terminalId)) {
+        await context.sessionTerminals.release(params.terminalId);
+        return;
+      }
       const term = context.terminals.get(params.terminalId);
       if (term) {
         term.process.kill();
@@ -191,6 +265,8 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
     waitForTerminalExit: async (
       params: WaitForTerminalExitRequest,
     ): Promise<WaitForTerminalExitResponse> => {
+      if (context.sessionTerminals?.has(params.terminalId))
+        return context.sessionTerminals.waitForExit(params.terminalId);
       const term = context.terminals.get(params.terminalId);
       if (!term) {
         // Was `{ exitCode: -1 }` — a fabricated exit status for a terminal
@@ -228,6 +304,10 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
     },
 
     killTerminal: async (params: KillTerminalRequest) => {
+      if (context.sessionTerminals?.has(params.terminalId)) {
+        await context.sessionTerminals.kill(params.terminalId);
+        return;
+      }
       const term = context.terminals.get(params.terminalId);
       if (term) term.process.kill();
     },
@@ -297,6 +377,7 @@ interface ACPBridgeTerminalContext {
   cwd: string;
   terminals: Map<string, ManagedTerminal>;
   nextTerminalId: () => string;
+  sessionTerminals?: AcpSessionTerminals;
 }
 
 /**
@@ -372,19 +453,20 @@ export function splitComposedShellLine(
   return tokens as [string, ...string[]];
 }
 
-export async function handleACPBridgeCreateTerminal(
+/**
+ * The executable and arguments of a create request. Real engines compose
+ * shell one-liners into `command` with empty `args` — 2026-09-18 live
+ * incident: the grok CLI sent `bash -lc 'pwd && …'` and the WHOLE string
+ * became the executable path. When the command names no real file and
+ * carries whitespace, read it the way a shell would. A command that names a
+ * file (a path containing spaces, say) is passed through untouched, so
+ * legitimate space-bearing executables keep working.
+ */
+async function resolveCreateTerminalCommand(
   params: ExtendedCreateTerminalRequest,
-  context: ACPBridgeTerminalContext,
-): Promise<CreateTerminalResponse> {
-  const id = context.nextTerminalId();
+): Promise<{ command: string; args: string[] }> {
   let command = params.command;
   let args = params.args ?? [];
-  // Real engines compose shell one-liners into `command` with empty `args` —
-  // 2026-09-18 live incident: the grok CLI sent `bash -lc 'pwd && …'` and the
-  // WHOLE string became the executable path. When the command names no real
-  // file and carries whitespace, read it the way a shell would. A command
-  // that names a file (a path containing spaces, say) is passed through
-  // untouched, so legitimate space-bearing executables keep working.
   if (args.length === 0 && /\s/.test(command)) {
     const namesRealFile = await stat(command)
       .then((info) => info.isFile())
@@ -396,21 +478,40 @@ export async function handleACPBridgeCreateTerminal(
       }
     }
   }
+  return { command, args };
+}
+
+export async function handleACPBridgeCreateTerminal(
+  params: ExtendedCreateTerminalRequest,
+  context: ACPBridgeTerminalContext,
+): Promise<CreateTerminalResponse> {
+  const id = context.nextTerminalId();
+  const { command, args } = await resolveCreateTerminalCommand(params);
+  const env = params.env
+    ? Object.fromEntries(params.env.map((entry) => [entry.name, entry.value]))
+    : undefined;
+  if (context.sessionTerminals) {
+    await context.sessionTerminals.create(id, {
+      command,
+      args,
+      cwd: params.cwd,
+      ...(env && { env }),
+      outputByteLimit: params.outputByteLimit,
+    });
+    return { terminalId: id };
+  }
   const proc = spawn(command, args, {
     cwd: params.cwd || context.cwd,
-    env: childProcessEnvironment(
-      params.env
-        ? Object.fromEntries(
-            params.env.map((entry) => [entry.name, entry.value]),
-          )
-        : undefined,
-    ),
+    env: childProcessEnvironment(env),
     windowsHide: true,
   });
 
   const term: ManagedTerminal = {
     process: proc,
     output: '',
+    ...(typeof params.outputByteLimit === 'number' && {
+      outputByteLimit: params.outputByteLimit,
+    }),
     exitCode: null,
     signal: null,
     exited: false,

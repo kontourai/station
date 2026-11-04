@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   createPublicIngressOriginResolver,
   createTailscaleCli,
+  inspectServePort,
   parseMagicDnsHost,
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
@@ -208,6 +209,23 @@ describe('createPublicIngressOriginResolver', () => {
     await expect(resolver.resolve()).resolves.toEqual([
       'https://station.example.ts.net',
     ]);
+  });
+
+  test('reports the MagicDNS name from the same cached lookup, even without Serve', async () => {
+    const calls: string[][] = [];
+    const { cli } = cliFrom(
+      { 'status --json': { stdout: STATUS_JSON, exitCode: 0 } },
+      calls,
+    );
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3000],
+      cli,
+    });
+    await expect(resolver.resolve()).resolves.toBeUndefined();
+    await expect(resolver.magicDnsHost()).resolves.toBe(
+      'station.example.ts.net',
+    );
+    expect(calls).toHaveLength(2);
   });
 
   test('caches within the TTL and re-reads after it', async () => {
@@ -417,5 +435,88 @@ describe('Tailscale CLI executable discovery', () => {
       stdout: '',
       exitCode: null,
     });
+  });
+});
+
+describe('negative Serve exposure proof', () => {
+  test.each([
+    [
+      {
+        TCP: { '443': { HTTPS: true } },
+        Web: {
+          'any.test:443': {
+            Handlers: { '/sub': { Proxy: 'http://localhost:43141/path' } },
+          },
+        },
+      },
+      'mapped',
+    ],
+    [{ TCP: { '443': { TCPForward: '127.0.0.1:43141' } } }, 'mapped'],
+    [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43141' } } } } },
+      'mapped',
+    ],
+    [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43142' } } } } },
+      'clear',
+    ],
+    [{ TCP: { '443': { TCPForward: '43141' } } }, 'mapped'],
+    [
+      {
+        Foreground: {
+          session: { TCP: { '443': { TCPForward: '[::1]:43141' } } },
+        },
+      },
+      'mapped',
+    ],
+    [
+      {
+        Web: {
+          'host:443': {
+            Handlers: { '/': { Proxy: 'http://127.0.0.1:43142' } },
+          },
+        },
+      },
+      'clear',
+    ],
+    [{ Web: 'bad' }, 'unverifiable'],
+    [{ FutureForwarder: '127.0.0.1:43141' }, 'unverifiable'],
+  ])(
+    'inspects all subpaths/TCP/foreground mappings and refuses unknown schemas %j',
+    async (config, expected) => {
+      expect(
+        await inspectServePort(43141, async () => ({
+          stdout: JSON.stringify(config),
+          exitCode: 0,
+        })),
+      ).toBe(expected);
+    },
+  );
+  test('absent CLI is clear, installed failure or malformed status is not', async () => {
+    expect(
+      await inspectServePort(43141, async () => ({
+        stdout: '',
+        exitCode: null,
+        unavailable: true,
+      })),
+    ).toBe('clear');
+    for (const result of [
+      { stdout: '', exitCode: null },
+      { stdout: '', exitCode: 1 },
+      { stdout: 'not json', exitCode: 0 },
+      { stdout: 'null', exitCode: 0 },
+    ])
+      expect(await inspectServePort(43141, async () => result)).toBe(
+        'unverifiable',
+      );
+    const fallback = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => ({
+        stdout: '',
+        exitCode: executable === 'tailscale' ? null : 1,
+        unavailable: executable === 'tailscale',
+      }),
+    });
+    expect(await inspectServePort(43141, fallback)).toBe('unverifiable');
   });
 });

@@ -12,6 +12,10 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
+import {
+  type LoadedManagedPolicy,
+  loadInstalledManagedPolicy,
+} from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
@@ -97,7 +101,7 @@ async function main() {
   const supervisorLink = await parkOrExit();
   if (supervisorLink) installListenerLink(supervisorLink);
   allowHomeAccess();
-  await initializeWorkloadResources();
+  await initializeWorkloadResources({ homeDir: resolveHomeDir() });
   // Set as boot reaches them; a drain before then exits without them.
   let runtimeForDrain: StationRuntime | undefined;
   let gracefulShutdown:
@@ -120,6 +124,7 @@ async function main() {
   }
   const processLifecycle = createRuntimeProcessLifecycle();
   processLifecycle.installExitObserver();
+  processLifecycle.observeGenerationStart();
   // A killed or crashed process never runs its own temp cleanup, so reclaim
   // anything older than a day before doing anything else. Best-effort: a
   // failure here must never block boot.
@@ -201,14 +206,44 @@ async function main() {
     level: resolveLogLevel(),
   });
 
+  // The machine administrator's managed policy (#4515), loaded once, before
+  // anything it may restrict is built. A policy this build cannot enforce
+  // refuses startup: running anyway would look managed without being so.
+  // Loaded after the schema gate and the log sink so the refusal reaches
+  // the durable log; neither depends on the policy.
+  let managedPolicy: LoadedManagedPolicy | null;
+  try {
+    managedPolicy = loadInstalledManagedPolicy();
+  } catch (error) {
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(1);
+    // One line that starts with the marker: the desktop sidecar matches it
+    // to stop retrying, and the CLI's failed-start report prints it.
+    console.error(error instanceof Error ? error.message : String(error));
+    logFatalAndFlush(
+      logger,
+      'Failed to start Station',
+      { err: error },
+      flushLogSink,
+      buildProvenanceSnapshot,
+    );
+    process.exit(1);
+  }
+  if (managedPolicy) {
+    logger.info('Managed policy loaded', {
+      source: managedPolicy.source,
+      digest: managedPolicy.digest,
+      organization: managedPolicy.summary.organization,
+    });
+  }
+
   const configuredHost = process.env.STATION_HOST || undefined;
   const host = configuredHost || '0.0.0.0';
   const displayHost = host.includes(':') ? `[${host}]` : host;
 
   // PORT=0 / STATION_PORT_MODE=auto: reserve a contiguous free block for the
-  // HTTP, terminal (port+1), voice (port+2), and consent (port+3) listeners
-  // before the runtime binds them, then report the resolved base back to a
-  // supervising parent.
+  // HTTP, voice (port+2), and consent (port+3) listeners before the runtime
+  // binds them, then report the resolved base back to a supervising parent.
   if (port === AUTO_ALLOCATE_PORT) {
     port = await allocateFreePortBlock(host);
   }
@@ -229,6 +264,7 @@ async function main() {
     host: configuredHost,
     logger,
     buildProvenanceSnapshot,
+    managedPolicy,
     ...(connector
       ? {
           relayInvitationOwner: connector.invitationOwner,

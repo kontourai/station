@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   createContext,
   type ReactNode,
@@ -289,7 +290,7 @@ class ToastStore {
             item.dedupeKey === options.dedupeKey &&
             item.sessionId === options.sessionId),
     );
-    const id = existing?.id ?? options.id ?? crypto.randomUUID();
+    const id = existing?.id ?? options.id ?? randomCorrelationId();
     const toast: Toast = {
       id,
       stationScope: scope,

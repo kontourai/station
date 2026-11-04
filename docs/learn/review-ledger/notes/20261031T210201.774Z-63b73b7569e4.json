@@ -1,0 +1,11 @@
+{
+  "revision": "bae5f71216e634911c6ca6f2b599d84f19b091c0",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the second gallery repair at bae5f71216e. Notification scenes now register a response observation before navigation and await a successful general-event stream before posting a live-only delivery. This preserves reduced-motion emulation and computed animation checks. The first full run captured 90/91: overlay-toast POST completed before the stream opened, so the missed delivery was a fixture ordering failure. The three mobile disclosure controls also now meet 44px. All six affected notification/mobile captures and their product assertions pass in 13.4 seconds, with no motion timeout or finding allowance increased. Existing historical/device evidence limits remain.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the stream-readiness barrier at bae5f71216e against fixture-fidelity requirements. The first full capture's server log shows notification POST 201 at 20:57:29.324Z before the current document stream opened at 20:57:29.903Z. The fixture now observes the successful legacy /events or includeGeneral=1 orchestration response from before navigation, awaits it before the existing real POST, and retains 201/toast visibility assertions. No request retry, synthetic click, timeout increase or missing-prerequisite success was added. E2E typecheck, zero-legacy fixture policy and six affected captures/product checks pass; no performance or native qualification is claimed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Re-reviewed the screenshots.spec.ts notification-readiness follow-up at bae5f71216e. Only three notification scenes await the real general-event stream before posting a live-only event. Usage-sharing, DNT, endpoint, outbox and feedback scenes and all their controlled endpoint contracts remain unchanged. The reference's local fixture and unqualified native/live-ingestion limits remain accurate.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

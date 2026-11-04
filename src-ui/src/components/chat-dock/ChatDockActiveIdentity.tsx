@@ -4,14 +4,40 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { ChatSession } from '../../types';
-import { agentEngineDescriptor } from '../../utils/engine';
+import {
+  agentEngineDescriptor,
+  chatEngineIdentity,
+  type EngineDescriptor,
+} from '../../utils/engine';
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
 
 interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
-    Partial<Pick<ChatSession, 'agentSlug' | 'agentName' | 'flowRun'>>;
+    Partial<
+      Pick<
+        ChatSession,
+        | 'agentSlug'
+        | 'agentName'
+        | 'flowRun'
+        | 'orchestrationProvider'
+        | 'agentConnectionId'
+        | 'agentConnectionObservedFor'
+        | 'currentSessionId'
+        | 'conversationId'
+      >
+    >;
+  /**
+   * The Agent whose engine binding runs this chat, from
+   * `chatExecutionBinding`, the resolver the composer chip uses, so the two
+   * cannot disagree. `null` when it did not resolve (an override's Agent that
+   * is deleted or not loaded): then only the Session names the engine. When
+   * omitted, `agent` is that binding.
+   */
+  executionAgent?: AgentData | null;
+  /** ACP connections, which alone name a Session on the generic ACP provider. */
+  acpConnections?: readonly { id: string; name: string }[];
   originLabel?: string;
   originProvider?: string;
   onDetails?: () => void;
@@ -44,23 +70,47 @@ export function ChatDockActiveIdentity({
   originLabel,
   originProvider,
   inputOrigin,
+  acpConnections,
+  executionAgent,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
-  const engine = agent
+  const bindingAgent = executionAgent === undefined ? agent : executionAgent;
+  const configuredEngine = bindingAgent
     ? agentEngineDescriptor({
-        slug: session.agentSlug ?? agent.slug,
-        name: agent.name,
-        source: agent.source,
-        engineId: agent.engineId,
-        connectionName: agent.connectionName,
-        engineDisplayName: agent.engineDisplayName,
-        model: agent.model,
-        execution: agent.execution,
+        slug:
+          bindingAgent === agent
+            ? (session.agentSlug ?? bindingAgent.slug)
+            : bindingAgent.slug,
+        name: bindingAgent.name,
+        source: bindingAgent.source,
+        engineId: bindingAgent.engineId,
+        connectionName: bindingAgent.connectionName,
+        engineDisplayName: bindingAgent.engineDisplayName,
+        model: bindingAgent.model,
+        execution: bindingAgent.execution,
       })
     : null;
+  // The same rule as the composer's engine chip (`chatEngineIdentity`): once
+  // the chat has a Session, the Agent's configuration names its engine only
+  // while that Session runs on the Agent's current connection. An engine that
+  // cannot be named yet shows no engine rather than a guess.
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: session.orchestrationProvider,
+    currentSessionId: session.currentSessionId ?? session.conversationId,
+    sessionConnectionId: session.agentConnectionId,
+    connectionObservedFor: session.agentConnectionObservedFor,
+    binding: bindingAgent ?? null,
+    acpConnections,
+  });
+  const { configurationNamesEngine } = engineIdentity;
+  const engine: EngineDescriptor | null = configurationNamesEngine
+    ? configuredEngine
+    : engineIdentity.sessionEngine
+      ? { name: engineIdentity.sessionEngine }
+      : null;
   // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
@@ -95,7 +145,11 @@ export function ChatDockActiveIdentity({
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
-    engineId: parseEngineId(originProvider) ?? agent?.engineId,
+    engineId:
+      parseEngineId(originProvider) ??
+      (configurationNamesEngine
+        ? bindingAgent?.engineId
+        : parseEngineId(session.orchestrationProvider)),
   };
   // The bar shows the agent and the engine on the title's line; the model and
   // the route are the composer's (its model picker names them), so here they

@@ -1,0 +1,7 @@
+{
+  "revision": "53cfaa86bf6ae9532b4a6bd136098736e3681974",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Replaced a literal private address example with a description of the refused ranges (docs hygiene); claim unchanged and checked against isPrivateNetworkHost in mcp-subregistry-provider.ts.","inputs":["docs/guides/connections.md"]}
+  ]
+}

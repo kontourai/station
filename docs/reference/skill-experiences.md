@@ -1,7 +1,8 @@
 # Visual skill experience authoring contract
 
 The v1 contract covers author validation, admitted installed inventory and
-explicit foreground use in canonical Sessions. New Chat presents installed
+explicit foreground use in canonical Sessions. While the `visual-skills`
+[Feature Preview](../user/settings.md#feature-previews) is on, New Chat presents installed
 experiences through the ordinary selected Agent, model, Project and composer.
 Guided, alongside and chat views share the same Session, question controls and
 outputs. An experience declaration supplies no execution authority by itself.

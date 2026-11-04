@@ -262,7 +262,7 @@ describe('assistant row identity composition (station#1434)', () => {
     );
     // The hover text a person reads: options ride the requested claim…
     expect(requested.getAttribute('title')).toBe(
-      'Model requested (sonnet-latest) · Station requested: effort: high',
+      'Model requested (sonnet-latest) · Station requested: Reasoning effort: high',
     );
     // …and never the reported one, which would read as the engine's report.
     expect(reported.getAttribute('title')).toBe(
@@ -287,7 +287,7 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(claims).toHaveLength(1);
     expect(claims[0].textContent).toBe('Reported Sonnet 9 20260701');
     expect(claims[0].getAttribute('title')).toBe(
-      'Model reported by engine (sonnet-9-20260701) · Station requested: effort: high',
+      'Model reported by engine (sonnet-9-20260701) · Station requested: Reasoning effort: high',
     );
   });
 
@@ -364,7 +364,7 @@ describe('assistant row identity composition (station#1434)', () => {
     // reading nothing (#2211: from the overflow menu's dialog).
     await openProvenanceDialog();
     expect(
-      screen.getByText(/cannot read\. Nothing about this answer is being/),
+      screen.getByText(/format this version of Station cannot read\.$/),
     ).toBeTruthy();
   });
 

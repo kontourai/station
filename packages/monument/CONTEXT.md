@@ -13,8 +13,9 @@ only product consumer. Its versioning is experimental until a second consumer ex
 
 The kernel is the lower layer. The private experimental
 [`@kontourai/agent-runtime`](../agent-runtime/README.md) package now consumes its
-public contracts for model-only Cut 0/1 of #3573. Durable tools, approvals and
-Station chat/boot adoption remain later work. This Station-owned workspace
+public contracts for the model journal and agent-turn journal of #3573.
+Station adopts tool replay safety, approvals and fenced recovery behind its
+off-by-default Crash-durable Station Agent preview. This Station-owned workspace
 consumer does not qualify a second independent product or a Tier 2 extraction.
 The kernel takes no model dependency; the upper package binds the existing
 native framework loops.
@@ -26,8 +27,8 @@ native framework loops.
 | Turn dedup | one claim per key, with its owner, invocation state and optional versioned input digest | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
 | Turn boundary | one active fence per invocation, optionally with an opaque immutable intent binding | Ordinary intent uses `reserved` → `prepared` → `invoking` → `accepted` or `indeterminate`. Preparation links an optional pending dedup key; begin changes both fences in one transaction. After a crash, complete prepared intent is retained as a separate resumable candidate. Explicit resume compares both dead exact owners and revisions before transferring them. Dead reservations and inputless legacy preparation are removed; invoking becomes indeterminate. Legacy lifecycle, task-dispatch and engine-opened acceptance remain unchanged. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
-| Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
-| Steer receipts | one input digest and optional confirmed turn per thread/client-input key | A pending or changed-input receipt stays indeterminate; only the matching unconfirmed row can be confirmed. Restart never frees a claim. Explicit thread deletion is the only forgetting operation. |
+| Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or never-placed cancelled one can be queued again. A dismissed uncertain claim stays occupied. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host settles it from proof or preserves uncertainty; a native steer claim is not replay permission. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
+| Steer receipts | one input digest and optional confirmed turn per thread/client-input key | A matching pending receipt stays indeterminate; a changed-input read returns conflict. Only the matching unconfirmed row can be confirmed. Restart never frees a claim. Explicit thread deletion is the only forgetting operation. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
 The package also owns the message-delivery decision table, persisted decision
@@ -40,7 +41,9 @@ Control route and delegated-result service supply those ports and retain their
 existing durable request-key and consumption rows. This sequence is not a
 storage command and creates no new state or inbox. The separate `steerReceipts`
 commands own the no-reclaim/confirmation decisions over receipt rows. The
-recovery-ledger core remains open extraction work in #3565.
+recovery ledger's claim and reconciliation protocol and storage commands are
+in the package. Station supplies its existing table and event-terminal facts;
+the shared adapter conformance uses simulated faults, not physical power loss.
 
 Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
@@ -113,7 +116,7 @@ names the package under any escape or case, refuses a module reference it
 cannot read. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
-its public entry points: `.`, `./sqlite`, `./adapter` and `./testing`.
+its public entry points: `.`, `./sqlite`, `./adapter`, `./testing`, `./session-control`, `./recovery` and `./session-boundary`.
 
 **Threat model** (owner decision): the gate stops *accidental* coupling
 between Station and Monument internals, the kind real code and agents
@@ -126,8 +129,19 @@ vite or vitest configs are accepted limits, left to review.
 
 ## Retention
 
-- **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves only the original digest; legacy input stays unknown. Digest-less callers retain legacy behavior. Rows past `turnDedupMaxEntries` are evicted oldest first,
-  among resolved rows only. An unresolved claim is never evicted.
+- **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves only the original digest; legacy input stays unknown. Digest-less callers retain legacy behavior. `turnDedupMaxEntries` is a soft cap on all rows; eviction is oldest first
+  among resolved rows only. The optional positive `turnDedupMinResolvedEntries`
+  floor stops eviction once that many resolved rows remain and cannot exceed
+  the cap. Omitting it preserves the original policy. A host may instead set `turnDedupResolvedRetentionMs`: resolved rows remain
+  replayable for that wall-clock duration after resolution and older rows expire
+  on a later write, regardless of the count cap. Unknown legacy resolution
+  times start their window on first observation. Station uses seven days;
+  live windows and unresolved rows can grow without bound. A host must fence
+  older writers to enforce this window; Station blocks legacy resolved-row
+  deletion using transaction-scoped permits. Arbitrary older writes are not
+  generally fenced; only writers with
+  tombstone support (#3559 and later) leave expired-key tombstones. An unresolved
+  claim is never evicted.
   An evicted key leaves a tombstone, which holds only the key and the time
   and does not count toward the cap. A claim of a tombstoned key answers
   `expired`, and nothing writes. A rule in `turnDedupTombstoneRetention`
@@ -142,9 +156,12 @@ vite or vitest configs are accepted limits, left to review.
   decision, never claim the key afresh. Past the TTL it stops holding a quota
   slot, so a claim that can never resolve does not lock its caller out of the
   per-caller cap, or everyone out of the store-wide one.
-- **Inbox:** a submit first forgets the inbox's settled entries (`placed`,
-  `refused`, `cancelled`) last updated before `inboxSettledRetentionMs`. An
-  inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past it
+- **Inbox:** submit expires safe settled follow-ups before
+  `inboxSettledRetentionMs`; display notes use the same expiry. Steer keys and
+  dismissed uncertain claims survive until explicit inbox deletion. Display
+  notes have their own `inboxMaxDisplay` capacity (50 by default); a new note
+  past the bound answers `capacity`, while an existing key remains idempotent. An
+  inbox holds at most `inboxMaxUnsettled` unsettled entries; a queued submit past it
   answers `capacity` and writes nothing. `inbox.forget` removes one inbox
   outright, for a host whose conversation was deleted.
 - **Terminal-turn facts:** inputless legacy rows use retained provider turn ids a

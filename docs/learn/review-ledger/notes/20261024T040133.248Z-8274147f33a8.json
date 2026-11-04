@@ -1,0 +1,7 @@
+{
+  "revision": "278442bb4bdf4a3bbb2b3f16198292eb9f23a91a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed preparation exports and strict DTO decoding against packages/sdk/src/query-domains/telemetryDelivery.ts and public barrel: captured request scope, zero unused cache retention, no previous data or automatic retries, UUID mutation, settled read invalidation, literal false installation authority. No published package or runtime install qualification claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

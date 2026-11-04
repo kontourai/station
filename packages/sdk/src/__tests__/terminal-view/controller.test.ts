@@ -1,0 +1,383 @@
+/** @vitest-environment jsdom */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TerminalController } from '../../terminal-view/controller';
+import type { EnginePort } from '../../terminal-view/engine/engine-client';
+import { EngineHost } from '../../terminal-view/engine/engine-host';
+import type {
+  CellMetrics,
+  FontSpec,
+} from '../../terminal-view/render/glyph-atlas';
+import type { TerminalRenderer } from '../../terminal-view/render/renderer';
+import type { TerminalTheme } from '../../terminal-view/render/screen-model';
+import type {
+  TerminalViewSession,
+  TerminalViewSessionListener,
+} from '../../terminal-view/session';
+
+// jsdom gives `import.meta.url` a non-file scheme; `__dirname` stays a path.
+const WASM_PATH = join(
+  __dirname,
+  '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+);
+
+/** Draws nothing; records what the controller asked of it. */
+class FakeRenderer implements TerminalRenderer {
+  readonly kind = 'canvas2d' as const;
+  themes: TerminalTheme[] = [];
+  sizes: [number, number][] = [];
+  resize(cols: number, rows: number) {
+    this.sizes.push([cols, rows]);
+  }
+  setTheme(theme: TerminalTheme) {
+    this.themes.push(theme);
+  }
+  render() {}
+  suspend() {}
+  resume() {}
+  dispose() {}
+}
+
+const measureCell = (font: FontSpec): CellMetrics => ({
+  dpr: 1,
+  width: 8,
+  height: 16,
+  baseline: 12,
+  cssWidth: 8,
+  cssHeight: 16,
+  font,
+});
+
+/**
+ * The engine worker, run in this thread on the real vendored module. A message
+ * with a transfer list is cloned with it, so its buffers detach on the sending
+ * side exactly as they do when posted to a real Worker.
+ */
+function inThreadPort(): EnginePort {
+  const port: EnginePort = {
+    onmessage: null,
+    onerror: null,
+    postMessage: (message, transfer) => {
+      void host.handle(
+        transfer.length ? structuredClone(message, { transfer }) : message,
+      );
+    },
+    terminate: () => undefined,
+  };
+  const host = new EngineHost((event) =>
+    port.onmessage?.(new MessageEvent('message', { data: event })),
+  );
+  return port;
+}
+
+function fakeSession() {
+  let listener: TerminalViewSessionListener | null = null;
+  const session = {
+    state: 'ready' as const,
+    readOnly: false,
+    subscribe(next: TerminalViewSessionListener) {
+      listener = next;
+      return () => {
+        listener = null;
+      };
+    },
+    write: vi.fn((_bytes: Uint8Array) => true),
+    resize: vi.fn((_cols: number, _rows: number) => undefined),
+  } satisfies TerminalViewSession;
+  const output = (text: string) =>
+    listener?.output(new TextEncoder().encode(text), 'live');
+  return { session, output };
+}
+
+/**
+ * One session several views share, as the SDK session store does: each chunk
+ * is one array handed to every subscriber and retained for later ones.
+ */
+function sharedSession() {
+  const listeners = new Set<TerminalViewSessionListener>();
+  const retained: Uint8Array[] = [];
+  const session = {
+    state: 'ready' as const,
+    readOnly: false,
+    subscribe(next: TerminalViewSessionListener) {
+      listeners.add(next);
+      for (const chunk of retained) next.output(chunk, 'replay');
+      return () => {
+        listeners.delete(next);
+      };
+    },
+    write: vi.fn((_bytes: Uint8Array) => true),
+    resize: vi.fn((_cols: number, _rows: number) => undefined),
+  } satisfies TerminalViewSession;
+  const output = (text: string) => {
+    // This realm's array, as the store's socket frames are: transferable.
+    const chunk = new Uint8Array(new TextEncoder().encode(text));
+    retained.push(chunk);
+    for (const listener of listeners) listener.output(chunk, 'live');
+  };
+  return { session, output, retained };
+}
+
+let resizeObservers: (() => void)[] = [];
+let rect = { width: 800, height: 320 };
+
+beforeEach(() => {
+  resizeObservers = [];
+  rect = { width: 800, height: 320 };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(new Uint8Array(readFileSync(WASM_PATH)))),
+  );
+  // Fires only for what is observed: unhooking the view's observer must
+  // leave a resize unseen.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      private readonly targets = new Set<Element>();
+      constructor(callback: () => void) {
+        resizeObservers.push(() => {
+          if (this.targets.size) callback();
+        });
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
+    },
+  );
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal('requestAnimationFrame', (callback: () => void) =>
+    setTimeout(callback, 0),
+  );
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id));
+});
+
+afterEach(() => {
+  document.body.replaceChildren();
+  document.documentElement.removeAttribute('data-theme');
+  vi.unstubAllGlobals();
+});
+
+async function startController(shared?: ReturnType<typeof sharedSession>) {
+  const root = document.createElement('div');
+  root.getBoundingClientRect = () => DOMRect.fromRect(rect);
+  const canvas = document.createElement('canvas');
+  const input = document.createElement('textarea');
+  root.append(canvas, input);
+  document.body.append(root);
+  const renderer = new FakeRenderer();
+  const controller = new TerminalController(
+    { root, canvas, input },
+    {
+      font: { family: 'monospace', size: 13, lineHeight: 1.2 },
+      screenReader: false,
+      reducedMotion: true,
+      createWorker: inThreadPort,
+      createRenderer: () => renderer,
+      measureCell,
+    },
+  );
+  const { session, output } = shared ?? fakeSession();
+  controller.setSession(session);
+  await controller.start();
+  await vi.waitFor(() => expect(controller.getSnapshot().status).toBe('ready'));
+  return { controller, renderer, session, output, root };
+}
+
+describe('TerminalController', () => {
+  // Replaces TerminalPanel's "copies the complete terminal selection".
+  it('copies the complete selection to the clipboard', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const { controller, output } = await startController();
+    output('copy exactly this');
+    controller.selectAll();
+    expect(await controller.copy()).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('copy exactly this');
+    controller.dispose();
+  });
+
+  // Replaces TerminalPanel's "repaints the canvas from the terminal variables
+  // when the root theme changes".
+  it('re-reads the theme from the cascade when light and dark change', async () => {
+    const sheet = document.createElement('style');
+    sheet.textContent = `
+      div { --terminal-background: #1a1a2e; --terminal-foreground: #e0e0e0; }
+      [data-theme="light"] div { --terminal-background: #ffffff; --terminal-foreground: #24292f; }
+    `;
+    document.head.append(sheet);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    try {
+      const { controller, renderer } = await startController();
+      expect(renderer.themes[0]).toMatchObject({
+        background: 0x1a1a2e,
+        scheme: 'dark',
+      });
+      document.documentElement.setAttribute('data-theme', 'light');
+      await vi.waitFor(() =>
+        expect(renderer.themes[renderer.themes.length - 1]).toMatchObject({
+          background: 0xffffff,
+          scheme: 'light',
+        }),
+      );
+      controller.dispose();
+    } finally {
+      sheet.remove();
+    }
+  });
+
+  // Replaces TerminalPanel's "coalesces resize bursts into the latest size".
+  it('sends the session only the latest size of a resize burst', async () => {
+    const { controller, session, renderer } = await startController();
+    // 800 x 320 CSS pixels over 8 x 16 cells.
+    expect(session.resize).toHaveBeenLastCalledWith(100, 20);
+    session.resize.mockClear();
+    for (const size of [
+      { width: 880, height: 400 },
+      { width: 920, height: 448 },
+      { width: 960, height: 480 },
+    ]) {
+      rect = size;
+      for (const observe of resizeObservers) observe();
+    }
+    expect(renderer.sizes[renderer.sizes.length - 1]).toEqual([120, 30]);
+    await vi.waitFor(() =>
+      expect(session.resize).toHaveBeenCalledWith(120, 30),
+    );
+    expect(session.resize).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  // Docking a Terminal right and back left a hidden dock view and the lower
+  // panel's view on one session; the first view's transfer detached the
+  // chunk, the second view's post threw, and the store reconnected forever.
+  it('leaves output intact for every other view of the same session', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const shared = sharedSession();
+    const first = await startController(shared);
+    // One view alone must not detach what the session retains.
+    shared.output('kept');
+    expect(shared.retained[0]?.byteLength).toBe(4);
+    const second = await startController(shared);
+    expect(() => shared.output('seen by both views')).not.toThrow();
+    // A view that subscribes later replays the retained chunk.
+    const late = await startController(shared);
+    for (const { controller } of [first, second, late]) {
+      await vi.waitFor(async () => {
+        controller.selectAll();
+        expect(await controller.copy()).toBe(true);
+        expect(writeText).toHaveBeenLastCalledWith('keptseen by both views');
+      });
+      controller.dispose();
+    }
+  });
+
+  // "Reconnect terminal" and a read-only change keep the view and hand it a
+  // fresh attachment, which replays the journal from its start. Without a
+  // reset first, the history drew again under the screen it had restored.
+  it('restores a reattached session from its replay once, without the old screen', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const first = sharedSession();
+    const { controller } = await startController(first);
+    first.output('$ make\r\nbuilt\r\n');
+    controller.setSession(null);
+    const reattached = sharedSession();
+    reattached.output('$ make\r\nbuilt\r\n');
+    reattached.output('$ ls\r\nREADME\r\n');
+    controller.setSession(reattached.session);
+    await vi.waitFor(async () => {
+      controller.selectAll();
+      expect(await controller.copy()).toBe(true);
+      const text = String(writeText.mock.lastCall?.[0]);
+      expect(text).toContain('README');
+      expect(text.match(/built/g)).toHaveLength(1);
+    });
+    controller.dispose();
+  });
+
+  // Station's own shortcuts (the command palette, Settings, the shortcut
+  // list) were swallowed while a terminal had focus: the view encoded every
+  // modifier chord and prevented it, and the app skips prevented keys.
+  it.each([
+    { platform: 'MacIntel', host: { key: 'k', metaKey: true } },
+    {
+      platform: 'Linux x86_64',
+      host: { key: 'D', ctrlKey: true, shiftKey: true },
+    },
+  ])(
+    'leaves app chords to the page and Control chords to the program on $platform',
+    async ({ platform, host }) => {
+      vi.stubGlobal('navigator', { ...navigator, platform });
+      const { controller, session, root } = await startController();
+      const input = root.querySelector('textarea')!;
+      const press = (init: KeyboardEventInit) => {
+        const event = new KeyboardEvent('keydown', {
+          ...init,
+          bubbles: true,
+          cancelable: true,
+        });
+        input.dispatchEvent(event);
+        return event;
+      };
+      expect(press(host).defaultPrevented).toBe(false);
+      expect(session.write).not.toHaveBeenCalled();
+      expect(
+        press({ key: 'd', code: 'KeyD', ctrlKey: true }).defaultPrevented,
+      ).toBe(true);
+      await vi.waitFor(() =>
+        expect(
+          session.write.mock.calls.map(([bytes]) =>
+            new TextDecoder().decode(bytes),
+          ),
+        ).toContain('\x04'),
+      );
+      controller.dispose();
+    },
+  );
+
+  // A dock region put away keeps its view mounted with no box; sizing the
+  // shared shell from it squeezed every other view to two columns.
+  it('never sizes the session from a view with no box', async () => {
+    rect = { width: 0, height: 0 };
+    const { controller, session } = await startController();
+    await new Promise((done) => setTimeout(done, 150));
+    expect(session.resize).not.toHaveBeenCalled();
+    rect = { width: 800, height: 320 };
+    for (const observe of resizeObservers) observe();
+    await vi.waitFor(() =>
+      expect(session.resize).toHaveBeenLastCalledWith(100, 20),
+    );
+    session.resize.mockClear();
+    rect = { width: 0, height: 0 };
+    for (const observe of resizeObservers) observe();
+    await new Promise((done) => setTimeout(done, 150));
+    expect(session.resize).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+});

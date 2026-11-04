@@ -1,0 +1,7 @@
+{
+  "revision": "67f68c18da3a85332dc368b2c2496ad56b09a033",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the current-reading note against the shared orchestration owner and route: boot controls opt-in, acknowledgement controls fallback, general frames carry no cursor, and durable replay is orchestration-only. Historical connection counts and the three-tab probe are not proxy or native qualification. Source inspection; focused boot and shared-connection tests passed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

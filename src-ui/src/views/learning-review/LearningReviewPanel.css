@@ -1,0 +1,83 @@
+.learning-review,
+.learning-review form,
+.learning-review label {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.learning-review__heading,
+.learning-review__compare,
+.learning-review__sources,
+.learning-review__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-4);
+}
+.learning-review__heading {
+  align-items: start;
+  justify-content: space-between;
+}
+.learning-review__compare > div,
+.learning-review__sources > div,
+.learning-review__facts > div {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.learning-review p,
+.learning-review h3,
+.learning-review h4,
+.learning-review dd {
+  margin: 0;
+}
+.learning-review pre,
+.learning-review li,
+.learning-review dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.learning-review input,
+.learning-review textarea,
+.learning-review select,
+.learning-review button {
+  min-height: 44px;
+  max-width: 100%;
+}
+.learning-review textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+.learning-review__proposal {
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.learning-review input,
+.learning-review textarea,
+.learning-review select {
+  color: var(--k-text);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-2);
+  font: inherit;
+}
+.learning-review :is(input, textarea, select):focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.learning-review__select {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+.learning-review__select select {
+  width: 100%;
+  appearance: none;
+  padding-right: calc(var(--k-space-4) * 2);
+}
+.learning-review__select .choice-caret {
+  position: absolute;
+  right: var(--k-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}

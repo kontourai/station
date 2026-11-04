@@ -50,7 +50,8 @@ export interface LoadedDeploymentAuthentication {
   allowedBrowserOrigins?: readonly string[];
 }
 
-function authenticationOrigin(value: string): string {
+/** The one public-origin rule: HTTPS, or HTTP on loopback; a bare origin. */
+export function authenticationOrigin(value: string): string {
   const origin = new URL(value);
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(
     origin.hostname,

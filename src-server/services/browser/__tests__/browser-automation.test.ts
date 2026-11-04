@@ -42,6 +42,7 @@ import {
   createLocalBrowserHostResolver,
 } from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
+import type { BrowserNetworkEntry } from '../browser-network-log.js';
 import { BrowserProjectSettingsStore } from '../browser-project-settings.js';
 import {
   type BrowserSessionActor,
@@ -246,6 +247,19 @@ async function harness(
     humanHoldMs?: number;
     /** The lease's clock. Tests that lapse a hold drive it by hand. */
     leaseNow?: () => number;
+    networkFor?: (
+      id: string,
+      after?: number,
+      limit?: number,
+    ) => Promise<
+      | {
+          generation: number;
+          entries: BrowserNetworkEntry[];
+          dropped: number;
+          latestSeq: number;
+        }
+      | undefined
+    >;
   } = {},
 ) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-auto-'));
@@ -281,8 +295,12 @@ async function harness(
     sessions,
     surfaces,
     surfaceIdFor: (id) => binder.surfaceIdFor(id),
+    agentActionsEnabled: () => true,
     dialogWaitingForPerson: (id) => binder.pendingDialogFor(id) !== undefined,
     settings,
+    ...(options.networkFor
+      ? { networkFor: options.networkFor, networkPreviewEnabled: () => true }
+      : {}),
     locatorEngine: async () => undefined,
     sleep: async () => {},
     ...(options.stepDeadlineMs
@@ -323,6 +341,171 @@ const kindsOf = (
     .map((e) => e.kind);
 
 describe('BrowserAutomation: a session id is only a selector', () => {
+  test('network refuses without evaluation permission before reading and labels page content when allowed', async () => {
+    const networkFor = vi.fn(async () => ({
+      generation: 1,
+      entries: [],
+      dropped: 0,
+      latestSeq: 0,
+    }));
+    const h = await harness({ networkFor });
+    const session = await h.open();
+    const authority = await authorityFor();
+    expect(
+      await h.automation.network(authority, session.browserSessionId),
+    ).toMatchObject({ ok: false, code: 'not-permitted' });
+    expect(networkFor).not.toHaveBeenCalled();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    expect(
+      await h.automation.network(authority, session.browserSessionId),
+    ).toMatchObject({ ok: true, pageContent: PAGE_CONTENT_NOTICE });
+    expect(networkFor).toHaveBeenCalledOnce();
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  });
+  test('network withholds page data if the bound grant expires during capture', async () => {
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const networkFor = vi.fn(async () => {
+      enter();
+      await waiting;
+      return { generation: 1, entries: [], dropped: 0, latestSeq: 0 };
+    });
+    const h = await harness({ networkFor });
+    const session = await h.open();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    let current = true;
+    const decided = await authorizeBrowserAgentCaller(
+      caller(),
+      authorizePrincipal,
+      () => current,
+    );
+    if (!decided.ok) throw new Error(decided.refusal.code);
+    const result = h.automation.network(
+      decided.authority,
+      session.browserSessionId,
+    );
+    await entered;
+    current = false;
+    release();
+    expect(await result).toMatchObject({ ok: false, code: 'not-authorized' });
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  });
+  test('a successful agent click publishes target geometry on its live surface', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssVisualViewport: {
+        offsetX: 20,
+        offsetY: 30,
+        clientWidth: 600,
+        clientHeight: 400,
+      },
+    }));
+    const session = await h.open();
+    const entry = h.entryOf(session.browserSessionId);
+    const viewer = entry.hub.attach(
+      { maxFps: 10, quality: 70, maxWidth: 800, maxHeight: 600 },
+      undefined,
+      { agentActions: () => true },
+    );
+    try {
+      await viewer.next();
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 100, y: 50 },
+        ),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse()).toEqual([
+        expect.objectContaining({ type: 'mouseMoved', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mousePressed', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mouseReleased', x: 120, y: 80 }),
+      ]);
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 650, y: 50 },
+        ),
+      ).toMatchObject({ ok: false, code: 'outside-viewport' });
+      const record = await viewer.next();
+      expect(record?.kind).toBe('state');
+      if (record?.kind !== 'state') throw new Error('expected state');
+      expect(record.state.agentActions?.events.at(-1)).toMatchObject({
+        kind: 'click',
+        generation: session.generation,
+        point: { x: 120, y: 80 },
+        viewport: { x: 20, y: 30, width: 600, height: 400 },
+      });
+    } finally {
+      viewer.close();
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('clamps element input and the default scroll point to the visual viewport', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssVisualViewport: {
+        offsetX: 100,
+        offsetY: 60,
+        clientWidth: 300,
+        clientHeight: 200,
+        pageX: 0,
+        pageY: 0,
+      },
+    }));
+    h.fake.handle('DOM.getContentQuads', () => ({
+      quads: [[-50, -30, 400, -30, 400, 260, -50, 260]],
+    }));
+    const session = await h.open();
+    const authority = await authorityFor();
+    try {
+      const snapshot = await h.automation.snapshot(
+        authority,
+        session.browserSessionId,
+      );
+      expect(snapshot).toMatchObject({
+        ok: true,
+        viewport: { width: 300, height: 200 },
+      });
+      expect(
+        await h.automation.click(authority, session.browserSessionId, {
+          ref: 'e1',
+        }),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse()).toEqual([
+        expect.objectContaining({ type: 'mouseMoved', x: 250, y: 160 }),
+        expect.objectContaining({ type: 'mousePressed', x: 250, y: 160 }),
+        expect.objectContaining({ type: 'mouseReleased', x: 250, y: 160 }),
+      ]);
+      expect(
+        await h.automation.scroll(authority, session.browserSessionId, {
+          deltaY: 100,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(h.fake.mouse().at(-1)).toMatchObject({
+        type: 'mouseWheel',
+        x: 250,
+        y: 160,
+      });
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
   test("another Project's session and another profile's session are both session-not-found", async () => {
     const h = await harness();
     const betaSession = await h.open({ kind: 'operator' }, 'beta');

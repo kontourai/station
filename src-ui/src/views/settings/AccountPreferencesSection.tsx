@@ -3,6 +3,7 @@ import {
   type AccountPreferencesPatch,
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -12,6 +13,7 @@ import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
 } from '../../utils/approvalMode';
+import { connectionEngineId } from '../../utils/execution';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -26,6 +28,16 @@ export function AccountPreferencesSection() {
     muse: settingsRow('personal-muse-approval'),
   };
   const defaults = account.data?.values.interactiveApprovalModes ?? {};
+  // #4402: Muse appears nowhere else in Station unless this Station has a
+  // Muse engine, so its row is offered only then (or while a saved Muse
+  // default still needs a way to be cleared).
+  const { data: engineConnections = [] } = useEngineConnectionsQuery();
+  const hasMuse = engineConnections.some(
+    (connection) => connectionEngineId(connection) === 'muse',
+  );
+  const engines = (['codex', 'claude', 'muse'] as const).filter(
+    (engine) => engine !== 'muse' || hasMuse || defaults.muse,
+  );
   const saveMode = (engine: InteractiveApprovalEngine, mode: string) => {
     if (
       mode === 'connection-default' ||
@@ -102,7 +114,7 @@ export function AccountPreferencesSection() {
           </Button>
         }
       />
-      {(['codex', 'claude', 'muse'] as const).map((engine) => (
+      {engines.map((engine) => (
         <PageRow
           key={engine}
           {...engineRows[engine]}
@@ -114,7 +126,9 @@ export function AccountPreferencesSection() {
           control={
             <select
               className="editor-select"
-              aria-label={`New ${engine} chats approval mode`}
+              // #4403: the row's own visible title ("New Codex chats"), not
+              // the lowercase engine id.
+              aria-label={`${engineRows[engine].title} approval mode`}
               disabled={account.saving || account.status !== 'account'}
               value={defaults[engine] ?? 'connection-default'}
               onChange={(event) =>
@@ -125,9 +139,7 @@ export function AccountPreferencesSection() {
             >
               {APPROVAL_MODE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.value === 'connection-default'
-                    ? 'Use inherited default'
-                    : option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -137,7 +149,7 @@ export function AccountPreferencesSection() {
       <ConfirmModal
         isOpen={confirmEngine !== null}
         title="Save full access default?"
-        message={`New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
+        message={`${confirmEngine ? engineRows[confirmEngine].title : 'New chats'} will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
         confirmLabel="Save full access default"
         cancelLabel="Cancel"
         variant="danger"

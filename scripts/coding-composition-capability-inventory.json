@@ -75,8 +75,8 @@
           "anchor": "test('scans one selection spanning two PTY reads without redacting the live terminal',"
         },
         {
-          "path": "src-server/services/terminal/__tests__/terminal-service.test.ts",
-          "anchor": "describe('TerminalService',"
+          "path": "src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts",
+          "anchor": "describe('terminal gateway admission (#3994)',"
         }
       ]
     },

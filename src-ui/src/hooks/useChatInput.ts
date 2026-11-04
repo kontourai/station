@@ -5,6 +5,7 @@ import {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import {
   useCallback,
@@ -31,10 +32,7 @@ import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import { useToast } from '../contexts/ToastContext';
 import { resolveTurnModel } from '../lib/turnModel';
 import type { FileAttachment } from '../types';
-import {
-  composeQuotedReply,
-  type SavedAnswerQuote,
-} from '../utils/answer-quotes';
+import { composeQuotedReply, type DraftQuote } from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
 import {
   approvalModeLabel,
@@ -54,6 +52,7 @@ import {
 import {
   type SelectableModel,
   sanitizeRuntimeOptionsForModel,
+  updateModelRuntimeOption,
 } from '../utils/modelCapabilities';
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { clearLastChosenModel } from './lastChosenModel';
@@ -381,6 +380,7 @@ export function useChatInput({
         (capabilities.supportedEffortLevels?.length ?? 0) > 0) ||
       capabilities?.supportsAdaptiveThinking === true ||
       capabilities?.supportsFastMode === true ||
+      (capabilities?.serviceTiers?.length ?? 0) > 0 ||
       capabilities?.supportsAutoMode === true
     );
   });
@@ -476,6 +476,11 @@ export function useChatInput({
     [sessionId, updateChat, flushDraft],
   );
 
+  // Assigned below, once the attachment scheduler exists.
+  const stageFilesRef = useRef<
+    (files: readonly FileAttachment[]) => Promise<boolean>
+  >(async () => false);
+
   const handleSend = useCallback(
     async (
       overrideText?: string,
@@ -543,7 +548,7 @@ export function useChatInput({
         );
         return;
       }
-      const selectedAttachments = overrideAttachments ?? attachments;
+      let selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
         selectedAttachments.length === 0 &&
@@ -554,6 +559,47 @@ export function useChatInput({
         (stage) => stage.state !== 'complete',
       );
       if (incomplete) return;
+      // Supplied attachments (Send again's recovered turn) were never staged;
+      // a turn's earlier stage was released when that turn was accepted. Send
+      // refuses unstaged files, so stage them first, as composer chips.
+      if (overrideAttachments?.length) {
+        const staged =
+          activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+        const isStaged = (attachment: FileAttachment) =>
+          staged.some(
+            (stage) =>
+              stage.clientAttachmentId === attachment.id &&
+              stage.state === 'complete',
+          );
+        // Each staging takes a fresh identity: the server keeps a used
+        // clientAttachmentId (per login, across chats) as a completed stage or
+        // accepted tombstone and refuses to stage it again, and recovered ids
+        // (`retry-<index>-<n>`) repeat across chats and repeated clicks.
+        selectedAttachments = overrideAttachments.map((attachment) =>
+          isStaged(attachment)
+            ? attachment
+            : { ...attachment, id: randomCorrelationId() },
+        );
+        const unstaged = selectedAttachments.filter(
+          (attachment) => !isStaged(attachment),
+        );
+        if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
+          // The files stay as chips showing their error. The recovered text
+          // fills an empty composer; a draft already there is kept. Send again
+          // stays blocked by the failed chip until it is retried or removed.
+          if (
+            overrideText !== undefined &&
+            !activeChatsStore.getSnapshot()[sessionId]?.input
+          )
+            updateChat(sessionId, { input: canonicalDraft });
+          else if (overrideText)
+            showToast(
+              'An attachment did not upload. Your draft was kept with the attachment; retry it in the composer, then send.',
+              'error',
+            );
+          return;
+        }
+      }
 
       if (text.trim()) {
         addToInputHistory(sessionId, text.trim());
@@ -654,6 +700,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      updateChat,
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
@@ -663,6 +710,29 @@ export function useChatInput({
       mentionRequestScope,
       mentionAuthority,
     ],
+  );
+
+  /**
+   * Send a message Station composed (Continue after a restart) under the
+   * caller's key, so every repeat names the same turn. The composer is not
+   * part of it: its draft, quotes, attachments and visual skill stay as they
+   * are, and nothing is sent while a turn is running.
+   */
+  const sendComposedMessage = useCallback(
+    async (text: string, clientTurnId: string) => {
+      if (!sessionId || !agentSlug) return false;
+      return sendMessageAction(
+        sessionId,
+        agentSlug,
+        conversationId,
+        text,
+        [],
+        undefined,
+        clientTurnId,
+        { preserveComposer: true },
+      );
+    },
+    [sessionId, agentSlug, conversationId, sendMessageAction],
   );
 
   const handleCancel = useCallback(async () => {
@@ -727,6 +797,7 @@ export function useChatInput({
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
     selectFilesWithResult,
+    stageFiles,
     replaceFile: replaceAttachmentFile,
     setError: setAttachmentError,
     retry: retryAttachmentStage,
@@ -770,6 +841,8 @@ export function useChatInput({
       if (sessionId) updateChat(sessionId, { attachmentStages: nextStages });
     },
   });
+
+  stageFilesRef.current = stageFiles;
 
   const intakeOwner = useRef({ apiBase, sessionId, isChatVisible });
   intakeOwner.current = { apiBase, sessionId, isChatVisible };
@@ -930,25 +1003,19 @@ export function useChatInput({
   ]);
 
   const handleModelRuntimeOptionChange = useCallback(
-    (key: string, value: string | number | boolean | undefined) => {
+    (key: string, value: string | number | boolean | null | undefined) => {
       if (!sessionId) return;
-      const providerOptions = {
-        ...(activeChatState?.requestedProviderOptions ??
-          activeChatState?.providerOptions ??
-          {}),
-      };
-      if (value === undefined) delete providerOptions[key];
-      else providerOptions[key] = value;
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const providerOptions = updateModelRuntimeOption(
+        current?.requestedProviderOptions ?? current?.providerOptions ?? {},
+        key,
+        value,
+      );
       updateChat(sessionId, {
         requestedProviderOptions: providerOptions,
       });
     },
-    [
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      sessionId,
-      updateChat,
-    ],
+    [sessionId, updateChat],
   );
 
   const handleApprovalModeChange = useCallback(
@@ -1152,7 +1219,7 @@ export function useChatInput({
     (
       text: string,
       restoredAttachments: FileAttachment[],
-      restoredQuotes: readonly SavedAnswerQuote[] = [],
+      restoredQuotes: readonly DraftQuote[] = [],
     ) => {
       if (!sessionId) return;
       chatDraftsStore.clear(sessionId);
@@ -1203,6 +1270,7 @@ export function useChatInput({
       // Handlers
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,
@@ -1250,6 +1318,7 @@ export function useChatInput({
       slashCommands,
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,

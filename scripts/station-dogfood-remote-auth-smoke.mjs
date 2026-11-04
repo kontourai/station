@@ -243,13 +243,12 @@ async function main(argv = process.argv.slice(2)) {
     localOrigin: argValue(argv, '--local-origin'),
     expectedSha: argValue(argv, '--expected-sha'),
     websocketUrls: {
-      terminal: argValue(argv, '--terminal-ws'),
       voice: argValue(argv, '--voice-ws'),
     },
   };
   if (!config.remoteOrigin || !config.localOrigin || !config.expectedSha) {
     fail(
-      'usage: station-dogfood-remote-auth-smoke.mjs --remote-origin=URL --local-origin=URL --expected-sha=SHA [--credential-file=PATH|-] [--terminal-ws=URL] [--voice-ws=URL]',
+      'usage: station-dogfood-remote-auth-smoke.mjs --remote-origin=URL --local-origin=URL --expected-sha=SHA [--credential-file=PATH|-] [--voice-ws=URL]',
     );
   }
   const credential = readCredential(argValue(argv, '--credential-file') ?? '-');

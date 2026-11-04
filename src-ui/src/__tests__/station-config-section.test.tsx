@@ -65,11 +65,26 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'mobileDeviceHubUrl',
   // #3157: whether a usage-limit stop resumes itself after the reset.
   'usageLimitAutoResume',
+  // #4389: where a new chat with no project runs.
+  'noProjectChatFolder',
+  // Whether new Claude Code sessions get the Artifact tool.
+  'claudeArtifactsEnabled',
   // #3386: whether Activity follows conversations outside every project.
   'attachedSessionsOutsideProjects',
   'reviewGuidesEnabled',
   'reviewGuideModel',
   'reviewGuideInstructions',
+  // When the stale checkout warning reads a Project's checkout as stale.
+  'checkoutStaleAfterCommits',
+  'checkoutStaleAfterDays',
+  // #4266: the model that names a chat after its first reply.
+  'titleModel',
+  // #3994: terminal history retention, beside the terminal shell.
+  'terminalHistoryEnabled',
+  'terminalHistoryDirectory',
+  'terminalHistoryMaxAgeDays',
+  'terminalHistoryMaxTerminalMiB',
+  'terminalHistoryMaxTotalMiB',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

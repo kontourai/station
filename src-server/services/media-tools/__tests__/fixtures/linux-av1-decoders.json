@@ -1,0 +1,30 @@
+{
+  "method": "Downloaded the b6.1.1 gzip pins, checked compressed size and SHA-256, then inspected decompressed ELF binaries with strings -a on macOS; Linux execution not performed.",
+  "decoders": ["libaom-av1", "libdav1d"],
+  "builds": {
+    "linux-x64": [
+      {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz",
+        "bytes": 29354986,
+        "sha256": "bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa"
+      },
+      {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffprobe-linux-x64.gz",
+        "bytes": 29276839,
+        "sha256": "25d9b6ccb05e3d9de9e04e31e2506d8dd7f9f0418981965ac6df12e8d3afd067"
+      }
+    ],
+    "linux-arm64": [
+      {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-arm64.gz",
+        "bytes": 25568691,
+        "sha256": "754a678672298bc68156adff58aa7385a592c2b30b1d0ae8750c45c915c4bac0"
+      },
+      {
+        "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffprobe-linux-arm64.gz",
+        "bytes": 25493573,
+        "sha256": "2ab6aba60ee84412dff9188720703376cb4e7aaf7e0b5e43aa8249f2acae5bf8"
+      }
+    ]
+  }
+}

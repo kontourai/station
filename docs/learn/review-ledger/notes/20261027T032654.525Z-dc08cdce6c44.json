@@ -1,0 +1,7 @@
+{
+  "revision": "610a5d1c626ba1481f29437914e77ab69f247239",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Source preparation for PR #4236: reviewed the chat/status reference against explicit Discord v1 import provenance, retained grant and channel scope ceilings, hash-only two-step link records, caller-derived confirmation principal, approval references, provider identifier formats and shared action shapes. Internal parser extraction preserves the existing task-review and project-task-room helper semantics. Tests, contracts typecheck, fault injection, readiness and broad validation are NOT_RUN (capacity); this note records source inspection only and grants no runtime or acceptance qualification.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/chat-app.test.ts","packages/contracts/src/__tests__/discord-compatibility.test.ts","packages/contracts/src/__tests__/integration-status.test.ts","packages/contracts/src/chat-app.ts","packages/contracts/src/integration-status.ts","packages/contracts/src/integration-validation.ts","packages/contracts/src/task-review.ts","packages/contracts/src/contract-validation.ts","packages/contracts/src/project-task-room.ts"]}
+  ]
+}

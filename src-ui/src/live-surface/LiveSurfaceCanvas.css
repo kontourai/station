@@ -49,6 +49,20 @@
   margin: 0;
 }
 
+/* Pane diagnostics: the codec this viewer draws. Shown only while the
+   pointer or focus is on the live view, so it is never resting chrome. */
+.live-surface__codec {
+  color: var(--k-text-muted);
+  font-size: 0.75rem;
+  margin: 0;
+  visibility: hidden;
+}
+
+.live-surface:hover .live-surface__codec,
+.live-surface:focus-within .live-surface__codec {
+  visibility: visible;
+}
+
 .live-surface__stage {
   background: var(--bg-secondary, #111);
   border-radius: var(--radius-md, 6px);
@@ -156,4 +170,40 @@
 
 .live-surface__projection {
   overflow: visible;
+}
+
+.live-surface__agent-action {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.live-surface__agent-action[data-visible="true"] {
+  opacity: 1;
+}
+.live-surface__agent-target {
+  position: absolute;
+  border: var(--k-border-thin) solid var(--k-brand);
+  background: color-mix(in srgb, var(--k-brand) 18%, transparent);
+}
+.live-surface__agent-cursor {
+  position: absolute;
+  transform: translate(-2px, -2px);
+}
+.live-surface__agent-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--k-brand) 35%, transparent);
+  animation: live-surface-agent-ping var(--motion-status-spin) var(--ease-out);
+}
+@keyframes live-surface-agent-ping {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
 }

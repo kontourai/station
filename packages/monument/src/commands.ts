@@ -407,7 +407,7 @@ export interface InboxSubmitCommand {
 export type InboxSubmitResult =
   /**
    * Stored at the inbox's tail. `requeued` when the key's earlier entry had
-   * been refused or cancelled, so nothing of it ran: it is queued again.
+   * been refused or cancelled before placement, so it is queued again.
    */
   | {
       readonly kind: 'accepted';
@@ -544,6 +544,7 @@ export interface SteerReceiptReadCommand extends SteerReceiptKey {
   readonly inputDigest: string;
 }
 export type SteerReceiptReadResult =
+  | { readonly kind: 'conflict' }
   | { readonly kind: 'absent' }
   | { readonly kind: 'indeterminate' }
   | { readonly kind: 'confirmed'; readonly turnId: string };

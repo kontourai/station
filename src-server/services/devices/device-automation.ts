@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import type { DeviceAppAction } from '@kontourai/station-contracts/device-tools';
 import type { LiveSurfaceInput } from '@kontourai/station-contracts/live-surface';
 import type {
+  DeviceAgentReveal,
   MobileDeviceSummary,
   MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
@@ -10,6 +13,7 @@ import {
   releaseAgentControl,
 } from '../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../mobile-device/mobile-device-host.js';
+import type { RecordingSource } from '../projects/task-browser-recording.js';
 import {
   authorizeDeviceAgentCaller,
   type DeviceAgentAccessDeps,
@@ -17,14 +21,54 @@ import {
   deviceAgentMayAccess,
   mintDeviceAgentGrant,
 } from './device-agent-authority.js';
-import type { DeviceSessionService } from './device-session-service.js';
-import type { DeviceToolsService } from './device-tools.js';
+import {
+  DeviceArtifactError,
+  type DeviceArtifactStaging,
+  installFilesFor,
+} from './device-app-artifacts.js';
+import type {
+  DeviceHistoryAction,
+  DeviceSessionService,
+} from './device-session-service.js';
+import {
+  type DeviceToolsService,
+  deviceActionRefused,
+} from './device-tools.js';
+import type {
+  DeviceInstallFile,
+  DeviceInstallOutcome,
+} from './hosts/device-app-install.js';
 
-interface DeviceAutomationDeps {
+/** Actions that may have changed the device even when their outcome is unknown. */
+const MUTATING_ACTIONS: ReadonlySet<DeviceHistoryAction> = new Set([
+  'input',
+  'install-app',
+  'launch',
+  'terminate',
+  'open-url',
+]);
+
+interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
   sessions: DeviceSessionService;
+  tools: Pick<DeviceToolsService, 'accessibility' | 'logs' | 'foreground'> &
+    Partial<Pick<DeviceToolsService, 'appAction'>>;
+}
+interface DeviceAutomationDeps extends DeviceAutomationHost {
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
-  tools: Pick<DeviceToolsService, 'accessibility'>;
+  artifacts?: DeviceArtifactStaging;
+  projectRoot?: (projectId: string) => string | undefined;
+  installApp?: (input: {
+    hostId: string;
+    platform: 'ios' | 'android';
+    deviceId: string;
+    digest: string;
+    files: DeviceInstallFile[];
+    beforeInstall: () => Promise<boolean>;
+    signal: AbortSignal;
+  }) => Promise<DeviceInstallOutcome>;
+  remoteHostIds?: () => readonly string[];
+  remoteHost?: (hostId: string) => DeviceAutomationHost | undefined;
 }
 const ownerKey = (authority: DeviceAgentAuthority) =>
   JSON.stringify([
@@ -52,8 +96,19 @@ function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
   return pointers.size === 0 && keys.size === 0;
 }
 
-/** Local-device agent path. All input uses the existing allowlisted hub producer. */
+const REVEAL_INTENT_TTL_MS = 10 * 60_000;
+
+/** Host-scoped device agent path. All input uses the existing allowlisted hub producer. */
 export class DeviceAutomation {
+  private readonly reveals = new Map<
+    string,
+    {
+      authority: DeviceAgentAuthority;
+      reveal: DeviceAgentReveal;
+      at: number;
+      admitted: () => Promise<boolean>;
+    }
+  >();
   private readonly owners = new Map<string, string>();
   private readonly inputBatches = new Map<string, Promise<void>>();
   private readonly inFlight = new Map<
@@ -65,6 +120,48 @@ export class DeviceAutomation {
   >();
   constructor(private readonly deps: DeviceAutomationDeps) {}
 
+  async revealRequests(
+    projectId: string,
+    conversationId: string,
+    principalId?: string,
+  ): Promise<DeviceAgentReveal[]> {
+    const entries = [...this.reveals.values()].filter(
+      (entry) =>
+        entry.authority.projectId === projectId &&
+        entry.authority.conversationId === conversationId &&
+        (principalId === undefined ||
+          entry.authority.principalId === principalId) &&
+        Date.now() - entry.at < REVEAL_INTENT_TTL_MS &&
+        this.sessionServices(entry.reveal.session.sessionId)?.session
+          .surfaceId === entry.reveal.session.surfaceId,
+    );
+    const reveals: DeviceAgentReveal[] = [];
+    for (const entry of entries)
+      if (await entry.admitted()) reveals.push(structuredClone(entry.reveal));
+    return reveals;
+  }
+
+  private hostServices(hostId: string): DeviceAutomationHost | undefined {
+    return hostId === 'local' ? this.deps : this.deps.remoteHost?.(hostId);
+  }
+
+  private sessionServices(id: string) {
+    let selected:
+      | {
+          session: NonNullable<ReturnType<DeviceSessionService['get']>>;
+          services: DeviceAutomationHost;
+        }
+      | undefined;
+    for (const hostId of ['local', ...(this.deps.remoteHostIds?.() ?? [])]) {
+      const services = this.hostServices(hostId);
+      const session = services?.sessions.get(id);
+      if (!services || !session || session.hostId !== hostId) continue;
+      if (selected) return undefined;
+      selected = { session, services };
+    }
+    return selected;
+  }
+
   async list(access: DeviceAgentAccessDeps, authority: DeviceAgentAuthority) {
     const standing = await authorizeDeviceAgentCaller(access);
     if (
@@ -74,89 +171,134 @@ export class DeviceAutomation {
     )
       return refused('not-authorized');
     for (const id of this.owners.keys())
-      if (!this.deps.sessions.get(id)) this.owners.delete(id);
-    const inventory = await this.deps.host.inventory();
-    if (inventory.state === 'unavailable')
-      return {
-        ...refused(inventory.failure ?? 'hub-unavailable'),
-        hosts: [{ hostId: 'local', state: inventory.state }],
-      };
+      if (!this.sessionServices(id)) this.owners.delete(id);
     const devices: MobileDeviceSummary[] = [];
-    for (const device of this.deps.sessions.withStartingRows(
-      inventory.devices,
-    )) {
-      if (await deviceAgentMayAccess(access, authority, device))
-        devices.push(device);
-    }
-    const sessions = this.deps.sessions
-      .list()
-      .filter(
-        (session) =>
+    const sessions = [];
+    const hosts: Array<{ hostId: string; state: string }> = [];
+    for (const hostId of ['local', ...(this.deps.remoteHostIds?.() ?? [])]) {
+      if (
+        standing.actor.kind !== 'operator' &&
+        !access.shares
+          .list(authority.projectId)
+          .some((share) => share.hostId === hostId)
+      )
+        continue;
+      const services = this.hostServices(hostId);
+      if (!services) continue;
+      const inventory = await services.host.inventory();
+      // Only publish hosts for which at least one device is admitted (or the operator).
+      const visible: MobileDeviceSummary[] = [];
+      for (const device of services.sessions.withStartingRows(
+        inventory.devices,
+      )) {
+        if (
+          device.hostId === hostId &&
+          (await deviceAgentMayAccess(access, authority, device))
+        )
+          visible.push(device);
+      }
+      if (standing.actor.kind === 'operator' || visible.length > 0)
+        hosts.push({ hostId, state: inventory.state });
+      devices.push(...visible);
+      for (const session of services.sessions.list()) {
+        if (
+          session.hostId === hostId &&
           this.owners.get(session.sessionId) === ownerKey(authority) &&
-          devices.some(
+          visible.some(
             (device) =>
+              device.hostId === session.hostId &&
               device.platform === session.platform &&
               device.deviceId === session.deviceId,
-          ),
-      )
-      .map((session) => ({
-        ...session,
-        lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
-      }));
-    return {
-      ok: true,
-      hosts: [{ hostId: 'local', state: inventory.state }],
-      devices,
-      sessions,
-    };
+          )
+        ) {
+          sessions.push({
+            ...session,
+            lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
+          });
+        }
+      }
+    }
+    const fresh = await authorizeDeviceAgentCaller(access);
+    if (
+      !fresh.ok ||
+      ownerKey(fresh.authority) !== ownerKey(authority) ||
+      fresh.authority.sessionId !== authority.sessionId
+    )
+      return refused('not-authorized');
+    return { ok: true, hosts, devices, sessions };
   }
 
   async open(
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
     target: MobileDeviceTarget,
+    reveal = true,
   ) {
     if (!(await deviceAgentMayAccess(access, authority, target)))
       return refused('not-authorized');
-    const started = await this.deps.sessions.start(target, () =>
+    const services = this.hostServices(target.hostId);
+    if (!services) return refused('host-unavailable');
+    const started = await services.sessions.start(target, () =>
       deviceAgentMayAccess(access, authority, target),
     );
     if (started.state === 'starting') return { ok: true, ...started };
-    const session = await this.deps.sessions.open(
+    const session = await services.sessions.open(
       target,
       () => deviceAgentMayAccess(access, authority, target),
       (created) => this.owners.set(created.sessionId, ownerKey(authority)),
     );
-    const opened = await this.withControl(
-      access,
-      authority,
-      session.sessionId,
-      async () => ({
-        ok: true,
-        session,
-        paneRevealed: false,
-        instructions:
-          'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Control is released after your last overlapping operation; human takeover interrupts input.',
-      }),
-    );
-    return opened.ok
-      ? {
-          ...opened,
-          lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
-        }
-      : opened;
+    // Opening/revealing a session observes it; it never claims the input lease.
+    if (this.hostServices(target.hostId)?.sessions !== services.sessions)
+      return refused('host-unavailable');
+    if (!(await deviceAgentMayAccess(access, authority, session)))
+      return refused('not-authorized');
+    services.sessions.noteAgentActivity(session.sessionId);
+    if (reveal) {
+      const key = JSON.stringify([ownerKey(authority), session.sessionId]);
+      const previous = this.reveals.get(key);
+      const retained =
+        previous && Date.now() - previous.at < REVEAL_INTENT_TTL_MS
+          ? previous
+          : undefined;
+      this.reveals.set(key, {
+        authority,
+        reveal: {
+          intentId: retained?.reveal.intentId ?? randomUUID(),
+          session,
+        },
+        at: retained?.at ?? Date.now(),
+        admitted: async () =>
+          this.hostServices(target.hostId)?.sessions === services.sessions &&
+          services.sessions.get(session.sessionId)?.surfaceId ===
+            session.surfaceId &&
+          (await deviceAgentMayAccess(access, authority, session)),
+      });
+      while (this.reveals.size > 200)
+        this.reveals.delete(this.reveals.keys().next().value!);
+    }
+    return {
+      ok: true,
+      session,
+      paneRevealed: false,
+      revealRequested: reveal,
+      instructions:
+        'Use Device to watch this session. device_input uses surface pixel coordinates; device_snapshot reads accessibility and device_screenshot captures PNG. Human takeover interrupts input.',
+      lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
+    };
   }
 
   private async withControl<T extends object>(
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
     id: string,
+    action: DeviceHistoryAction | undefined,
     run: (
       selected: Extract<
         Awaited<ReturnType<DeviceAutomation['claim']>>,
         { ok: true }
       >,
     ) => Promise<T>,
+    wasDispatched?: () => boolean,
   ) {
     const key = JSON.stringify([
       id,
@@ -181,7 +323,43 @@ export class DeviceAutomation {
           selected.lease.fence,
         );
       });
-      return await run(selected);
+      try {
+        const result = await run(selected);
+        if (action) {
+          const state = result as {
+            ok?: unknown;
+            effect?: unknown;
+            code?: unknown;
+          };
+          selected.services.sessions.noteAction(
+            id,
+            action,
+            'agent',
+            state.effect === 'unknown' ||
+              (MUTATING_ACTIONS.has(action) &&
+                state.code === 'interrupted' &&
+                state.effect !== 'none')
+              ? 'unknown'
+              : state.ok === false
+                ? 'failed'
+                : 'success',
+          );
+        }
+        return result;
+      } catch (error) {
+        if (action)
+          selected.services.sessions.noteAction(
+            id,
+            action,
+            'agent',
+            !wasDispatched?.() && deviceActionRefused(error)
+              ? 'failed'
+              : MUTATING_ACTIONS.has(action)
+                ? 'unknown'
+                : 'failed',
+          );
+        throw error;
+      }
     } finally {
       if (--group.active === 0) {
         this.inFlight.delete(key);
@@ -196,8 +374,13 @@ export class DeviceAutomation {
     authority: DeviceAgentAuthority,
     id: string,
   ) {
-    const session = this.deps.sessions.get(id);
-    if (!session || !(await deviceAgentMayAccess(access, authority, session)))
+    const resolved = this.sessionServices(id);
+    const session = resolved?.session;
+    if (
+      !resolved ||
+      !session ||
+      !(await deviceAgentMayAccess(access, authority, session))
+    )
       return refused('not-authorized');
     const entry = this.deps.surfaces.get(session.surfaceId);
     if (!entry) return refused('unknown-session');
@@ -206,8 +389,19 @@ export class DeviceAutomation {
       principal: authority.principalId,
       sessionId: authority.sessionId,
     };
+    const scopedAccess: DeviceAgentAccessDeps = {
+      ...access,
+      resolveCaller: () => {
+        const current = this.sessionServices(id);
+        return current?.session.surfaceId === session.surfaceId &&
+          current.services.sessions === resolved.services.sessions &&
+          current.services.tools === resolved.services.tools
+          ? access.resolveCaller()
+          : null;
+      },
+    };
     const context = {
-      agentGrant: mintDeviceAgentGrant(access, authority, session),
+      agentGrant: mintDeviceAgentGrant(scopedAccess, authority, session),
     };
     const claim = await claimAgentControl(
       entry,
@@ -216,10 +410,11 @@ export class DeviceAutomation {
       context,
     );
     if (!claim.ok) return claim;
-    this.deps.sessions.noteAgentActivity(id);
+    resolved.services.sessions.noteAgentActivity(id);
     return {
       ok: true as const,
       session,
+      services: resolved.services,
       entry,
       agent,
       context,
@@ -258,6 +453,7 @@ export class DeviceAutomation {
       access,
       authority,
       id,
+      'input',
       async (selected) =>
         this.withInputBatch(selected.session.surfaceId, async () => {
           const supported = selected.entry.producer.capabilities.input;
@@ -292,11 +488,61 @@ export class DeviceAutomation {
     );
     // A refusal before device admission must not acquire screen/control metadata.
     if (!('accepted' in result) && !('lease' in result)) return result;
-    const session = this.deps.sessions.get(id);
+    const session = this.sessionServices(id)?.session;
     const lease = session
       ? this.deps.surfaces.get(session.surfaceId)?.lease.snapshot()
       : undefined;
     return { ...result, ...(lease ? { lease } : {}) };
+  }
+
+  async captureToTask<T extends object>(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    publish: (source: {
+      screenshot(): Promise<{ data: Buffer; mimeType: 'image/png' }>;
+      isCurrent(): Promise<boolean>;
+      isFenceCurrent(): boolean;
+    }) => Promise<T>,
+  ) {
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'capture-to-task',
+      async (selected) => {
+        const isFenceCurrent = () => {
+          const current = this.sessionServices(id);
+          return (
+            current?.session.surfaceId === selected.session.surfaceId &&
+            current.services.sessions === selected.services.sessions &&
+            current.services.tools === selected.services.tools &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const isCurrent = async () =>
+          isFenceCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) &&
+          isFenceCurrent();
+        const result = await publish({
+          screenshot: async () => {
+            const shot = await selected.services.host.capture(selected.session);
+            return {
+              data: Buffer.from(shot.pngBase64, 'base64'),
+              mimeType: shot.mimeType,
+            };
+          },
+          isCurrent,
+          isFenceCurrent,
+        });
+        return { ok: true as const, ...result };
+      },
+    );
   }
 
   async observe(
@@ -305,23 +551,378 @@ export class DeviceAutomation {
     id: string,
     screenshot: boolean,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      const result = screenshot
-        ? { capture: await this.deps.host.capture(selected.session) }
-        : { tree: await this.deps.tools.accessibility(selected.session) };
-      // An observation may complete after takeover or revocation. Publish nothing
-      // from that operation once its fence or device grant has gone stale.
-      if (
-        !(await selected.entry.authorize(
+    return this.withControl(
+      access,
+      authority,
+      id,
+      screenshot ? 'screenshot' : 'snapshot',
+      async (selected) => {
+        const result = screenshot
+          ? { capture: await selected.services.host.capture(selected.session) }
+          : {
+              tree: await selected.services.tools.accessibility(
+                selected.session,
+              ),
+            };
+        // An observation may complete after takeover or revocation. Publish nothing
+        // from that operation once its fence or device grant has gone stale.
+        if (
+          !(await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) ||
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          return refused('interrupted');
+        return { ok: true, ...result };
+      },
+    );
+  }
+
+  async logs(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    appId: string,
+    enabled: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    return this.withControl(access, authority, id, 'logs', async (selected) => {
+      const current = async () =>
+        enabled() &&
+        selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+          .ok &&
+        (await selected.entry.authorize(
           authority.principalId,
           'view',
           selected.context,
-        )) ||
-        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-      )
-        return refused('interrupted');
-      return { ok: true, ...result };
+        )) &&
+        selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+          .ok &&
+        enabled();
+      const beforeRun = async () => {
+        if (!(await current())) throw new Error('device authority changed');
+      };
+      const logs = await selected.services.tools.logs(
+        selected.session,
+        appId,
+        beforeRun,
+        signal,
+      );
+      if (!(await current())) return refused('interrupted');
+      return { ok: true as const, logs };
     });
+  }
+
+  async installApp(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    source: { artifactHandle: string } | { workspacePath: string },
+    enabled: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    const { artifacts, installApp } = this.deps;
+    if (!artifacts || !installApp) return refused('unsupported');
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'install-app',
+      async (selected) => {
+        const root =
+          'workspacePath' in source
+            ? this.deps.projectRoot?.(authority.projectId)
+            : undefined;
+        if ('workspacePath' in source && !root)
+          return refused('invalid-source');
+        const abort = new AbortController();
+        const combined = signal
+          ? AbortSignal.any([signal, abort.signal])
+          : abort.signal;
+        const stillCurrent = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            (!root || this.deps.projectRoot?.(authority.projectId) === root) &&
+            !combined.aborted &&
+            live?.session.surfaceId === selected.session.surfaceId &&
+            live.services.sessions === selected.services.sessions &&
+            live.services.host === selected.services.host &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const current = async () =>
+          stillCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'input',
+            selected.context,
+          )) &&
+          stillCurrent();
+        const off = selected.entry.lease.onChange(() => {
+          if (
+            !selected.entry.lease.isCurrent(
+              selected.lease.fence,
+              selected.agent,
+            ).ok
+          )
+            abort.abort();
+        });
+        let started = false;
+        let result: DeviceInstallOutcome | undefined;
+        try {
+          const handle =
+            'artifactHandle' in source
+              ? source.artifactHandle
+              : (
+                  await artifacts.stageWorkspace(
+                    authority.projectId,
+                    root!,
+                    source.workspacePath,
+                    selected.session.platform,
+                    current,
+                    combined,
+                  )
+                ).handle;
+          return await artifacts.withArtifact(
+            authority.projectId,
+            handle,
+            current,
+            async (receipt, payload, artifactCurrent, activeSignal) => {
+              if (receipt.platform !== selected.session.platform)
+                return {
+                  ok: false as const,
+                  code: 'incompatible-artifact',
+                  effect: 'none' as const,
+                };
+              started = true;
+              result = await installApp({
+                hostId: selected.session.hostId,
+                platform: selected.session.platform,
+                deviceId: selected.session.deviceId,
+                digest: receipt.digest,
+                files: installFilesFor(payload),
+                signal: activeSignal,
+                beforeInstall: async () =>
+                  (await current()) &&
+                  (await artifactCurrent()) &&
+                  (await current()),
+              });
+              if (!(await current()))
+                return {
+                  ok: false as const,
+                  code: 'interrupted',
+                  effect:
+                    result.ok || result.effect === 'unknown'
+                      ? ('unknown' as const)
+                      : ('none' as const),
+                };
+              if (result.ok)
+                selected.services.sessions.noteInstallation(id, {
+                  ...result,
+                  source: receipt.source,
+                });
+              return result.ok
+                ? {
+                    ...result,
+                    source: receipt.source,
+                    hostId: selected.session.hostId,
+                    deviceId: selected.session.deviceId,
+                  }
+                : result;
+            },
+            combined,
+          );
+        } catch (error) {
+          return {
+            ok: false as const,
+            code:
+              !started && error instanceof DeviceArtifactError
+                ? error.code
+                : 'interrupted',
+            effect:
+              started && (!result || result.ok || result.effect === 'unknown')
+                ? ('unknown' as const)
+                : ('none' as const),
+          };
+        } finally {
+          off();
+        }
+      },
+    );
+  }
+
+  async appAction(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    action: DeviceAppAction,
+    enabled: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    let dispatched = false;
+    return this.withControl(
+      access,
+      authority,
+      id,
+      action.type,
+      async (selected) => {
+        const run = selected.services.tools.appAction;
+        if (!run) return refused('unsupported');
+        const abort = new AbortController();
+        const stillCurrent = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            !abort.signal.aborted &&
+            !signal?.aborted &&
+            live?.session.surfaceId === selected.session.surfaceId &&
+            live.services.sessions === selected.services.sessions &&
+            live.services.tools === selected.services.tools &&
+            live.services.host === selected.services.host &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const current = async () =>
+          stillCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'input',
+            selected.context,
+          )) &&
+          stillCurrent();
+        const beforeRun = async () => {
+          if (!(await current())) throw new Error('device authority changed');
+        };
+        const off = selected.entry.lease.onChange(() => {
+          if (
+            !selected.entry.lease.isCurrent(
+              selected.lease.fence,
+              selected.agent,
+            ).ok
+          )
+            abort.abort();
+        });
+        try {
+          await beforeRun();
+          const result = await run.call(
+            selected.services.tools,
+            selected.session,
+            action,
+            {
+              beforeRun,
+              onDispatch: () => {
+                dispatched = true;
+              },
+              declaredSchemes: (() => {
+                const receipt =
+                  selected.services.sessions.latestInstallation(id);
+                return receipt?.metadata.appId === action.appId
+                  ? receipt.metadata.urlSchemes
+                  : undefined;
+              })(),
+              signal: signal
+                ? AbortSignal.any([signal, abort.signal])
+                : abort.signal,
+            },
+          );
+          if (!(await current()))
+            return {
+              ...refused('interrupted'),
+              effect: dispatched ? ('unknown' as const) : ('none' as const),
+            };
+          return { ok: true as const, result };
+        } catch (error) {
+          if (!(await current()))
+            return {
+              ...refused('interrupted'),
+              effect: dispatched ? ('unknown' as const) : ('none' as const),
+            };
+          throw error;
+        } finally {
+          off();
+        }
+      },
+      () => dispatched,
+    );
+  }
+
+  async recordToTask<T extends object>(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    enabled: () => boolean,
+    publish: (source: RecordingSource) => Promise<T>,
+  ) {
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'record-to-task',
+      async (selected) => {
+        const current = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            live?.services.sessions === selected.services.sessions &&
+            live.services.tools === selected.services.tools &&
+            live.services.host === selected.services.host &&
+            live.session.surfaceId === selected.session.surfaceId &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const authorize = async () =>
+          current() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) &&
+          current();
+        if (!(await authorize())) return refused('interrupted');
+        const observed = await selected.services.tools.foreground(
+          selected.session,
+          async () => {
+            if (!(await authorize()))
+              throw new Error('device authority changed');
+          },
+        );
+        if (!(await authorize())) return refused('interrupted');
+        const appId =
+          observed.foregroundApp.state === 'read'
+            ? (observed.foregroundApp.value?.appId ?? null)
+            : null;
+        const result = await publish({
+          entry: selected.entry,
+          current,
+          authorize,
+          checkEachFrame: true,
+          platform: selected.session.platform,
+          adapter: 'device-live-surface',
+          device: {
+            hostId: selected.session.hostId,
+            deviceId: selected.session.deviceId,
+            name: selected.session.name,
+            runtime: selected.session.runtime,
+            appId,
+            appObservedAt: appId === null ? null : observed.readAt,
+          },
+        });
+        return { ok: true as const, ...result };
+      },
+    );
   }
 
   async close(
@@ -334,18 +935,25 @@ export class DeviceAutomation {
     const standing = await authorizeDeviceAgentCaller(access);
     if (!standing.ok || standing.actor.kind !== 'operator')
       return refused('operator-required');
-    return this.withControl(access, authority, id, async (selected) => {
-      // The early gate prevents claiming; recheck after the asynchronous claim.
-      const current = await authorizeDeviceAgentCaller(access);
-      if (!current.ok || current.actor.kind !== 'operator')
-        return refused('operator-required');
-      if (
-        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-      )
-        return refused('interrupted');
-      await this.deps.sessions.close(id);
-      this.owners.delete(id);
-      return { ok: true, shutdown: false };
-    });
+    return this.withControl(
+      access,
+      authority,
+      id,
+      undefined,
+      async (selected) => {
+        // The early gate prevents claiming; recheck after the asynchronous claim.
+        const current = await authorizeDeviceAgentCaller(access);
+        if (!current.ok || current.actor.kind !== 'operator')
+          return refused('operator-required');
+        if (
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          return refused('interrupted');
+        await selected.services.sessions.close(id);
+        this.owners.delete(id);
+        return { ok: true, shutdown: false };
+      },
+    );
   }
 }

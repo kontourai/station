@@ -7,6 +7,8 @@ include:
   - compose.diagnostics.yaml
 
 x-service: &service
+  labels:
+    station.telemetry.custody: ${TELEMETRY_HOME_CUSTODY:-unmanaged}
   restart: unless-stopped
   read_only: true
   security_opt: [no-new-privileges:true]
@@ -75,7 +77,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_PRODUCT_PORT:-44481}:43891"]
-    networks: [product]
+    networks: [product, product-ingress]
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,7 +87,12 @@ services:
 
 networks:
   product:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: true
+  product-ingress:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
+    internal: false
 
 volumes:
   postgres-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}

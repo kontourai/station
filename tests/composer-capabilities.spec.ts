@@ -1,5 +1,7 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
@@ -69,8 +71,39 @@ async function seedRoutes(
   page: Page,
   executionRequests: Array<Record<string, unknown>>,
   textOnly = false,
+  declaredProfile: ProviderDurabilityProfile | null = STEERING_ENGINE_DURABILITY,
+  projectionWait?: Promise<void>,
+  blockedRecovery = false,
 ) {
   const prepared = new Map<string, Record<string, unknown>>();
+  if (blockedRecovery)
+    await page.route('**/api/orchestration/sessions/*/usage-limit', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            recovery: {
+              failureKind: 'rate-limit',
+              scope: 'account',
+              decision: 'wait-until-reset',
+              outcome: 'armed',
+              dueAt: '2030-01-01T23:00:00Z',
+              attempts: 0,
+              maxAttempts: 1,
+              usageLimit: true,
+              autoResume: true,
+              updatedAt: '2026-04-12T00:00:01Z',
+              admission: {
+                state: 'blocked',
+                reason: 'scan-unavailable',
+                retryAt: '2030-01-01T21:01:00Z',
+              },
+            },
+          },
+        }),
+      ),
+    );
+
   await Promise.all([
     page.route('**/api/system/status', (route) =>
       route.fulfill(
@@ -182,27 +215,36 @@ async function seedRoutes(
         }),
       ),
     ),
-    page.route('**/api/orchestration/sessions/read-model', (route) =>
-      route.fulfill(
+    page.route('**/api/orchestration/sessions/read-model', async (route) => {
+      await projectionWait;
+      return route.fulfill(
         json({
           success: true,
           data: executionRequests.map((request) => ({
             threadId: request.conversationId,
             conversationId: request.conversationId,
             provider: 'codex',
+            ...(declaredProfile ? { durability: declaredProfile } : {}),
             model: 'gpt-6.1-sol',
             assignedAgentSlug: 'codex',
-            status: 'running',
-            lifecycleState: 'running',
+            status: blockedRecovery ? 'error' : 'running',
+            lifecycleState: blockedRecovery ? 'failed' : 'running',
             createdAt: '2026-04-12T00:00:00Z',
             updatedAt: '2026-04-12T00:00:00Z',
             isLoaded: true,
             isPersisted: true,
-            eventCount: 1,
+            eventCount: blockedRecovery ? 2 : 1,
+            ...(blockedRecovery
+              ? {
+                  lastEventMethod: 'runtime.error',
+                  lastRuntimeErrorUsageLimit: true,
+                  lastRuntimeErrorMessage: 'Usage limit reached',
+                }
+              : {}),
           })),
         }),
-      ),
-    ),
+      );
+    }),
     page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
@@ -215,6 +257,7 @@ async function seedRoutes(
         provider: 'codex',
         model: 'gpt-6.1-sol',
         canContinue: true,
+        durability: declaredProfile ?? undefined,
         turns: () => [
           [
             {
@@ -226,6 +269,22 @@ async function seedRoutes(
               createdAt: '2026-04-12T00:00:00Z',
               prompt: request.message,
             },
+            ...(blockedRecovery
+              ? [
+                  {
+                    eventId: `${turnId}-limit`,
+                    method: 'runtime.error',
+                    provider: 'codex',
+                    threadId: conversationId,
+                    turnId,
+                    createdAt: '2026-04-12T00:00:01Z',
+                    message: 'Usage limit reached',
+                    code: 'usageLimitExceeded',
+                    retriable: false,
+                    details: { usageLimit: true, scope: 'account' },
+                  },
+                ]
+              : []),
           ],
         ],
       });
@@ -322,10 +381,13 @@ async function openDockStartComposer(page: Page) {
   });
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
-  const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
+  const add = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .last();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
-  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 10_000 });
   const composer = modal.getByRole('form', { name: 'Start work' });
   await composer.getByRole('button', { name: /^Agent:/ }).click();
@@ -374,13 +436,123 @@ async function attachThroughPicker(
 }
 
 async function evidence(page: Page, testInfo: TestInfo, name: string) {
-  await page.screenshot({ path: testInfo.outputPath(name) });
+  await page.screenshot({
+    path: testInfo.outputPath(name),
+    animations: 'disabled',
+  });
   const directory = process.env.STATION_COMPOSER_EVIDENCE_DIR;
   if (directory) {
     await mkdir(directory, { recursive: true });
     await copyFile(testInfo.outputPath(name), join(directory, name));
   }
 }
+
+for (const [label, width] of [
+  ['phone', 390],
+  ['desktop', 1440],
+] as const) {
+  test(`native Codex ${label}: a missing durability profile disables Steer`, async ({
+    page,
+  }, testInfo) => {
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await page.setViewportSize({ width, height: 900 });
+    await installMockOrchestrationSse(page);
+    let releaseProjection!: () => void;
+    const projectionWait = new Promise<void>((resolve) => {
+      releaseProjection = resolve;
+    });
+    await seedRoutes(page, executionRequests, false, null, projectionWait);
+    const { composer, started } = await openStartComposer(page, label);
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('start without a profile');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    const input = page.getByRole('group', {
+      name: 'Message composer',
+      exact: true,
+    });
+    await input.getByRole('textbox').fill('keep this follow-up');
+    try {
+      for (const phase of ['pending', 'unavailable'] as const) {
+        if (phase === 'unavailable') releaseProjection();
+        for (const theme of ['dark', 'light']) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.evaluate(
+            (value) =>
+              document.documentElement.setAttribute('data-theme', value),
+            theme,
+          );
+          await page.getByRole('button', { name: 'Send mode: Queue' }).click();
+          const mode = page.getByRole('dialog', {
+            name: 'Send mode',
+            exact: true,
+          });
+          await expect(
+            mode.getByRole('button', { name: /Steer (this turn|when safe)/ }),
+          ).toBeDisabled();
+          await expect(
+            mode.getByText(
+              phase === 'pending'
+                ? 'Loading steering support…'
+                : 'Steering unavailable: the host did not report a durability profile.',
+            ),
+          ).toBeVisible();
+          await evidence(
+            page,
+            testInfo,
+            `steering-${phase}-${width}-${theme}.png`,
+          );
+          await page.keyboard.press('Escape');
+          await expect(mode).toBeHidden();
+        }
+      }
+    } finally {
+      releaseProjection();
+    }
+    expect(executionRequests).toHaveLength(1);
+  });
+}
+
+test('blocked credential recovery explains its reason and retry at both widths and themes', async ({
+  page,
+}, testInfo) => {
+  const executionRequests: Array<Record<string, unknown>> = [];
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMockOrchestrationSse(page);
+  await seedRoutes(
+    page,
+    executionRequests,
+    false,
+    STEERING_ENGINE_DURABILITY,
+    undefined,
+    true,
+  );
+  const { composer, started } = await openStartComposer(page, 'desktop');
+  await composer
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill('start and reach the usage limit');
+  await composer.getByRole('button', { name: 'Start', exact: true }).click();
+  await started();
+  const banner = page.getByTestId('usage-limit-banner');
+  await expect(banner).toContainText(
+    'saved credential recovery records cannot be read',
+  );
+  await expect(banner.getByRole('status')).toContainText('Next check');
+  await expect(
+    banner.getByRole('button', { name: 'Resume now', exact: true }),
+  ).toBeEnabled();
+  for (const width of [390, 1440])
+    for (const theme of ['dark', 'light']) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await evidence(page, testInfo, `recovery-blocked-${width}-${theme}.png`);
+    }
+});
 
 for (const [label, viewport] of [
   ['desktop', { width: 1280, height: 860 }],
@@ -421,6 +593,53 @@ for (const [label, viewport] of [
     expect(prepared.size).toBe(1);
     expect(JSON.stringify(executionRequests[0])).toContain('stage-0');
     await evidence(page, testInfo, `start-composer-sent-${label}.png`);
+  });
+
+  test(`${label}: full access picked at Start rides the new chat's first send`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(
+      label === 'desktop' ? { width: 1440, height: 900 } : viewport,
+    );
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer, started } = await openStartComposer(page, label);
+
+    await composer.getByRole('button', { name: /^Permissions: / }).click();
+    const sheet = page.getByRole('dialog', { name: 'Approval mode' });
+    await expect(sheet).toBeVisible();
+    await evidence(
+      page,
+      testInfo,
+      `start-composer-approval-sheet-${label}.png`,
+    );
+    // A person taps the option's row (its label); choosing full access
+    // swaps the list for its confirmation.
+    await sheet.getByText('Never ask (full access)', { exact: true }).click();
+    await sheet.getByRole('button', { name: 'Enable full access' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      composer.getByRole('button', {
+        name: /^Permissions: Full access\. Chosen for this chat/,
+      }),
+    ).toBeVisible();
+    await evidence(page, testInfo, `start-composer-approval-${label}.png`);
+
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('go');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    await expect
+      .poll(() => executionRequests.length, { timeout: 15_000 })
+      .toBe(1);
+    expect(executionRequests[0]).toMatchObject({
+      message: 'go',
+      setApprovalMode: 'never',
+      setApprovalModeBasedOn: null,
+    });
   });
 
   test(`${label}: the unavailable microphone dialog contains reverse Tab from its panel`, async ({
@@ -482,14 +701,14 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `running-turn-empty-${label}.png`);
 
     // The Agent chip's name ends before its caret, in an ellipsis.
-    const agentChip = page.locator('.chat-input__agent-btn');
+    const agentChip = page.locator('#chat-dock .chat-input__agent-btn');
     await expect(agentChip.locator('.chat-input__agent-name')).toHaveText(
       AGENTS[0].name,
     );
-    await expect(page.locator('.chat-input__model-name')).toHaveText(
+    await expect(page.locator('#chat-dock .chat-input__model-name')).toHaveText(
       'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
     );
-    const modelName = page.locator('.chat-input__model-name');
+    const modelName = page.locator('#chat-dock .chat-input__model-name');
     expect(
       await modelName.evaluate(
         (element) => getComputedStyle(element).textOverflow,
@@ -559,6 +778,41 @@ for (const [label, viewport] of [
       page.getByRole('button', { name: 'Send mode: Steer' }),
     ).toBeVisible();
     await evidence(page, testInfo, `running-turn-steer-${label}.png`);
+    if (label === 'desktop') {
+      const originalTheme = await page
+        .locator('html')
+        .getAttribute('data-theme');
+      try {
+        for (const width of [390, 1440]) {
+          for (const theme of ['dark', 'light']) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.evaluate((value) => {
+              document.documentElement.setAttribute('data-theme', value);
+            }, theme);
+            await expect(page.locator('html')).toHaveAttribute(
+              'data-theme',
+              theme,
+            );
+            await expect(
+              page.getByRole('button', { name: 'Send mode: Steer' }),
+            ).toBeVisible();
+            await expect(stop).toBeVisible();
+            await evidence(
+              page,
+              testInfo,
+              `native-steering-${width}-${theme}.png`,
+            );
+          }
+        }
+      } finally {
+        await page.setViewportSize(viewport);
+        await page.evaluate((value) => {
+          if (value === null)
+            document.documentElement.removeAttribute('data-theme');
+          else document.documentElement.setAttribute('data-theme', value);
+        }, originalTheme);
+      }
+    }
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
     await textarea.fill('');

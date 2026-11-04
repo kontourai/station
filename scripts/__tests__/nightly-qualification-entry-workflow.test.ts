@@ -2,8 +2,17 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 
-type Step = { id?: string; name?: string; run?: string; uses?: string };
+type Step = {
+  id?: string;
+  if?: string;
+  name?: string;
+  run?: string;
+  uses?: string;
+  with?: Record<string, unknown>;
+  'continue-on-error'?: boolean;
+};
 type Job = {
   name?: string;
   needs?: string | string[];
@@ -30,6 +39,66 @@ const qualification = read('main-qualification.yml');
 const nightly = read('nightly.yml');
 const expr = (inner: string) => `\${{ ${inner} }}`;
 describe('independent scheduled delivery and full qualification', () => {
+  it('does not arm a pnpm cache save when the exact CLI source is already published', () => {
+    const steps = nightly.jobs['nightly-cli'].steps ?? [];
+    const decision = steps.findIndex((step) => step.id === 'cli_source_decide');
+    const cache = steps.findIndex((step) => step.with?.cache === 'pnpm');
+    expect(decision).toBeGreaterThanOrEqual(0);
+    expect(cache).toBeGreaterThan(decision);
+    expect(steps[cache].if).toBe(
+      "steps.cli_source_decide.outputs.build == 'true'",
+    );
+  });
+  it('warms the version-bound Chromium cache only inside the admitted main source gate', () => {
+    const gate = nightly.jobs['test-gate'];
+    expect(gate.if).toBe(
+      expr(
+        "github.ref == 'refs/heads/main' && needs.delivery-decide.outputs.publish == 'true'",
+      ),
+    );
+    const steps = gate.steps ?? [];
+    const cache = steps.findIndex((step) => step.name === 'Cache Chromium');
+    const install = steps.findIndex((step) => step.name === 'Install Chromium');
+    expect(cache).toBeGreaterThanOrEqual(0);
+    expect(steps[cache].uses).toBe(
+      'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+    );
+    expect(steps[cache]['continue-on-error']).toBe(true);
+    expect(steps[cache].with).toEqual({
+      path: '~/.cache/ms-playwright',
+      key: `station-playwright-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('pnpm-lock.yaml') }}`,
+    });
+    expect(install).toBeGreaterThan(cache);
+    expect(steps[install].run).toContain('npx playwright install chromium');
+  });
+  it.each(['test-gate', 'nightly-cli'])(
+    '%s selects verified pnpm before Node package caching and managed install',
+    (jobId) => {
+      const steps = nightly.jobs[jobId].steps ?? [];
+      const setup = steps.findIndex(
+        (step) => step.name === 'Setup pinned pnpm',
+      );
+      const node = steps.findIndex((step) =>
+        step.uses?.startsWith('actions/setup-node@'),
+      );
+      const install = steps.findIndex((step) =>
+        step.run
+          ?.split('\n')
+          .some((line) => line.trim() === 'npm run dependencies:ci'),
+      );
+      expect(setup).toBeGreaterThanOrEqual(0);
+      expect(steps[setup].uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
+      expect(steps[setup].with).toBeUndefined();
+      expect(node).toBeGreaterThan(setup);
+      expect(install).toBeGreaterThan(node);
+      expect(steps[node].with).toEqual({
+        'node-version-file': '.nvmrc',
+        cache: 'pnpm',
+        'cache-dependency-path': 'pnpm-lock.yaml',
+      });
+    },
+  );
+
   it('concentrates full qualification every six hours without making Nightly wait', () => {
     expect(Object.keys(qualification.on).sort()).toEqual([
       'push',

@@ -15,6 +15,10 @@ import {
 import type { TurnDeliveryInspection } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  sendExecutionMessage,
+  sentTurnKey,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -39,7 +43,7 @@ import { createSessionAgentResolver } from '../../../services/orchestration/sess
 import {
   STATION_TURN_DEDUP_KERNEL_TABLES,
   turnDedupKey,
-} from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
+} from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { authorizeStationControlRequest } from '../../../tools/station-control-policy.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -267,6 +271,7 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       }),
       getProject: vi.fn(),
       getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+      readInitialConversationContext: async () => undefined,
       readSessionBinding: async (_access, id) => currentBinding(store, id),
       resolveConversationSession: async (_access, id, requested) =>
         service.resolveConversationContinuation(
@@ -314,6 +319,19 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         getUserId: () => caller,
         executeForegroundMessage: (input) =>
           executeForegroundMessage({ ...input, userId: OWNER }, deps),
+        continueForegroundMessage: (input) =>
+          executeForegroundMessage(
+            {
+              ...input,
+              target: { environment: { kind: 'current' }, agent: AGENT },
+              userId: OWNER,
+            },
+            deps,
+          ),
+        resolveRequestDelegation: async (_request, input) =>
+          input.delegation
+            ? { context: input.delegation, provenance: 'runtime-attested' }
+            : undefined,
       }),
     );
     const send = (
@@ -515,6 +533,115 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     );
     expect(response.status).toBe(500);
     expect(await response.text()).toBe('Internal Server Error');
+  });
+
+  test('#3567: the public SDK recovers a lost response key, replays once and refuses changed input', async () => {
+    const { adapter, app } = station();
+    const lost = Object.freeze(
+      new TypeError('The accepted response was lost.'),
+    );
+    let loseResponse = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (request, init) => {
+        const response = await app.request(
+          request instanceof Request ? request : String(request),
+          init,
+        );
+        if (loseResponse) {
+          loseResponse = false;
+          throw lost;
+        }
+        return response;
+      }),
+    );
+    try {
+      const input = {
+        conversationId: 'conversation:sdk-key',
+        message: 'Original input',
+        target: { agent: AGENT },
+      };
+      const caught = await sendExecutionMessage(
+        'http://delivery.station',
+        input,
+      ).catch((error: unknown) => error);
+      expect(caught).toBe(lost);
+      expect(adapter.turns).toHaveLength(1);
+      const clientTurnId = sentTurnKey(caught);
+      expect(clientTurnId).toEqual(expect.any(String));
+      if (!clientTurnId)
+        throw new Error('The SDK did not retain its chosen key');
+      const replay = await sendExecutionMessage('http://delivery.station', {
+        ...input,
+        clientTurnId,
+      });
+      expect(replay).toMatchObject({
+        clientTurnId,
+        providerTurnId: 'delivery-turn-1',
+      });
+      expect(adapter.turns).toHaveLength(1);
+      await expect(
+        sendExecutionMessage('http://delivery.station', {
+          ...input,
+          clientTurnId,
+          message: 'Changed input',
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.turns).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test.each([
+    '/chat',
+    '/chat/background',
+    '/chat/delegated',
+    '/chat/:conversationId/continue',
+  ])('#3567: %s refuses changed input under the same key', async (route) => {
+    const { adapter, app, send } = station();
+    const conversationId = `conversation:route-${route.replaceAll('/', '-')}`;
+    if (route.includes(':conversationId')) {
+      const initial = await send(conversationId, 'initial-key', 'initial');
+      expect(initial.status, await initial.clone().text()).toBe(200);
+    }
+    const path = route.replace(
+      ':conversationId',
+      encodeURIComponent(conversationId),
+    );
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+    };
+    const body = {
+      conversationId,
+      clientTurnId: 'route-key',
+      message: 'A',
+      target: { environment: { kind: 'current' }, agent: AGENT },
+      ...(route === '/chat/delegated' ? { delegation } : {}),
+    };
+    const request = (message: string) =>
+      app.request(`/api/orchestration${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, message }),
+      });
+    const before = adapter.turns.length;
+    const first = await request('A');
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(adapter.turns).toHaveLength(before + 1);
+    const changed = await request('B');
+    expect(changed.status, await changed.clone().text()).toBe(409);
+    expect(await changed.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(adapter.turns).toHaveLength(before + 1);
   });
 
   test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {
@@ -1032,8 +1159,19 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
   });
 
   test('an evicted key answers expired', async () => {
-    const { send, lookup, adapter } = station({ maxEntries: 1 });
-    expect((await send('conversation:evict', 'key-old')).status).toBe(200);
+    const { send, lookup, adapter, store } = station({ maxEntries: 1 });
+    const first = await send('conversation:evict', 'key-old');
+    expect(first.status).toBe(200);
+    const sessionId = ((await first.json()) as { data: { sessionId: string } })
+      .data.sessionId;
+    store['db']
+      .prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      )
+      .run(
+        Date.now() - 8 * 24 * 60 * 60 * 1000,
+        turnDedupKey(sessionId, 'key-old'),
+      );
     await eventually(async () => {
       expect((await send('conversation:evict', 'key-new')).status).toBe(200);
     });

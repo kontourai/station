@@ -380,7 +380,13 @@ function confinedFile(packageRoot, relativePath) {
 }
 
 function lifecycleEnvironment(packageRoot, hook) {
+  const nodeRoot = resolve(dirname(realpathSync(process.execPath)), '..');
+  const useBundledHeaders =
+    process.env.GITHUB_ACTIONS === 'true' &&
+    !process.env.npm_config_nodedir &&
+    existsSync(resolve(nodeRoot, 'include/node/node.h'));
   return {
+    ...(useBundledHeaders ? { npm_config_nodedir: nodeRoot } : {}),
     npm_config_ignore_scripts: 'true',
     npm_lifecycle_event: hook.name,
     npm_lifecycle_script: hook.command,

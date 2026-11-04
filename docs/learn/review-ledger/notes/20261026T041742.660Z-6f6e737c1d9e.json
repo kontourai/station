@@ -1,0 +1,7 @@
+{
+  "revision": "2e9ab18763aa63107ef9ef058f3b069090c66c40",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"#4200 review fix round, delta only: its linked instance-registry.md gained that start, stop and uninstall refuse from a stale-manifest home. The ADR's sidecar/registry decisions and link remain accurate; no prose change.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/design/instance-registry.md"]}
+  ]
+}

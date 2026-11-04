@@ -1,0 +1,13 @@
+{
+  "revision": "c51a99e57c8e781abf169da3ea279973a5eb1b04",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#4237 adds the Multiplayer Task contracts section and the task-approval subpath row to docs/reference/contracts.md. Checked every new claim against packages/contracts/src: v5 schema id; PROJECT_TASK_ROOM_MAX_MENTIONS=32; 256-unit opaque IDs (roomText 256); 4096-unit relative POSIX file locations refusing leading / or ~, backslashes, empty and .. segments; projectTaskRoomWriteSchemaVersion treats empty mentions as absent; TaskApprovalDecision channel union station|slack|discord and the closed outcome/refusal codes; ./task-approval export present. Runtime admission, persistence fence (#4136) and arbitration (#4139) are stated as not done, matching the code. Contract tests 169/169 and all 16 typecheck lanes passed at c51a99e.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/project-task-room.test.ts","packages/contracts/src/__tests__/task-approval.test.ts","packages/contracts/src/project-task-room.ts","packages/contracts/src/task-approval.ts"]},
+
+    {"path":"docs/glossary.md","note":"#4237 adds the Multiplayer Task contracts section and the task-approval subpath row to docs/reference/contracts.md. Read the glossary's Project Room, membership, approval and capability entries; none define v5 member principals, mentions, presence locations or Task approval decisions, and the contract change activates no runtime behavior, so no glossary claim changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4237 adds the Multiplayer Task contracts section and the task-approval subpath row to docs/reference/contracts.md. Read the guide's membership, identity and authorization rows; they describe deployment-side tenant/member authorization and are unaffected by structural contracts that grant no authority. No claim changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#4237 adds the Multiplayer Task contracts section and the task-approval subpath row to docs/reference/contracts.md. Checked the new task-approval and project-task-room additions against the package rules: domain-oriented subpath (./task-approval in package.json exports), pure helpers with no Node built-ins, no ambient time (decidedAt is supplied), and no copied helper in station-shared. Rules unchanged and satisfied.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

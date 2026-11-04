@@ -52,6 +52,14 @@ export interface RegionChromeTab {
 /** The gap between a tab and the move menu it opens, above or below. */
 const GAP = 4;
 
+/**
+ * A side region narrower than its 400px default (CSS px) compacts its bar
+ * (#4401): the full bar's spacing, the hover-only placement grab and the
+ * agent avatar leave too little for the chat title, down to the 280px
+ * minimum (`MIN_DOCK_WIDTH`), where it vanished under the ×.
+ */
+const COMPACT_SIDE_BAR_WIDTH = 400;
+
 const TOGGLE_EXEMPT =
   'a, button, [role="button"], [role="link"], [role="tab"], input, select, textarea, [data-dock-toggle-shield]';
 
@@ -358,7 +366,7 @@ export function RegionChromeSlotsProvider({
   absorb,
   children,
 }: {
-  slots: Pick<RegionChromeSlots, 'leading' | 'trailing'>;
+  slots: Pick<RegionChromeSlots, 'start' | 'leading' | 'trailing'>;
   chrome: DockShellChrome;
   tabs: readonly RegionChromeTab[];
   selectedSurfaceId: string | undefined;
@@ -384,6 +392,7 @@ export function RegionChromeSlotsProvider({
   // biome-ignore lint/correctness/useExhaustiveDependencies: `signature` is the change key for `actions`
   const value = useMemo<RegionChromeSlots>(
     () => ({
+      start: slots.start,
       leading: slots.leading,
       trailing: slots.trailing,
       regionMenu: {
@@ -398,7 +407,7 @@ export function RegionChromeSlotsProvider({
         absorb,
       },
     }),
-    [slots.leading, slots.trailing, absorb, signature],
+    [slots.start, slots.leading, slots.trailing, absorb, signature],
   );
   return (
     <RegionChromeSlotsContext.Provider value={value}>
@@ -639,6 +648,7 @@ export function RegionChromeBar({
   onMoveTab,
   onAddPane,
   addPaneOpen = false,
+  startSlotRef,
   leadingSlotRef,
   trailingSlotRef,
   onBackToChat,
@@ -659,6 +669,7 @@ export function RegionChromeBar({
   onAddPane?: (trigger: HTMLButtonElement) => void;
   /** Whether the chooser the "+" opens is open — the button's `aria-expanded`. */
   addPaneOpen?: boolean;
+  startSlotRef?: (element: HTMLElement | null) => void;
   leadingSlotRef: (element: HTMLElement | null) => void;
   trailingSlotRef: (element: HTMLElement | null) => void;
   /**
@@ -773,16 +784,25 @@ export function RegionChromeBar({
     tabs.length > 1 &&
     !chrome.isMobile &&
     (isDockOpen || chrome.isCollapsedDragPreview);
+  // #4401: an open side region near its minimum width cannot fit the bar's
+  // full spacing beside the pane's identity and the region's buttons; the
+  // bar tightens instead of letting the title vanish under the ×.
+  const isCompact =
+    side !== null &&
+    isDockOpen &&
+    !isDockMaximized &&
+    chrome.dockWidth < COMPACT_SIDE_BAR_WIDTH;
 
   return (
     <div
       ref={barRef}
-      className={`chat-dock__header region-chrome ${isDockMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''}`}
+      className={`chat-dock__header region-chrome ${isDockMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''}${isCompact ? ' is-compact' : ''}`}
       onPointerDown={onDragPointerDown}
       onClickCapture={chrome.onHeaderDragClickCapture}
       data-dock-drag-surface=""
     >
       <div className="chat-dock__title">
+        <span className="chat-dock__pane-toolbar" ref={startSlotRef} />
         {onBackToChat ? (
           <button
             type="button"

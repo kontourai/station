@@ -1,0 +1,9 @@
+{
+  "revision": "7eb3419a8f0125ae67ebbe25f6997c91f55b6b86",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Follow-up type contract correction: the turn browser supplies the shared Empty component with Turns will appear here. It retains the documented empty state without an ad-hoc No-X sentence. Turn indexing, body loading and cancellation are unchanged; prior platform limits remain.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/TranscriptTurnBrowser.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the shared turn-browser Empty label correction against the SDK metadata-only directory explanation. It changes presentation copy only; directory requests, unsupported-host fallback, authority and cancellation are unchanged. Prior evidence limits remain.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat/TranscriptTurnBrowser.tsx"]}
+  ]
+}

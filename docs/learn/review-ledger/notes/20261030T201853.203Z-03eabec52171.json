@@ -1,0 +1,15 @@
+{
+  "revision": "72dae3e0e1f7b188d13b7da944959b6c6380bfcd",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Compared Discord startup, allowlist and bound conversation delivery with bootstrap delta: the added Knowledge file-owner callback is separate from Discord connection and turn approval. No Discord service or message run.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Compared runtime selector binding and fail-closed preview guidance with bootstrap delta: conversation Knowledge read authority does not alter feature-preview registry or selector behavior. No preview journey run.","inputs":["docs/guides/feature-previews.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Compared station-control availability, scoped conversation reads and delegation authority with bootstrap delta: the file-memory Knowledge projection owner callback does not grant station-control or change the example tool policy. No model or delegation run.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Compared connection readiness, provider checks and source-profile separation with bootstrap delta: conversation Knowledge file-owner authorization does not alter model/engine connection detection or credentials. No live provider check run.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Compared feature and developer-preview choices with bootstrap delta: conversation Knowledge owner callback does not change preview selection, cost or Settings visibility. No UI/device journey run.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

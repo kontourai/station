@@ -1,0 +1,7 @@
+{
+  "revision": "53eb8ff55e5b4c0de9e50e24729d7cfe62c2c2ad",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Re-checked the part 2a writer-producible record rule after impossibleRecord was rewritten without a cast (same five rules, read from the validated object); the prose still matches and the fault injections still catch each rule.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust-store.ts"]}
+  ]
+}

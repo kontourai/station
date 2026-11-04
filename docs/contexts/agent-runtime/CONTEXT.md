@@ -29,10 +29,12 @@ Station ownership of its native loop or every tool it executes.
 | Select and resolve an Agent | [Runtime Agent registry](../../../src-server/runtime/agents/runtime-agent-registry.ts) | Identity, current engine binding, and availability |
 | Start a Session | [SessionCommandModule](../../../src-server/services/orchestration/session-command-module.ts) | Start/reattach sequencing, command receipt durability, and uncertain provider creation |
 | Invoke an engine and compose services | [OrchestrationService](../../../src-server/services/orchestration/orchestration-service.ts) | Real provider caller and its cancellation path |
-| Admit a turn without replaying an uncertain effect | [Session execution coordinator](../../../src-server/services/orchestration/session-execution-coordinator.ts) and [durable invocation boundary](../../../src-server/services/orchestration/session-turn-boundary.ts) | Client-turn deduplication, provider acceptance, lifecycle exclusion, and retained uncertainty |
+| Admit a turn without replaying an uncertain effect | [Session execution coordinator](../../../src-server/services/orchestration/session-execution-coordinator.ts) and [durable invocation boundary](../../../packages/monument/src/session-boundary.ts) | Client-turn deduplication, provider acceptance, lifecycle exclusion, and retained uncertainty |
 | Record and read history | [EventStore](../../../src-server/services/orchestration/event-store.ts) | Persisted events, projections, and replay |
 | Change Session lifecycle | [SessionLifecycleModule](../../../src-server/services/orchestration/session-lifecycle-module.ts) | Transition ownership and concurrency with a new turn |
 | Attach an optional Flow run | [Flow policy owner](../../../src-server/services/orchestration/flow-policy-sidecar.ts) | Explicit `metadata.flowDefinition`, eligible definition, evidence, and completion verdict |
+
+All automatic recovery, including same-account replay, waits for startup reconciliation. An unreadable scan or unresolved obligation blocks admission across connections until reconciliation succeeds. The start of an outage, a change in its blocking reason, and restored readiness each produce one warning; refusal metrics use bounded reasons, and recovery status projects the blocked admission and next check. Automatic admission retries back off from 60 seconds to a 10-minute cap; due-claim scans retain their independent retry. See the [recovery module](../../architecture/module-map.md#credentialrecoverymodule).
 
 A Session can contain several turns. `idle` means a finished turn between
 messages; `completed` closes the Session. Stopped, terminal, and resumable have
@@ -48,6 +50,19 @@ records that relationship. Reserving a child does not prove its engine started.
 Compatible built-in returns can resume an earlier native identity with bounded
 intervening context. Durable native ownership prevents old Session aliases from
 mutating the transferred thread, and transfer requires confirmed retirement.
+An ordinary follow-up after a native return also requires observed completion
+of its seed-bearing turn. Failed or uncertain catch-up explicitly refuses the
+follow-up instead of silently continuing without that context.
+New history-seeded continuations and saved forks follow the same completion
+fence. Known native identities are captured with the prepared invocation. A
+first identity learned during the turn must come from its correlated engine
+completion, never a later mutable carrier binding; a conflicting report cannot
+qualify the seed. A carrier rebind cannot borrow another identity's completion.
+The handoff fence runs synchronously again at provider dispatch, including
+prepared-turn resumption, after any awaited continuation preparation.
+A context-projection failure
+retains the canonical terminal and leaves delivery unverified. Opening an owned
+saved fork reports `fork-ready` before any provider Session exists.
 Provider handoffs retain the Conversation; explicit forks create a new one.
 The compact history contract reports these boundaries to tool and SDK callers.
 A model change on a Session that never ran a turn stops that predecessor's engine
@@ -97,8 +112,26 @@ followed by an irreversible expired-generation marker. Raw audit and BLOB rows r
 windows do not establish bounded disk usage. Current host authorization and
 callback quiescence still govern effects and explicit cancellation.
 
-Station's existing framework builder, `/chat`, FileMemory/history, approval
-registry, boot continuation and terminal writers have not adopted this package.
-Those current paths and capability disclosures retain their existing owners.
-Package fixtures do not establish Station restart recovery, durable tools or
-approvals, native Bedrock/stateful support, live provider fidelity or a release.
+Station also adopts the root's separately versioned agent-turn journal behind
+the off-by-default **Crash-durable Station Agent** preview. The
+[owner](../../../src-server/runtime/agents/durable-agent-owner.ts) fences
+recovery; [recovery composition](../../../src-server/runtime/agents/durable-agent-recovery.ts)
+reinstates current Session authorization, native authority, approval wait and
+stream projection around the actual framework loop. Both adapters journal tool
+intent and replay safety and consume completed model/tool tapes. Uncertain
+model dispatch blocks automatic resend. Disconnect hands delivery and cleanup
+to the owner; explicit Stop cancels. Terminal publication uses the recorded
+invocation and event identity, including a crash between settlement and
+publication. Approval deadlines remain absolute. New durable waits default to ten minutes; `STATION_DURABLE_APPROVAL_TIMEOUT_MS` configures new waits without renewing existing ones. New approval IDs include durable-turn
+scope; legacy IDs remain attached to their recorded tool. Registry replies and
+cancellations must match that pending Session. Publication consumes the actual
+committed decision identity, including when an older ID is restored.
+
+The package's older model-only consumer helpers retain their conservative
+tool refusal. The new Station adapter conformance exercises actual native loops
+with a scripted provider, separately from those helpers. It is not live-provider,
+physical-crash, cache-benefit or release qualification. Text input is the preview's
+supported admission form; unavailable configuration holds recovery.
+
+
+The opt-in agent-turn writer uses packed delta/frame blocks and shared native text while retaining logical frame and provider chunk boundaries. Writer 12 tracks typed body references under a private connection permit. Indexed expiry/garbage queues drain in bounded idle callbacks after admission or settlement, pausing while any turn is running. FULL SQLite commits remain synchronous, so the cooperative work budget is not a hard wall-clock guarantee. Every terminal state retains replay for seven days, then a compact identity tombstone synthesizes the refusing expiry frames. Uncertain nonterminal turns retain their evidence. See the private package README for migration, work budgets, typed corruption/capacity and real-stream steer replay contracts.

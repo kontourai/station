@@ -1,8 +1,12 @@
 import {
   type CSSProperties,
+  type ReactNode,
+  type Ref,
   type RefObject,
   useCallback,
+  useContext,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react';
@@ -10,9 +14,11 @@ import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { countWords } from '../../utils/text-display';
+import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
+import { MessageDetailsCloseContext } from './MessageDetails';
 import { MoreActionsGlyph } from './MoreActionsGlyph';
 import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
@@ -26,6 +32,31 @@ const loadConnectedAttachAnswerToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachAnswerToTaskButton,
   }));
+
+/**
+ * The bubble's right-click opens its ⋯ (`OverflowMenuHandle`): the same rows,
+ * anchored to the same trigger. Focus goes to the trigger first so the menu
+ * returns it there on close. No trigger (the phone sheet's inline rows) means
+ * no menu to open. An open, not a toggle: asked again while the menu is open,
+ * it leaves focus in the menu.
+ */
+function useMenuHandle(
+  handleRef: Ref<OverflowMenuHandle> | undefined,
+  triggerRef: RefObject<HTMLButtonElement | null>,
+  isOpen: boolean,
+  openMenu: () => void,
+) {
+  useImperativeHandle(handleRef, () => ({
+    open: () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return false;
+      if (isOpen) return true;
+      trigger.focus();
+      openMenu();
+      return true;
+    },
+  }));
+}
 
 const MENU_GAP_PX = 4;
 /**
@@ -105,6 +136,11 @@ export interface TurnActionsMenuProps {
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /**
+   * #4406: send the message that produced this answer again, in a fork that
+   * keeps this answer where it is.
+   */
+  onRegenerate?: () => void;
+  /**
    * #2211: the per-turn record surfaces. The transcript stays focused on the
    * answer; provenance and reasoning open as dialogs from this menu instead
    * of occupying disclosure rows inside the bubble.
@@ -119,6 +155,14 @@ export interface TurnActionsMenuProps {
     shareContent?: React.ReactNode;
   };
   reasoning?: { content: string };
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
+  /**
+   * #4404 (A40): the phone's answer sheet lists these rows itself, as the
+   * user bubble's sheet does, instead of a second ⋯ whose popup clipped the
+   * sheet's title.
+   */
+  inline?: boolean;
 }
 
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
@@ -126,8 +170,11 @@ export default function TurnActionsMenu({
   taskTarget,
   forkSource,
   onForkFromTurn,
+  onRegenerate,
   provenance,
   reasoning,
+  handleRef,
+  inline = false,
 }: TurnActionsMenuProps) {
   const [view, setView] = useState<
     'closed' | 'menu' | 'picker' | 'provenance' | 'reasoning'
@@ -138,12 +185,16 @@ export default function TurnActionsMenu({
     setView((current) => (current === 'menu' ? 'closed' : current));
   const closeDialog = () => setView('closed');
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
+  // Inside the phone's answer sheet: Regenerate leaves the chat, so it
+  // closes the sheet too.
+  const closeSheet = useContext(MessageDetailsCloseContext);
 
   const reasoningWordCount = reasoning ? countWords(reasoning.content) : 0;
   const rowCount =
     (provenance ? 1 : 0) +
     (reasoning && reasoningWordCount > 0 ? 1 : 0) +
     (taskTarget ? 1 : 0) +
+    (onRegenerate ? 1 : 0) +
     (forkSource && onForkFromTurn ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
 
@@ -164,6 +215,124 @@ export default function TurnActionsMenu({
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
+
+  // Menu items in the ⋯ popup; plain buttons in the phone sheet (`inline`),
+  // where "Answer details" would repeat the sheet's own title. One list,
+  // so the two presentations cannot offer different actions.
+  const rows = (itemRole?: 'menuitem') => {
+    const item = (key: string, label: ReactNode, onSelect: () => void) => (
+      <button key={key} type="button" role={itemRole} onClick={onSelect}>
+        {label}
+      </button>
+    );
+    return [
+      provenance
+        ? item('provenance', itemRole ? 'Answer details' : 'Provenance', () =>
+            setView('provenance'),
+          )
+        : null,
+      reasoning && reasoningWordCount > 0
+        ? item(
+            'reasoning',
+            `Reasoning (${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'})`,
+            () => setView('reasoning'),
+          )
+        : null,
+      taskTarget ? (
+        <LazyBoundary
+          key="task"
+          load={loadConnectedAttachAnswerToTaskButton}
+          componentProps={{
+            ...taskTarget,
+            menuItem: itemRole === 'menuitem',
+            onOpen: () => setView('picker'),
+            onClose: () => setView('closed'),
+            returnFocusTarget: triggerRef.current,
+          }}
+          pending={null}
+          unavailable={() => (
+            <span className="turn-footer__unavailable-note">
+              Add to Task is unavailable.
+            </span>
+          )}
+        />
+      ) : null,
+      onRegenerate
+        ? item('regenerate', 'Regenerate', () => {
+            close();
+            closeSheet();
+            onRegenerate();
+          })
+        : null,
+      forkSource && onForkFromTurn
+        ? item('fork', 'Fork from here…', () => {
+            close();
+            onForkFromTurn(forkSource);
+          })
+        : null,
+    ];
+  };
+
+  const dialogs = (
+    <>
+      {view === 'provenance' && provenance && (
+        <Dialog
+          eyebrow="This turn"
+          title="Provenance"
+          subtitle="What Station observed about how this answer was produced."
+          closeLabel="Close provenance"
+          onClose={closeDialog}
+          size="md"
+          returnFocusTarget={triggerRef.current ?? undefined}
+        >
+          <TurnProvenanceCard
+            provenance={provenance.envelope}
+            statedInRow={provenance.statedInRow}
+            accountableHuman={provenance.accountableHuman}
+            shareContent={provenance.shareContent}
+            defaultOpen
+          />
+        </Dialog>
+      )}
+      {view === 'reasoning' && reasoning && (
+        <Dialog
+          eyebrow="This turn"
+          title="Reasoning"
+          subtitle={`${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'} recorded for this turn.`}
+          closeLabel="Close reasoning"
+          onClose={closeDialog}
+          size="md"
+          returnFocusTarget={triggerRef.current ?? undefined}
+        >
+          <div
+            className="turn-reasoning-dialog__body"
+            style={{
+              color: 'var(--text-secondary)',
+              fontStyle: 'italic',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {reasoning.content}
+          </div>
+        </Dialog>
+      )}
+    </>
+  );
+
+  if (inline)
+    return (
+      <>
+        <fieldset className="message-details__menu" aria-label="Answer actions">
+          {rows()}
+        </fieldset>
+        {dialogs}
+      </>
+    );
 
   return (
     <span className="turn-footer__actions-menu">
@@ -201,100 +370,11 @@ export default function TurnActionsMenu({
                 }
               }}
             >
-              {provenance && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setView('provenance')}
-                >
-                  Answer details
-                </button>
-              )}
-              {reasoning && reasoningWordCount > 0 && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setView('reasoning')}
-                >
-                  Reasoning ({reasoningWordCount.toLocaleString()}{' '}
-                  {reasoningWordCount === 1 ? 'word' : 'words'})
-                </button>
-              )}
-              {taskTarget && (
-                <LazyBoundary
-                  load={loadConnectedAttachAnswerToTaskButton}
-                  componentProps={{
-                    ...taskTarget,
-                    menuItem: true,
-                    onOpen: () => setView('picker'),
-                    onClose: () => setView('closed'),
-                    returnFocusTarget: triggerRef.current,
-                  }}
-                  pending={null}
-                  unavailable={() => (
-                    <span className="turn-footer__unavailable-note">
-                      Add to Task is unavailable.
-                    </span>
-                  )}
-                />
-              )}
-              {forkSource && onForkFromTurn && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    close();
-                    onForkFromTurn(forkSource);
-                  }}
-                >
-                  Fork from here…
-                </button>
-              )}
+              {rows('menuitem')}
             </div>,
             document.body,
           )}
-          {view === 'provenance' && provenance && (
-            <Dialog
-              eyebrow="This turn"
-              title="Provenance"
-              subtitle="What Station observed about how this answer was produced."
-              closeLabel="Close provenance"
-              onClose={closeDialog}
-              size="md"
-              returnFocusTarget={triggerRef.current ?? undefined}
-            >
-              <TurnProvenanceCard
-                provenance={provenance.envelope}
-                statedInRow={provenance.statedInRow}
-                accountableHuman={provenance.accountableHuman}
-                shareContent={provenance.shareContent}
-                defaultOpen
-              />
-            </Dialog>
-          )}
-          {view === 'reasoning' && reasoning && (
-            <Dialog
-              eyebrow="This turn"
-              title="Reasoning"
-              subtitle={`${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'} recorded for this turn.`}
-              closeLabel="Close reasoning"
-              onClose={closeDialog}
-              size="md"
-              returnFocusTarget={triggerRef.current ?? undefined}
-            >
-              <div
-                className="turn-reasoning-dialog__body"
-                style={{
-                  color: 'var(--text-secondary)',
-                  fontStyle: 'italic',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {reasoning.content}
-              </div>
-            </Dialog>
-          )}
+          {dialogs}
         </>
       )}
     </span>
@@ -305,6 +385,12 @@ export interface UserMessageActionsMenuProps {
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
+  /**
+   * #4406: a fork before this message, opened with it in the composer. It
+   * stands in for "New chat from this message" on a message that opened the
+   * conversation, where the fork would be that same empty chat.
+   */
+  onEditAndResend?: () => void;
   /**
    * The message was not sent: its Discard lives here, beside the bubble's
    * other actions, rather than in a second overflow on the bubble.
@@ -326,6 +412,8 @@ export interface UserMessageActionsMenuProps {
    * render in place, with no second ⋯ to open.
    */
   inline?: boolean;
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
 }
 
 /** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
@@ -334,9 +422,11 @@ export function UserMessageActionsMenu({
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onEditAndResend,
   onDiscardUnsent,
   taskTarget,
   inline = false,
+  handleRef,
 }: UserMessageActionsMenuProps) {
   // 'picker': the Task dialog is open and this owner stays mounted (with the
   // menu hidden) until it settles, exactly as the answer menu does.
@@ -346,11 +436,16 @@ export function UserMessageActionsMenu({
   const close = () =>
     setView((current) => (current === 'menu' ? 'closed' : current));
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
+  const closeSheet = useContext(MessageDetailsCloseContext);
   const canFork = Boolean(forkSource && onForkFromTurn);
   const pinsToTask = Boolean(taskTarget) && !inline;
+  const newChatFromMessage =
+    !canFork && !onEditAndResend ? onNewChatFromMessage : undefined;
   const rowCount =
     (pinsToTask ? 1 : 0) +
-    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) +
+    (onEditAndResend ? 1 : 0) +
+    (canFork ? 1 : 0) +
+    (newChatFromMessage ? 1 : 0) +
     (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
@@ -361,69 +456,76 @@ export function UserMessageActionsMenu({
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
 
   // In the ⋯ popup the rows are menu items (with the menu's arrow-key
   // focus); inline in the phone's sheet they are plain buttons in a group,
   // since nothing there gives them menu keyboard behaviour.
-  const rows = (close: () => void, itemRole?: 'menuitem') => (
-    <>
-      {pinsToTask && taskTarget && (
-        <LazyBoundary
-          load={loadConnectedAttachUserInputToTaskButton}
-          componentProps={{
-            ...taskTarget,
-            menuItem: true,
-            onOpen: () => setView('picker'),
-            onClose: () => setView('closed'),
-            returnFocusTarget: triggerRef.current,
-          }}
-          pending={null}
-          unavailable={() => (
-            <span className="turn-footer__unavailable-note">
-              Add to Task is unavailable.
-            </span>
-          )}
-        />
-      )}
-      {canFork && forkSource && onForkFromTurn && (
-        <button
-          type="button"
-          role={itemRole}
-          onClick={() => {
+  const rows = (close: () => void, itemRole?: 'menuitem') => {
+    const item = (label: string, onSelect: () => void, className?: string) => (
+      <button
+        type="button"
+        role={itemRole}
+        className={className}
+        onClick={onSelect}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <>
+        {pinsToTask && taskTarget && (
+          <LazyBoundary
+            load={loadConnectedAttachUserInputToTaskButton}
+            componentProps={{
+              ...taskTarget,
+              menuItem: true,
+              onOpen: () => setView('picker'),
+              onClose: () => setView('closed'),
+              returnFocusTarget: triggerRef.current,
+            }}
+            pending={null}
+            unavailable={() => (
+              <span className="turn-footer__unavailable-note">
+                Add to Task is unavailable.
+              </span>
+            )}
+          />
+        )}
+        {onEditAndResend &&
+          item('Edit and resend', () => {
+            close();
+            // In the phone sheet the fork's draft replaces the chat.
+            closeSheet();
+            onEditAndResend();
+          })}
+        {canFork &&
+          forkSource &&
+          onForkFromTurn &&
+          item('Fork from here…', () => {
             close();
             onForkFromTurn(forkSource);
-          }}
-        >
-          Fork from here…
-        </button>
-      )}
-      {!canFork && onNewChatFromMessage && (
-        <button
-          type="button"
-          role={itemRole}
-          onClick={() => {
+          })}
+        {newChatFromMessage &&
+          item('New chat from this message', () => {
             close();
-            onNewChatFromMessage();
-          }}
-        >
-          New chat from this message
-        </button>
-      )}
-      {onDiscardUnsent && (
-        <button
-          type="button"
-          role={itemRole}
-          className="turn-footer__overflow-item--danger"
-          onClick={() => {
-            close();
-            onDiscardUnsent();
-          }}
-        >
-          Discard unsent message
-        </button>
-      )}
-    </>
-  );
+            newChatFromMessage();
+          })}
+        {onDiscardUnsent &&
+          item(
+            'Discard unsent message',
+            () => {
+              close();
+              onDiscardUnsent();
+            },
+            'turn-footer__overflow-item--danger',
+          )}
+      </>
+    );
+  };
   if (inline)
     return (
       <fieldset className="message-details__menu" aria-label="Message actions">

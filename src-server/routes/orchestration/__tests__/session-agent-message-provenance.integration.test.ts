@@ -12,9 +12,11 @@
  * `sendTurn` with the exact `clientOrigin` the route hands it, which is the
  * hand-off `continueExecutionTargetMessage` makes.
  */
+
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
@@ -56,6 +58,7 @@ class FixtureEngine implements ProviderAdapterShape {
     displayName: 'Claude fixture',
     description: 'fixture',
     capabilities: ['agent-runtime'],
+    durability: STEERING_ENGINE_DURABILITY,
     engineId: engineId('claude'),
     builtin: true,
   };
@@ -391,7 +394,11 @@ describe('#3419 an agent message carries who sent it', () => {
       (rows) => rows.length === 2,
     );
     const steer = starts.find((start) => start.inputKind === 'steer');
-    expect(unframeAgentMessage(steer?.prompt ?? '')).toBe('Skip the lockfile.');
+    expect(
+      unframeAgentMessage(
+        typeof steer?.prompt === 'string' ? steer.prompt : '',
+      ),
+    ).toBe('Skip the lockfile.');
     expect(steer?.clientOrigin?.sender).toMatchObject({
       sessionId: 'sender-session',
       requestKey: 'request-key-steer-1',

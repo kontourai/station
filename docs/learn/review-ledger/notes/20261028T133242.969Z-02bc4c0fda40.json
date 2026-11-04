@@ -1,0 +1,9 @@
+{
+  "revision": "acd72851c598686b5867780ded66c7bed560adb9",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Rechecked against this change: module-map.md gains one sentence in the delegated-results paragraph about an interrupted result row. This file routes agents to module-map.md for module ownership and makes no claim about delegated result rows, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Rechecked against this change: module-map.md gains one sentence in the delegated-results paragraph about an interrupted result row. This file routes agents to module-map.md for module ownership and makes no claim about delegated result rows, so it stays accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

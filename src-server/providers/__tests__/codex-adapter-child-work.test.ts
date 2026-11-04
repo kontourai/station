@@ -17,6 +17,7 @@ import { describe, expect, test } from 'vitest';
 import {
   CODEX_CHILD_PENDING_BYTES_MAX,
   codexChildHeldStats,
+  codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
   SETTLED_AWAITING_OWN_TERMINAL_MAX,
@@ -352,6 +353,7 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     // #2486 review: the control is offered the moment a target exists.
     expect(child(before.events).controls).toEqual({
       stop: 'provider-task-stop',
+      steer: { turnId: '00000000-0000-7000-8000-000000000005' },
     });
 
     const after = replayCodexCapture(capture, { limit: childDone + 1 });
@@ -361,6 +363,35 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     expect(codexRunningChildTurns(after.record)).toEqual([]);
     // #2486 review: and the control goes with it — never survives a settle.
     expect(child(after.events).controls).toBeUndefined();
+  });
+
+  test('v2 stays unsupported after v1 enrichment; unknown and stale targets are refused', () => {
+    const start: Msg = {
+      method: 'turn/started',
+      params: { threadId: CHILD, turn: { id: 'child-turn' } },
+    };
+    const activity = parentItem('completed', {
+      type: 'subAgentActivity',
+      id: 'activity',
+      kind: 'started',
+      agentThreadId: CHILD,
+      agentPath: '/root/child',
+    });
+    const v2 = replayCodexCapture(synthetic([activity, start, spawn()]));
+    expect(codexChildSteerTarget(v2.record, CHILD, 'child-turn')).toBe(
+      'unsupported',
+    );
+    expect(child(v2.events).controls).toEqual({ stop: 'provider-task-stop' });
+    const unknown = replayCodexCapture(synthetic([wait('running'), start]));
+    expect(codexChildSteerTarget(unknown.record, CHILD, 'child-turn')).toBe(
+      'unsupported',
+    );
+    expect(codexChildSteerTarget(v2.record, 'other-child', 'child-turn')).toBe(
+      'no-active-task',
+    );
+    expect(codexChildSteerTarget(v2.record, CHILD, 'old-turn')).toBe(
+      'no-active-task',
+    );
   });
 
   test('#2486: a child registered but whose own turn/started has not yet arrived has no target turn id — nothing may guess one', () => {
@@ -413,7 +444,7 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     expect(deltasOf(events)).toEqual([]);
   });
 
-  test('session end with the child still open settles it unresolved, before session.exited', async () => {
+  test('a requested session stop is no interruption: a child still open settles unresolved, before session.exited', async () => {
     const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
     const childDone = capture.findIndex((line) => {
       const { msg } = JSON.parse(line);
@@ -422,7 +453,10 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     const replay = replayCodexCapture(capture, { limit: childDone });
     expect(child(replay.events).status).toBe('running');
     await replay.stop();
-    expect(child(replay.events).status).toBe('unresolved');
+    // #4266: Station reaped the app-server because a stop was requested, so
+    // the child reads "No result", as Claude's does, never interrupted.
+    expect(child(replay.events)).toMatchObject({ status: 'unresolved' });
+    expect(child(replay.events).endedBy).toBeUndefined();
     const settleAt = replay.events.findIndex(
       (event) =>
         event.method === 'child-work.updated' && event.delta.kind === 'settle',
@@ -461,6 +495,82 @@ describe('#2458 Codex subagents as child work — real captures', () => {
       result: { summary: 'done' },
     });
     expect(codexCaptureIds(reordered).parentThreadId).toBe(PARENT);
+  });
+});
+
+describe('Codex child transcripts: a codex-thread ref from the spawn on', () => {
+  const HOME = '/home/user/.codex';
+  const ref = { kind: 'codex-thread', threadId: CHILD, configHome: HOME };
+
+  test.each([
+    ['v1 spawnAgent', CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED],
+    ['v2 subAgentActivity', CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED],
+  ])(
+    '%s: the running child already names its own thread under the session home',
+    (_label, capture) => {
+      // Stop just before the child's own turn/completed: it is still running.
+      const childDone = capture.findIndex((line) => {
+        const { msg } = JSON.parse(line);
+        return msg.method === 'turn/completed' && msg.params.threadId === CHILD;
+      });
+      expect(childDone).toBeGreaterThan(0);
+      const running = replayCodexCapture(capture, {
+        limit: childDone,
+        codexHome: HOME,
+      });
+      expect(child(running.events)).toMatchObject({
+        status: 'running',
+        transcript: ref,
+      });
+      // The ref is on the delta the adapter published, not only the fold.
+      expect(
+        deltasOf(running.events).some(
+          (delta) =>
+            delta.kind === 'snapshot' &&
+            delta.running.some(
+              (item) =>
+                item.childId === CHILD &&
+                item.transcript?.kind === 'codex-thread',
+            ),
+        ),
+      ).toBe(true);
+      // And the settle keeps it.
+      const settled = replayCodexCapture(capture, { codexHome: HOME });
+      expect(child(settled.events)).toMatchObject({
+        status: 'completed',
+        transcript: ref,
+      });
+    },
+  );
+
+  test('a session with no recorded home offers no transcript rather than guess one', () => {
+    const { events } = replayCodexCapture(CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED);
+    expect(child(events).transcript).toBeUndefined();
+  });
+
+  test('a child first named by a `wait`, not a spawn, carries the ref too', () => {
+    const { events } = replayCodexCapture(synthetic([wait('running')]), {
+      codexHome: HOME,
+    });
+    expect(child(events)).toMatchObject({ status: 'running', transcript: ref });
+  });
+
+  test('a running child stays fresh: its own token usage bumps the item', () => {
+    const { events } = replayCodexCapture(
+      synthetic([spawn(), childUsage(10), childUsage(25)]),
+      { codexHome: HOME },
+    );
+    const usageUpserts = deltasOf(events).filter(
+      (delta) => delta.kind === 'upsert' && delta.item.childId === CHILD,
+    );
+    // Each report reaches clients as its own change, which is what the
+    // transcript viewer's `revision` re-reads on.
+    expect(
+      usageUpserts.map(
+        (delta) => (delta as { item: ChildWorkItem }).item.usage,
+      ),
+    ).toEqual([{ totalTokens: 10 }, { totalTokens: 25 }]);
+    expect(child(events)).toMatchObject({ status: 'running', transcript: ref });
   });
 });
 
@@ -681,6 +791,63 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
       parent: { taskId: CHILD, toolCallId: 'nested-call' },
     });
     expect(child(v1.events).depth).toBe(1);
+  });
+
+  test('nested v1 child belongs only to the session that observed its parent spawn', () => {
+    const grandchild = 'grandchild-thread';
+    const nested: Msg = {
+      method: 'item/completed',
+      params: {
+        threadId: CHILD,
+        turnId: 'child-turn',
+        item: collab('spawnAgent', {
+          senderThreadId: CHILD,
+          receiverThreadIds: [grandchild],
+        }),
+      },
+    };
+    const started: Msg = {
+      method: 'turn/started',
+      params: { threadId: grandchild, turn: { id: 'grandchild-turn' } },
+    };
+    const owned = replayCodexCapture(synthetic([spawn(), nested, started]));
+    expect(
+      codexChildSteerTarget(owned.record, grandchild, 'grandchild-turn'),
+    ).toBe('ready');
+    const unowned = replayCodexCapture(synthetic([nested, started]));
+    expect(
+      codexChildSteerTarget(unowned.record, grandchild, 'grandchild-turn'),
+    ).toBe('no-active-task');
+    const wrongSender = replayCodexCapture(
+      synthetic([
+        parentItem(
+          'completed',
+          collab('spawnAgent', { senderThreadId: 'other-parent' }),
+        ),
+        {
+          method: 'turn/started',
+          params: { threadId: CHILD, turn: { id: 'child-turn' } },
+        },
+      ]),
+    );
+    expect(codexChildSteerTarget(wrongSender.record, CHILD, 'child-turn')).toBe(
+      'no-active-task',
+    );
+    const self = replayCodexCapture(
+      synthetic([
+        parentItem(
+          'completed',
+          collab('spawnAgent', { receiverThreadIds: [PARENT] }),
+        ),
+        {
+          method: 'turn/started',
+          params: { threadId: PARENT, turn: { id: 'parent-turn' } },
+        },
+      ]),
+    );
+    expect(codexChildSteerTarget(self.record, PARENT, 'parent-turn')).toBe(
+      'no-active-task',
+    );
   });
 
   test('thread/started with a subAgent thread_spawn source registers the child', () => {

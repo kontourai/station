@@ -52,8 +52,8 @@ work after that choice; it does not proceed into engine or personalization
 questions or mark the optional setup run complete. **Personalize Station** opens
 that run explicitly after the work entry.
 
-New chat opens the start composer (Agent and project chips, Start) and recent
-chats from the selected workspace. A setup helper appears when the
+New chat opens the start composer (Agent and project chips, Start) as a draft
+in the chat dock. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or Model setup.
 For the built-in Station assistant, **Choose AI for Station** opens the existing
@@ -369,6 +369,10 @@ rollback can remain `compensation-required`, and an uncertain commit remains unr
 until the same intent is reconciled. A request failure does not prove the prior provider
 process or credential binding was restored. The original archive#1247 stack relationship is
 history, not a current prerequisite or application fallback.
+
+Automatic staging waits until startup reconciliation succeeds. An unreadable scan or
+unresolved obligation blocks staging across connections; the coordinator retries an
+armed recovery while it remains running. Exact scoped cleanup can still proceed.
 
 **Accepted gaps (disclosed, not defects — security review rounds 2-4, orchestrator-accepted):**
 

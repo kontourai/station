@@ -1,0 +1,17 @@
+{
+  "revision": "362d5accfedfbc18eb2629b5646f873da643064c",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Compared knowledgeStores flag and Agent configuration claims with conversation bootstrap owner callback and plugin command route: flag still creates only the personal root and does not gate all APIs; read filtering and Project requirements introduce no setting. No live configuration journey run.","inputs":["docs/reference/config.md","src-server/knowledge-store/conversation-root-bootstrap.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compared contracts ownership and Task/Project authorization caveats with runtime deltas: Project/Task plugin requirement checks and conversation Knowledge filtering are runtime authority, not new contract grammar or authority from parsers. No contract suite rerun.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Compared native enrollment, consent, home and Project-sharing environment descriptions with runtime deltas: plugin command Project read and conversation Knowledge owner callback introduce no environment option or change defaults. No deployment started.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared plugin command client refusal-as-value and API reference routing with Project/Task read admission, and SDK Knowledge interface claims with file transaction Windows sync change: public SDK shapes remain unchanged; the detailed API and module map carry the new limits. No packed SDK or live client run.","inputs":["docs/reference/sdk.md","src-server/knowledge-store/adapters/shared/file-transactions.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Compared Session read authority, continuation and evidence contracts with plugin command requirement route delta: Project/Task admission is separate from foreground Session execution and does not widen session reads. No provider continuation run.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Compared account-bound Knowledge isolation, plugin command effects and operator/device authority descriptions with runtime route delta: Project and Task requirements now require caller Project read and absent/unreadable outcomes converge; command effects still operate on installed code and confer no broader authority. No penetration or two-person journey run.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

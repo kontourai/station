@@ -28,6 +28,7 @@ import {
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
 import type { NavigationView } from '../../types';
+import { withConversationInventory } from './conversation-inventory-facts';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
@@ -114,18 +115,7 @@ function useHomeWorkData(): HomeWorkData {
       remoteEnvironments,
       resolveModelLabel,
     });
-    return items.map((item) => {
-      const conversation = inventoryById.get(item.id);
-      if (!conversation) return item;
-      const acknowledgedAt = conversation.acknowledgedAt
-        ? Date.parse(conversation.acknowledgedAt)
-        : Number.NaN;
-      return {
-        ...item,
-        conversationUpdatedAt: conversation.updatedAt,
-        ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-      };
-    });
+    return withConversationInventory(items, inventoryById);
   }, [
     agents,
     inventoryById,

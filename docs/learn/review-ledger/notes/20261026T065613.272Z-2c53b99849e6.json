@@ -1,0 +1,7 @@
+{
+  "revision": "40878034b4ee7a711b560caf5b9bc72f05a0a8ed",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed the changed environment-security keeper citation in docs/reference/connect.md against committed 40878034b4ee7a711b560caf5b9bc72f05a0a8ed. The stable environment identity across endpoint changes, identity-preserving credential rotation and identity-reset distinction remain owned by unchanged EnvironmentSecurityService production code and retained assertions. This test-only diagnostic forwards real canonical lock stats and preserves Promise.all12, all 30 test declarations, security refusals and deadlines; no public pairing, credential, admission or persistence contract changed, so no prose change is needed for these in-scope claims. Original and instrumented focused suites each passed30; server-test types and scoped Biome passed after canonical station-connect build. Real extra-hardlink plus140 native stats produced one intended guard failure/29controls, safe128-entry receipt from142 observations with truncation and opaque aliases; exact restoration returned30PASS. The first control showed attached Error data was not emitted by Vitest, corrected by safe Station logger output. Historical Linux race cause remains unproven. This scoped note does not approve unrelated native, provider, account, release or runtime claims in the reference.","inputs":["docs/reference/connect.md","src-server/services/ssh/__tests__/environment-security-service.test.ts"]}
+  ]
+}

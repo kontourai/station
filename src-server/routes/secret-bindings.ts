@@ -258,6 +258,40 @@ async function respondBindingMutation(
       }),
     );
   }
+  if (input.kind === 'mcp-integration-oauth-client') {
+    // Spent at a remote token endpoint, never in a command's environment, so
+    // the command-choice gate does not apply.
+    const allowed = ['kind', 'integrationId', 'expectedRevision'];
+    if (Object.keys(input).some((key) => !allowed.includes(key)))
+      return c.json(
+        { success: false, error: 'Invalid OAuth client secret binding.' },
+        400,
+      );
+    if (!consumers)
+      return c.json(
+        {
+          success: false,
+          error: 'Secret binding consumer service unavailable.',
+        },
+        503,
+      );
+    return respond(
+      c,
+      () =>
+        consumers[
+          operation === 'bind'
+            ? 'bindOAuthClientSecret'
+            : 'unbindOAuthClientSecret'
+        ]({
+          id,
+          integrationId: input.integrationId as string,
+          expectedRevision: input.expectedRevision as number,
+          ...(viewer ? { viewer } : {}),
+        }),
+      200,
+      true,
+    );
+  }
   if (input.kind !== 'acp-provider-header') {
     // Attaching a value to a command's environment chooses that command's
     // environment; detaching one only removes it.

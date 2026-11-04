@@ -202,8 +202,6 @@
 
     "src-server/services/orchestration/session-transcript-reads.ts",
 
-    "src-server/services/terminal/terminal-ws-server.ts",
-
     "src-server/tools/station-control-catalog-tools.ts",
 
     "src-server/tools/station-control-delegation.ts",
@@ -408,7 +406,29 @@
 
     "src-server/runtime/mcp/station-control-mcp-token.ts",
 
-    "src-server/services/plugins/tool-server-oauth.ts"
+    "src-server/services/plugins/tool-server-oauth.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/orchestration/credential-recovery-module.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/providers/adapters/codex-models.ts",
+
+    "src-server/providers/__tests__/codex-adapter.test.ts",
+
+    "src-server/services/connections/connection-service-helpers.ts",
+
+    "src-server/services/connections/__tests__/connection-service-helpers.pure.test.ts",
+
+    "packages/contracts/src/tool.ts"
   ],
 
   "checks": [

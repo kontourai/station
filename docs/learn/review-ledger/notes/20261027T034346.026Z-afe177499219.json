@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Re-read the sidebar footer paragraph against ProjectSidebarFooter.tsx/.css: Schedule and Customize left, icon-only Updates then profile button right, no Live work or Settings gear, collapsed rail utilities popup. Only CSS change was removing the dead .sidebar__update:empty rule (UpdatesControl always renders a button). No prose change.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/project-sidebar/ProjectSidebarFooter.css"]}
+  ]
+}

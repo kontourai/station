@@ -1,0 +1,61 @@
+{
+  "revision": "37932c3f6a5f7cf2060cf781ca8821d765089800",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Reviewed against this change: ci:fast, verification-policy-gate and docs:truth:gate each gain one member, npm run cli-mcp:parity:check, and the resource manifest classifies its child-process test. This document does not enumerate those lanes' members, and nothing it states about them changed.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"Reviewed against this change: ci:fast, verification-policy-gate and docs:truth:gate each gain one member, npm run cli-mcp:parity:check, and the resource manifest classifies its child-process test. This document does not enumerate those lanes' members, and nothing it states about them changed. docs:truth:gate is still described accurately as the documentation-truth lane.","inputs":[".veritas/README.md","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"AGENTS.md","note":"Added one Start-here bullet: a new Station Control tool or CLI action needs a counterpart or exemption in scripts/cli-mcp-parity.json, linking the development guide section. Checked the file exists, the anchor resolves, and agent-instructions-gate budgets still pass.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Still imports AGENTS.md; the AGENTS.md change adds one parity-manifest bullet and the import is unaffected.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"README.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed against the development guide change: a new CLI and Station Control parity subsection under CLI Reference. No module, owner or path the module map names moved.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed against this change: package.json gains only the cli-mcp:parity:check script and the docs:foundations:test file list gains cli-mcp-parity.test.ts. No script this document names was renamed, removed or changed in behavior.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed against the development guide change: only a new CLI and Station Control parity subsection was added; the lifecycle and supervisor sections this document cites are unchanged.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed against this change: package.json gains only the cli-mcp:parity:check script and the docs:foundations:test file list gains cli-mcp-parity.test.ts. No script this document names was renamed, removed or changed in behavior.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed against this change: ci:fast, verification-policy-gate and docs:truth:gate each gain one member, npm run cli-mcp:parity:check, and the resource manifest classifies its child-process test. This document does not enumerate those lanes' members, and nothing it states about them changed.","inputs":["docs/guides/code-quality.md","AGENTS.md","package.json#/scripts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed against this change: package.json gains only the cli-mcp:parity:check script and the docs:foundations:test file list gains cli-mcp-parity.test.ts. No script this document names was renamed, removed or changed in behavior.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Added the CLI and Station Control parity subsection. Checked each claim against scripts/cli-mcp-parity.mjs: the three classifications, EXEMPT_CATEGORIES, the app section rule (covered only with both counterparts, outside the ratchet), sorted keys, the failure list, the name-keyed merge-base ratchet, membership of ci:fast and docs:truth:gate, and the stated limits (no app route or same-route check).","inputs":["docs/guides/development.md","package.json#/scripts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed against this change: ci:fast, verification-policy-gate and docs:truth:gate each gain one member, npm run cli-mcp:parity:check, and the resource manifest classifies its child-process test. This document does not enumerate those lanes' members, and nothing it states about them changed.","inputs":["docs/guides/feature-previews.md","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed against this change: package.json gains only the cli-mcp:parity:check script and the docs:foundations:test file list gains cli-mcp-parity.test.ts. No script this document names was renamed, removed or changed in behavior.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed against this change: ci:fast, verification-policy-gate and docs:truth:gate each gain one member, npm run cli-mcp:parity:check, and the resource manifest classifies its child-process test. This document does not enumerate those lanes' members, and nothing it states about them changed. The generated verification schedule comes from verification-lanes.mjs, which this change does not touch.","inputs":["docs/guides/testing.md","docs/guides/development.md","package.json#/scripts","scripts/__tests__/guardrail-execution-coverage.test.ts","scripts/__tests__/run-ci-fast.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/cli.md","note":"Updated the approvals section: list usage marks --agent optional, the prose says the read-model scan covers every thread unless --agent narrows it to that provider, and a no-agent example was added. Checked against approvals.ts runApprovalsList/listPendingForProvider and the new core-http test.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/core-http.test.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed against this change: package.json gains only the cli-mcp:parity:check script and the docs:foundations:test file list gains cli-mcp-parity.test.ts. No script this document names was renamed, removed or changed in behavior.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed against this change: run-ci-fast.test.ts only pins the new cli-mcp:parity:check static command. No browser-smoke command or claim changed.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed against this change: the vitest resource manifest only classifies scripts/__tests__/cli-mcp-parity.test.ts. No agent-runtime test classification changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed against this change: approvals list now treats --agent as optional and reads every session when it is omitted; help.ts detail now shows the real --agent/--thread/--watch flags and the thread id respond takes. No verb heading, verb or other usage line this document cites changed.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/__tests__/core-http.test.ts","packages/cli/src/help.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed against the development guide change: only a new CLI and Station Control parity subsection was added; nothing about the shared package changed.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed against this change: the new child-process test is classified in vitest-resource-manifest.mjs as this file requires, and the new spawn passes windowsHide. Its rules are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed against the development guide change: only a new CLI and Station Control parity subsection was added; the lifecycle and security conventions this file routes to are unchanged.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

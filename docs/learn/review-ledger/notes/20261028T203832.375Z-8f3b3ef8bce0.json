@@ -1,0 +1,39 @@
+{
+  "revision": "e787f354eacc1000e31ce79787a17b5b1cf1441c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Review round 1 fix: Continue now goes through useChatInput.sendComposedMessage -> sendMessage({ preserveComposer: true }); added that the draft, quotes, attachments and visual skill stay, a refusal restores nothing and a running turn makes it send nothing (not steer or queue). Checked against useActiveChatSessionMessaging (clearInput, attachment reset, submittedDraft, busy branch, skill-draft refusal all gated on preserveComposer) and the ChatDockBody identity lookup.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Added that anything being written stays in the composer, matching sendComposedMessage/preserveComposer; the rest of the continue-interrupted-turn row and paragraph re-read against the registry and ChatDockBody gate.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Added the composed-message exception: Continue's send writes the same invoking outbox row under its derived key (the attachment-stage condition is skipped for it), but a refusal hands nothing back and a running turn makes it not send, steer or queue (preserveComposer joins skipInMemoryQueueOnBusy's no-op return). Ordinary composer sends, the queue drain and the delivery lookup are unchanged.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Re-read after the settings.md wording change; the UI-only preview paragraph and the rest of the guide still match the registry and docs check.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"sendMessage gained an optional preserveComposer flag used only by Continue; routing of managed chat through orchestration is unchanged.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"useActiveChatSessionMessaging keeps its role as the chat send owner; the new preserveComposer option and useChatInput.sendComposedMessage add no module or dependency edge.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Form submission re-entry still uses the ordinary send without preserveComposer; the new option changes nothing described here.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"No settings read or write changed in useActiveChatSessionMessaging; the approval-mode defaulting paths are untouched by preserveComposer.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Slash-command handling in sendMessage is unchanged; Continue's fixed text never starts with '/'.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDockBody now calls sendComposedMessage for Continue; no configuration key or file changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"No contracts change in the fix round: preserveComposer is a UI send option; the request body shape (message, clientTurnId, attachments) is the existing foreground contract.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"No SDK export changed: sendComposedMessage and preserveComposer are src-ui internals over the existing sendExecutionMessage; clientTurnId rules here still hold for the continue-interrupted key.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The send still uses the foreground chat route and delivery lookup by clientTurnId; Continue's derived key is an ordinary caller-owned key under the documented 200-unit bound.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"A composed message never carries the composer's visual skill and is not refused by its draft (preserveComposer skips the experience-draft gate); ordinary sends keep the documented explicit-send refusal unchanged.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDockBody's Continue now uses the composed send; no concept described here changes.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Ordinary composer sends (handleSend) are back to their original behavior; sendComposedMessage is only Continue's. No getting-started flow changes.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"No SDK package change; the README's chat send description is unaffected by the src-ui preserveComposer option.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

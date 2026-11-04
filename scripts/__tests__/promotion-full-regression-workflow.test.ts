@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 import { runnerProfile } from '../release-pipeline.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
@@ -63,6 +64,20 @@ function githubExpression(expression: string): string {
 }
 
 describe('promotion full-regression workflow', () => {
+  test.each(['exclusive', 'process-heavy'])(
+    '%s installs verified pnpm without its redundant managed Node runtime',
+    (jobId) => {
+      const job = workflow('full-regression.yml').jobs?.[jobId] ?? {};
+      const setup = namedStep(job, 'Setup pinned pnpm');
+      expect(setup.uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
+      expect(setup.with).toBeUndefined();
+      const steps = job.steps ?? [];
+      expect(steps.indexOf(setup)).toBeLessThan(
+        steps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+      );
+    },
+  );
+
   test('qualifies every canonical phase against one immutable source without cancelling siblings', () => {
     const reusable = workflow('full-regression.yml');
     expect(Object.keys(reusable.on ?? {})).toEqual(['workflow_call']);

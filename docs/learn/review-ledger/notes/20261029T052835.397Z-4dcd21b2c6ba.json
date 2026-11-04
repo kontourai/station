@@ -1,0 +1,9 @@
+{
+  "revision": "cb16519d49312b9f9671c9e75d9ff0d2b5a1bf56",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rechecked: owned-process.mjs now keeps the coordinator's exact identity once resolved (per pid; a miss is not kept), so the retrying own-process lookup runs once per process. The portable-floor and owned-command runner paragraphs make no claim about how often the coordinator identity is resolved, so they stay accurate.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rechecked: owned-process.mjs caches the coordinator's exact identity once resolved; the rule to reuse owned-process.mjs for process-tree ownership and bounded output is unchanged.","inputs":["scripts/AGENTS.md","scripts/lib/owned-process.mjs"]}
+  ]
+}

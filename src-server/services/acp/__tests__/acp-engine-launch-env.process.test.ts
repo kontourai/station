@@ -11,6 +11,10 @@ import {
   clearAll,
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTmpDirPath,
+} from '../../infra/session-tmpdir.js';
 import { ACPProbe } from '../acp-probe.js';
 
 /**
@@ -203,5 +207,53 @@ describe('engine descriptor launch environment', () => {
     expect(launches(recordPath)).toEqual([
       { descriptorOnly: null, userWins: 'user' },
     ]);
+  });
+
+  test('chat-host-images: a session the preview admits launches with its own TMPDIR', async () => {
+    const dir = makeTempDir('station-launch-tmpdir-');
+    const home = makeTempDir('station-launch-tmpdir-home-');
+    const tmpRecord = join(dir, 'tmpdir.jsonl');
+    writeFileSync(tmpRecord, '');
+    const script = join(dir, 'record-tmpdir.mjs');
+    writeFileSync(
+      script,
+      `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(tmpRecord)}, JSON.stringify(process.env.TMPDIR ?? null) + '\\n');\n`,
+    );
+    const launcher = join(dir, 'stub-engine');
+    writeFileSync(
+      launcher,
+      `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`,
+    );
+    chmodSync(launcher, 0o755);
+    const previousHome = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(
+      (threadId) => threadId === 'tmpdir-thread',
+    );
+    try {
+      const adapter = new AcpAdapter({
+        getConnections: async () => [{ ...connection, command: launcher }],
+        logger: silentLogger,
+      });
+      await adapter
+        .startSession({
+          provider: 'acp',
+          threadId: 'tmpdir-thread',
+          cwd: makeTempDir('station-launch-tmpdir-cwd-'),
+          confinement: 'host',
+          metadata: { connectionId: 'stub' },
+        } as never)
+        .catch(() => undefined);
+      await adapter.stopAll();
+      const recorded = readFileSync(tmpRecord, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      expect(recorded[0]).toBe(sessionTmpDirPath('tmpdir-thread', home));
+    } finally {
+      uninstall();
+      if (previousHome === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previousHome;
+    }
   });
 });

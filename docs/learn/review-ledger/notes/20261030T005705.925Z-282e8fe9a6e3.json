@@ -1,0 +1,7 @@
+{
+  "revision": "ab11ddf41b3dc4b63188a41afb7c0a8603cdeb37",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed merged OAuth own-client and curated MCP journeys against Station runtime capability registration, locked plugin publisher, CLI import and registry binding stripping. Publisher validates install/update/rollback/restore under integration locks; bundles cannot supply binding refs or Station sidecars; current instance identity survives valid publication. Local boundary proof only; live provider and release behavior remain unverified.","inputs":["docs/guides/connections.md"]}
+  ]
+}

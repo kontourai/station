@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Source-impact review: the SDK reference says an empty scope choice requests the server's scopes. Searched this document for MCP tool-server OAuth client, issuer, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

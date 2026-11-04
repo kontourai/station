@@ -108,7 +108,11 @@
 
     "scripts/fallow-baseline.mjs",
 
-    "scripts/agent-instructions-manifest.mjs"
+    "scripts/agent-instructions-manifest.mjs",
+
+    "scripts/a11y-ratchet.mjs",
+
+    "scripts/__tests__/a11y-ratchet.test.ts"
   ],
 
   "checks": [

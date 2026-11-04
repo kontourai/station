@@ -1,0 +1,17 @@
+{
+  "revision": "30facf334c476bbd60f4af03caf785cc54a1c823",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Second fix round: the protection bound and swap-ban threshold are now stated against the kernel's MemTotal, which is what totalmem() reads; it is a little under installed RAM. Examples now say '1536 MiB at 16 GiB, 512 MiB at 4 GiB, 256 MiB at 2 GiB'. The swap-ban bullet says it puts no ceiling on how much the server keeps resident, so smaller hosts get MemorySwapMax=infinity. Matches controlPlaneProperties and the boundary tests (12 GiB gives 0; 12 GiB minus 1 MiB or 1 byte gives infinity).","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after the second fix round: the fixture now also asserts boot's MemorySwapMax. The paragraph's description of the fixture and its deferral to the development guide stay accurate, and it states no protection values.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Re-checked after the second fix round: no protection values or fixture claims; still accurate.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-checked after the second fix round: it only links to the workload budgets section and makes no fixture or protection claims.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Re-checked after the second fix round: the child-workload leaf is unchanged.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked after the second fix round: no new launch, route or console call.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

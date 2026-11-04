@@ -66,7 +66,7 @@ interface ChatDockProjectContextProps {
    * The directory this destination names, for its tooltip. station#1146: for
    * a started session this is the SESSION's own resolved `cwd` — see
    * `useChatDockViewModel`'s `sessionDisplayCwd`. A path is something you
-   * occasionally paste ("Copy project path" in the More menu), not something
+   * occasionally paste ("Copy folder path" in the More menu), not something
    * you read continuously, so it is never a visible segment (#1536 F).
    */
   workingDirectory: string | null;

@@ -37,8 +37,30 @@ describe('device pairing request actions (#765 D5)', () => {
 
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       'http://station.test/api/pairing/requests/req-1/confirm',
-      { method: 'POST' },
+      { method: 'POST', credentials: 'include' },
     );
+  });
+
+  it('reports passkey review as pending rather than completed', async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'step_up_required',
+          transaction: {
+            id: 'review-1',
+            reviewUrl: 'https://station.test:8443/consent/review-1',
+            expiresAt: 42,
+          },
+        }),
+        { status: 202 },
+      ),
+    );
+    await expect(
+      confirmDevicePairingRequest('req-1', 'https://station.test'),
+    ).rejects.toMatchObject({
+      status: 202,
+      transaction: { id: 'review-1' },
+    });
   });
 
   it('deny DELETEs the existing pairing request route', async () => {
@@ -96,7 +118,7 @@ describe('device pairing request actions (#765 D5)', () => {
 
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       'http://station.test/api/pairing/requests/req%2F..%2Fx/confirm',
-      { method: 'POST' },
+      { method: 'POST', credentials: 'include' },
     );
   });
 });

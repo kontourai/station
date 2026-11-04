@@ -57,19 +57,33 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
   test('reports the real resolver sentence when no model connection is configured', async () => {
     const requirement = await readStationSetupRequirement(
       contextWith({
+        agents: [{ slug: 'researcher', name: 'Researcher' }],
+        specs: { researcher: { name: 'Researcher', model: 'anthropic/opus' } },
+        connections: [],
+      }),
+    );
+
+    // The sentence is the resolver's, which is what makes it the same one the
+    // New Chat picker's row renders.
+    expect(requirement).toEqual({
+      agentSlug: 'researcher',
+      agentName: 'Researcher',
+      reason: 'No enabled LLM provider connection is configured.',
+    });
+  });
+
+  test('#4388: the optional built-in Station Agent without a provider is not attention', async () => {
+    // A fresh home: the built-in Agent has no model connection, and the
+    // person chats through Codex. Nothing here needs them.
+    const requirement = await readStationSetupRequirement(
+      contextWith({
         agents: [{ slug: 'station', name: 'Station' }],
         specs: { station: { name: 'Station', model: 'anthropic/opus' } },
         connections: [],
       }),
     );
 
-    // The sentence is the resolver's, which is what makes it the same one the
-    // New Chat picker's Station row renders.
-    expect(requirement).toEqual({
-      agentSlug: 'station',
-      agentName: 'Station',
-      reason: 'No enabled LLM provider connection is configured.',
-    });
+    expect(requirement).toBeNull();
   });
 
   test('reports nothing once an enabled LLM connection resolves', async () => {
@@ -140,7 +154,7 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
     const managed = { name: 'Managed', model: 'anthropic/opus' };
     const external = { execution: { agentConnectionId: 'claude-code' } };
 
-    test('prefers Station, whatever order the store listed', async () => {
+    test('passes over the built-in Station Agent to an authored one, whatever order the store listed', async () => {
       for (const agents of [
         [
           { slug: 'zeta', name: 'Zeta' },
@@ -148,26 +162,22 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
         ],
         [
           { slug: 'station', name: 'Station' },
-          { slug: 'alpha', name: 'Alpha' },
+          { slug: 'zeta', name: 'Zeta' },
         ],
       ]) {
         expect(
           await readStationSetupRequirement(
             contextWith({
               agents,
-              specs: {
-                station: managed,
-                zeta: managed,
-                alpha: managed,
-              },
+              specs: { station: managed, zeta: managed },
               connections: [],
             }),
           ),
-        ).toMatchObject({ agentSlug: 'station' });
+        ).toMatchObject({ agentSlug: 'zeta' });
       }
     });
 
-    test('without Station, the same candidate every time', async () => {
+    test('the same candidate every time', async () => {
       const shuffles = [
         [
           { slug: 'zeta', name: 'Zeta' },
@@ -309,8 +319,8 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
   test('the picker reason and the attention requirement follow a runtime default change together', async () => {
     let liveDefault: string | undefined;
     const context = contextWith({
-      agents: [{ slug: 'station', name: 'Station' }],
-      specs: { station: { name: 'Station', model: 'anthropic/opus' } },
+      agents: [{ slug: 'researcher', name: 'Researcher' }],
+      specs: { researcher: { name: 'Researcher', model: 'anthropic/opus' } },
       connections: twoConnections,
       liveDefaultLLMProvider: () => liveDefault,
     });

@@ -77,6 +77,7 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { runMcpClientsCommand } from './mcp-clients.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
 import { runProjectIdentityCommand } from './project-identity.js';
@@ -1253,6 +1254,15 @@ async function runSessionsCommand(
 ): Promise<void> {
   rejectRetiredExecutionSelectors(parsed);
   const action = requirePositional(parsed, 0, 'session action');
+
+  // #3427: the person's Session reads, by Session id rather than by Agent.
+  const personRead = SESSION_PERSON_READS[action];
+  if (personRead) {
+    const reads = await import('./session-reads.js');
+    await reads[personRead](apiBase, parsed);
+    return;
+  }
+
   const agentSlug = agentId(requirePositional(parsed, 1, 'agent'));
 
   if (action === 'inspect') {
@@ -1299,9 +1309,23 @@ async function runSessionsCommand(
   }
 
   throw new Error(
-    "Unknown sessions action. Use 'list', 'read', 'inspect', or 'interrupt'.",
+    `Unknown sessions action. ${describeValidActions('sessions')}`,
   );
 }
+
+/** `station sessions <action>` → its handler in `session-reads.ts`. */
+const SESSION_PERSON_READS: Record<
+  string,
+  | 'runSessionsWait'
+  | 'runSessionsDigest'
+  | 'runSessionsTranscript'
+  | 'runSessionsSearch'
+> = {
+  wait: 'runSessionsWait',
+  digest: 'runSessionsDigest',
+  transcript: 'runSessionsTranscript',
+  search: 'runSessionsSearch',
+};
 
 export async function runCoreCommand(
   command: string,
@@ -1310,6 +1334,11 @@ export async function runCoreCommand(
   const parsed = parseCoreArgs(normalizeTaskCreateArgs(command, args));
   const apiBase = resolveApiBase(parsed);
   configureApiCredential(parsed, apiBase);
+
+  if (command === 'mcp-clients') {
+    await runMcpClientsCommand(apiBase, parsed);
+    return;
+  }
 
   if (command === 'chat') {
     await runChat(parsed, apiBase);
@@ -1321,9 +1350,21 @@ export async function runCoreCommand(
     return;
   }
 
+  if (command === 'activity') {
+    const { runActivityCommand } = await import('./session-reads.js');
+    await runActivityCommand(apiBase, parsed);
+    return;
+  }
+
   if (command === 'conversation') {
     const { runConversationCommand } = await import('./conversation.js');
     await runConversationCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'claims') {
+    const { runClaimsCommand } = await import('./claims.js');
+    await runClaimsCommand(apiBase, parsed);
     return;
   }
 

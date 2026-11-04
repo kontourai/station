@@ -1,0 +1,20 @@
+.owned-work-cleanup {
+  display: grid;
+  justify-items: start;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+.owned-work-cleanup h3,
+.owned-work-cleanup ul,
+.owned-work-cleanup p {
+  margin: 0;
+}
+
+.owned-work-cleanup ul {
+  padding-left: var(--k-space-4);
+}

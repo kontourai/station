@@ -8,6 +8,7 @@ import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DockMoreAction } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import {
   type ChatDockMobileDockToggle,
+  type ChatDockMobileExtentToggle,
   ChatDockMobileHeader,
   type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
@@ -17,6 +18,22 @@ import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 // The switcher paints each project with the sidebar's colour
 // (`useProjectAccents`), which reads the Project list; this harness mounts
 // no query client for it.
+// The Conversation stats row reads the share through the stats query; this
+// harness mounts no query client, and the row's own derivation is under test,
+// not the query.
+const statsRead = vi.hoisted(() => ({
+  contextWindowPercentage: undefined as number | undefined,
+}));
+vi.mock('../contexts/StatsContext', () => ({
+  useStats: () => ({
+    stats:
+      statsRead.contextWindowPercentage === undefined
+        ? null
+        : { contextWindowPercentage: statsRead.contextWindowPercentage },
+    refetch: () => {},
+  }),
+}));
+
 vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
   useProjects: () => ({
@@ -87,7 +104,7 @@ function renderHeader(
     onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenInventory?: (trigger: HTMLElement) => void;
-    onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
+    onToggleInbox?: ReturnType<typeof vi.fn<() => void>>;
     sessionProjectMismatchLabel?: string | null;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
@@ -101,13 +118,23 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    conversationStats?: {
+      liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
+      onOpen: () => void;
+    };
     activeCount?: number;
     unreadCount?: number;
+    extentToggle?: ChatDockMobileExtentToggle | null;
+    hasConversation?: boolean;
+    inboxActive?: boolean;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
   renderWithIsolatedConnections(
     <ChatDockMobileHeader
+      inboxActive={overrides.inboxActive}
+      hasConversation={overrides.hasConversation}
+      extentToggle={overrides.extentToggle}
       showDrawerToggle={false}
       showConnection={overrides.showConnection ?? true}
       sessionTitle="New chat"
@@ -144,8 +171,8 @@ function renderHeader(
       }
       activeCount={overrides.activeCount ?? 0}
       unreadCount={overrides.unreadCount ?? 0}
-      taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
-      onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
+      inboxTriggerRef={createRef<HTMLButtonElement>()}
+      onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
       onToggleSidebar={vi.fn()}
       onDragPointerDown={vi.fn()}
       onDragClickCapture={vi.fn()}
@@ -169,6 +196,12 @@ function renderHeader(
         onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
         backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
         copyActions: overrides.copyActions,
+        conversationStats: overrides.conversationStats && {
+          agentSlug: 'codex',
+          conversationId: 'c-1',
+          apiBase: 'http://station.test',
+          ...overrides.conversationStats,
+        },
       }}
     />,
     { wrapper: NavigationProvider },
@@ -192,12 +225,13 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
-  test('keeps project and conversation switching directly reachable with readable context', () => {
-    const onOpenTaskSwitcher = vi.fn();
+  test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
+    const onToggleInbox = vi.fn();
     renderHeader({
-      onOpenTaskSwitcher,
+      onToggleInbox,
     });
-    const identity = screen.getByRole('button', { name: /^Chats and tasks/ });
+    const inbox = screen.getByRole('button', { name: 'Inbox' });
+    const identity = inbox.closest('.chat-dock__mobile-identity')!;
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -207,20 +241,13 @@ describe('mobile conversation focus', () => {
         .querySelector('.chat-dock__mobile-title-text')
         ?.getAttribute('title'),
     ).toBe('New chat');
-    fireEvent.click(identity);
-    expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
+    fireEvent.click(inbox);
+    expect(onToggleInbox).toHaveBeenCalledOnce();
     expect(
-      screen.getByRole('button', {
-        name: 'Switch project — New chats, Kontour AI',
-      }).textContent,
-    ).toContain('Kontour AI');
+      screen.queryByRole('button', { name: /^Switch project/ }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /^Switch project/ }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /^Chats and tasks/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
     renderHeader({ activeCount: 2, unreadCount: 1 });
@@ -251,6 +278,7 @@ describe('mobile conversation focus', () => {
     'opens the canonical project creation route from the picker',
     async ({ projects }) => {
       renderHeader({
+        agentIdentity: null,
         projectSwitcher: {
           projectSlug: '',
           projectName: 'Choose a project',
@@ -311,6 +339,7 @@ describe('mobile conversation focus', () => {
     const onOpenProject = vi.fn();
     const onSwitchProject = vi.fn();
     renderHeader({
+      agentIdentity: null,
       projectSwitcher: {
         projectSlug: 'kontour-ai',
         projectName: 'Kontour AI',
@@ -364,8 +393,9 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Chats and tasks — New chat' })
-        .textContent,
+      screen.getByText('New chat', {
+        selector: '.chat-dock__mobile-title-text',
+      }).textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
@@ -378,28 +408,26 @@ describe('mobile switcher names include their visible text', () => {
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .trim();
-  test.each([
-    ['the project switcher', /^Switch project/],
-    ['the chats and tasks switcher', /^Chats and tasks/],
-  ])('%s', (_label, name) => {
-    renderHeader({ sessionProjectMismatchLabel: 'This chat: Alpha' });
-    const button = screen.getByRole('button', { name });
-    const visible = words(button.textContent ?? '');
-    expect(visible.length).toBeGreaterThan(0);
-    expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
-  });
+  test.each([['the project switcher', /^Switch project/]])(
+    '%s',
+    (_label, name) => {
+      renderHeader({
+        agentIdentity: null,
+        sessionProjectMismatchLabel: 'This chat: Alpha',
+      });
+      const button = screen.getByRole('button', { name });
+      const visible = words(button.textContent ?? '');
+      expect(visible.length).toBeGreaterThan(0);
+      expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
+    },
+  );
 });
 
 /** #928 C2b retires occupant switching; primary context actions remain direct. */
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of [
-      'Collapse chat',
-      'Switch project — New chats, Kontour AI',
-      'Chats and tasks — New chat, Codex',
-      'Chat actions',
-    ]) {
+    for (const name of ['Collapse chat', 'Inbox', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });
@@ -484,6 +512,61 @@ describe('the ⋯ sheet’s Background tasks row (#2510)', () => {
 });
 
 /**
+ * The composer's context meter is easy never to see on a phone (the last chip
+ * of a sideways-scrolling row with no scrollbar, hidden while typing on a
+ * short screen), so the ⋯ sheet names it too and opens the same stats panel.
+ * Removing the row fails the first test; dropping the live observation's
+ * precedence or the stats fallback fails the second.
+ */
+describe('the ⋯ sheet’s Conversation stats row', () => {
+  beforeEach(() => {
+    statsRead.contextWindowPercentage = undefined;
+  });
+  test('names the context share and opens the stats panel', async () => {
+    const onOpen = vi.fn<() => void>();
+    renderHeader({
+      conversationStats: {
+        liveUsage: { contextTokens: 191_400, contextWindowTokens: 1_000_000 },
+        onOpen,
+      },
+    });
+    await openActions();
+    const row = await screen.findByRole('menuitem', {
+      name: 'Conversation stats — Context 19% used',
+    });
+    expect(row.getAttribute('aria-haspopup')).toBe('dialog');
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+  });
+  test('falls back to the stats read without a live observation', async () => {
+    statsRead.contextWindowPercentage = 42.4;
+    renderHeader({ conversationStats: { onOpen: vi.fn() } });
+    await openActions();
+    expect(
+      await screen.findByRole('menuitem', {
+        name: 'Conversation stats — Context 42% used',
+      }),
+    ).toBeTruthy();
+  });
+  test('reads plainly while the share is unknown', async () => {
+    renderHeader({ conversationStats: { onOpen: vi.fn() } });
+    await openActions();
+    expect(
+      await screen.findByRole('menuitem', { name: 'Conversation stats' }),
+    ).toBeTruthy();
+  });
+  test('offers no row where the composer shows no meter', async () => {
+    renderHeader();
+    await openActions();
+    await screen.findByRole('menuitem', { name: 'Chat settings' });
+    expect(
+      screen.queryByRole('menuitem', { name: /^Conversation stats/ }),
+    ).toBeNull();
+  });
+});
+
+/**
  * Desktop More-menu parity: the dock header's clipboard rows (Copy thread ID,
  * Copy session ID once diverged) live in the desktop ⋯ menu via
  * `useDockCopyActions`, and a coarse device has no tooltip to carry these
@@ -547,12 +630,84 @@ test('the phone chat actions offer New Task from this and dismiss the sheet befo
   ).toBeNull();
 });
 
-test('opens Inventory directly from the mobile bar without opening Chat actions', () => {
+test('opens Chat inventory from the actions sheet, not a third bar control', async () => {
   const open = vi.fn();
   renderHeader({ onOpenInventory: open });
-  const inventory = screen.getByRole('button', { name: 'Chat inventory' });
-  expect(inventory.textContent).toBe('Inventory');
-  fireEvent.click(inventory);
-  expect(open).toHaveBeenCalledWith(inventory);
-  expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+  // #4192: a third trailing control wrapped the bar onto a second line.
+  expect(screen.queryByRole('button', { name: 'Chat inventory' })).toBeNull();
+  await openActions();
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Chat inventory' }),
+  );
+  // Focus returns to ⋯, the control the reader started from.
+  expect(open).toHaveBeenCalledWith(
+    screen.getByRole('button', { name: 'Chat actions' }),
+  );
+  expect(screen.queryByRole('menuitem', { name: 'Chat inventory' })).toBeNull();
+});
+
+describe('full-screen and peek control (#4391)', () => {
+  test('a collapsed bar opens full screen with one size control', () => {
+    const onToggle = vi.fn();
+    renderHeader({
+      dockToggle: {
+        state: 'collapsed',
+        onExpand: vi.fn(),
+        onCollapse: vi.fn(),
+      },
+      extentToggle: { maximized: false, onToggle },
+    });
+    expect(
+      screen.getAllByRole('button', { name: 'Full screen chat' }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  test('an open dock shows a full-screen control that grows it', () => {
+    const onToggle = vi.fn();
+    renderHeader({ extentToggle: { maximized: false, onToggle } });
+    const control = screen.getByRole('button', { name: 'Full screen chat' });
+    expect(control.classList).toContain('chat-dock__mobile-header-icon');
+    fireEvent.click(control);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  test('a full-screen chat offers Restore chat size instead', () => {
+    renderHeader({ extentToggle: { maximized: true, onToggle: vi.fn() } });
+    expect(
+      screen.getByRole('button', { name: 'Restore chat size' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Full screen chat' })).toBe(
+      null,
+    );
+  });
+
+  test('no control without an open dock to resize', () => {
+    renderHeader({ extentToggle: null });
+    expect(screen.queryByRole('button', { name: 'Full screen chat' })).toBe(
+      null,
+    );
+  });
+});
+
+describe('first-run bar without a chat (#4404 A44)', () => {
+  test('offers New chat, not a pressed Back to chat or Chat actions', () => {
+    renderHeader({
+      hasConversation: false,
+      inboxActive: true,
+      showConnection: false,
+      agentIdentity: null,
+    });
+    expect(screen.queryByRole('button', { name: 'Back to chat' })).toBe(null);
+    expect(screen.queryByRole('button', { name: 'Chat actions' })).toBe(null);
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+  });
+
+  test('keeps Back to chat and Chat actions once a chat exists', () => {
+    renderHeader({ hasConversation: true, inboxActive: true });
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
+  });
 });

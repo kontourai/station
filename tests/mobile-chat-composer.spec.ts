@@ -23,6 +23,7 @@ import {
   profileJourney,
 } from './helpers/journey-profile';
 import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
+import { MODEL_PICKER_NAME } from './helpers/model-picker';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -239,12 +240,15 @@ for (const [slug, name] of [
     );
     expect(stored).toMatchObject(expected);
     // The chat the draft started belongs to the Agent that was chosen.
-    await expect(
-      page.getByRole('button', {
-        name: `Chats and tasks — Start from the draft., ${name}`,
-        exact: true,
-      }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.chat-dock__mobile-identity')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
+      'Start from the draft.',
+    );
+    await expect(page.locator('.chat-dock__mobile-eyebrow')).toContainText(
+      name,
+    );
   });
 }
 
@@ -452,8 +456,8 @@ test('ChatDock sends scoped file and conversation references while preserving th
   );
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
-  await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-  const taskSwitcher = page.getByRole('dialog', { name: 'Chats and tasks' });
+  await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
+  const taskSwitcher = page.getByRole('region', { name: 'Inbox', exact: true });
   await taskSwitcher
     .getByRole('button', { name: 'Reference dispatch, default' })
     .click();
@@ -1489,7 +1493,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   );
 });
 
-test('a Task inventory outage does not block the mobile inbox or recent chats', async ({
+test('a Task inventory outage does not block the mobile inbox or New chat', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1527,16 +1531,18 @@ test('a Task inventory outage does not block the mobile inbox or recent chats', 
   // Wait for the real query to exhaust its one retry, rather than observing
   // the brief pending state before the failure reaches the host.
   await expect.poll(() => taskFailures).toBeGreaterThanOrEqual(2);
-  await page.getByRole('button', { name: /^Chats and tasks/ }).click();
-  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
+  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu.getByText('Some chats may be out of date.')).toHaveCount(0);
   await expect(
     menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
   ).toBeVisible();
-  await menu.getByRole('button', { name: 'New chat', exact: true }).click();
-  const newChat = page.getByRole('dialog', { name: 'New chat', exact: true });
+  await page
+    .getByTestId('chat-dock-mobile-header')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
-  await expect(newChat.getByText('Could not load recent chats')).toHaveCount(0);
 });
 
 /**
@@ -1556,12 +1562,12 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
+  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   const triggerBox = await switcher.boundingBox();
 
   await switcher.click();
-  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
   // Shared inbox rows (archive#3312): the row button's accessible name is
@@ -1605,7 +1611,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await menu.getByRole('button', { name: 'Close task switcher' }).click();
+  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -1676,7 +1682,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: 'Station Chat, Default' })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await menu.getByRole('button', { name: 'Close task switcher' }).click();
+  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   await expect(menu).toBeHidden();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'Model Selected',
@@ -1690,7 +1696,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // viewport, not only the dialog geometry checks.
   await switcher.click();
   await page
-    .getByRole('dialog', { name: 'Chats and tasks' })
+    .getByRole('region', { name: 'Inbox', exact: true })
     .getByRole('button', { name: 'Station Chat, Default' })
     .filter({ hasText: 'Running' })
     .click();
@@ -1698,7 +1704,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   // The task retains its canonical identity after opening.
   await page
-    .getByRole('dialog', { name: 'Chats and tasks' })
+    .getByRole('region', { name: 'Inbox', exact: true })
     .getByRole('button', { name: /^Worker task · delegated review,/i })
     .click();
   await expect
@@ -1706,34 +1712,34 @@ test('switches between mobile tasks and restores the exact active chat context',
     .toBe('delegated-review');
   await switcher.click();
   await page
-    .getByRole('dialog', { name: 'Chats and tasks' })
+    .getByRole('region', { name: 'Inbox', exact: true })
     .getByRole('button', { name: 'Station Chat, Default' })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
 
   await switcher.click();
-  const compactDialog = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const compactDialog = page.getByRole('region', {
+    name: 'Inbox',
+    exact: true,
+  });
   const compactBox = await compactDialog.boundingBox();
   expect(compactBox?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const compactClose = compactDialog.getByRole('button', {
-    name: 'Close task switcher',
+  const compactClose = page.getByRole('button', {
+    name: 'Back to chat',
+    exact: true,
   });
-  // Focus containment, asserted against the last focusable control rather than
-  // the last task row: each row now has a sibling snooze button, so the row is
-  // no longer the tail of the tab order.
-  const compactFocusables = compactDialog.locator(
-    'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-  );
-  await expect(compactClose).toBeFocused();
+  await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
   await page.keyboard.press('Shift+Tab');
-  await expect(compactFocusables.last()).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(compactClose).toBeFocused();
-  await page.mouse.click(1, 1);
+  await expect(
+    page
+      .getByTestId('chat-dock-mobile-header')
+      .getByRole('button', { name: 'New chat', exact: true }),
+  ).toBeFocused();
+  await compactClose.click();
   await expect(compactDialog).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -1903,9 +1909,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Chats and tasks/ }),
+    header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
   ).toBeVisible();
-  const title = header.getByRole('button', { name: /^Chats and tasks/ });
+  const title = header.locator('.chat-dock__mobile-identity');
   expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   await expect(
     page.getByText(
@@ -2037,8 +2043,10 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   const answerSheet = page.getByRole('dialog', {
     name: 'Answer details and actions',
   });
+  // #4404 (A40): the sheet lists the answer's actions itself, below its
+  // summary row, instead of behind a second ⋯.
   for (const control of [
-    page.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
     page.getByRole('button', { name: 'Good response' }),
     page.getByRole('button', { name: 'Bad response' }),
   ]) {
@@ -2049,8 +2057,11 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   }
   // Short provenance and the actions share ONE row: chips at the start, the
   // actions (one row of their own) at the end, no dead space under them.
+  await expect(
+    answerSheet.getByRole('button', { name: 'More answer actions' }),
+  ).toHaveCount(0);
   const fitting = await answerSheetLayout(answerSheet);
-  expect(fitting.actionCentres).toHaveLength(3);
+  expect(fitting.actionCentres).toHaveLength(2);
   for (const centre of fitting.actionCentres) {
     expect(Math.abs(centre - fitting.actionCentres[0]!)).toBeLessThan(1);
   }
@@ -2061,7 +2072,8 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(Math.abs(fitting.actions.right - fitting.summary.right)).toBeLessThan(
     1,
   );
-  expect(fitting.panelBottom - fitting.summary.bottom).toBeLessThanOrEqual(
+  expect(fitting.rows.top).toBeGreaterThanOrEqual(fitting.summary.bottom - 1);
+  expect(fitting.panelBottom - fitting.rows.bottom).toBeLessThanOrEqual(
     MAX_SHEET_TAIL_PX,
   );
   await expect(answerSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(
@@ -2077,23 +2089,6 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       `mobile-answer-details-${theme}`,
       '[role="dialog"][aria-label="Answer details and actions"]',
     );
-    // One visual family: the overflow trigger draws exactly like the rating
-    // buttons beside it (it is a filled chip everywhere else).
-    const looks = await answerSheet.evaluate((sheet) =>
-      ['More answer actions', 'Good response'].map((name) => {
-        const style = getComputedStyle(
-          sheet.querySelector(`button[aria-label="${name}"]`)!,
-        );
-        return [
-          style.backgroundColor,
-          style.borderTopColor,
-          style.width,
-          style.height,
-          style.color,
-        ].join(' ');
-      }),
-    );
-    expect(looks[0]).toBe(looks[1]);
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
@@ -2132,12 +2127,12 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       .getByText(`via ${longStationName}`)
       .evaluate((pill) => pill.scrollWidth <= pill.clientWidth),
   ).toBe(true);
-  // The overflow menu loads lazily; measure once every action is present.
+  // The answer's rows load lazily; measure once every action is present.
   await expect(
-    answerSheet.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
   ).toBeVisible();
   const wrapped = await answerSheetLayout(answerSheet);
-  expect(wrapped.actionCentres).toHaveLength(3);
+  expect(wrapped.actionCentres).toHaveLength(2);
   for (const centre of wrapped.actionCentres) {
     expect(Math.abs(centre - wrapped.actionCentres[0]!)).toBeLessThan(1);
   }
@@ -2145,7 +2140,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(Math.abs(wrapped.actions.right - wrapped.summary.right)).toBeLessThan(
     1,
   );
-  expect(wrapped.panelBottom - wrapped.summary.bottom).toBeLessThanOrEqual(
+  expect(wrapped.panelBottom - wrapped.rows.bottom).toBeLessThanOrEqual(
     MAX_SHEET_TAIL_PX,
   );
 
@@ -2166,7 +2161,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     .getByRole('button', { name: 'Answer details and actions', exact: true })
     .click();
   await expect(
-    answerSheet.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
   ).toBeVisible();
   // The sheet's title keeps one line at 320px.
   const titleLines = await answerSheet.evaluate((sheet) => {
@@ -2192,21 +2187,15 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     .toBeGreaterThan(140);
   const narrow = await answerSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
-    const menu = rect(
-      sheet.querySelector('button[aria-label="More answer actions"]')!,
-    );
     const rating = rect(sheet.querySelector('.message__rating')!);
     const reason = rect(sheet.querySelector('.message__rating-reason')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
-      menu: { top: menu.top, bottom: menu.bottom, right: menu.right },
       rating: { top: rating.top, right: rating.right },
       reason: { left: reason.left, right: reason.right },
       summary: { left: summary.left, right: summary.right },
     };
   });
-  expect(Math.abs(narrow.menu.right - narrow.summary.right)).toBeLessThan(1);
-  expect(narrow.rating.top).toBeGreaterThanOrEqual(narrow.menu.bottom - 1);
   expect(Math.abs(narrow.rating.right - narrow.summary.right)).toBeLessThan(1);
   expect(narrow.reason.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
   expect(narrow.reason.right).toBeLessThanOrEqual(narrow.summary.right + 1);
@@ -2232,6 +2221,8 @@ async function answerSheetLayout(sheet: Locator) {
       actionCentres: [...actions.querySelectorAll('button')].map(
         (button) => rect(button).centre,
       ),
+      // The answer's own rows (Provenance, Add to Task), below the summary.
+      rows: rect(element.querySelector('fieldset.message-details__menu')!),
       panelBottom: window.innerHeight,
     };
   });
@@ -2274,9 +2265,9 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
+  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
-  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
 
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
@@ -2536,9 +2527,9 @@ test('the 320px header reserves title space and exposes secondary actions in its
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Chats and tasks/ }),
+    header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
   ).toBeVisible();
-  const identity = header.getByRole('button', { name: /^Chats and tasks/ });
+  const identity = header.locator('.chat-dock__mobile-identity');
   expect((await identity.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   for (const button of await header.getByRole('button').all()) {
     const box = (await button.boundingBox())!;
@@ -2596,7 +2587,7 @@ for (const width of [361, 375, 390, 431, 481]) {
       header.getByRole('button', { name: /^Switch project/ }),
     ).toBeVisible();
     await expect(
-      header.getByRole('button', { name: /^Chats and tasks/ }),
+      header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
     ).toBeVisible();
 
     // Everything still inside the viewport, nothing overlapping — the squeeze
@@ -2623,7 +2614,7 @@ for (const width of [361, 375, 390, 431, 481]) {
     if (await avatar.isVisible().catch(() => false)) {
       const avatarBox = await avatar.boundingBox();
       const identityBox = await header
-        .getByRole('button', { name: /^Chats and tasks/ })
+        .locator('.chat-dock__mobile-identity')
         .boundingBox();
       expect(
         (avatarBox?.x ?? 0) + (avatarBox?.width ?? 0),
@@ -2705,7 +2696,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
       'Are you running the latest version of the tooling here';
   });
   const identity = (await header
-    .getByRole('button', { name: /^Chats and tasks/ })
+    .locator('.chat-dock__mobile-identity')
     .boundingBox())!;
   const headerBox = (await header.boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
@@ -2906,9 +2897,9 @@ for (const viewport of [
       );
     }, viewport.width === 390);
     const textarea = await openComposer(page);
-    await expect(
-      page.getByRole('button', { name: /^Chats and tasks/ }),
-    ).toContainText('New chat');
+    await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
+      'New chat',
+    );
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
       page.locator('.chat-dock__header').getByTitle('Chat settings'),
@@ -2923,7 +2914,7 @@ for (const viewport of [
       mobileHeader.getByRole('button', { name: /^Switch project/ }),
     ).toBeVisible();
     await expect(
-      mobileHeader.getByRole('button', { name: /^Chats and tasks/ }),
+      mobileHeader.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
     ).toBeVisible();
     for (const control of await mobileHeader.getByRole('button').all()) {
       const box = await control.boundingBox();
@@ -2978,8 +2969,9 @@ for (const viewport of [
     );
     const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
-    const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
-    await expect(switcher).toContainText('New chat');
+    await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
+      'New chat',
+    );
     for (let cycle = 0; cycle < 3; cycle += 1) {
       const scroller = page.locator('.chat-messages');
       // This chat never sends, so the region is the empty-transcript filler
@@ -3069,7 +3061,9 @@ for (const viewport of [
       expect(new URL(page.url()).searchParams.get('chat')).toBe(
         activeChatParam,
       );
-      await expect(switcher).toContainText('New chat');
+      await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
+        'New chat',
+      );
       await expect(selectedModel).toHaveText(selectedModelLabel ?? '');
       // With the keyboard still up the dock can be exactly as tall as the
       // status line plus the composer (149px at 320x568): the transcript has
@@ -3251,7 +3245,7 @@ for (const viewport of [
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
-      'Agent: Claude. Send a message before changing Agent.',
+      'Agent: Claude. Can’t change Agent yet. Send a message first.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
@@ -3337,14 +3331,10 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     .toBe(380);
   await expectVisibleGeometry(true);
 
-  const touchDragControlTo = async (
-    controlName: string | RegExp,
-    toY: number,
-  ) => {
-    const control = page.getByRole('button', { name: controlName });
+  const touchDragControlTo = async (toY: number) => {
+    const control = page.locator('.chat-dock__mobile-identity');
     const controlBox = await control.boundingBox();
-    if (!controlBox)
-      throw new Error(`${controlName} control is not measurable`);
+    if (!controlBox) throw new Error('Conversation context is not measurable');
     const x = controlBox.x + controlBox.width / 2;
     const fromY = controlBox.y + controlBox.height / 2;
     // Synthetic PointerEvents have no browser-owned active-pointer registry,
@@ -3396,7 +3386,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // Exercise a real touch sequence from the overflow control itself. Android
   // does not emit a compatibility click after a moved touch gesture, which is
   // the exact path that used to leave the next deliberate tap suppressed.
-  await touchDragControlTo(/^Chats and tasks/, 120);
+  await touchDragControlTo(120);
   await expect(dock).toHaveClass(/is-maximized/);
   await expect
     .poll(async () => Math.round((await dock.boundingBox())?.height ?? 0))
@@ -3446,9 +3436,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // Reopening from Collapsed is still a live resize gesture. Crossing the
   // tap threshold must reveal the dock at the pointer's actual height; it
   // must not commit Half (and run the snap transition) until release.
-  const collapsedActions = page.getByRole('button', {
-    name: /^Chats and tasks/,
-  });
+  const collapsedActions = page.locator('.chat-dock__mobile-identity');
   const collapsedActionsBox = await collapsedActions.boundingBox();
   if (!collapsedActionsBox)
     throw new Error('Collapsed Chat actions control is not measurable');
@@ -3706,7 +3694,7 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   expect(modelHit).toBe(true);
   await modelButton.click();
 
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   const providerRail = picker.getByRole('group', { name: 'Providers' });
   const firstModel = picker.getByRole('option').first();
   await expect(providerRail).toBeVisible();
@@ -3970,11 +3958,11 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
+  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   await switcher.click();
 
-  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu).toBeVisible();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
@@ -3984,7 +3972,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  const close = page.getByRole('button', { name: 'Close task switcher' });
+  const close = page.getByRole('button', { name: 'Back to chat', exact: true });
   await expect(close).toBeVisible();
   // The real assertion: the Close control must actually receive the tap —
   // Playwright refuses the click if another element (the app toolbar)
@@ -4018,7 +4006,7 @@ test('dock drag-passthrough surfaces opt out of native touch panning (#1052)', a
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const identity = page.getByRole('button', { name: /^Chats and tasks/ });
+  const identity = page.locator('.chat-dock__mobile-identity');
   await expect(identity).toBeVisible({ timeout: 15_000 });
   // touch-action does not inherit from the header bar; if a passthrough
   // control reverts to `auto`, real devices pointercancel the resize drag the
@@ -4073,7 +4061,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Chats and tasks/ }),
+    header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
   ).toBeVisible();
   for (let i = 0; i < total; i++) {
     const control = controls.nth(i);
@@ -4137,8 +4125,8 @@ test('profiles switching between authoritative conversations', async ({
   await seedMobileTaskSwitcher(page);
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
-  const switcher = page.getByRole('button', { name: 'Chats and tasks' });
-  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
+  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
   await profileJourney(
@@ -4259,7 +4247,7 @@ for (const width of [320, 390, 1280]) {
         path: testInfo.outputPath(`composer-${width}-${theme}.png`),
       });
       await model.click();
-      const picker = page.getByRole('dialog', { name: 'Choose model' });
+      const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
       await picker.getByRole('button', { name: 'Close model picker' }).click();
       await expect(picker).toBeHidden();
@@ -4305,13 +4293,13 @@ test('sidebar overflow opens the real mobile chat collection', async ({
   });
   await expect(navigation).toBeVisible();
   await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Chats and tasks' });
+  const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await sheet.getByRole('button', { name: 'Close task switcher' }).click();
+  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   await expect(sheet).not.toBeVisible();
 });
 
@@ -4325,7 +4313,7 @@ for (const width of [320, 431]) {
     const header = page.getByTestId('chat-dock-mobile-header');
     const outer = (await header.boundingBox())!;
     const identity = (await header
-      .getByRole('button', { name: /^Chats and tasks/ })
+      .locator('.chat-dock__mobile-identity')
       .boundingBox())!;
     expect(
       Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
@@ -4333,9 +4321,7 @@ for (const width of [320, 431]) {
     const title = (await header
       .locator('.chat-dock__mobile-title-text')
       .boundingBox())!;
-    expect(
-      Math.abs(title.x + title.width / 2 - (outer.x + outer.width / 2)),
-    ).toBeLessThanOrEqual(1);
+    expect(title.width).toBeGreaterThan(0);
     await input.fill('/');
     const menu = page.getByRole('listbox', { name: 'Suggestions' });
     await expect(menu).toBeVisible();

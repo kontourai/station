@@ -17,7 +17,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -29,6 +29,23 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
   // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
+}));
+
+const sdk = vi.hoisted(() => ({
+  continueAfterMemoryExhaustion: vi.fn(),
+  MemoryContinuationUnsupportedError: class extends Error {},
+  // #4266: the stored events a reopened orchestration chat reads.
+  fetchWindow: vi.fn(),
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  continueAfterMemoryExhaustion: sdk.continueAfterMemoryExhaustion,
+  MemoryContinuationUnsupportedError: sdk.MemoryContinuationUnsupportedError,
+  fetchSessionEventWindowCapability: async () => true,
+  fetchOrchestrationSessionEventWindow: (...args: unknown[]) =>
+    sdk.fetchWindow(...args),
+  fetchOrchestrationConversationEventWindow: (...args: unknown[]) =>
+    sdk.fetchWindow(...args),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -124,6 +141,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
@@ -190,6 +208,9 @@ beforeAll(async () => {
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
+// A token-shaped value for the redaction assertion below, built at runtime so
+// the secret scanner never sees a credential-shaped literal.
+const FAKE_GITHUB_TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`;
 
 function renderDock(
   session: ChatSession,
@@ -460,6 +481,74 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
   });
 
+  // #4470: a failed turn offers "Troubleshoot this", seeded with the
+  // conversation, the failed turn and the raw (redacted) error.
+  test('a failed turn offers Troubleshoot this, seeded with the conversation, turn and error', async () => {
+    window.history.pushState({}, '', '/chat?draft=secret');
+    const capture = captureTroubleshootSeeds();
+    try {
+      const session = buildSession({
+        conversationId: 'conversation-failed',
+        messages: [
+          {
+            role: 'user',
+            content: 'summarise the repo',
+            timestamp: 1,
+            turnId: 'turn-failed-1',
+          } as any,
+          {
+            role: 'user',
+            content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Engine exited with code 1 using token ${FAKE_GITHUB_TOKEN}`,
+            timestamp: 2,
+            turnId: 'turn-failed-1',
+          } as any,
+        ],
+      });
+      renderDock(session, vi.fn());
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: 'Troubleshoot this' },
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      );
+      expect(capture.seeds).toHaveLength(1);
+      const seed = capture.seeds[0]!;
+      expect(seed).toMatchObject({
+        route: '/chat',
+        conversationId: 'conversation-failed',
+        turnId: 'turn-failed-1',
+      });
+      expect(seed.errorSummary).toMatch(
+        /^engine-turn-failed: Engine exited with code 1 using token /,
+      );
+      expect(seed.errorSummary).not.toContain('A1b2C3d4E5');
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a replayed conversation’s failed turn does not offer Troubleshoot this', async () => {
+    const session = buildSession({
+      replay: { sourceThreadId: 'thread-replayed', tapeEventCount: 1 },
+      messages: [
+        {
+          role: 'user',
+          content: '[SYSTEM_EVENT] [CHAT_ERROR] Stream aborted by client',
+          timestamp: 2,
+        } as any,
+      ],
+    } as Partial<ChatSession>);
+    renderDock(session, vi.fn());
+    await screen.findByText(/aborted|stopped|interrupted/i, undefined, {
+      timeout: LAZY_TRANSCRIPT_TIMEOUT_MS,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Troubleshoot this' }),
+    ).toBeNull();
+  });
+
   test('a rejected New chat surfaces its reason instead of dying silently', async () => {
     const { NewChatUnavailableError } = await import(
       '../components/chat-dock/newChatErrors'
@@ -581,4 +670,527 @@ describe('ChatDockBody station-agent failure marker', () => {
     ).toBeTruthy();
     expect(screen.queryByText(/invalid or have expired/i)).toBeNull();
   });
+});
+
+describe('ChatDockBody memory-exhaustion marker', () => {
+  const message =
+    'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB (peak 3072 MiB), shared by Codex and every command it runs.';
+  const killed = (extra: unknown[] = []) =>
+    buildSession({
+      conversationId: 'conversation-oom',
+      messages: [
+        {
+          role: 'user',
+          content: 'Regenerate the icons, lint, and run the browser check',
+          timestamp: 1,
+        } as any,
+        {
+          role: 'user',
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] ${message}`,
+          timestamp: 2,
+        } as any,
+        ...extra,
+      ],
+    } as Partial<ChatSession>);
+
+  beforeEach(() => {
+    sdk.continueAfterMemoryExhaustion.mockReset();
+  });
+
+  test('offers Continue, not Send again, and continues through Station rather than resending', async () => {
+    sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Continue' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch agent' })).toBeNull();
+    fireEvent.click(action);
+    await waitFor(() =>
+      expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+        'conversation-oom',
+        'http://localhost:3242',
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('#4266: a memory kill stored before #4257 gets the same card, copy and Continue', async () => {
+    sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+    renderDock(
+      buildSession({
+        conversationId: 'conversation-oom',
+        messages: [
+          {
+            role: 'user',
+            content: 'Run the checks',
+            timestamp: 1,
+          } as any,
+          {
+            role: 'user',
+            content:
+              '[SYSTEM_EVENT] [CHAT_ERROR:codex-turn-orphaned] Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.',
+            timestamp: 2,
+          } as any,
+        ],
+      } as Partial<ChatSession>),
+      vi.fn(),
+      buildChatInput(),
+    );
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Its workload budget was 3072 MiB/)).toBeTruthy();
+    expect(
+      screen.queryByText(/Run memory-heavy checks sequentially/),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Continue' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
+    await waitFor(() =>
+      expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+        'conversation-oom',
+        'http://localhost:3242',
+      ),
+    );
+  });
+
+  // #4266: a reopened chat holds no live marker, only the stored events.
+  describe('read back from stored events', () => {
+    const LEGACY =
+      'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.';
+    const at = (second: number) =>
+      `2026-10-28T10:00:${String(second).padStart(2, '0')}.000Z`;
+    const stored = (
+      code: string,
+      reason: string,
+      after: Record<string, unknown>[] = [],
+    ) => ({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: false,
+      events: [
+        {
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Run the integration suite.',
+        },
+        {
+          method: 'runtime.error',
+          turnId: 'turn-1',
+          severity: 'error',
+          code,
+          message: reason,
+        },
+        ...after,
+      ].map((fields, index) => ({
+        sequence: index + 1,
+        event: {
+          eventId: `e${index + 1}`,
+          provider: 'codex',
+          threadId: 'thread-oom',
+          createdAt: at(index + 1),
+          ...fields,
+        },
+      })),
+    });
+    const reopened = () =>
+      buildSession({
+        id: 'thread-oom',
+        conversationId: 'conversation-oom',
+        status: 'idle',
+        orchestrationSessionStarted: true,
+        messages: [],
+      } as Partial<ChatSession>);
+
+    test.each([
+      ['today’s code', 'engine-memory-exhausted', message],
+      ['the code stored before #4257', 'codex-turn-orphaned', LEGACY],
+    ])(
+      'the newest turn’s kill (%s) gets the card, current copy and Continue',
+      async (_label, code, reason) => {
+        sdk.fetchWindow.mockResolvedValue({
+          ...stored(code, reason),
+          memoryContinuation: { eligible: true, turnId: 'turn-1' },
+        });
+        sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+        renderDock(reopened(), vi.fn());
+        expect(
+          await screen.findByText(
+            /engine ran out of memory/i,
+            {},
+            { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+          ),
+        ).toBeTruthy();
+        expect(screen.queryByText(/⚠️/)).toBeNull();
+        expect(
+          screen.queryByText(/Run memory-heavy checks sequentially/),
+        ).toBeNull();
+        fireEvent.click(
+          await screen.findByRole('button', { name: 'Continue' }),
+        );
+        await waitFor(() =>
+          expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+            'conversation-oom',
+            'http://localhost:3242',
+          ),
+        );
+      },
+    );
+
+    test('an older server leaves the translated failure visible without Continue', async () => {
+      sdk.fetchWindow.mockResolvedValue(
+        stored('engine-memory-exhausted', message),
+      );
+      renderDock(reopened(), vi.fn());
+      expect(
+        await screen.findByText(
+          /engine ran out of memory/i,
+          {},
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    });
+
+    test('a kill a person has moved on from reads in current copy, with no Continue', async () => {
+      sdk.fetchWindow.mockResolvedValue(
+        stored('codex-turn-orphaned', LEGACY, [
+          {
+            method: 'turn.started',
+            turnId: 'turn-2',
+            prompt: 'Something else.',
+          },
+          { method: 'turn.completed', turnId: 'turn-2' },
+        ]),
+      );
+      renderDock(reopened(), vi.fn());
+      expect(
+        await screen.findByText(
+          /engine ran out of memory/i,
+          {},
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(/Run memory-heavy checks sequentially/),
+      ).toBeNull();
+      expect(screen.queryByText(/Continue picks the task up/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    });
+  });
+
+  test('an older Station without the route gets the short continuation as a message', async () => {
+    sdk.continueAfterMemoryExhaustion.mockRejectedValue(
+      new sdk.MemoryContinuationUnsupportedError(),
+    );
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Continue' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
+    await waitFor(() =>
+      expect(chatInput.handleSend).toHaveBeenCalledWith(
+        'Continue the task from where it stopped.',
+        [],
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalledWith(
+      'Regenerate the icons, lint, and run the browser check',
+      expect.anything(),
+    );
+  });
+
+  test('once Station continued on its own, the card says so and offers Stop while it runs', async () => {
+    const chatInput = buildChatInput();
+    renderDock(
+      {
+        ...killed([
+          {
+            role: 'user',
+            content: 'Continue the task from where it stopped.',
+            stationMemoryContinuation: true,
+            timestamp: 3,
+          },
+        ]),
+        status: 'running',
+        orchestrationTurnOpen: true,
+      } as unknown as ChatSession,
+      vi.fn(),
+      chatInput,
+    );
+    expect(
+      await screen.findByText(
+        /restarted — continuing/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    const stop = await screen.findByRole('button', { name: 'Stop' });
+    fireEvent.click(stop);
+    expect(chatInput.handleCancel).toHaveBeenCalled();
+    expect(sdk.continueAfterMemoryExhaustion).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * The marker's action follows what THIS caller may do, as the server's open
+ * read reported it (`callerAccess`). Three callers: full access (no answer,
+ * so unknown shows everything), one the server refused a new chat, and a
+ * read-only caller refused both. A session that cannot take another message
+ * (`session_ended`, `terminalSession`) offers Send again to nobody.
+ */
+describe('ChatDockBody marker actions follow callerAccess', () => {
+  const CALLERS = {
+    full: undefined,
+    noNewChat: { continue: true, startChat: false },
+    noSend: { continue: false, startChat: true },
+    readOnly: { continue: false, startChat: false },
+  } as const;
+
+  function sessionWith(
+    marker: string,
+    callerAccess: { continue: boolean; startChat: boolean } | undefined,
+  ) {
+    return buildSession({
+      conversationId: 'conversation-access',
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'are you still there?', timestamp: 1 } as any,
+        { role: 'user', content: marker, timestamp: 2 } as any,
+      ],
+      ...(callerAccess
+        ? {
+            conversationOpenState: {
+              status: 'resolved',
+              conversation: {
+                id: 'conversation-access',
+                source: 'runtime',
+                agentSlug: agentId('codex'),
+                title: 'Access chat',
+                createdAt: '2026-10-01T00:00:00.000Z',
+                updatedAt: '2026-10-01T00:01:00.000Z',
+                messageCount: 2,
+                mutable: false,
+                answerability: { answerable: true },
+              },
+              currentSessionId: 'conversation-access',
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: 2,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+              callerAccess,
+            },
+          }
+        : {}),
+    } as Partial<ChatSession>);
+  }
+
+  const ACTIONS = ['New chat', 'Send again', 'Switch agent', 'Continue'];
+  async function actionsFor(
+    marker: string,
+    caller: keyof typeof CALLERS,
+    headline: RegExp,
+  ) {
+    renderDock(sessionWith(marker, CALLERS[caller]), vi.fn());
+    await screen.findByText(
+      headline,
+      {},
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    return ACTIONS.filter((name) => screen.queryByRole('button', { name }));
+  }
+
+  // #4470: Troubleshoot this starts a new chat, so it follows startChat.
+  test.each([
+    ['full', true],
+    ['noSend', true],
+    ['noNewChat', false],
+    ['readOnly', false],
+  ] as const)(
+    'Troubleshoot this is offered to %s caller: %s',
+    async (caller, offered) => {
+      renderDock(
+        sessionWith(
+          `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
+          CALLERS[caller],
+        ),
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        Boolean(screen.queryByRole('button', { name: 'Troubleshoot this' })),
+      ).toBe(offered);
+    },
+  );
+
+  const ENDED =
+    '[SYSTEM_EVENT] [CHAT_ERROR:session_ended] This session has already ended.';
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['readOnly', []],
+  ] as const)(
+    'an ended session offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(ENDED, caller, /This chat has ended/)).toEqual(
+        expected,
+      );
+      // The hint names a new chat only to a caller allowed one.
+      expect(Boolean(screen.queryByText(/Start a new chat to continue/))).toBe(
+        caller === 'full',
+      );
+    },
+  );
+
+  const LOST = `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['Send again'], true, true],
+    ['noNewChat', ['Send again'], true, false],
+    // No action and no hint: the card offers this caller nothing, so the hint
+    // must not suggest a new chat it does not offer.
+    ['noSend', [], false, false],
+    ['readOnly', [], false, false],
+  ] as const)(
+    'a lost engine session offers %s caller %j (hint names send=%s, new chat=%s)',
+    async (caller, expected, namesSend, namesNewChat) => {
+      expect(
+        await actionsFor(LOST, caller, /engine session was lost/i),
+      ).toEqual(expected);
+      const text = document.body.textContent ?? '';
+      expect(text.includes('Send your message again')).toBe(namesSend);
+      expect(/start a new chat/i.test(text)).toBe(namesNewChat);
+    },
+  );
+
+  const OOM =
+    '[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] Codex ran out of memory and was stopped.';
+  test.each([
+    ['full', ['Continue']],
+    ['noNewChat', ['Continue']],
+    ['noSend', []],
+    ['readOnly', []],
+  ] as const)(
+    'an out-of-memory stop offers %s caller %j',
+    async (caller, expected) => {
+      expect(
+        await actionsFor(OOM, caller, /engine ran out of memory/i),
+      ).toEqual(expected);
+      // The hint names Continue only beside a Continue button.
+      expect(Boolean(screen.queryByText(/Continue picks the task up/))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  // The second terminal-session error: an unsafe workspace to resume in.
+  const WORKSPACE = `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['noSend', ['New chat']],
+    ['readOnly', []],
+  ] as const)(
+    'an unsafe workspace offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(WORKSPACE, caller, /Can't resume/)).toEqual(
+        expected,
+      );
+      // Its hint is "New chat.": shown only to a caller allowed one.
+      expect(Boolean(screen.queryByText('New chat.'))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  // A reloaded reply bubble (a runtime-error part rehydrated from the
+  // projection), through the dock's real message list and bubble.
+  test.each([
+    ['full', true],
+    ['readOnly', false],
+  ] as const)(
+    "a reloaded reply bubble's hint follows %s caller's access (names send again: %s)",
+    async (caller, namesSend) => {
+      const base = sessionWith('', CALLERS[caller]);
+      renderDock(
+        {
+          ...base,
+          messages: [
+            {
+              role: 'user',
+              content: 'are you still there?',
+              timestamp: 1,
+            } as any,
+            {
+              role: 'assistant',
+              content: '',
+              contentParts: [
+                {
+                  type: 'text',
+                  content: `⚠️ ${RAW_MESSAGE}`,
+                  runtimeError: true,
+                  runtimeErrorCode: 'engine-session-binding-dead',
+                },
+              ],
+              timestamp: 2,
+            } as any,
+          ],
+        },
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        (document.body.textContent ?? '').includes('Send your message again'),
+      ).toBe(namesSend);
+    },
+  );
+
+  const UNKNOWN = '[SYSTEM_EVENT] [CHAT_ERROR] Something unexpected went wrong';
+  test.each([
+    ['full', true],
+    ['noNewChat', true],
+    ['noSend', false],
+    ['readOnly', false],
+  ] as const)(
+    'an unclassified failure tells %s caller retrying may help: %s',
+    async (caller, namesRetry) => {
+      await actionsFor(UNKNOWN, caller, /Something unexpected went wrong/);
+      expect(Boolean(screen.queryByText(/Retrying may help/))).toBe(namesRetry);
+    },
+  );
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "efd86cee115c59ff32117417707b9ee0939438da",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Bounded composition evidence delta at efd86cee115: the public SDK root streamConversationTurn and client key/error exports cross native Node loopback HTTP into real createChatRoutes, request preparation, streaming, SQLite claims and FileMemory with a counted fixture Agent. Source review R3 accepted the composition; cleanup and ordering successor uses real HTTP response completion before retry and teardown. Root observed old-server2 intended duplicate-invocation failures; integrated2PASS; wire omission2FAIL, error-association omission1FAIL1PASS, postinvoke release1FAIL1PASS, each byte-exact restored2PASS. The ordered successor again catches release as counter2, not a timeout, and restores2PASS. These establish workspace-source composition and input message identity only, not stored message IDs, deployed auth, live providers, browser/native-shell transport or published/dist module identity. The source30ff server-boundary paragraph is provisional and remains landing-held until the real main/release binding and changeset sentence are recorded; this note does not approve it for release. No other SDK prose re-reviewed.","inputs":["docs/reference/sdk.md","src-server/routes/chat/__tests__/chat-sdk-turn-key.integration.test.ts"]}
+  ]
+}

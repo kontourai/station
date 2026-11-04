@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Rechecked against the cleanup commit: run-e2e-suite.mjs stops exporting readE2ESupervisorStatus, which nothing imported; the e2e runner behaves the same. This document's claims do not depend on the changed lines and remain accurate.","inputs":["docs/testing/browser-smoke.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

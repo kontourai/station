@@ -1,15 +1,26 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
+import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
+import { agentTerminalsFor } from '../../services/acp/acp-session-terminals.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
+import {
+  commitAccountSharingAtBoot,
+  deploymentAccountSharingVariables,
+  resolveAccountSharingAtBoot,
+  rollBackAccountSharingAtBoot,
+} from '../../services/identity/account-sharing-setting.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
@@ -17,6 +28,7 @@ import {
   loadDeploymentAuthentication,
   readDeploymentAuthenticationConfiguration,
 } from '../../services/identity/deployment-authentication-loader.js';
+import { isDeploymentAccountPrincipalId } from '../../services/identity/deployment-authentication-service.js';
 import {
   type LoadedLocalAccounts,
   type LocalAccountConfiguration,
@@ -33,6 +45,7 @@ import {
   currentEngineMcpAccountOwner,
 } from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
+import { externalUntrustedContentPermission } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -47,8 +60,14 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
+import { registerToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
+import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
 import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
@@ -61,7 +80,13 @@ import {
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { recordManagedModelContext } from '../context-efficiency-runtime.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
+import {
+  composeLearningReviewRuntime,
+  type LearningReviewRuntime,
+} from '../learning-review-runtime.js';
+import { createCanonicalTaskSourceReader } from '../task-source-read-authority.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -99,6 +124,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
   MCPLocalConnectionCustody,
@@ -125,6 +151,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -173,6 +200,7 @@ import { OperatorPasskeyEnrollmentService } from '../../services/identity/operat
 import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
+import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
@@ -215,8 +243,7 @@ import type {
 } from '../../services/secrets/secret-binding-administration.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
-import type { TerminalWebSocketServer } from '../../services/terminal/terminal-ws-server.js';
+import type { TerminalSessions } from '../../services/terminal/terminal-sessions.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   consentListenerState,
@@ -268,7 +295,12 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectWorkingRuntime,
+  type ProjectWorkingRuntime,
+} from '../project-working-configuration-runtime.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
+import { composeLocalMedia } from './local-media-runtime.js';
 
 /**
  * The recovery Adapter accepts only Station runtime connection identities.
@@ -419,6 +451,11 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
+import {
+  generateConversationTitle,
+  resolveTitleModel,
+} from '../../routes/chat/chat-title-generation.js';
+import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
@@ -433,12 +470,17 @@ import {
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
+import {
+  ConversationTitleGeneration,
+  subscribeConversationTitleGeneration,
+} from '../../services/orchestration/conversation-title-generation.js';
 import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
 import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
+import type { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import {
   createRuntimeSearch,
   type RuntimeSearch,
@@ -461,9 +503,13 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
-import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpUrl,
+  claudeInProcessStationControlOptions,
+  createCodexBoundToolServer,
+} from '../mcp/station-control-in-process.js';
+import {
+  buildStationControlMcpHeaderUrl,
+  coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
@@ -564,6 +610,12 @@ export interface StationRuntimeOptions {
   logger?: Logger;
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /**
+   * The managed policy the entrypoint loaded before construction (#4515);
+   * null or absent means none is installed. Fixed for the process lifetime:
+   * a changed policy takes effect on restart.
+   */
+  managedPolicy?: LoadedManagedPolicy | null;
 }
 
 /** How long session recovery may take before update readiness warns. */
@@ -585,11 +637,18 @@ export class StationRuntime {
   };
   private selfHostedBrokerShutdown?: Promise<void>;
 
-  private readonly projectSharingEnabled: boolean;
+  /** Not readonly: a stored Settings choice that fails to load turns it off (#4305). */
+  private projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
   private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
   private deploymentAuthentication?: LoadedDeploymentAuthentication;
-  private readonly localAccountConfiguration?: LocalAccountConfiguration;
+  private localAccountConfiguration?: LocalAccountConfiguration;
+  /** #4305: process configuration that decides sharing; empty when Settings does. */
+  private readonly accountSharingLockedBy: readonly string[];
+  /** #4305: this boot is trying a staged Settings change. */
+  private accountSharingApplying = false;
+  /** #4305: why the stored Settings choice is not in effect this boot. */
+  private accountSharingStartupFailure?: string;
   private localAccounts?: LoadedLocalAccounts;
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
@@ -610,6 +669,7 @@ export class StationRuntime {
   private appConfig!: AppConfig;
   private logger: Logger;
   private readonly buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  private readonly managedPolicy: LoadedManagedPolicy | null = null;
   /** One persistent grant store shared by default and persisted managed agents. */
   private readonly unattendedGrantStore: UnattendedGrantStore;
   private readonly discordGatewayService: DiscordGatewayService;
@@ -766,6 +826,8 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  private taskRecordings?: TaskBrowserRecording;
+  private taskRecordingsShutdown?: Promise<void>;
   private deviceToolchainService?: DeviceToolchainService;
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
@@ -802,6 +864,27 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    isCoordinatorSession: (threadId) => {
+      const principal =
+        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+      if (!principal || principal.source !== 'session-owner') return false;
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return (
+        this.orchestrationEventStore
+          .coordinatorStore()
+          .designationForConversation(conversationId)?.actor.userId ===
+        principal.id
+      );
+    },
+    resolveCoordinatorStationControl: async (threadId) =>
+      this.orchestrationService?.resolveCoordinatorStationControl(threadId),
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -832,6 +915,10 @@ export class StationRuntime {
         ? provideSkills.filter((id): id is string => typeof id === 'string')
         : undefined;
     },
+    // Claude Code's Artifact tool (AppConfig.claudeArtifactsEnabled), read
+    // per session start; same lazy-capture posture as `getProvideSkills`.
+    getArtifactsEnabled: async () =>
+      (await this.configLoader.loadAppConfig()).claudeArtifactsEnabled === true,
     resolveSkillDir: async (id) => {
       try {
         const skill = await this.skillService.getSkill(id);
@@ -923,6 +1010,40 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveBoundToolPolicy: (input) =>
+      this.resolveExternalPreToolPolicy(input, 'authentic'),
+    boundToolsEpoch: () =>
+      this.featurePreviews.generation('codex-bound-browser-device-tools'),
+    boundToolsEnabled: () =>
+      this.codexBoundToolsPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false,
+    createBoundTools: (input) =>
+      createCodexBoundToolServer({
+        ...input,
+        resolveRecord: createStationControlCallerRecordResolver(
+          stationControlCallerRecordSources({
+            orchestrationService: {
+              resolveSessionActingPrincipal: (threadId) =>
+                this.orchestrationService.resolveSessionActingPrincipal(
+                  threadId,
+                ),
+              firstStartedMetadataOfThread: (threadId) =>
+                this.orchestrationService.firstStartedMetadataOfThread(
+                  threadId,
+                ),
+            },
+            eventStore: this.orchestrationEventStore,
+            getProject: (slug) => this.storageAdapter.getProject(slug),
+          }),
+        ),
+        dispatch: (request) => {
+          if (!this.codexToolDispatch)
+            throw new Error('Station tool dispatch unavailable');
+          return this.codexToolDispatch(request);
+        },
+      }),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -976,30 +1097,56 @@ export class StationRuntime {
       threadId: string,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
+        generation !== undefined ? 'coordinator-control' : 'station-control',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
+        // Codex 0.164 does not refresh tools after load_tool_family, even on
+        // the next turn. Keep its catalog callable until refresh is qualified.
+        false,
       );
-      return buildStationControlMcpUrl(this.port, token);
+      return { url: buildStationControlMcpHeaderUrl(this.port), token };
     },
     mintStationKnowledgeMcpAuth: (
       threadId,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
-        'url-token',
+        'http-header-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
-        'station-knowledge',
+        generation !== undefined
+          ? 'coordinator-knowledge'
+          : 'station-knowledge',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
+        false,
       );
-      return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
+      return {
+        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
+        token,
+      };
     },
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
@@ -1039,6 +1186,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
@@ -1057,6 +1205,7 @@ export class StationRuntime {
    * init when `gracefulShutdown` exits the process (archive#3218 review).
    */
   private stopStoreIntegrityVerification?: () => void;
+  private stopHealthChecks?: () => Promise<void>;
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
   private readonly stationHomeRuntimeLease: StationHomeRuntimeLease;
@@ -1089,9 +1238,9 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
-  private terminalService!: TerminalService;
-  private terminalWsServer!: TerminalWebSocketServer;
-  private terminalWsStarted = false;
+  private ptyAdapter!: IPtyAdapter;
+  private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
+    {};
   private voiceService!: VoiceSessionService;
   private voiceWsAttached = false;
   private acpBridge: ACPManager;
@@ -1108,10 +1257,41 @@ export class StationRuntime {
   /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
+  private codexToolDispatch?: (request: Request) => Promise<Response>;
+  private projectWorkingConfiguration: ProjectWorkingRuntime | undefined;
+  private learningReview: LearningReviewRuntime | undefined;
+  private reviewedTariffConfiguration:
+    | ReviewedTariffConfigurationService
+    | undefined;
+  private reviewedTariffsPreview: FeaturePreviewSelector | undefined;
+  private readonly reviewedTariffsEnabled = () =>
+    this.reviewedTariffsPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) ?? false;
+  private readonly getReviewedTariffConfiguration = () => {
+    if (!this.reviewedTariffsEnabled()) return undefined;
+    try {
+      return (this.reviewedTariffConfiguration ??=
+        new ReviewedTariffConfigurationService(
+          join(this.configLoader.getProjectHomeDir(), 'security'),
+        ));
+    } catch {
+      return undefined;
+    }
+  };
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
+  private chatHostImagesPreview!: FeaturePreviewSelector;
+  private memberPasskeysPreview!: FeaturePreviewSelector;
+  /** #4305: gates the Settings control, not deployment configuration. */
+  private accountSharingSettingPreview!: FeaturePreviewSelector;
+  private codexBoundToolsPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
+  private analyticsMaintenance?: (
+    assertRuntime: () => Promise<void>,
+  ) => Promise<void>;
   public readonly eventBus = new EventBus();
   // archive#1225: shared per-user live-`/events`-subscriber presence for
   // `createOrchestrationRoutes` — see
@@ -1132,6 +1312,11 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
+  // A malformed STATION_OAUTH_CLIENT_METADATA_URL throws here, refusing
+  // startup, so sign-in and status reads can rely on it.
+  readonly deploymentClientMetadataUrl = deploymentClientMetadataUrl(
+    process.env,
+  );
   // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
   public readonly consentChannel = new ConsentChannelService({
     trustedOrigin: parseTrustedConsentOrigin(
@@ -1152,12 +1337,20 @@ export class StationRuntime {
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
+  private uninstallCatalogAddressPolicy?: () => void;
+
   private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
     homeDir: () => this.configLoader.getProjectHomeDir(),
     port: () => this.port,
     getIntegration: (id) => this.mcpService.getIntegration(id),
     needsSignIn: (id, resource) =>
       this.mcpService.markOAuthNeedsSignIn(id, resource),
+    // Read per refresh: the field is assigned during startup, after this
+    // initializer runs.
+    oauthClientSecrets: {
+      resolveOAuthClientSecret: (input) =>
+        this.secretBindingAdministration.resolveOAuthClientSecret(input),
+    },
   });
 
   private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
@@ -1239,11 +1432,17 @@ export class StationRuntime {
           input.agent?.toolServers,
           toolNameProvenance,
         ),
+      // #3483: after the conversation read untrusted content (seen at a
+      // Station seam), an engine that asks Station asks the person too.
+      untrustedContentPermission: externalUntrustedContentPermission({
+        loadIntegration: (id) => this.configLoader.loadIntegration(id),
+      }),
       logger: this.logger,
     });
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    registerToolServerOAuthCapability('pre-registered-clients');
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
@@ -1284,6 +1483,16 @@ export class StationRuntime {
           ? undefined
           : readDeploymentAuthenticationConfiguration(process.env)),
     );
+    // #4305: the deployment decides whenever it says anything; the stored
+    // Settings choice is read only below, once the home is known good.
+    this.accountSharingLockedBy = [
+      ...deploymentAccountSharingVariables(process.env),
+      ...(options.projectSharing !== undefined ||
+      options.localAccounts ||
+      options.authentication
+        ? ['runtime options']
+        : []),
+    ];
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
     // archive#3217, and it has to be HERE rather than in `index.ts`: the
     // pre-boot hooks `index.ts` runs are not on every entry point's path, so
@@ -1327,8 +1536,24 @@ export class StationRuntime {
         `${projectHomeDir}/data`,
         orchestrationDatabasePath,
       );
+      if (this.accountSharingLockedBy.length === 0) {
+        // Never throws for stored state: a staged change a previous boot
+        // never committed is rolled back here, before anything uses it.
+        const stored = resolveAccountSharingAtBoot(projectHomeDir);
+        this.accountSharingApplying = stored.applying;
+        if (stored.unreadable)
+          this.accountSharingStartupFailure =
+            'The stored setting could not be read, so Project sharing is off.';
+        if (stored.choice.enabled) {
+          this.projectSharingEnabled = true;
+          this.localAccountConfiguration = {
+            publicOrigin: stored.choice.publicOrigin,
+          };
+        }
+      }
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
+      this.managedPolicy = options.managedPolicy ?? null;
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -1343,6 +1568,17 @@ export class StationRuntime {
         report: (report) =>
           this.logger?.warn('Agent Plugin component was not loaded', report),
       });
+      // #3483: Station connects to catalog-supplied servers only at
+      // addresses it checked.
+      this.uninstallCatalogAddressPolicy = installCatalogServerAddressPolicy(
+        () => projectHomeDir,
+      );
+      // #3483: a conversation that read untrusted content stays marked
+      // across turns and restarts until a person clears it.
+      sharedUntrustedContentLedger.attachDurableMarks(
+        new UntrustedConversationMarks(projectHomeDir),
+        (message, meta) => this.logger?.warn(message, meta),
+      );
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
@@ -1379,6 +1615,13 @@ export class StationRuntime {
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
+      );
+      this.orchestrationEventStore.bindSessionActivity(
+        (threadId) =>
+          this.orchestrationService?.hasLocalSessionBinding(threadId) ?? false,
+      );
+      this.orchestrationEventStore.bindUsageExportActivation(
+        analyticsHomeExportActivation(projectHomeDir),
       );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
@@ -1434,7 +1677,32 @@ export class StationRuntime {
         projectHomeDir,
         this.logger,
       );
+      if (
+        !isHostedTenantExecutionRequired() &&
+        !loadHostedTenantRegistryFromEnvironment()
+      ) {
+        this.reviewedTariffsPreview = this.featurePreviews.bind({
+          id: 'reviewed-usage-tariffs',
+          label: 'Reviewed tariff sources',
+          description:
+            'Review exact published price observations separately from engine costs and account billing.',
+        });
+      }
       this.bindFleetConsumerProbesPreview();
+      this.bindChatHostImagesPreview();
+      this.bindMemberPasskeysPreview();
+      this.bindAccountSharingSettingPreview();
+      if (
+        !isHostedTenantExecutionRequired() &&
+        !loadHostedTenantRegistryFromEnvironment()
+      ) {
+        this.codexBoundToolsPreview = this.featurePreviews.bind({
+          id: 'codex-bound-browser-device-tools',
+          label: 'Codex browser and device tools',
+          description:
+            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+        });
+      }
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1525,6 +1793,26 @@ export class StationRuntime {
         });
         return resolveProjectWorkspacePath(projectId, { resolver });
       };
+      this.projectWorkingConfiguration = composeProjectWorkingRuntime({
+        home: projectHomeDir,
+        hosted: isHostedTenantExecutionRequired(),
+        projects: () => this.projectService.listProjects(),
+        resolveDirectory: this.resolveTaskDispatchWorkspace,
+        canRead: (projectId, principalId) =>
+          // Personal Device principals follow the canonical personal Project
+          // rule; account-bound callers still need current Project membership.
+          !isDeploymentAccountPrincipalId(principalId) ||
+          Boolean(
+            this.projectMembership?.service
+              .admissionsForResolvedPrincipal(principalId)
+              .some(
+                (entry) =>
+                  entry.scope.localProjectId === projectId &&
+                  entry.member.status === 'active' &&
+                  entry.member.actions.includes('view'),
+              ),
+          ),
+      });
       this.approvalRegistry = new ApprovalRegistry(this.logger, {
         eventBus: this.eventBus,
       });
@@ -1555,7 +1843,6 @@ export class StationRuntime {
           await this.recoverRuntimeProjections(resetIntegrationState);
         },
         usageAggregatorRef: { get: () => this.usageAggregator },
-        getTerminalShell: () => this.appConfig?.terminalShell,
         persistEvent: (event: any) => this.eventLog.persist(event),
         bootstrapVoiceAgent: async () => this.bootstrapVoiceAgent(),
         resolveVectorDbProvider: () =>
@@ -1580,8 +1867,7 @@ export class StationRuntime {
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
       this.fileTreeService = services.fileTreeService;
-      this.terminalService = services.terminalService;
-      this.terminalWsServer = services.terminalWsServer;
+      this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
       this.monitoringEmitter = services.monitoringEmitter;
       this.acpBridge = services.acpBridge;
@@ -1611,6 +1897,20 @@ export class StationRuntime {
       // EventBus: `releaseClaimForSession` already catches internally, and
       // the `.catch` here is defense-in-depth for the subscription callback
       // itself.
+      // #4266: name a conversation with the title model after its first
+      // completed turn. Off unless `titleModel` is set, and always off on a
+      // hosted Station; detached and best-effort, so it never delays a turn.
+      const conversationTitles = new ConversationTitleGeneration({
+        eventStore: this.orchestrationEventStore,
+        enabled: () => resolveTitleModel(this.appConfig ?? {}) !== undefined,
+        generate: (input) =>
+          generateConversationTitle({
+            ctx: this.buildRuntimeContext(),
+            ...input,
+          }),
+        logger: this.logger,
+      });
+      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
@@ -1743,7 +2043,13 @@ export class StationRuntime {
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
-        openedEventStore?.close();
+        if (openedEventStore) {
+          const closed = openedEventStore.close();
+          if (closed.kind !== 'closed')
+            throw new Error(
+              `Orchestration EventStore did not close: ${closed.kind}`,
+            );
+        }
       } catch (closeError) {
         persistenceClosed = false;
         failures.push(closeError);
@@ -3411,6 +3717,9 @@ export class StationRuntime {
     const builtinEngineBinding =
       await this.resolveBuiltinEngineBinding(appConfig);
     await bootstrapRuntimeDefaultAgent({
+      observeModelContext: (
+        observation: import('../types.js').ModelGenerationObservation,
+      ) => recordManagedModelContext(this.orchestrationEventStore, observation),
       appConfig,
       builtinEngineBinding,
       configLoader: composition
@@ -3606,6 +3915,17 @@ export class StationRuntime {
         }
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
+      if (this.accountSharingApplying) {
+        // #4305: this boot started with the staged Settings change; keep it.
+        this.accountSharingApplying = false;
+        try {
+          commitAccountSharingAtBoot(this.configLoader.getProjectHomeDir());
+        } catch {
+          this.logger?.warn?.(
+            'Project sharing setting started but could not be committed; the next restart rolls it back',
+          );
+        }
+      }
       this.recordRuntimeLifecycle('ready');
       // #3851: the server listens, but orchestration's session recovery
       // (which re-registers the turns it finds) runs unawaited from its
@@ -3697,6 +4017,56 @@ export class StationRuntime {
     }
   }
 
+  /** Project membership, then the built-in account provider when configured. */
+  private async loadProjectSharing(stationId: string): Promise<void> {
+    if (this.projectSharingEnabled && !this.projectMembership) {
+      this.projectMembership = createProjectMembershipRuntime(
+        this.configLoader.getProjectHomeDir(),
+        stationId,
+        this.storageAdapter,
+      );
+    }
+    if (!this.localAccountConfiguration || this.deploymentAuthentication)
+      return;
+    if (!this.projectMembership)
+      throw new Error('Local account enrollment requires Project membership.');
+    this.localAccounts = await loadLocalAccounts(
+      this.localAccountConfiguration,
+      {
+        stationId,
+        homeDirectory: this.configLoader.getProjectHomeDir(),
+      },
+      this.projectMembership.service,
+      resolveStationBrowserOrigins({ port: this.port, host: this.host }),
+      { memberPasskeys: this.memberPasskeysPreview },
+    );
+    this.deploymentAuthentication = this.localAccounts;
+    // #3586: account-tied personal access tokens are checked against
+    // this Station's own account standing; no other provider has one.
+    this.environmentSecurityService.devicePairing.setAccountDirectory(
+      this.localAccounts.accountDirectory,
+    );
+  }
+
+  /** #4305: what the account-sharing settings route reports. */
+  private accountSharingState(): AccountSharingRuntimeState {
+    return {
+      lockedBy: this.accountSharingLockedBy,
+      active: {
+        projectSharing: !!this.projectMembership,
+        localAccounts: !!this.localAccounts,
+        externalProvider:
+          !!this.deploymentAuthentication && !this.localAccounts,
+        ...(this.deploymentAuthentication
+          ? { publicOrigin: this.deploymentAuthentication.publicOrigin }
+          : {}),
+      },
+      ...(this.accountSharingStartupFailure
+        ? { startupFailure: this.accountSharingStartupFailure }
+        : {}),
+    };
+  }
+
   private async runInitialize(
     nativeProofFlag: string | undefined,
   ): Promise<void> {
@@ -3712,33 +4082,37 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
-    if (this.projectSharingEnabled && !this.projectMembership) {
-      this.projectMembership = createProjectMembershipRuntime(
-        this.configLoader.getProjectHomeDir(),
-        identity.environmentId,
-        this.storageAdapter,
-      );
+    try {
+      await this.loadProjectSharing(identity.environmentId);
+    } catch (error) {
+      // Deployment configuration still fails startup closed. A stored
+      // Settings choice instead turns sharing off for this boot, so a choice
+      // that cannot load never makes the Station unbootable (#4305).
+      if (this.accountSharingLockedBy.length > 0) throw error;
+      this.projectMembership?.close();
+      this.projectMembership = undefined;
+      this.projectSharingEnabled = false;
+      this.localAccountConfiguration = undefined;
+      const reason = `Project sharing could not start: ${errorMessage(error).slice(0, 400)}`;
+      this.accountSharingStartupFailure = reason;
+      this.logger?.warn?.('Project sharing from Settings did not start', {
+        applying: this.accountSharingApplying,
+      });
+      if (this.accountSharingApplying) {
+        this.accountSharingApplying = false;
+        try {
+          rollBackAccountSharingAtBoot(
+            this.configLoader.getProjectHomeDir(),
+            reason,
+          );
+        } catch {
+          // The attempt mark stays; the next boot rolls it back instead.
+        }
+      }
     }
-    if (this.localAccountConfiguration && !this.deploymentAuthentication) {
-      if (!this.projectMembership)
-        throw new Error(
-          'Local account enrollment requires Project membership.',
-        );
-      this.localAccounts = await loadLocalAccounts(
-        this.localAccountConfiguration,
-        {
-          stationId: identity.environmentId,
-          homeDirectory: this.configLoader.getProjectHomeDir(),
-        },
-        this.projectMembership.service,
-      );
-      this.deploymentAuthentication = this.localAccounts;
-      // #3586: account-tied personal access tokens are checked against
-      // this Station's own account standing; no other provider has one.
-      this.environmentSecurityService.devicePairing.setAccountDirectory(
-        this.localAccounts.accountDirectory,
-      );
-    } else if (
+    // Local accounts and a module are exclusive (checked in the constructor).
+    if (
+      !this.localAccountConfiguration &&
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
     ) {
@@ -3893,18 +4267,6 @@ export class StationRuntime {
         plugins: packageProjections.pending,
       });
     await this.sshEnvironmentService.initialize();
-    // Terminal sessions are process-global and have no durable tenant
-    // binding. A hosted tenant-isolated runtime must not bind the separate
-    // terminal port until that transport has tenant authorization.
-    if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host, {
-        allowedBrowserOrigins: resolveStationBrowserOrigins({
-          port: this.port,
-          host: this.host,
-        }),
-      });
-      this.terminalWsStarted = true;
-    }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;
     try {
       // Private SQLite takes ownership of old config-backed credential
@@ -3969,10 +4331,18 @@ export class StationRuntime {
           // failed-safe on Station's native engine until another config write.
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
+          hostImagesPreview: this.chatHostImagesPreview,
+          durableAgentPreview: this.featurePreviews.bind({
+            id: 'durable-station-agent',
+            label: 'Crash-durable Station Agent',
+            description:
+              'Keep Station Agent text turns running after disconnect and resume recorded model and tool steps after restart. Stop still cancels.',
+          }),
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,
             ),
+          getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
           usageAggregator: this.usageAggregator,
           // archive#3245 / #2568: see `orchestrationUsageRefFor`.
           orchestrationUsageRef: orchestrationUsageRefFor(
@@ -3997,6 +4367,16 @@ export class StationRuntime {
           integrationSecretResolver: this.secretBindingAdministration,
           resolveAcpPreToolPolicy: (input) =>
             this.resolveExternalPreToolPolicy(input, 'self-reported'),
+          acpAgentTerminals: agentTerminalsFor({
+            sessions: () => this.scopedTerminals.sessions,
+            projectId: (slug) => {
+              try {
+                return this.storageAdapter.getProject(slug).id;
+              } catch {
+                return undefined;
+              }
+            },
+          }),
           eventLog: this.eventLog,
           bedrockAdapter: this.bedrockAdapter,
           claudeAdapter: this.claudeAdapter,
@@ -4061,12 +4441,173 @@ export class StationRuntime {
           },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
+            this.nativeForkStoredReadBinder =
+              services.nativeForkStoredReadBinder;
             // Route construction happens inside initializeRuntime before this
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
             // route or capability can read runtime context.
             const briefTenantRegistry =
               loadHostedTenantRegistryFromEnvironment();
+            if (
+              !isHostedTenantExecutionRequired() &&
+              process.platform !== 'win32'
+            ) {
+              const learningManifests = new ProjectManifestStore(
+                this.configLoader.getProjectHomeDir(),
+                this.storageAdapter,
+              );
+              const readLearningTaskSource = createCanonicalTaskSourceReader({
+                readTask: (id) => this.taskGraphService.readTaskView(id),
+                projects: () => this.projectService.listProjects(),
+                shares: this.projectMembership?.sharedTasks,
+                membership: this.projectMembership?.service,
+                portableProjectId: (slug) => {
+                  const manifest = learningManifests.readRecord(slug);
+                  return manifest
+                    ? parseProjectPortableIdentity(manifest).id
+                    : undefined;
+                },
+              });
+              const learningSessionSource =
+                createStationControlCallerRecordResolver(
+                  stationControlCallerRecordSources({
+                    orchestrationService: this.orchestrationService,
+                    eventStore: this.orchestrationEventStore,
+                    getProject: (slug) => this.storageAdapter.getProject(slug),
+                  }),
+                );
+              this.learningReview = composeLearningReviewRuntime(
+                this.featurePreviews,
+                {
+                  home: this.configLoader.getProjectHomeDir(),
+                  authority: `station:${this.environmentSecurityService.devicePairing.environmentId()}`,
+                  projects: () => this.projectService.listProjects(),
+                  readTask: (id) => this.taskGraphService.readTaskView(id),
+                  memory: () => this.orchestrationEventStore?.taskMemoryStore(),
+                  mayReadProject: (projectId, actorId) =>
+                    actorId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+                    Boolean(
+                      this.projectMembership?.service
+                        .admissionsForResolvedPrincipal(actorId)
+                        .some(
+                          (entry) =>
+                            entry.scope.localProjectId === projectId &&
+                            entry.member.status === 'active' &&
+                            entry.member.actions.includes('view'),
+                        ),
+                    ),
+                  mayReadTask: (taskId, actorId, shares) =>
+                    readLearningTaskSource(taskId, actorId, {
+                      operatorInPerson: actorId === LOCAL_OPERATOR_PRINCIPAL_ID,
+                      shares,
+                    }),
+                  mayReadSession: (sessionId, actorId) =>
+                    this.orchestrationService.canUserReadSession(
+                      sessionId,
+                      sessionReadAuthorityFromRequest(
+                        actorId,
+                        undefined,
+                        undefined,
+                      ),
+                    ),
+                  contributions: (projectId, ref, actorId) => {
+                    const project = this.projectService
+                      .listProjects()
+                      .find((project) => project.id === projectId);
+                    const store = this.orchestrationEventStore;
+                    if (!project || !store) return [];
+                    const authority = sessionReadAuthorityFromRequest(
+                      actorId,
+                      undefined,
+                      undefined,
+                    );
+                    return store
+                      .readRecentTaskLearningContributions([
+                        project.id,
+                        project.slug,
+                      ])
+                      .filter(
+                        (row) =>
+                          this.orchestrationService.canUserReadSession(
+                            row.sessionId,
+                            authority,
+                          ) &&
+                          row.contributions.some(
+                            (value) =>
+                              value.authority === ref.authority &&
+                              value.kind === ref.kind &&
+                              value.id === ref.id &&
+                              value.revision === ref.revision,
+                          ),
+                      )
+                      .map((row) => ({
+                        turnRef: {
+                          authority: `station:${this.environmentSecurityService.devicePairing.environmentId()}`,
+                          kind: 'turn',
+                          id: row.turnId,
+                          revision: row.eventId,
+                        },
+                        activeRevisionRef: ref,
+                        coordinate: {
+                          sessionId: row.sessionId,
+                          turnId: row.turnId,
+                          conversationId:
+                            store.conversationForSession(row.sessionId)
+                              ?.conversationId ?? row.sessionId,
+                        },
+                      }));
+                  },
+                  captureRatingEvidence: () =>
+                    this.feedbackService.captureRatingEvidence(),
+                  projectForSession: (id) => {
+                    const record = learningSessionSource(id);
+                    return record?.projectIdSource === 'session-record'
+                      ? record.localProjectId
+                      : undefined;
+                  },
+                  messages: async (conversationId, agentSlug, actorId) => {
+                    const authority = sessionReadAuthorityFromRequest(
+                      actorId,
+                      undefined,
+                      undefined,
+                    );
+                    const sessions =
+                      this.orchestrationService.conversationSessionIds(
+                        conversationId,
+                      );
+                    if (
+                      sessions.length > 64 ||
+                      sessions.some(
+                        (id) =>
+                          !this.orchestrationService.canUserReadSession(
+                            id,
+                            authority,
+                          ),
+                      )
+                    )
+                      return [];
+                    const reader = createConversationMessageReader({
+                      getAdapter: (slug) =>
+                        this.memoryAdapters.get(slug) ?? null,
+                      authorityFor: () => authority,
+                      sessionMessageReader: this.orchestrationService,
+                      logger: this.logger,
+                    });
+                    return (
+                      await reader.readConversationMessages(
+                        new Request(
+                          'http://station.internal/learning-evidence',
+                        ),
+                        agentSlug,
+                        conversationId,
+                        authority,
+                      )
+                    ).messages;
+                  },
+                },
+              );
+            }
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
@@ -4076,6 +4617,11 @@ export class StationRuntime {
                 // Epic #4003: the brief a dispatched Session's first turn
                 // carries. The room runtime is composed later; read lazily.
                 taskBrief: composeTaskBriefSource({
+                  workingConfiguration:
+                    this.projectWorkingConfiguration?.forTask,
+                  learningContext: (task, owner) =>
+                    this.learningReview?.forTask(task, owner) ??
+                    Promise.resolve(undefined),
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
                   sessionReadModel: this.orchestrationService,
@@ -4154,6 +4700,11 @@ export class StationRuntime {
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
               fileMemoryUserId: () => getCachedUser().alias,
+              canReadFileOwner: (requester, owner) =>
+                this.environmentSecurityService.canSharePersonalConversation(
+                  requester,
+                  owner,
+                ),
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });
@@ -4171,6 +4722,7 @@ export class StationRuntime {
     this.appConfig = initialized.appConfig;
     this.framework = initialized.framework;
     this.orchestrationService = initialized.orchestrationService;
+    this.nativeForkStoredReadBinder = initialized.nativeForkStoredReadBinder;
     this.resourcePosture = initialized.resourcePosture;
     this.attachedSessionFollowService =
       initialized.attachedSessionFollowService;
@@ -4271,9 +4823,14 @@ export class StationRuntime {
     this.pluginDraftService = undefined;
     await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
-    // same order as shutdown(): browsers, then device sessions (their
+    // same order as shutdown(): recordings, browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
     // toolchain, and the live-surface registry once every producer stopped.
+    const recordingsClosed = await attempt(
+      () => this.taskRecordingsShutdown ?? this.taskRecordings?.dispose(),
+    );
+    this.taskRecordingsShutdown = undefined;
+    if (recordingsClosed) this.taskRecordings = undefined;
     if (await attempt(() => this.browserService?.shutdown()))
       this.browserService = undefined;
     if (await attempt(() => this.deviceSessions?.dispose()))
@@ -4308,9 +4865,6 @@ export class StationRuntime {
         );
       }
     });
-    if (await attempt(() => this.terminalWsServer.stop())) {
-      this.terminalWsStarted = false;
-    }
 
     if (failures.length > 1) {
       throw new AggregateError(
@@ -4579,6 +5133,7 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    this.codexToolDispatch = async (request) => app.fetch(request);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.
     this.runtimeSearch ??= createRuntimeSearch({
@@ -4587,6 +5142,7 @@ export class StationRuntime {
       transcripts: this.orchestrationService,
     });
     if (this.searchAdmissionStopped) this.runtimeSearch.stop();
+    const localMedia = composeLocalMedia(this.configLoader.getProjectHomeDir());
     const {
       schedulerService,
       notificationService,
@@ -4594,6 +5150,7 @@ export class StationRuntime {
       projectTaskRoomRuntime,
       projectRoomRuntime,
       browserService,
+      taskRecordings,
       deviceToolchainService,
       deviceSessions,
       liveSurfaceRegistry,
@@ -4602,7 +5159,9 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
       serverUpdate,
+      analyticsMaintenance,
     } = configureRuntimeRoutes({
+      discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
       },
@@ -4620,6 +5179,8 @@ export class StationRuntime {
         : {}),
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
+      accountSharing: () => this.accountSharingState(),
+      accountSharingPreview: this.accountSharingSettingPreview,
       applicationSessions: this.applicationSessions,
       nativeRelayEnrollment: this.nativeRelayEnrollment,
       nativeSurfaceRegistry: this.nativeSurfaceRegistry,
@@ -4642,6 +5203,7 @@ export class StationRuntime {
       port: this.port,
       host: this.host,
       buildProvenanceSnapshot: this.buildProvenanceSnapshot,
+      managedPolicy: this.managedPolicy,
       usageAggregator: this.usageAggregator,
       usageTelemetry: this.usageTelemetry,
       getUsageTelemetry: () => this.usageTelemetry,
@@ -4664,11 +5226,13 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
-      terminalService: this.terminalService,
+      ptyAdapter: this.ptyAdapter,
+      scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
+      nativeForkStoredReadBinder: this.nativeForkStoredReadBinder,
       orchestrationEventStore: this.orchestrationEventStore,
       operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,
@@ -4719,6 +5283,15 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      projectWorkingConfiguration: this.projectWorkingConfiguration,
+      learningReview: this.learningReview,
+      getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
+      reviewedTariffsEnabled: this.reviewedTariffsEnabled,
+      mediaTools: localMedia.mediaTools,
+      walkthroughImportDependencies: {
+        resolver: localMedia.mediaTools,
+        transcriber: localMedia.transcriber,
+      },
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;
@@ -4727,11 +5300,13 @@ export class StationRuntime {
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
+    this.taskRecordings = taskRecordings;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.serverUpdate = serverUpdate;
+    this.analyticsMaintenance = analyticsMaintenance;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4843,18 +5418,30 @@ export class StationRuntime {
    * Start periodic health checks for all agents
    */
   private async startHealthChecks(): Promise<void> {
-    await startRuntimeHealthChecks({
+    this.stopHealthChecks = await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
-      runHealthChecks: async () =>
-        runRuntimeHealthChecks({
+      maintainOwnedWork: () =>
+        this.orchestrationService?.maintainOwnedWork() ?? Promise.resolve(),
+      runHealthChecks: async () => {
+        if (!this.shutdownPromise) {
+          try {
+            await this.analyticsMaintenance?.(async () => {
+              if (this.shutdownPromise) throw new Error('Runtime closing');
+            });
+          } catch {
+            this.logger.warn('Analytics sync outbox expiry did not complete');
+          }
+        }
+        return runRuntimeHealthChecks({
           activeAgents: this.activeAgents,
           agentSpecs: this.agentSpecs,
           memoryAdapters: this.memoryAdapters,
           mcpConnectionStatus: this.mcpConnectionStatus,
           integrationMetadata: this.integrationMetadata,
           monitoringEmitter: this.monitoringEmitter,
-        }),
+        });
+      },
     });
     // archive#3218. The reactive watch (archive#3215) sees corruption a query
     // touches; this sees the pages nothing reads. It runs in a child process
@@ -4884,6 +5471,9 @@ export class StationRuntime {
     composition?: PluginActivationComposition,
   ) {
     return {
+      observeModelContext: (
+        observation: import('../types.js').ModelGenerationObservation,
+      ) => recordManagedModelContext(this.orchestrationEventStore, observation),
       agentSlug,
       validateProjectTools: (
         slug: string,
@@ -5080,6 +5670,55 @@ export class StationRuntime {
     });
   }
 
+  /**
+   * The chat-host-images preview: one selector for every consumer — turn
+   * capture and the agent instruction (orchestration), and the per-session
+   * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
+   */
+  private bindChatHostImagesPreview(): void {
+    this.chatHostImagesPreview = this.featurePreviews.bind({
+      id: 'chat-host-images',
+      label: 'Chat images from the host',
+      defaultEnabled: true,
+      description:
+        "Show images an agent saves on this Station and names in its reply, on any device. Station copies each one (PNG, JPEG, GIF or WebP, up to 512 KiB, from the chat's working folder or its own temporary folder) into the chat's attachment storage when the reply finishes.",
+    });
+    const preview = this.chatHostImagesPreview;
+    installSessionTmpDirPolicy(() =>
+      preview.select({ enabled: () => true, disabled: () => false }),
+    );
+  }
+
+  /**
+   * #4303: member passkeys for local accounts. One selector, read by the
+   * local-account provider on every passkey request and by its descriptor on
+   * every sign-in page load. Bound whether or not local accounts are on, so
+   * the operator can discover it before enabling either.
+   */
+  private bindMemberPasskeysPreview(): void {
+    this.memberPasskeysPreview = this.featurePreviews.bind({
+      id: 'member-passkeys',
+      label: 'Member passkeys',
+      description:
+        'Let invited people using Station accounts create an account, sign in and recover with passkeys at the configured sign-in address.',
+    });
+  }
+
+  /**
+   * #4305: the Settings control for Project sharing with local accounts. It
+   * gates the operator route and its section only. Deployment variables and
+   * an already committed stored choice keep working when it is off, so
+   * turning the preview off never signs invited people out.
+   */
+  private bindAccountSharingSettingPreview(): void {
+    this.accountSharingSettingPreview = this.featurePreviews.bind({
+      id: 'project-sharing-setting',
+      label: 'Project sharing setting',
+      description:
+        'Turn on Project sharing with local accounts from Settings → System. Applying it restarts Station.',
+    });
+  }
+
   private replaceTemplateVariables(text: string, _agentName?: string): string {
     return replaceRuntimeTemplateVariables(text, this.appConfig);
   }
@@ -5182,6 +5821,13 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    if (this.taskRecordings && !this.taskRecordingsShutdown) {
+      this.taskRecordingsShutdown = this.taskRecordings.dispose();
+      void this.taskRecordingsShutdown.catch(() => {});
+    }
+    this.uninstallCatalogAddressPolicy?.();
+    this.uninstallCatalogAddressPolicy = undefined;
+    sharedUntrustedContentLedger.attachDurableMarks(undefined);
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();
@@ -5246,6 +5892,14 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await (this.taskRecordingsShutdown ?? this.taskRecordings?.dispose());
+      this.taskRecordings = undefined;
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      this.taskRecordingsShutdown = undefined;
+    }
     try {
       await this.nativeRelayEnrollment?.close();
       this.nativeRelayEnrollment = undefined;
@@ -5371,6 +6025,7 @@ export class StationRuntime {
       await shutdownRuntimeServices({
         logger: this.logger,
         timers: this.timers,
+        stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
         attachedSessionFollowService: this.attachedSessionFollowService,
@@ -5405,8 +6060,7 @@ export class StationRuntime {
               },
             }
           : undefined,
-        terminalWsServer: this.terminalWsServer,
-        terminalService: this.terminalService,
+        terminalSessions: this.scopedTerminals.sessions,
         monitoringEmitter: this.monitoringEmitter,
         sshEnvironmentService: this.sshEnvironmentService,
         // Deliberately not handed over (station#1815): this loader is the
@@ -5473,7 +6127,11 @@ export class StationRuntime {
       // SQLite connection (and its file handle on projectHomeDir) open past
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
-      this.orchestrationEventStore.close();
+      const closed = this.orchestrationEventStore.close();
+      if (closed.kind !== 'closed')
+        throw new Error(
+          `Orchestration EventStore did not close: ${closed.kind}`,
+        );
     } catch (error) {
       failures.push(error);
     }

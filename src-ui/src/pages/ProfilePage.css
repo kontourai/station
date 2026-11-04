@@ -6,6 +6,12 @@
   gap: var(--k-space-4);
 }
 
+.profile-usage-region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+}
+
 /* ── Card base ── */
 
 .profile-card {
@@ -116,7 +122,7 @@
 
 .profile-card__title {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -137,7 +143,7 @@
 
 .profile-card__section-title {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -171,7 +177,7 @@
 }
 
 .profile-usage-graph__caption {
-  font-size: 0.72rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -363,18 +369,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-3);
-}
-
-.profile-person-overlay {
-  background: color-mix(in srgb, var(--k-bg) 80%, transparent);
-}
-
-.profile-person-dialog {
-  background: var(--k-panel);
-  color: var(--k-text);
-  padding: var(--k-space-6);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-overlay);
 }
 
 @media (max-width: 700px) {

@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
+import { totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -109,7 +110,9 @@ describe.skipIf(!manager)('running server workload containment', () => {
         `--unit=${unit}`,
         `--working-directory=${root}`,
         '--property=MemoryMax=536870912',
-        '--property=MemorySwapMax=0',
+        // Near-zero swap, but a value boot never writes, so the boot
+        // protection test can tell boot's MemorySwapMax from the launch one.
+        '--property=MemorySwapMax=1048576',
         '--property=NoNewPrivileges=yes',
         '--property=PrivateTmp=yes',
         `--setenv=PATH=${process.env.PATH}`,
@@ -202,25 +205,91 @@ describe.skipIf(!manager)('running server workload containment', () => {
     ).toBe(64 * 1024 * 1024);
   });
 
+  test('boot protects the server unit and lowers the workload slice CPU weight', () => {
+    const show = (target: string, properties: string[]) => {
+      const shown = spawnSyncBounded(
+        '/usr/bin/systemctl',
+        [
+          '--user',
+          'show',
+          target,
+          ...properties.map((property) => `--property=${property}`),
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 15_000 },
+      );
+      expect(shown.status, shown.stderr).toBe(0);
+      return Object.fromEntries(
+        shown.stdout
+          .trim()
+          .split('\n')
+          .map((line) => [
+            line.slice(0, line.indexOf('=')),
+            line.slice(line.indexOf('=') + 1),
+          ]),
+      );
+    };
+    // The fixture unit launches with MemorySwapMax=1048576 and no MemoryLow,
+    // so each expected value is one only boot writes.
+    const MIB = 1024 * 1024;
+    const share = Math.floor(totalmem() / MIB / 8) * MIB;
+    expect(
+      show(unit, ['MemoryLow', 'MemorySwapMax', 'ManagedOOMPreference']),
+    ).toEqual({
+      MemoryLow: String(Math.min(1536 * MIB, share)),
+      MemorySwapMax: share >= 1536 * MIB ? '0' : 'infinity',
+      ManagedOOMPreference: 'avoid',
+    });
+    expect(show(slice, ['CPUWeight'])).toEqual({ CPUWeight: '25' });
+  });
+
   test('a real workload OOM leaves the answering server and sibling engine alive and records its cause', async () => {
     const result = await request<{
       code: number | null;
       signal: string;
-      outcome: { result: string; memoryMaxBytes?: number };
+      outcome: {
+        result: string;
+        memoryMaxBytes?: number;
+        oomKills?: number;
+        unreportedOomKills?: number;
+      };
+      memoryExhausted: boolean;
       workloads: Snapshot;
     }>('/launch?mode=oom');
     expect(result.signal).toBe('SIGKILL');
+    // OOMPolicy=continue: systemd records no oom-kill result. The kernel's
+    // oom_kill count in the scope's own memory.events, kept readable by the
+    // engine scope's holder until Station closes it, is the evidence.
     expect(result.outcome).toMatchObject({
-      result: 'oom-kill',
       memoryMaxBytes: 64 * 1024 * 1024,
+      oomKills: 1,
+      unreportedOomKills: 1,
     });
-    expect(
-      result.workloads.recent.some((entry) => entry.result === 'oom-kill'),
-    ).toBe(true);
+    expect(result.memoryExhausted).toBe(true);
     expect(await gone(sibling.pid)).toBe(false);
     expect(
       (await request<{ workloads: Snapshot }>('/status')).workloads.state,
     ).toBe('ready');
+  });
+
+  test('a command OOM kills only the command: the engine keeps running and Station observes the kill', async () => {
+    const result = await request<{
+      watched: boolean;
+      command: { code: number | null; signal: string | null };
+      kills: Array<{
+        oomKills: number;
+        newKills: number;
+        memoryMaxBytes?: number;
+      }>;
+      leaderAlive: boolean;
+    }>('/command-oom');
+    expect(result.watched).toBe(true);
+    expect(result.command.signal).toBe('SIGKILL');
+    expect(result.leaderAlive).toBe(true);
+    expect(result.kills[0]).toMatchObject({
+      newKills: 1,
+      memoryMaxBytes: 64 * 1024 * 1024,
+    });
+    expect(await gone(sibling.pid)).toBe(false);
   });
 
   test.each(['oom', 'signal'])(
@@ -229,20 +298,32 @@ describe.skipIf(!manager)('running server workload containment', () => {
       const result = await request<{
         events: Array<{
           method: string;
+          code?: string;
           message?: string;
-          details?: { workload?: { result: string } };
+          reason?: string;
+          details?: { workload?: { unreportedOomKills?: number } };
         }>;
         workloads: Snapshot;
       }>(`/codex-exit?cause=${cause}`);
       const error = result.events.find(
         (event) => event.method === 'runtime.error',
       );
-      expect(error?.message).toContain(
-        cause === 'oom' ? 'memory was exhausted' : 'signal: SIGKILL',
+      const exited = result.events.find(
+        (event) => event.method === 'session.exited',
       );
-      if (cause === 'oom')
-        expect(error?.details?.workload?.result).toBe('oom-kill');
-      else expect(error?.message).not.toContain('memory was exhausted');
+      if (cause === 'oom') {
+        // The engine itself was the process the kernel killed.
+        expect(error?.code).toBe('engine-memory-exhausted');
+        expect(error?.message).toContain('Codex ran out of memory');
+        expect(
+          error?.details?.workload?.unreportedOomKills,
+        ).toBeGreaterThanOrEqual(1);
+        expect(exited?.reason).toBe('memory-exhausted');
+      } else {
+        expect(error?.code).toBe('codex-turn-orphaned');
+        expect(error?.message).toContain('signal: SIGKILL');
+        expect(exited?.reason).not.toBe('memory-exhausted');
+      }
       expect(await gone(sibling.pid)).toBe(false);
       expect(
         (await request<{ workloads: Snapshot }>('/status')).workloads.state,

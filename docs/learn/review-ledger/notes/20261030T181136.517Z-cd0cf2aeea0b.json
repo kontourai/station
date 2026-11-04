@@ -1,0 +1,7 @@
+{
+  "revision": "7d22abc525e6eb21df9ec8330548814926c228fd",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the manifest delta against the model runtime evidence owners: it classifies a separate CI signer child test and changes no runtime test classification or model contract.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

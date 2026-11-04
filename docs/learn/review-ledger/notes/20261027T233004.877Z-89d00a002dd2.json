@@ -1,0 +1,7 @@
+{
+  "revision": "b546551357c2f14af0ba796f091d8ddf542c1ab1",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Checked: this change only hardens the engine-scope holder's bash sweep (bash -p, skip unexpanded/non-numeric /dev/fd entries) in workload-resources.ts; this document makes no claim about the holder sweep, BASH_ENV or /dev/fd, so nothing here changes.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

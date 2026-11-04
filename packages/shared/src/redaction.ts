@@ -29,6 +29,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   pattern: RegExp;
   replacement: string;
 }> = [
+  { pattern: /([?&]capability=)[A-Za-z0-9_-]+/g, replacement: `$1${REDACTED}` },
   { pattern: /(?:AKIA|ASIA)[0-9A-Z]{16}/g, replacement: REDACTED },
   { pattern: /gh[pousr]_[A-Za-z0-9]{36,}/g, replacement: REDACTED },
   { pattern: /github_pat_[A-Za-z0-9_]{22,}/g, replacement: REDACTED },
@@ -41,36 +42,47 @@ const SECRET_PATTERNS: ReadonlyArray<{
     replacement: `Basic ${REDACTED}`,
   },
   { pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g, replacement: REDACTED },
-  // Generic connection-string credentials (postgres://user:pass@host,
-  // mysql://..., mongodb://..., amqp://..., or any other `scheme://` URL
-  // carrying inline `user:pass@`). None of the patterns above are
-  // shaped like this, so a connection string embedded in free-text error
-  // output (an error message, a stack line) was passing through both
-  // `redactSecrets` and `redactDeep` untouched (station#1896 logging
-  // slice 2, filed as station#1922: server log entries are durable NDJSON
-  // on disk, so a leaked credential here is a standing secret, not just a
-  // point-in-time one). Keeps the scheme and host visible (operationally
-  // useful, not secret) and redacts only the `user:pass` segment.
-  //
-  // The password group (`[^\s'"/]+`, note: unlike the username group it
-  // does NOT exclude `@`) intentionally allows `@` inside the password —
-  // station#1896 review round 2, HIGH #3: a password containing an
-  // unescaped `@` (`postgres://dbuser:p@ssw0rd@host`) previously matched
-  // only up to the FIRST `@`, leaving the password's tail
-  // (`ssw0rd@host`) unredacted in the output. Because the group is
-  // greedy and `@` is the next required literal, the regex engine
-  // backtracks from the end of its match until it finds an `@` — which,
-  // for a greedy match, is the LAST `@` before the next boundary
-  // character (whitespace/quote/`/`), i.e. the actual credential/host
-  // separator. No nested/overlapping quantifiers are introduced (the two
-  // `+` groups are separated by required literal `:`/`@` anchors), so
-  // this stays linear-time — see this file's redaction.test.ts for a
-  // timing probe against a pathological near-miss input.
-  {
-    pattern: /([a-z][a-z0-9+.-]{1,20}:\/\/)[^\s'"/:@]+:[^\s'"/]+@/gi,
-    replacement: `$1${REDACTED}@`,
-  },
 ];
+
+// Redact complete URL credentials before contextual fields interpret a colon
+// inside a password (#1922). Passwords may contain `@`; the greedy password
+// group uses the last `@` before a path/quote/whitespace boundary (#1896).
+const CONNECTION_STRING_CREDENTIAL_PATTERN =
+  /([a-z][a-z0-9+.-]{1,20}:\/\/)[^\s'"/:@]+:[^\s'"/]+@/gi;
+
+// Native asset URLs can contain a launch secret. Keep the plugin identity
+// and source coordinates useful to a bug report, never the query or fragment.
+function assetLocation(location: string): string {
+  const coordinates = /:\d+(?::\d+)?$/.exec(location)?.[0] ?? '';
+  const url = coordinates ? location.slice(0, -coordinates.length) : location;
+  const path = url.split(/[?#]/, 1)[0] ?? '';
+  const localPath = path.replace(
+    /^(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)/i,
+    '',
+  );
+  const asset = localPath.startsWith('/api/plugins/')
+    ? localPath
+    : path.slice(path.lastIndexOf('/') + 1);
+  return `${asset}${coordinates}`;
+}
+
+function redactPluginAssetUrls(text: string): string {
+  return text.replace(
+    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()\],，。；：！？、）》】」』〉〕］｝＞＇＂]+/gi,
+    (location) => {
+      const punctuation = /\.+$/.exec(location)?.[0] ?? '';
+      const url = punctuation
+        ? location.slice(0, -punctuation.length)
+        : location;
+      return `${assetLocation(url)}${punctuation}`;
+    },
+  );
+}
+
+/** Stack locations retain plugin paths or filenames, plus source coordinates. */
+export function redactStackLocations(text: string): string {
+  return redactSecrets(text).replace(/[^\s()@]*\/[^\s()]*/g, assetLocation);
+}
 
 const TOKEN_SIZING_SEGMENTS = new Set([
   'budget',
@@ -111,7 +123,16 @@ function keySegments(key: string): string[] {
  * not. Compared against the segment-joined form, so `MYSQL_PWD`, `mysql-pwd`
  * and `mysqlPwd` all match while a bare `pwd` does not.
  */
-const WHOLE_NAME_SECRET_KEYS = new Set(['pgpassword', 'mysqlpwd']);
+// Station's own short-lived pairing and chat-link codes are credentials while
+// they are valid; `code` alone is not (error codes, exit codes).
+const WHOLE_NAME_SECRET_KEYS = new Set([
+  'pgpassword',
+  'mysqlpwd',
+  'manualcode',
+  'pairingcode',
+  'linkcode',
+  'chatlinkcode',
+]);
 
 export function isSecretField(key: string): boolean {
   const segments = keySegments(key);
@@ -196,72 +217,90 @@ function redactContextualFields(text: string): string {
         : match,
   );
 
-  return jsonRedacted.replace(
-    // The boundary group also swallows a `-`/`--` flag prefix, so
-    // `--password=hunter2` on a command line is contextually redacted the same
-    // way `password=hunter2` already was; the dashes travel in `boundary` and
-    // are re-emitted unchanged. Deliberately NOT extended to the attached form
-    // (`-phunter2`, mysql's password flag): with no separator to anchor on,
-    // a single letter followed by anything is too ambiguous to redact safely.
-    //
-    // The unquoted VALUE stops before a following flag (`(?!\s-)`, and `\s-`
-    // joins the lookahead) rather than running to the end of the line. Without
-    // that, one NON-secret pair earlier on a command line consumed the rest of
-    // it and the secret pair was never examined at all: `mysql --user=root
-    // --password=hunter2 -h db` came through verbatim, because `--user=`'s value
-    // had already eaten `--password=hunter2 -h db`. A quoted value is unaffected
-    // and still spans spaces and dashes, so `-m 'password=hunter2'` stays the
-    // single argument it is.
-    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-)[^&;\r\n])*)(?=$|[&;\r\n]|\s-)/gim,
-    (
-      match,
-      boundary: string,
-      doubleQuotedKey: string | undefined,
-      singleQuotedKey: string | undefined,
-      plainKey: string | undefined,
-      separator: string,
-      value: string,
-    ) => {
-      const key = doubleQuotedKey ?? singleQuotedKey ?? plainKey ?? '';
-      if (!isSecretField(key)) return match;
-      const renderedKey = doubleQuotedKey
-        ? `"${doubleQuotedKey}"`
-        : singleQuotedKey
-          ? `'${singleQuotedKey}'`
-          : plainKey;
-      return `${boundary}${renderedKey}${separator}${redactContextValue(value)}`;
-    },
+  const keys =
+    /((?:^|[?&;:\s])--?|^|[?&;:\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim;
+  const values =
+    /\[REDACTED\](?=$|[\s&;])|"(?:\\.|[^"\\])*"(?=$|[\s&;])|'[^']*'(?=$|[\s&;])|(?:(?!\s-|\s[A-Za-z][A-Za-z0-9_-]*[ \t]*[=:])[^&;\r\n])*/y;
+  const secretKeys = new Map<string, boolean>();
+  let output = '';
+  let copied = 0;
+  for (
+    let match = keys.exec(jsonRedacted);
+    match !== null;
+    match = keys.exec(jsonRedacted)
+  ) {
+    const [, boundary, double, single, plain, separator] = match;
+    const key = double ?? single ?? plain ?? '';
+    let secret = secretKeys.get(key);
+    if (secret === undefined) {
+      secret = isSecretField(key);
+      secretKeys.set(key, secret);
+    }
+    if (!secret) {
+      // A harmless unquoted value must not shield later credential keys.
+      // Keep quoted values opaque, as they may contain ordinary example text.
+      const next = jsonRedacted[keys.lastIndex];
+      if (next === '"' || next === "'") {
+        values.lastIndex = keys.lastIndex;
+        const value = values.exec(jsonRedacted);
+        if (value) keys.lastIndex = values.lastIndex;
+      } else if (/[:\s]$/.test(separator)) keys.lastIndex -= 1;
+      continue;
+    }
+    values.lastIndex = keys.lastIndex;
+    const value = values.exec(jsonRedacted);
+    if (!value) continue;
+    const rendered = double ? `"${double}"` : single ? `'${single}'` : plain;
+    output +=
+      jsonRedacted.slice(copied, match.index) +
+      `${boundary}${rendered}${separator}${redactContextValue(value[0])}`;
+    copied = values.lastIndex;
+    keys.lastIndex = copied;
+  }
+  return output + jsonRedacted.slice(copied);
+}
+
+function redactKnownCredentials(text: string): string {
+  return SECRET_PATTERNS.reduce(
+    (redacted, { pattern, replacement }) =>
+      redacted.replace(pattern, replacement),
+    redactContextualFields(
+      text.replace(CONNECTION_STRING_CREDENTIAL_PATTERN, `$1${REDACTED}@`),
+    ),
   );
 }
 
+/** Detects known credential shapes without treating URL cleanup as a secret. */
+export function containsKnownCredential(text: string): boolean {
+  return redactKnownCredentials(text) !== text;
+}
+
 /**
- * Redacts KNOWN credential shapes from free text. Two passes:
+ * Redacts KNOWN credential shapes from free text:
  *
+ * - Connection-string `user:pass@` credentials are removed before field scanning.
  * - **Contextual**, `redactContextualFields`: a `key: value` / `key=value` pair
  *   (JSON, query string, env line, or a `--flag=value` command line) whose KEY
  *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
  *   `creds`, `passphrase`, `password`, `secret`, `privateKey`, most `token`
  *   spellings, and the whole names in `WHOLE_NAME_SECRET_KEYS`.
+ * - Native plugin asset URLs become plugin paths with source coordinates,
+ *   without queries or fragments; capability query values are also redacted
+ *   when the origin has already been removed.
  * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
- *   `Bearer`/`Basic` authorization values, `sk-` API keys, and `user:pass@` in
- *   a connection-string URL.
+ *   `Bearer`/`Basic` authorization values, and `sk-` API keys.
  *
  * It is NOT a guarantee that no secret survives. A high-entropy token in a
  * field name this does not recognise is returned as written. Callers that
  * present the result to a person should say "known credential shapes are
  * redacted", not "secrets are removed".
  *
- * Unlike {@link sanitizeFreeText} this KEEPS URLs and absolute paths — they are
- * operationally meaningful, and a caller that needs them gone should use that
- * function instead.
+ * Unlike {@link sanitizeFreeText} this keeps ordinary URLs and absolute paths.
+ * Native plugin asset URLs are the exception above. A caller that needs all
+ * locations gone should use that function instead.
  */
 export function redactSecrets(text: string): string {
-  const patternRedacted = SECRET_PATTERNS.reduce(
-    (redacted, { pattern, replacement }) =>
-      redacted.replace(pattern, replacement),
-    redactContextualFields(text),
-  );
-  return patternRedacted;
+  return redactKnownCredentials(redactPluginAssetUrls(text));
 }
 
 function requireTextLimit(limit: number): number {

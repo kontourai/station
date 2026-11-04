@@ -1,0 +1,7 @@
+{
+  "revision": "83ff506155d6991b2fe98a5e77bf5c2fa990178a",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Source delta (#4203): tests/screenshots.spec.ts's inventory drill-down screen now expects the older-host title 'This Station can't show input details' (#4197's copy) instead of 'Update Station to see this input'. Checked: this document does not quote that title or describe the inventory screen's assertions. No prose change.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

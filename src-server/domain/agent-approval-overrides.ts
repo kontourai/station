@@ -43,7 +43,9 @@ const OVERRIDES_FILE = 'agent-approval-overrides.json';
 
 interface OverrideEntry {
   plugin: string;
-  approvalMode: ApprovalMode;
+  approvalMode?: ApprovalMode;
+  autoApprove?: string[];
+  unattendedAutoApprove?: string[];
 }
 
 interface OverridesDocument {
@@ -67,9 +69,16 @@ function readOverrides(projectHomeDir: string): OverridesDocument {
     if (
       entry &&
       typeof entry.plugin === 'string' &&
-      isApprovalMode(entry.approvalMode)
+      (entry.approvalMode === undefined ||
+        isApprovalMode(entry.approvalMode)) &&
+      [entry.autoApprove, entry.unattendedAutoApprove].every(
+        (value) =>
+          value === undefined ||
+          (Array.isArray(value) &&
+            value.every((item) => typeof item === 'string')),
+      )
     )
-      agents[slug] = { plugin: entry.plugin, approvalMode: entry.approvalMode };
+      agents[slug] = entry;
   }
   return { version: 1, agents };
 }
@@ -93,7 +102,8 @@ export function effectivePluginAgentApprovalMode(
   declared: unknown,
 ): ApprovalMode | undefined {
   const override = readOverrides(projectHomeDir).agents[slug];
-  if (override && override.plugin === plugin) return override.approvalMode;
+  if (override && override.plugin === plugin && override.approvalMode)
+    return override.approvalMode;
   return isApprovalMode(declared) && declared !== 'never'
     ? declared
     : undefined;
@@ -106,7 +116,10 @@ export function effectivePluginAgentApprovalMode(
  * editor, the write gate and the session start all see one value.
  */
 export function withEffectiveAgentApprovalMode<
-  T extends { execution?: { approvalMode?: ApprovalMode } },
+  T extends {
+    execution?: { approvalMode?: ApprovalMode };
+    tools?: { autoApprove?: string[]; unattendedAutoApprove?: string[] };
+  },
 >(projectHomeDir: string, slug: string, spec: T): T {
   const plugin = agentPluginOwner(projectHomeDir, slug);
   if (!plugin) return spec;
@@ -117,8 +130,29 @@ export function withEffectiveAgentApprovalMode<
     spec.execution?.approvalMode,
   );
   const { approvalMode: _declared, ...execution } = spec.execution ?? {};
+  const override = readOverrides(projectHomeDir).agents[slug];
+  const grants = override?.plugin === plugin ? override : undefined;
+  const {
+    autoApprove,
+    unattendedAutoApprove: _unattended,
+    ...tools
+  } = spec.tools ?? {};
+  const attended =
+    grants?.autoApprove ??
+    autoApprove?.filter((pattern) => !/^\*+$/.test(pattern));
+  const unattended = grants?.unattendedAutoApprove;
+
   return {
     ...spec,
+    ...(spec.tools || attended || unattended
+      ? {
+          tools: {
+            ...tools,
+            ...(attended ? { autoApprove: attended } : {}),
+            ...(unattended ? { unattendedAutoApprove: unattended } : {}),
+          },
+        }
+      : {}),
     ...(spec.execution || effective
       ? {
           execution: {
@@ -143,8 +177,12 @@ export function writeAgentApprovalOverride(
   approvalMode: ApprovalMode | undefined,
 ): void {
   const document = readOverrides(projectHomeDir);
-  if (approvalMode === undefined) delete document.agents[slug];
-  else document.agents[slug] = { plugin, approvalMode };
+  const previous = document.agents[slug];
+  document.agents[slug] = {
+    ...(previous?.plugin === plugin ? previous : {}),
+    plugin,
+    approvalMode,
+  };
   const path = overridesPath(projectHomeDir);
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -171,4 +209,28 @@ export function storedAgentApprovalMode(
     }
   ).execution?.approvalMode;
   return isApprovalMode(declared) ? declared : undefined;
+}
+
+/** Persist operator tool grants outside the plugin-owned directory. */
+export function writeAgentToolApprovalOverride(
+  projectHomeDir: string,
+  slug: string,
+  plugin: string,
+  grants: { autoApprove?: string[]; unattendedAutoApprove?: string[] },
+): void {
+  const document = readOverrides(projectHomeDir);
+  const previous = document.agents[slug];
+  document.agents[slug] = {
+    ...(previous?.plugin === plugin ? previous : {}),
+    plugin,
+    ...grants,
+  };
+  const path = overridesPath(projectHomeDir);
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(document, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  renameSync(temporary, path);
 }

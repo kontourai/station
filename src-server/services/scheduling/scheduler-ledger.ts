@@ -29,10 +29,13 @@ import type {
   ExternalMonitorConfig,
   ExternalMonitorState,
 } from '@kontourai/station-contracts/external-monitor';
-import type {
-  SchedulerJob,
-  SchedulerLogEntry,
-  SchedulerProviderStats,
+import {
+  AUTOMATION_RUN_POLICY,
+  type SchedulerAutomationCreator,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerLogEntry,
+  type SchedulerProviderStats,
 } from '@kontourai/station-contracts/scheduler';
 import {
   exactProcessIdentity,
@@ -83,7 +86,76 @@ export interface StoredSchedulerJob {
   lastRunMs?: number;
   monitor?: ExternalMonitorConfig;
   monitorState?: ExternalMonitorState;
+  /** Where each run lands; absent is a legacy Station-engine file run. */
+  target?: SchedulerAutomationTarget;
+  /** The admitted creator a targeted run acts as. Never changed by an edit. */
+  createdBy?: SchedulerAutomationCreator;
+  /**
+   * Set when a person turns a disabled job back on: runs that ended at or
+   * before it no longer count toward fatigue.
+   */
+  failureCountResetAt?: string;
   createdAt: string;
+}
+
+/** Why a targeted occurrence was recorded missed instead of run. */
+const ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE =
+  'announcement skipped: late occurrence recorded missed, not failed';
+
+/**
+ * How many recent runs the fatigue count reads. Larger than the threshold so
+ * a read past it still reports the real count up to this bound.
+ */
+const CONSECUTIVE_FAILURE_SCAN_LIMIT = 50;
+
+/** The occurrence a run row belongs to: its id without the attempt suffix. */
+function runOccurrenceId(run: SchedulerLogEntry): string {
+  const suffix = `-${run.attempt ?? 1}`;
+  return run.id.endsWith(suffix) ? run.id.slice(0, -suffix.length) : run.id;
+}
+
+/**
+ * Failed occurrences since the last success, from a job's runs oldest first.
+ * An occurrence counts once however many attempts it took; its newest
+ * attempt decides it. A running receipt and a late occurrence recorded
+ * missed are neither, and nothing that started before `resetAt` (a person
+ * turned the job back on) counts. Compared on start, so a run begun after
+ * the re-enable counts even when it ends within the same millisecond.
+ */
+export function countConsecutiveFailures(
+  runs: readonly SchedulerLogEntry[],
+  resetAt?: string,
+): number {
+  const resetMs = resetAt === undefined ? Number.NaN : Date.parse(resetAt);
+  const decided = new Set<string>();
+  let count = 0;
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index]!;
+    if (run.state === 'running' || run.skipped) continue;
+    if (Number.isFinite(resetMs) && Date.parse(run.startedAt) < resetMs) break;
+    const occurrence = runOccurrenceId(run);
+    if (decided.has(occurrence)) continue;
+    decided.add(occurrence);
+    if (run.success) break;
+    count += 1;
+  }
+  return count;
+}
+
+/** A fatigue disable whose one notification is durably owed or delivered. */
+export type FatigueAnnouncement = Readonly<{
+  id: string;
+  jobId: string;
+  jobName: string;
+  failures: number;
+}>;
+
+/** The dedicated target as chosen, without the server-recorded conversation. */
+function dedicatedTargetIdentity(
+  target: SchedulerAutomationTarget | undefined,
+): string | undefined {
+  if (target?.kind !== 'dedicated') return undefined;
+  return JSON.stringify([target.agent, target.workspace?.projectSlug ?? null]);
 }
 
 export interface SchedulerDispatchReceipt {
@@ -98,6 +170,7 @@ export interface SchedulerDispatchReceipt {
   readonly missedCount: number;
   readonly attempt: number;
   readonly maxAttempts: number;
+  reserveDedicatedConversation?(): SchedulerReadOutcome<string | undefined>;
   outputPath(): string;
   /** Releases a pre-invocation claim without consuming an attempt or a run. */
   releaseDeferred(): SchedulerDeferredOutcome;
@@ -511,6 +584,34 @@ export interface SchedulerLedger {
   ): SchedulerSettlementOutcome;
   logs(name: string, count?: number): SchedulerReadOutcome<SchedulerLogEntry[]>;
   allLogs(): SchedulerReadOutcome<SchedulerLogEntry[]>;
+  /** Failed runs since the job's last success (`countConsecutiveFailures`). */
+  consecutiveFailures(name: string): SchedulerReadOutcome<number>;
+  /** When the job's last successful run completed, by opaque job id. */
+  lastSuccessAt(jobId: string): SchedulerReadOutcome<string | undefined>;
+  /**
+   * Record the conversation a dedicated target's first run started. Applies
+   * only while the job (by opaque id) still has a dedicated target with no
+   * conversation AND that target is the one the run started from
+   * (`startedFrom`): a target edited during the start is never bound to the
+   * old agent's chat. Anything else is `stale` and changes nothing.
+   */
+  bindDedicatedConversation(
+    jobId: string,
+    conversationId: string,
+    startedFrom: SchedulerAutomationTarget,
+    runId: string,
+  ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable;
+  /**
+   * Fatigue as one durable transition: every enabled job whose failed
+   * occurrences reached `threshold` is disabled, and its notification is
+   * recorded owed, in the same transaction. Conditional on the job still
+   * being enabled, so two processes cannot both disable it or owe it twice.
+   * Returns the announcements this call created.
+   */
+  applyFatigue(threshold: number): SchedulerReadOutcome<FatigueAnnouncement[]>;
+  /** Fatigue notifications recorded and not yet delivered. */
+  owedFatigueAnnouncements(): SchedulerReadOutcome<FatigueAnnouncement[]>;
+  fatigueAnnouncementOutbox(): MonitorProbeTerminalAnnouncementOutbox;
   runningLogs(name?: string): SchedulerReadOutcome<SchedulerLogEntry[]>;
   stats(): SchedulerReadOutcome<SchedulerProviderStats>;
   readOutput(path: string): SchedulerReadOutcome<string>;
@@ -730,6 +831,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   private outbox?: SchedulerAnnouncementOutbox;
   private monitorTerminalOutbox?: MonitorTerminalAnnouncementOutbox;
   private monitorProbeTerminalOutbox?: MonitorProbeTerminalAnnouncementOutbox;
+  private fatigueOutbox?: MonitorProbeTerminalAnnouncementOutbox;
   /** Set by the watch on the first SQLITE_CORRUPT/NOTADB this handle sees. */
   private corruptionObserved = false;
 
@@ -938,6 +1040,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           id: `${claim.run_id}-1`,
           job: claim.job_name,
           jobId: claim.job_id,
+          ...this.targetForClaim(claim),
           startedAt: claim.started_at,
           firedAt: claim.started_at,
           completedAt: input.completedAt,
@@ -993,9 +1096,15 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         )
           return { kind: 'busy' } as const;
         const job = parseStoredJob(current.data);
+        const previousTarget = dedicatedTargetIdentity(job.target);
         for (const [key, value] of Object.entries(update)) {
           if (key === 'name' || key === 'createdAt') continue;
           (job as unknown as Record<string, unknown>)[key] = value;
+        }
+        if (previousTarget !== dedicatedTargetIdentity(job.target)) {
+          this.db
+            .prepare('DELETE FROM scheduler_dedicated_intents WHERE job_id = ?')
+            .run(current.job_id);
         }
         this.db
           .prepare(
@@ -1051,6 +1160,10 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const changed = this.db
           .prepare('DELETE FROM scheduler_jobs WHERE name = ?')
           .run(name) as { changes?: number };
+        if (changed.changes === 1)
+          this.db
+            .prepare('DELETE FROM scheduler_dedicated_intents WHERE job_id = ?')
+            .run(current.job_id);
         return changed.changes === 1
           ? { kind: 'removed' }
           : { kind: 'not-found' };
@@ -1084,8 +1197,17 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const last = this.logsUnsafe(job.name, 1).at(-1);
         const scheduled = job.enabled ? toScheduledJob(job) : null;
         const next = scheduled ? nextOccurrence(scheduled.schedule, now) : null;
+        const { createdBy, failureCountResetAt, ...rest } = job;
+        const lastSuccessAt = this.lastSuccessUnsafe(row.job_id);
         return {
-          ...job,
+          ...rest,
+          // Only who created it is public; the replayed actor stays private.
+          ...(createdBy ? { createdBy: { userId: createdBy.userId } } : {}),
+          consecutiveFailures: countConsecutiveFailures(
+            this.finalizedLogsUnsafe(job.name),
+            failureCountResetAt,
+          ),
+          ...(lastSuccessAt ? { lastSuccessAt } : {}),
           provider: 'built-in',
           unattendedPrincipal: {
             kind: 'scheduled-job' as const,
@@ -1107,13 +1229,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     let quarantined: SchedulerQuarantinedJob[] = [];
     const outcome = this.read(() =>
       this.transaction(() => {
-        // Recovery changes ownership only when this caller will receive and
-        // execute the capability.  In particular, a timer must never make a
-        // dead manual retry look live merely by reassigning its owner.
-        const receipts = this.reconcileDeadClaims(
-          now,
-          (claim) => !claim.manual,
-        );
+        // Return every recovered capability to the tick executor, including
+        // advanced manual retries whose owner died before invocation.
+        const receipts = this.reconcileDeadClaims(now, () => true);
         quarantined = [];
         for (const row of this.db
           .prepare(
@@ -1141,6 +1259,21 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           }
           if (due.kind === 'not-due') continue;
           if (this.claimRow(row.job_id)) continue;
+          // A targeted run is a turn in someone's conversation. One that
+          // arrives hours after its time (Station was off) would land out of
+          // context, so it is recorded missed and the cursor moves on.
+          if (
+            due.job.target &&
+            now - due.scheduledForMs > AUTOMATION_RUN_POLICY.latenessCutoffMs
+          ) {
+            this.recordLateOccurrence(
+              row.job_id,
+              due.job,
+              now,
+              due.scheduledForMs,
+            );
+            continue;
+          }
           receipts.push(
             this.insertClaim(
               due.job,
@@ -1437,6 +1570,344 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     return this.read(() => this.logsUnsafe(name, count));
   }
 
+  consecutiveFailures(name: string): SchedulerReadOutcome<number> {
+    return this.read(() => {
+      const row = this.rowForJob(name);
+      return countConsecutiveFailures(
+        this.finalizedLogsUnsafe(name),
+        row ? parseStoredJob(row.data).failureCountResetAt : undefined,
+      );
+    });
+  }
+
+  applyFatigue(threshold: number): SchedulerReadOutcome<FatigueAnnouncement[]> {
+    const refused = this.refuseIfCorrupt();
+    if (refused) return refused;
+    return this.read(() =>
+      this.transaction(() => {
+        const created: FatigueAnnouncement[] = [];
+        for (const row of this.db
+          .prepare('SELECT name, job_id, data FROM scheduler_jobs')
+          .all() as Array<{ name: string; job_id: string; data: string }>) {
+          let job: StoredSchedulerJob;
+          try {
+            job = parseStoredJob(row.data);
+          } catch {
+            continue;
+          }
+          if (!job.enabled) continue;
+          const runs = this.finalizedLogsUnsafe(row.name);
+          const failures = countConsecutiveFailures(
+            runs,
+            job.failureCountResetAt,
+          );
+          if (failures < threshold) continue;
+          const lastRun = runs.at(-1);
+          const announcement: FatigueAnnouncement = {
+            id: `${row.job_id}:${lastRun ? runOccurrenceId(lastRun) : 'none'}`,
+            jobId: row.job_id,
+            jobName: row.name,
+            failures,
+          };
+          const disabled = this.db
+            .prepare(
+              `UPDATE scheduler_jobs
+                  SET revision = revision + 1,
+                      data = json_set(data, '$.enabled', json('false'))
+                WHERE job_id = ? AND json_extract(data, '$.enabled') = 1`,
+            )
+            .run(row.job_id) as { changes?: number };
+          if (disabled.changes !== 1) continue;
+          const owed = this.db
+            .prepare(
+              `INSERT OR IGNORE INTO scheduler_fatigue_announcements(
+                 id, job_id, job_name, failures, created_at
+               ) VALUES (?, ?, ?, ?, ?)`,
+            )
+            .run(
+              announcement.id,
+              row.job_id,
+              row.name,
+              failures,
+              new Date().toISOString(),
+            ) as { changes?: number };
+          if (owed.changes === 1) created.push(announcement);
+        }
+        return created;
+      }),
+    );
+  }
+
+  owedFatigueAnnouncements(): SchedulerReadOutcome<FatigueAnnouncement[]> {
+    return this.read(() =>
+      (
+        this.db
+          .prepare(
+            `SELECT id, job_id, job_name, failures
+               FROM scheduler_fatigue_announcements
+              WHERE delivered_at IS NULL ORDER BY created_at ASC`,
+          )
+          .all() as Array<{
+          id: string;
+          job_id: string;
+          job_name: string;
+          failures: number;
+        }>
+      ).map((row) => ({
+        id: row.id,
+        jobId: row.job_id,
+        jobName: row.job_name,
+        failures: row.failures,
+      })),
+    );
+  }
+
+  fatigueAnnouncementOutbox(): MonitorProbeTerminalAnnouncementOutbox {
+    this.fatigueOutbox ??= {
+      claim: (id, now = Date.now()) => {
+        const token = randomUUID();
+        try {
+          return this.transaction<SchedulerAnnouncementClaim>(() => {
+            const changed = this.db
+              .prepare(
+                `UPDATE scheduler_fatigue_announcements
+                    SET lease_until_ms=?, lease_token=?
+                  WHERE id=? AND delivered_at IS NULL
+                    AND (lease_until_ms IS NULL OR lease_until_ms < ?)`,
+              )
+              .run(now + ANNOUNCEMENT_LEASE_MS, token, id, now) as {
+              changes?: number;
+            };
+            if (changed.changes === 1) return { kind: 'claimed', token };
+            const row = this.db
+              .prepare(
+                'SELECT delivered_at FROM scheduler_fatigue_announcements WHERE id=?',
+              )
+              .get(id) as { delivered_at: string | null } | undefined;
+            if (!row) return { kind: 'unknown' };
+            return row.delivered_at === null
+              ? { kind: 'leased-elsewhere' }
+              : { kind: 'already-announced' };
+          });
+        } catch {
+          return { kind: 'unknown' };
+        }
+      },
+      release: (id, token) => {
+        try {
+          this.transaction(() => {
+            this.db
+              .prepare(
+                `UPDATE scheduler_fatigue_announcements
+                    SET lease_until_ms=NULL, lease_token=NULL
+                  WHERE id=? AND delivered_at IS NULL AND lease_token=?`,
+              )
+              .run(id, token);
+          });
+        } catch {
+          // An abandoned lease becomes claimable after its bounded expiry.
+        }
+      },
+      markDelivered: (id, token) => {
+        try {
+          this.transaction(() => {
+            this.db
+              .prepare(
+                `UPDATE scheduler_fatigue_announcements
+                    SET delivered_at=?, lease_until_ms=NULL, lease_token=NULL
+                  WHERE id=? AND delivered_at IS NULL AND lease_token=?`,
+              )
+              .run(new Date().toISOString(), id, token);
+          });
+        } catch {
+          // Delivered but not stamped: the stable dedupe tag absorbs a retry.
+        }
+      },
+    };
+    return this.fatigueOutbox;
+  }
+
+  lastSuccessAt(jobId: string): SchedulerReadOutcome<string | undefined> {
+    return this.read(() => this.lastSuccessUnsafe(jobId));
+  }
+
+  bindDedicatedConversation(
+    jobId: string,
+    conversationId: string,
+    startedFrom: SchedulerAutomationTarget,
+    runId: string,
+  ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable {
+    const refused = this.refuseIfCorrupt();
+    if (refused) return refused;
+    try {
+      return this.transaction(() => {
+        const claim = this.claimRow(jobId);
+        if (
+          !claim ||
+          claim.run_id !== runId ||
+          claim.owner_id !== this.owner.id ||
+          !claim.job_data
+        )
+          return { kind: 'stale' } as const;
+        const claimedTarget = parseStoredJob(claim.job_data).target;
+        if (
+          claimedTarget?.kind !== 'dedicated' ||
+          claimedTarget.conversationId ||
+          dedicatedTargetIdentity(claimedTarget) !==
+            dedicatedTargetIdentity(startedFrom)
+        )
+          return { kind: 'stale' } as const;
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO scheduler_run_conversations(run_id, conversation_id) VALUES (?, ?)',
+          )
+          .run(runId, conversationId);
+        const recorded = this.db
+          .prepare(
+            'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
+          )
+          .get(runId) as { conversation_id: string } | undefined;
+        if (recorded?.conversation_id !== conversationId)
+          return { kind: 'stale' } as const;
+        const row = this.rowForJobId(jobId);
+        if (!row) return { kind: 'stale' } as const;
+        const job = parseStoredJob(row.data);
+        if (
+          job.target?.kind !== 'dedicated' ||
+          job.target.conversationId ||
+          dedicatedTargetIdentity(job.target) !==
+            dedicatedTargetIdentity(startedFrom)
+        )
+          return { kind: 'stale' } as const;
+        job.target = { ...job.target, conversationId };
+        // No revision bump: this records what the job already ran into, not
+        // an edit, so an in-flight claim of the same revision stays current.
+        this.db
+          .prepare('UPDATE scheduler_jobs SET data = ? WHERE job_id = ?')
+          .run(JSON.stringify(job), jobId);
+        return { kind: 'applied' } as const;
+      });
+    } catch (error) {
+      return unavailableFrom(error);
+    }
+  }
+
+  private reserveDedicatedConversation(
+    claim: ClaimRow,
+    attempt: number,
+    target: SchedulerAutomationTarget | undefined,
+  ): SchedulerReadOutcome<string | undefined> {
+    return this.read(() =>
+      this.transaction(() => {
+        const identity = dedicatedTargetIdentity(target);
+        const currentClaim = this.claimRow(claim.job_id);
+        const row = this.rowForJobId(claim.job_id);
+        if (
+          !identity ||
+          !currentClaim ||
+          !row ||
+          currentClaim.run_id !== claim.run_id ||
+          currentClaim.owner_id !== this.owner.id ||
+          currentClaim.attempt !== attempt ||
+          !currentClaim.invocation_started ||
+          row.revision !== claim.revision ||
+          dedicatedTargetIdentity(parseStoredJob(row.data).target) !== identity
+        )
+          return undefined;
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO scheduler_dedicated_intents(job_id, target_identity, conversation_id) VALUES (?, ?, ?)',
+          )
+          .run(claim.job_id, identity, `conversation:${randomUUID()}`);
+        const intent = this.db
+          .prepare(
+            'SELECT target_identity, conversation_id FROM scheduler_dedicated_intents WHERE job_id = ?',
+          )
+          .get(claim.job_id) as
+          | { target_identity: string; conversation_id: string }
+          | undefined;
+        if (!intent || intent.target_identity !== identity) return undefined;
+        return intent.conversation_id;
+      }),
+    );
+  }
+
+  private targetForClaim(claim: ClaimRow): {
+    runTarget?: SchedulerAutomationTarget | null;
+  } {
+    if (!claim.job_data) return {};
+    const target = parseStoredJob(claim.job_data).target ?? null;
+    if (target?.kind !== 'dedicated' || target.conversationId)
+      return { runTarget: target };
+    const bound = this.db
+      .prepare(
+        'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
+      )
+      .get(claim.run_id) as { conversation_id: string } | undefined;
+    return {
+      runTarget: bound
+        ? { ...target, conversationId: bound.conversation_id }
+        : target,
+    };
+  }
+
+  private lastSuccessUnsafe(jobId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT data FROM scheduler_logs
+          WHERE job_id = ? AND json_extract(data, '$.success') = 1
+          ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(jobId) as { data: string } | undefined;
+    if (!row) return undefined;
+    const entry = JSON.parse(row.data) as SchedulerLogEntry;
+    return entry.completedAt ?? entry.startedAt;
+  }
+
+  /**
+   * A late targeted occurrence: one run row saying it was missed, stamped so
+   * the failure outbox never announces it, and the cursor advanced past it.
+   */
+  private recordLateOccurrence(
+    jobId: string,
+    job: StoredSchedulerJob,
+    now: number,
+    scheduledForMs: number,
+  ): void {
+    const at = new Date(now).toISOString();
+    const lateMinutes = Math.round((now - scheduledForMs) / 60_000);
+    const entry: SchedulerLogEntry = {
+      id: `${randomUUID()}-1`,
+      job: job.name,
+      jobId,
+      runTarget: job.target ?? null,
+      startedAt: at,
+      scheduledFor: new Date(scheduledForMs).toISOString(),
+      firedAt: at,
+      completedAt: at,
+      success: false,
+      durationSecs: 0,
+      // Every occurrence skipped since the cursor, the latest included.
+      missedCount: lateMissedCount(job, scheduledForMs),
+      manual: false,
+      error: `Missed: Station was not running when this was due (${lateMinutes} minutes late), so it did not run late.`,
+      attempt: 1,
+      maxAttempts: 1,
+      state: 'failed',
+      skipped: 'late',
+    };
+    this.insertRunLog(entry, jobId);
+    this.stampAnnouncement(entry.id, now, ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE);
+    this.db
+      .prepare(
+        `UPDATE scheduler_jobs
+         SET last_run_ms = MAX(COALESCE(last_run_ms, 0), ?),
+             data = json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+         WHERE job_id = ?`,
+      )
+      .run(scheduledForMs, scheduledForMs, jobId);
+  }
+
   allLogs(): SchedulerReadOutcome<SchedulerLogEntry[]> {
     return this.read(() =>
       (
@@ -1463,6 +1934,14 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       .all(...(limit === undefined ? [job.job_id] : [job.job_id, limit]));
     return rows.map((row) =>
       this.logFromRow(row as { job_id?: string | null; data: string }),
+    );
+  }
+
+  /** Attempts of a live claim have not decided their occurrence yet. */
+  private finalizedLogsUnsafe(name: string): SchedulerLogEntry[] {
+    const pending = new Set(this.runningLogsUnsafe(name).map(runOccurrenceId));
+    return this.logsUnsafe(name, CONSECUTIVE_FAILURE_SCAN_LIMIT).filter(
+      (run) => !pending.has(runOccurrenceId(run)),
     );
   }
 
@@ -1493,6 +1972,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${claim.run_id}-${claim.attempt}`,
         job: claim.job_name,
         jobId: claim.job_id,
+        ...this.targetForClaim(claim),
         startedAt: claim.started_at,
         ...(claim.scheduled_for_ms === null
           ? {}
@@ -1517,6 +1997,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${active.run_id}-${active.attempt}`,
         job: active.job_name,
         jobId: active.job_id,
+        ...this.targetForClaim(active),
         startedAt: active.started_at,
         ...(active.scheduled_for_ms === null
           ? {}
@@ -2752,6 +3233,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       missedCount: row.missed_count,
       attempt,
       maxAttempts: row.max_attempts,
+      reserveDedicatedConversation: () =>
+        this.reserveDedicatedConversation(row, attempt, job.target),
       outputPath: () => this.outputPath(row.run_id, attempt),
       releaseDeferred: () => this.releaseDeferred(row, attempt),
       beginInvocation: () => this.beginInvocation(row, attempt),
@@ -2810,6 +3293,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           id: `${claim.run_id}-${attempt}`,
           job: job.name,
           jobId: claim.job_id,
+          ...this.targetForClaim(claim),
           startedAt: claim.started_at,
           ...(claim.scheduled_for_ms === null
             ? {}
@@ -2881,6 +3365,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
             id: `${claim.run_id}-${attempt}`,
             job: job.name,
             jobId: claim.job_id,
+            ...this.targetForClaim(claim),
             startedAt: claim.started_at,
             ...(claim.scheduled_for_ms === null
               ? {}
@@ -3011,6 +3496,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       id: `${claim.run_id}-${attempt}`,
       job: job.name,
       jobId: claim.job_id,
+      ...this.targetForClaim(claim),
       startedAt: claim.started_at,
       ...(claim.scheduled_for_ms === null
         ? {}
@@ -3248,6 +3734,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${claim.run_id}-${claim.attempt}`,
         job: claim.job_name,
         jobId: claim.job_id,
+        ...this.targetForClaim(claim),
         startedAt: claim.started_at,
         ...(claim.scheduled_for_ms === null
           ? {}
@@ -3756,6 +4243,27 @@ function dueOccurrence(
   }
 }
 
+/**
+ * How many occurrences a late skip passes over: every one after the cursor
+ * (last run, or creation) up to and including the latest due one.
+ */
+function lateMissedCount(job: StoredSchedulerJob, latestDueMs: number): number {
+  const scheduled = toScheduledJob(job);
+  if (!scheduled) return 1;
+  let cursor = scheduled.lastRunMs ?? scheduled.createdMs;
+  let count = 0;
+  // One step per occurrence. A Station off for years on a minute schedule
+  // would take millions of steps, so the walk stops at a fixed ceiling and
+  // reports the ceiling: an undercount only past it, never a hang.
+  for (let step = 0; step < 10_000; step += 1) {
+    const next = nextOccurrence(scheduled.schedule, cursor);
+    if (next === null || next > latestDueMs) break;
+    count += 1;
+    cursor = next;
+  }
+  return Math.max(1, count);
+}
+
 function toScheduledJob(stored: StoredSchedulerJob): ScheduledJob | null {
   const schedule = stored.schedule
     ? stored.schedule
@@ -3916,6 +4424,18 @@ export function normalizeMonitorBudget(
 }
 
 const SCHEDULER_LEDGER_SCHEMA = `
+  -- One row per fatigue disable: written in the disable's own transaction,
+  -- stamped once its single notification is durable.
+  CREATE TABLE IF NOT EXISTS scheduler_fatigue_announcements (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    job_name TEXT NOT NULL,
+    failures INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    lease_until_ms INTEGER,
+    lease_token TEXT
+  );
   CREATE TABLE IF NOT EXISTS scheduler_ledger_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -3945,6 +4465,15 @@ const SCHEDULER_LEDGER_SCHEMA = `
     owner_id TEXT NOT NULL,
     owner_pid INTEGER NOT NULL,
     owner_birth TEXT
+  );
+  CREATE TABLE IF NOT EXISTS scheduler_run_conversations (
+    run_id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS scheduler_dedicated_intents (
+    job_id TEXT PRIMARY KEY,
+    target_identity TEXT NOT NULL,
+    conversation_id TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS scheduler_starter_manual_intents (
     operation_id TEXT PRIMARY KEY,

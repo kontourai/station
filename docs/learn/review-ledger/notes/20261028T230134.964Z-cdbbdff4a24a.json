@@ -1,0 +1,7 @@
+{
+  "revision": "a36b4e3ece58cb522a2cef7ea9f619c69b60afb2",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. The changed refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

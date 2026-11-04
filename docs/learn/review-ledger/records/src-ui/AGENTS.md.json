@@ -22,7 +22,9 @@
 
     "src-ui/src/contexts/navigation-store.ts",
 
-    "src-ui/src/hooks/useUnsavedGuard.tsx"
+    "src-ui/src/hooks/useUnsavedGuard.tsx",
+
+    "scripts/ui-copy-length.mjs"
   ],
 
   "checks": [

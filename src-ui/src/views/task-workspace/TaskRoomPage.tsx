@@ -15,7 +15,7 @@ import {
 import { useProjectTaskRoomDocumentQuery } from '@kontourai/station-sdk/project-task-rooms';
 import { useTaskOutputsQuery } from '@kontourai/station-sdk/task-outputs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionOverflowMenu } from '../../components/ActionOverflowMenu';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
@@ -46,17 +46,30 @@ export function TaskRoomHeader({
   task,
   projectSlug,
   projectId,
+  collaborationEnabled,
   onDetails,
 }: {
   task: TaskRecord;
   projectSlug: string;
   projectId: string;
+  collaborationEnabled?: boolean;
   onDetails(): void;
 }) {
   const scope = useHostRequestAuthorityScope();
   const cache = useQueryClient();
   const [title, setTitle] = useState(task.title);
   const [editing, setEditing] = useState(false);
+  const restoreTitleFocus = useRef(false);
+  const focusTitleInput = useCallback((input: HTMLInputElement | null) => {
+    input?.focus();
+    input?.select();
+  }, []);
+  const focusTitleButton = useCallback((button: HTMLButtonElement | null) => {
+    if (button && restoreTitleFocus.current) {
+      button.focus();
+      restoreTitleFocus.current = false;
+    }
+  }, []);
   const status = useUpdateTaskStatusMutation();
   const [notice, setNotice] = useState('');
   useEffect(() => {
@@ -80,6 +93,7 @@ export function TaskRoomHeader({
       );
     },
     onSuccess: () => {
+      restoreTitleFocus.current = true;
       setEditing(false);
       void cache.invalidateQueries({ queryKey: ['task-graph', task.id] });
     },
@@ -96,6 +110,7 @@ export function TaskRoomHeader({
               </label>
               <input
                 id="task-title"
+                ref={focusTitleInput}
                 value={title}
                 maxLength={512}
                 onChange={(event) => setTitle(event.target.value)}
@@ -107,6 +122,7 @@ export function TaskRoomHeader({
                   )
                     rename.mutate();
                   if (event.key === 'Escape') {
+                    restoreTitleFocus.current = true;
                     setEditing(false);
                     setTitle(task.title);
                   }
@@ -118,12 +134,20 @@ export function TaskRoomHeader({
               >
                 Save title
               </Button>
-              <Button onClick={() => setEditing(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  restoreTitleFocus.current = true;
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
             </span>
           ) : (
             <span>
               <button
                 type="button"
+                ref={focusTitleButton}
                 onClick={() => setEditing(true)}
                 aria-label={`Edit title: ${task.title}`}
               >
@@ -134,7 +158,15 @@ export function TaskRoomHeader({
         </span>
       ),
     }),
-    [editing, title, task.title, rename.isPending, rename.mutate],
+    [
+      editing,
+      title,
+      task.title,
+      rename.isPending,
+      rename.mutate,
+      focusTitleInput,
+      focusTitleButton,
+    ],
   );
   usePageHeader(header);
   return (
@@ -177,7 +209,11 @@ export function TaskRoomHeader({
           }))}
         />
       </span>
-      <ProjectTaskRoomPresence taskId={task.id} compact />
+      <ProjectTaskRoomPresence
+        taskId={task.id}
+        compact
+        showMembers={collaborationEnabled}
+      />
       <ProjectTaskSharingControl
         slug={projectSlug}
         projectId={projectId}

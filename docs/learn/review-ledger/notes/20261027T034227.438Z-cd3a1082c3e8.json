@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/design/pane-or-shell.md","note":"destination-registry.ts change is comment-only (Settings reached through the footer account menu, not a footer gear); no pane/shell criterion or inventory claim depends on it. No prose change.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

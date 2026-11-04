@@ -15,6 +15,7 @@ import {
   PREBUILT_ARCHIVE_MARKER_FILENAME,
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
 import {
   execFileSyncBounded,
@@ -34,6 +35,7 @@ import {
   resolvePortableServerTarget,
   stationCliBundleOptions,
 } from '../lib/portable-server-archive.mjs';
+import { stageWindowsBirthHelper } from '../lib/windows-birth-helper.mjs';
 import { SUPPORTED_NODE_MAJOR } from '../node-runtime-contract.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -144,6 +146,64 @@ function fakeTarget(expectedBytes: string) {
 function responding(body: string, status = 200) {
   return vi.fn(async () => new Response(body, { status }));
 }
+
+describe('stageWindowsBirthHelper (#2805)', () => {
+  function fakeGuard() {
+    const directory = makeTempDir('fake-owned-guard-');
+    const path = join(directory, 'guard.exe');
+    writeFileSync(path, 'guard bytes');
+    return { path, cleanup: vi.fn() };
+  }
+  const BIRTH = '2026-10-31T10:00:00.1234560Z';
+
+  it('stages the compiled guard beside node.exe with its SHA-256', () => {
+    const runtime = makeTempDir('archive-runtime-');
+    const guard = fakeGuard();
+    const staged = stageWindowsBirthHelper(runtime, {
+      platform: 'win32',
+      build: () => guard,
+      run: () => `${BIRTH}\r\n`,
+      probeWithPowerShell: () => BIRTH,
+    });
+    expect(staged.helper).toBe(
+      join(runtime, 'station-windows-owned-guard.exe'),
+    );
+    expect(readFileSync(staged.helper, 'utf8')).toBe('guard bytes');
+    expect(
+      readFileSync(
+        join(runtime, 'station-windows-owned-guard.exe.sha256'),
+        'utf8',
+      ),
+    ).toBe(`${createHash('sha256').update('guard bytes').digest('hex')}\n`);
+    expect(guard.cleanup).toHaveBeenCalled();
+  });
+
+  it('refuses to build the archive when the helper disagrees with PowerShell', () => {
+    for (const powerShell of ['2026-10-31T10:00:00.1234570Z', null]) {
+      const guard = fakeGuard();
+      expect(() =>
+        stageWindowsBirthHelper(makeTempDir('archive-runtime-'), {
+          platform: 'win32',
+          build: () => guard,
+          run: () => BIRTH,
+          probeWithPowerShell: () => powerShell,
+        }),
+      ).toThrow(/disagrees with the PowerShell probe/);
+      expect(guard.cleanup).toHaveBeenCalled();
+    }
+  });
+
+  it('refuses to stage off Windows, where the guard cannot be compiled', () => {
+    const build = vi.fn();
+    expect(() =>
+      stageWindowsBirthHelper(makeTempDir('archive-runtime-'), {
+        platform: 'linux',
+        build,
+      }),
+    ).toThrow(/build it on a Windows host/);
+    expect(build).not.toHaveBeenCalled();
+  });
+});
 
 describe('portable server Node.js pin', () => {
   it('pins an exact release of the Node.js major the repository supports', () => {
@@ -352,6 +412,22 @@ describe('portable server archive workflow', () => {
     'utf8',
   );
   const workflow = load(source) as Workflow;
+
+  it('uses the verified pnpm bootstrap for the non-Intel archive runners', () => {
+    type Step = { name?: string; uses?: string; if?: string; with?: unknown };
+    const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
+    const setup = steps.find((step) => step.name === 'Setup pinned pnpm');
+    expect(setup?.if).toBe("runner.os != 'macOS' || runner.arch != 'X64'");
+    expect(setup?.uses).toBe(VERIFIED_PNPM_SETUP_ACTION);
+    expect(setup?.with).toBeUndefined();
+    expect(
+      steps.some(
+        (step) =>
+          step.name === 'Setup pinned pnpm from its JS package (Intel macOS)' &&
+          step.if === "runner.os == 'macOS' && runner.arch == 'X64'",
+      ),
+    ).toBe(true);
+  });
 
   it('builds and smokes every supported target in its archive format', () => {
     expect(workflow.jobs.archive.strategy['max-parallel']).toBe(2);

@@ -11,6 +11,21 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
 
+## Integration capability status
+
+Turn on **Chat apps** in **Settings → Advanced → Feature previews**, then open
+**Connections → Integration status**. This section is visible only to the
+Station operator. Expand it to see each integration's actions, and hover over
+or choose a chip for its probe reason. **Refresh** checks again.
+
+**Works** requires a computed probe; **Unverified** means the observation did
+not establish that the action will succeed. **Failed** includes the failure;
+**Not configured** and **Not available yet** identify different next steps.
+The GitHub check observes the host's `gh` sign-in, not repository permissions.
+Discord gateway state and webhook configuration do not prove delivery. Slack,
+Linear and Jira actions are not available yet. Status is not an authorization
+grant. See the [API reference](../reference/api.md#integration-capability-status-and-task-write-back).
+
 ## S3 source profiles
 
 Experimental Project S3 sources use an explicitly selected named AWS profile on
@@ -182,6 +197,20 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Manage telemetry companion access
+
+An operator can enable **Manage telemetry companion** in a paired device's access
+editor, then choose **Apply**. This explicitly grants `telemetry:manage`; presets
+and default device grants do not include it. The caller must also be a currently
+verified human operator. Agents and delegation credentials cannot use the
+companion controls. The permission admits archive preparation and the conditional
+qualified installation, explicit start/stop APIs and incident-link creation/removal;
+it does not enable telemetry sending
+or personal analytics access. Home continuity permissions do
+not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
+preparation, conditional install/start/stop controls and recovery. A complete
+official companion profile and installed-release acceptance remain unfinished.
+
 ## Invite a device to a relay Station
 
 Under **Connections → Computers**, the **Devices** list and its **Invite device**
@@ -272,7 +301,15 @@ operator-authorized session on the controlling Station; ordinary paired-device
 access cannot manage peer credentials. If that authority is unavailable, the
 dialog explains the limitation instead of asking for an operator key. Existing
 trusted approval surfaces remain the remedy; this flow does not implement
-remote operator elevation.
+remote operator elevation. A refused peer request keeps its reference for retry
+from an operator session. **Request access for this device** remains available
+independently, so peer setup cannot prevent Device pairing.
+
+For a Tailscale API endpoint, the receiving Station must allow that endpoint's
+exact HTTPS origin with `--allowed-origin=<endpoint>`. Peer enrollment sends
+that origin when requesting receiver approval. An `origin_forbidden` refusal
+creates no approval request; changing Device scopes or minting another code
+cannot fix it. Apply the endpoint setting through the receiver's launcher.
 
 Device access saves without replacing an existing selected Station. From a
 Project's Delegate dialog, setup preserves the draft and resource selection and
@@ -286,14 +323,35 @@ that existing enrollment. Before confirmation, **Retry this same request** keeps
 its retained identity and destination. Each state offers cancellation separately;
 retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
 revoke the receiver's grant before starting again. Cancelling a local pending
-request does not revoke an already approved receiver grant. A saved peer
+request does not revoke an already approved receiver grant. After confirmed
+cancellation, **Choose another Station** returns to destination selection.
+A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
 Tap the connection dot on a phone, or the connection name on desktop, to
-choose a Station. A checkmark identifies the current Station, whose status is
-live. The chooser does not probe inactive Stations; they say **Not checked**
-unless a saved access or connection error needs attention. Holding the phone's
-dot shows its saved name without switching or opening the chooser.
+choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
+once two are saved. The current Station comes first with a checkmark and its
+live status; the rest follow most recently used first, and focus starts on the
+previous one, so the shortcut and Enter flip back. With five or more Stations,
+type to filter; Enter switches to the first match. Holding the phone's dot
+shows its saved name without switching or opening the chooser.
+
+Opening the chooser checks whether each other Station answers its public
+handshake, from this device, without credentials. A green dot means it
+answered; **Unreachable** means nothing did within a few seconds. Answering
+proves only that the address responds, not that this device still has access.
+Stations reached through a broker route are not checked, nor, from an HTTPS
+page, a plain-HTTP address other than loopback, which the browser would block.
+
+Forget a Station on this device with the × beside it (Delete on a focused
+row) and confirm. With two or more unreachable, **Forget N unreachable**
+forgets them together after a confirmation that names each one. The current Station cannot be
+forgotten here. On the desktop app, Stations other channels or development
+instances left in the shared profile file can be forgotten like any other;
+only the app's own local Station is refused, and the × is not offered for it.
+If the app cannot identify its own local Station at startup (its local service
+did not start, for example), every local-service profile stays protected until
+the app is restarted.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not
@@ -773,8 +831,9 @@ opens on that entry's first step.
    **Retry check** (or add it again) if it was not ready by then.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
-   the cause, or **Edit setup** for a custom engine. The engine's Agent is
-   added only once its check succeeds.
+   the cause, or **Edit setup** for a custom engine. On a saved engine that
+   isn't connected yet, **Troubleshoot** asks the Station Assistant about the
+   failure. The engine's Agent is added only once its check succeeds.
 5. When it is **Ready**, **Start a chat with** the engine opens New chat with
    its Agent selected. A Project-owned Agent uses its own Project; otherwise
    New chat uses the dock's current Project, or no Project when none is open.
@@ -992,7 +1051,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `env` — environment variables merged into every engine subprocess the
   connection spawns. Names must be valid env-var names; Station-internal
   secret names and `TMPDIR` are refused. An empty-string value masks an
-  inherited variable.
+  inherited variable. Claude sessions take `CLAUDE_CODE_ARTIFACT` from the
+  [`claudeArtifactsEnabled`](../reference/config.md#optional-fields) setting,
+  which overrides a value set here.
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
@@ -1196,6 +1257,17 @@ profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
 a profile by hand, or pinning one on an Agent, is not restricted this way.
 
+All automatic recovery, including same-account replay, pauses while startup
+reconciliation cannot read its obligations or an earlier application remains
+unresolved. An unreadable scan cannot establish which connections are affected.
+Station warns once when this pause begins and again when readiness recovers.
+The recovery status exposes `admission.state: blocked`, a bounded reason, and
+its next retry time when scheduled. The usage-limit banner shows the pause.
+Retries back off from 60 seconds to a maximum of 10 minutes; a successful
+reconciliation restores ordinary recovery. This does not prove that a previous
+provider call was undone. The refusal metric is
+`station.recovery.admission_refused`, with only a bounded `reason` attribute.
+
 ### Prefer allowance that expires sooner during account recovery
 
 Automatic recovery keeps enrollment order unless you explicitly add an
@@ -1296,20 +1368,28 @@ the [credential check](../../src-server/providers/llm/bedrock.ts).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-A Project can override them with `defaultProviderId` and `defaultModel`; an
+A Project can override them with `defaultProviderId` and `defaultModel`. Its
+**New chats** settings can instead start each new chat on the model the
+person's last chat in that Project started with (`defaultModelSelection:
+'last-used'`), falling back to the chain above when that model is no longer
+offered, and set the approval mode a new chat starts in
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). An
 Agent can bind its own Model connection through `execution.modelConnectionId`.
 For Station-engine Agents, connection selection uses that explicit binding,
 then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
 connections without a default are ambiguous; readiness does not silently choose
 one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
-The chat model picker shows the resolved connection and model. Open it to
-search across ready Model connections and Engines, filter by connection or
-Favorites or Recent, and choose the exact model for this chat. Open Options
-for capability filters and the selected model's supported runtime controls.
-Connections that still
-need setup remain visible with their status, but cannot create an invalid
-selection.
+Search models or browse Favorites, Recent and provider collections. Filter by
+capability and adjust settings beside the list; on phones, switch between
+**Models** and **Settings**. Thinking effort and **Speed** are independent.
+Codex speed choices follow its catalog, including Ultrafast when reported.
+**Standard** selects standard routing; **Model default** clears the speed
+override, and **Model default** under Thinking effort clears that override.
+When the catalog reports a default speed, its name and description appear
+beside the choices; local CLI configuration can supply a different default.
+Choosing a model closes the picker; runtime changes keep it open. Connections
+needing setup stay visible but cannot be selected.
 
 Favorites, recent choices, hidden models, and model order are saved for your verified person on this Station and follow that person across devices. Without a person-bound preference scope, they remain on this device. If account preferences are unavailable, changes are refused until they can be reloaded. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
@@ -1474,6 +1554,105 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Integrations from MCP subregistries
+
+**Registry → Integrations** lists Station's curated MCP servers under
+**Station curated**. Each card shows what Station checked:
+
+- **Station qualified**: Station checked the endpoint and sign-in, and
+  **Add** works today.
+- **Checked, needs your OAuth client**: addable, but you enter an OAuth
+  client you registered with the provider before signing in. Shown only once
+  Station supports such clients.
+- **Checked, not available yet**: the card lists why, for example sign-in
+  that needs an OAuth client you register with the provider.
+- **Unqualified**: from a source Station has not checked.
+
+The detail shows the sign-in mode, any vendor launch stage, and under
+**Details** the server name, version, endpoint and check date. **Add** stores
+the server turned off. Turn it on and choose **Connect your account** under
+**Connections → Tools**; each person signs in with their own account. The
+[design note](../design/mcp-subregistry-curation.md) lists the curated
+servers, the bounds and the evidence.
+
+An operator can add one more subregistry with `STATION_MCP_SUBREGISTRY_URL`.
+Its entries are unqualified. When it cannot be reached, its last saved copy
+is shown as offline and cannot be added from until it is refreshed. A
+catalog entry pointing at this host or a private network (for example
+loopback, a private range or `localhost`) cannot be added unless the operator
+sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
+on every address the server's name resolves to when Station connects, so a
+name that later points at a private address is refused.
+
+### Tools after untrusted content
+
+Some servers return content written by others, such as email. In a
+Station-engine turn that has read such content, Station asks before running
+a tool, even one the Agent auto-approves, unless the tool's trusted server
+declares it read-only. For Claude Code, Codex and ACP, Station applies the
+same permission to the MCP calls it carries (station-control and servers
+signed in through Station); **Other engines** in a server's trust settings
+shows when an engine connects to the server directly, where Station can't
+gate its calls. A server classified untrusted cannot exempt its own
+tools that way unless you set `trustReadOnlyHints`.
+
+Station defaults external integrations outside its bundled curated catalog to
+`trusted`. The bundled catalog supplies Station's reviewed classification;
+for example, Gmail is untrusted. Plugins, external registries and CLI imports
+cannot supply trust settings. Existing integrations without a classification
+were already treated as trusted, so upgrading does not change that behavior.
+Your trust settings and receipts survive a plugin retiring and later
+reintroducing the same integration. Deleting an integration yourself removes
+its saved trust settings and receipts.
+
+Older saved trust settings that allow more than Station's defaults, and
+whose owner Station cannot confirm, are not applied. The server stays off and
+shows **Needs your review** in **Connections → Tools**. Choose **Keep these
+settings** or **Use Station defaults**; either records a receipt with your
+name.
+
+Enable **Content trust settings** under **Settings → Advanced → Feature previews**,
+then open a server in **Connections → Tools** to change its classification,
+default, individual tool permissions, and read-only hints. The panel shows
+the recorded change history. For a writable integration, you can also save
+`contentTrust: "untrusted"` through the operator-gated `PUT /api/integrations/:id`
+API. The API records a receipt for the person making the change. Integration
+JSON can also be edited locally, without a receipt.
+An unrecorded local edit is not protected from a later plugin publication;
+use the API for a persistent person choice.
+Live Agent Plugin contributions accept these trust fields through the same API;
+their command and endpoint remain package-owned. For example:
+
+```json
+{
+  "contentTrust": "untrusted",
+  "untrustedContentPermissions": {
+    "default": "ask",
+    "tools": { "create_issue": "allow", "send_message": "deny" }
+  }
+}
+```
+
+`allow` means untrusted content adds no question and the tool's usual
+permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
+server whose content you trust. API edits record the authenticated person.
+The same per-tool permissions apply to Station's installed built-ins: use the
+integration API for `bash`, `file-editor`, or `http-request`, with tool keys
+`bash`, `fileEditor`, or `http_request` respectively. If a tool's loaded
+identity cannot be verified, Station asks rather than applying its allow entry.
+Once a conversation has read such content, its later turns keep asking, even
+after a restart, until the operator clears the mark with
+`POST /api/integrations/untrusted-content/conversations/:id/clear`, which
+records who cleared it.
+Delegated children share the mark both ways. Station's own engine also marks
+turns sent from untrusted MCP prompts. Prompt steering and prompt sends to
+another Station or an external engine are refused until their origin can be
+carried safely; see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
+An unconfirmed MCP prompt send is not automatically replayed; inspect the
+conversation before running it again. Prompt receipts expire after ten minutes
+or a Station restart, so an expired prompt must be run again.
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection
@@ -1485,7 +1664,8 @@ OAuth and the Station host must be able to reach that address.
 2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
    source configured for personal accounts). Station discovers the
    OAuth metadata and registers its client automatically; no client secret is
-   needed for servers that support dynamic registration.
+   needed for servers that support dynamic registration. For a server that
+   does not, see [Use your own OAuth client](#use-your-own-oauth-client).
 3. Follow the remote server's approval flow. If it requires a pairing code,
    obtain one from the workspace's connection settings; otherwise approve from
    an authorized signed-in browser. Choose the access level you intend to grant.
@@ -1578,6 +1758,185 @@ are treated as transient and do not request sign-in again. They preserve consent
 and show as temporarily unavailable when the access token cannot be used. You can
 reconnect manually from the integration's account panel if the failure persists.
 
+### Use your own OAuth client
+
+Some remote MCP servers do not register clients automatically. Google's Gmail
+MCP server and Slack's MCP server are examples: each expects a client that you
+registered with the provider ahead of time. Station picks a client in the order
+the MCP authorization specification gives:
+
+1. A **client ID** you configured (a pre-registered client).
+2. A **client metadata URL** you configured, only when the authorization server
+   advertises `client_id_metadata_document_supported`. The URL is the client ID
+   and must be an HTTPS URL with a path. Station does not host a metadata
+   document, and none is configured by default. A deployment can set one for
+   every integration without its own client through
+   [`STATION_OAUTH_CLIENT_METADATA_URL`](../reference/env-vars.md); an
+   integration's own client ID or metadata URL takes precedence.
+3. Dynamic Client Registration, when the server offers it.
+
+If none of those applies, sign-in stops before contacting the token endpoint.
+The integration shows **Client ID required** and the authorization state
+`client-id-required`; add a client ID and sign in again.
+
+Configure the client under **Use your own OAuth client** in the integration's
+settings:
+
+- **Client ID**: the ID the provider issued.
+- **Authorization server (recommended)**: shown for every remote integration,
+  outside the folded client fields. It is the `issuer` of the authorization
+  server, exactly as its OAuth metadata states it (an HTTPS URL), and Station
+  signs in only with that server. It is required with a client ID, public or
+  confidential; see [Authorization server binding](#authorization-server-binding).
+  Without a client ID it pins dynamic registration and the metadata document
+  to that server from the first sign-in on (see below).
+- **Client secret**: a confidential client's secret, chosen from a shared secret
+  binding (keychain, 1Password or environment). Create the binding under
+  **Advanced: Secret bindings** first, declare the authorization server and save
+  the integration, then choose the binding and **Bind**. The integration stores only the binding id. The secret is read for
+  each token request and sent with the method the server advertises
+  (`client_secret_basic`, then `client_secret_post`). It is never written to
+  `integration.json`, the credential store or logs. A public client leaves this
+  empty. A configured secret that cannot be read refuses sign-in and refresh;
+  Station does not fall back to a public client.
+- **Default scopes**: one per line (spaces also separate them). They prefill the
+  **Scopes** field in the sign-in panel and replace the scopes the server
+  advertises. A manifest or `integration.json` can supply them.
+- **Client metadata URL**: optional; see the order above.
+
+Which access to grant is the choice of the person signing in, not Station's.
+The sign-in panel's **Scopes** field starts with the integration's default
+scopes; add or remove scopes there before **Sign in** or **Connect your
+account**. Station requests exactly that list for that sign-in, including when
+it registers a client dynamically, and does not write it back as the default.
+Clearing the field requests the server's advertised scopes instead of the
+default. When that sign-in completes, Station remembers the choice for your
+own account (for a Project-scoped account, that Project's), and the field
+starts from it next time instead of the default. An abandoned sign-in
+remembers nothing, another person never sees your choice, and disconnecting
+forgets it. Station checks only that each scope is a well-formed OAuth scope (at
+most 32 distinct values); the provider decides what each scope allows.
+
+#### Authorization server binding
+
+A remote MCP server names its authorization server in its resource metadata
+(RFC 9728). If that server were compromised or changed, it could name a
+different authorization server, which would then receive the client secret
+at its token endpoint ([GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h)).
+Station therefore uses a pre-registered client only with the **Authorization
+server** the operator declared. The check reads configuration, not anything a
+sign-in wrote, so it holds for every person, every Project, after a disconnect
+and for concurrent sign-ins. A mismatch stops sign-in and refresh before the
+secret is read.
+
+A client secret cannot be bound without a declared authorization server, and
+a bound secret pins both the authorization server and the endpoint: unbind the
+secret before changing either. A public pre-registered client needs a
+declared authorization server too. It has no secret to give away, but without
+an anchor a compromised resource could stage a mix-up: send a person to the
+honest authorization page while naming its own token endpoint, then redeem
+the code and PKCE verifier Station sends there.
+
+Two independent layers enforce this:
+
+- **The integration writers.** The shared integration writer applies these
+  rules to the settings, the API, registry installs, a plugin's required
+  tools and the binding operations. A plugin's bundled integrations are
+  checked against the same rules inside locked publication on install, update,
+  rollback and restore; bundled binding references are refused. The CLI import
+  checks them before writing. Registry, plugin and imported definitions never
+  carry a secret binding, and a source with a bound secret cannot be replaced
+  from a registry; unbind first.
+- **The secret's own grant.** Binding records three things: the authorization
+  server, the MCP server URL, and the integration's instance identity. Station
+  creates the instance identity when the integration is first saved, keeps it
+  beside the definition where no definition, registry, plugin or import can
+  set it, and deletes it with the integration. Station releases the client
+  secret only to an integration that still matches all three, and checks this
+  at every token request, the code exchange and each refresh included. A
+  definition naming another server or URL, written by any path (a restored
+  backup or a hand edit included), cannot use the secret. Neither can an
+  integration deleted and recreated with the exact same id, server and URL: it
+  is a new instance, so the old grant no longer applies and the secret must be
+  bound again. A secret revoked or unbound during a sign-in stops that sign-in
+  at its code exchange.
+
+When two sign-ins overlap on one account, each saves its tokens together with
+the client that obtained them, and only if the stored client is still the one
+it started from. The later one is refused with a request to sign in again, so
+an account never holds tokens from one client next to another client.
+
+Station also checks the `iss` in the authorization response (RFC 9207). A
+response whose `iss` differs from the server sign-in started at is refused
+before the code is sent anywhere, and when that server advertises
+`authorization_response_iss_parameter_supported`, a response without `iss`
+is refused.
+
+**Dynamic Client Registration without a declared server.** With no client ID
+and no declared **Authorization server**, the first sign-in that completes
+pins the authorization server it used, for that MCP server URL. The pin is
+kept beside the integration where no definition, registry, plugin or import
+can set it (a plugin file with the same name in any letter case or Unicode
+form is refused), and it is shared by everyone who signs in. After that, any other
+server is refused before Station registers a client or redirects anyone, for
+every person, after disconnects and across overlapping sign-ins. Every request
+that carries client or grant material to an authorization server (client
+registration, code exchange, refresh) is checked immediately before it is
+sent, under a per-integration lock that establishing the pin also takes. A
+sign-in that was already open when the pin was set is therefore refused
+before its registration, code or verifier is sent, whatever point it had
+reached. A sign-in
+pins only when its code exchange succeeds, so a hostile first attempt that
+fails the `iss` check pins nothing. The first completed sign-in is still
+trust-on-first-use: if the resource is already compromised then, and the
+honest server omits `iss`, that one sign-in can be misdirected. Declaring the
+**Authorization server** removes even that. Changing the MCP server URL starts
+a new pin, and deleting the integration removes it.
+
+Changing the client ID, authorization server or metadata URL clears the
+integration's tokens, because they belong to the client that obtained them;
+everyone signs in again.
+Raw integration JSON cannot set the binding; only the secret-binding routes can.
+
+The client identifies the app, not a person. Everyone who signs in uses the same
+client. Tokens keep the integration's account ownership: for a source configured
+for personal accounts, each person's tokens stay in their own bucket, and the
+shared account is used only when the fallback is explicitly allowed. A person-owned
+secret binding cannot be bound as a client secret.
+
+#### Example: Gmail MCP server (Developer Preview)
+
+Google's Gmail MCP server (`https://gmailmcp.googleapis.com/mcp/v1`) is a
+Developer Preview. Its behavior, scopes and client requirements may change, and
+Google's preview terms apply. Station has fixture tests for this flow. A live sign-in against
+Google is **NOT_VERIFIED**.
+
+1. In a Google Cloud project you own, follow Google's Gmail MCP preview
+   instructions to enable access, configure the OAuth consent screen and create
+   the OAuth client type the preview requires. Add Station's redirect URI,
+   `http://127.0.0.1:<port>/integrations/<id>/oauth/callback`, where `<port>`
+   is the Station server port and `<id>` the integration id.
+2. Create the integration with connection type **HTTP** and the endpoint above.
+3. Under **Use your own OAuth client**, enter the client ID and the
+   **Authorization server**: the `issuer` in the authorization server metadata
+   that the Gmail MCP server's resource metadata names. Google documents
+   `https://accounts.google.com` as its OAuth issuer; confirm it against that
+   metadata. Optionally add **Default scopes**. Save.
+4. If the client has a secret, store it as a secret binding and **Bind** it.
+5. Sign in as in the steps above, choosing the scopes you want to grant.
+
+Vendor facts, as Google documents the preview at the time of writing: the Gmail
+MCP server offers only `https://www.googleapis.com/auth/gmail.readonly` and
+`https://www.googleapis.com/auth/gmail.compose`. Station doesn't restrict this
+list; the provider does. Starting with `gmail.readonly` and adding
+`gmail.compose` when an Agent needs to draft mail is one reasonable approach,
+not a Station requirement.
+
+Implementation: [client selection](../../src-server/services/plugins/tool-server-oauth.ts),
+[client-secret binding](../../src-server/services/secrets/secret-binding-administration.ts)
+and [settings](../../src-ui/src/views/integrations/OAuthClientSection.tsx).
+Evidence: [fake authorization server tests](../../src-server/services/plugins/__tests__/tool-server-oauth-client-registration.test.ts).
+
 Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
 `<home>/security/tool-server-credentials.json` (personal accounts use
 `tool-server-principal-credentials.json` in the same directory). A process running
@@ -1595,10 +1954,11 @@ Local fixture evidence covers MCP tool calls through the proxy, account selectio
 refresh and conditional publication, mid-session expiry/401, scope refusals,
 launch refusal and confined Claude configuration delivery. These are local checks;
 live provider acceptance of the proxy design is **NOT_VERIFIED**.
-The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
-[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
-show mounted browser components with synthetic API responses. They do not show
-a live remote-server sign-in or tool call.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png)
+is from an isolated Station with a local fake authorization server; the
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png) shows
+mounted browser components with synthetic API responses. Neither shows a live
+remote-server sign-in or tool call.
 
 ## Developer services and computers
 
@@ -1643,18 +2003,24 @@ Connections has one clear home for each relationship:
 
 Device-pairing scopes apply to protected HTTP requests even when a desktop app
 or CLI talks to Station on the same computer. A **Read-only** Device can view
-and stream permitted state, but cannot mutate resources. Remote terminal
-WebSockets additionally require `terminal:operate`; **Standard** includes that
-scope along with read and operate. The operator changes an existing Device's
+and stream permitted state, but cannot mutate resources. Terminals
+additionally require `terminal:operate` (or `terminal:observe` to watch) and a
+device that belongs to the operator; **Standard** includes `terminal:operate`
+along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
 never granted this way. A phone or browser that uses Station's **Request
 access** screen asks for full device access: Standard plus **Run commands**
 and **Skip approval prompts**. Whoever approves sees "asks for full device
 access" and approves it as asked, or opens **Limit access** to untick
-permissions first; only the operator can approve the two elevated ones. In
+permissions first; only the operator (including one of the owner's own devices
+with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+can approve the two elevated ones. In
 **Needs attention** the request is one line with **Review**, which opens the
-details. (The share prompt's **Request pairing for this browser** still
+details. A paired browser can sign in with an enrolled operator passkey and
+confirm an ordinary pairing request on the consent origin; the request remains
+pending until confirmation. See [operator passkeys](operator-passkeys.md) for
+setup and availability. (The share prompt's **Request pairing for this browser** still
 asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
@@ -1784,3 +2150,14 @@ API or UI-proxy port. This proves daemon configuration, not reachability from a
 phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.

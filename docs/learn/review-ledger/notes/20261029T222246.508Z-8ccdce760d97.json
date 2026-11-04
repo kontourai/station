@@ -1,0 +1,7 @@
+{
+  "revision": "674fa9dbf661e392358794490a6fbce7471c754f",
+
+  "notes": [
+    {"path":"docs/guides/operator-passkeys.md","note":"P3 correction checked against mayPostProjectSharingEnable and accountBoundProjectRouteMayPass: account-bound Devices remain refused even with an operator session. Review at a79eb66 passed 218 focused tests; this prose correction adds no live browser or physical passkey evidence.","inputs":["docs/guides/operator-passkeys.md"]}
+  ]
+}

@@ -117,6 +117,27 @@ const OPERATE_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
 }));
 
 describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () => {
+  it('refuses read-only access to the child steer command ingress', async () => {
+    const { request } = createHarness();
+    expect(
+      (
+        await request(
+          '/api/orchestration/commands',
+          'POST',
+          READ_ONLY_CREDENTIAL,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/orchestration/commands',
+          'POST',
+          STANDARD_CREDENTIAL,
+        )
+      ).status,
+    ).not.toBe(403);
+  });
   it('the table itself has both a read and a mutate tier to sweep (sanity)', () => {
     expect(READ_TIER_CASES.length).toBeGreaterThan(10);
     expect(OPERATE_TIER_CASES.length).toBeGreaterThan(10);

@@ -67,6 +67,12 @@ for (const name of ['LICENSE', 'NOTICE']) {
   );
 }
 
+mkdirSync(`${serverDir}/third-party/media-tools`, { recursive: true });
+cpSync(
+  'packaging/licenses/media-tools/NOTICE',
+  `${serverDir}/third-party/media-tools/NOTICE`,
+);
+
 await Promise.all([
   esbuild.build({
     ...shared,
@@ -91,6 +97,15 @@ await Promise.all([
   esbuild.build(
     supervisorBuildOptions(`${serverDir}/${SUPERVISOR_BUNDLE_NAME}`),
   ),
+  // The supervisor's workload host owns terminal PTYs across core
+  // generations. It needs node-pty, so unlike the supervisor it runs beside
+  // this build's node_modules; the supervisor starts the one beside the core
+  // entry (WORKLOAD_HOST_BUNDLE_NAME in the supervisor protocol).
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/station-pty-host.ts'],
+    outfile: `${serverDir}/station-pty-host.js`,
+  }),
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/tools/station-control-server.ts'],

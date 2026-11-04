@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import { useState } from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -43,7 +44,6 @@ export interface ComposerActionsMenuProps {
 export function ComposerActionsMenu({
   triggerRef,
   commandLauncherDisabled,
-  commandLauncherShortcut,
   filesActive,
   taskContextActive,
   filesCount,
@@ -58,8 +58,15 @@ export function ComposerActionsMenu({
   onOpenContextReset,
   contextBoundaryStatus,
   onOpenConversationReference,
+  commandLauncherShortcut: registeredShortcut,
 }: ComposerActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // A finger has no chord to press: on a coarse primary pointer the menu
+  // shows no keyboard hint, in its label or as a kbd. Accepted limit: a
+  // tablet whose primary pointer is touch also loses the hint when a
+  // hardware keyboard is attached; Station has no keyboard-presence signal.
+  const coarsePointer = useCoarsePointer();
+  const commandLauncherShortcut = coarsePointer ? '' : registeredShortcut;
 
   const close = () => setIsOpen(false);
 

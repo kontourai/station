@@ -2,10 +2,12 @@ import {
   HomeActionSection,
   HomeContinueCard,
 } from '../../components/home/HomeActionSection';
+import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
+import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
 import {
   ActivityBars,
@@ -188,31 +190,29 @@ export function HomeSurface({
       {model.firstSession ? (
         <header className="home-view__welcome">
           <h1>Start your first conversation</h1>
-          <p>
-            Choose an agent, write what you need, and start. Add a Project when
-            you want to work with files.
-          </p>
         </header>
       ) : (
-        <h1 className="sr-only">Home</h1>
+        <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
       )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
       >
-        <HomeStartComposer compact={hasWork} />
+        <HomeStartComposer compact={hasWork || model.firstSession} />
       </div>
       {hasWork ? (
         <>
           {continueCard}
           {!listEmpty && recentWork}
           {actions}
+          <HomeCoordinatorCard />
           {chart}
         </>
       ) : (
         <>
           {actions}
+          <HomeCoordinatorCard />
           {!model.firstSession && recentWork}
         </>
       )}

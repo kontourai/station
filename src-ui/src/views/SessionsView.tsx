@@ -56,6 +56,7 @@ import {
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { useCoarseNow } from '../hooks/useCoarseNow';
 import { copyToClipboard } from '../lib/clipboard';
 import { requestTaskShaping } from '../lib/task-shaping';
 import { openerSelectionKey, type PaneOpener } from '../regions/pane-relations';
@@ -107,9 +108,17 @@ import {
 import './SessionsView.css';
 import './page-layout.css';
 
-/** How often relative times and lanes re-derive. */
-const ACTIVITY_CLOCK_MS = 30_000;
 const SETTLED_PAGE_SIZE = 20;
+
+/**
+ * The inventory before the sessions query has answered — ONE array, not a
+ * fresh `[]` per render. Everything downstream is memoized on it, ending in
+ * the quick-review source the `main` page publishes from a layout effect;
+ * a new empty array each render re-published that source, whose provider
+ * update re-rendered this view, and a cold load of `/` with Activity
+ * restored as the page looped until React threw #185 (#4379).
+ */
+const NO_SESSIONS: OrchestrationSessionSummary[] = [];
 
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
@@ -209,8 +218,11 @@ function ActivityRowMeta({
   // An attached row's origin is the app it was started in, which is also its
   // agent name; the "Elsewhere" word beside it says the rest.
   const origin = activityOriginShortLabel(session);
+  // #4402: plain words. "(also another origin)" read as an internal flag.
   const originText = session.turnOrigin?.hasOtherOrigins
-    ? `${origin ?? 'Several origins'} (also another origin)`
+    ? origin
+      ? `${origin} and elsewhere`
+      : 'Several places'
     : origin;
   const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];
@@ -326,7 +338,7 @@ export function SessionsView({
   onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
   const {
-    data: inventory = [],
+    data: inventory = NO_SESSIONS,
     isLoading,
     error: sessionsError,
     refetch,
@@ -465,11 +477,7 @@ export function SessionsView({
   const [search, setSearch] = useState('');
   // One clock for everything time-based on this surface — lane membership
   // (the recently-finished window) and the row times — so they age together instead of freezing at the last data change.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), ACTIVITY_CLOCK_MS);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useCoarseNow();
   // Kind / Project / Started from. Origins come from recorded session
   // provenance; the device management registry is operator-only and reading
   // it here can invalidate a valid browser session.

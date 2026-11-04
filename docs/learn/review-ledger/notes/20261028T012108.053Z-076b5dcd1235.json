@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Copy-only delta in OnboardingGate: the exchange-attempt pairing line again states Station won't resend the request, alongside revoke-and-restart. Pairing state machine and recovery flow unchanged; prose accurate.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/OnboardingGate.tsx"]}
+  ]
+}

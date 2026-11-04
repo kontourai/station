@@ -13,6 +13,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
@@ -21,6 +23,7 @@ import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { recordStationUse } from '../../lib/stationSwitcher';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
@@ -147,6 +150,25 @@ function ConnectionNameHint({
   );
 }
 
+/**
+ * Toggles the Station switcher. It opens on the previous Station, or on its
+ * filter once there are enough to need one, so the chord then Enter flips back.
+ */
+const STATION_SWITCH_WHEN = { not: 'browserFocused' } as const;
+function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    onToggle,
+    true,
+    0,
+    STATION_SWITCH_WHEN,
+  );
+  return null;
+}
+
 export function HeaderActions({
   helpPrompts,
   showHelp,
@@ -166,10 +188,20 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const profile = usePlatformProfile();
   const stationConditions = useStationConditions();
-  const { activeConnection, connections, setActiveConnection } =
-    useConnections();
+  const {
+    activeConnection,
+    connections,
+    setActiveConnection,
+    forgetConnection,
+    canForgetConnection,
+  } = useConnections();
+  const activeStationName = useActiveStationName();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const activeConnectionId = activeConnection?.id;
+  useEffect(() => {
+    if (activeConnectionId) recordStationUse(activeConnectionId);
+  }, [activeConnectionId]);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -304,7 +336,8 @@ export function HeaderActions({
   // Both are suppressed in `idle`: that state asserts there is no Station, so
   // naming one beside it contradicts the very sentence next to it.
   const isIdle = connState === 'idle';
-  const connIdentity = isIdle ? undefined : activeConnection?.name;
+  // #4402: the seeded "Default" connection reads as the machine's name.
+  const connIdentity = isIdle ? undefined : activeStationName;
   // This is the user's saved connection label, not verified server identity.
   const connDisplayLabel = connIdentity
     ? connIdentity
@@ -345,16 +378,17 @@ export function HeaderActions({
   const [connectionNameAnchor, setConnectionNameAnchor] =
     useState<HTMLElement | null>(null);
   const connectionHintId = useId();
+  const openConnectionMenu = () => {
+    setConnectionNameAnchor(null);
+    onCloseHelp();
+    onCloseNotifications();
+    onCloseOverflow();
+    if (connections.length === 0) onOpenConnections();
+    else setConnectionMenuOpen(true);
+  };
   const connectionToggle = useMenuTriggerToggle(
     connectionMenuOpen,
-    () => {
-      setConnectionNameAnchor(null);
-      onCloseHelp();
-      onCloseNotifications();
-      onCloseOverflow();
-      if (connections.length === 0) onOpenConnections();
-      else setConnectionMenuOpen(true);
-    },
+    openConnectionMenu,
     () => setConnectionMenuOpen(false),
   );
   const connectionGesture = useLongPress({
@@ -443,6 +477,14 @@ export function HeaderActions({
           </>
         )}
       </button>
+      {connections.length > 1 && (
+        <StationSwitchShortcut
+          onToggle={() => {
+            if (connectionMenuOpen) setConnectionMenuOpen(false);
+            else openConnectionMenu();
+          }}
+        />
+      )}
       {connectionMenuOpen && connectionButtonRef.current && (
         <LazyBoundary
           load={loadStationSwitcher}
@@ -455,6 +497,8 @@ export function HeaderActions({
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
             },
+            onForget: (connection) => forgetConnection(connection.id),
+            canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
             onPairPhone: hasLocalStationForProfile(profile)
@@ -480,7 +524,9 @@ export function HeaderActions({
           className="app-toolbar__icon-btn"
           {...notificationTrigger}
           title={notificationLabel}
-          aria-label={`${notificationLabel}${notificationBadge ? ` (${notificationBadge.label})` : ''}`}
+          // A comma, not parentheses: the visible count must be a word of
+          // the name for label-in-name (WCAG 2.5.3), and "(3" is not "3".
+          aria-label={`${notificationLabel}${notificationBadge ? `, ${notificationBadge.label}` : ''}`}
         >
           {/* #1552 D1: the shared `Glyph` family, not a hand-rolled `strokeWidth:
               2` SVG. This row's three glyphs were drawn at three weights (2 here
@@ -503,7 +549,7 @@ export function HeaderActions({
                assumption about how many notifications a person has.
 
                The exact count is not lost: it is in this button's accessible
-               name (`${notificationLabel} (${notificationBadge.label})` above,
+               name (`${notificationLabel}, ${notificationBadge.label}` above,
                "N need attention"), and the panel the button opens lists them.
                What the cap does cost: above nine, the visible "9+" is no
                longer a substring of that name, where the uncapped count was.
@@ -571,12 +617,13 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
-          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
-          opens on every viewport — so a phone reaches it in two taps without
-          spending a permanent slot in the row that runs out of width first.
-          The account menu that used to sit at this row's end is the footer's
-          `SidebarAccountControl`; the region glyphs took its place. */}
+      {/* No phone-only Settings gear: Settings is the "Open settings" row of
+          the account menu in the sidebar drawer's footer
+          (`SidebarAccountControl` in `ProjectSidebarFooter`), which the
+          hamburger beside the brand opens on every viewport — so a phone
+          reaches it without spending a permanent slot in the row that runs
+          out of width first. That account menu used to sit at this row's
+          end; the region glyphs took its place. */}
     </div>
   );
 }

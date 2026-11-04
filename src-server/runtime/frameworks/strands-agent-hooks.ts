@@ -1,3 +1,4 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import {
   AfterInvocationEvent,
   AfterToolCallEvent,
@@ -78,6 +79,8 @@ export function wireStrandsToolGate(options: {
   deniedToolCalls: Map<string, ToolCallDenial>;
   invocationCtx: InvocationContext;
   purposeEnabledToolNames?: ReadonlySet<string>;
+  findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
+  findToolReplay?: (runtimeName: string) => 'safe' | 'unsafe';
 }): void {
   const {
     strandsAgent,
@@ -85,6 +88,7 @@ export function wireStrandsToolGate(options: {
     deniedToolCalls,
     invocationCtx,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   } = options;
   if (!hooks?.beforeToolCall) return;
   strandsAgent.addHook(BeforeToolCallEvent, async (event) => {
@@ -102,9 +106,19 @@ export function wireStrandsToolGate(options: {
     const approved = await hooks.beforeToolCall!(
       {
         toolName: event.toolUse.name,
+        ...(currentAgentTurn()
+          ? { replay: options.findToolReplay?.(event.toolUse.name) ?? 'unsafe' }
+          : {}),
         toolCallId: event.toolUse.toolUseId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
+        ...(findBuiltinToolIdentity?.(event.toolUse.name)
+          ? {
+              builtin: Object.freeze({
+                integrationId: findBuiltinToolIdentity(event.toolUse.name)!,
+              }),
+            }
+          : {}),
       },
       invocation,
     );
@@ -137,6 +151,8 @@ export function wireStrandsAgentHooks(options: {
     runtimeName: string,
   ) => MCPToolLoaderProvenance | undefined;
   purposeEnabledToolNames?: ReadonlySet<string>;
+  findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
+  findToolReplay?: (runtimeName: string) => 'safe' | 'unsafe';
 }): void {
   const {
     strandsAgent,
@@ -149,16 +165,19 @@ export function wireStrandsAgentHooks(options: {
     getLastStreamUsage,
     findMCPToolProvenance,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   } = options;
 
   let toolCallCount = 0;
 
   wireStrandsToolGate({
+    findToolReplay: options.findToolReplay,
     strandsAgent,
     hooks,
     deniedToolCalls,
     invocationCtx,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   });
 
   if (hooks?.afterToolCall) {
@@ -220,23 +239,31 @@ export function wireStrandsAgentHooks(options: {
     const agentMessages = (event as any).agent?.messages || [];
     const ctx: InvocationContext = { ...resolved };
 
-    await syncStrandsMessagesToMemory({
-      agentMessages,
-      agent: (event as { agent?: object }).agent,
-      invocation: ctx,
-      logger,
-      memoryAdapter,
-      resolvedModel,
-    });
-
-    if (hooks?.afterInvocation) {
-      await hooks.afterInvocation({
+    try {
+      await syncStrandsMessagesToMemory({
+        agentMessages,
+        agent: (event as { agent?: object }).agent,
         invocation: ctx,
-        usage: getLastStreamUsage() || (event as any).metrics?.usage,
-        toolCallCount,
+        logger,
+        memoryAdapter,
+        resolvedModel,
       });
-    }
 
-    toolCallCount = 0;
+      if (hooks?.afterInvocation) {
+        await hooks.afterInvocation({
+          invocation: ctx,
+          usage: getLastStreamUsage() || (event as any).metrics?.usage,
+          toolCallCount,
+        });
+      }
+    } finally {
+      toolCallCount = 0;
+      // The turn ends whether or not memory sync or stats succeeded.
+      try {
+        hooks?.endInvocation?.(ctx);
+      } catch {
+        /* Releasing turn state never fails the invocation. */
+      }
+    }
   });
 }

@@ -1,7 +1,39 @@
+import type { TaskStatus } from './task-graph.js';
+
 /**
  * Read-only, provider-observed usage facts. These are not invoices and never
  * grant billing or routing authority (station#4135).
  */
+export interface PublishedTariffBasis {
+  routeId: string;
+  modelRevision: string;
+  tariffId: string;
+  sourceUrl: string;
+  sourceArtifactId: string;
+  reviewedAt: string;
+  effectiveAt: string;
+  validUntil: string;
+  cacheInput: 'disjoint' | 'included';
+  reasoning: 'included-in-output' | 'separate' | 'unknown';
+  reasoningPerMillion?: number;
+}
+
+export type PublishedRateRetailEquivalent =
+  | {
+      state: 'available' | 'stale';
+      amount: number;
+      currency: string;
+      basis: PublishedTariffBasis;
+    }
+  | {
+      state: 'unavailable';
+      reason:
+        | 'price-unavailable'
+        | 'route-unverified'
+        | 'category-unverified'
+        | 'tariff-not-effective';
+    };
+
 export interface PricingSnapshot {
   id: string;
   /** When this immutable catalog observation was captured, not when read. */
@@ -15,6 +47,7 @@ export interface PricingSnapshot {
   outputPerMillion?: number;
   cacheReadPerMillion?: number;
   cacheWritePerMillion?: number;
+  publishedTariff?: PublishedTariffBasis;
 }
 
 /** The absence of a price is evidence too; never render it as a zero. */
@@ -43,6 +76,18 @@ export interface UsageReceipt {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  /** Explicit serving-route identity; provider/model labels alone do not establish it. */
+  route?: {
+    id: string;
+    modelRevision: string;
+    tariffId: string;
+    provenance: {
+      authority: 'provider-reported' | 'host-observed';
+      sourceRef: string;
+    };
+  };
+  retailEquivalent?: PublishedRateRetailEquivalent;
   /** Exact provider amount; it is never recomputed or normalized. */
   reportedCost?: { amount: number; currency: string };
   /** A locally computed estimate under this immutable snapshot only. */
@@ -118,6 +163,7 @@ export interface UsageRollupRow {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  reasoningTokens?: number;
   /** Only values sharing one currency may appear in this total. */
   reportedCost?: { amount: number; currency: string };
   /** Only estimates sharing one immutable snapshot and currency are summed. */
@@ -155,4 +201,59 @@ export interface UsageRollup {
    */
   aggregateReceipts?: UsageReceipt[];
   nextCursor?: string;
+  taskOutcomes?: UsageTaskOutcome[];
+}
+
+/** Current Task workflow state, never an independent assessment of result quality. */
+export type UsageTaskOutcome =
+  | {
+      stationId: string;
+      taskId: string;
+      receiptCount: number;
+      reportedCostBuckets: Array<{ amount: number; currency: string }>;
+      state: 'available';
+      taskCreatedAt: string;
+      status: TaskStatus;
+    }
+  | {
+      stationId: string;
+      taskId: string;
+      receiptCount: number;
+      reportedCostBuckets: Array<{ amount: number; currency: string }>;
+      state: 'unavailable' | 'restricted';
+    };
+
+export function isPublishedTariffBasis(
+  value: unknown,
+): value is PublishedTariffBasis {
+  if (!value || typeof value !== 'object') return false;
+  const basis = value as Record<string, unknown>;
+  for (const key of [
+    'routeId',
+    'modelRevision',
+    'tariffId',
+    'sourceUrl',
+    'sourceArtifactId',
+  ])
+    if (typeof basis[key] !== 'string' || !basis[key].trim()) return false;
+  for (const key of ['reviewedAt', 'effectiveAt', 'validUntil'])
+    if (
+      typeof basis[key] !== 'string' ||
+      !Number.isFinite(Date.parse(basis[key]))
+    )
+      return false;
+  if (
+    Date.parse(String(basis.validUntil)) < Date.parse(String(basis.effectiveAt))
+  )
+    return false;
+  return (
+    ['disjoint', 'included'].includes(String(basis.cacheInput)) &&
+    ['included-in-output', 'separate', 'unknown'].includes(
+      String(basis.reasoning),
+    ) &&
+    (basis.reasoningPerMillion === undefined ||
+      (typeof basis.reasoningPerMillion === 'number' &&
+        Number.isFinite(basis.reasoningPerMillion) &&
+        basis.reasoningPerMillion >= 0))
+  );
 }

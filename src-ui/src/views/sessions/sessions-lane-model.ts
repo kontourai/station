@@ -6,7 +6,6 @@ import {
   LIVE_LANE_LABELS,
   type LiveLaneId,
   partitionHomeWorkItems,
-  terminalSinceFromRecency,
   withStableIds,
 } from '../home/home-lane-model';
 import {
@@ -109,7 +108,7 @@ export interface SessionLane {
 
 /**
  * Home's snooze shelf is backed by a persisted per-item store
- * (`terminal-since-store.ts` / `useHomeWorkLanes`). The Sessions list has no
+ * (`activity-snooze-store.ts` / `useHomeWorkLanes`). The Sessions list has no
  * snooze verb and no such store, so this is always empty and the partition's
  * `snoozed` bucket is provably empty here. It is still passed (rather than
  * the partition being forked) so a future snooze on this surface is a wiring
@@ -117,12 +116,6 @@ export interface SessionLane {
  * a non-empty map could never silently drop rows.
  */
 const NO_SNOOZE: ReadonlyMap<string, number> = new Map();
-
-// The fresh-load `terminalSince` proxy (seed from `item.updatedAt` — the max
-// of updatedAt/lastEventAt/createdAt that `buildSessionWorkItem` already
-// computes) moved to `home-lane-model.ts`'s `terminalSinceFromRecency` when
-// the mobile activity groups adopted the same pattern (archive#3227 A6), so
-// the two store-less surfaces share one seeding rule instead of two copies.
 
 // "Needs you" is `workStatus`'s `Needs attention` lane — the fold
 // `orchestrationLifecycleLabel` already computes from `pendingReview`/
@@ -152,7 +145,6 @@ export function partitionSessionLanes({
     items: withStableIds(items, new Map()),
     now,
     snoozedUntil: NO_SNOOZE,
-    terminalSince: terminalSinceFromRecency(items),
   });
 
   const byThreadId = new Map(

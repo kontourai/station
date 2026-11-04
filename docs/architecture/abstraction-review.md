@@ -65,17 +65,18 @@ label change.
 ### Capture provenance depends on mutable UI state
 
 [Meeting Notes capture](../../examples/meeting-notes/src/CaptureModal.tsx)
-stores a raw record ID in component state after saving. Compile combines that
-ID with the current textarea without rereading the stored source. Editing the
-textarea clears the ID, but a delayed earlier save response can set it again;
-an external source edit or deletion is also outside this UI sequence.
+retains the submitted root, text and raw record ID for each request. Editing
+or changing roots clears the saved IDs, and late responses cannot restore them
+or label the changed draft. Pending compilation can still finish writing its
+originally submitted note. Mounted-caller regressions cover delayed save and
+compile responses, plus rejected-upload recovery; they do not prove live
+Agent output or external source integrity.
 
-The compiled record can therefore name a source without proving it represents
-the text sent to the extraction Agent. Review whether the record owner should
-supply an exact source snapshot/revision for compilation and publication, with
-late UI responses tied to the same selection. A source link alone is not an
-identical-input provenance guarantee. The documentation now names this limit;
-the save/compile behavior has not been changed in this pass.
+The compile call still does not re-read or lock the stored source. External
+source edits or deletion remain outside the UI guarantee. Review whether the
+record owner should supply an exact source snapshot/revision for compilation
+and publication. A source link alone is not an identical-input provenance
+guarantee.
 
 Tracked in [#2729: capture source identity](https://github.com/kontourai/station/issues/2729),
 with delayed-response, root-change, and source-edit acceptance cases.
@@ -233,13 +234,15 @@ this audit did not execute a new container/proxy/phone voice journey.
 ### Live frames and human input share a transport budget
 
 The current live-surface hook opens a frame request per visible viewer.
-Visibility and duplicate-display suppression reduce requests, but there is no
-shared cross-surface frame transport or admission policy reserving room for
-input. [#2760](https://github.com/kontourai/station/issues/2760) tracks that unmet
-[ADR0018 constraint](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md), with acceptance at
-the actual browser input path. Finite browser connection pools make contention
-a plausible concern; this audit did not reproduce saturation or measure latency.
-Native and relay transports need separate qualification.
+Visibility and duplicate-display suppression reduce requests, and a per-origin
+admission cap of two frame streams now reserves connections for input. A
+real-browser HTTP/1.1 fixture reproduced the saturation without the cap and
+measured millisecond input with it (see the 2026-11-02 amendment to the
+[ADR0018 constraint](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)).
+There is still no shared cross-surface frame transport, and the cap does not
+cover all three view-scoped event streams open at once;
+[#2760](https://github.com/kontourai/station/issues/2760) tracks both. Native
+and relay transports need separate qualification.
 
 ### Staging must use the candidate's dependency contract
 
@@ -304,11 +307,14 @@ The Operate shell's event stream bypasses the authenticated SDK transport even
 though its initial Session read uses it. A real caller against a synthetic
 protected HTTP service reproduced the missing credential and HTTP 401;
 [#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
-Home reset has a separate source-confirmed gap: it skips the home instance
-registry and does not take the backup/restore maintenance lease before archiving
-([#2849](https://github.com/kontourai/station/issues/2849)). No live home reset
-was attempted. Both belong in the existing owners, with actual-caller tests,
-rather than another parallel transport or lifecycle abstraction.
+Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
+and archives the home while holding that lease. It still does not separately
+consult the home-scoped instance registry
+([#2849](https://github.com/kontourai/station/issues/2849)). Maintenance excludes
+cooperating leased runtimes; it does not stop writers that bypass that protocol.
+No live home reset was attempted in the original review. The remaining gaps
+belong in the existing owners, with actual-caller coverage, rather than another
+parallel transport or lifecycle abstraction.
 
 ### Successful persistence does not establish usable presentation
 

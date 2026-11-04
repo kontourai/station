@@ -1201,9 +1201,7 @@ describe('RelayRouteProfiles', () => {
     expect(repository.getRelayRouteProfiles()[0]?.configurationState).toBe(
       'configured',
     );
-    expect(
-      screen.getByText(/Account sign-in and Project access remain separate/),
-    ).toBeTruthy();
+    expect(screen.getByText('Device configured.')).toBeTruthy();
     expect(
       mocks.enrollmentInvoke.mock.calls.some(
         ([command]) =>
@@ -1404,9 +1402,7 @@ describe('RelayRouteProfiles', () => {
       expect.objectContaining({ enrollmentHandle }),
     );
     expect(
-      screen.queryByText(
-        /After approval, sign in again to open your shared projects/,
-      ),
+      screen.queryByText(/then sign in\s+again to open your shared projects/),
     ).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'About device approval' }),
@@ -1414,7 +1410,7 @@ describe('RelayRouteProfiles', () => {
     expect(
       within(
         screen.getByRole('dialog', { name: 'About device approval' }),
-      ).getByText(/After approval, sign in again to open your shared projects/),
+      ).getByText(/then sign in\s+again to open your shared projects/),
     ).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
   });
@@ -1476,9 +1472,7 @@ describe('RelayRouteProfiles', () => {
         expectedProfileRevision: 12,
       },
     );
-    expect(
-      screen.getByText(/Account sign-in and Project access remain separate/),
-    ).toBeTruthy();
+    expect(screen.getByText('Device configured.')).toBeTruthy();
   });
 
   test('does not display configured when selected active attempt fails host currentness', async () => {
@@ -1505,7 +1499,7 @@ describe('RelayRouteProfiles', () => {
       await screen.findByRole('button', { name: 'Resume saved setup 1' }),
     );
     await screen.findByRole('alert');
-    expect(screen.queryByText('Device configured')).toBeNull();
+    expect(screen.queryByText('Device configured.')).toBeNull();
   });
 
   test('sign-in failure exposes safe step diagnostics after Begin without secret text', async () => {
@@ -1864,7 +1858,7 @@ describe('RelayRouteProfiles', () => {
       },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Join Project' }));
-    await screen.findByText(/Access was added for Project shared-project/);
+    await screen.findByText(/Access added for Project shared-project/);
     expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith('J'.repeat(43));
     expect(onInvitationAccepted).toHaveBeenCalledTimes(1);
     expect(onInvitationAccepted).toHaveBeenCalledWith(
@@ -2000,7 +1994,7 @@ describe('RelayRouteProfiles', () => {
       }),
     );
     await screen.findByText(
-      /Station confirmed this account session was revoked/,
+      /Station confirmed the account session was revoked/,
     );
     expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
     expect(mocks.accountRetire).not.toHaveBeenCalled();
@@ -2044,7 +2038,7 @@ describe('RelayRouteProfiles', () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByText(/confirmed this account session was revoked/),
+      screen.queryByText(/confirmed the account session was revoked/),
     ).toBeNull();
     expect(mocks.accountRetire).not.toHaveBeenCalled();
     // The local session is retired either way, so once the boundary

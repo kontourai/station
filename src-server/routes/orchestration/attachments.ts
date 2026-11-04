@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { isAttachmentBlobRef } from '../../services/orchestration/attachment-blob-store.js';
 import { attachmentBlobRequests } from '../../telemetry/metrics.js';
+import { ifNoneMatchIncludes } from '../conditional-get.js';
 import { param } from '../schemas/schemas.js';
 
 interface AttachmentRouteDeps {
@@ -118,12 +119,28 @@ export function createAttachmentRoutes(deps: AttachmentRouteDeps) {
       });
     }
 
+    // The reference IS the digest of the body, so it is an exact validator.
+    const etag = `"${ref}"`;
+    const revalidation = {
+      ETag: etag,
+      'Cache-Control': 'private, no-cache',
+      Vary: 'Authorization, Cookie',
+      'X-Content-Type-Options': 'nosniff',
+    };
+    // Answered only here, after this request was authorized and the bytes
+    // were found: a stored copy is confirmed to the caller who may read it
+    // now, never to whoever last cached it. A phone revisiting a transcript
+    // then revalidates each image instead of downloading it again.
+    if (ifNoneMatchIncludes(c.req.header('If-None-Match'), etag)) {
+      attachmentBlobRequests.add(1, { outcome: 'not_modified' });
+      return c.body(null, 304, revalidation);
+    }
+
     attachmentBlobRequests.add(1, { outcome: 'served' });
     return c.body(Uint8Array.from(bytes), 200, {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(bytes.byteLength),
-      // The reference IS the digest of the body, so it is an exact validator.
-      ETag: `"${ref}"`,
+      ETag: etag,
       // Every use of this URL must be re-authorized at the origin.
       //
       // `max-age` plus `Vary: Authorization` was not enough, and the gap is
@@ -136,10 +153,8 @@ export function createAttachmentRoutes(deps: AttachmentRouteDeps) {
       // had not changed.
       //
       // `no-cache` stores but always revalidates, so authorization is
-      // re-derived on every use. There is no conditional-request path here
-      // that could answer a revalidation with a 304 before the auth layer
-      // runs — the ETag is served for future use, and validated by nothing
-      // in this handler.
+      // re-derived on every use. The 304 above answers a revalidation only
+      // after that authorization, never before it.
       'Cache-Control': 'private, no-cache',
       Vary: 'Authorization, Cookie',
       'X-Content-Type-Options': 'nosniff',

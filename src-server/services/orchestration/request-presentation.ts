@@ -1,3 +1,4 @@
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   boundedDisplayText,
@@ -63,14 +64,14 @@ export function presentOpenRequest(request: PresentableOpenRequest): {
     case 'permission':
       return presentToolRequest(
         rawTitle,
-        request.description,
+        runtimeEventContentDisplayText(request.description),
         summarizeToolPayload(request.payload),
       );
     case 'confirmation':
       return presentAskRequest(
         'Confirmation needed',
         rawTitle,
-        request.description,
+        runtimeEventContentDisplayText(request.description),
       );
     default:
       // Contract vocabulary is exactly 'approval' | 'permission' |
@@ -79,7 +80,7 @@ export function presentOpenRequest(request: PresentableOpenRequest): {
       return presentAskRequest(
         'The agent asked a question',
         rawTitle,
-        request.description,
+        runtimeEventContentDisplayText(request.description),
       );
   }
 }

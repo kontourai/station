@@ -81,6 +81,13 @@ export function resolveKernelLimits(
         `monument limit ${name} must be a positive integer.`,
       );
   }
+  if (
+    resolved.turnDedupMinResolvedEntries !== undefined &&
+    resolved.turnDedupMinResolvedEntries > resolved.turnDedupMaxEntries
+  )
+    throw new RangeError(
+      'monument limit turnDedupMinResolvedEntries must not exceed turnDedupMaxEntries.',
+    );
   for (const rule of resolved.turnDedupTombstoneRetention)
     if (
       typeof rule.keyPrefix !== 'string' ||
@@ -101,12 +108,23 @@ function applyTurnDedup<Result>(
   limits: KernelLimits,
   now: number,
   prune: boolean,
+  resolvedAt?: number,
 ): Result {
-  if (decision.write.kind === 'put') tx.turnDedup.put(decision.write.record);
+  if (decision.write.kind === 'put')
+    tx.turnDedup.put(decision.write.record, resolvedAt);
   else if (decision.write.kind === 'delete') tx.turnDedup.delete(key);
   if (prune) {
     // Eviction first, so its own tombstones are never older than the rule.
-    tx.turnDedup.pruneResolved(limits.turnDedupMaxEntries, now);
+    tx.turnDedup.evictResolved(
+      {
+        maxEntries: limits.turnDedupMaxEntries,
+        minResolvedEntries: limits.turnDedupMinResolvedEntries ?? 0,
+        ...(limits.turnDedupResolvedRetentionMs !== undefined
+          ? { resolvedRetentionMs: limits.turnDedupResolvedRetentionMs }
+          : {}),
+      },
+      now,
+    );
     for (const rule of limits.turnDedupTombstoneRetention)
       tx.turnDedup.deleteTombstonesBefore(rule.keyPrefix, now - rule.maxAgeMs);
   }
@@ -154,8 +172,8 @@ function dispatch(
     case 'steerReceipts.read': {
       const row = tx.steerReceipts.get(command.threadId, command.clientInputId);
       if (!row) return { kind: 'absent' };
-      return row.inputDigest === command.inputDigest &&
-        row.confirmedTurnId !== null
+      if (row.inputDigest !== command.inputDigest) return { kind: 'conflict' };
+      return row.confirmedTurnId !== null
         ? { kind: 'confirmed', turnId: row.confirmedTurnId }
         : { kind: 'indeterminate' };
     }
@@ -230,6 +248,7 @@ function dispatch(
         limits,
         command.now,
         true,
+        command.now,
       );
     case 'turnDedup.release':
       return applyTurnDedup(
@@ -624,6 +643,7 @@ function dispatch(
           existing: tx.inbox.get(command.inboxId, command.key),
           entries: tx.inbox.listInbox(command.inboxId),
           maxUnsettled: limits.inboxMaxUnsettled,
+          maxDisplay: limits.inboxMaxDisplay,
         },
         command,
       );

@@ -294,6 +294,13 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // #3386: confirmed against `attachedSessionsOutsideProjectsEnabled`
         // (`!== false`) — absent follows them.
         'attachedSessionsOutsideProjects',
+        // Confirmed against `resolveProjectCheckoutStaleThresholds`, which
+        // falls through to 50 commits and 3 days.
+        'checkoutStaleAfterCommits',
+        'checkoutStaleAfterDays',
+        // Confirmed against `claudeArtifactsSpawnEnv` (`=== true`) in
+        // claude-adapter.ts — absent is off.
+        'claudeArtifactsEnabled',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`
@@ -302,6 +309,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'knowledgeStores',
         'lanDiscoveryEnabled',
         'mcpUiHost',
+        // #4389: confirmed against `OrchestrationService.noProjectChatFolder`
+        // (`?? DEFAULT_NO_PROJECT_CHAT_FOLDER`) — absent is 'private'.
+        'noProjectChatFolder',
         // Guide runtime wiring reads enabled === true: absent is off.
         'reviewGuidesEnabled',
         'runtime',
@@ -311,6 +321,12 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',
         'telemetryTier',
+        // #3994: confirmed against `resolveTerminalRetention`, which falls
+        // through to on, 30 days, 16 MiB and 1024 MiB.
+        'terminalHistoryEnabled',
+        'terminalHistoryMaxAgeDays',
+        'terminalHistoryMaxTerminalMiB',
+        'terminalHistoryMaxTotalMiB',
         // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
         // the `=== true` wiring in orchestration-service.ts — absent is off.
         'usageLimitAutoResume',

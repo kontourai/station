@@ -370,6 +370,19 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
   const review = () =>
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 
+  test('account-bound review opens pairing management without submitting approval', () => {
+    const opened = vi.fn();
+    window.addEventListener('station:open-connections-modal', opened);
+    renderCard(basePairing({ requiresAccountBinding: true }));
+    review();
+    expect(opened).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { mode: 'pair-host' } }),
+    );
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
+    window.removeEventListener('station:open-connections-modal', opened);
+  });
+
   test('the card is one line with Review; its dialog approves the exact request', () => {
     renderCard(basePairing());
 
@@ -526,6 +539,40 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     expect(
       screen.getByText(/environment access approve pair-req-1 --force$/),
     ).toBeTruthy();
+  });
+
+  test('offers the passkey review without reporting pairing as approved', () => {
+    pairingMocks.confirmPairingState.error = Object.assign(
+      new Error('review required'),
+      {
+        status: 202,
+        transaction: {
+          reviewUrl: 'https://station.test:8443/consent/review-1',
+        },
+      },
+    );
+    renderCard(basePairing());
+    review();
+    expect(
+      screen
+        .getByRole('link', { name: 'Review and confirm with passkey' })
+        .getAttribute('href'),
+    ).toBe('https://station.test:8443/consent/review-1');
+    expect(screen.getByText(/Approval is pending/)).toBeTruthy();
+  });
+
+  test('offers operator sign-in after the server refuses approval', () => {
+    pairingMocks.confirmPairingState.error = Object.assign(
+      new pairingMocks.MockDevicePairingRequestActionError(403),
+      { signInUrl: 'https://station.test:8443/operator/sign-in' },
+    );
+    renderCard(basePairing({ viewerCanDecide: false }));
+    review();
+    expect(
+      screen
+        .getByRole('link', { name: 'Sign in as operator' })
+        .getAttribute('href'),
+    ).toBe('https://station.test:8443/operator/sign-in');
   });
 
   test('Deny denies the exact request', () => {

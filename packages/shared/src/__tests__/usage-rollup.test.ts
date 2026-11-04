@@ -76,6 +76,17 @@ describe('foldUsageReceipts (station#4135)', () => {
             pricingSnapshotObservedAt: '2026-08-02T00:00:00.000Z',
           },
         }),
+        receipt({
+          id: 'c',
+          model: 'one',
+          reportedCost: { amount: 1, currency: 'USD' },
+          estimatedCost: {
+            amount: 1,
+            currency: 'USD',
+            pricingSnapshotId: 'p1',
+            pricingSnapshotObservedAt: '2026-08-01T00:00:00.000Z',
+          },
+        }),
       ],
       coverage: [],
       groupBy: 'provider',
@@ -84,7 +95,7 @@ describe('foldUsageReceipts (station#4135)', () => {
     expect(result.rows[0]?.reportedCost).toBeUndefined();
     expect(result.rows[0]?.estimatedCost).toBeUndefined();
     expect(result.rows[0]?.reportedCostBuckets).toEqual([
-      { amount: 1, currency: 'USD' },
+      { amount: 2, currency: 'USD' },
       { amount: 1, currency: 'EUR' },
     ]);
     expect(result.rows[0]?.estimatedCostBuckets).toHaveLength(2);
@@ -157,4 +168,116 @@ describe('foldUsageReceipts (station#4135)', () => {
     });
     expect(result.rows[0]?.day).toBe('2026-08-01');
   });
+});
+
+test('a provider-cost receipt encountered first does not mark its priced token companion as unpriced', () => {
+  const value = foldUsageReceipts({
+    ...window,
+    groupBy: 'provider',
+    coverage: [],
+    receipts: [
+      receipt({
+        id: 'a-cost',
+        inputTokens: undefined,
+        outputTokens: undefined,
+        reportedCost: { amount: 1, currency: 'USD' },
+      }),
+      receipt({
+        id: 'b-tokens',
+        pricing: { status: 'priced', pricingSnapshotId: 'p1' },
+        estimatedCost: {
+          amount: 0.02,
+          currency: 'USD',
+          pricingSnapshotId: 'p1',
+        },
+      }),
+    ],
+  });
+  expect(value.rows[0].pricingStatus).toBe('priced');
+});
+
+test('the interactive rollup retains its separate 500-receipt coverage cap', () => {
+  const value = foldUsageReceipts({
+    ...window,
+    receipts: Array.from({ length: 503 }, (_, i) =>
+      receipt({ id: `receipt-${i}`, inputTokens: 1 }),
+    ),
+    coverage: [{ stationId: 'local', state: 'unknown', window }],
+  });
+  expect(value.rows[0].inputTokens).toBe(500);
+  expect(value.coverage[0]).toMatchObject({
+    state: 'partial',
+    droppedReceiptCount: 3,
+  });
+});
+
+test('cumulative restatements retain separate reasoning and invalidate retail when route or category evidence changes', () => {
+  const route = {
+    id: 'direct',
+    modelRevision: 'r1',
+    tariffId: 't1',
+    provenance: {
+      authority: 'host-observed' as const,
+      sourceRef: 'dispatch:1',
+    },
+  };
+  const old = receipt({
+    provider: 'codex',
+    model: 'model',
+    reasoningTokens: 3,
+    route,
+    retailEquivalent: {
+      state: 'available',
+      amount: 1,
+      currency: 'USD',
+      basis: {
+        routeId: 'direct',
+        modelRevision: 'r1',
+        tariffId: 't1',
+        sourceUrl: 'https://provider.example/pricing',
+        sourceArtifactId: 'source',
+        reviewedAt: '2026-08-01T00:00:00.000Z',
+        effectiveAt: '2026-08-01T00:00:00.000Z',
+        validUntil: '2026-08-30T00:00:00.000Z',
+        cacheInput: 'disjoint',
+        reasoning: 'included-in-output',
+      },
+    },
+  });
+  const partial = receipt({
+    ...old,
+    observedAt: '2026-08-11T00:00:00.000Z',
+    inputTokens: 20,
+    outputTokens: undefined,
+    reasoningTokens: undefined,
+  });
+  const result = foldUsageReceipts({
+    ...window,
+    receipts: [old, partial],
+    coverage: [],
+  });
+  expect(result.aggregateReceipts?.[0]).toMatchObject({
+    inputTokens: 20,
+    outputTokens: 2,
+    reasoningTokens: 3,
+  });
+  expect(result.aggregateReceipts?.[0]?.retailEquivalent).toBeUndefined();
+  expect(result.rows[0]).toMatchObject({
+    inputTokens: 20,
+    outputTokens: 2,
+    reasoningTokens: 3,
+  });
+  const changedRoute = foldUsageReceipts({
+    ...window,
+    receipts: [
+      old,
+      {
+        ...old,
+        observedAt: '2026-08-11T00:00:00.000Z',
+        route: { ...route, tariffId: 't2' },
+      },
+    ],
+    coverage: [],
+  });
+  expect(changedRoute.aggregateReceipts?.[0]?.retailEquivalent).toBeUndefined();
 });

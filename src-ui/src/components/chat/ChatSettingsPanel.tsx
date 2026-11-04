@@ -25,8 +25,10 @@ import {
   ReplayCaptureControls,
   type ReplayCaptureSource,
 } from './ReplayCaptureControls';
+import { SessionGoalControl } from './SessionGoalControl';
 
 interface ChatSettingsPanelProps {
+  sessionId?: string;
   isOpen: boolean;
   onClose: () => void;
   chatFontSize: number;
@@ -58,6 +60,7 @@ interface ChatSettingsPanelProps {
 }
 
 export function ChatSettingsPanel({
+  sessionId,
   isOpen,
   onClose,
   chatFontSize,
@@ -104,6 +107,7 @@ export function ChatSettingsPanel({
         Chat display preferences sync with your account when signed in.
         Device-specific options stay on this device.
       </p>
+      {sessionId && <SessionGoalControl sessionId={sessionId} />}
 
       <div className="chat-settings-modal__section">
         <label

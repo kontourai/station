@@ -1,6 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
-import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
  * Config Routes - app configuration management
@@ -40,7 +39,7 @@ import {
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
-import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
+import { telemetryChoiceDefaults } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import {
   persistableCredentialProfiles,
@@ -56,12 +55,17 @@ import {
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { mayRaiseTelemetryChoice } from '../../security/telemetry-choice-authority.js';
 import {
   LOG_LEVELS,
   type LogLevel,
   LogLevelEditService,
 } from '../../services/config/log-level-edit-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  TERMINAL_RETENTION_KEYS,
+  terminalRetentionProblem,
+} from '../../services/terminal/terminal-retention.js';
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -770,6 +774,45 @@ export function createConfigRoutes(
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
       }
+      // Terminal history retention: each value's range is the registry's;
+      // the rules spanning settings are checked against the merged result.
+      if (
+        TERMINAL_RETENTION_KEYS.some((key) =>
+          Object.hasOwn(body as object, key),
+        )
+      ) {
+        const current = await configLoader.loadAppConfig();
+        const merged: Record<string, unknown> = { ...current };
+        for (const key of TERMINAL_RETENTION_KEYS) {
+          if (!Object.hasOwn(body as object, key)) continue;
+          const value = (body as Record<string, unknown>)[key];
+          if (value === null || value === undefined || value === '')
+            delete merged[key];
+          else merged[key] = value;
+        }
+        const problem = terminalRetentionProblem(merged);
+        if (problem)
+          return c.json(
+            { success: false, error: `${problem}; no settings were saved.` },
+            400,
+          );
+        if (
+          changesAny(body as object, current, ['terminalHistoryDirectory']) &&
+          requestMayBeAnAgent(c.req.raw)
+        ) {
+          logRefusal('scope_agent_command_not_granted');
+          return c.json(
+            {
+              success: false,
+              code: COMMAND_NOT_GRANTED_CODE,
+              error:
+                'An agent cannot move terminal history. The operator can, in Settings.',
+            },
+            403,
+          );
+        }
+      }
+
       // `agentConnections` is a composite that replaces the stored value
       // wholesale. Credential profiles written this way (including a settings
       // import) are normalized like any registry write, so an invalid env
@@ -813,11 +856,12 @@ export function createConfigRoutes(
       const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
         (key) => Object.hasOwn(body as object, key),
       );
-      const mayRaiseTelemetry =
-        !requestMayBeAnAgent(c.req.raw) &&
-        (isOperatorInPersonNotAgent(c.req.raw) ||
-          (presentedScope !== undefined &&
-            pairingScopeIncludes(presentedScope, 'access:manage')));
+      // Shared with the disclosure read's `capabilities.raise`, so the
+      // choice a client offers and the raise this refuses cannot drift.
+      const mayRaiseTelemetry = mayRaiseTelemetryChoice(
+        c.req.raw,
+        presentedScope,
+      );
       const priorConfig = await configLoader.loadAppConfig();
       // #2436: the Station default applies to every session start, the
       // unattended ones included, so raising it to full access needs the
@@ -854,13 +898,11 @@ export function createConfigRoutes(
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
             ]);
-            const defaults = resolveTelemetryConfiguration(
-              { ...current, telemetryTier: {} },
-              { ...process.env, DO_NOT_TRACK: '' },
-              {},
-              {},
+            const defaults = telemetryChoiceDefaults(
+              current,
+              process.env,
               [...publishers].filter(isTelemetryPublisherId),
-            ).publishers;
+            );
             telemetryChanges = {};
             let raisesTelemetry = false;
             for (const publisher of publishers) {
@@ -869,17 +911,16 @@ export function createConfigRoutes(
               >;
               const fallback = key.startsWith('publisher:') ? 'off' : 'lite';
               const before =
-                current.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+                current.telemetryTier?.[key] ?? defaults[key] ?? fallback;
               const after =
-                next.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+                next.telemetryTier?.[key] ?? defaults[key] ?? fallback;
               telemetryChanges[key] = { before, after };
               if (rank[after] < rank[before]) lowerings.push(key);
               if (rank[after] > rank[before]) raisesTelemetry = true;
             }
             if (
               requestMayBeAnAgent(c.req.raw) ||
-              (raisesTelemetry &&
-                (!mayRaiseTelemetry || requestFromPluginPane(c.req.raw)))
+              (raisesTelemetry && !mayRaiseTelemetry)
             )
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             if (

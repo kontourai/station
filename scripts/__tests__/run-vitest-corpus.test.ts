@@ -1,5 +1,17 @@
 import { EventEmitter } from 'node:events';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
@@ -18,6 +30,8 @@ import {
   VITEST_CORPUS_GROUPS,
   withoutQuarantinedFiles,
 } from '../run-vitest-corpus.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const GROUPS = {
   ordinary: ['ordinary.test.ts'],
@@ -126,6 +140,181 @@ describe('Vitest corpus runner', () => {
       }),
     ).rejects.toThrow(/has no discovered tests/);
   });
+
+  it('delivers pending runner events after an exact throttle boundary without duplicating an immediate flush', () => {
+    const root = makeTempDir('corpus-update-boundary-');
+    const script = resolve(root, 'probe.mjs');
+    writeFileSync(
+      script,
+      `import assert from 'node:assert/strict';
+let clock = 1000, nextId = 0;
+const timers = new Map();
+Date.now = () => clock;
+globalThis.setTimeout = (callback, delay, ...args) => {
+  const id = ++nextId;
+  timers.set(id, () => callback(...args));
+  return id;
+};
+globalThis.clearTimeout = (id) => timers.delete(id);
+const { updateTask } = await import(${JSON.stringify(import.meta.resolve('@vitest/runner'))});
+const delivered = [];
+const runner = { onTaskUpdate(packs, events) {
+  delivered.push(structuredClone({ packs, events }));
+} };
+const task = { id: 'real-runner-task', result: { state: 'run' }, meta: {} };
+updateTask('test-prepare', task, runner);
+updateTask('after-hook-start', task, runner);
+assert.equal(delivered.length, 1);
+assert.equal(timers.size, 1);
+function fireAt(time) {
+  clock = time;
+  const [id, callback] = timers.entries().next().value ?? [];
+  assert.ok(callback, 'the pending update must retain a timer');
+  timers.delete(id);
+  callback();
+}
+fireAt(1100);
+assert.equal(timers.size, 1, 'a boundary callback must reschedule the pending update');
+fireAt(1200);
+assert.equal(delivered.length, 2);
+assert.deepEqual(delivered[1].events, [['real-runner-task','after-hook-start',undefined]]);
+assert.equal(timers.size, 0);
+updateTask('after-hook-end', task, runner);
+assert.equal(timers.size, 1);
+clock=1400;
+updateTask('test-finished',task,runner);
+assert.equal(delivered.length, 3);
+assert.equal(timers.size, 0, 'an immediate flush must cancel the pending timer');
+assert.deepEqual(delivered[2].events.map(event=>event[1]),['after-hook-end','test-finished']);
+console.log(JSON.stringify({delivered:delivered.length,remainingTimers:timers.size,contract:'public updateTask boundary and cancellation'}));
+
+`,
+    );
+    const result = spawnSyncBounded(process.execPath, [script], {
+      encoding: 'utf8',
+      timeout: 20_000,
+      windowsHide: true,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      delivered: 3,
+      remainingTimers: 0,
+      contract: 'public updateTask boundary and cancellation',
+    });
+  });
+
+  it.each(['collection', 'body', 'afterEach'])(
+    'retains observed %s delay from the real exclusive child without changing its result',
+    async (phase) => {
+      const root = makeTempDir('corpus-lifecycle-');
+      const repo = resolve(import.meta.dirname, '../..');
+      symlinkSync(
+        resolve(repo, 'node_modules'),
+        resolve(root, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      mkdirSync(resolve(root, 'scripts'));
+      const reporterUrl = pathToFileURL(
+        resolve(repo, 'scripts/vitest-inflight-reporter.mjs'),
+      ).href;
+      writeFileSync(
+        resolve(root, 'scripts/vitest-inflight-reporter.mjs'),
+        `import Reporter from ${JSON.stringify(reporterUrl)};
+import { existsSync, writeFileSync } from 'node:fs';
+const marker = ${JSON.stringify(resolve(root, 'phase-observed'))};
+const pattern = ${JSON.stringify(phase === 'collection' ? 'stage=queued; elapsedMs=[1-9]' : phase === 'body' ? 'stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown' : 'hooks=afterEach@[1-9]')};
+export default class extends Reporter {
+  constructor() { super({ intervalMs: 25, write(message) {
+    process.stdout.write(message);
+    if (/stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/.test(message) && !existsSync(marker + '.body'))
+      writeFileSync(marker + '.body', 'observed');
+    if (new RegExp(pattern).test(message) && !existsSync(marker))
+      writeFileSync(marker, 'observed');
+  } }); }
+}`,
+      );
+      writeFileSync(
+        resolve(root, 'vitest.config.mjs'),
+        `export default { test: { include: ['phase.test.ts'], testTimeout: 2000, hookTimeout: 2000, cache: false } };`,
+      );
+      writeFileSync(
+        resolve(root, 'phase.test.ts'),
+        `import { afterEach, expect, test } from 'vitest';
+import { existsSync, watch } from 'node:fs';
+import { dirname } from 'node:path';
+const marker = ${JSON.stringify(resolve(root, 'phase-observed'))};
+const delay = () => new Promise((resolve, reject) => {
+  const started = Date.now();
+  const check = () => {
+    if (existsSync(marker)) return resolve();
+    if (Date.now() - started >= 1500) return reject(new Error('The real lifecycle heartbeat was not observed'));
+    setTimeout(check, 10);
+  };
+  check();
+});
+${phase === 'collection' ? 'await delay();' : ''}
+let closeObservation = () => {};
+const observe = (observedMarker) => new Promise(resolve => {
+  const finish = () => {
+    if (!existsSync(observedMarker)) return;
+    observer.close();
+    resolve();
+  };
+  const observer = watch(dirname(observedMarker), finish);
+  closeObservation = () => observer.close();
+  finish();
+});
+${phase === 'afterEach' ? 'afterEach(() => observe(marker));' : ''}
+test('private-case-content-must-not-appear-in-progress', async ({ onTestFinished }) => {
+  onTestFinished(() => closeObservation());
+  ${phase === 'collection' ? '' : "await observe(marker + '.body');"}
+  expect(process.env.STATION_VITEST_CORPUS_GROUP).toBe('process-exclusive');
+  expect(2 + 2).toBe(4);
+});`,
+      );
+      const result = await runVitestGroup(
+        VITEST_CORPUS_GROUPS[2],
+        ['phase.test.ts'],
+        { root },
+      );
+      expect(result.error).toBeNull();
+      expect(result.status, result.output).toBe(0);
+      expect(result.passed).toBe(true);
+      expect(result.outputTruncated).toBe(false);
+      const progress = result.stdout
+        .split('\n')
+        .filter((line) => line.startsWith('[vitest-progress]'));
+      expect(progress.length).toBeGreaterThan(1);
+      expect(progress.join('\n')).not.toContain('private-case-content');
+      expect(progress.some((line) => line.includes('elapsedMs='))).toBe(true);
+      if (phase === 'collection') {
+        expect(
+          progress.some((line) =>
+            /phase\.test\.ts \{stage=queued; elapsedMs=[1-9]\d*/.test(line),
+          ),
+        ).toBe(true);
+      } else if (phase === 'body') {
+        expect(
+          progress,
+          'the real child must expose its running body without an active hook',
+        ).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(
+              /stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/,
+            ),
+          ]),
+        );
+      } else {
+        expect(
+          progress.some((line) => /hooks=afterEach@[1-9]\d*ms/.test(line)),
+        ).toBe(true);
+      }
+      expect(progress.at(-1)).toBe(
+        '[vitest-progress] final in-flight: unknown (no observed module; teardown unobserved)',
+      );
+    },
+  );
 
   it('runs groups in canonical order and fails fast on the first failure', async () => {
     const calls: string[] = [];
@@ -313,6 +502,32 @@ describe('Vitest corpus runner', () => {
     });
   });
 
+  it('retains completed shard totals without claiming cancelled results', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const totals =
+      ' Test Files  2 passed (2)\n      Tests  17 passed | 1 skipped (18)\n';
+    try {
+      emitResult({ name: 'ordinary-1-of-8', passed: true, stdout: totals });
+      expect(stdout.mock.calls.flat().join('')).toContain(
+        'Tests  17 passed | 1 skipped (18)',
+      );
+      stdout.mockClear();
+      emitResult({
+        name: 'ordinary-2-of-8',
+        passed: false,
+        cancelled: true,
+        stdout: totals,
+      });
+      expect(stdout.mock.calls.flat().join('')).not.toContain(
+        '[vitest-corpus] ordinary-2-of-8: Tests  17 passed',
+      );
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   it('retains shard identity and separate stream tails in failure output', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
@@ -337,6 +552,109 @@ describe('Vitest corpus runner', () => {
       stderr.mockRestore();
     }
   });
+
+  it.each([
+    { status: 0, signal: null },
+    { status: 7, signal: null },
+    ...(process.platform === 'win32'
+      ? []
+      : [{ status: null, signal: 'SIGTERM' }]),
+  ])(
+    'retains the real child terminal result and early diagnostics after noisy output: $status/$signal',
+    async ({ status, signal }) => {
+      const root = makeTempDir('corpus-failure-');
+      const vitest = resolve(root, 'node_modules/vitest');
+      mkdirSync(vitest, { recursive: true });
+      writeFileSync(
+        resolve(vitest, 'vitest.mjs'),
+        `const noise = 'later passing output\\n'.repeat(5000);
+process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
+  process.stderr.write('FAIL early.test.ts\\nError: EARLY_SUITE_FAILURE\\n' + noise, () => {
+                ${signal ? "process.kill(process.pid, 'SIGTERM');" : `process.exit(${status});`}
+  });
+});`,
+      );
+      const runChild = () =>
+        process.platform === 'win32'
+          ? runWindowsSerializedCorpus({
+              root,
+              groupName: 'process-heavy',
+              groups: { ...GROUPS, processHeavy: ['early.test.ts'] },
+            })
+          : runVitestGroup(VITEST_CORPUS_GROUPS[1], ['early.test.ts'], {
+              root,
+            });
+      const result = await runChild();
+      expect(result.passed).toBe(status === 0);
+      expect(result.status).toBe(status);
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      const diagnosticDirectory = resolve(root, 'diagnostics');
+      try {
+        emitResult(result, { diagnosticDirectory });
+        if (status === 0) {
+          expect(existsSync(diagnosticDirectory)).toBe(false);
+          expect(stdout.mock.calls.flat().join('')).toContain(
+            'process-heavy: PASS;',
+          );
+          return;
+        }
+        expect(
+          existsSync(diagnosticDirectory),
+          'a failed corpus must retain its terminal receipt',
+        ).toBe(true);
+        const [invocationId] = readdirSync(diagnosticDirectory);
+        const directory = resolve(diagnosticDirectory, invocationId);
+        const report = JSON.parse(
+          readFileSync(resolve(directory, 'receipt.json'), 'utf8'),
+        );
+        expect(report).toMatchObject({
+          schemaVersion: 1,
+          invocationId,
+          group: 'process-heavy',
+          passed: false,
+          status,
+          signal,
+          outputTruncated: false,
+        });
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
+        );
+        expect(readFileSync(resolve(directory, 'stderr.log'), 'utf8')).toBe(
+          result.stderr,
+        );
+        expect(result.stdout).toContain('EARLY_PREVIEW_DIAGNOSTIC');
+        expect(result.stderr).toContain('EARLY_SUITE_FAILURE');
+        const emitted = stderr.mock.calls.flat().join('');
+        expect(emitted).toContain(
+          `status=${status ?? 'null'}; signal=${signal ?? 'none'}`,
+        );
+        expect(emitted).toContain('FAIL early.test.ts');
+        expect(stdout.mock.calls.flat().join('')).not.toContain(
+          'EARLY_PREVIEW_DIAGNOSTIC',
+        );
+        const next = await runChild();
+        emitResult(next, { diagnosticDirectory });
+        const invocations = readdirSync(diagnosticDirectory);
+        expect(invocations).toHaveLength(2);
+        const nextId = invocations.find((id) => id !== invocationId)!;
+        expect(
+          JSON.parse(
+            readFileSync(
+              resolve(diagnosticDirectory, nextId, 'receipt.json'),
+              'utf8',
+            ),
+          ),
+        ).toMatchObject({ invocationId: nextId, status, signal });
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
+        );
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+    },
+  );
 
   it('reports a signal-cancelled group as CANCELLED, never as a test failure', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);

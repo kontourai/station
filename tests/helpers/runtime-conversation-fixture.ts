@@ -1,5 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { Page } from '@playwright/test';
 import {
   createLongSessionEventWindowHandler,
@@ -18,6 +19,7 @@ export async function mockRuntimeConversation(
     model: string;
     projectSlug?: string;
     canContinue: boolean;
+    durability?: ProviderDurabilityProfile;
     turns: () => LongSessionEvent[][];
     onWindow?: (url: string) => void;
   },
@@ -30,6 +32,7 @@ export async function mockRuntimeConversation(
       status: 'resolved',
       currentSessionId: input.id,
       execution: {
+        ...(input.durability ? { durability: input.durability } : {}),
         sessionId: input.id,
         agentId: agentId(input.agentSlug),
         provider: input.provider,

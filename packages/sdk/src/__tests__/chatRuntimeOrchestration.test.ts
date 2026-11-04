@@ -5,9 +5,11 @@ vi.mock('../api', () => ({
 }));
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
+import { _getApiBase } from '../api';
 import { ChatHttpError } from '../client/chatHttpError';
 import { StationRequestTimeoutError } from '../client/http';
 import { inspectSteerInput, steerTurn } from '../client/orchestration';
+import { sentTurnKey } from '../client/sent-turn-key';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
@@ -89,7 +91,7 @@ describe('chatRuntimeOrchestration', () => {
       1,
       'http://example.test/api/orchestration/sessions/read-model',
       expect.objectContaining({
-        headers: { 'X-Station-Client-Protocol': '3' },
+        headers: { 'X-Station-Client-Protocol': '4' },
         signal: expect.any(AbortSignal),
       }),
     );
@@ -105,7 +107,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/loaded',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -123,7 +125,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/thread-3',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -240,6 +242,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-6',
         text: 'what time is it?',
+        clientTurnId: 'ambient-key',
         ambientContext: '[Timezone: America/Denver]',
       }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-ambient' });
@@ -250,6 +253,7 @@ describe('chatRuntimeOrchestration', () => {
         body: JSON.stringify({
           message: 'what time is it?',
           ambientContext: '[Timezone: America/Denver]',
+          clientTurnId: 'ambient-key',
         }),
       }),
     );
@@ -263,12 +267,16 @@ describe('chatRuntimeOrchestration', () => {
       },
     });
     await expect(
-      sendOrchestrationTurn({ threadId: 'thread-6', text: 'hello' }),
+      sendOrchestrationTurn({
+        threadId: 'thread-6',
+        text: 'hello',
+        clientTurnId: 'plain-key',
+      }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-plain' });
     expect(fetch).toHaveBeenLastCalledWith(
       'http://example.test/api/orchestration/chat/thread-6/continue',
       expect.objectContaining({
-        body: JSON.stringify({ message: 'hello' }),
+        body: JSON.stringify({ message: 'hello', clientTurnId: 'plain-key' }),
       }),
     );
   });
@@ -287,6 +295,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-attachment',
         text: 'Review this',
+        clientTurnId: 'attachment-key',
         attachments: [
           {
             kind: 'image',
@@ -314,9 +323,77 @@ describe('chatRuntimeOrchestration', () => {
               dataUrl: 'data:image/png;base64,YWJj',
             },
           ],
+          clientTurnId: 'attachment-key',
         }),
       }),
     );
+  });
+
+  it('returns the generated wrapper key that reaches the continuation request', async () => {
+    mockJsonResponse({
+      success: true,
+      data: {
+        conversationId: 'thread-key',
+        sessionId: 'thread-key',
+        providerTurnId: 'turn-key',
+      },
+    });
+    const receipt = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    });
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(body.clientTurnId).toEqual(expect.any(String));
+    expect(receipt.clientTurnId).toBe(body.clientTurnId);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a deliberate wrapper retry keeps the key and exact input after a lost response', async () => {
+    const failure = Object.freeze(new TypeError('Lost acknowledgement.'));
+    const bodies: unknown[] = [];
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      throw failure;
+    });
+    const first = await sendOrchestrationTurn({
+      threadId: 'retry-thread',
+      text: 'same input',
+    }).catch((error: unknown) => error);
+    expect(first).toBe(failure);
+    const key = sentTurnKey(first);
+    expect(key).toEqual(expect.any(String));
+    const second = await sendOrchestrationTurn({
+      threadId: 'retry-thread',
+      text: 'same input',
+      clientTurnId: key,
+    }).catch((error: unknown) => error);
+    expect(second).toBe(failure);
+    expect(sentTurnKey(second)).toBe(key);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+  });
+
+  it('retains its chosen key when API-base resolution rejects before a request', async () => {
+    const failure = Object.freeze(new Error('The API base is unavailable.'));
+    vi.mocked(_getApiBase).mockRejectedValueOnce(failure);
+    const caught = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    }).catch((error: unknown) => error);
+    expect(caught).toBe(failure);
+    expect(sentTurnKey(caught)).toEqual(expect.any(String));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not replace an explicitly blank turn key with a generated key', async () => {
+    await expect(
+      sendOrchestrationTurn({
+        threadId: 'thread-key',
+        text: 'hello',
+        clientTurnId: '',
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('interrupts a running task without stopping its resumable session', async () => {
@@ -452,7 +529,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/commands/receipts?threadId=thread-5',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -463,7 +540,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/orchestration/commands/receipts/cmd-5',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -476,7 +553,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/processes/terminals',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -491,7 +568,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -505,7 +582,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
-      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '3' } },
+      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

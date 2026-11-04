@@ -9,6 +9,7 @@ import type {
 import {
   applyChildWorkDelta,
   type ChildWorkDelta,
+  type ChildWorkEndedBy,
   type ChildWorkItem,
   type ChildWorkModel,
   type ChildWorkParent,
@@ -629,6 +630,7 @@ function settle(
     result?: ChildWorkResult;
     usage?: ChildWorkUsage;
     identity?: Partial<ChildWorkItem>;
+    endedBy?: ChildWorkEndedBy;
   } = {},
 ): void {
   const existing = itemFor(context.record, childId);
@@ -662,6 +664,7 @@ function settle(
     reporterThreadId: context.record.session.threadId,
     childId,
     status,
+    ...(extra.endedBy ? { endedBy: extra.endedBy } : {}),
     ...(extra.result ? { result: extra.result } : {}),
     ...(extra.usage ? { usage: extra.usage } : {}),
     identity,
@@ -697,9 +700,15 @@ export function clearClaudeChildStopRequested(
  *
  * The registry is kept: a real terminal the SDK still drains afterwards
  * corrects the outcome recorded here.
+ *
+ * `engineDied`: the SDK stream failed and the `claude` process that ran
+ * these subagents was seen to exit, so nothing more can drain. Every child
+ * still running then settles `unresolved` with `endedBy: 'engine-exit'`
+ * (shown as interrupted), an observed end that nothing later corrects.
  */
 export function settleOpenClaudeChildren(
   context: ClaudeChildWorkContext,
+  options: { engineDied?: boolean } = {},
 ): string[] {
   const state = context.record.childWork;
   if (!state || state.closed) return [];
@@ -707,6 +716,8 @@ export function settleOpenClaudeChildren(
   for (const item of open) {
     if (state.stopRequested.has(item.childId)) {
       settle(context, item.childId, 'stopped-unconfirmed');
+    } else if (options.engineDied) {
+      settle(context, item.childId, 'unresolved', { endedBy: 'engine-exit' });
     }
   }
   if (runningChildren(context.record).length > 0) {

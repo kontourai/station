@@ -13,6 +13,7 @@
  * in-terminal short form.
  */
 
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/scheduler';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
@@ -391,21 +392,29 @@ const VERBS: Record<string, VerbSpec> = {
   },
   triage: {
     group: 'Stations',
-    summary: 'Create a bounded, read-only diagnostic hand-off',
+    summary: 'Troubleshoot with an agent or collect diagnostics',
     usage: [
-      'station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]',
+      'station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]',
+      'station triage draft-report < report.json',
     ],
     detail: [
       'Creates owner-only portable artifacts below <STATION_ROOT>/cache/triage.',
       '--context-only skips agent probing and launch, but retains read-only',
-      'source-doctor and authenticated remote diagnostics. Without it,',
-      'Station launches only hardened Codex read-only mode or Claude safe plan mode.',
+      'source-doctor and authenticated remote diagnostics.',
+      'When stdin and stdout are a terminal, starts Codex or Claude as an',
+      'interactive troubleshooting conversation with its normal approval',
+      'prompts. --headless, or input or output that is not a terminal, runs',
+      'the one-shot diagnosis in hardened Codex read-only mode or Claude safe',
+      'plan mode and saves diagnosis.md and issue-draft.md.',
       '--problem adds a bounded redacted symptom. --search-issues explicitly',
       'authorizes sending it to the fixed read-only Station issue search.',
       'When both agents are available, a TTY asks; a non-interactive shell',
       'requires --agent=codex or --agent=claude.',
       'The packaged client uses remote diagnostics; station doctor reports target, access and service state.',
-      'Triage never repairs, changes Station state, patches source, or posts to GitHub.',
+      'Triage itself never repairs, changes Station state, patches source, or posts to GitHub;',
+      'an interactive agent acts only through its own approval prompts.',
+      'draft-report reads {"title","fields"} JSON on stdin and prints the',
+      'redacted report, its prefilled issue-form URL and any overflow fields.',
     ],
   },
   setup: {
@@ -476,6 +485,35 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  'media-tools': {
+    summary: 'Inspect or download pinned local media and speech tools',
+    usage: [
+      'station media-tools status [--json]',
+      'station media-tools download --yes [--json]',
+    ],
+    actions: ['status', 'download'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
+  policy: {
+    summary:
+      'Check a managed policy file, or show the installed policy and whether the running server loaded it',
+    usage: [
+      'station policy check <file> [--json]',
+      'station policy show [--json]',
+    ],
+    actions: ['check', 'show'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'check is offline: it runs the same validation as server startup, exits 1 with each problem, or prints what the policy does.',
+      'show reads the installed system policy and its fingerprint, compares it with what the running server loaded, and says when a restart is needed. Only a target on this machine is compared. It exits 1 when the installed policy is invalid.',
+      'See docs/guides/managed-policy.md.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
@@ -540,6 +578,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station plugin install <source> [--skip=<components>] [--yes]',
       'station plugin preview <source>',
       'station plugin list|build',
+      'station plugin recovery-backups',
       'station plugin remove|info|update <name>',
       'station plugin init [name]',
       'station plugin create [name] [--template=<pane|full|provider>]',
@@ -551,6 +590,7 @@ const VERBS: Record<string, VerbSpec> = {
       'install',
       'preview',
       'list',
+      'recovery-backups',
       'remove',
       'info',
       'update',
@@ -696,27 +736,101 @@ const VERBS: Record<string, VerbSpec> = {
   },
   sessions: {
     group: 'Core Workspace',
-    summary: 'List/read/inspect/interrupt managed and runtime sessions',
+    summary:
+      'List/read/inspect/interrupt sessions; wait on, digest, read and search them',
     targets: true,
     usage: [
       'station sessions list|read|interrupt <agent> [sessionId]',
       'station sessions inspect <agent> <sessionId> <eventId> [--json]',
+      'station sessions wait <sessionId> [--until=turn-settled|idle] [--after-cursor=<n>] [--timeout=<s>] [--json]',
+      'station sessions digest <sessionId> [--turn-limit=<n>] [--cursor=<c>] [--json]',
+      'station sessions transcript <sessionId> [--around=<messageId>|--cursor=<c>] [--limit=<n>] [--json]',
+      'station sessions search <query...> [--continuation=<c>] [--json]',
     ],
-    actions: ['list', 'read', 'inspect', 'interrupt'],
+    actions: [
+      'list',
+      'read',
+      'inspect',
+      'interrupt',
+      'wait',
+      'digest',
+      'transcript',
+      'search',
+    ],
     detail: [
       'inspect resolves the exact owner-authorized terminal tool result; protected failures stay generic and 503 responses are retryable.',
       '  --turn=<id>           interrupt: target a specific turn',
+      '',
+      'wait, digest, transcript and search read your own Sessions by id, as you',
+      '(the saved credential), never as an agent. wait and digest need the',
+      'Session reads from the station CLI Feature Preview (Settings → Advanced →',
+      'Feature previews).',
+      '',
+      'wait only observes: the Session keeps running whatever happens here.',
+      '  --until=turn-settled  (default) a turn ends after --after-cursor, or the',
+      '                        turn running now; nothing running reads as idle',
+      '  --until=idle          no turn is running',
+      '  --timeout=<s>         wait budget, 1-86400 seconds (default 3600)',
+      'Exit codes: 0 completed or idle; 3 the turn ended without completing,',
+      'including a turn a Station restart interrupted; 5 the wait budget ran out;',
+      '6 superseded by a newer Session (wait on currentSessionId) or',
+      'unclassifiable; 2 observation lost (or the Station stayed unreachable',
+      'for 60 s); 130 Ctrl-C.',
+    ],
+  },
+  activity: {
+    group: 'Core Workspace',
+    summary: 'List your Sessions by recent activity, optionally in one Project',
+    targets: true,
+    usage: [
+      'station activity [--project=<slug>] [--active-within=<minutes>] [--limit=<n>] [--cursor=<c>] [--json]',
+    ],
+    detail: [
+      'Every Session you may read, newest activity first: status, whether a',
+      'turn is running, worktree and branch, and active work claims.',
+      '--project narrows to one Project you may view; --active-within keeps',
+      'Sessions running a turn or active in that many minutes.',
+      'Needs the Session reads from the station CLI Feature Preview.',
     ],
   },
   conversation: {
     group: 'Core Workspace',
-    summary: 'Export a conversation as a portable thread (or provider format)',
+    summary: 'Export or fork a conversation',
     targets: true,
-    usage: ['station conversation export <agent> <conversationId>'],
-    actions: ['export'],
+    usage: [
+      'station conversation export <agent> <conversationId>',
+      'station conversation fork <agent> <conversationId> [--json]',
+    ],
+    actions: ['export', 'fork'],
     detail: [
+      'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',
       '  --output=<path>       write to a file instead of stdout',
+      'fork (a new conversation from the history up to a completed turn;',
+      'the source is unchanged):',
+      '  --target-agent=<slug> Agent for the fork (default: the source Agent)',
+      "  --project=<slug>      Project for the fork (default: the source's)",
+      '  --turn=<id>           branch at this completed assistant turn (default: latest)',
+      '  --idempotency-key=<k> retrying with the same key returns the same fork',
+      'Exit codes (fork): 0 forked, 1 usage error, 2 Station unreachable,',
+      '3 refused (not found, not a completed turn, target not available).',
+    ],
+  },
+  claims: {
+    group: 'Core Workspace',
+    summary: 'List the work claims in the Sessions you can read',
+    targets: true,
+    usage: ['station claims list [--json]'],
+    actions: ['list'],
+    detail: [
+      'A claim is what a Session says it is working on (a work item, paths, a',
+      "note), made with Station Control's claim_work. It is information, not a",
+      'lock. list shows the active claims (unreleased, unexpired, Session not',
+      'ended) of the Sessions you can read, as the Station UI shows them.',
+      'A claimant is always a Session today, so there is no claim, release',
+      'or supersede verb for a person yet.',
+      'Exit codes: 0 success, 1 usage error, 2 Station unreachable, 3 refused',
+      '(including a Station too old to answer work claims).',
     ],
   },
   approvals: {
@@ -725,8 +839,9 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'respond'],
     detail: [
-      'station approvals list [--session=<id>] [--json]',
-      'station approvals respond <request-id> <decision>',
+      'station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json]',
+      'station approvals respond <thread-id> <request-id> <decision>',
+      'Without --agent, list covers every session on the Station.',
     ],
   },
   operate: {
@@ -753,6 +868,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station delegate interrupt <task-id> [--on=<environment>]',
       'station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>]',
       'station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>]',
+      'station delegate list [--on=<environment>] [--limit=<1-100>]',
     ],
     actions: [
       'attempt',
@@ -763,10 +879,12 @@ const VERBS: Record<string, VerbSpec> = {
       'interrupt',
       'targets',
       'wait',
+      'list',
     ],
     detail: [
       'Options (create):',
       '  --agent=<slug>        Delegate to an Agent',
+      '  --client-turn-id=<id> Reuse the same key and input for a deliberate retry',
       '  --on=<environment>    Run on a saved Environment (default: current)',
       '  --model=<id>          Select a model for this task',
       '  --project=<slug>      Bind to a project (or --project-path=<path>)',
@@ -796,6 +914,10 @@ const VERBS: Record<string, VerbSpec> = {
       'Ordinary operator/device credentials do not grant attempt lookup.',
       'Lookup success means the observation succeeded, not the work completed.',
       'Never resend based on none/preparing/unresolved or a lost reply.',
+      '',
+      'list shows your delegated tasks on one Environment (the current one, or',
+      "--on): the same inventory as Station Control's list_delegated_tasks.",
+      '--limit bounds it (default 50, at most 100); a longer inventory says so.',
       '',
       '--after=<cursor> (events) is the opaque nextCursor a previous page',
       'returned (station-task-events:v1:<n>), never a raw sequence number.',
@@ -1016,6 +1138,20 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'get', 'create', 'update', 'delete', 'reconnect'],
   },
+  'mcp-clients': {
+    group: 'Core Workspace',
+    summary: 'Connect an external client to selected local Station tools',
+    targets: true,
+    actions: ['authorize', 'create', 'revoke'],
+    detail: [
+      'authorize explicitly uses the existing owner-home local grant for the selected installed profile; it prints no credential and starts no service.',
+      'create requires --session=<id> --tools=<comma-separated names> --ttl-seconds=<60..3600> --output=<absolute new path>.',
+      'Uses a file-proven local operator profile; remote, browser and internal-process credentials cannot issue leases.',
+      'The private output contains the scoped bearer; stdout contains metadata only. Restart, Session revocation, expiry or explicit revoke invalidates it.',
+      'revoke <lease-id> revokes only that external-client lease. Creation has no automatic retry and does not start an engine.',
+      'Initial private-file creation supports POSIX hosts; it does not claim Windows ACL qualification.',
+    ],
+  },
   'secret-bindings': {
     group: 'Core Workspace',
     summary: 'Manage operator-owned MCP secret bindings',
@@ -1081,6 +1217,19 @@ const VERBS: Record<string, VerbSpec> = {
       'at.',
     ],
   },
+  automation: {
+    group: 'Core Workspace',
+    summary: 'Read Automation delivery history (observe-only)',
+    targets: true,
+    actions: [AUTOMATION_OPERATOR_SURFACE.deliveries.cli],
+    detail: [
+      'station automation deliveries [--limit=<1-200>]',
+      '',
+      'Lists the newest recorded deliveries, newest first (default 50).',
+      'Each row is a bounded projection: outcome, reason, rule and episode',
+      'ids. Station records matches but starts no Automation work yet.',
+    ],
+  },
   runs: {
     group: 'Core Workspace',
     summary: 'Read global run history through the neutral runs API',
@@ -1108,6 +1257,21 @@ const VERBS: Record<string, VerbSpec> = {
       'station review read <project> <receipt-id>',
       '',
       'Reviewer findings are evidence input, never a merge or gate verdict.',
+    ],
+  },
+  walkthrough: {
+    group: 'Core Workspace',
+    summary: 'Import and read Project Walkthrough recordings',
+    targets: true,
+    actions: ['import', 'list', 'show'],
+    detail: [
+      'station walkthrough import <file> --project <slug>',
+      'station walkthrough list --project <slug> [--cursor=<id>]',
+      'station walkthrough show <id> --project <slug>',
+      '',
+      'Import follows a long-running operation and prints its Walkthrough id.',
+      'Missing tools report downloads and station media-tools download --yes.',
+      'Recordings remain on the host; imports require Project drive authority.',
     ],
   },
   knowledge: {
@@ -1149,6 +1313,12 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Read resolved branding config',
     targets: true,
     actions: ['get'],
+  },
+  workload: {
+    group: 'Core Workspace',
+    summary: 'Show engine workload memory budgets and their enforcement',
+    targets: true,
+    actions: ['status'],
   },
   feedback: {
     group: 'Core Workspace',
@@ -1220,6 +1390,7 @@ const VERBS: Record<string, VerbSpec> = {
   checkpoints: {
     group: 'Setup',
     summary: 'Inspect and reclaim workspace-checkpoint disk usage',
+    actions: ['status', 'prune', 'history', 'retention', 'restore'],
     usage: [
       'station checkpoints status [--json]',
       'station checkpoints prune --thread=<threadId> [--gc]',

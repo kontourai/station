@@ -42,6 +42,7 @@ const EXAMPLES_DIR = join(process.cwd(), 'examples');
  */
 const LEGACY_MANIFEST_FIELDS = {
   telemetry: true,
+  requiredSlots: true,
   name: true,
   version: true,
   sdkVersion: true,

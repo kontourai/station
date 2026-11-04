@@ -28,8 +28,51 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     rmSync(home, { recursive: true, force: true });
     vi.doUnmock('node:child_process');
     vi.doUnmock('../auth/cli-auth.js');
+    vi.doUnmock('node:fs');
+    vi.doUnmock('node:os');
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+
+  test('starts the real Codex transport with an npm Node entry instead of a Windows batch file', async () => {
+    const shim = 'C:\\tools\\codex.cmd';
+    const entry = 'C:\\tools\\node_modules\\@openai\\codex\\bin\\codex.js';
+    const spawnMock = vi.fn(() => new EventEmitter());
+    vi.doMock('node:os', async (original) => ({
+      ...(await original<typeof import('node:os')>()),
+      platform: () => 'win32',
+    }));
+    vi.doMock('node:fs', async (original) => {
+      const fs = await original<typeof import('node:fs')>();
+      return {
+        ...fs,
+        readFileSync: (path: string, ...args: unknown[]) =>
+          path === shim
+            ? '"%_prog%" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*'
+            : Reflect.apply(fs.readFileSync, fs, [path, ...args]),
+        statSync: (path: string, ...args: unknown[]) =>
+          path === shim || path === entry
+            ? { isFile: () => true, size: 100 }
+            : Reflect.apply(fs.statSync, fs, [path, ...args]),
+      };
+    });
+    vi.doMock('node:child_process', async (original) => ({
+      ...(await original<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
+    vi.doMock('../auth/cli-auth.js', () => ({
+      findCliBinary: () => shim,
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
+    }));
+    const { createCodexProcess } = await import(
+      '../adapters/codex-adapter-transport.js'
+    );
+    createCodexProcess();
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      [entry, 'app-server'],
+      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
+    );
   });
 
   test('the spawned app-server process env.TMPDIR is Station-owned, not the ambient default', async () => {
@@ -99,6 +142,31 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     expect(options.env.TMPDIR).toBe(join(home, 'tmp', 'engine-spawn'));
     // Routing keys ride through untouched.
     expect(options.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
+  });
+
+  test('chat-host-images: the session TMPDIR replaces the shared one, and env still cannot', async () => {
+    const spawnMock = vi.fn(
+      (
+        _binary: string,
+        _args: string[],
+        _options: { env: NodeJS.ProcessEnv },
+      ) => new EventEmitter(),
+    );
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
+    vi.doMock('../auth/cli-auth.js', () => ({
+      findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
+    }));
+    const { createCodexProcess } = await import(
+      '../adapters/codex-adapter-transport.js'
+    );
+    const own = join(home, 'tmp', 'session-tmp', 'session-1-abc');
+    createCodexProcess(undefined, { TMPDIR: '/ambient/x' }, undefined, own);
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.TMPDIR).toBe(own);
   });
 
   test('the spawned env is a scrubbed process.env copy on the augmented PATH, with per-connection overrides winning', async () => {

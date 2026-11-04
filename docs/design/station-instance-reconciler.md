@@ -20,7 +20,12 @@ service status` takes supervisor and authenticated identity state from that
 single `InstanceState`. It also reports separate scheduling-policy and installed
 PATH-drift observations and, for a launcher-run archive, the update read from
 that install's runtime files (`update` in `--json`); these do not replace the
-reconciler's lifecycle state.
+reconciler's lifecycle state. When the installed launchd or systemd unit runs
+from another home than the one `status` read, that `InstanceState` is
+inspected through an Adapter for the unit's home, and status reports the
+leftover manifest separately. `service start` and `service stop` refuse
+before `reconcile` from such a home, so no convergence runs against a home
+the unit does not use.
 A stopped state
 requires both an inactive supervisor and an absent exact identity, so a
 stranded live process is never called stopped merely because its supervisor

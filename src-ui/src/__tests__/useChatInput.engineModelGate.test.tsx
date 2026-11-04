@@ -16,7 +16,7 @@
 
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -36,6 +36,7 @@ vi.mock('../contexts/ToastContext', () => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   useProviderCommandsQuery: () => ({ data: [] }),
   useRunSkill: () => ({ mutateAsync: vi.fn() }),
   useSkillDetailReader: () => vi.fn(),
@@ -132,6 +133,7 @@ const bigPickle: SelectableModel = {
 function renderChatInput(options: {
   runtimeConnection?: typeof opencodeConnection | null;
   bindingStatus?: ReturnType<typeof resolveBindingStatus>;
+  availableModels?: SelectableModel[];
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -146,7 +148,7 @@ function renderChatInput(options: {
         sessionId: SESSION_ID,
         agentSlug: (mockAgent as AgentData | null)?.slug ?? null,
         conversationId: 'conv-1',
-        availableModels: [bigPickle],
+        availableModels: options.availableModels ?? [bigPickle],
         bindingStatus: options.bindingStatus,
         runtimeConnection: options.runtimeConnection,
       }),
@@ -164,6 +166,41 @@ describe('useChatInput engine capability model gate', () => {
     activeChatsStore.removeChat(SESSION_ID);
     localStorage.clear();
     vi.clearAllMocks();
+  });
+
+  test('changes and clears a speed tier without retaining the legacy Fast override', () => {
+    mockAgent = null;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Speed',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      providerOptions: { fastMode: true, reasoningEffort: 'high' },
+    });
+    const { result } = renderChatInput({ runtimeConnection: null });
+    act(() =>
+      result.current.handleModelRuntimeOptionChange('serviceTier', 'ultrafast'),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
+    ).toEqual({ reasoningEffort: 'high', serviceTier: 'ultrafast' });
+    act(() => result.current.handleModelRuntimeOptionChange('effort', 'low'));
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
+    ).toEqual({ effort: 'low', serviceTier: 'ultrafast' });
+    act(() =>
+      result.current.handleModelRuntimeOptionChange('effort', undefined),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
+    ).toEqual({ serviceTier: 'ultrafast' });
+    act(() =>
+      result.current.handleModelRuntimeOptionChange('serviceTier', null),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
+    ).toEqual({ serviceTier: null });
   });
 
   test('a Station-mode chat backed by a user-named model connection can select models', () => {
@@ -217,5 +254,37 @@ describe('useChatInput engine capability model gate', () => {
     // Without engine identity the unknown matrix must still refuse — the
     // fix adds identity, it must not invent capability.
     expect(result.current.canModelSelect).toBe(false);
+  });
+
+  test('keeps reported speed controls available without effort or model-selection flags', () => {
+    mockAgent = null;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Speed only',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      executionMode: EXECUTION_MODE.STATION,
+    });
+    const bindingStatus = resolveBindingStatus({ agent: null });
+    const { result } = renderChatInput({
+      runtimeConnection: null,
+      bindingStatus: {
+        ...bindingStatus,
+        capabilityState: {
+          ...bindingStatus.capabilityState,
+          model_selection: false,
+        },
+      },
+      availableModels: [
+        {
+          ...bigPickle,
+          capabilities: {
+            serviceTiers: [{ id: 'ultrafast', name: 'Ultrafast' }],
+          },
+        },
+      ],
+    });
+    expect(result.current.canModelSelect).toBe(true);
   });
 });

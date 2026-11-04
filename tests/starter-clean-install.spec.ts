@@ -138,7 +138,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       '/config/app',
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
-    const newChat = page.getByRole('dialog', { name: 'New chat', exact: true });
+    const newChat = page.getByRole('region', { name: 'New chat', exact: true });
     await expect(newChat).toBeVisible();
     const draft = newChat.getByRole('form', { name: 'Start work' });
     // Engine selection saves configuration before deferred activation settles.
@@ -212,7 +212,9 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       name: 'Run a scheduled readiness check',
     });
     await expect(starter).toHaveCount(0);
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    // Settings is reached through the sidebar footer's account menu.
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
+    await page.getByRole('menuitem', { name: 'Open settings' }).click();
     // Developer tools live on Settings' Advanced page (#3143).
     await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     const developerTools = page.getByRole('switch', {
@@ -226,7 +228,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await starter.getByRole('button', { name: 'Run check' }).click();
     await expect
       .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toBe('/schedule');
+      .toBe('/automations');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('run'))
       .toMatch(/^schedule:built-in:station-starter-check:/);

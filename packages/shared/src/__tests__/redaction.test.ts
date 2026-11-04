@@ -15,6 +15,10 @@ const FAKE_ASIA = `${'ASIA'}ABCDEFGHIJKLMNOP`;
 
 describe('redactSecrets', () => {
   test.each([
+    [
+      `bundle.js?port=43123&capability=${'C'.repeat(43)}:12:7`,
+      'bundle.js?port=43123&capability=[REDACTED]:12:7',
+    ],
     [`AWS key ${FAKE_AKIA}`, 'AWS key [REDACTED]'],
     [`AWS key ${FAKE_ASIA}`, 'AWS key [REDACTED]'],
     [`token ghp_${'a'.repeat(36)}`, 'token [REDACTED]'],
@@ -62,8 +66,74 @@ describe('redactSecrets', () => {
       'postgres://dbuser:p@ss@w@rd@host:5432/db',
       'postgres://[REDACTED]@host:5432/db',
     ],
+    [
+      'postgres://private-user:password:foo@host/db',
+      'postgres://[REDACTED]@host/db',
+    ],
+    [
+      'postgres://private-user:token:foo@host/db',
+      'postgres://[REDACTED]@host/db',
+    ],
   ])('redacts %s', (input, expected) => {
     expect(redactSecrets(input)).toBe(expected);
+  });
+
+  test.each([
+    '.',
+    ',',
+    ']',
+    ')',
+    '>',
+    "'",
+    '"',
+    '。',
+    '，',
+    '！',
+    '？',
+    '；',
+    '：',
+    '、',
+    '）',
+    '》',
+    '】',
+    '」',
+    '』',
+    '〉',
+    '〕',
+    '］',
+    '｝',
+    '＞',
+    '＇',
+    '＂',
+  ])(
+    'preserves trailing punctuation %s after native asset URLs',
+    (punctuation) => {
+      for (const origin of [
+        'station-plugin://localhost',
+        'http://station-plugin.localhost',
+      ]) {
+        for (const coordinates of ['', ':12:7']) {
+          const path = '/api/plugins/demo/bundle.js';
+          const url = `${origin}${path}?port=43123&capability=${'C'.repeat(43)}#private${coordinates}`;
+          expect(redactSecrets(`Failed at ${url}${punctuation} Retry`)).toBe(
+            `Failed at ${path}${coordinates}${punctuation} Retry`,
+          );
+          if (punctuation !== '.') {
+            expect(redactSecrets(`Failed at ${url}${punctuation}Retry`)).toBe(
+              `Failed at ${path}${coordinates}${punctuation}Retry`,
+            );
+          }
+        }
+      }
+    },
+  );
+
+  test('strips native asset queries even when they contain no credential', () => {
+    expect(
+      redactSecrets(
+        'http://station-plugin.localhost/api/plugins/demo/bundle.css?port=43123&mode=debug#public',
+      ),
+    ).toBe('/api/plugins/demo/bundle.css');
   });
 
   test('the connection-string credential pattern has no catastrophic backtracking (station#1896 review round 2, HIGH #3)', () => {
@@ -296,14 +366,43 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     expect(redactSecrets(input)).toBe(expected);
   });
 
-  // An unquoted value used to run to the end of the line, so ONE non-secret pair
-  // earlier on a command line consumed the rest of it and the secret pair was
-  // never examined. Every case below came through verbatim before the value
-  // learned to stop at a following flag.
   test.each([
     [
       'mysql --user=root --password=hunter2 -h db',
       'mysql --user=root --password=[REDACTED] -h db',
+    ],
+    [
+      'Error: login failed password=hunter2',
+      'Error: login failed password=[REDACTED]',
+    ],
+    ['E_AUTH: bad api_key=synthetic-secret', 'E_AUTH: bad api_key=[REDACTED]'],
+    ['Error:password=hunter2', 'Error:password=[REDACTED]'],
+    ['password="abc"def', 'password=[REDACTED]'],
+    ["password='abc'def", 'password=[REDACTED]'],
+    ['password=[REDACTED]tail', 'password=[REDACTED]'],
+    [
+      'status=failed token: synthetic-secret',
+      'status=failed token: [REDACTED]',
+    ],
+    [
+      'Error: login failed password=correct horse',
+      'Error: login failed password=[REDACTED]',
+    ],
+    [
+      'password=correct horse status=failed',
+      'password=[REDACTED] status=failed',
+    ],
+    [
+      'Error: bad password="correct horse" status=failed',
+      'Error: bad password="[REDACTED]" status=failed',
+    ],
+    [
+      'Error: bad password=hunter2 token=second-secret',
+      'Error: bad password=[REDACTED] token=[REDACTED]',
+    ],
+    [
+      `Error:${' '.repeat(100_000)}password=hunter2`,
+      `Error:${' '.repeat(100_000)}password=[REDACTED]`,
     ],
     [
       'curl --header=x -d a=1 --password=p2',
@@ -321,6 +420,7 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     'examines a secret pair that follows a non-secret one: %j',
     (input, expected) => {
       expect(redactSecrets(input)).toBe(expected);
+      expect(redactSecrets(expected)).toBe(expected);
     },
   );
 
@@ -360,7 +460,20 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     ['pwd', false],
     ['mysql', false],
     ['host', false],
+    // Station's pairing and chat-link codes; a bare `code` stays readable.
+    ['manualCode', true],
+    ['pairing_code', true],
+    ['chatLinkCode', true],
+    ['code', false],
+    ['errorCode', false],
+    ['confirmationCode', false],
   ])('isSecretField(%j) is %s', (key, expected) => {
     expect(isSecretField(key)).toBe(expected);
   });
+});
+
+test('a pairing code in key=value text is redacted', () => {
+  expect(redactSecrets('pairing failed manualCode=23456789AB')).not.toContain(
+    '23456789AB',
+  );
 });

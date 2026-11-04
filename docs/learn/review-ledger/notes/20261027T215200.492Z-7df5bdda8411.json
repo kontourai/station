@@ -1,0 +1,33 @@
+{
+  "revision": "6c24735eff5449b54a29b2fa43aa584309cefa10",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate. Its lint:component-style section is unchanged; the new copy gate is documented in src-ui/AGENTS.md#product-copy.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate. The pre-push static-gates row stays accurate: check-prepush-static-gates.mjs now also runs ui-copy-length (measured ~1s), and the row's ~7s cost remains an approximation.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate. vitest-resource-manifest.mjs adds one process-heavy entry (ui-copy-length.process.test.ts); the documented group semantics and worker counts are unchanged.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/theming.md","note":"Source delta: src-ui/AGENTS.md adds a Product copy section and the ui-copy-length ratchet. This guide still routes product-copy rules to @kontourai/ui DESIGN.md; no claim here conflicts.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Source delta: src-ui/AGENTS.md adds a Product copy section. This pattern links to the UI instructions for owner tests and routing only; its claims are unchanged.","inputs":["docs/patterns/frontend.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Source delta: check-prepush-static-gates.mjs adds ui-copy-length to PREPUSH_STATIC_GATES. The agent-plugin validator gate this reference names is unchanged.","inputs":["docs/reference/agent-plugins.md","scripts/check-prepush-static-gates.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Source delta: package.json adds the ui-copy-length:ratchet script and appends it to gate:ui-contracts. This document names neither the script nor the gate:ui-contracts members, so its prose remains accurate.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Source delta: vitest-resource-manifest.mjs adds one process-heavy scripts test. No agent-runtime test classification changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Source delta: vitest-resource-manifest.mjs classifies the new ui-copy-length process test, as this policy requires. The policy text is unchanged and still accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Source delta: src-ui/AGENTS.md gains a Product copy section. This file still only imports its paired AGENTS.md via @AGENTS.md.","inputs":["src-ui/CLAUDE.md","src-ui/AGENTS.md"]}
+  ]
+}

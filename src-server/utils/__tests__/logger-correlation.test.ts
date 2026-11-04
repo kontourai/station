@@ -132,12 +132,14 @@ describe('logger.child correlation — real read-path proof (AC3)', () => {
 describe('schedulerJobCorrelationBindings', () => {
   it('binds the station-local job-run identity keys (not a monitoring-keys concept — no scheduler-run key exists there)', () => {
     const bindings = schedulerJobCorrelationBindings({
-      jobName: 'nightly-digest',
-      jobRunId: 'nightly-digest-1735689600000',
+      jobId: 'job-opaque',
+      jobRunId: 'run-opaque',
+      targetKind: 'untargeted',
     });
     expect(bindings).toEqual({
-      [SCHEDULER_LOG_BINDING_KEYS.JOB_NAME]: 'nightly-digest',
-      [SCHEDULER_LOG_BINDING_KEYS.JOB_RUN_ID]: 'nightly-digest-1735689600000',
+      [SCHEDULER_LOG_BINDING_KEYS.JOB_ID]: 'job-opaque',
+      [SCHEDULER_LOG_BINDING_KEYS.JOB_RUN_ID]: 'run-opaque',
+      [SCHEDULER_LOG_BINDING_KEYS.TARGET_KIND]: 'untargeted',
     });
   });
 
@@ -146,9 +148,13 @@ describe('schedulerJobCorrelationBindings', () => {
     installServerLogSink({ directory });
     const logger = createLogger({ name: 'scheduler-test', level: 'info' });
 
-    const jobRunId = 'nightly-digest-1735689600000';
+    const jobRunId = 'run-opaque';
     const child = logger.child(
-      schedulerJobCorrelationBindings({ jobName: 'nightly-digest', jobRunId }),
+      schedulerJobCorrelationBindings({
+        jobId: 'job-opaque',
+        jobRunId,
+        targetKind: 'untargeted',
+      }),
     );
     child.info('Scheduler job started', { manual: false });
     await new Promise((resolve) => setImmediate(resolve));
@@ -156,8 +162,8 @@ describe('schedulerJobCorrelationBindings', () => {
     const reader = createServerLogReader({ directory });
     const result = await reader.query({ q: jobRunId });
     expect(result.entries).toHaveLength(1);
-    expect(result.entries[0][SCHEDULER_LOG_BINDING_KEYS.JOB_NAME]).toBe(
-      'nightly-digest',
+    expect(result.entries[0][SCHEDULER_LOG_BINDING_KEYS.JOB_ID]).toBe(
+      'job-opaque',
     );
     expect(result.entries[0][SCHEDULER_LOG_BINDING_KEYS.JOB_RUN_ID]).toBe(
       jobRunId,

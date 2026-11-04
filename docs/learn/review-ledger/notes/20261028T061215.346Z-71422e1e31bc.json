@@ -1,0 +1,7 @@
+{
+  "revision": "57ffc22dca4beeaeb0e23cee15056247d54eb0c8",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css change is confined to .station-switcher* and .app-toolbar__station-switcher selectors (filter field, remove control with hover/coarse-pointer rules, footer). No composer, placement, dialog or Home selector changed; the documented claims here do not reference these rules.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

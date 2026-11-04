@@ -35,7 +35,7 @@ export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [
     title: 'Connect a Station',
     detail:
       'Choose a Station, then approve access for this device, remote work, or both.',
-    unlocks: 'Device access and permission to send work stay separate.',
+    unlocks: 'Use another Station, or send work to it.',
   },
   {
     goal: 'delegate',
@@ -143,8 +143,8 @@ export function AddMachineModal({
                 Save an encrypted broker route
               </span>
               <span className="add-machine-modal__option-detail">
-                Save where the Station is reached and which separately trusted
-                Station identity it must use.
+                Save where the Station is reached and which identity it must
+                use.
               </span>
               <span className="add-machine-modal__option-unlocks">
                 The route stays unconnected until its transport and account

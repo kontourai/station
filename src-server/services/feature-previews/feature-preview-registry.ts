@@ -1,7 +1,8 @@
 /**
  * Runtime-derived Feature Previews registry (archive#2961).
  *
- * A preview becomes visible only when runtime composition binds a consumer.
+ * Runtime previews are bound by composition; built-in UI previews name their
+ * consuming surface here.
  * A bound consumer returns the selector used at its real branch; persistence
  * alone can never make a removed consumer visible.
  */
@@ -72,12 +73,53 @@ function stateProblems(value: unknown): string[] {
  */
 export class FeaturePreviewRegistry {
   private readonly consumers = new Map<string, FeaturePreviewDefinition>();
+  private readonly generations = new Map<string, number>();
   private readonly state: GrantsFileStore<FeaturePreviewState>;
 
   constructor(
     homeDir: string,
     private readonly logger: Logger,
   ) {
+    this.rememberConsumer({
+      id: 'task-review',
+      label: 'Task review',
+      description:
+        'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
+    });
+    // Chat-only: Continue is an ordinary send through the chat's own send
+    // path, so no server branch reads this choice.
+    this.rememberConsumer({
+      id: 'continue-interrupted-turn',
+      label: 'Continue after restart',
+      description:
+        'Offer Continue on a chat turn a Station restart cut off. It sends the agent a short note to pick up where it stopped.',
+    });
+    this.rememberConsumer({
+      id: 'task-collaboration',
+      label: 'Task collaboration',
+      description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
+      id: 'chat-apps',
+      label: 'Chat apps',
+      description:
+        'Show integration capability status and Task write-back history.',
+    });
+    // Consumed by the start composers' "Use a visual skill" entry points. The
+    // inventory route and authoring contract stay unconditional: hiding the
+    // entry points does not change what an installed plugin may declare.
+    this.rememberConsumer({
+      id: 'visual-skills',
+      label: 'Visual skills',
+      description:
+        'Offer installed visual skills when starting a chat: guided question rounds and optional plugin panes around a bundled Skill.',
+    });
+    this.rememberConsumer({
+      id: 'integration-content-trust',
+      label: 'Content trust settings',
+      description:
+        'Configure how tool servers and built-in tools behave after reading untrusted content.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',
@@ -120,8 +162,14 @@ export class FeaturePreviewRegistry {
       current[id] = { enabled };
       return current;
     });
+    this.generations.set(id, this.generation(id) + 1);
     this.logger.info('Feature preview updated', { id, enabled });
     return { ...definition, enabled };
+  }
+
+  /** In-process generation fences consumers across a choice change. */
+  generation(id: string): number {
+    return this.generations.get(id) ?? 0;
   }
 
   private rememberConsumer(definition: FeaturePreviewDefinition): void {

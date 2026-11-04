@@ -11,6 +11,7 @@ import {
   useStarterWorkQuery,
 } from '@kontourai/station-sdk';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { requireSubtleCrypto, toHex } from '../../utils/sha256';
 import { Button } from '../Button';
 import { PageCallout } from '../PageCallout';
 import { SkeletonBlock } from '../state';
@@ -51,15 +52,12 @@ async function starterInspectionOperationId(
   starterId: StarterInspectionId,
   reference: StarterInspectionReference,
 ): Promise<string> {
-  if (!globalThis.crypto?.subtle)
-    throw new Error('Secure Starter identity is unavailable.');
-  const digest = await globalThis.crypto.subtle.digest(
+  const subtle = requireSubtleCrypto('Secure Starter identity is unavailable.');
+  const digest = await subtle.digest(
     'SHA-256',
     new TextEncoder().encode(`${starterId}\0${identity(reference)}`),
   );
-  return `inspect:${starterId}:${[...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')}`;
+  return `inspect:${starterId}:${toHex(new Uint8Array(digest))}`;
 }
 
 export function StarterInspectionCards() {

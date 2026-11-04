@@ -33,3 +33,11 @@ export const UI_PROXY_BACKEND_PREFIXES: string[] = [
   '/tools',
   '/observability',
 ];
+
+/** Outside OAuth discovery must not pass through the attested UI proxy. */
+export const UI_PROXY_EXCLUDED_PREFIXES = [
+  '/oauth',
+  '/mcp',
+  '/.well-known/oauth-protected-resource',
+  '/.well-known/oauth-authorization-server',
+];

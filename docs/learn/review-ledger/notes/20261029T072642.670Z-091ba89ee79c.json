@@ -1,0 +1,57 @@
+{
+  "revision": "459bb7c3893840f0fba7e88187bb51c4e37d8004",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read after merging main (#4070, #3672): main hides the failure banner while the open is unproven and keeps the Resync pill, so this branch adds only the paragraph on server-reported callerAccess (send note and Start new chat), the no-Retry wording, and the accepted coarse-pointer chord limit. Matches ChatDockBody, conversationOpenController and the ChatDockBody.sessionFailureBanner tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"NotificationContainer only withholds the session chord kbd (Cmd/Ctrl+1) on a coarse primary pointer; delivery, grouping, recall and actions described here are unchanged. No prose change.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock change extracts the picker recovery notice into ConversationPickerRecovery and gates Start new chat on callerAccess; pane relationships unchanged. No prose change.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"orchestration.ts change is the additive optional callerAccess field; no placement claim depends on it. No prose change.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts","docs/reference/api.md"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"orchestration.ts change is the additive optional callerAccess field on the open resolution; nothing here depends on it. No prose change.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"orchestration.ts gains optional callerAccess on ConversationOpenResolution (additive); runtime-routes passes the security service to the conversation routes; ChatDockBody reads the field. The doc lists the orchestration subpath at module level only. No prose change.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock/ChatDockBody/conversationOpenController now withhold Start new chat and the send note when the open read says the caller may not; no concept described here changes. No prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock change is limited to the picker recovery notice; boards unaffected. No prose change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"runtime-routes.ts gained one argument (the security service passed to the global conversation routes for callerAccess on GET /api/conversations/:id/open); docs/reference/api.md gained that route paragraph. No claim here depends on it. No prose change.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"vitest-resource-manifest gained one process-heavy Chromium test entry; this context makes no per-entry claim. No prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reasoned: the index.css delta only moves the dock failed-session banner inset into chat.css; this capture does not show that banner. Not recaptured.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

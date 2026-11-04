@@ -26,6 +26,21 @@ const SCRIPTS: Record<string, string> = JSON.parse(
   readFileSync('package.json', 'utf8'),
 ).scripts;
 
+function hookChecks() {
+  return PRE_PUSH.split('\n')
+    .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
+    .flatMap((line) => {
+      const wrapped =
+        /node scripts\/heavy-check-slot\.mjs\s+\S+\s+(scripts\/\S+\.mjs)(?:\s+([^\n]+))?/.exec(
+          line,
+        );
+      if (wrapped) return [wrapped[0]];
+      const match =
+        /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
+      return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
+    });
+}
+
 function runJson(args: string[]) {
   const run = spawnSync('node', ['scripts/gate-for.mjs', '--json', ...args], {
     encoding: 'utf8',
@@ -40,27 +55,29 @@ function runJson(args: string[]) {
 }
 
 describe('gate-for report', () => {
-  it('shows the linked behavior check before a governed Session edit', () => {
-    const rules = veritasGuidanceRules([
-      'src-server/services/orchestration/session-turn-boundary.ts',
-    ]);
-    const byId = new Map(rules.map((rule) => [rule.id, rule]));
-    expect(byId.get('session-lifecycle-recovery-contract')).toMatchObject({
-      enforcementLevel: 'Require',
-    });
-    // The behavior check the rule links, as an evidence-check id.
-    expect(rules.flatMap((rule) => rule.evidenceCheckIds)).toContain(
-      'session-transition-contract',
-    );
-    expect(
-      byId.get('session-lifecycle-recovery-contract')?.mustDo.length,
-    ).toBeGreaterThan(0);
-    // The rendered briefing carries every selected rule.
-    const guidance = veritasGuidanceForPaths([
-      'src-server/services/orchestration/session-turn-boundary.ts',
-    ]);
-    for (const rule of rules) expect(guidance).toContain(rule.id);
-  });
+  it.each([
+    'src-server/services/orchestration/session-turn-boundary-binding.ts',
+    'packages/monument/src/session-boundary.ts',
+  ])(
+    'shows the linked behavior check before a governed Session edit: %s',
+    (path) => {
+      const rules = veritasGuidanceRules([path]);
+      const byId = new Map(rules.map((rule) => [rule.id, rule]));
+      expect(byId.get('session-lifecycle-recovery-contract')).toMatchObject({
+        enforcementLevel: 'Require',
+      });
+      // The behavior check the rule links, as an evidence-check id.
+      expect(rules.flatMap((rule) => rule.evidenceCheckIds)).toContain(
+        'session-transition-contract',
+      );
+      expect(
+        byId.get('session-lifecycle-recovery-contract')?.mustDo.length,
+      ).toBeGreaterThan(0);
+      // The rendered briefing carries every selected rule.
+      const guidance = veritasGuidanceForPaths([path]);
+      for (const rule of rules) expect(guidance).toContain(rule.id);
+    },
+  );
 
   it('does not invent path guidance for an unrelated file', () => {
     // documentation-source-currentness is a repo-wide Guide, so every path
@@ -92,7 +109,7 @@ describe('gate-for report', () => {
     expect(scopes.length).toBeGreaterThan(0);
     for (const scope of scopes) {
       expect(scope.runs, scope.name).toBe(true);
-      expect(PRE_PUSH, scope.name).toContain(scope.command);
+      expect(hookChecks(), scope.name).toContain(scope.command);
     }
   });
 
@@ -146,13 +163,7 @@ describe('gate-for report', () => {
         'resolves the liveness factor the checks inherit (#3302); refuses only a malformed override',
       ],
     ]);
-    const hookCommands = PRE_PUSH.split('\n')
-      .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
-      .flatMap((line) => {
-        const match =
-          /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
-        return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
-      });
+    const hookCommands = hookChecks();
     for (const step of SETUP_STEPS.keys())
       expect(hookCommands, `setup step ${step} left the hook`).toContain(step);
     const plan = gatePlan({ changedPaths: [], baseSha });

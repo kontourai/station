@@ -1,0 +1,7 @@
+{
+  "revision": "8f0111e1a85c5f36a2a9eebfa4a3c18ab8502d9b",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed trusted Serve attestation, current account and Device binding checks, and membership and Task read seams against runtime composition and focused tests; no live deployment or native-device qualification.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/account-bound-device-gate.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

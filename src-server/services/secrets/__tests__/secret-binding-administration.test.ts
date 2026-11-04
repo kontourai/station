@@ -1,5 +1,6 @@
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -337,6 +338,134 @@ describe('ACP provider secret resolution (#944)', () => {
     expect(JSON.stringify(await service.list())).not.toContain('canary-secret');
     resolution.settlement.settle({ outcome: 'success' });
     expect(JSON.stringify(audit.mock.calls)).not.toContain('canary-secret');
+  });
+});
+
+const GMAIL_GRANT = {
+  kind: 'mcp-integration-oauth-client' as const,
+  integrationId: 'gmail',
+  issuer: 'https://accounts.google.com',
+  resource: 'https://gmailmcp.googleapis.com/mcp/v1',
+  instanceId: '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
+};
+
+/** The integration's current instance, as the storage writer records it. */
+async function writeInstance(root: string, instanceId: string) {
+  await mkdir(join(root, 'integrations', 'gmail'), { recursive: true });
+  await writeFile(
+    join(root, 'integrations', 'gmail', '.station-instance'),
+    instanceId,
+  );
+}
+
+describe('MCP OAuth client secret resolution', () => {
+  test('materializes only for the exactly granted integration, survives reopen, and stops after ungrant', async () => {
+    const root = await home();
+    const audit = vi.fn();
+    const reads = vi.fn(() => 'oauth-client-canary');
+    const options = {
+      secretRunner: { ...runner, readKeychain: reads },
+      logger: { info: audit },
+    };
+    const service = new FileSecretBindingAdministration(root, options);
+    await writeInstance(root, GMAIL_GRANT.instanceId);
+    await service.create({
+      id: 'gmail-client',
+      name: 'Gmail client secret',
+      authRef: { keychain: { service: 'station-test', account: 'gmail' } },
+    });
+    // An environment grant for the same integration is not this authority.
+    await service.grant({
+      id: 'gmail-client',
+      expectedRevision: 1,
+      grant: {
+        kind: 'mcp-integration-env',
+        integrationId: 'gmail',
+        envName: 'CLIENT_SECRET',
+      },
+    });
+    await expect(
+      service.resolveOAuthClientSecret({
+        integrationId: 'gmail',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await service.grant({
+      id: 'gmail-client',
+      expectedRevision: 2,
+      grant: GMAIL_GRANT,
+    });
+    expect(reads).not.toHaveBeenCalled();
+
+    const reopened = new FileSecretBindingAdministration(root, options);
+    await expect(
+      reopened.resolveOAuthClientSecret({
+        integrationId: 'slack',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await expect(
+      reopened.resolveOAuthClientSecret({
+        integrationId: 'gmail',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).resolves.toBe('oauth-client-canary');
+    expect((await reopened.get('gmail-client'))?.oauthClientGrants).toEqual([
+      GMAIL_GRANT,
+    ]);
+    // A definition for the same integration id that names another issuer or
+    // endpoint is not the authority this grant records.
+    for (const elsewhere of [
+      { issuer: 'https://attacker-as.example', resource: GMAIL_GRANT.resource },
+      {
+        issuer: GMAIL_GRANT.issuer,
+        resource: 'https://mcp.attacker.example/mcp',
+      },
+    ])
+      await expect(
+        reopened.resolveOAuthClientSecret({
+          integrationId: 'gmail',
+          bindingId: 'gmail-client',
+          ...elsewhere,
+        }),
+      ).rejects.toMatchObject({ reason: 'grant_missing' });
+
+    // Deleted and recreated with the exact same id, issuer and endpoint: a
+    // new instance, which the old grant does not authorize.
+    await writeInstance(root, '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d');
+    await expect(
+      reopened.resolveOAuthClientSecret({
+        integrationId: 'gmail',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await writeInstance(root, GMAIL_GRANT.instanceId);
+
+    await reopened.ungrant({
+      id: 'gmail-client',
+      expectedRevision: 3,
+      grant: GMAIL_GRANT,
+    });
+    await expect(
+      reopened.resolveOAuthClientSecret({
+        integrationId: 'gmail',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).toHaveBeenCalledOnce();
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(
+      'oauth-client-canary',
+    );
   });
 });
 

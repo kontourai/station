@@ -1,0 +1,9 @@
+{
+  "revision": "f1fe83160d23d49ff9fa7a4a15b0620d2ea132e3",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Reviewed the merged integration-registry-provider against the documented IntegrationRegistryProvider contract: provider getToolDef/sync delegation and refusals remain intact. Installed remote HTTP/SSE definitions with no command do not assert missing-binary or live connectivity; local executable checks remain separate. The merged registry-provider suite passed alongside docs and publication tests (72 assertions). No prose change needed to this contract; no live provider or installed-release claim.","inputs":["docs/guides/plugins.md","src-server/providers/registries/integration-registry-provider.ts"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Reviewed combined MCP registry routes, tool schema, locked integration storage and provider/test against the recipe guide. Catalog install remains disabled, needs explicit runtime/account setup, and grants no Agent access. Remote HTTP/SSE inventory reports installed without a live-connection claim; local binary checks remain separate. The guide explicitly labels its old source baseline and routes MCP subregistry implementation to PR4280, with bounded feed/package-only limitations; retained dated provider receipts are historical. The issuer-pin publication concurrency repair preserves first issuer across real publish/restore fixtures. 72 merged docs/provider/publication assertions passed; no new live-provider/Windows qualification.","inputs":["examples/registry/integrations/README.md","src-server/routes/plugins/registry.ts","src-server/domain/config-loader-storage.ts","schemas/tool.schema.json","src-server/providers/registries/integration-registry-provider.ts","src-server/providers/registries/__tests__/integration-registry-provider.test.ts"]}
+  ]
+}

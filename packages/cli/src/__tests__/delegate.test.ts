@@ -171,6 +171,13 @@ describe('station delegate over HTTP', () => {
         requestBodies.push({ pathname: url.pathname, body });
       }
       if (
+        body?.prompt === 'trigger keyed uncertainty' ||
+        body?.message === 'trigger keyed uncertainty'
+      ) {
+        res.destroy();
+        return;
+      }
+      if (
         method === 'POST' &&
         url.pathname === '/api/orchestration/delegations'
       ) {
@@ -431,6 +438,49 @@ describe('station delegate over HTTP', () => {
                   capabilityDelivery: createDeliveryFixture.capabilityDelivery,
                 }
               : {}),
+          },
+        });
+        return;
+      }
+
+      // `station delegate list`: the inventory route, bounded like the real
+      // one (`delegatedTaskListQuerySchema`: 1 to 100, default 50).
+      if (
+        method === 'GET' &&
+        url.pathname === '/api/orchestration/delegations'
+      ) {
+        const raw = url.searchParams.get('limit');
+        const limit = raw === null ? 50 : Number(raw);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+          sendJson(400, {
+            success: false,
+            error: 'Invalid delegated task list query',
+          });
+          return;
+        }
+        const all = [...tasks.values()];
+        sendJson(200, {
+          success: true,
+          data: {
+            environment: {
+              id: url.searchParams.get('environmentId') ?? 'env-current',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            tasks: all.slice(0, limit).map((task) => ({
+              conversationId: task.taskId,
+              taskId: task.taskId,
+              sessionId: task.taskId,
+              currentSessionId: task.taskId,
+              status: task.status,
+              environment: task.environment,
+              target: task.target,
+              projectSlug: 'demo',
+              eventCount: task.events.length,
+              canInterrupt: false,
+              resumable: true,
+            })),
+            truncated: all.length > limit,
           },
         });
         return;
@@ -765,6 +815,53 @@ describe('station delegate over HTTP', () => {
     vi.restoreAllMocks();
   });
 
+  test.each(['create', 'continue', 'legacy'] as const)(
+    '%s retains its generated request key in JSON after an uncertain send and forwards it on retry',
+    async (kind) => {
+      const { runCli } = await import('../cli.js');
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as never);
+      const args =
+        kind === 'create'
+          ? ['delegate', '--agent=default', 'trigger keyed uncertainty']
+          : kind === 'legacy'
+            ? [
+                'delegate',
+                'continue',
+                'task:existing',
+                'trigger keyed uncertainty',
+              ]
+            : [
+                'delegate',
+                '--session=conversation:ordinary',
+                'trigger keyed uncertainty',
+              ];
+      await runCli([...args, '--json', `--api-base=${apiBase}`]);
+      expect(exit).toHaveBeenCalledWith(2);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      const failure = JSON.parse(String(consoleError.mock.calls[0][0]));
+      expect(failure).toMatchObject({
+        success: false,
+        clientTurnId: expect.any(String),
+      });
+      expect(failure.clientTurnId).toBe(requestBodies[0].body.clientTurnId);
+      consoleError.mockClear();
+      await runCli([
+        ...args,
+        '--json',
+        `--client-turn-id=${failure.clientTurnId}`,
+        `--api-base=${apiBase}`,
+      ]);
+      expect(requestBodies).toHaveLength(2);
+      expect(requestBodies[1]).toEqual(requestBodies[0]);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(String(consoleError.mock.calls[0][0])).clientTurnId,
+      ).toBe(failure.clientTurnId);
+    },
+  );
+
   test('create dispatches to a Station agent and returns its task handle (AC1)', async () => {
     const { runCli } = await import('../cli.js');
 
@@ -819,6 +916,7 @@ describe('station delegate over HTTP', () => {
         {
           pathname: '/api/orchestration/delegations',
           body: {
+            clientTurnId: expect.any(String),
             prompt: 'Review this revision',
             target: {
               environment: { kind: 'saved', id: 'env-worker' },
@@ -1814,10 +1912,13 @@ Nothing was sent at another approval mode.`);
       },
     });
     expect(continued.data).not.toHaveProperty('taskId');
+    expect(continued.data.clientTurnId).toEqual(expect.any(String));
+    expect(continued.data.clientTurnId.trim()).not.toBe('');
     expect(requestBodies).toEqual([
       expect.objectContaining({
         pathname: '/api/orchestration/chat/conversation%3Aordinary/continue',
         body: {
+          clientTurnId: continued.data.clientTurnId,
           message: 'Keep going',
           environment: { kind: 'current' },
           model: {
@@ -1825,6 +1926,26 @@ Nothing was sent at another approval mode.`);
             options: { fastMode: true },
           },
         },
+      }),
+    ]);
+  });
+
+  test('a --session follow-up that starts with "list" is sent, not read as the list verb', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--session=conversation:ordinary',
+      'list',
+      'the',
+      'open',
+      'files',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(requestBodies).toEqual([
+      expect.objectContaining({
+        pathname: '/api/orchestration/chat/conversation%3Aordinary/continue',
+        body: expect.objectContaining({ message: 'list the open files' }),
       }),
     ]);
   });
@@ -1906,10 +2027,11 @@ Nothing was sent at another approval mode.`);
     ]);
 
     expect(exit).toHaveBeenCalledWith(3);
-    expect(consoleError).toHaveBeenCalledWith(
-      'Error:',
-      'Conversation not found or not authorized',
-    );
+    expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toMatchObject({
+      success: false,
+      error: 'Conversation not found or not authorized',
+      clientTurnId: expect.any(String),
+    });
     expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
       '/api/orchestration/chat/conversation%3Amissing/continue',
     ]);
@@ -1931,10 +2053,11 @@ Nothing was sent at another approval mode.`);
     ]);
 
     expect(exit).toHaveBeenCalledWith(3);
-    expect(consoleError).toHaveBeenCalledWith(
-      'Error:',
-      'Conversation not found or not authorized',
-    );
+    expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toMatchObject({
+      success: false,
+      error: 'Conversation not found or not authorized',
+      clientTurnId: expect.any(String),
+    });
     expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
       '/api/orchestration/chat/conversation%3Aforbidden/continue',
     ]);
@@ -2106,6 +2229,63 @@ Nothing was sent at another approval mode.`);
       kind: 'delegate.targets',
       data: { targets: [{ id: 'default', kind: 'station-agent' }] },
     });
+  });
+
+  test('list reads the delegated task inventory, as list_delegated_tasks does', async () => {
+    const { runCli } = await import('../cli.js');
+    for (const prompt of ['First task', 'Second task'])
+      await runCli([
+        'delegate',
+        '--agent=default',
+        '--json',
+        prompt,
+        `--api-base=${apiBase}`,
+      ]);
+    consoleLog.mockClear();
+    requestLog.length = 0;
+
+    await runCli(['delegate', 'list', '--json', `--api-base=${apiBase}`]);
+    const payload = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(payload).toMatchObject({
+      ok: true,
+      kind: 'delegate.list',
+      data: { truncated: false },
+    });
+    expect(
+      (payload.data.tasks as Array<{ taskId: string }>).map(
+        (task) => task.taskId,
+      ),
+    ).toEqual([...tasks.keys()]);
+    // One read of the inventory route, and nothing else.
+    expect(requestLog).toEqual([
+      { method: 'GET', pathname: '/api/orchestration/delegations' },
+    ]);
+    consoleLog.mockClear();
+
+    // A bounded read says it is bounded, in the human summary.
+    await runCli(['delegate', 'list', '--limit=1', `--api-base=${apiBase}`]);
+    const human = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    const [firstId] = [...tasks.keys()];
+    expect(human).toContain(`${firstId} — `);
+    expect(human).toContain("Agent 'default' in demo");
+    expect(human).toContain('More tasks exist than shown');
+  });
+
+  test('list refuses an out-of-bounds --limit before any request', async () => {
+    const { runCli } = await import('../cli.js');
+    requestLog.length = 0;
+    for (const limit of ['0', '101', '2.5', 'many'])
+      await expect(
+        runCli([
+          'delegate',
+          'list',
+          `--limit=${limit}`,
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow('--limit must be a whole number from 1 to 100.');
+    expect(requestLog).toEqual([]);
   });
 
   test('--parent-task produces a child task whose status carries parentTaskId (AC8)', async () => {

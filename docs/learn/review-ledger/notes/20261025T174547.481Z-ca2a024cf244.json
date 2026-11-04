@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock change only adds an ACP connections read and passes it to the header identity; no pane relationship, region or navigation behavior changed.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

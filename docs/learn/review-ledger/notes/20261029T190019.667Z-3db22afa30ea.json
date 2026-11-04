@@ -1,0 +1,13 @@
+{
+  "revision": "943cf45da3d0a9e0dda607e65edfebdec998d1a6",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the registry delta: untrusted-conversation-marks.json is state alongside conversation acknowledgements, so update snapshots restore its security marks with conversation state. The home schema marker and live/external exclusions are unchanged; backup/restore claims remain accurate. Source review only; inherited repo scans passed 693 tests.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed the home registry addition against Backup and update rollback. The durable untrusted-conversation mark is state; media-tools remains external and omitted by both backup kinds, and transcript/import state remains included. No speech acquisition or consent behavior changed. Source review only.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed home backup and restore claims against the added state classification for untrusted-conversation-marks.json. The mark and durable JSON sidecars follow conversation state; live roots, media-tools exclusions, schema restoration, and CLI flags are unchanged. No prose update needed for this additive classification. Source review only.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed Identity and the reserved-route owner: GET /api/plugins/recovery-backups is mounted by plugin-install-routes.ts, now reserved in STATION_RESERVED_PLUGIN_IDENTITIES and its independent inventory. The existing claim that installation refuses reserved route identities remains accurate. The portable name grammar and manifest schema are unchanged. Inherited focused guards and all 693 repo-scan tests passed; no live installation claim.","inputs":["docs/reference/agent-plugins.md","src-server/services/plugins/reserved-plugin-identities.ts"]}
+  ]
+}

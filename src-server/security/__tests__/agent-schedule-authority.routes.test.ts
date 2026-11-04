@@ -16,7 +16,10 @@
  * operator, `host-` runs unconfined; each session's conversation is
  * `conv-<session id>`.
  */
+
+import { writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import {
@@ -27,6 +30,15 @@ import {
   AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
 } from '@kontourai/station-contracts/agent-schedule';
+import {
+  getRun as sdkGetRun,
+  listJobs as sdkListJobs,
+  listRuns as sdkListRuns,
+  getJobLogs as sdkLogs,
+  previewSchedule as sdkPreview,
+  getSchedulerStats as sdkStats,
+  getSchedulerStatus as sdkStatus,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import {
   afterAll,
@@ -37,13 +49,22 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
-import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createNotificationRoutes } from '../../routes/operations/notifications.js';
+import {
+  createSchedulerReadProjection,
+  createSchedulerRoutes,
+} from '../../routes/operations/scheduler.js';
 import {
   createAgentScheduleRoutes,
   WAKE_UP_NEEDS_APPROVAL_COPY,
 } from '../../routes/orchestration/agent-schedule.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { resolveDispatchActor } from '../../routes/orchestration/orchestration.js';
+import { createRunRoutes } from '../../routes/orchestration/runs.js';
+import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import {
   createAgentDispatchActorResolver,
@@ -61,10 +82,17 @@ import {
   admitWakeUpAtFire,
   composeAgentSchedule,
 } from '../../runtime/routes/agent-schedule-composition.js';
+import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
 } from '../../services/identity/principal-resolver.js';
+import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  installServerLogSink,
+  resetServerLogSinkForTests,
+} from '../../services/infra/server-log-store.js';
+import { NotificationService } from '../../services/notifications/notification-service.js';
 import {
   type AgentScheduleStore,
   AgentWakeUpDelivery,
@@ -72,13 +100,19 @@ import {
   wakeUpClientTurnId,
   wakeUpMessage,
 } from '../../services/orchestration/agent-schedule.js';
-import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { createSqliteCoordinatorStore } from '../../services/orchestration/coordinator-session.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
+import { RunService } from '../../services/orchestration/run-service.js';
 import {
   createSqliteThreadInboxStore,
   ThreadInboxDelivery,
   type ThreadInboxStore,
 } from '../../services/orchestration/thread-inbox.js';
-import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
+import type { ScheduledConversationRunInput } from '../../services/scheduling/scheduled-conversation-runs.js';
+import { conversationAutomationsFrom } from '../../services/scheduling/scheduled-conversation-runs.js';
+import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
+import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
+import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -86,6 +120,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../runtime-request-security.js';
 import { createStationControlAuthorityGuard } from '../station-control-authority-guard.js';
 import { __resetStationServerSelfAttestationForTests } from '../station-server-scope.js';
@@ -126,6 +161,8 @@ const facts = {
   mayNotSend: new Set<string>(),
   /** Conversations the person may not read as a whole. */
   mayNotRead: new Set<string>(),
+  /** What the scheduler lists as targeting each conversation. */
+  automations: new Map<string, string[]>(),
   /** Agents and their Project slug (`null`: global); absent: no such agent. */
   agents: new Map<string, string | null>([
     ['writer', 'project-a'],
@@ -182,6 +219,7 @@ interface World {
   inboxStore: ThreadInboxStore;
   inbox: ThreadInboxDelivery;
   composition: AgentScheduleComposition;
+  pictureStore: ReturnType<typeof createSqliteCoordinatorStore>;
   refusals: string[];
   /** Every hand-off to the inbox, with the inbox's own answer. */
   submitted: Array<{
@@ -194,8 +232,23 @@ interface World {
   close(): Promise<void>;
 }
 
-async function boot(options: { hosted: boolean }): Promise<World> {
+async function boot(options: {
+  hosted: boolean;
+  /** A real scheduler instead of the create-only stub. */
+  scheduler?: SchedulerService;
+  notifications?: NotificationService;
+  logDirectory?: string;
+  diagnosticGrantStore?: UnattendedGrantStore;
+  /**
+   * The guard's grant-store answer. Production answers false for a job that
+   * holds no unattended grants (conversation runs need none); absent, the
+   * guard fails closed.
+   */
+  retargetsGrantedJob?: () => boolean;
+}): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
+  const pictureDb = new DatabaseSync(':memory:');
+  const pictureStore = createSqliteCoordinatorStore(pictureDb as never);
   const inboxStore = createSqliteThreadInboxStore(
     new DatabaseSync(':memory:') as never,
   );
@@ -221,7 +274,7 @@ async function boot(options: { hosted: boolean }): Promise<World> {
   const addJob = vi.fn(
     async (opts: { name: string }) => `Job '${opts.name}' created`,
   );
-  const composition = composeAgentSchedule({
+  const composition: AgentScheduleComposition = composeAgentSchedule({
     store,
     threadInbox: options.hosted
       ? undefined
@@ -245,7 +298,9 @@ async function boot(options: { hosted: boolean }): Promise<World> {
       getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
     // A person's credential request is current; nothing else is a person.
     isRequestPrincipalCurrent: (request) =>
-      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'credential',
+      ['credential', 'internal'].includes(
+        getRuntimeAuthenticatedRequestPrincipal(request)?.kind ?? '',
+      ),
     requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
     readAuthorityFor: () => ({ mode: 'personal' }) as never,
     tenantFor: () => undefined,
@@ -262,6 +317,20 @@ async function boot(options: { hosted: boolean }): Promise<World> {
       if (!facts.agents.has(slug)) throw new Error('no such agent');
       return facts.agents.get(slug) ?? undefined;
     },
+    conversationAutomations: async (conversationId, c) =>
+      options.scheduler
+        ? conversationAutomationsFrom(
+            await createSchedulerReadProjection(
+              options.scheduler,
+              composition,
+            ).visibleJobs(c),
+            conversationId,
+          )
+        : (facts.automations.get(conversationId) ?? []).map((name) => ({
+            name,
+            enabled: true,
+            consecutiveFailures: 0,
+          })),
     logger: quietLogger(),
     now: () => clock.now,
   });
@@ -273,7 +342,10 @@ async function boot(options: { hosted: boolean }): Promise<World> {
     security: {
       verifyCredential: (candidate: string) =>
         candidate === OPERATOR_CREDENTIAL,
-      resolveGrantedScope: () => 'orchestration:read orchestration:operate',
+      resolveGrantedScope: () =>
+        options.diagnosticGrantStore
+          ? 'orchestration:read orchestration:operate access:manage'
+          : 'orchestration:read orchestration:operate',
       resolveCredentialAuthority: () => 'operator-credential',
       now: () => Date.now(),
       maxFailures: 1_000,
@@ -290,6 +362,9 @@ async function boot(options: { hosted: boolean }): Promise<World> {
       isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
       // The composition's own read, as production wires it.
       wakeUpConversation: composition.wakeUpConversation,
+      ...(options.retargetsGrantedJob
+        ? { retargetsGrantedJob: options.retargetsGrantedJob }
+        : {}),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -312,13 +387,103 @@ async function boot(options: { hosted: boolean }): Promise<World> {
     createAgentScheduleRoutes(composition.routeDeps),
   );
   app.route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: options.hosted ? undefined : pictureStore,
+      person: composition.person,
+      dispatchActor: () => ({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
+      picturePreview: { select: ({ enabled }) => enabled() },
+      isInternalRequest: (request) =>
+        getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
+      resolvePictureCaller: (request) =>
+        resolveStationControlCallerForRequest(request, resolveRecord),
+      agentMayRead: (caller, conversationId) =>
+        !stationControlScopeRefusal(
+          caller,
+          scope.target(
+            { kind: 'conversation', conversationId, remote: false },
+            'view',
+          ),
+          (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
+      now: () => clock.now,
+    }),
+  );
+  app.route(
     '/scheduler',
     createSchedulerRoutes(
-      { addJob } as unknown as SchedulerService,
+      options.scheduler ??
+        ({ addJob, listJobs: async () => [] } as unknown as SchedulerService),
       quietLogger(),
-      { jobProposals: composition.jobProposals },
+      {
+        jobProposals: composition.jobProposals,
+        admitAutomationTarget: composition.admitAutomationTarget,
+        admitAutomationJob: composition.admitAutomationJob,
+        mayReadAutomationJob: composition.mayReadAutomationJob,
+        mayReadAutomationRun: composition.mayReadAutomationRun,
+      },
     ),
   );
+  if (options.logDirectory)
+    app.route(
+      '/api/diagnostics',
+      createDiagnosticsRoutes(
+        { generateBundle: async () => ({}) } as never,
+        quietLogger(),
+        createServerLogReader({ directory: options.logDirectory }),
+        {
+          agentGrant: (sessionId) =>
+            options.diagnosticGrantStore?.isGranted(
+              JSON.stringify({ kind: 'diagnostics-session', sessionId }),
+              'station-control:read_logs',
+            ) ?? false,
+        },
+      ),
+    );
+  if (options.diagnosticGrantStore)
+    app.route(
+      '/api/agents/unattended-grants',
+      createUnattendedGrantRoutes(options.diagnosticGrantStore, {
+        operatorIdentityForRequest: (c) =>
+          getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority ===
+          'operator-credential'
+            ? LOCAL_OPERATOR_PRINCIPAL_ID
+            : undefined,
+      }),
+    );
+  if (options.notifications)
+    app.route(
+      '/notifications',
+      createNotificationRoutes(options.notifications, {
+        readAuthorityForRequest: () =>
+          ({ mode: 'personal', userId: LOCAL_OPERATOR_PRINCIPAL_ID }) as never,
+        canReadSession: (sessionId) => !facts.mayNotRead.has(sessionId),
+      }),
+    );
+  if (options.scheduler) {
+    const runService = new RunService(
+      {
+        listAgentRuns: async () => [],
+        readAgentRun: async () => null,
+      } as never,
+      options.scheduler,
+      { list: () => ({ kind: 'available', runs: [] }) } as never,
+      { list: () => ({ kind: 'available', runs: [] }) } as never,
+    );
+    app.route(
+      '/api/runs',
+      createRunRoutes(
+        runService,
+        quietLogger(),
+        () => ({ mode: 'personal' }) as never,
+        async (c) =>
+          composition.scheduleRunReadFilter(
+            c,
+            await options.scheduler!.listJobs(),
+          ),
+      ),
+    );
+  }
   return {
     baseUrl,
     port,
@@ -326,11 +491,13 @@ async function boot(options: { hosted: boolean }): Promise<World> {
     inboxStore,
     inbox,
     composition,
+    pictureStore,
     refusals,
     submitted,
     addJob,
     close: async () => {
       composition.delivery?.stop();
+      pictureDb.close();
       inbox.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
@@ -383,6 +550,7 @@ beforeEach(() => {
   facts.hostNow.clear();
   facts.mayNotSend.clear();
   facts.mayNotRead.clear();
+  facts.automations.clear();
 });
 
 type Channel = 'bound' | 'delegated-custody' | 'bearer-exposed';
@@ -453,6 +621,45 @@ const PROPOSALS = '/api/orchestration/station-control/job-proposals';
 const FIVE_MINUTES = 5 * 60_000;
 const schedulePath = (conversationId: string) =>
   `/api/orchestration/agent-schedule/${conversationId}`;
+
+describe('coordinator working picture authority', () => {
+  test('only the bound designated caller writes, and a revoked source disappears', async () => {
+    const sessionId = nextSession();
+    world.pictureStore.designate({
+      conversationId: `conv-${sessionId}`,
+      actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      replace: true,
+      now: clock.now,
+    });
+    const path = '/api/orchestration/station-control/coordinator-picture';
+    const entry = {
+      conversationId: 'conv-work',
+      status: 'waiting',
+      summary: 'Needs review',
+    };
+    expect(
+      (await agent('bearer-exposed', sessionId, 'POST', path, entry)).status,
+    ).not.toBe(200);
+    expect(
+      (await agent('bound', nextSession(), 'POST', path, entry)).status,
+    ).toBe(404);
+    expect((await agent('bound', sessionId, 'POST', path, entry)).status).toBe(
+      200,
+    );
+    expect(
+      (await personRequest('GET', '/api/orchestration/coordinator/picture'))
+        .body,
+    ).toMatchObject({ data: { items: [{ summary: 'Needs review' }] } });
+    facts.mayNotRead.add('conv-work');
+    expect((await agent('bound', sessionId, 'GET', path)).body).toMatchObject({
+      data: { items: [] },
+    });
+    expect(
+      (await personRequest('GET', '/api/orchestration/coordinator/picture'))
+        .body,
+    ).toMatchObject({ data: { items: [] } });
+  });
+});
 
 describe('schedule_wake_up: the caller’s own chat, bounded', () => {
   for (const channel of [
@@ -873,16 +1080,22 @@ describe('the person’s view and Cancel', () => {
     }
   });
 
-  test('an agent cannot reach the person’s leaves at all', async () => {
+  test('an agent may read only its own conversation schedule', async () => {
     const sessionId = nextSession();
-    const response = await agent(
+    const own = await agent(
       'bound',
       sessionId,
       'GET',
       `/api/orchestration/agent-schedule/conv-${sessionId}`,
     );
-    expect(response.status).toBe(403);
-    expect(response.body.code).toBe('station_control_route_unmapped');
+    expect(own.status).toBe(200);
+    const other = await agent(
+      'bound',
+      sessionId,
+      'GET',
+      '/api/orchestration/agent-schedule/conv-victim',
+    );
+    expect(other.status).toBe(403);
   });
 });
 
@@ -892,6 +1105,12 @@ const PROPOSED = {
   prompt: 'Summarize yesterday.',
   agent: 'writer',
 };
+
+/** The job a proposal from this session records: it runs in that chat. */
+const proposedFor = (sessionId: string) => ({
+  ...PROPOSED,
+  target: { kind: 'conversation', conversationId: `conv-${sessionId}` },
+});
 
 describe('propose_job: a person approves under their own credential, or declines', () => {
   async function propose(channel: Channel = 'delegated-custody') {
@@ -915,7 +1134,11 @@ describe('propose_job: a person approves under their own credential, or declines
       `/api/orchestration/agent-schedule/conv-${sessionId}`,
     );
     expect(read.body.data.jobProposals).toEqual([
-      expect.objectContaining({ id, job: PROPOSED, state: 'open' }),
+      expect.objectContaining({
+        id,
+        job: proposedFor(sessionId),
+        state: 'open',
+      }),
     ]);
     expect(addJob).not.toHaveBeenCalled();
   });
@@ -937,15 +1160,19 @@ describe('propose_job: a person approves under their own credential, or declines
   });
 
   test('Approve: the person’s scheduler create, naming the proposal, creates exactly that job and records it approved', async () => {
-    const { id } = await propose();
+    const { sessionId: proposer, id } = await propose();
     const response = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...proposedFor(proposer),
       proposalId: id,
     });
     expect(response.status).toBe(200);
     expect(addJob).toHaveBeenCalledTimes(1);
-    // The proposal id is the route's, never the scheduler's.
-    expect(addJob.mock.calls[0]?.[0]).toEqual(PROPOSED);
+    // The proposal id is the route's, never the scheduler's. The job runs in
+    // the proposing chat (any engine), acting as the approving person.
+    expect(addJob.mock.calls[0]?.[0]).toEqual({
+      ...proposedFor(proposer),
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
     expect(store.jobProposal(id)).toMatchObject({ state: 'approved' });
     // The chat lists the job it now has, and no longer the open card.
     const { sessionId } = {
@@ -961,7 +1188,7 @@ describe('propose_job: a person approves under their own credential, or declines
     expect(read.body.data.jobProposals).toEqual([]);
     // Approving twice creates nothing more.
     const again = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...proposedFor(proposer),
       proposalId: id,
     });
     expect(again.status).toBe(409);
@@ -970,11 +1197,18 @@ describe('propose_job: a person approves under their own credential, or declines
   });
 
   test('an Approve whose body is not the proposed job creates nothing', async () => {
-    const { id } = await propose();
+    const { sessionId: proposer, id } = await propose();
+    const proposed = proposedFor(proposer);
     for (const body of [
-      { ...PROPOSED, prompt: 'Something else.' },
-      { ...PROPOSED, trustAllTools: true },
-      { ...PROPOSED, schedule: { kind: 'every', everyMs: 60_000 } },
+      { ...proposed, prompt: 'Something else.' },
+      { ...proposed, trustAllTools: true },
+      { ...proposed, schedule: { kind: 'every', everyMs: 60_000 } },
+      // Its runs land where it was proposed, nowhere else.
+      {
+        ...proposed,
+        target: { kind: 'conversation', conversationId: 'conv-elsewhere' },
+      },
+      PROPOSED,
     ]) {
       const response = await personRequest('POST', '/scheduler/jobs', {
         ...body,
@@ -1051,6 +1285,131 @@ describe('add_job’s refusal names what the agent can do instead', () => {
     expect(response.body.error).toContain('schedule_wake_up');
     expect(response.body.error).toContain('propose_job');
     expect(addJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('automation targets: an agent runs one only in its own chat', () => {
+  const JOB = {
+    name: 'repo-digest',
+    schedule: { kind: 'every', everyMs: 3_600_000 },
+    prompt: 'Summarize the repository.',
+  };
+
+  test('a bound operator’s add_job naming another conversation is refused by the guard', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target: { kind: 'conversation', conversationId: 'conv-someone-else' },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ reason: 'other-conversation' });
+    expect(refusals).toEqual(['station_control_out_of_scope']);
+    expect(addJob).not.toHaveBeenCalled();
+  });
+
+  test('a dedicated conversation is a person’s choice, not an agent’s', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target: { kind: 'dedicated', agent: 'writer' },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(addJob).not.toHaveBeenCalled();
+  });
+
+  test('its own conversation is admitted and runs as its dispatch actor', async () => {
+    const sessionId = nextSession();
+    const target = {
+      kind: 'conversation',
+      conversationId: `conv-${sessionId}`,
+    };
+    const response = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target,
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(addJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target,
+        createdBy: expect.objectContaining({
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        }),
+      }),
+    );
+  });
+
+  test('an update cannot retarget a job to another conversation either', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'PUT',
+      '/scheduler/jobs/repo-digest',
+      { target: { kind: 'conversation', conversationId: 'conv-someone-else' } },
+    );
+    // Changing a job's target changes whose conversation its runs act in,
+    // so the guard refuses it before it reaches the route, whatever rule
+    // answers first (a retarget fails closed as a person's step).
+    expect(response.status).toBe(403);
+    expect([
+      'station_control_person_only',
+      'station_control_out_of_scope',
+    ]).toContain(response.body.code);
+  });
+
+  test('a person may target only a conversation they may send to', async () => {
+    facts.mayNotSend.add('conv-closed');
+    const refused = await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-closed' },
+    });
+    expect(refused.status).toBe(404);
+    expect(refused.body.code).toBe('automation_target_not_found');
+    expect(addJob).not.toHaveBeenCalled();
+    const admitted = await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-open' },
+    });
+    expect(admitted.status).toBe(200);
+    expect(addJob.mock.calls[0]?.[0]).toMatchObject({
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
+  });
+
+  test('a body cannot choose who the runs act as', async () => {
+    await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-open' },
+      createdBy: { userId: 'someone-else' },
+    });
+    expect(addJob.mock.calls[0]?.[0]).toMatchObject({
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
+  });
+
+  test('the chat’s read lists automations targeting it beside its check-backs', async () => {
+    const sessionId = nextSession();
+    facts.automations.set(`conv-${sessionId}`, ['repo-digest']);
+    const read = await personRequest('GET', schedulePath(`conv-${sessionId}`));
+    expect(read.status).toBe(200);
+    expect(read.body.data.automations).toEqual([
+      { name: 'repo-digest', enabled: true, consecutiveFailures: 0 },
+    ]);
   });
 });
 
@@ -1414,7 +1773,7 @@ describe('Approve claims the proposal before the job is created', () => {
         }),
     );
     const approving = personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
@@ -1425,7 +1784,7 @@ describe('Approve claims the proposal before the job is created', () => {
     expect(declined.body.data).toEqual({ declined: false });
     // A second Approve meanwhile is refused too.
     const twice = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(twice.body.code).toBe('job_proposal_settled');
@@ -1441,7 +1800,7 @@ describe('Approve claims the proposal before the job is created', () => {
       throw new Error('scheduler unavailable');
     });
     const response = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(response.status).toBe(500);
@@ -1449,7 +1808,7 @@ describe('Approve claims the proposal before the job is created', () => {
     expect(store.jobProposalState(id)).toBe('open');
     // So the person can try again.
     const again = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(again.status).toBe(200);
@@ -1549,7 +1908,7 @@ describe('startup reopens only Approves an earlier process claimed', () => {
         }),
     );
     const approving = personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
@@ -1741,5 +2100,1154 @@ describe('hosted: nothing to approve with, so nothing is offered', () => {
     );
     expect(approve.status).toBe(404);
     expect(hosted.addJob).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fix round P1: every action on an existing automation that runs in a
+ * conversation is admitted against its STORED target and creator, whatever
+ * the body names. Real boundary, guard, composition, scheduler routes,
+ * BuiltinScheduler and SQLite ledger; only the conversation runner and the
+ * orchestration permission facts are scripted. The guard is given the
+ * production answer for an ungranted job (`retargetsGrantedJob: false`), so
+ * the route's own admission is what decides.
+ */
+describe('acting on an automation is admitted against its stored target', () => {
+  const makeTempDir = trackTempDirs();
+
+  async function realWorld() {
+    const runs: ScheduledConversationRunInput[] = [];
+    const directory = makeTempDir('automation-authority-');
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        turnAdapter: { invoke: vi.fn() },
+        conversationRuns: {
+          run: async (input) => {
+            runs.push(input);
+            return {
+              kind: 'completed',
+              output: '{}',
+              conversationId: 'conv-victim',
+            };
+          },
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      retargetsGrantedJob: () => false,
+    });
+    await scheduler.addJob({
+      name: 'victim-job',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'Original',
+      target: { kind: 'conversation', conversationId: 'conv-victim' },
+      createdBy: { userId: 'victim-person' },
+    });
+    return {
+      scheduler,
+      runs,
+      directory,
+      at: { baseUrl: served.baseUrl, port: served.port },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+      },
+    };
+  }
+
+  test('another chat’s agent cannot rewrite the prompt by leaving target out (the reported injection)', async () => {
+    const world = await realWorld();
+    try {
+      const response = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Injected instructions' },
+        world.at,
+      );
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('automation_target_out_of_scope');
+      await world.scheduler.runJob('victim-job');
+      expect(world.runs[0]).toMatchObject({
+        prompt: 'Original',
+        createdBy: { userId: 'victim-person' },
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test.each([
+    ['PUT', '/scheduler/jobs/victim-job/enable'],
+    ['PUT', '/scheduler/jobs/victim-job/disable'],
+    ['POST', '/scheduler/jobs/victim-job/run'],
+    ['DELETE', '/scheduler/jobs/victim-job'],
+  ])('another chat’s agent cannot %s %s', async (method, path) => {
+    const world = await realWorld();
+    try {
+      const response = await agent(
+        'bound',
+        nextSession(),
+        method,
+        path,
+        undefined,
+        world.at,
+      );
+      expect(response.status).toBe(403);
+      expect(world.runs).toHaveLength(0);
+      expect((await world.scheduler.listJobs()).map((job) => job.name)).toEqual(
+        ['victim-job'],
+      );
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the agent of the target chat may edit and run it, and the creator stays', async () => {
+    const world = await realWorld();
+    try {
+      // `conv-victim` is the conversation of session `victim`.
+      const edited = await agent(
+        'bound',
+        'victim',
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Revised' },
+        world.at,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await agent(
+        'bound',
+        'victim',
+        'POST',
+        '/scheduler/jobs/victim-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(200);
+      expect(world.runs[0]).toMatchObject({
+        prompt: 'Revised',
+        createdBy: { userId: 'victim-person' },
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a person who may not send to the target chat cannot edit or run it', async () => {
+    const world = await realWorld();
+    facts.mayNotSend.add('conv-victim');
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Injected instructions' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(404);
+      expect(edited.body.code).toBe('automation_not_found');
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/victim-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(world.runs).toHaveLength(0);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a person’s save of the same target keeps the stored creator', async () => {
+    const world = await realWorld();
+    try {
+      const saved = await personRequest(
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { target: { kind: 'conversation', conversationId: 'conv-victim' } },
+        world.at.baseUrl,
+      );
+      expect(saved.status).toBe(200);
+      expect((await world.scheduler.listJobs())[0]!.createdBy).toEqual({
+        userId: 'victim-person',
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test.each(['bound', 'delegated-custody', 'bearer-exposed'] as const)(
+    '%s list must not disclose an unreadable chat prompt',
+    async (channel) => {
+      const world = await realWorld();
+      facts.mayNotRead.add('conv-victim');
+      facts.mayNotSend.add('conv-victim');
+      try {
+        const response = await agent(
+          channel,
+          nextSession(),
+          'GET',
+          '/scheduler/jobs',
+          undefined,
+          world.at,
+        );
+        expect(response.status).toBe(200);
+        expect(
+          response.body.data.filter((job: any) => job.name === 'victim-job'),
+        ).toEqual([]);
+      } finally {
+        await world.close();
+      }
+    },
+  );
+
+  test('real HTTP MCP list_jobs must not disclose another chat prompt', async () => {
+    const world = await realWorld();
+    await world.scheduler.runJob('victim-job');
+    expect(await world.scheduler.getJobLogs('victim-job')).toMatchObject([
+      { runTarget: { kind: 'conversation', conversationId: 'conv-victim' } },
+    ]);
+    facts.mayNotRead.add('conv-victim');
+    facts.mayNotSend.add('conv-victim');
+    try {
+      const token = mintStationControlMcpHeaderAuth(
+        world.at.port,
+        nextSession(),
+      ).token;
+      const call = async (id: number, method: string, params: object) => {
+        const response = await fetch(
+          `${world.at.baseUrl}/mcp/station-control`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              accept: 'application/json, text/event-stream',
+              authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+          },
+        );
+        expect(response.status).toBe(200);
+        const body = await response.text();
+        const data = body.split('\n').find((line) => line.startsWith('data: '));
+        return JSON.parse(data ? data.slice(6) : body);
+      };
+      await call(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'delta-review', version: '1' },
+      });
+      const result = await call(2, 'tools/call', {
+        name: 'list_jobs',
+        arguments: {},
+      });
+      expect(result.result?.isError).not.toBe(true);
+      expect(JSON.stringify(result)).not.toContain('Original');
+      for (const [id, name, args] of [
+        [3, 'get_scheduler_stats', {}],
+        [4, 'get_scheduler_status', {}],
+        [5, 'get_job_logs', { name: 'victim-job' }],
+        [6, 'preview_schedule', { cron: '* * * * *' }],
+      ] as const) {
+        const answer = await call(id, 'tools/call', { name, arguments: args });
+        expect(JSON.stringify(answer)).not.toContain('Original');
+        if (name === 'get_scheduler_stats')
+          expect(JSON.stringify(answer)).not.toContain('victim-job');
+        if (name === 'get_scheduler_status') {
+          const payload = JSON.parse(answer.result.content[0].text);
+          expect(payload.data.providers['built-in'].jobCount).toBe(0);
+        }
+        if (name === 'get_job_logs') {
+          const payload = JSON.parse(answer.result.content[0].text);
+          expect(payload.success).toBe(false);
+        }
+        if (name === 'preview_schedule')
+          expect(answer.result?.isError).not.toBe(true);
+      }
+    } finally {
+      await world.close();
+    }
+  });
+
+  test.each(['bound', 'delegated-custody', 'bearer-exposed'] as const)(
+    '%s agent reads its own run logs',
+    async (channel) => {
+      const world = await realWorld();
+      try {
+        await world.scheduler.runJob('victim-job');
+        const response = await agent(
+          channel,
+          'victim',
+          'GET',
+          '/scheduler/jobs/victim-job/logs',
+          undefined,
+          world.at,
+        );
+        expect(response.status).toBe(200);
+        expect(response.body.data).toHaveLength(1);
+      } finally {
+        await world.close();
+      }
+    },
+  );
+
+  test('SDK and HTTP run detail and output use the target of that run after retarget', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.runJob('victim-job');
+      const run = (await world.scheduler.listRunSummaries())[0]!;
+      if (!run.outputRef) throw new Error('expected persisted output');
+      await world.scheduler.editJob('victim-job', {
+        target: { kind: 'conversation', conversationId: 'conv-new' },
+      });
+      const headers = (session: string) => ({
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+          'bound',
+          session,
+          world.at.port,
+        ),
+      });
+      const old = { headers: headers('victim') };
+      const newer = { headers: headers('new') };
+      expect(await sdkListJobs(world.at.baseUrl, old)).toEqual([]);
+      expect((await sdkStats(world.at.baseUrl, old)).summary.totalJobs).toBe(0);
+      expect(
+        (await sdkStatus(world.at.baseUrl, old)).providers['built-in']!
+          .jobCount,
+      ).toBe(0);
+      expect(
+        await sdkLogs(world.at.baseUrl, 'victim-job', {}, old),
+      ).toHaveLength(1);
+      expect(
+        await sdkPreview(world.at.baseUrl, '* * * * *', 1, old),
+      ).toHaveLength(1);
+      expect(await sdkListRuns(world.at.baseUrl, old)).toHaveLength(1);
+      expect(await sdkGetRun(world.at.baseUrl, run.runId, old)).toMatchObject({
+        runId: run.runId,
+      });
+      expect(await sdkListRuns(world.at.baseUrl, newer)).toEqual([]);
+      await expect(
+        sdkGetRun(world.at.baseUrl, run.runId, newer),
+      ).rejects.toThrow();
+      const allowed = await agent(
+        'bound',
+        'victim',
+        'POST',
+        '/api/runs/output',
+        run.outputRef,
+        world.at,
+      );
+      expect(allowed.status).toBe(200);
+      expect(allowed.body.data.content).toBe('{}');
+      const denied = await agent(
+        'bound',
+        'new',
+        'POST',
+        '/api/runs/output',
+        run.outputRef,
+        world.at,
+      );
+      expect(denied.status).toBe(404);
+      const personAllowed = await personRequest(
+        'POST',
+        '/api/runs/output',
+        run.outputRef,
+        world.at.baseUrl,
+      );
+      expect(personAllowed.status).toBe(200);
+      facts.mayNotRead.add('conv-victim');
+      expect(
+        (
+          await personRequest(
+            'POST',
+            '/api/runs/output',
+            run.outputRef,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await personRequest(
+            'GET',
+            `/api/runs/${encodeURIComponent(run.runId)}`,
+            undefined,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(404);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a pre-change run is visible only to the creator who reads the current target', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.addJob({
+        name: 'old-run',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'x',
+        target: { kind: 'conversation', conversationId: 'conv-victim' },
+        createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      });
+      await world.scheduler.runJob('old-run');
+      const db = new DatabaseSync(join(world.directory, 'scheduler.sqlite'));
+      db.prepare(
+        "UPDATE scheduler_logs SET data = json_remove(data, '$.runTarget') WHERE job_name = ?",
+      ).run('old-run');
+      db.close();
+      const agentRead = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/scheduler/jobs/old-run/logs',
+        undefined,
+        world.at,
+      );
+      expect(agentRead.status).toBe(200);
+      expect(agentRead.body.data).toEqual([]);
+      const personRead = await personRequest(
+        'GET',
+        '/scheduler/jobs/old-run/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(personRead.body.data).toHaveLength(1);
+      facts.mayNotRead.add('conv-victim');
+      const denied = await personRequest(
+        'GET',
+        '/scheduler/jobs/old-run/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(denied.status).toBe(404);
+      facts.mayNotRead.delete('conv-victim');
+      await world.scheduler.runJob('victim-job');
+      const db2 = new DatabaseSync(join(world.directory, 'scheduler.sqlite'));
+      db2
+        .prepare(
+          "UPDATE scheduler_logs SET data = json_remove(data, '$.runTarget') WHERE job_name = ?",
+        )
+        .run('victim-job');
+      db2.close();
+      const notCreator = await personRequest(
+        'GET',
+        '/scheduler/jobs/victim-job/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(notCreator.body.data).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('run logs follow the target captured at claim after retargeting', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.runJob('victim-job');
+      await world.scheduler.editJob('victim-job', {
+        target: { kind: 'conversation', conversationId: 'conv-new' },
+      });
+      const oldChat = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/scheduler/jobs/victim-job/logs',
+        undefined,
+        world.at,
+      );
+      expect(oldChat.status).toBe(200);
+      expect(oldChat.body.data).toHaveLength(1);
+      expect(oldChat.body.data[0].runTarget).toEqual({
+        kind: 'conversation',
+        conversationId: 'conv-victim',
+      });
+      const newChat = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/scheduler/jobs/victim-job/logs',
+        undefined,
+        world.at,
+      );
+      expect(newChat.status).toBe(200);
+      expect(newChat.body.data).toEqual([]);
+      const newStats = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/scheduler/stats',
+        undefined,
+        world.at,
+      );
+      expect(newStats.body.data.summary.totalRuns).toBe(0);
+      const newList = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at,
+      );
+      expect(newList.body.data[0]).not.toHaveProperty('lastRun');
+      expect(newList.body.data[0]).not.toHaveProperty('lastSuccessAt');
+      expect(newList.body.data[0]).not.toHaveProperty('consecutiveFailures');
+      facts.mayNotRead.add('conv-victim');
+      const person = await personRequest(
+        'GET',
+        '/scheduler/jobs/victim-job/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(person.status).toBe(200);
+      expect(person.body.data).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test.each(['agent', 'person'] as const)(
+    '%s reads expose only accessible jobs and their logs',
+    async (caller) => {
+      const world = await realWorld();
+      facts.mayNotRead.add('conv-victim');
+      const session = nextSession();
+      const request = (path: string) =>
+        caller === 'agent'
+          ? agent('bound', session, 'GET', path, undefined, world.at)
+          : personRequest('GET', path, undefined, world.at.baseUrl);
+      try {
+        const list = await request('/scheduler/jobs');
+        expect(list.status).toBe(200);
+        expect(list.body.data).toEqual([]);
+        const stats = await request('/scheduler/stats');
+        expect(stats.status).toBe(200);
+        expect(stats.body.data.summary.totalJobs).toBe(0);
+        const status = await request('/scheduler/status');
+        expect(status.status).toBe(200);
+        expect(status.body.data.providers['built-in'].jobCount).toBe(0);
+        const logs = await request('/scheduler/jobs/victim-job/logs');
+        expect(logs.status).toBe(404);
+        const preview = await request(
+          '/scheduler/jobs/preview-schedule?cron=*%20*%20*%20*%20*',
+        );
+        expect(preview.status).toBe(200);
+        facts.mayNotRead.delete('conv-victim');
+        const allowed =
+          caller === 'agent'
+            ? await agent(
+                'bound',
+                'victim',
+                'GET',
+                '/scheduler/jobs',
+                undefined,
+                world.at,
+              )
+            : await request('/scheduler/jobs');
+        expect(
+          allowed.body.data.map((job: { name: string }) => job.name),
+        ).toContain('victim-job');
+        const allowedLogs =
+          caller === 'agent'
+            ? await agent(
+                'bound',
+                'victim',
+                'GET',
+                '/scheduler/jobs/victim-job/logs',
+                undefined,
+                world.at,
+              )
+            : await request('/scheduler/jobs/victim-job/logs');
+        expect(allowedLogs.status).toBe(200);
+      } finally {
+        await world.close();
+      }
+    },
+  );
+  test('inaccessible targeted failure must not leak through notifications', async () => {
+    const directory = makeTempDir('round2-notifications-');
+    const bus = new EventBus();
+    const frames: unknown[] = [];
+    bus.subscribe((frame) => frames.push(frame));
+    const notifications = new NotificationService(bus, directory, 999_999);
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        turnAdapter: { invoke: vi.fn() },
+        notificationService: notifications,
+        conversationRuns: {
+          run: async () => ({
+            kind: 'failed',
+            error: 'private prompt marker round2-secret',
+            conversationId: 'conv-victim',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      notifications,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'private-job-name',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'private prompt marker round2-secret',
+        target: { kind: 'conversation', conversationId: 'conv-victim' },
+        createdBy: { userId: 'victim-person' },
+      });
+      for (let index = 0; index < 5; index++)
+        await scheduler.runJob('private-job-name');
+      await notifications.schedule('scheduler', {
+        category: 'external-monitor',
+        title: 'private-job-name monitor',
+        body: 'round2-secret',
+        dedupeTag: 'monitor:private-job-name',
+        metadata: { jobName: 'private-job-name' },
+      });
+      facts.mayNotRead.add('conv-victim');
+      expect(
+        (
+          await personRequest(
+            'GET',
+            '/scheduler/jobs',
+            undefined,
+            served.baseUrl,
+          )
+        ).body.data,
+      ).toEqual([]);
+      expect(
+        (await personRequest('GET', '/api/runs', undefined, served.baseUrl))
+          .body.data,
+      ).toEqual([]);
+      const result = await personRequest(
+        'GET',
+        '/notifications',
+        undefined,
+        served.baseUrl,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data.length).toBeGreaterThanOrEqual(7);
+      for (const projected of [result.body, frames]) {
+        expect(JSON.stringify(projected)).not.toContain('round2-secret');
+        expect(JSON.stringify(projected)).not.toContain('private-job-name');
+      }
+      expect(
+        result.body.data.map(
+          (notification: { title: string }) => notification.title,
+        ),
+      ).toContain('An automation failed');
+      expect(
+        result.body.data.map(
+          (notification: { title: string }) => notification.title,
+        ),
+      ).toContain('An automation monitor needs attention');
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      await notifications.shutdown();
+    }
+  });
+
+  test('retargeted conversation schedule must not expose old chat run fields', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.runJob('victim-job');
+      await world.scheduler.editJob('victim-job', {
+        target: { kind: 'conversation', conversationId: 'conv-new' },
+      });
+      const filtered = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at,
+      );
+      expect(filtered.body.data[0]).not.toHaveProperty('lastSuccessAt');
+      expect(filtered.body.data[0]).not.toHaveProperty('lastRunMs');
+      const result = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/api/orchestration/agent-schedule/conv-new',
+        undefined,
+        world.at,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data.automations[0]).not.toHaveProperty(
+        'lastSuccessAt',
+      );
+      expect(result.body.data.automations[0]).not.toHaveProperty(
+        'consecutiveFailures',
+      );
+      facts.mayNotRead.add('conv-victim');
+      const person = await personRequest(
+        'GET',
+        '/api/orchestration/agent-schedule/conv-new',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(person.status).toBe(200);
+      expect(person.body.data.automations[0]).not.toHaveProperty(
+        'lastSuccessAt',
+      );
+      expect(person.body.data.automations[0]).not.toHaveProperty(
+        'consecutiveFailures',
+      );
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('creatorless legacy job remains inspectable by the operator', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.addJob({
+        name: 'legacy',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'legacy operator prompt',
+      });
+      await world.scheduler.runJob('legacy');
+      const db = new DatabaseSync(join(world.directory, 'scheduler.sqlite'));
+      db.prepare(
+        "UPDATE scheduler_logs SET data = json_remove(data, '$.runTarget') WHERE job_name = ?",
+      ).run('legacy');
+      db.close();
+      expect((await world.scheduler.getJobLogs('legacy')).length).toBe(1);
+      const jobs = await personRequest(
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(
+        jobs.body.data.find((job: any) => job.name === 'legacy').prompt,
+      ).toBe('legacy operator prompt');
+      const agentJobs = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at,
+      );
+      expect(
+        agentJobs.body.data.some((job: any) => job.name === 'legacy'),
+      ).toBe(false);
+      const result = await personRequest(
+        'GET',
+        '/scheduler/jobs/legacy/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data).toHaveLength(1);
+      const runs = await personRequest(
+        'GET',
+        '/api/runs?source=schedule',
+        undefined,
+        world.at.baseUrl,
+      );
+      const legacy = runs.body.data.find(
+        (run: { sourceId: string }) => run.sourceId === 'legacy',
+      );
+      expect(legacy).toBeDefined();
+      expect(
+        (
+          await personRequest(
+            'GET',
+            `/api/runs/${encodeURIComponent(legacy.runId)}`,
+            undefined,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(legacy.outputRef).toBeDefined();
+      expect(
+        (
+          await personRequest(
+            'POST',
+            '/api/runs/output',
+            legacy.outputRef,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await agent(
+            'bound',
+            'victim',
+            'GET',
+            `/api/runs/${encodeURIComponent(legacy.runId)}`,
+            undefined,
+            world.at,
+          )
+        ).status,
+      ).toBe(404);
+    } finally {
+      await world.close();
+    }
+  });
+});
+
+describe('round3 independent reviewer probes', () => {
+  const makeTempDir = trackTempDirs();
+
+  test('a different conversation agent must not read the hidden job through diagnostic logs', async () => {
+    const directory = makeTempDir('round3-log-probe-');
+    const logDirectory = join(directory, 'logs');
+    installServerLogSink({ directory: logDirectory });
+    const bus = new EventBus();
+    const notifications = new NotificationService(bus, directory, 999_999);
+    const scheduler = new SchedulerService({
+      logger: createLogger({ name: 'round3-scheduler', level: 'info' }),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        notificationService: notifications,
+        turnAdapter: { invoke: vi.fn() },
+        conversationRuns: {
+          run: async () => ({
+            kind: 'failed',
+            error: 'round3-private-answer-marker',
+            conversationId: 'conv-victim',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      notifications,
+      logDirectory,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'round3-private-job',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'round4-private-prompt',
+        target: { kind: 'conversation', conversationId: 'conv-victim' },
+        createdBy: { userId: 'victim-person' },
+      });
+      for (let index = 0; index < 5; index++)
+        await scheduler.runJob('round3-private-job');
+      const at = { baseUrl: served.baseUrl, port: served.port };
+      const listed = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        at,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body.data).toEqual([]);
+      const logs = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs/round3-private-job/logs',
+        undefined,
+        at,
+      );
+      expect(logs.status).toBe(404);
+      const bell = await notifications.list();
+      expect(JSON.stringify(bell)).not.toContain('round3-private');
+      const direct = await createServerLogReader({
+        directory: logDirectory,
+      }).query({});
+      expect(direct.entries.length).toBeGreaterThanOrEqual(10);
+      expect(JSON.stringify(direct)).not.toContain('round3-private');
+      expect(JSON.stringify(direct)).not.toContain('round4-private-prompt');
+      expect(
+        direct.entries.some(
+          (entry) =>
+            entry.msg === 'Scheduler job failed' &&
+            entry.errorClass === 'SchedulerRunFailure' &&
+            entry['station.scheduler.target_kind'] === 'conversation',
+        ),
+      ).toBe(true);
+      expect(
+        direct.entries.some(
+          (entry) =>
+            entry.msg === 'Automation disabled after repeated failures' &&
+            entry.targetKind === 'conversation' &&
+            entry.errorClass === 'SchedulerFatigue',
+        ),
+      ).toBe(true);
+      expect(
+        (await scheduler.getJobLogs('round3-private-job'))[0]!.error,
+      ).toContain('round3-private-answer-marker');
+      const diagnostics = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/api/diagnostics/logs?q=round3-private',
+        undefined,
+        at,
+      );
+      expect(diagnostics.status).toBe(403);
+      expect(JSON.stringify(diagnostics.body)).not.toContain('round3-private');
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      await notifications.shutdown();
+      resetServerLogSinkForTests();
+    }
+  });
+});
+
+describe('diagnostics agent authority', () => {
+  const makeTempDir = trackTempDirs();
+  test('an agent cannot read diagnostics without an explicit operator grant', async () => {
+    const served = await boot({
+      hosted: false,
+      logDirectory: makeTempDir('diagnostics-agent-'),
+    });
+    try {
+      for (const channel of [
+        'bound',
+        'delegated-custody',
+        'bearer-exposed',
+      ] as const) {
+        const response = await agent(
+          channel,
+          'victim',
+          'GET',
+          '/api/diagnostics/logs',
+          undefined,
+          served,
+        );
+        expect(response.status).toBe(403);
+      }
+      const person = await personRequest(
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served.baseUrl,
+      );
+      expect(person.status).toBe(200);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test('an operator can grant and revoke diagnostics for one bound agent session', async () => {
+    const root = makeTempDir('diagnostics-grant-');
+    const directory = makeTempDir('diagnostics-grant-logs-');
+    writeFileSync(
+      join(directory, 'server-2026-10-29.ndjson'),
+      JSON.stringify({
+        level: 'info',
+        timestamp: '2026-10-29T00:00:00.000Z',
+        msg: 'private conversation marker',
+      }) + '\n',
+    );
+    const store = new UnattendedGrantStore(root);
+    const served = await boot({
+      hosted: false,
+      logDirectory: directory,
+      diagnosticGrantStore: store,
+    });
+    const grant = {
+      principalKey: JSON.stringify({
+        kind: 'diagnostics-session',
+        sessionId: 'victim',
+      }),
+      toolName: 'station-control:read_logs',
+    };
+    try {
+      const denied = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served,
+      );
+      expect(denied.status).toBe(403);
+      const attempted = await agent(
+        'bound',
+        'victim',
+        'POST',
+        '/api/agents/unattended-grants',
+        grant,
+        served,
+      );
+      expect(attempted.status).toBeGreaterThanOrEqual(400);
+      const granted = await personRequest(
+        'POST',
+        '/api/agents/unattended-grants',
+        grant,
+        served.baseUrl,
+      );
+      expect(granted.status, JSON.stringify(granted.body)).toBe(200);
+      const allowed = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served,
+      );
+      expect(allowed.status).toBe(200);
+      expect(JSON.stringify(allowed.body)).toContain(
+        'private conversation marker',
+      );
+      expect(
+        (
+          await agent(
+            'bound',
+            'other',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await agent(
+            'bearer-exposed',
+            'victim',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await personRequest(
+            'POST',
+            '/api/agents/unattended-grants/revoke',
+            grant,
+            served.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await agent(
+            'bound',
+            'victim',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+    } finally {
+      await served.close();
+    }
+  });
+});
+
+describe('legacy scheduler diagnostics privacy', () => {
+  const makeTempDir = trackTempDirs();
+  test('an agent refused untargeted run history must not receive it from read_logs', async () => {
+    const directory = makeTempDir('pr4289-r4-legacy-');
+    const logDirectory = join(directory, 'logs');
+    installServerLogSink({ directory: logDirectory });
+    const scheduler = new SchedulerService({
+      logger: createLogger({
+        name: 'round4-independent-legacy',
+        level: 'info',
+      }),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        turnAdapter: {
+          invoke: async () => ({
+            kind: 'failed',
+            error: 'round4-legacy-private-engine-answer',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      logDirectory,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'round4-legacy-private-job',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'round4-legacy-private-prompt',
+      });
+      await scheduler.runJob('round4-legacy-private-job');
+      const at = { baseUrl: served.baseUrl, port: served.port };
+      const listed = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        at,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body.data).toEqual([]);
+      const protectedLogs = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs/round4-legacy-private-job/logs',
+        undefined,
+        at,
+      );
+      expect(protectedLogs.status).toBe(404);
+      const raw = await scheduler.getJobLogs('round4-legacy-private-job');
+      expect(raw[0]!.runTarget).toBeNull();
+      expect(raw[0]!.error).toContain('round4-legacy-private-engine-answer');
+      const allLogs = await createServerLogReader({
+        directory: logDirectory,
+      }).query({});
+      expect(
+        allLogs.entries.some(
+          (entry) =>
+            entry.msg === 'Scheduler job failed' &&
+            entry['station.scheduler.target_kind'] === 'untargeted' &&
+            entry.errorClass === 'SchedulerRunFailure' &&
+            typeof entry['station.scheduler.job_id'] === 'string' &&
+            typeof entry['station.scheduler.job_run_id'] === 'string',
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(allLogs)).not.toContain('round4-legacy-private');
+      const diagnostics = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/api/diagnostics/logs?q=round4-legacy-private',
+        undefined,
+        at,
+      );
+      expect(diagnostics.status).toBe(403);
+      expect(JSON.stringify(diagnostics.body)).not.toContain(
+        'round4-legacy-private',
+      );
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      resetServerLogSinkForTests();
+    }
   });
 });

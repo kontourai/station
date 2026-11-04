@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Retained historical illustration, not re-captured: the editor adds a folded Use your own OAuth client section and passes default scopes to the account panel; the account panel adds a Scopes field prefilled with the default and sent at sign-in; the account panel test adds a person-chosen scopes case. The capture predates the Scopes field and the OAuth client section, so it does not show them. Source-impact review only; new renders of these surfaces are attached to the PR.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/views/integrations/IntegrationAccountSection.tsx","src-ui/src/views/integrations/IntegrationEditorPanel.tsx","src-ui/src/views/integrations/__tests__/IntegrationAccountSection.test.tsx"]}
+  ]
+}

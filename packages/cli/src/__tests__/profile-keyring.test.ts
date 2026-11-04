@@ -43,7 +43,7 @@ describe('profile OS-keyring adapter', () => {
 
   it('round-trips only through the native keyring entry', () => {
     expect(nativeLoadCallsOnImport).toEqual([]);
-    const store = createProfileKeyringStore();
+    const store = createProfileKeyringStore({ platform: 'linux' });
     expect(keyring.require).not.toHaveBeenCalled();
     store.set(ref, 'secret');
     expect(keyring.require).toHaveBeenCalledWith('@napi-rs/keyring');
@@ -62,7 +62,7 @@ describe('profile OS-keyring adapter', () => {
   });
 
   it('distinguishes a missing credential from an unavailable keyring', () => {
-    const store = createProfileKeyringStore();
+    const store = createProfileKeyringStore({ platform: 'win32' });
     expect(store.get(ref)).toBeUndefined();
     expect(store.status(ref)).toBe('missing');
 

@@ -5,13 +5,15 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { NewChatModal } from '../components/modals/NewChatModal';
@@ -28,6 +30,22 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Station config behind the No project folder hint (#4389): nothing saved.
+  useConfigQuery: () => ({
+    data: undefined,
+    error: null,
+    dataUpdatedAt: 0,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
     refetch: vi.fn(),
@@ -254,40 +272,34 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /Model: shared-model/ }),
     );
 
+    expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
-      await screen.findByRole('dialog', { name: 'Choose model' }),
+      await screen.findByRole('searchbox', { name: 'Search models' }),
     ).toBeTruthy();
-    expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
-      (
-        screen.getByRole('combobox', {
-          name: 'Filter models',
-        }) as HTMLSelectElement
-      ).value,
-    ).toBe('all');
+      screen
+        .getByRole('button', { name: 'All models' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(
       screen
         .getByRole('option', { name: /Shared model · Provider two/ })
         .getAttribute('aria-selected'),
     ).toBe('true');
-    expect(
-      screen.queryByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-one' },
-    });
+    expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
     // Choosing a Model finishes the picker, as it does in a chat's composer.
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
     );
 
     fireEvent.click(
       screen.getByRole('button', { name: /Model: Shared model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
+    await screen.findByRole('dialog', { name: 'Model' });
     // The reset names the default's source, never the choice it clears.
     expect(
       screen.getByRole('button', { name: 'Use agent default' }),
@@ -295,23 +307,15 @@ describe('NewChatModal engine chips', () => {
     expect(
       screen.queryByRole('button', { name: /session override/ }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     // An effort change keeps the picker open.
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-      {
-        target: { value: 'high' },
-      },
-    );
-    expect(screen.getByRole('dialog', { name: 'Choose model' })).toBeTruthy();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-two' },
-    });
+    fireEvent.click(screen.getByRole('radio', { name: 'High' }));
+    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
     );
     fireEvent.click(
       document.querySelector(
@@ -340,14 +344,12 @@ describe('NewChatModal engine chips', () => {
         }}
       />,
     );
-    const dialog = () => screen.queryByRole('dialog', { name: 'Choose model' });
+    const dialog = () => screen.queryByRole('dialog', { name: 'Model' });
     fireEvent.click(
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
-      target: { value: 'provider-one' },
-    });
+    await screen.findByRole('dialog', { name: 'Model' });
+    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -356,7 +358,7 @@ describe('NewChatModal engine chips', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /^Model: Shared model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
+    await screen.findByRole('dialog', { name: 'Model' });
     // Reset restores the source turn's Model, so it says so.
     fireEvent.click(screen.getByRole('button', { name: 'Use source turn' }));
     await waitFor(() => expect(dialog()).toBeNull());
@@ -635,3 +637,12 @@ describe('NewChatModal row hierarchy', () => {
     expect(labels[2]?.className.includes(divided)).toBe(true);
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

@@ -921,7 +921,7 @@ function countAssertionsWithStatus(report, status) {
  */
 function parseVitestReport(
   contents,
-  { root = process.cwd(), structuredReport } = {},
+  { root = process.cwd(), structuredReport, expectedFiles } = {},
 ) {
   let report;
   try {
@@ -957,6 +957,41 @@ function parseVitestReport(
       error: `Vitest JSON report contains ${unfinished} test(s) that never finished`,
     };
   if (total === 0 || suites === 0) return { empty: true };
+  if (expectedFiles) {
+    // Vitest names each reported file with an absolute path. Compare canonical
+    // lexical identities within this checkout, not aggregate suite counts.
+    const identity = (name) => {
+      if (typeof name !== 'string' || !name) return null;
+      const local = relative(root, resolve(root, name));
+      if (
+        !local ||
+        local === '..' ||
+        local.startsWith(`..${sep}`) ||
+        isAbsolute(local)
+      )
+        return null;
+      const normalized = local.split(sep).join('/');
+      return process.platform === 'win32'
+        ? normalized.toLowerCase()
+        : normalized;
+    };
+    const expected = expectedFiles.map(identity);
+    const reported = Array.isArray(report.testResults)
+      ? report.testResults.map((suite) => identity(suite?.name))
+      : [];
+    const unique = new Set(reported);
+    if (
+      expected.some((name) => !name) ||
+      new Set(expected).size !== expected.length ||
+      reported.some((name) => !name) ||
+      unique.size !== reported.length ||
+      reported.length !== expected.length ||
+      expected.some((name) => !unique.has(name))
+    )
+      return {
+        error: 'Vitest JSON report suite identities do not match planned files',
+      };
+  }
   const skipped = pending - unfinished;
   const counts = { executed: passed + failed, passed, failed, skipped, todo };
   const failures = failedTestIdentities(report, root, structuredReport);
@@ -1273,6 +1308,15 @@ async function runVitest(
             parseVitestReport(readReport(reportPath, 'utf8'), {
               root,
               structuredReport,
+              ...(execution.kind === 'shard'
+                ? {
+                    expectedFiles:
+                      selection.groups.find(
+                        (group) =>
+                          group.resourceGroup === execution.resourceGroup,
+                      )?.files ?? [],
+                  }
+                : {}),
             }),
           );
           if (execution.counts?.failed > 0 || execution.exitCode !== 0)
@@ -2330,7 +2374,7 @@ export async function runChangedVerificationShard(
   const outcome = await runVitest(
     root,
     run,
-    { signal },
+    { signal, groups: slice.groups },
     {
       planned,
       env: childEnv,

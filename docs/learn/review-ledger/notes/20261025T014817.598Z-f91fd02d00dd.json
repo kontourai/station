@@ -1,0 +1,7 @@
+{
+  "revision": "926523a4dffe1a435205996d57cb7f87c9c7af99",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the evidence-only wording edit: the incognito browser is described generically. The same two real native-client runs, automatic form completion, no ordinary host browser, cleanup and NOT_VERIFIED limits remain unchanged; no source or test bytes changed.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md"]}
+  ]
+}

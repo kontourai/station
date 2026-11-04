@@ -40,11 +40,13 @@ import { toPassthroughToolDef } from '../adapters/agent-tool-server-mapping.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
+  readonly lines: string[] = [];
   _write(
-    _chunk: Buffer | string,
+    chunk: Buffer | string,
     _encoding: BufferEncoding,
     callback: (error?: Error | null) => void,
   ): void {
+    this.lines.push(...chunk.toString().split('\n').filter(Boolean));
     callback();
   }
 }
@@ -142,7 +144,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     await expect(adapter.listSessions()).resolves.toEqual([]);
   });
 
-  test('a real env-bearing station-control record survives resolution for codex AND reaches the spawn argv as a -c mcp_servers.station-control.url override with a per-session token, never env', async () => {
+  test('a real Station integration reaches private thread config while keeping its credential out of argv and env', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () => agentSpecWithStationControl(),
       resolveToolServer: async (id) =>
@@ -178,10 +180,10 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     const processHandle = new FakeCodexProcess();
     let capturedEnv: Record<string, string> | undefined;
     let capturedArgs: string[] | undefined;
-    const mintStationControlMcpAuth = vi.fn(
-      (threadId: string) =>
-        `http://127.0.0.1:4321/mcp/station-control?token=minted-for-${threadId}`,
-    );
+    const mintStationControlMcpAuth = vi.fn((threadId: string) => ({
+      url: 'http://127.0.0.1:4321/mcp/station-control',
+      token: `minted-for-${threadId}`,
+    }));
     const adapter = new CodexAdapter({
       processFactory: (env?: Record<string, string>, extraArgs?: string[]) => {
         capturedEnv = env;
@@ -206,8 +208,6 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
 
     expect(mintStationControlMcpAuth).toHaveBeenCalledWith('thread-e2e-codex');
     expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.station-control.url="http://127.0.0.1:4321/mcp/station-control?token=minted-for-thread-e2e-codex"',
       // No confinement given: confined, so it runs under Station's permission
       // profile with its writable roots pinned (#3800).
       '-c',
@@ -223,6 +223,18 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     // appears anywhere in the spawn call, and no env var carries it either
     // — this instance's own port (4321, via the mint closure) is the only
     // one that reaches the child.
+    const request = processHandle.stdin.lines
+      .map((line) => JSON.parse(line))
+      .find((line) => line.method === 'thread/start');
+    expect(request.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:4321/mcp/station-control',
+      'mcp_servers.station-control.http_headers': {
+        Authorization: 'Bearer minted-for-thread-e2e-codex',
+      },
+    });
+    expect(JSON.stringify(capturedArgs)).not.toContain('minted-for-');
+    expect(JSON.stringify(capturedEnv)).not.toContain('minted-for-');
     expect(JSON.stringify(capturedArgs)).not.toContain('9999');
     expect(JSON.stringify(capturedEnv ?? {})).not.toContain('STATION_API_BASE');
     expect(JSON.stringify(capturedEnv ?? {})).not.toContain('9999');

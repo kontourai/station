@@ -7,9 +7,11 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
+  isEngineMemoryExhaustedFailure,
   MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
@@ -65,6 +67,21 @@ export interface ChatErrorTranslation {
    * switch agent). Unset means retry is an honest affordance.
    */
   retryable?: boolean;
+  /**
+   * The hints a RESTRICTED caller may see, declared per kind: `noSend` when
+   * the server's open read refused it a send here (`continue === false`),
+   * `noNewChat` when it refused it a new chat (`startChat === false`),
+   * `neither` when both. A string is a hand-written hint for that kind;
+   * `true` declares `hint` itself safe for it; `null` or no entry means no
+   * hint. Default-deny: a hint nobody declared safe for a kind is never shown
+   * to that kind. Full access is unaffected. Read through
+   * {@link chatErrorHintFor}, never directly.
+   */
+  callerHints?: {
+    noSend?: string | true | null;
+    noNewChat?: string | true | null;
+    neither?: string | true | null;
+  };
   /**
    * True when the raw engine message should be available behind a Details
    * control, never as the card body. Callers that still inline markdown
@@ -151,6 +168,12 @@ function engineAuthTranslation(text: string): ChatErrorTranslation | null {
     title: 'This engine needs to be signed in',
     body: 'The computer running this Station could not refresh its login, so this turn did not run.',
     hint: 'Sign in on that computer, then try again — or switch to another agent.',
+    callerHints: {
+      noSend:
+        'It needs signing in on that computer. You can switch to another agent in a new chat.',
+      noNewChat: 'Sign in on that computer, then try again.',
+      neither: 'It needs signing in on that computer.',
+    },
     retryable: false,
     disclosureRaw: true,
   };
@@ -226,6 +249,7 @@ const STREAM_BODY_ENDED_TRANSLATION: ChatErrorTranslation = {
   title: 'The reply stream ended early',
   body: 'This Station’s connection returned an incomplete response instead of a reply, so nothing more arrived for this turn.',
   hint: 'This can be temporary — if it keeps happening, check this Station’s connection and credentials.',
+  callerHints: { noSend: true, noNewChat: true, neither: true },
   disclosureRaw: true,
 };
 
@@ -317,6 +341,32 @@ const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
 export { SESSION_START_INDETERMINATE_CODE };
 
+/** The budget sentence a Codex memory kill was stored with before #4257. */
+const LEGACY_MEMORY_BUDGET = / Its workload budget was (\d+) MiB\./;
+
+/**
+ * A stored failure in today's vocabulary (#4266). A memory kill recorded
+ * before #4257 carries the generic orphaned-turn code and a sentence
+ * addressed to the agent; it reads as an `ENGINE_MEMORY_EXHAUSTED_CODE`
+ * failure in Station's own words, so it gets the same card and Continue.
+ * Every other failure is returned unchanged.
+ */
+export function currentChatError(input: { code?: string; message: string }): {
+  code?: string;
+  message: string;
+} {
+  if (
+    input.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    !isEngineMemoryExhaustedFailure(input)
+  )
+    return input;
+  const budget = LEGACY_MEMORY_BUDGET.exec(input.message)?.[1];
+  return {
+    code: ENGINE_MEMORY_EXHAUSTED_CODE,
+    message: `Codex ran out of memory and was stopped, along with the commands it was running.${budget ? ` Its workload budget was ${budget} MiB.` : ''}`,
+  };
+}
+
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
 
@@ -355,6 +405,14 @@ export function translateChatError(
           ? "The chat didn't start"
           : translated.title,
       hint: 'Station may already have started this session. Check it before sending again.',
+      // Its own declaration, replacing the inner cause's: the warning is the
+      // point of this branch and is never traded for a resend suggestion. A
+      // caller who may not send keeps the fact without "before sending".
+      callerHints: {
+        noNewChat: true,
+        noSend: 'Station may already have started this session.',
+        neither: 'Station may already have started this session.',
+      },
     };
   }
 
@@ -369,6 +427,7 @@ export function translateChatError(
         text ||
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
+      callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -432,7 +491,7 @@ export function translateChatError(
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
+      hint: 'Choose a model this engine offers and send again.',
       retryable: false,
     };
   }
@@ -445,6 +504,22 @@ export function translateChatError(
     return {
       title: 'Full access was not applied',
       body: "Only this Station's operator can allow full access for this device, so the message was not sent. Pick another approval mode to send it.",
+    };
+  }
+
+  // The engine's workload scope was killed for exhausting its memory budget.
+  // The server's sentence is Station's own (budget and peak, no engine
+  // prose), so it is the body. Resending the original prompt would restart
+  // the same concurrent work from scratch: the card offers Continue, whose
+  // next turn carries Station's recovery note (see
+  // `memory-exhaustion-recovery.ts`), instead of Send again.
+  if (code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    return {
+      title: 'The engine ran out of memory',
+      body: text,
+      hint: 'Continue picks the task up where it stopped.',
+      callerHints: { noNewChat: true, noSend: null, neither: null },
+      retryable: false,
     };
   }
 
@@ -506,6 +581,7 @@ export function translateChatError(
       title: "Can't resume",
       body: text || 'Unsafe workspace.',
       hint: 'New chat.',
+      callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -517,6 +593,7 @@ export function translateChatError(
       title: 'This turn did not complete',
       body: 'The engine reported an error for this turn.',
       hint: 'Open Details if you want the engine message.',
+      callerHints: { noSend: true, noNewChat: true, neither: true },
       disclosureRaw: true,
     };
   }
@@ -536,6 +613,14 @@ export function translateChatError(
         classifiedReason[1] === 'rejected the credentials'
           ? "Check the model connection's credentials, then send your message again."
           : 'Your message was kept — send it again to retry.',
+      callerHints:
+        classifiedReason[1] === 'rejected the credentials'
+          ? {
+              noNewChat: true,
+              noSend: "The model connection's credentials need checking.",
+              neither: "The model connection's credentials need checking.",
+            }
+          : { noNewChat: true, noSend: null, neither: null },
     };
   }
 
@@ -554,6 +639,16 @@ export function translateChatError(
       title: 'Sign in to this engine',
       body: text || 'This engine needs you to sign in before it can run.',
       hint: "Sign in from the engine's page in Connections, then start a new chat.",
+      // Signing in lets the engine run later turns; it does not resend this
+      // one, and without a new chat this conversation is where they go.
+      callerHints: {
+        noSend: true,
+        noNewChat:
+          "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+        // No "resend" even in the negative: this caller cannot send at all.
+        neither:
+          "Signing in from the engine's page in Connections lets this engine run again. This message is not delivered by signing in.",
+      },
       retryable: false,
     };
   }
@@ -563,6 +658,7 @@ export function translateChatError(
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',
       hint: 'Your message was kept — send it again to retry.',
+      callerHints: { noNewChat: true, noSend: null, neither: null },
     };
   }
 
@@ -581,6 +677,12 @@ export function translateChatError(
       title: "This conversation's engine session was lost",
       body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
       hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
+      callerHints: {
+        noSend: null,
+        noNewChat:
+          'Send your message again — the conversation continues in a fresh engine session.',
+        neither: null,
+      },
       disclosureRaw: true,
     };
   }
@@ -640,7 +742,7 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended while the model was still responding, so the turn was cut short. Nothing is wrong with the Model connection.',
+      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
       hint: 'Your message was kept — send it again to retry.',
     };
   }
@@ -648,7 +750,7 @@ export function translateChatError(
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'The connection went silent mid-turn — no response arrived for a while. This looks like a dropped connection or a Station restart, not a problem with your Model connection.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
       hint: 'Your message was kept — Retry to reconnect and resend it.',
     };
   }
@@ -705,6 +807,7 @@ export function translateChatError(
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
     hint: 'Retrying may help if this was a temporary failure.',
+    callerHints: { noNewChat: true, noSend: null, neither: null },
   };
 }
 
@@ -722,7 +825,21 @@ export function projectedRuntimeErrorRaw(text: string): string {
 export function translateProjectedRuntimeError(
   text: string,
   code: string,
+  callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string | null {
+  // #4266: a memory kill the dock no longer offers Continue for (a later
+  // turn moved on) reads in today's words, stored before #4257 or not, and
+  // without the hint that points at a Continue it does not show.
+  const current = currentChatError({
+    code,
+    message: projectedRuntimeErrorRaw(text),
+  });
+  if (current.code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    const card = { ...translateChatError(current), hint: undefined };
+    const repeat = /( \(repeated \d+×\))$/.exec(text)?.[1]?.trim();
+    const display = formatChatErrorDisplay(card);
+    return repeat ? `${display}\n${repeat}` : display;
+  }
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&
@@ -736,8 +853,40 @@ export function translateProjectedRuntimeError(
   const repeatSuffix = match?.[2] ?? '';
   const display = formatChatErrorDisplay(
     translateChatError({ message: raw, code }),
+    callerAccess,
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
+}
+
+/** The memory-kill card once Station has continued on its own. */
+export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
+  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+
+/** What the Continue action sends after a memory kill; Station adds the rest. */
+export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
+  'Continue the task from where it stopped.';
+
+/**
+ * The hint to show THIS caller. One rule for every chat error copy surface
+ * (the error card, the reply bubble live and reloaded, the send-failure
+ * notice). Full access (no answer, or both halves allowed) sees `hint`. A
+ * caller the server's open read refused a send (`continue === false`) or a
+ * new chat (`startChat === false`) sees ONLY what the translation declares
+ * for its kind in `callerHints`; anything undeclared shows no hint.
+ */
+export function chatErrorHintFor(
+  translation: ChatErrorTranslation,
+  callerAccess?: { continue?: boolean; startChat?: boolean },
+): string | undefined {
+  const noSend = callerAccess?.continue === false;
+  const noNewChat = callerAccess?.startChat === false;
+  if (!noSend && !noNewChat) return translation.hint;
+  const declared =
+    translation.callerHints?.[
+      noSend && noNewChat ? 'neither' : noSend ? 'noSend' : 'noNewChat'
+    ];
+  if (declared === true) return translation.hint;
+  return declared ?? undefined;
 }
 
 /**
@@ -746,10 +895,12 @@ export function translateProjectedRuntimeError(
  */
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
+  callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string {
   const lines = [`**${translation.title}**`, '', translation.body];
-  if (translation.hint) {
-    lines.push('', translation.hint);
+  const hint = chatErrorHintFor(translation, callerAccess);
+  if (hint) {
+    lines.push('', hint);
   }
   return lines.join('\n');
 }

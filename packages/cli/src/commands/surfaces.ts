@@ -22,6 +22,7 @@ import {
   getSchedulerStats,
   getSchedulerStatus,
   installRegistrySkill,
+  listAutomationDeliveries,
   listIntegrations,
   listJobs,
   listReviewReceipts,
@@ -53,6 +54,7 @@ import {
   runKnowledgeReindex,
   runKnowledgeSearch,
 } from './knowledge.js';
+import { runWalkthroughCommand } from './walkthrough.js';
 
 /**
  * Surface commands share the CLI's target and authentication contract with
@@ -781,6 +783,34 @@ async function runScheduleCommand(args: string[]) {
   }
 }
 
+/**
+ * `station automation` (epic #3439). Slice S2 ships the read-only
+ * `deliveries` verb; the other `AUTOMATION_OPERATOR_SURFACE` verbs arrive
+ * with their routes.
+ */
+async function runAutomationCommand(args: string[]) {
+  const parsed = parseCoreArgs(args);
+  const apiBase = resolveSurfaceApiBase(parsed);
+  const action = requirePositional(parsed, 0, 'automation action');
+
+  switch (action) {
+    case 'deliveries': {
+      const raw = parsed.flags.limit;
+      if (raw !== undefined && (typeof raw !== 'string' || !/^\d+$/.test(raw)))
+        throw new Error('--limit must be a positive integer.');
+      printFetched(
+        await listAutomationDeliveries(
+          apiBase,
+          raw === undefined ? {} : { limit: Number(raw) },
+        ),
+      );
+      return;
+    }
+    default:
+      throw new Error("Unknown automation action. Use 'deliveries'.");
+  }
+}
+
 async function runRunsCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
@@ -1064,6 +1094,41 @@ async function runBrandingCommand(args: string[]) {
     throw new Error("Unknown branding action. Use 'get'.");
   }
   await requestAndPrint(apiBase, '/api/branding');
+}
+
+/**
+ * `station workload status`: this Station's engine workload memory budgets,
+ * whether they are enforced, and where each value came from. A Station that
+ * predates the route answers 404, reported as "not supported" with a nonzero
+ * exit rather than as an empty success.
+ */
+/** The only flags `station workload` reads; anything else is refused. */
+const WORKLOAD_FLAGS = ['api-base', 'station', 'credential', 'verbose'];
+
+async function runWorkloadCommand(args: string[]) {
+  const parsed = parseCoreArgs(args);
+  // A target flag this command does not read (--home, --instance) must not
+  // quietly fall back to the device's default Station.
+  const unknown = Object.keys(parsed.flags).filter(
+    (flag) => !WORKLOAD_FLAGS.includes(flag),
+  );
+  if (unknown.length > 0)
+    throw new Error(
+      `station workload does not accept ${unknown.map((flag) => `--${flag}`).join(', ')}. Choose the Station with --station=<name> or --api-base=<url> (a local instance's server address, e.g. http://127.0.0.1:<port>).`,
+    );
+  const apiBase = resolveSurfaceApiBase(parsed);
+  const action = requirePositional(parsed, 0, 'workload action');
+  if (action !== 'status')
+    throw new Error("Unknown workload action. Use 'status'.");
+  try {
+    await requestAndPrint(apiBase, '/api/system/workload');
+  } catch (error) {
+    if ((error as { status?: unknown }).status === 404)
+      throw new Error(
+        'This Station does not report workload budgets (an older or hosted Station). Update Station to use station workload status.',
+      );
+    throw error;
+  }
 }
 
 async function runFeedbackCommand(args: string[]) {
@@ -1560,11 +1625,17 @@ export async function runSurfaceCommand(
     case 'schedule':
       await runScheduleCommand(args);
       return;
+    case 'automation':
+      await runAutomationCommand(args);
+      return;
     case 'runs':
       await runRunsCommand(args);
       return;
     case 'review':
       await runReviewCommand(args);
+      return;
+    case 'walkthrough':
+      await runWalkthroughCommand(args);
       return;
     case 'knowledge':
       await runKnowledgeCommand(args);
@@ -1574,6 +1645,9 @@ export async function runSurfaceCommand(
       return;
     case 'branding':
       await runBrandingCommand(args);
+      return;
+    case 'workload':
+      await runWorkloadCommand(args);
       return;
     case 'feedback':
       await runFeedbackCommand(args);

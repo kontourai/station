@@ -37,7 +37,12 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import type {
+  PreToolPolicyDecision,
+  StagedPreToolPolicyEvaluator,
+} from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertRequiredConfinementObserved,
   ConfinementRefusedError,
@@ -45,7 +50,14 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+} from '../../services/infra/session-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { isStationChatFolder } from '../../services/orchestration/no-project-chat-folder.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -69,6 +81,7 @@ import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
+  type ProviderChildSteerResult,
   type ProviderDiscardSessionRecovery,
   type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
@@ -98,6 +111,11 @@ import {
 } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  EngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
@@ -112,6 +130,7 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
+  codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
   requestStop as requestCodexChildStop,
@@ -147,6 +166,7 @@ import {
   reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
+import { CodexBoundToolChannel } from './codex-bound-tool-channel.js';
 import {
   codexConfinementConfigArgs,
   codexThreadSandboxRequest,
@@ -155,7 +175,9 @@ import {
   requiredByReportedPolicy,
   STATION_CODEX_PERMISSION_PROFILE,
 } from './codex-confinement.js';
+import { CodexGoals } from './codex-goals.js';
 import {
+  type CodexStationMcpAuth,
   type CodexToolServerSkip,
   resolveCodexMcpServers,
 } from './codex-mcp-passthrough.js';
@@ -163,6 +185,7 @@ import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
+import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -175,10 +198,25 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  boundToolsEnabled?: () => boolean;
+  boundToolsEpoch?: () => number | undefined;
+  resolveBoundToolPolicy?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  createBoundTools?: (input: {
+    sessionId: string;
+    tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
+    includeBrowser: boolean;
+    includeDevices: boolean;
+    isCurrent: () => boolean;
+  }) => Promise<
+    import('../../runtime/mcp/station-control-in-process.js').CodexBoundToolServer
+  >;
   resolveMcpOAuth?: EngineMcpOAuthResolver;
   processFactory?: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   now?: () => Date;
   /**
@@ -229,8 +267,7 @@ interface CodexAdapterOptions {
   ) => string | null;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
-   * bearer token and returns the full station-control HTTP/SSE MCP endpoint
-   * URL it authenticates — called ONLY when the resolved agent's
+   * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
    * `toolServers` includes the canonical built-in station-control server
    * (see `resolveAgentToolServers`). `threadId` is Station's own session
    * id, used as the token's revocation key. Undefined/missing (older/test
@@ -242,12 +279,14 @@ interface CodexAdapterOptions {
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
-  ) => string | undefined;
+    coordinatorGeneration?: number,
+  ) => CodexStationMcpAuth | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
-  ) => string | undefined;
+    coordinatorGeneration?: number,
+  ) => CodexStationMcpAuth | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
    * closure just means the token lives out its bounded TTL instead. */
@@ -255,9 +294,61 @@ interface CodexAdapterOptions {
   logger?: CodexAdapterLogger;
   /** Test-only override; production reads are always bounded to five seconds. */
   quotaTimeoutMs?: number;
+  /** Station home for private workspaces of otherwise-unbound sessions. */
+  managedWorkspaceHomeDir?: string;
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
+}
+
+function codexBoundToolResult(value: unknown) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('content' in value) ||
+    !Array.isArray(value.content)
+  )
+    throw new Error('bound-tool-executed-result-withheld');
+  const items = value.content.map((item: unknown) => {
+    if (!item || typeof item !== 'object')
+      throw new Error('bound-tool-executed-result-withheld');
+    const content = item as Record<string, unknown>;
+    if (content.type === 'text' && typeof content.text === 'string')
+      return { type: 'inputText', text: content.text };
+    if (
+      content.type === 'image' &&
+      typeof content.data === 'string' &&
+      typeof content.mimeType === 'string' &&
+      /^image\/(png|jpeg|webp|gif)$/.test(content.mimeType)
+    )
+      return {
+        type: 'inputImage',
+        imageUrl: `data:${content.mimeType};base64,${content.data}`,
+      };
+    throw new Error('bound-tool-executed-result-withheld');
+  });
+  const refused = items.some((item) => {
+    if (item.type !== 'inputText' || typeof item.text !== 'string')
+      return false;
+    try {
+      const parsed: unknown = JSON.parse(item.text);
+      return (
+        !!parsed &&
+        typeof parsed === 'object' &&
+        'ok' in parsed &&
+        parsed.ok === false
+      );
+    } catch {
+      return false;
+    }
+  });
+  const result = {
+    contentItems: items,
+    success: !refused && !('isError' in value && value.isError === true),
+  };
+  if (Buffer.byteLength(JSON.stringify(result)) > 8 * 1024 * 1024)
+    throw new Error('bound-tool-executed-result-withheld');
+  return result;
 }
 
 interface CodexNativeAdoption {
@@ -269,6 +360,14 @@ interface CodexNativeAdoption {
 function mapReasoningEffort(options?: CodexModelOptions): string | null {
   const effort = options?.effort ?? options?.reasoningEffort;
   return typeof effort === 'string' && effort.trim() ? effort.trim() : null;
+}
+
+function mapServiceTier(options: CodexModelOptions): string | null {
+  if (options.serviceTier === null) return null;
+  if (typeof options.serviceTier === 'string' && options.serviceTier.trim())
+    return options.serviceTier.trim();
+  if (options.fastMode === true) return 'fast';
+  return null;
 }
 
 function mapCodexModelCatalogEntry(model: any): {
@@ -316,16 +415,61 @@ function mapCodexModelCatalogEntry(model: any): {
       }
     }
   }
-  const supportsFastMode =
-    Array.isArray(model.serviceTiers) &&
-    model.serviceTiers.some(
-      (tier: unknown) =>
-        typeof tier === 'object' &&
-        tier !== null &&
-        (tier as { id?: unknown }).id === 'fast',
-    );
+  const serviceTiers: NonNullable<ModelOptionCapabilities['serviceTiers']> = [];
+  const reportedTiers =
+    Array.isArray(model.serviceTiers) && model.serviceTiers.length
+      ? model.serviceTiers
+      : Array.isArray(model.additionalSpeedTiers)
+        ? model.additionalSpeedTiers.map((id: unknown) => ({
+            id,
+            name:
+              id === 'fast' ? 'Fast' : id === 'ultrafast' ? 'Ultrafast' : id,
+          }))
+        : [];
+  for (const tier of reportedTiers) {
+    if (
+      !tier ||
+      typeof tier !== 'object' ||
+      typeof tier.id !== 'string' ||
+      !tier.id.trim() ||
+      tier.id.length > 128 ||
+      serviceTiers.some((entry) => entry.id === tier.id)
+    )
+      continue;
+    const name =
+      typeof tier.name === 'string' &&
+      tier.name.trim() &&
+      tier.name.length <= 128
+        ? tier.name.trim()
+        : tier.id;
+    const description =
+      typeof tier.description === 'string' &&
+      tier.description.trim() &&
+      tier.description.length <= 512
+        ? tier.description.trim()
+        : tier.id === 'ultrafast'
+          ? 'Lower latency, higher cost.'
+          : undefined;
+    serviceTiers.push({
+      id: tier.id,
+      name,
+      ...(description ? { description } : {}),
+    });
+    if (serviceTiers.length === 16) break;
+  }
+  if (
+    serviceTiers.length &&
+    !serviceTiers.some(
+      (tier) => tier.id === 'default' || tier.id === 'standard',
+    )
+  )
+    // The CLI can list only extra tiers; "default" explicitly selects Standard.
+    serviceTiers.unshift({ id: 'default', name: 'Standard' });
+  const supportsFastMode = serviceTiers.some(
+    (tier) => tier.id === 'fast' || tier.id === 'priority',
+  );
   const capabilities: ModelOptionCapabilities | undefined =
-    supportedEffortLevels.length > 0 || supportsFastMode
+    supportedEffortLevels.length > 0 || serviceTiers.length > 0
       ? {
           ...(supportedEffortLevels.length > 0
             ? {
@@ -338,6 +482,11 @@ function mapCodexModelCatalogEntry(model: any): {
             : {}),
           ...(supportsFastMode
             ? { supportsFastMode: true, fastModeLabel: 'Fast' }
+            : {}),
+          ...(serviceTiers.length ? { serviceTiers } : {}),
+          ...(typeof model.defaultServiceTier === 'string' &&
+          serviceTiers.some((tier) => tier.id === model.defaultServiceTier)
+            ? { defaultServiceTier: model.defaultServiceTier }
             : {}),
         }
       : undefined;
@@ -785,6 +934,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('codex'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -831,9 +981,11 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   private readonly transport: CodexAdapterTransport;
+  readonly goals: CodexGoals;
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   private readonly now: () => Date;
   private modelCatalogCache: {
@@ -856,7 +1008,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
       options.processFactory ??
-      ((env, extraArgs) => createCodexProcess(undefined, env, extraArgs));
+      ((env, extraArgs, tmpDir) =>
+        createCodexProcess(undefined, env, extraArgs, tmpDir));
     this.now = options.now ?? (() => new Date());
     this.transport = new CodexAdapterTransport(
       this.now,
@@ -868,7 +1021,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
+      () =>
+        this.options.logger?.warn?.(
+          'Codex app-server emitted stderr; details are withheld',
+          { provider: 'codex' },
+        ),
     );
+    this.goals = new CodexGoals(this.transport);
   }
 
   async getPrerequisites(options?: {
@@ -1859,6 +2018,36 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // A default HOME is not a project binding. Windows sandbox preparation
+    // recursively applies ACLs to its writable root; using HOME can spend
+    // minutes changing unrelated files and granting sandbox access to launchers.
+    // Keep the workspace deterministic across restarts, as ACP does, and fail
+    // before spawning if it cannot be prepared. Explicit/adopted folders win,
+    // and so does a folder Station already made for this chat (#4389's
+    // no-project scratch folder, or a recorded managed workspace): one chat,
+    // one private folder, prepared once.
+    if (
+      input.cwdDefaulted &&
+      input.confinement !== 'host' &&
+      !adoption &&
+      !(
+        input.cwd &&
+        isStationChatFolder(input.cwd, this.options.managedWorkspaceHomeDir)
+      )
+    ) {
+      input = {
+        ...input,
+        cwd: await prepareManagedEngineWorkspace(
+          'codex',
+          {
+            kind: 'session',
+            connectionId: string(input.metadata?.connectionId) ?? 'codex',
+            threadId: input.threadId,
+          },
+          this.options.managedWorkspaceHomeDir,
+        ),
+      };
+    }
     // #3800: refused before Codex is spawned, since a project `mcp_servers`
     // command runs outside the sandbox at thread start (start, resume, fork
     // and respawn all come through here).
@@ -1968,10 +2157,26 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...(toolServers.configArgs ?? []),
       ...codexConfinementConfigArgs(input.confinement),
     ];
-    const processHandle = this.processFactory(
-      spawnEnv,
-      spawnArgs.length ? spawnArgs : undefined,
-    );
+    // Only a session start gets the per-session TMPDIR; quota, model and
+    // maintenance probes keep the shared engine-spawn directory.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
+    // The workload launcher attributes this engine's scope to the session.
+    const sessionSpawnEnv = {
+      ...spawnEnv,
+      [WORKLOAD_SESSION_ENV]: input.threadId,
+    };
+    // Without a session folder the call is exactly the two-argument one
+    // the workload change made.
+    const processHandle = sessionTmpDir
+      ? this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+          sessionTmpDir,
+        )
+      : this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+        );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -1982,6 +2187,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       nowIso: () => this.now().toISOString(),
     });
     record.preparedResumeBindingKey = resumeBindingKey;
+    // Where Codex writes this session's thread rollouts, children included:
+    // a child's transcript ref names it, never a file path.
+    if (isAbsolute(configurationHome)) record.codexHome = configurationHome;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,
@@ -2008,9 +2216,77 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
 
     this.transport.registerSession(record);
+    // chat-host-images: recorded only once this record is the thread's
+    // session, so a start that throws before here keeps the old launch.
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
     this.transport.handleProcess(record);
 
     try {
+      const controlCandidate = input.agent?.toolServers?.find(
+        (server) => server.id === 'station-control',
+      );
+      const control =
+        controlCandidate &&
+        builtinStationApiServerId(
+          controlCandidate.id,
+          toPassthroughToolDef(controlCandidate),
+        ) === 'station-control'
+          ? controlCandidate
+          : undefined;
+      const includeBrowser =
+        !!input.agent && input.agent.browserTools !== false;
+      const includeDevices = !!control && !control.coordinatorDerived;
+      const epoch = this.options.boundToolsEpoch?.();
+      let retired = false;
+      const bindingCurrent = () => {
+        if (retired) return false;
+        try {
+          if (
+            !record.stopped &&
+            !record.boundChannelClosed &&
+            this.transport.getSession(input.threadId) === record &&
+            this.options.boundToolsEnabled?.() === true &&
+            this.options.boundToolsEpoch?.() === epoch
+          )
+            return true;
+        } catch {}
+        retired = true;
+        return false;
+      };
+      const boundTools =
+        this.options.boundToolsEnabled?.() &&
+        this.options.createBoundTools &&
+        (includeBrowser || includeDevices)
+          ? await this.options.createBoundTools({
+              sessionId: input.threadId,
+              tenantExecutionContext: input.tenantExecutionContext,
+              includeBrowser,
+              includeDevices,
+              isCurrent: bindingCurrent,
+            })
+          : undefined;
+      record.closeBoundTools = boundTools?.close;
+      record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
+      let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
+      if (boundTools && this.options.resolveBoundToolPolicy) {
+        try {
+          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+        } catch {
+          boundPolicy = undefined;
+        }
+      }
+      const offeredTools =
+        boundTools?.tools.filter((tool) => {
+          if (!tool.name.startsWith('device_')) return true;
+          if (control?.disabledTools?.includes(tool.name)) return false;
+          return (
+            control?.allowedTools === undefined ||
+            control.allowedTools.includes(tool.name)
+          );
+        }) ?? [];
       assertExecutionOverrideDelivery(
         input.metadata,
         toolServers.report?.undelivered ?? [],
@@ -2022,15 +2298,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           version: '0.1.0',
         },
         capabilities: {
-          experimentalApi: false,
+          experimentalApi: !!boundTools,
         },
       });
       this.transport.sendNotification(record, 'initialized');
-      const authoredMcpConfig = await this.authoredMcpConfig(
+      const authoredSelection = await this.authoredMcpConfig(
         record,
         input,
         toolServers.report?.delivered ?? [],
       );
+      const authoredMcpConfig =
+        toolServers.privateConfig || authoredSelection
+          ? { ...authoredSelection, ...toolServers.privateConfig }
+          : undefined;
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
       // #2493: `never` reaches `danger-full-access` only for a `host`
@@ -2068,7 +2348,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
             ...(sandboxWire ? { sandboxRequest: sandboxWire } : {}),
-            serviceTier: modelOptions.fastMode ? 'fast' : null,
+            serviceTier: mapServiceTier(modelOptions),
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
         : resumeCursor
@@ -2077,7 +2357,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               cwd: input.cwd,
               model: input.modelId,
               ...approvalWire,
-              serviceTier: modelOptions.fastMode ? 'fast' : null,
+              serviceTier: mapServiceTier(modelOptions),
               persistExtendedHistory: false,
               ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
             })
@@ -2086,9 +2366,19 @@ export class CodexAdapter implements ProviderAdapterShape {
               model: input.modelId,
               ...approvalWire,
               experimentalRawEvents: false,
+              ...(boundTools
+                ? {
+                    dynamicTools: offeredTools.map((tool) => ({
+                      type: 'function',
+                      name: tool.name,
+                      description: tool.description ?? tool.name,
+                      inputSchema: tool.inputSchema,
+                    })),
+                  }
+                : {}),
               persistExtendedHistory: false,
               ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
-              serviceTier: modelOptions.fastMode ? 'fast' : null,
+              serviceTier: mapServiceTier(modelOptions),
             });
       if (record.stdoutIngressLimit?.exceeded) {
         throw new Error(
@@ -2097,6 +2387,77 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      if (boundTools) {
+        const channel = new CodexBoundToolChannel(
+          codexThread.id,
+          new Set(offeredTools.map((tool) => tool.name)),
+          () =>
+            record.activeTurnId &&
+            !record.cancelledBoundTurns?.has(record.activeTurnId)
+              ? record.activeTurnId
+              : undefined,
+          bindingCurrent,
+        );
+        record.boundToolHandler = async (params, rpcKey) => {
+          if (!params || typeof params !== 'object' || Array.isArray(params))
+            throw new Error('bound-tool-refused');
+          const payload = params as Record<string, unknown>;
+          if (
+            typeof payload.threadId !== 'string' ||
+            payload.threadId.length > 256 ||
+            typeof payload.turnId !== 'string' ||
+            payload.turnId.length > 256 ||
+            typeof payload.callId !== 'string' ||
+            payload.callId.length > 256 ||
+            typeof payload.tool !== 'string' ||
+            payload.tool.length > 256 ||
+            payload.namespace != null ||
+            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') > 40_000
+          )
+            throw new Error('bound-tool-refused');
+          const call = {
+            threadId: payload.threadId,
+            turnId: payload.turnId,
+            callId: payload.callId,
+            name: payload.tool,
+          };
+          return channel.invoke(
+            call,
+            (current) => {
+              if (boundTools.expired())
+                throw new Error('bound-tool-session-restart-required');
+              return this.approveBoundTool(
+                record,
+                call.turnId,
+                call.name,
+                payload.arguments,
+                rpcKey,
+                input,
+                call.callId,
+                boundPolicy,
+                current,
+              );
+            },
+            async (current) => {
+              if (boundTools.expired())
+                throw new Error('bound-tool-session-restart-required');
+              const response = await boundTools.call(
+                call.name,
+                payload.arguments,
+                () =>
+                  current() && !record.cancelledBoundTurns?.has(call.turnId),
+              );
+              return codexBoundToolResult(response);
+            },
+            () => !record.cancelledBoundRequests?.has(rpcKey),
+          );
+        };
+        const close = record.closeBoundTools;
+        record.closeBoundTools = async () => {
+          channel.close();
+          await close?.();
+        };
+      }
       if (
         resumeCursor &&
         (input.requireNativeResumeIdentity ||
@@ -2127,6 +2488,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       const reportedSandbox = readCodexSandboxPolicy(
         (result as { sandbox?: unknown } | undefined)?.sandbox,
       );
+      const reportedApprovalPolicy = (
+        result as { approvalPolicy?: unknown } | undefined
+      )?.approvalPolicy;
       // #2494: the confinement record comes from Codex's response, never
       // from the sandbox Station sent. A start whose policy requires
       // confinement and whose engine does not report it applied is refused
@@ -2136,14 +2500,17 @@ export class CodexAdapter implements ProviderAdapterShape {
       // configuration, when Station sent no knobs) requires confinement too.
       const plan = requiredByReportedPolicy(
         input.confinementPlan,
-        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+        reportedApprovalPolicy,
       );
       const reportedProfile = readActivePermissionProfileId(result);
       const sandboxEvidence = {
         requested: sandboxRequest,
         reported: reportedSandbox,
         workspace: input.cwd,
-        permittedRoots: [engineSpawnTmpDirPath()],
+        permittedRoots: [
+          ...(sessionTmpDir ? [sessionTmpDir] : []),
+          engineSpawnTmpDirPath(),
+        ],
         // #3800: Station relies on its profile wherever it sent no mode.
         ...(sandboxRequest && !sandboxWire
           ? { requestedProfile: STATION_CODEX_PERMISSION_PROFILE }
@@ -2207,6 +2574,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       const configuredSandbox = reportedSandbox
         ? codexSandboxModeOfPolicy(reportedSandbox)
         : approvalKnobs?.sandbox;
+      const configuredApprovalPolicy =
+        reportedApprovalPolicy === undefined
+          ? approvalKnobs?.approvalPolicy
+          : reportedApprovalPolicy;
       record.session = {
         ...record.session,
         modelRoute: connectionLaunch.route,
@@ -2274,20 +2645,18 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...reportedModelMetadata(reportedModelFromInit),
         reasoningEffort: mapReasoningEffort(modelOptions),
         fastMode: modelOptions.fastMode ?? false,
-        ...(approvalKnobs
+        approvalMode: configuredSandbox
+          ? mapCodexKnobsToApprovalMode({
+              approvalPolicy: configuredApprovalPolicy,
+              sandbox: configuredSandbox,
+            })
+          : 'connection-default',
+        ...(configuredApprovalPolicy
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
+              approvalPolicy: configuredApprovalPolicy,
               ...(configuredSandbox
                 ? {
                     sandbox: configuredSandbox,
-                    // Resolved approvalMode alongside the raw knobs, so the
-                    // client can track a durable lastAppliedApprovalMode
-                    // baseline at session start (archive#727 review round
-                    // 3, item 1), derived from the applied pair.
-                    approvalMode: mapCodexKnobsToApprovalMode({
-                      approvalPolicy: approvalKnobs.approvalPolicy,
-                      sandbox: configuredSandbox,
-                    }),
                   }
                 : {}),
               // #2493: the pair alone no longer says whether `never` is
@@ -2341,7 +2710,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         operation: 'adapter-session-start',
         provider: this.provider,
         model_options:
-          mapReasoningEffort(modelOptions) || modelOptions.fastMode
+          mapReasoningEffort(modelOptions) || mapServiceTier(modelOptions)
             ? 'applied'
             : 'none',
       });
@@ -2369,6 +2738,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           [error, cleanupError],
           'Codex startup failed and process termination was not confirmed.',
         );
+      }
+      const startupFailure = classifyEngineStartupFailure('codex', error);
+      if (startupFailure) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          ...engineStartupFailureEvent(startupFailure),
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new EngineStartupFailure(startupFailure);
       }
       throw error;
     }
@@ -2554,10 +2936,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<{
     configArgs?: string[];
+    privateConfig?: Record<string, unknown>;
     report?: CapabilityDeliveryChannelReport;
   }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
+    if (
+      toolServers.some(
+        (server) =>
+          server.coordinatorDerived &&
+          server.coordinatorGeneration === undefined,
+      )
+    )
+      throw new Error('Coordinator generation is required.');
 
     const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
@@ -2581,18 +2972,25 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? selectedControlTools !== undefined
+      ? control?.coordinatorDerived
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
+            control.coordinatorGeneration,
           )
-        : input.tenantExecutionContext
+        : selectedControlTools !== undefined
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              selectedControlTools,
             )
-          : this.options.mintStationControlMcpAuth?.(input.threadId)
+          : input.tenantExecutionContext
+            ? this.options.mintStationControlMcpAuth?.(
+                input.threadId,
+                input.tenantExecutionContext,
+              )
+            : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -2610,14 +3008,18 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.threadId,
           input.tenantExecutionContext,
           selectedKnowledgeTools,
+          ...(knowledge.coordinatorDerived
+            ? [knowledge.coordinatorGeneration]
+            : []),
         )
       : undefined;
-    const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
-      toolServers,
-      stationControlMcpUrl,
-      stationKnowledgeMcpUrl,
-      oauthTokens,
-    );
+    const { configArgs, privateConfig, deliveredIds, skipped } =
+      resolveCodexMcpServers(
+        toolServers,
+        stationControlMcpUrl,
+        stationKnowledgeMcpUrl,
+        oauthTokens,
+      );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
         capability: 'toolServers',
@@ -2633,14 +3035,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         reason: entry.reason,
       });
     }
-    if (configArgs.length > 0) {
-      codexToolServersDelivered.add(configArgs.length / 2, {
+    if (deliveredIds.length > 0) {
+      codexToolServersDelivered.add(deliveredIds.length, {
         provider: this.provider,
       });
     }
 
     return {
       configArgs: configArgs.length > 0 ? configArgs : undefined,
+      privateConfig: Object.keys(privateConfig).length
+        ? privateConfig
+        : undefined,
       report: {
         source: 'agent',
         requested: toolServers.map((server) => server.id),
@@ -2715,7 +3120,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
     const hasModelOptions = Boolean(
-      mapReasoningEffort(modelOptions) || modelOptions.fastMode,
+      mapReasoningEffort(modelOptions) || mapServiceTier(modelOptions),
     );
     const decodedAttachments = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Codex', decodedAttachments);
@@ -2881,7 +3286,10 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? { approvalPolicy: approvalKnobs.approvalPolicy }
             : {}),
           ...(sandboxPolicy ? { sandboxPolicy } : {}),
-          serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+          serviceTier:
+            modelOptions.serviceTier === null
+              ? null
+              : (mapServiceTier(modelOptions) ?? undefined),
         },
         { mapResult: acceptTurn },
       );
@@ -2951,6 +3359,43 @@ export class CodexAdapter implements ProviderAdapterShape {
     });
   }
 
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.transport.requireSession(threadId);
+    const target = codexChildSteerTarget(record, childId, turnId);
+    if (target !== 'ready') return { outcome: target };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    try {
+      const result = await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: childId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+      if (extractStringField(result, 'turnId') !== turnId)
+        throw new Error('Codex returned an unexpected child steer turn id.');
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes(
+          'direct app-server input is not allowed for multi-agent v2',
+        )
+      )
+        return { outcome: 'unsupported' };
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      )
+        return { outcome: 'no-active-task' };
+      throw error;
+    }
+    return { outcome: 'steered', turnId };
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.transport.requireSession(threadId);
     const activeTurnId = record.activeTurnId;
@@ -2969,6 +3414,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
+    record.cancelledBoundTurns ??= new Set();
+    record.cancelledBoundTurns.add(activeTurnId);
+    while (record.cancelledBoundTurns.size > 32) {
+      const oldest = record.cancelledBoundTurns.values().next().value;
+      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
+    }
+    this.cancelBoundToolApprovals(record, activeTurnId);
     const targetTurnId = turnId ?? activeTurnId;
 
     // #2486: Codex has no per-child stop that leaves the parent's turn
@@ -3219,12 +3671,97 @@ export class CodexAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
-  /**
-   * #2316: answer every open approval `cancel` on the wire and settle it
-   * (`request.resolved`), so no later answer lands on a dead request and no
-   * session grant is minted for it.
-   */
+  private async approveBoundTool(
+    record: CodexSessionRecord,
+    turnId: string,
+    tool: string,
+    args: unknown,
+    rpcKey: string,
+    input: ProviderSessionStartInput,
+    callId: string,
+    policy: StagedPreToolPolicyEvaluator | undefined,
+    current: () => boolean,
+  ): Promise<boolean> {
+    const server = tool.startsWith('browser_')
+      ? 'station-browser'
+      : 'station-control';
+    const name = `mcp__${server}__${tool}`;
+    if (!policy || !input.agent || !current()) return false;
+    const rawDelegation = input.metadata?.delegation;
+    const delegation =
+      rawDelegation && typeof rawDelegation === 'object'
+        ? (rawDelegation as InvocationContext['delegation'])
+        : undefined;
+    let decision: PreToolPolicyDecision;
+    try {
+      decision = await raceWithSignal(
+        policy(
+          { toolName: name, toolCallId: callId, toolArgs: args },
+          {
+            agentSlug: input.agent.slug,
+            conversationId: input.threadId,
+            delegation,
+          },
+          {
+            interaction: 'external',
+            identity: externalPreToolPolicyIdentity(name),
+          },
+        ),
+        AbortSignal.timeout(5_000),
+      );
+    } catch {
+      return false;
+    }
+    if (!current() || decision.behavior === 'deny') return false;
+    if (decision.behavior === 'allow') return true;
+    if (decision.behavior === 'defer' && record.approvedTools.has(name))
+      return true;
+    if (delegation?.denyApprovals) return false;
+    record.boundToolApprovals ??= new Map();
+    const pending = record.boundToolApprovals;
+    if (pending.size >= 16 || record.cancelledBoundTurns?.has(turnId))
+      return false;
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      pending.set(requestId, { resolve, turnId, rpcKey, toolName: name });
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        turnId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.opened',
+        requestType: 'approval',
+        title: `Allow ${tool}`,
+        payload: { toolName: name, toolInput: args },
+      });
+    });
+  }
+
+  private cancelBoundToolApprovals(
+    record: CodexSessionRecord,
+    turnId?: string,
+  ): void {
+    for (const [requestId, pending] of record.boundToolApprovals ?? []) {
+      if (turnId && pending.turnId !== turnId) continue;
+      record.boundToolApprovals!.delete(requestId);
+      pending.resolve(false);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: 'cancelled',
+      });
+    }
+  }
+
+  /** Settle open approvals so no answer can land after cancellation (#2316). */
   private cancelPendingApprovals(record: CodexSessionRecord): void {
+    this.cancelBoundToolApprovals(record);
     for (const [requestId, pending] of record.pendingApprovals) {
       const outcome = resolveApprovalOutcome(
         pending.method,
@@ -3250,6 +3787,36 @@ export class CodexAdapter implements ProviderAdapterShape {
     context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.transport.requireSession(threadId);
+    const bound = record.boundToolApprovals?.get(requestId);
+    if (bound) {
+      if (context?.inputContent !== undefined)
+        throw new Error('This request does not accept question answers.');
+      if (
+        record.activeTurnId !== bound.turnId ||
+        record.cancelledBoundTurns?.has(bound.turnId) ||
+        record.cancelledBoundRequests?.has(bound.rpcKey) ||
+        record.boundChannelClosed ||
+        record.boundChannelCurrent?.() !== true
+      ) {
+        record.boundToolApprovals!.delete(requestId);
+        bound.resolve(false);
+        throw new Error('This Codex approval request is not open.');
+      }
+      record.boundToolApprovals!.delete(requestId);
+      if (decision === 'acceptForSession')
+        record.approvedTools.add(bound.toolName);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapApprovalResolutionStatus(decision),
+      });
+      bound.resolve(decision === 'accept' || decision === 'acceptForSession');
+      return;
+    }
     const pending = record.pendingApprovals.get(requestId);
     if (!pending) {
       // Answered already, closed by Codex, or never opened: in each case
@@ -3316,6 +3883,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    const record = this.transport.getSession(threadId);
+    if (record) {
+      if (record.activeTurnId) {
+        record.cancelledBoundTurns ??= new Set();
+        record.cancelledBoundTurns.add(record.activeTurnId);
+      }
+      this.cancelBoundToolApprovals(record);
+    }
     await this.transport.stopSession(threadId, () => this.now().toISOString());
     // archive#1195: best-effort — a session that stops cleanly no longer
     // needs its station-control MCP token; a session that never had one is

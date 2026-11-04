@@ -80,6 +80,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     refetch: async () => ({}),
   }),
+  useProjectChatDefaultsQuery: () => ({
+    data: undefined,
+    isFetching: false,
+    isPending: false,
+  }),
 }));
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
 vi.mock('../contexts/NavigationContext', () => ({

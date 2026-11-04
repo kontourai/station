@@ -444,14 +444,19 @@ describe('needs you: one failure card', () => {
     );
   });
 
-  test("the failure card's Dismiss acknowledges that exact attention item", () => {
-    attention.items = [failedItem];
-    renderDetail(
-      baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(acknowledge).toHaveBeenCalledWith(failedItem.id);
-  });
+  test.each([undefined, '2099-01-01T00:00:00.000Z'])(
+    "the failure card's Dismiss acknowledges that exact attention item (snoozedUntil=%s)",
+    (snoozedUntil) => {
+      attention.items = [
+        { ...failedItem, ...(snoozedUntil ? { snoozedUntil } : {}) },
+      ];
+      renderDetail(
+        baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(acknowledge).toHaveBeenCalledWith(failedItem.id);
+    },
+  );
 
   test('with nothing to acknowledge, the failure card offers no Dismiss', () => {
     renderDetail(

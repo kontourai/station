@@ -18,6 +18,7 @@ import {
   selectedAccessIsDirectHttp,
   selectionClaimsNativeOwner,
 } from '../views/settings/serverUpdateIdentity';
+import { useActiveStationName } from './useActiveStationName';
 
 export type ServerReachability = 'connected' | 'checking' | 'unavailable';
 
@@ -156,6 +157,8 @@ export function useConnectedServerUpdateContext(
     captureCredentialEvidence,
     isCredentialEvidenceCurrent,
   } = useConnections();
+  // #4402: "Server · <machine>" for the seeded "Default" connection.
+  const activeStationName = useActiveStationName();
   const profile = usePlatformProfile();
   const isNativeShell = profile.isTauri;
   const nativeStatus = useBundledServerStatus(profile.supervisesBundledServer);
@@ -378,7 +381,7 @@ export function useConnectedServerUpdateContext(
   return {
     scopeKey,
     apiBase,
-    connectionName: activeConnection?.name ?? null,
+    connectionName: activeStationName ?? null,
     reachability,
     kind,
     identity,

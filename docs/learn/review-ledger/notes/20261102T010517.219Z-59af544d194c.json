@@ -1,0 +1,7 @@
+{
+  "revision": "cdf23df0d6fd5a7fb00b08a51b63324de242ea7b",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Refs #3568 and #3575. Re-read the public interface table and exact client/server version, authenticated/refused request, and source-versus-delivery qualifications. The SDK decoder repair admits the server's optional typed durability declaration and keeps malformed responses refused; it adds no deployment path, tenant authorization or published client/server qualification. The linked SDK reference now documents decoder behavior.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

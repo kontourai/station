@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 /**
  * Agent Service - handles agent CRUD and lifecycle operations
  */
@@ -10,6 +12,8 @@ import {
   type EngineConnectionId,
   engineConnectionId,
   isStationAgentIdentity,
+  LEGACY_STATION_AGENT_NAME,
+  STATION_AGENT_DISPLAY_NAME,
 } from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
@@ -23,6 +27,7 @@ import {
   storedAgentApprovalMode,
   withEffectiveAgentApprovalMode,
   writeAgentApprovalOverride,
+  writeAgentToolApprovalOverride,
 } from '../../domain/agent-approval-overrides.js';
 import {
   type AgentRegistry,
@@ -232,7 +237,7 @@ function runtimeStationEngineExecution(
  * reader must not honour one this identity cannot have.
  */
 function projectStationEngineBinding<
-  T extends { execution?: AgentSpec['execution'] },
+  T extends { execution?: AgentSpec['execution']; name?: string },
 >(
   slug: string,
   record: T,
@@ -240,9 +245,24 @@ function projectStationEngineBinding<
 ): T {
   if (!isStationAgentIdentity(slug)) return record;
   const runtimeExecution = runtimeStationEngineExecution(agentMetadataMap);
-  return runtimeExecution
+  const projected = runtimeExecution
     ? { ...record, execution: runtimeExecution }
     : withoutReservedStationBinding(record);
+  return withStationAgentDisplayName(projected);
+}
+
+/**
+ * #4388: the built-in Agent is "Station Assistant", not the product's own
+ * name. A home created before the rename stores `name: 'Station'`; that
+ * exact stored name reads as the new one, and the file is not rewritten. A
+ * name the person chose is left alone.
+ */
+function withStationAgentDisplayName<T extends { name?: string }>(
+  record: T,
+): T {
+  return record.name === LEGACY_STATION_AGENT_NAME
+    ? { ...record, name: STATION_AGENT_DISPLAY_NAME }
+    : record;
 }
 
 export class AgentService {
@@ -320,7 +340,7 @@ export class AgentService {
       agent.kind === 'station'
         ? {
             slug: agent.id,
-            name: 'Station',
+            name: STATION_AGENT_DISPLAY_NAME,
             ...(runtimeDefaultExecution
               ? { execution: runtimeDefaultExecution }
               : {}),
@@ -373,6 +393,11 @@ export class AgentService {
    *
    * The seam. `configLoader.loadAgent` is the file; this is the Agent.
    */
+  isPluginOwnedAgent(slug: string): boolean {
+    const home = this.configLoader.getProjectHomeDir();
+    return Boolean(home && agentPluginOwner(home, slug));
+  }
+
   async getAgent(slug: string): Promise<AgentSpec> {
     return projectStationEngineBinding(
       slug,
@@ -663,6 +688,8 @@ export class AgentService {
         : undefined;
     if (homeDir)
       await this.recordPluginAgentApprovalChoice(homeDir, slug, filtered);
+    if (homeDir)
+      await this.recordPluginToolApprovalChoice(homeDir, slug, filtered);
     const result = await this.configLoader.updateAgent(slug, filtered);
     agentOps.add(1, { operation: 'update', agent: slug });
     // The save response is a READ too: the editor loads it straight back into
@@ -721,6 +748,52 @@ export class AgentService {
         plugin,
         chosen ?? 'connection-default',
       );
+    } finally {
+      await release();
+    }
+  }
+
+  private async recordPluginToolApprovalChoice(
+    homeDir: string,
+    slug: string,
+    updates: Record<string, any>,
+  ): Promise<void> {
+    const plugin = agentPluginOwner(homeDir, slug);
+    if (!plugin || !updates.tools || typeof updates.tools !== 'object') return;
+    const requested = updates.tools as NonNullable<AgentSpec['tools']>;
+    const effective = await this.configLoader.loadAgent(slug);
+    const stored = JSON.parse(
+      readFileSync(join(homeDir, 'agents', slug, 'agent.json'), 'utf-8'),
+    ) as AgentSpec;
+    const grants: { autoApprove?: string[]; unattendedAutoApprove?: string[] } =
+      {};
+    for (const field of ['autoApprove', 'unattendedAutoApprove'] as const) {
+      if (
+        Object.hasOwn(requested, field) &&
+        JSON.stringify(requested?.[field]) !==
+          JSON.stringify(effective.tools?.[field])
+      ) {
+        grants[field] = requested?.[field] ?? [];
+      }
+    }
+    const {
+      autoApprove: _auto,
+      unattendedAutoApprove: _unattended,
+      ...rest
+    } = requested ?? {};
+    updates.tools = {
+      ...rest,
+      ...(stored.tools?.autoApprove
+        ? { autoApprove: stored.tools.autoApprove }
+        : {}),
+      ...(stored.tools?.unattendedAutoApprove
+        ? { unattendedAutoApprove: stored.tools.unattendedAutoApprove }
+        : {}),
+    };
+    if (Object.keys(grants).length === 0) return;
+    const release = await acquireAgentIdentityMutationLockAtHome(homeDir);
+    try {
+      writeAgentToolApprovalOverride(homeDir, slug, plugin, grants);
     } finally {
       await release();
     }

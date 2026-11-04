@@ -27,6 +27,7 @@ import {
   ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES,
   ORCHESTRATION_TRANSFER_PHASE_NAMES,
 } from '../../__test-utils__/orchestration-transfer-scenario.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -593,4 +594,26 @@ describe('orchestration transfer byte budgets', () => {
     );
     expect(line).toContain('frames 44 != 43, activityFrames 1');
   }, 60_000);
+});
+
+// docs/design/event-content-spill.md: the shared scenario accepts an inline
+// final output so it can also measure the merge-base server; on this server
+// the fixture's final output must travel as a reference.
+const makeFinalRefDir = trackTempDirs();
+test('the heavy turn final tool output is stored and replayed as a reference', () => {
+  const store = new EventStore(
+    join(makeFinalRefDir('transfer-final-ref-'), 'orchestration.sqlite'),
+  );
+  try {
+    for (const event of heavyTransferFinalPair()) store.appendEvent(event);
+    const completed = store
+      .listEvents(ORCHESTRATION_TRANSFER_THREAD_ID)
+      .find((event) => event.payload.method === 'tool.completed')!;
+    expect((completed.payload as { output?: unknown }).output).toMatchObject({
+      $stationContent: 1,
+      kind: 'string',
+    });
+  } finally {
+    store.close();
+  }
 });

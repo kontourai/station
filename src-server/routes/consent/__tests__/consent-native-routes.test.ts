@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import {
   bindRuntimeLocalOperator,
   type RuntimeAuthenticatedRequestPrincipal,
@@ -59,6 +60,8 @@ function setup(options: { withChannel?: boolean } = {}) {
 function createTransaction(
   channel: ConsentChannelService,
   overrides: {
+    tenantId?: string;
+    decisionPolicy?: 'requester-session';
     commitApproval?: () => Promise<void>;
     revalidateTarget?: () => Promise<ConsentTargetSnapshot | null>;
   } = {},
@@ -70,7 +73,8 @@ function createTransaction(
   };
   const commitApproval = overrides.commitApproval ?? vi.fn(async () => {});
   const created = channel.store.create({
-    tenantId: channel.tenantId,
+    tenantId: overrides.tenantId ?? channel.tenantId,
+    decisionPolicy: overrides.decisionPolicy,
     target,
     requester: { kind: 'plugin-ui', id: 'demo-plugin' },
     rateKey: 'plugin-ui',
@@ -355,4 +359,85 @@ describe('consent native broker routes (station#3677 PR 3)', () => {
     expect(missingNonce.response.status).toBe(400);
     expect(commitApproval).not.toHaveBeenCalled();
   });
+});
+
+test('native requester review needs the exact partitioned session and cannot fall back to local operator authority', async () => {
+  const { app, channel } = setup();
+  if (!channel) throw new Error('missing channel');
+  const tenantId = 'person:analytics-fixture';
+  const { id, commitApproval } = createTransaction(channel, {
+    tenantId,
+    decisionPolicy: 'requester-session',
+  });
+  const other = createTransaction(channel, {
+    tenantId,
+    decisionPolicy: 'requester-session',
+  });
+  const secret = channel.store.decisionSessionSecretFor(tenantId, id);
+  const otherSecret = channel.store.decisionSessionSecretFor(
+    tenantId,
+    other.id,
+  );
+  if (!secret || !otherSecret) throw new Error('missing session');
+  const reviewPath = `/requests/${id}/native-review?scope=${tenantId}`;
+  const decidePath = `/requests/${id}/native-decide?scope=${tenantId}`;
+  for (const value of [undefined, otherSecret, 'invalid']) {
+    const headers = value
+      ? { 'X-Station-Requester-Consent': value }
+      : undefined;
+    const response = await app.request(
+      callerRequest('local-grant', reviewPath, {
+        method: 'POST',
+        headers,
+      }),
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+  }
+  const headers = { 'X-Station-Requester-Consent': secret };
+  const wrongScope = await app.request(
+    callerRequest('unbound', `/requests/${id}/native-review?scope=other`, {
+      method: 'POST',
+      headers,
+    }),
+  );
+  expect(wrongScope.status).toBe(403);
+  const reviewed = await app.request(
+    callerRequest('unbound', reviewPath, {
+      method: 'POST',
+      headers,
+    }),
+  );
+  expect(reviewed.status).toBe(200);
+  const body = z
+    .object({
+      review: z.object({
+        nonce: z.string(),
+        description: z.object({ title: z.string() }),
+      }),
+    })
+    .parse(await reviewed.json());
+  expect(body.review.description.title).toBe('Trust demo-plugin?');
+  const decided = await app.request(
+    callerRequest('unbound', decidePath, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve', nonce: body.review.nonce }),
+    }),
+  );
+  expect(decided.status).toBe(200);
+  expect(
+    z
+      .object({ request: z.object({ status: z.literal('approved') }) })
+      .parse(await decided.json()).request.status,
+  ).toBe('approved');
+  expect(commitApproval).toHaveBeenCalledTimes(1);
+  const replay = await app.request(
+    callerRequest('unbound', decidePath, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve', nonce: body.review.nonce }),
+    }),
+  );
+  expect(replay.status).toBe(409);
+  expect(commitApproval).toHaveBeenCalledTimes(1);
 });

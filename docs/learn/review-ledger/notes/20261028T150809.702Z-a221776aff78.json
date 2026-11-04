@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the MCP advisory paragraph: configured OAuth clients are pinned to their first authorization server per bucket and another issuer is refused before the secret is read. Checked against tool-server-oauth.ts and the issuer-pin test. Other inputs: docs/guides/dependency-security.md changed for remote MCP OAuth client support; the OAuth provider adds pre-registered and CIMD client selection, a per-bucket issuer pin, the client-id-required refusal and configured scopes.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

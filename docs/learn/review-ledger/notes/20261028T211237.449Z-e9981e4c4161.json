@@ -1,0 +1,7 @@
+{
+  "revision": "2941002b008737f9cc79062b8b6fe1848e6b8cba",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Round 2: the install transaction gains a receipt pass over copied integration definitions under each integration's mutation lock; staging, generation, consent and rollback semantics described here are unchanged. No edit.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/domain/config-loader.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

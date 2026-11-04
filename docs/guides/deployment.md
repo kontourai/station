@@ -56,8 +56,15 @@ from native packages. The
 listener negotiates `Accept-Encoding`, sets `Vary: Accept-Encoding`, and falls
 back to the original file when sidecars are absent. HTML stays `no-cache` and
 uncompressed: the listener injects a fresh CSP nonce for each response and does
-not return `304` for the shell. API cache policy and unbuffered event streams
-are unchanged.
+not return `304` for the shell. The listener passes API responses and
+unbuffered event streams through as the API sends them; the API revalidates its
+own JSON reads (see [conditional JSON reads](../reference/api.md#conditional-json-reads)).
+
+This listener and the API listener keep an idle HTTP connection open for 65
+seconds instead of Node's 5. A client polling every few seconds reuses its
+connection, and a reverse proxy with the common 60-second idle limit closes
+its upstream connection before Station does, rather than reusing one Station
+has just closed.
 
 The built shell preloads its `station-eager-entry` main module while the boot
 module prepares startup recovery. Page and highlight-worker builds share the
@@ -88,8 +95,10 @@ and historical qualifications below are not current image or cloud proof.
 
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
-Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
-upgrade bridge to them, and the default mapping does not publish their ports.
+The Coding terminal's ticket-admitted `/api/terminal/socket` upgrade is
+forwarded through this proxy to the API listener. The dedicated voice listener
+is separate; this proxy has no upgrade bridge to it, and the default mapping
+does not publish its port.
 The image runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
 
@@ -182,7 +191,8 @@ the reusable environment credential:
 
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
-approval requires the route's current operator/local-home authority or an
+approval requires the route's current operator/local-home authority,
+owner-device standing, or an
 explicitly promoted `access:approve` Device (one tied to a person only while
 that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
@@ -196,9 +206,22 @@ and hot reload stay outside the published image contract.
 
 The optional [private telemetry companion](../../deployment/telemetry/README.md)
 now has an explicit receiver image target and a separate pinned Compose profile.
-It requires private credential files and loopback exposure; consumer validation,
-actual delivery, backup/restore and release qualification are still pending.
-Its source is distinct from existing dogfood receipts.
+It requires private credential files and loopback exposure. Source consumers and
+bounded delivery/restore diagnostics are implemented; their historical receipts
+do not qualify the current installed release or the full private two-Station
+journey. See [the diagnostic profile](../../deployment/telemetry/README.md#artifact-and-private-files)
+for its exact scope and remaining native/release limits. Its source is distinct
+from existing dogfood receipts.
+
+Developer → Monitoring → Companion exposes the operator-only host prerequisite
+check. The in-person operator (including one of the owner's own Devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+and an explicitly promoted human operator Device can read it. A promoted Device
+needs read scope, `telemetry:manage` and its current operator role; agents and
+other paired Devices remain refused. This read
+does not install, start or qualify the deployment.
+See the [prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api)
+for supported container capabilities and explicit failure states.
 
 The same directory provides the only checked-in monitoring stack. Its
 [developer profile](../../deployment/telemetry/README.md#developer-profile) runs
@@ -226,8 +249,11 @@ its private operator `sto_` key and return exact marginals. Keep these routes
 private at the proxy too. The public dashboard and publisher `stq_` keys expose
 only frozen weekly noisy estimates over a fixed public domain, with cursor
 pagination. Configure public release versions/registry IDs independently of
-observed traffic. Schema 6 must be migrated before serving; older binaries
-refuse it. Back up the entire database including `lite_noise_key`,
+observed traffic. The current receiver requires schema 9 before serving; a
+schema-8 binary refuses that database. In-place rollback is `NOT_SUPPORTED`, and
+rollback by restoring the original backup remains `NOT_VERIFIED`. Follow the
+[maintained lifecycle profile](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
+for exact backup, restore and compatibility boundaries. Back up the entire database including `lite_noise_key`,
 `lite_publications`, and `lite_published`. Never clear publication markers,
 regenerate already released weeks, or restore their cells independently. Review
 the [privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates)
@@ -253,8 +279,10 @@ readiness. Application and workspace files need their own retention/backup polic
 ## Offline home recovery drill
 
 Use a disposable home first, with the same Station release on source and target.
-Record a Project, Task, room message, document edit, its durable edit receipt,
-and the published revision link. Make another edit so the first revision is no
+Record a Project, Task, room message, document edit and its durable edit receipt.
+Create a Task Review thread on that Plan revision to freeze a receipt, and record
+the resulting published revision link. Enable the `task-review` feature preview
+for this step; saving alone retains a replaceable candidate. Make another edit so the first revision is no
 longer the current document. Stop every runtime using the source home before
 running the [home backup and restore commands](../reference/cli.md#home-backup)
 from a matching source checkout. These local archive verbs are not a promise
@@ -267,6 +295,10 @@ that the published client can restore a server home:
 ```
 
 The archive contains sensitive home files and is not an encrypted transport.
+Use a v2-capable CLI for newly written home archives; it preserves empty
+directories and can also read older v1 archives. A v1 archive cannot recover
+empty directories it never recorded. This format compatibility does not
+establish post-snapshot effect-history continuity or a safe runtime downgrade.
 Restrict archive access and encrypt off-host storage using your organization's
 backup system. Preserve required evidence-signing keys securely; rotating the
 operator credential is separate from replacing those keys. OS-held credentials,
@@ -304,12 +336,22 @@ Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.
 
+Private analytics uses that recovery record as a negative activation fence.
+Normal restore and supervised in-place update rollback require fresh source
+consent and receiving keys; copied approvals and sync checkpoints cannot renew
+access. Update rollback persists the fence before removing state and preserves
+it if interrupted. Generic EventStore stream identity is not rewritten. Keep
+recovery metadata intact; unreadable startup metadata disables private export
+until repair and restart. These controlled home-restore checks do not establish
+companion PostgreSQL backup reconciliation, canonical clone/mirror identity or
+cross-host authority. See [source recovery limits](monitoring.md#source-approval-review).
+
 ## Reverse Proxy
 
 For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
 
 The following example terminates TLS for the UI and HTTP/SSE API through the
-lifecycle proxy. It does not expose the dedicated voice/terminal listeners:
+lifecycle proxy. It does not expose the dedicated voice listener:
 
 ```nginx
 server {
@@ -463,6 +505,10 @@ also rewrite the corresponding session, event, cursor, or related store state.
 Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
+The GitHub automation observation preview is not offered in hosted mode, and
+`/automations/deliveries` refuses hosted reads because its shared ledger has no
+tenant binding.
+
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
 the unbound `/api/tasks` task graph. File-memory conversation inventory,
@@ -560,6 +606,17 @@ GUI executable as a headless server command. The current checkout's
 launchd and systemd adapters. Its
 [Windows adapter](../../packages/cli/src/commands/service-windows.ts) owns Task
 Scheduler registration, the command wrapper, process identity and trusted paths.
+Windows live-owner engine cleanup uses `taskkill /T`, escalating to `/F` when
+needed. The [owned-process startup sweep](../../src-server/services/infra/process-utils.ts)
+also recovers orphans on Windows (#3873). It trusts its registry only as a real
+directory, not a reparse point, inside the user's own `%LOCALAPPDATA%` (by
+default `%LOCALAPPDATA%\Temp\station-owned-processes`). After an abrupt owner
+exit, the next start reaps an engine whose recorded birth still matches. It
+kills that engine and only the descendants created after the parent they
+name, one pid at a time and never with `/T`, because Windows keeps a stale
+parent pid after the parent exits. A record whose process table cannot be read
+is retained, not acted on. This is separate from Task Scheduler restart policy
+and does not establish reboot recovery.
 The published CLI can control an existing installed service with
 `service status|start|stop`; installing or removing a service needs the
 lifecycle CLI of a checkout or a prebuilt server archive, and the
@@ -573,7 +630,46 @@ That was an installation-specific observation, not a portable current package
 contract. Do not assume a present release contains that path, a separate Node
 installation, or the same process-detachment behavior. A source server's schema
 lookups depend on its configured working directory; the service wrapper owns
-that detail. This review did not run a Windows installer or SSH session.
+that detail.
+
+The official Windows task uses the installing user's interactive logon token.
+An SSH connection does not supply that desktop session. If installation cannot
+start the task, Station reports the scheduler's last result and, for an
+interactive-token task, explains the logon requirement before rolling back.
+Logging into the same Windows account is the ordinary supported route.
+`Start-Process` inside SSH is not evidence of persistence: OpenSSH job cleanup
+can terminate descendants after disconnect. Use `service run` as the foreground
+supervisor when another process manager owns its lifetime.
+
+An operator who needs startup before desktop logon can manage a **separate**
+Task Scheduler registration for that existing command. This is not an official
+`service install` registration, and `service status` will not own or recognize
+it. Use the same Windows account at least privilege, a dedicated task name and
+private wrapper/log directory, and the stable channel launcher rather than a
+versioned installation path. Set explicit instance, home, API/UI ports and exact
+allowed origins in the wrapper. For example, after checking those values:
+
+```bat
+@echo off
+call "C:\Users\operator\.local\bin\station-nightly.cmd" service run --instance=nightly --base="C:\Users\operator\.station\instances\nightly" --port=38141 --ui-port=38000 --allowed-origin=https://station.example.ts.net:8443
+```
+
+Register that wrapper with a boot trigger, an S4U principal for the same user,
+`RunLevel Limited`, no execution time limit (`PT0S`), and battery settings that
+allow starting and continuing. Restrict write access to the account and system
+administrators; redirect logs to its private directory. Inspect an existing
+task before replacing anything, and never store a password in the wrapper.
+S4U does **not** provide Windows network credentials or access to encrypted
+files; credential-store-dependent providers need their own qualification.
+Keep the wrapper's executable, working directory and Node dependency (if any)
+valid across updates. Stop or disable this custom task before installing an
+official task for the same instance, so two supervisors cannot compete.
+
+On 2026-10-30, the nightly archive was installed on a Windows host over SSH and
+an operator-managed S4U task running `service run` remained healthy after SSH
+disconnect and reconnect. Tailnet handshake and authenticated peer reads were
+also exercised. This establishes session independence, not reboot recovery or
+provider execution; those require separate checks.
 
 Reachability remains separate from authentication. Inspect the service's actual
 bind address and port, then qualify the intended route from another Device.
@@ -582,6 +678,11 @@ opening a port does not pair the Device. The versioned public handshake can
 confirm an answering Station, while a protected request without credentials is
 expected to be refused. A failed `curl` transport/status `000` can mean DNS,
 TLS, refusal, timeout or routing failure; it is not a unique firewall diagnosis.
+For Tailscale Serve, also allow the exact published HTTPS origin in the
+supervisor startup arguments. A reachable handshake without an Origin header
+does not prove that a browser's pairing request will pass Origin admission.
+Keep other applications' Serve listeners intact; use another HTTPS port when
+the default listener belongs to another service.
 
 Do not replace an existing managed registration or remove a firewall rule by a
 generic display name. Use the exact instance/registration owner and current
@@ -699,9 +800,11 @@ hostnames, so a different name fails closed with `unauthenticated`. Unset, the
 behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
 With this origin set, a paired browser can enroll an operator passkey and sign
-in for read-only device inventory access; see [Operator passkeys](operator-passkeys.md).
-The host-scoped session cookie also reaches the same-host app origin; it grants
-only the three documented reads. No passkey ceremony runs on the app origin.
+in; see [Operator passkeys](operator-passkeys.md). The host-scoped session
+cookie also reaches the same-host app origin. It admits the documented reads
+and requests for per-action review, including turning on Project sharing; a fresh
+passkey confirmation on the consent origin is required before a reviewed change
+commits. No passkey ceremony runs on the app origin.
 
 #### Troubleshooting the pairing path
 
@@ -837,7 +940,8 @@ placed below the supervisor/release directories.
 
 The installer is for a fresh named instance and fails closed if any selected
 loopback port is already occupied. The API port must be at most 65532, and the
-API, terminal (`API + 1`), voice (`API + 2`), consent (`API + 3`,
+API, the reserved `API + 1` slot (no longer bound, but a supervisor from an
+older Station can still hold it), voice (`API + 2`), consent (`API + 3`,
 station#3677), and UI ports must be five distinct ports; all five are checked
 for unmanaged listeners. It never guesses that an unmanaged listener
 is safe to stop or adopt. For an existing ad-hoc dogfood service, first stage
@@ -1006,7 +1110,12 @@ The bounded JSONL lifecycle journal correlates instance, exact SHA, random boot
 ID, and backend PID across `started`, fsynced `stop_intent`, observed shutdown,
 and process-exit events. It classifies expected promotion, operator stop,
 expected recovery/rollback, unexpected signal, crash, and an unobservable
-SIGKILL/native crash without inventing a sender. Public readiness responses
+SIGKILL/native crash without inventing a sender. A start under the process
+supervisor records the supervisor's PID; each core generation stamps its
+events with that supervisor and its generation number, and only the newest
+generation's exit counts as the instance's, so a handoff is not read as a stop
+or a crash. Dogfood health accepts a supervised instance's server ports held
+by the recorded supervisor together with its own child generation. Public readiness responses
 never expose the PID, paths, journal reason, or boot identity.
 Journal reads and writes share a bounded cross-process ownership lock and read
 the retained previous/current generations coherently. Stop intents carry a
@@ -1071,3 +1180,14 @@ removing files; preserve rollback/diagnostic evidence if shutdown is uncertain.
 Then inspect `tailscale serve status --json`. Remove the HTTPS handler only if
 it still points at this instance and no other required handler shares that
 listener. Never use a blanket `tailscale serve reset` as dogfood cleanup.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.

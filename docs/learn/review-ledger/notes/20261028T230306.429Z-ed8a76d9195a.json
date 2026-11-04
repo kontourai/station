@@ -1,0 +1,7 @@
+{
+  "revision": "842ea31f73218e41fe18c622deb9cb39d5ef1f44",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited SecretBindingAdministration: instance id (.station-instance) creation and removal, authority-read instance, per-request resolution without caching, leftover grant visibility. Checked against the cited sources. Other inputs: the module map describes instance-pinned client-secret grants, per-request secret resolution and the .station-instance identity; the locked writer creates a .station-instance id on first write; the pre-copy plugin check refuses bundles carrying it; client-secret grants also record the integration instance id, which resolution reads from storage itself.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-storage.ts","src-server/services/secrets/secret-binding-administration.ts"]}
+  ]
+}

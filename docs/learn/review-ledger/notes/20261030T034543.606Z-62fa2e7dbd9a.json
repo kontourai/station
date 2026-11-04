@@ -1,0 +1,49 @@
+{
+  "revision": "5548e40c593def47e5b3ac3ead24bb8f2c0e3503",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Frozen 2026 distribution ADR: environment-security delta only adds childWorkSteering, not protocolVersion, minimum protocol or channel rules; preserve decision history. Source comparison only, no release qualification.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Current share contract: pairing delta adds child instruction GET to orchestration read, not share management access:manage or bearer-share resolution; capability flag changes no scope vocabulary. No share/browser execution in this review.","inputs":["docs/design/answer-share-permalinks.md","packages/contracts/src/environment-security.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Staged home authority design: added child steering service and handshake flag do not change home-transfer decision/coordinator or activation claims; no transfer or cross-host execution verified.","inputs":["docs/design/channel-home-authority.md","packages/contracts/src/environment-security.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Broker architecture and dated milestones: new Session instruction GET inherits orchestration read and does not alter broker signaling, Device trust or account/Project authorization. No native or remote delivery verified.","inputs":["docs/design/connection-broker.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Fleet design and chronological slices: added Session instruction GET does not alter inference invoke override, fleet inventory read or contribution authority; historical scope counts remain dated. No live fleet/provider qualification.","inputs":["docs/design/inference-fleet.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"MCP host design: EventStore delta adds child steering journal/receipt methods and session cleanup, not package MCP admission journal or MCP resource stamping; new instruction GET does not alter tool-call admission. No MCP browser/provider run.","inputs":["docs/design/mcp-ui-host.md","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Native capability architecture: child instruction GET is a server Session read, not a Tauri permission or native capability report change; existing analytics exception and device qualification limits remain. No native execution.","inputs":["docs/design/native-capabilities.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Pilot native relay enrollment: child instruction GET is outside the exact enrollment routes and does not grant Device activation, relay management or Project authority. No native enrollment journey executed.","inputs":["docs/design/native-relay-enrollment.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Dated R3 OAuth evidence: new child instruction GET is unrelated to isolated OAuth registration, release guard and historical tests; retain exact receipt and exposure limits, no rerun claimed.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Dated R4a OAuth/MCP evidence: new child instruction GET does not change outside-agent router, two Project reads, bearer or emission checks; retain historical execution and exposure limits, no rerun claimed.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Accepted remote-execution preparation: static flag delta adds childWorkSteering separately; executionPreparation flag and prepared-directory/attempt claims are unchanged. No remote execution qualified.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Historical peer pairing and supersession: added optional childWorkSteering flag does not change delegation preset, pairing scope parser or protocol handshake admission. Preserve historical proposal; no two-host journey.","inputs":["docs/design/station-peer-pairing.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Deployment authentication guide: added child instruction GET inherits orchestration read but does not extend closed account-bound Device allowlist or grant general orchestration commands; adapter and membership rules unchanged. No hosted identity run.","inputs":["docs/guides/deployment-authentication.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Home-transfer controller preview: child command/read route additions and independent capability flag do not extend home:control, control-session fencing or transfer activation. No cross-host transfer verified.","inputs":["docs/guides/home-transfer-controller.md","packages/contracts/src/environment-security.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Native shell verification guide: new instruction GET is separate from foreground chat POST and transport lifecycle claims; no Tauri IPC, packaged shell or device verification performed.","inputs":["docs/guides/native-shell-verification.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Self-hosted broker guide: additional Session read route changes neither broker invitation/signing trust nor independent Device/account/Project admission; no relay or physical-device run.","inputs":["docs/guides/self-hosted-broker.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Connect reference: childWorkSteering is an additional optional host handshake flag, not a new pairing scope or a change to saved capability/compatibility and pairing transport contracts; instruction GET inherits read. No native transport execution.","inputs":["docs/reference/connect.md","packages/contracts/src/environment-security.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Environment settings reference: orchestration service delta implements child steering, adds no environment variable and does not change idle parking condition for running child work. Source review only; no runtime restart test.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Outside-agent OAuth reference: child instruction GET is a separate paired Session route and does not mount the isolated OAuth/MCP factories or change their exact outside capability declarations. No exposure qualification.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Current remote access security contract: traced pairing read leaf, Session/child rechecks, command current principal/session checks, forwarded caller guard across adapter await, EventStore journal and tombstone deletion. Added bounded prose. Focused child-work transcript route suite 13 passed; no hosted or device journey.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/environment-security.ts","src-server/security/pairing-route-scopes.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Connect package README: Session instruction read does not change native transport signer, trust recheck, separate account bridge or management scope; no packaged/native or Project journey verified.","inputs":["packages/connect/README.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Historical native relay fixture: child instruction GET does not change fixture enrollment, exact broker scope, account/Device proof or manager promotion; prior receipt remains historical and no physical device run.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Source-impact review: mcp-service.ts refuses an issuer change while a client secret is bound, resets tokens on issuer change, and lets an empty sign-in scope choice drop the integration default; the integration schema accepts oauthClient.issuer (an RFC 8414 HTTPS issuer). Searched this document for MCP tool-server OAuth client, issuer, client secret, secret-binding grant and scope claims; none describes these paths beyond links that still resolve, so its claims stay accurate.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

@@ -32,7 +32,13 @@
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -49,13 +55,35 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import {
+  emit,
+  FakeCodexProcess,
+  flushIo,
+  repliesTo,
+  waitFor,
+  withTimeout,
+} from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
+import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
+import {
+  FeaturePreviewNotOfferedError,
+  type FeaturePreviewRegistry,
+} from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  type AccountSharingRecord,
+  accountSharingSettingPath,
+  armStagedAccountSharingChange,
+  resolveAccountSharingAtBoot,
+  stageAccountSharingChange,
+} from '../../services/identity/account-sharing-setting.js';
+import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -407,32 +435,6 @@ function stationBrowserOriginsFor(port: number) {
 
 const MCPManager = await import('../mcp/mcp-manager.js');
 
-function replaceTerminalListener(
-  runtime: InstanceType<typeof StationRuntime>,
-): {
-  start: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
-} {
-  let running = false;
-  const start = vi.fn((port: number, host?: string) => {
-    if (running) throw new Error('terminal listener is already running');
-    running = true;
-    return { port, host };
-  });
-  const stop = vi.fn(async () => {
-    running = false;
-  });
-  (
-    runtime as unknown as {
-      terminalWsServer: {
-        start: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-      };
-    }
-  ).terminalWsServer = { start, stop };
-  return { start, stop };
-}
-
 /**
  * Wait for the boot under test to reach route configuration (#1791).
  *
@@ -546,6 +548,140 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
   });
 
+  it('keeps Codex tools off by default and on hosted runtimes, and applies runtime policy before dispatch', async () => {
+    home = await createSchemaHome('station-codex-bound-runtime-');
+    const agentDir = join(home, 'agents', 'bound-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Bound Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+      }),
+    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const subject = runtime as any;
+    let adapter = subject.codexAdapter;
+    let child = new FakeCodexProcess();
+    adapter.processFactory = () => child;
+    const start = async (threadId: string) => {
+      child = new FakeCodexProcess();
+      const write = child.stdin._write.bind(child.stdin);
+      child.stdin._write = (chunk, encoding, callback) => {
+        write(chunk, encoding, callback);
+        child.emit('wire-write');
+      };
+      const wire = async (method: string): Promise<any> => {
+        for (;;) {
+          const found = child.stdin.lines
+            .map((line: string) => JSON.parse(line))
+            .find((line: any) => line.method === method);
+          if (found) return found;
+          await new Promise<void>((resolve) =>
+            child.once('wire-write', resolve),
+          );
+        }
+      };
+      const promise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: home,
+        agent: { slug: 'bound-test' },
+        metadata: {
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: 'parent',
+            rootAgentSlug: 'root',
+            blockedTools: ['station-browser_browser_status'],
+          },
+        },
+      });
+      const initialize = await wire('initialize');
+      await emit(child, { id: initialize.id, result: { userAgent: 'test' } });
+      const thread = await wire('thread/start');
+      await emit(child, {
+        id: thread.id,
+        result: { thread: { id: `native-${threadId}` } },
+      });
+      await promise;
+      return thread.params;
+    };
+    const off = await start('preview-off');
+    expect(off.dynamicTools).toBeUndefined();
+    await adapter.stopSession('preview-off');
+    await subject.featurePreviews.setEnabled(
+      'codex-bound-browser-device-tools',
+      true,
+    );
+    const policy = vi.spyOn(subject, 'resolveExternalPreToolPolicy');
+    const dispatch = vi.spyOn(subject, 'codexToolDispatch');
+    const enabled = await start('preview-on');
+    expect(
+      enabled.dynamicTools.some((tool: any) => tool.name === 'browser_status'),
+    ).toBe(true);
+    expect(policy).toHaveBeenCalled();
+    await expect(policy.mock.results[0].value).resolves.toBeDefined();
+    const turn = adapter.sendTurn({ threadId: 'preview-on', input: 'go' });
+    await flushIo();
+    await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+    await withTimeout(turn, 'runtime turn');
+    await emit(child, {
+      id: 51,
+      method: 'item/tool/call',
+      params: {
+        threadId: 'native-preview-on',
+        turnId: 'turn',
+        callId: 'call',
+        tool: 'browser_status',
+        arguments: {},
+      },
+    });
+    await waitFor(() => repliesTo(child, 51)[0], 'policy denial');
+    expect(repliesTo(child, 51)[0].error.message).toBe('Bound tool refused');
+    expect(dispatch).not.toHaveBeenCalled();
+    await adapter.stopSession('preview-on');
+    await runtime.shutdown();
+    runtime = undefined;
+    rmDirSyncRetrying(home);
+    home = await createSchemaHome('station-codex-bound-hosted-');
+    const registryPath = join(home, 'hosted-tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+      }),
+    );
+    process.env[hostedRegistryFileEnv] = registryPath;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const hosted = runtime as any;
+    expect(hosted.codexBoundToolsPreview).toBeUndefined();
+    await expect(
+      hosted.featurePreviews.setEnabled(
+        'codex-bound-browser-device-tools',
+        true,
+      ),
+    ).rejects.toBeInstanceOf(FeaturePreviewNotOfferedError);
+    adapter = hosted.codexAdapter;
+    adapter.processFactory = () => child;
+    const hostedStart = await start('hosted');
+    expect(hostedStart.dynamicTools).toBeUndefined();
+    await adapter.stopSession('hosted');
+  });
+
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
     home = mkdtempSync(join(tmpdir(), 'station-coldstart-incompatible-'));
     mkdirSync(join(home, 'config'), { recursive: true });
@@ -625,22 +761,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     journal.close();
 
     const virtualReady = vi.fn();
-    const terminal = replaceTerminalListener(
-      (runtime = new StationRuntime({
-        projectHomeDir: home,
-        port: TEST_PORT,
-        virtualApplication: {
-          origin: 'https://virtual.example.test',
-          ready: virtualReady,
-        },
-      })),
-    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      virtualApplication: {
+        origin: 'https://virtual.example.test',
+        ready: virtualReady,
+      },
+    });
     routeMocks.deferServerFactory = true;
 
     await expect(runtime.initialize()).rejects.toThrow(
       'Relay enrollment cleanup is unconfirmed',
     );
-    expect(terminal.start).not.toHaveBeenCalled();
     expect(routeMocks.configureRuntimeRoutes).not.toHaveBeenCalled();
     expect(virtualReady).not.toHaveBeenCalled();
   });
@@ -669,7 +802,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     routeMocks.deferServerFactory = true;
 
     let bootSettled = false;
@@ -716,7 +848,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     vi.spyOn(
       runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
       'resolveBuiltinEngineBinding',
@@ -869,7 +1000,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
                 ready: virtualReady,
               },
       });
-      replaceTerminalListener(runtime);
       // This receipt-composition proof does not cover native-engine discovery.
       // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
       // cannot consume the test's timeout budget.
@@ -1023,7 +1153,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const resolveModelId = vi
       .spyOn(BedrockModelCatalog.prototype, 'resolveModelId')
       .mockResolvedValue('anthropic.test-model');
@@ -1147,7 +1276,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           port: TEST_PORT,
           host: '127.0.0.1',
         });
-        replaceTerminalListener(runtime);
         // A namespaced workItemRef routes dispatch through the assignment
         // claim; stub that gate (and the workspace it needs) so this case
         // observes the brief. Both are read when the dispatcher is composed.
@@ -1299,7 +1427,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     // Native-engine readiness probes are unrelated to managed-agent hook
     // composition and can take tens of seconds in the sandbox. Keep the
     // built-in agent on Station's engine, which is the production path this
@@ -1392,7 +1519,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   it('schedules store integrity verification against the store it opened (#3218)', async () => {
     home = await createSchemaHome('station-coldstart-store-integrity-');
     runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
-    replaceTerminalListener(runtime);
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1433,7 +1559,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       projectSharing: true,
       localAccounts: { publicOrigin: `http://localhost:${TEST_PORT}` },
     });
-    replaceTerminalListener(runtime);
     vi.mocked(attachVoiceWebSocket).mockClear();
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1503,27 +1628,272 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(pairing.canHoldPersonalToken(accountBinding)).toBe(false);
   });
 
-  it('hosted tenant isolation never binds the unauthorised terminal port', async () => {
-    home = await createSchemaHome('station-coldstart-hosted-terminal-');
-    const registryPath = join(home, 'hosted-tenants.json');
-    writeFileSync(
-      registryPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
-      }),
-    );
-    process.env[hostedRegistryFileEnv] = registryPath;
-    runtime = new StationRuntime({
-      projectHomeDir: home,
-      port: TEST_PORT,
-      host: '0.0.0.0',
+  describe('Project sharing from Settings (#4305)', () => {
+    const publicOrigin = `http://localhost:${TEST_PORT}`;
+    type Internals = {
+      localAccounts?: LoadedLocalAccounts;
+      featurePreviews: FeaturePreviewRegistry;
+      deploymentAuthentication?: unknown;
+      projectMembership?: {
+        service: Pick<ProjectMembershipService, 'mayRegister'>;
+      };
+      environmentSecurityService: EnvironmentSecurityService;
+    };
+    const internals = () => runtime as unknown as Internals;
+    const routeContext = () =>
+      routeMocks.configureRuntimeRoutes.mock.calls.at(-1)?.[0] as {
+        localAccounts?: unknown;
+        deploymentAuthentication?: unknown;
+        projectMembership?: unknown;
+        accountSharing: () => AccountSharingRuntimeState;
+      };
+    const record = () =>
+      JSON.parse(
+        readFileSync(accountSharingSettingPath(home), 'utf8'),
+      ) as AccountSharingRecord;
+    const boot = async () => {
+      routeMocks.armRoutesConfigured();
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+      });
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+    };
+    const stop = async () => {
+      await runtime!.shutdown();
+      runtime = undefined;
+    };
+
+    it('a staged choice is adopted at boot, reaches the routes, and is committed', async () => {
+      home = await createSchemaHome('station-sharing-setting-apply-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      expect(internals().localAccounts).toBeDefined();
+      const context = routeContext();
+      expect(context.localAccounts).toBe(internals().localAccounts);
+      expect(context.projectMembership).toBeDefined();
+      expect(context.accountSharing()).toEqual({
+        lockedBy: [],
+        active: {
+          projectSharing: true,
+          localAccounts: true,
+          externalProvider: false,
+          publicOrigin,
+        },
+      });
+      expect(record()).toMatchObject({
+        committed: { enabled: true, publicOrigin },
+        lastApply: { outcome: 'applied' },
+      });
+      expect(record().pending).toBeUndefined();
+      // The Settings control is a Feature Preview, offered and off by
+      // default; the stored choice applies regardless, so turning the
+      // preview off never signs invited people out.
+      expect(
+        (
+          runtime as unknown as {
+            featurePreviews: {
+              list(): Array<{ id: string; enabled: boolean }>;
+            };
+          }
+        ).featurePreviews
+          .list()
+          .find((preview) => preview.id === 'project-sharing-setting'),
+      ).toMatchObject({ enabled: false });
+      expect(
+        (routeContext() as { accountSharingPreview?: unknown })
+          .accountSharingPreview,
+      ).toBeDefined();
     });
-    const terminalListener = replaceTerminalListener(runtime);
 
-    await expect(runtime.initialize()).resolves.toBeUndefined();
+    it('stored sharing passes the live member-passkey preview into the actual account provider', async () => {
+      home = await createSchemaHome('station-sharing-member-passkeys-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      const accounts = internals().localAccounts;
+      expect(accounts).toBeDefined();
+      if (!accounts) throw new Error('The account provider was not composed.');
+      const offered = () =>
+        accounts.service
+          .describe()
+          .endpoints.some(
+            (endpoint) => endpoint.operation === 'passkey-sign-in',
+          );
+      expect(offered()).toBe(false);
+      await internals().featurePreviews.setEnabled('member-passkeys', true);
+      expect(offered()).toBe(true);
+      const options = () =>
+        accounts.service.handle(
+          new Request(`${publicOrigin}/api/account-auth/passkey/sign-in`, {
+            method: 'POST',
+            headers: {
+              Origin: publicOrigin,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ step: 'options' }),
+          }),
+          '/passkey/sign-in',
+        );
+      const enabled = await options();
+      expect(enabled.status).toBe(200);
+      expect(await enabled.json()).toMatchObject({
+        data: { options: { rpId: 'localhost', challenge: expect.any(String) } },
+      });
+      await internals().featurePreviews.setEnabled('member-passkeys', false);
+      expect(offered()).toBe(false);
+      expect((await options()).status).toBe(404);
+    });
 
-    expect(terminalListener.start).not.toHaveBeenCalled();
+    it('a staged choice that fails to load starts the Station with sharing off and rolls back', async () => {
+      home = await createSchemaHome('station-sharing-setting-failure-');
+      // An account store whose authority secret is gone: loading refuses.
+      mkdirSync(join(home, 'authentication'), { mode: 0o700 });
+      writeFileSync(join(home, 'authentication', 'local-accounts.sqlite'), '');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      expect(internals().localAccounts).toBeUndefined();
+      expect(internals().projectMembership).toBeUndefined();
+      const state = routeContext().accountSharing();
+      expect(state.active).toEqual({
+        projectSharing: false,
+        localAccounts: false,
+        externalProvider: false,
+      });
+      expect(state.startupFailure).toMatch(/authority is missing/);
+      expect(record().pending).toBeUndefined();
+      expect(record().committed).toEqual({ enabled: false });
+      expect(record().lastApply).toMatchObject({
+        outcome: 'rolled-back',
+        reason: expect.stringMatching(/authority is missing/),
+      });
+    });
+
+    it('a change a previous boot tried and never committed is rolled back before use', async () => {
+      home = await createSchemaHome('station-sharing-setting-crash-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      // The generation that tried it died before committing.
+      resolveAccountSharingAtBoot(home);
+      await boot();
+      expect(internals().localAccounts).toBeUndefined();
+      expect(record()).toMatchObject({
+        committed: { enabled: false },
+        lastApply: { outcome: 'rolled-back' },
+      });
+    });
+
+    it('deployment variables win: the stored choice is neither used nor touched', async () => {
+      home = await createSchemaHome('station-sharing-setting-locked-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      const previous = process.env.STATION_PROJECT_SHARING;
+      process.env.STATION_PROJECT_SHARING = '0';
+      try {
+        await boot();
+      } finally {
+        if (previous === undefined) delete process.env.STATION_PROJECT_SHARING;
+        else process.env.STATION_PROJECT_SHARING = previous;
+      }
+      expect(internals().localAccounts).toBeUndefined();
+      expect(routeContext().accountSharing().lockedBy).toEqual([
+        'STATION_PROJECT_SHARING',
+      ]);
+      expect(record().pending).toMatchObject({ attempted: false });
+    });
+
+    it('turning it off keeps the account store and stops sign-in; turning it on again restores the same sessions', {
+      timeout: 120_000,
+    }, async () => {
+      home = await createSchemaHome('station-sharing-setting-off-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      const membership = internals().projectMembership!;
+      vi.spyOn(membership.service, 'mayRegister').mockResolvedValue(true);
+      const accounts = internals().localAccounts!;
+      const post = (path: string, body: unknown, invitation = false) =>
+        accounts.service.handle(
+          new Request(`${publicOrigin}/api/account-auth${path}`, {
+            method: 'POST',
+            headers: {
+              Origin: publicOrigin,
+              'Content-Type': 'application/json',
+              ...(invitation
+                ? { 'x-station-invitation': 'owned-test-invitation' }
+                : {}),
+            },
+            body: JSON.stringify(body),
+          }),
+          path,
+        );
+      const credentials = {
+        username: 'shared.person',
+        password: 'Sharing setting password 12345',
+      };
+      expect((await post('/sign-up/username', credentials, true)).status).toBe(
+        200,
+      );
+      const login = await post('/sign-in/username', credentials);
+      expect(login.status).toBe(200);
+      const Cookie = login.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const sessionRequest = () =>
+        new Request(`${publicOrigin}/api/account-auth/session`, {
+          headers: { Cookie },
+        });
+      const before = await accounts.service.authenticate(sessionRequest());
+      expect(before.kind).toBe('authenticated');
+      const issuer = accounts.accountDirectory.issuer;
+      await stop();
+
+      stageAccountSharingChange(home, { enabled: false });
+      armStagedAccountSharingChange(home);
+      await boot();
+      expect(record().committed).toEqual({ enabled: false });
+      // Nothing can authenticate an account: no provider reaches the routes.
+      expect(internals().localAccounts).toBeUndefined();
+      expect(internals().deploymentAuthentication).toBeUndefined();
+      expect(routeContext().deploymentAuthentication).toBeUndefined();
+      expect(routeContext().projectMembership).toBeUndefined();
+      // Account-tied tokens and Devices are refused while it is off.
+      expect(
+        internals().environmentSecurityService.devicePairing.canHoldPersonalToken(
+          {
+            kind: 'account',
+            issuer,
+            subject: 'anyone',
+            displayName: 'Anyone',
+            approvedAt: 1,
+            approvalId: 'approval-1',
+            approvedBy: 'human:local:operator',
+          },
+        ),
+      ).toBe(false);
+      // The stores are kept.
+      expect(
+        existsSync(join(home, 'authentication', 'local-accounts.sqlite')),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(home, 'authentication', 'local-account-authority.sqlite'),
+        ),
+      ).toBe(true);
+      await stop();
+
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
+      await boot();
+      const after = await internals().localAccounts!.service.authenticate(
+        sessionRequest(),
+      );
+      expect(after).toEqual(before);
+    });
   });
 
   it('external-engine-bound agent records (incl. promoted defaults) do not build managed runtime instances and log no errors (station#954)', async () => {
@@ -1566,7 +1936,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const logger = (
       runtime as unknown as {
         logger: {
@@ -1601,7 +1970,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     runtime = undefined;
   });
 
-  it('releases terminal and defers voice when initialization fails, then retries cleanly', async () => {
+  it('defers voice when initialization fails, then retries cleanly', async () => {
     home = await createSchemaHome('station-coldstart-retry-');
     await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
       registryTrust: { profiles: [] },
@@ -1612,7 +1981,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    const terminalListener = replaceTerminalListener(runtime);
     const policies = (
       runtime as unknown as { orchestrationEventStore: EventStore }
     ).orchestrationEventStore.createRegistryTrustPolicyDecisions();
@@ -1622,7 +1990,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       }
     ).eventLog;
     const originalLoad = eventLog.loadRecentEvents.bind(eventLog);
-    const failure = new Error('deterministic post-terminal startup failure');
+    const failure = new Error('deterministic startup failure');
     eventLog.loadRecentEvents = vi
       .fn()
       .mockRejectedValueOnce(failure)
@@ -1632,13 +2000,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).rejects.toBe(failure);
     expect(policies.read()).toBeNull();
-    expect(terminalListener.stop).toHaveBeenCalledTimes(1);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      1,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).not.toHaveBeenCalled();
     expect(routeMocks.servicePairs).toHaveLength(1);
     const failedVoltAgent = (
@@ -1656,12 +2017,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(policies.read()?.identity.configured).toBe(true);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      2,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).toHaveBeenCalledTimes(1);
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
       port + 2,
@@ -1695,7 +2050,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const subject = runtime as unknown as {
       eventLog: { loadRecentEvents(): Promise<void> };
       orchestrationEventStore: EventStore;
@@ -1819,7 +2173,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const captureSpy = vi.spyOn(
       runtime as unknown as {
@@ -1851,7 +2204,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(globals.__stationSignedStartupImports).toBeGreaterThan(before);
     const internal = runtime as unknown as {
@@ -1888,7 +2240,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const peer = new EventStore(getOrchestrationDatabasePath(home));
     const internal = runtime as any;
     await internal.configLoader.mutateAppConfig(() => ({
@@ -1948,7 +2299,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     let settled = false;
     const initialization = runtime.initialize().finally(() => {
@@ -1978,7 +2328,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const initialization = runtime
       .initialize()
@@ -2022,7 +2371,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const primaryFailure = new Error('initialization failed');
     (
       runtime as unknown as {

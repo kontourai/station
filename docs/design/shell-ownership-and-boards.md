@@ -12,7 +12,9 @@
 > with explicit preview and Apply. Existing Layout tabs remain supported.
 > Still unbuilt: instance-shared Boards (storage only, no route or UI), placing
 > the Review layout kind on a Board, arbitrary plugin-pane composition from
-> the Board editor, Board-list reorder and clone. Use the
+> the Board editor and Board-list reorder. Clone and subject-bound template opening
+> now have a [personal layout API](../reference/contracts.md#personal-project-layouts-2996);
+> their Board UX remains #2997. Use the
 > [pane authoring guide](../guides/workspace-pane-authoring.md) for the
 > current pane contract.
 >
@@ -135,8 +137,7 @@ PERSONAL BOARDS                                      +
   Daily brief
   Research desk
 ─────────────────────────────────────────────────────
-[live work / participants]                    [account]
-                         [Schedule] [Customize] [Settings]
+[Schedule] [Customize]                 [Updates] [account]
 ```
 
 [Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
@@ -159,29 +160,34 @@ outside pointer input, navigation and changing sidebar presentation dismiss
 the popup. The header's sidebar control toggles the desktop rail or the
 mobile drawer. The header retains breadcrumbs, its Layout picker,
 notifications and Station controls, and ends with its region controls. The
+phone drawer follows the same places-only rule as the desktop map. Conversations
+are reached through the chat bar's **Inbox**, rather than a second recent-chat
+list in the drawer. The
 account control moved to the footer
 ([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
 a Profile row while the drawer is closed.
 
 **Personal Boards** follows Projects and remains visible when empty; its
-`+` creates the first Board and focuses its name. Loading and failed reads
+`+` creates the first Board and focuses its name. Confirming that first name
+gives the Board an address from it (`/boards/<name-slug>`, a Board created
+there and the `untitled-board` placeholder removed) and opens it; a rename
+afterwards never changes a Board's address (#4405). Loading and failed reads
 remain visible, with Retry on failure and creation disabled until the list
 is available. The collapsed rail has one dashboard button that opens the
 personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
 
-The expanded footer gives live work and the account control (the signed-in
-person's initials, opening My access, Profile, Ask Station for help and Open
-settings) a row of their own, so neither runs under the other at 216px, with
-Schedule, Customize and Settings on the row below. The collapsed rail stacks
-live work and the account control above **Sidebar utilities**, which holds
-Schedule, Customize and Settings. The **Updates** control sits above the footer
-rows on desktop, web and mobile. It opens one panel with separate app and
-connected-server actions; collapsed, it is icon-only. Its status reports
-available update details, app download progress and restart readiness. The presence tray
-continues to distinguish published participants, live work, pending reads,
-failed reads and unsupported publication. Notifications stay in the header.
+The expanded footer places Schedule and Customize on the left, with an
+icon-only Updates control immediately before the account control on the right.
+The account control shows the signed-in person's initials and opens My access,
+Profile, Ask Station for help and Open settings. Live work and the separate
+Settings gear no longer appear in the footer. The collapsed rail puts Schedule
+and Customize in **Sidebar utilities** and keeps Updates and the account control
+on the rail. Updates opens one panel with separate app and connected-server
+actions on desktop, web and mobile. Its accessible name and tooltip report
+available update details, app download progress and restart readiness, with an
+indicator when attention is needed. Notifications stay in the header.
 
 Open chats and composer drafts no longer form sidebar sections. Their
 conversation and draft state remains in the chat dock and its inbox; the map
@@ -223,11 +229,10 @@ backups retain their stored section values for compatibility.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.
-- **Footer**: live work and joined-room participants, the account control,
-  Schedule, Customize, and Settings. Notifications remain in the header, and the command palette keeps
-  its keyboard shortcut. Schedule and Customize do not occupy project-list rows.
-  The live-work count reads the authorized session inventory; participant faces
-  read task-room publication. A connected browser is not treated as a person.
+- **Footer**: Schedule and Customize on the left, Updates and the account
+  control on the right. Settings is available in the account menu and Customize.
+  Notifications remain in the header, and the command palette keeps its keyboard
+  shortcut. Schedule and Customize do not occupy project-list rows.
 
 The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
@@ -293,7 +298,11 @@ guessing a Project.
 
 ### D5. Presence is a tray, not a section
 
-Decision: the footer shows an avatar stack and a count of people present on
+**Superseded 2026-10-25.** The footer no longer has a presence tray, and the
+tray component has been removed. The original decision below is kept as
+history and does not describe the current footer.
+
+Original decision: the footer shows an avatar stack and a count of people present on
 projects the viewer shares. Opening it lists people (with a message action)
 and agent workers (with a follow action) together. Data comes from the
 host-wide live-activity projection (`useLiveActivityQuery`) and the task-room

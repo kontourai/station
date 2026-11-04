@@ -1,0 +1,7 @@
+{
+  "revision": "d22aecabae5a8ca39a4f9ba6d6f43a1002f39d58",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Refs #3569 scoped event-consumer review: canonical cancellation-requested is an intention and its explicit UI no-op does not invoke provider stop, settle a turn, drain a queue or change replay effects. Existing sequenced-event recording and replay capture still run before dispatch. The replay design status, observation-only scope and prior evidence limits remain unchanged; this is not new live provider or browser replay qualification.","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/eventHandlers.ts"]}
+  ]
+}

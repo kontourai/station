@@ -1,0 +1,13 @@
+{
+  "revision": "828b69ad5b6c27e6e8a29d451143d1ae7499b272",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed chat link challenge addressing and Discord v1 import against chat-app parsers, real legacy reader and authorization, and focused compatibility tests. Runtime lookup, constant-time comparison and attempt locking remain requirements for the later runtime, not executed behavior.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/chat-app.test.ts","packages/contracts/src/__tests__/discord-compatibility.test.ts","packages/contracts/src/chat-app.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed integration and identity vocabulary against the updated contracts reference; bounded challenge addressing and legacy date normalization do not change glossary terms.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the integration guide routing and hosted boundaries against the updated contracts reference; the pure contract change does not alter its integration journey or claim runtime delivery.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts ownership, pure helpers and compatibility instructions against the challenge and legacy import changes; the existing guidance remains accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -15,13 +15,22 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
+- `@kontourai/station-shared/http-upload` — Node HTTP receive deadlines shared by the API and serialized CLI listener; takes the media route policy as an argument and preserves socket keep-alive timeouts; `configureHttpKeepAlive` holds an idle connection for 65 seconds instead of Node's 5, so a polling client reuses it rather than opening a new one, and a reverse proxy with a 60-second idle limit closes its upstream connection before Node does; also owns the typed `UploadBodyLimitError` used by streamed body budgets and routes
+- `@kontourai/station-shared/ui-document-policy` — the content-hashed build-asset pattern and the document Content-Security-Policy; the serialized CLI UI listener applies both (with its per-request script nonce), and the web build injects them into the service worker so offline caching and the offline shell follow the same rules
+- `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
+- `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
-- `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp` — also `setRemoteTransportFetchPolicy`, through which the server pins catalog-supplied remote servers to checked addresses
+- `@kontourai/station-shared/remote-address-guard` — Node-only private and loopback address rules and `createAddressPinnedFetch`, which resolves each hostname once per connection, refuses any private answer unless allowed, and connects only to the checked addresses
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 - `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
 - `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
+- `@kontourai/station-shared/authored-input` — browser-safe `isAuthoredInputContent(prompt, attachmentCount)`, the one rule for whether a turn start carries authored input (non-whitespace prompt or an attachment); the event store applies it inside its one input readability rule, which the Session inventory listing runs as a SQLite function and the exact input read applies, and the SDK applies it to that read's response
+- `@kontourai/station-shared/triage-context` — Node-only triage context rules shared by `station triage` and the in-app troubleshoot route: the owner-only run directory under a given root's `cache/triage` (`$STATION_ROOT` by default; the server passes its home), bounded doctor/build/log summaries, both context validators, seed admission that refuses over-limit input, and `redactTroubleshootReportText` for issue text
+- `@kontourai/station-shared/troubleshoot-playbook` — the bundled troubleshooting playbook constant, byte-identical to `troubleshoot-playbook.md` beside it
+- `@kontourai/station-shared/managed-policy` — Node-only reading of the machine's [managed policy](../guides/managed-policy.md): the fixed per-OS file path, the source interface later sources plug into, the no-link, regular-file and (for system sources) root-ownership checks, the 1 MiB bound, the duplicate-key refusal, the bounded fatal message, the `sha256:` fingerprint, the `STATION_MANAGED_POLICY_TEST_FILE` override (refused while a system policy is installed) and `ManagedPolicyInvalidError`, whose message starts with `STATION_MANAGED_POLICY_INVALID`. The document parser and summary live in `@kontourai/station-contracts/managed-policy`
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
@@ -232,6 +241,7 @@ JSON reader. See [plugin contracts](../../packages/contracts/src/plugin.ts).
 
 ```ts
 interface PluginManifest {
+  requiredSlots?: Partial<Record<'home' | 'chat', string>>; // inert preferences
   name: string;
   version: string;
   sdkVersion?: string;
@@ -849,10 +859,13 @@ envelope malformed, as do a fragment and an `openedNotification` parameter
 links may).
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
-keys, known kinds, no unresolved `principal` audience, and no producer-authored
-read/dismiss markers. Passing that parser is shape validation, not caller
-authorization. The notification service owns the trusted write path and derives
-session metadata from the envelope. See the
+keys, known kinds, and no producer-authored read/dismiss markers. A `principal`
+audience needs a well-formed human principal ID and Project ID; an agent source
+that names a Project must agree with it. Older principal envelopes without a
+Project ID remain readable but cannot be written. Passing the parser is shape
+validation, not caller authorization: the notification service rechecks
+membership before writing the private feed. It also derives session metadata
+from the envelope. See the
 [parser](../../packages/shared/src/notification-envelope.ts),
 [service](../../src-server/services/notifications/notification-service.ts), and
 [UI reader](../../src-ui/src/components/notifications/NotificationEnvelopeControls.tsx).
@@ -871,6 +884,10 @@ interface SchedulerJob {
   cron?: string;
   schedule?: SchedulerSchedule;
   agent?: string;
+  target?: SchedulerAutomationTarget; // runs in a conversation, any engine
+  createdBy?: { userId: string };      // read-only
+  consecutiveFailures?: number;        // read-only, derived from runs
+  lastSuccessAt?: string;              // read-only
   enabled: boolean;
   retryCount?: number;
   retryDelaySecs?: number;
@@ -881,6 +898,7 @@ interface SchedulerJob {
 interface SchedulerLogEntry {
   id: string;
   job: string;
+  runTarget?: SchedulerAutomationTarget | null; // claim target; absent on older runs
   startedAt: string;
   completedAt?: string;
   success: boolean;
@@ -888,6 +906,7 @@ interface SchedulerLogEntry {
   output?: string;
   error?: string;
   state?: 'running' | 'completed' | 'failed' | 'indeterminate';
+  skipped?: 'late'; // a targeted occurrence recorded missed, not a failure
 }
 
 interface SchedulerEvent {
@@ -1222,7 +1241,15 @@ at the integration root are skipped.
 An existing plugin-owned target is replaced using staged rollback handling;
 it is not silently skipped. The returned IDs describe copied files, not live
 MCP connections or permission grants. Use the host installation path for live
-plugin lifecycle and consent.
+plugin lifecycle and consent. This function writes the plugin's bytes as they
+are, including any `untrustedContentChanges`. Station's host paths (install,
+update and rollback) call it only to stage into a private directory, then
+publish through `publishPluginIntegrations`, which applies the integration
+invariants and receipts under each integration's lock. The same publisher
+also checks OAuth client issuer/endpoint rules and refuses bundled secret-binding
+references and Station identity sidecars; recovery validates restored definitions
+through that boundary too
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ```ts
 const copied = copyPluginIntegrations('/path/to/plugin', '/project/.station/integrations');

@@ -23,6 +23,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { keyedTurnToolArguments } from '../../__test-utils__/turn-admission-fixture.js';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import {
   claudeInProcessStationControlOptions,
@@ -160,10 +161,35 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  list_walkthroughs: { projectSlug: 'project-a' },
+  get_walkthrough: { projectSlug: 'project-a', id: 'walkthrough-1' },
   read_pull_request_guide: { target: GUIDE_TARGET },
   write_pull_request_guides: { targets: [GUIDE_TARGET] },
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
   device_screenshot: { deviceSessionId: 'device-session' },
+  device_capture_to_task: { deviceSessionId: 'device-session' },
+  device_logs: { deviceSessionId: 'device-session', appId: 'com.example.app' },
+  device_record_to_task: {
+    deviceSessionId: 'device-session',
+    durationMs: 1000,
+  },
+  device_install_app: {
+    deviceSessionId: 'device-session',
+    workspacePath: 'build/app.apk',
+  },
+  device_launch_app: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+  },
+  device_terminate_app: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+  },
+  device_open_url: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+    url: 'https://example.test/',
+  },
   device_snapshot: { deviceSessionId: 'device-session' },
   device_input: {
     deviceSessionId: 'device-session',
@@ -185,6 +211,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   get_conversation_messages: { agent: 'a', conversationId: 'c' },
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
+  fork_conversation: { agent: 'a', conversationId: 'c', targetAgent: 'b' },
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
@@ -196,8 +223,15 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  coordinator_picture_update: {
+    conversationId: 'c',
+    status: 'waiting',
+    summary: 'Review',
+  },
   schedule_wake_up: { minutes: 5, note: 'check the build' },
   cancel_wake_up: { id: 'w' },
+  terminal_run: { command: 'npm test' },
+  terminal_read: { runId: 'r', fromSeq: 0, waitSeconds: 0 },
   propose_job: {
     name: 'nightly',
     schedule: { kind: 'every', everyMs: 3_600_000 },
@@ -211,6 +245,13 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
   task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
+  task_thread_list: {},
+  task_thread_reply: {
+    threadId: 'thread-1',
+    deliveryKey: 'tr-fixture',
+    body: 'Addressed.',
+  },
+  task_thread_resolve: { threadId: 'thread-1', reason: 'Addressed.' },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },
@@ -457,7 +498,7 @@ describe('the authority table routes are the routes the tools call', () => {
         id += 1;
         const result = await request(id, 'tools/call', {
           name,
-          arguments: ARGS[name] ?? {},
+          arguments: keyedTurnToolArguments(name, ARGS[name] ?? {}),
         });
         if (name === 'list_knowledge_roots') {
           const envelope = JSON.parse(

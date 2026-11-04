@@ -84,13 +84,20 @@ export class ConsentChannelService {
   reviewUrlFor(
     requestHostHeader: string | undefined,
     transactionId: string,
+    partition: string = this.tenantId,
   ): string | null {
     const state = this.#state;
     if (state.status !== 'listening') return null;
+    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(partition)) return null;
+    const path =
+      consentReviewPath(transactionId) +
+      (partition === this.tenantId
+        ? ''
+        : `?scope=${encodeURIComponent(partition)}`);
     // A configured HTTPS origin is the operator's statement of where the
     // consent listener is reachable; the request's Host plays no part.
     if (this.trustedOrigin !== null) {
-      return `${this.trustedOrigin}${consentReviewPath(transactionId)}`;
+      return `${this.trustedOrigin}${path}`;
     }
     if (!requestHostHeader) return null;
     let hostname: string;
@@ -102,6 +109,6 @@ export class ConsentChannelService {
     if (!hostname) return null;
     // WHATWG URL keeps IPv6 hostnames bracketed (`[::1]`), so the value is
     // already authority-ready.
-    return `http://${hostname}:${state.port}${consentReviewPath(transactionId)}`;
+    return `http://${hostname}:${state.port}${path}`;
   }
 }

@@ -1,0 +1,11 @@
+{
+  "revision": "85a042a161b4b2d7d451c82a8bc01214e1a72694",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed resource partition and direct child-process import requirements against the adapter test classification. The test loads node-pty but supplies a fake PTY and mocked process observations; explicit two-worker classification satisfies the existing policy without changing lane concurrency. The real corpus manifest tests passed (28); removing the new entry made the executable verification policy fail on that exact importer, then byte-exact restoration passed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the model runtime evidence-owner descriptions and existing r1 process-exclusive classification. Adding the independent adapter observation test to process-heavy does not change r1 outbox ownership, deadlines, model-runtime behavior or platform/provider qualification. Existing prose remains accurate.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed direct child-process classification, owned command capture, focused evidence and fault restoration guidance. The adapter test now has explicit process-heavy ownership. The real manifest suite and verification policy passed; removing this entry fails the actual policy command on the named importer and restores byte-exactly to green. Existing instructions remain accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

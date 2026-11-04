@@ -1,0 +1,7 @@
+{
+  "revision": "323404e7fe18262b10b5beba5bae5301310392da",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-checked after path-read-pin-boundary.test.ts gained two UNREPORTED_PATH_READING_SUITES entries (Sigstore verifier and trust-rule tests reading captured fixture bundles). The guide does not describe that list or path-read pins, so no prose changes; its testing claims are unaffected.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

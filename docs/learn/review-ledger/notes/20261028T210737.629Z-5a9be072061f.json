@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Edited portability: imports refuse and exports drop oauthClient.clientSecretRef; imports apply the OAuth client rules. Checked against portability-io.ts. Other inputs: the CLI reference documents OAuth client-secret references in portability import and export; the CLI import refuses oauthClient.clientSecretRef and applies assertToolOAuthClientWritable before writing; export strips binding references.","inputs":["docs/reference/cli.md","packages/cli/src/commands/portability-io.ts"]}
+  ]
+}

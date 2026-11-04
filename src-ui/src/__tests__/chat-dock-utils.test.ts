@@ -135,7 +135,7 @@ describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
         dockMode: 'bottom',
         isFullscreenPlacement: false,
       }),
-    ).toEqual({ surface: 'task-switcher-sheet' });
+    ).toEqual({ surface: 'mobile-inbox' });
   });
 
   test('an edge placement is moved to bottom mode, where the panel exists', () => {

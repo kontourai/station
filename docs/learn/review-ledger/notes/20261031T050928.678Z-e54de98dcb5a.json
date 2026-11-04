@@ -1,0 +1,7 @@
+{
+  "revision": "4a7b2fb5d66f32cca75a7e8c0c03537ed230c088",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Publication-gate follow-up: UsageRollupPanel only replaces its missing Task-outcome empty-state wording with Task outcomes not reported in this usage window. It still separates reported cost, estimates, retail value, unknown billing/quota and owner Task status. The focused usage panel suite passed in the 37-case publication batch; no live billing or savings inference.","inputs":["docs/guides/monitoring.md","src-ui/src/components/usage-stats/UsageRollupPanel.tsx"]}
+  ]
+}

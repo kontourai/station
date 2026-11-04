@@ -1,0 +1,9 @@
+{
+  "revision": "2c5ed36efc7ead2031e1cb00551db608f5e3ac11",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the upstream telemetry permission clarification: incident-link POST/DELETE require telemetry:manage plus current operator checks; verified operators act directly. This guide routes integrations to actual API authentication and distinguishes device grants from execution, with no conflicting incident-link permission claim. No prose change needed; no hosted/native/release proof added.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the upstream telemetry permission clarification: incident-link POST/DELETE require telemetry:manage plus current operator checks; verified operators act directly. This guide routes integrations to actual API authentication and distinguishes device grants from execution, with no conflicting incident-link permission claim. No prose change needed; no hosted/native/release proof added.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

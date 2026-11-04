@@ -1,0 +1,7 @@
+{
+  "revision": "4a7b2fb5d66f32cca75a7e8c0c03537ed230c088",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Publication-gate follow-up: learningReview is explicitly classified alongside the existing documented subpath-only query modules. The learning-review-query export remains public while lifecycle parsers and mutations stay outside the eager SDK root. Both new clients use the shared error-envelope decoder, preserving observed status/code/details/preview metadata and actionable non-JSON 404 remedies without fabricating a host error code. Three assertions failed before repair; all 37 SDK/UI publication cases, SDK typecheck and static gates passed after repair.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}

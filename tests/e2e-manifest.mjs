@@ -279,10 +279,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
-  requiredObservations: [320, 390, 412].map((width) => ({
-    path: 'tests/cross-runtime-chat-switching.spec.ts',
-    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
-  })),
+  requiredObservations: [
+    ...[320, 390, 412].map((width) => ({
+      path: 'tests/cross-runtime-chat-switching.spec.ts',
+      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+    })),
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      title: 'reads an authored input and lays it out at 390x844',
+    },
+  ],
   journeys: [
     {
       path: 'tests/connect-modal.spec.ts',
@@ -315,6 +321,11 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
       path: 'tests/pr-smoke-live-chat-send.spec.ts',
       journey:
         'station#4537 item 2: one real turn dispatched through POST /api/orchestration/chat into a real local model server, inside the merge gate itself',
+    },
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      journey:
+        'Chat inventory item drill-down at 390x844: a real authored input read back and measured on a phone',
     },
   ],
 };
@@ -365,6 +376,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/component-style.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
+    'tests/chat-dock-open-helper.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -411,6 +423,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/approval-spilled-content.spec.ts',
     'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
@@ -436,6 +449,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
@@ -575,6 +589,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "station#4537 item 2: the pr-smoke merge gate's own real send, inside its 10-minute/1-worker/0-retry budget — a lean, single-test journey that seeds a real model connection and agent, dispatches one turn through POST /api/orchestration/chat into a real local model server, and observes the reply render, without touching orchestration-chat-flow.spec.ts / cross-runtime-chat-switching.spec.ts's existing mocked SSE-render-state coverage. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys — the audit's rule is that unlisted coverage reproduces the original finding.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The inventory item drill-down shipped broken on phones with its only browser coverage in the dispatch-only extended bucket. A real chat (one turn through a local model fixture) in a real isolated Station; at 390x844 the Chat inventory reader opens from the dock header, the authored input is drilled into, its text must return from the exact input read, and the layout is measured: no horizontal overflow, a label-wide classification chip, the title and its View details cue on one 44px row, and 44px actions below the body. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.',
     exceptions: [],
   },
   {
@@ -1405,6 +1429,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-dock-open-helper.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4175: the shared ensureChatDockOpen helper against the race the PR smoke trace recorded — the product opens the dock itself between the helper resolving "Show Chat" and its click landing, so the click hits "Hide Chat" and closes the dock. A static page puts that open on the first pointer arrival, deterministically; the helper must still end with the dock open, and must not touch a dock that is already open. No live instance or server.',
+    exceptions: [],
+  },
+  {
     path: 'tests/toggle-contrast.spec.ts',
     bucket: 'product',
     surface: 'Shell',
@@ -1530,6 +1564,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/owned-work-custody.spec.ts',
+    bucket: 'product',
+    surface: 'Owned work custody and removal',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real Inbox and Session detail rendering, plain custody reasons and explicit release confirmation at phone/desktop widths in both themes. All HTTP writes are page-scoped fixtures.',
+    exceptions: [],
+  },
+  {
     path: 'tests/orchestration-chat-flow.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1585,6 +1629,15 @@ export const e2eManifest = [
     tierTarget: 'full',
     rationale:
       '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/approval-spilled-content.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      'docs/design/event-content-spill.md: an approval whose content was stored out of line offers only Deny until the card loads the whole request through the content route, then shows the loaded content and offers Allow, and the allow carries viewedContentDigest; desktop 1440 and phone 390 in both themes.',
     exceptions: [],
   },
   {
@@ -1709,7 +1762,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. kontourai/station#793 adds desktop-anchored-popover and mobile-edge-sheet coverage for the chat-dock project switcher (ChatDockProjectSwitcherSheet), reusing this spec's Alpha/Beta project fixtures.",
+      'P1-G5 packaged proof for managed, connected Claude/Codex, ACP, conversation, agent, and project switching. The October 30 header decision is covered through the desktop start-composer Project chooser and active-chat binding preservation. At 320/390/412px, the empty-dock Projects sheet retains workspace navigation and hold hints, while active chats retain Inbox/New/Chat actions and choose future Projects only in the start composer. These reuse the Alpha/Beta fixtures.',
     exceptions: [],
   },
   {
@@ -1729,7 +1782,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "kontourai/station#3307/#618 mid-conversation switching: the composer model picker's per-turn override carries through dispatch and is reported by the switched turn's TurnProvenanceCard via the real shared provenance fold; completed-turn fork proves explicit replay-only cursor/tool/approval disclosure, same-provider idempotent retry then independent divergence with the parent retained, and alternate-Agent replay fallback opening the returned durable child. Agent handoff remains the linear Continue-with path with its own durable boundary disclosure.",
+      "kontourai/station#3307/#618 mid-conversation switching: the composer model picker's per-turn override carries through dispatch and is reported by the switched turn's TurnProvenanceCard via the real shared provenance fold; completed-turn fork proves explicit replay-only cursor/tool/approval disclosure, same-provider idempotent retry then independent divergence with the parent retained, and alternate-Agent replay fallback opening the returned durable child; #4406 Regenerate and Edit and resend fork before the asking message, re-send or prefill it, and keep the parent's answer. Agent handoff remains the linear Continue-with path with its own durable boundary disclosure.",
     exceptions: [],
   },
   {
@@ -1762,6 +1815,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
+    exceptions: [],
+  },
+  {
     path: 'tests/basis-answer-lifecycle.spec.ts',
     bucket: 'extended',
     surface: 'Basis / exact answer retention',
@@ -1769,6 +1832,16 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'An isolated real Station, local model fixture, exact answer inspection before Keep, authenticated Task retention, Surface producer publication, process restart, and assessment revocation without rewriting the retained answer. No paid provider or protected route mocks.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-bounds.spec.ts',
+    bucket: 'extended',
+    surface: 'Chat / Dock',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#4401: the dock chrome stays inside its bounds, measured in a rendered page with a long chat title. A side region at its 280px minimum keeps the title readable with no control over another (the × is hit where it is drawn); the 400px default keeps the full bar; a collapsed left or right strip draws nothing outside its 36px. In the Coding layout the Inbox crumb never truncates while the title does, and a rail tooltip leaves with the pointer after a mouse-closed panel hands focus back, yet still shows for keyboard focus.',
     exceptions: [],
   },
   {
@@ -1859,6 +1932,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station and synthetic one-host operator/guest browsers prove the invited-admin People and access journey: admin inspection, manual single-use invitation creation and cancellation, read-only Device explanation after an operator rescope, read+operate restore, and honest self-demotion. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/member-passkeys-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Member passkey acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station on a localhost authentication origin and a Chromium CDP virtual authenticator prove invited passkey-only registration and acceptance, passkey sign-in with no password sent, refusal after the operator disables the account, and single-use operator recovery onto a replacement authenticator. A virtual authenticator is not a platform authenticator, synced passkey, or native app.',
     exceptions: [],
   },
   {
@@ -2237,7 +2320,7 @@ export const e2eManifest = [
     tierTarget: 'screenshot',
     primary: false,
     rationale:
-      'Screenshot capture is a visual artifact lane until product assertions are added.',
+      'Full-app gallery: every screen is photographed and audited for hit targets, horizontal overflow and blocking axe violations, judged against a shrink-only allowlist; exact pixels stay advisory.',
     exceptions: ['waitForTimeout'],
   },
   {

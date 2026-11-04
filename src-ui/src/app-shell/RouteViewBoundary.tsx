@@ -1,17 +1,22 @@
 // Deep-imported from `/client` on purpose: this boundary is on the eager
 // entry path, and the SDK's root barrel pulls its whole React surface with it.
 import { StationHttpError } from '@kontourai/station-sdk/client';
+import { onlineManager } from '@tanstack/react-query';
 import {
   Component,
   type ErrorInfo,
   type ReactNode,
   Suspense,
   useEffect,
+  useSyncExternalStore,
 } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { type LocaleContextValue, useLocale } from '../i18n/LocaleContext';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeTransitionStore } from './route-transition-store';
 
@@ -44,8 +49,71 @@ export function classifyRouteFailure(error: unknown): RouteFailureKind {
   return 'view';
 }
 
+/**
+ * The failure's code and message for the Troubleshoot action. The HTTP
+ * status is the code a Station error has; anything else uses its error name.
+ * The start flow keeps only the message's first line and redacts it.
+ */
+export function routeFailureTroubleshootRequest(error: unknown): {
+  code?: string;
+  message?: string;
+} {
+  if (error instanceof StationHttpError)
+    return { code: `HTTP ${error.status}`, message: error.message };
+  if (error instanceof Error)
+    return { code: error.name || 'Error', message: error.message };
+  return { code: 'view-failed' };
+}
+
 interface RouteErrorBoundaryState {
   error: unknown;
+}
+
+const subscribeOnline = (listener: () => void) =>
+  onlineManager.subscribe(listener);
+// React Query's manager starts online and follows the browser's events;
+// `navigator.onLine` also covers a page that loaded while offline.
+const browserOnline = () =>
+  onlineManager.isOnline() &&
+  (typeof navigator === 'undefined' || navigator.onLine !== false);
+
+/**
+ * A view whose code did not download. Reloading fetches the current build,
+ * but a reload while offline replaces the whole workspace with the offline
+ * reader, so the action appears only once the browser has a network again.
+ */
+function RouteChunkFailure({
+  message,
+}: {
+  message: LocaleContextValue['message'];
+}) {
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    browserOnline,
+    () => true,
+  );
+  if (!online)
+    return (
+      <ErrorState
+        title={message('route.chunk.offlineTitle')}
+        description={message('route.chunk.offlineDescription', {
+          product: 'Station',
+        })}
+      />
+    );
+  return (
+    <ErrorState
+      title={message('route.chunk.title')}
+      description={message('route.chunk.description', {
+        product: 'Station',
+      })}
+      action={
+        <Button variant="primary" onClick={() => window.location.reload()}>
+          {message('route.chunk.action')}
+        </Button>
+      }
+    />
+  );
 }
 
 class RouteErrorBoundary extends Component<
@@ -91,41 +159,42 @@ class RouteErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       const kind = classifyRouteFailure(this.state.error);
-      if (kind === 'chunk') {
-        return (
-          <ErrorState
-            title={this.props.message('route.chunk.title')}
-            description={this.props.message('route.chunk.description', {
-              product: 'Station',
-            })}
-            action={
-              <Button
-                variant="primary"
-                onClick={() => window.location.reload()}
-              >
-                {this.props.message('route.chunk.action')}
-              </Button>
-            }
-          />
-        );
-      }
+      if (kind === 'chunk')
+        return <RouteChunkFailure message={this.props.message} />;
       if (kind === 'authority') {
         return (
           <ErrorState
             title={this.props.message('route.authority.title')}
             description={this.props.message('route.authority.description')}
             action={
-              <>
-                <Button
-                  variant="primary"
-                  onClick={() => openConnectionsModal()}
-                >
-                  {this.props.message('route.authority.reviewAction')}
-                </Button>
-                <Button variant="secondary" onClick={this.retry}>
-                  {this.props.message('route.retryAction')}
-                </Button>
-              </>
+              // #4470: two labelled actions at most (#3045); troubleshooting
+              // a refusal is the less likely remedy, so it is in the menu.
+              <ActionRow
+                overflowLabel={this.props.message('route.moreActions')}
+                primary={
+                  <Button
+                    variant="primary"
+                    onClick={() => openConnectionsModal()}
+                  >
+                    {this.props.message('route.authority.reviewAction')}
+                  </Button>
+                }
+                secondary={
+                  <Button variant="secondary" onClick={this.retry}>
+                    {this.props.message('route.retryAction')}
+                  </Button>
+                }
+                overflow={[
+                  {
+                    key: 'troubleshoot',
+                    label: this.props.message('route.troubleshootAction'),
+                    onSelect: () =>
+                      requestTroubleshoot(
+                        routeFailureTroubleshootRequest(this.state.error),
+                      ),
+                  },
+                ]}
+              />
             }
           />
         );
@@ -135,9 +204,21 @@ class RouteErrorBoundary extends Component<
           title={this.props.message('route.generic.title')}
           description={this.props.message('route.generic.description')}
           action={
-            <Button variant="primary" onClick={this.retry}>
-              {this.props.message('route.retryAction')}
-            </Button>
+            <ActionRow
+              overflowLabel={this.props.message('route.moreActions')}
+              primary={
+                <Button variant="primary" onClick={this.retry}>
+                  {this.props.message('route.retryAction')}
+                </Button>
+              }
+              secondary={
+                <TroubleshootAction
+                  request={routeFailureTroubleshootRequest(this.state.error)}
+                >
+                  {this.props.message('route.troubleshootAction')}
+                </TroubleshootAction>
+              }
+            />
           }
         />
       );

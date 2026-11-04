@@ -1,12 +1,14 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
-  ENGINE_CAPABILITY_MATRICES,
   type ModelImageSupport,
-  resolveEngineCapabilityMatrix,
+  UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  ProviderDurabilityProfile,
+} from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleStateStopped,
   SESSION_LIFECYCLE_STATES,
@@ -202,6 +204,7 @@ export type ChatExecutionMetadata = {
 
 export type EffectiveModelSource =
   | 'session override'
+  | 'project last used'
   | 'last chosen'
   | 'project default'
   | 'runtime'
@@ -220,6 +223,8 @@ export function modelSourceLabel(source: EffectiveModelSource): string {
   switch (source) {
     case 'runtime':
       return 'reported by app';
+    case 'project last used':
+      return 'last used in project';
     case 'unknown':
       return '';
     default:
@@ -246,6 +251,12 @@ export type EffectiveModel = {
   catalogSource: RuntimeCatalogSource;
   mode: string | null;
   selectableModels: ModelOption[];
+  /**
+   * The Project's last-used model when it could not be used (no longer in
+   * the catalog or not advertised), so a surface can say why the model it
+   * shows came from further down the chain. Absent otherwise.
+   */
+  unavailableProjectLastUsed?: string;
 };
 
 export function resolveEffectiveModel({
@@ -254,6 +265,8 @@ export function resolveEffectiveModel({
   runtimeCurrentModel,
   runtimeCurrentMode,
   projectDefaultModel,
+  projectLastUsedModel,
+  newChat = false,
   sessionOverride,
   lastChosenModel,
   advertisedModels,
@@ -263,6 +276,22 @@ export function resolveEffectiveModel({
   runtimeCurrentModel?: string | null;
   runtimeCurrentMode?: string | null;
   projectDefaultModel?: string | null;
+  /**
+   * The model the person's last chat in this Project started with for this
+   * Agent, when the Project's model selection is `last-used`
+   * (`projectLastUsedModelFor`). Beats every inherited default, loses to a
+   * session override, and is used only while the catalog still offers it
+   * and the engine advertises it, exactly like `lastChosenModel`.
+   */
+  projectLastUsedModel?: string | null;
+  /**
+   * Resolving a NEW chat's starting model. The Project's own default model
+   * then beats this device's last pick and the app-reported model, as a set
+   * default should, but only when the connection's known catalog offers it:
+   * a Project's model is chosen from a Model connection, and an Agent app
+   * that does not list it keeps the chain below.
+   */
+  newChat?: boolean;
   sessionOverride?: string | null;
   /**
    * The user's most-recently-chosen model for this agent app connection
@@ -290,23 +319,37 @@ export function resolveEffectiveModel({
     typeof runtimeConnection?.config.defaultModel === 'string'
       ? runtimeConnection.config.defaultModel
       : null;
+  const inCatalog = (candidate: string) =>
+    selectableModels.length === 0 ||
+    selectableModels.some(
+      (model) => model.id === candidate || model.originalId === candidate,
+    );
   const validLastChosenModel =
-    lastChosenModel &&
-    (selectableModels.length === 0 ||
-      selectableModels.some(
-        (model) =>
-          model.id === lastChosenModel || model.originalId === lastChosenModel,
-      ))
-      ? lastChosenModel
-      : null;
+    lastChosenModel && inCatalog(lastChosenModel) ? lastChosenModel : null;
   // Unknown (nothing advertised) is not "unadvertised": nothing to check.
   const isAdvertised = (candidate: string) =>
     !advertisedModels?.length ||
     advertisedModels.some(
       (model) => model.id === candidate || model.originalId === candidate,
     );
+  const projectLastUsed = projectLastUsedModel?.trim() || null;
+  const validProjectLastUsed =
+    projectLastUsed &&
+    inCatalog(projectLastUsed) &&
+    isAdvertised(projectLastUsed)
+      ? projectLastUsed
+      : null;
+  const projectDefault = projectDefaultModel?.trim() || null;
+  const projectDefaultLeads =
+    newChat &&
+    !!projectDefault &&
+    selectableModels.length > 0 &&
+    inCatalog(projectDefault) &&
+    isAdvertised(projectDefault);
   const candidates: Array<[string | null | undefined, EffectiveModelSource]> = [
     [sessionOverride, 'session override'],
+    [validProjectLastUsed, 'project last used'],
+    [projectDefaultLeads ? projectDefault : null, 'project default'],
     [validLastChosenModel, 'last chosen'],
     [runtimeCurrentModel, 'runtime'],
     [projectDefaultModel, 'project default'],
@@ -331,6 +374,11 @@ export function resolveEffectiveModel({
     catalogSource: catalog?.source ?? 'none',
     mode: runtimeCurrentMode || null,
     selectableModels,
+    ...(projectLastUsed &&
+    !validProjectLastUsed &&
+    source !== 'session override'
+      ? { unavailableProjectLastUsed: projectLastUsed }
+      : {}),
   };
 }
 
@@ -585,16 +633,22 @@ export function resolveBindingStatus({
     chatState?.provider ??
     (agentConnectionId || undefined);
   const engineId = connectionEngineId(runtimeConnection);
-  const agentModels = asModelOptions(agent?.modelOptions);
+  // A profile's aliases belong to its configured engine, not an override
+  // or a Session still running on a previous connection.
+  const agentModels =
+    runtimeConnection &&
+    runtimeConnection.id !== agent?.execution?.agentConnectionId
+      ? []
+      : asModelOptions(agent?.modelOptions);
   const runtimeModels = runtimeCatalogVisibleModels(runtimeConnection);
   const usesGlobalCatalog =
     chatState?.executionMode !== EXECUTION_MODE.STATION &&
     engineId === 'station';
   const visibleModels =
-    agentModels.length > 0
-      ? agentModels
-      : runtimeModels.length > 0
-        ? runtimeModels
+    runtimeModels.length > 0
+      ? runtimeModels
+      : agentModels.length > 0
+        ? agentModels
         : usesGlobalCatalog
           ? globalModels
           : [];
@@ -656,33 +710,20 @@ type SessionExecutionActivity = SessionExecutionSummary & {
 /**
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
- * Authority is the capability matrix, not a connection `capabilities`
- * string. Claude and Codex expose additive steering. ACP is held because
- * its matrix also admits cancel+reprompt, without a session-native receipt.
+ * Only native steering fidelity permits this action. Emulated steering can
+ * cancel and reprompt, so it cannot promise an additive live input channel.
+ * Station-owned placement is held for an observed boundary.
  */
+export function sessionSteeringPlacement(profile?: ProviderDurabilityProfile) {
+  return (profile ?? UNKNOWN_ENGINE_DURABILITY).steerPlacement;
+}
+
 export function sessionAdapterSupportsSteering(
-  agentConnectionId?: string | null,
-  agentConnections: ConnectionConfig[] = [],
-  orchestrationProvider?: string | null,
+  profile?: ProviderDurabilityProfile,
 ): boolean {
-  const connection = agentConnectionId
-    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
-    : undefined;
-  // ACP's matrix also permits interruptive cancel-and-reprompt. It is not
-  // evidence of an additive input channel on this particular session.
-  if (orchestrationProvider === 'acp' || connection?.type === 'acp')
-    return false;
-  if (
-    orchestrationProvider &&
-    orchestrationProvider in ENGINE_CAPABILITY_MATRICES
-  ) {
-    return (
-      ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
-    );
-  }
+  const placement = sessionSteeringPlacement(profile);
   return (
-    resolveEngineCapabilityMatrix(agentConnectionId, connection)
-      .midTurnSteer === true
+    placement.state === 'native' || placement.boundary === 'station-observed'
   );
 }
 
@@ -760,9 +801,17 @@ export function buildProviderOptions(
     };
   }
   if (agentConnectionId === 'codex') {
+    const effort = runtimeOptions?.effort ?? runtimeOptions?.reasoningEffort;
     return {
-      reasoningEffort: runtimeOptions?.reasoningEffort ?? 'medium',
-      fastMode: runtimeOptions?.fastMode === true,
+      ...(typeof effort === 'string' ? { reasoningEffort: effort } : {}),
+      ...(runtimeOptions?.serviceTier === undefined &&
+      runtimeOptions?.fastMode === true
+        ? { fastMode: true }
+        : {}),
+      ...(runtimeOptions?.serviceTier === null ||
+      typeof runtimeOptions?.serviceTier === 'string'
+        ? { serviceTier: runtimeOptions.serviceTier }
+        : {}),
     };
   }
   return {};
@@ -814,7 +863,7 @@ export function resolveAgentExecution(
     modelSource:
       agent.execution?.modelId || agent.model ? 'agent default' : 'unknown',
     providerOptions: buildProviderOptions(
-      agentConnectionId,
+      agent.engineConnectionType ?? agentConnectionId,
       agent.execution?.runtimeOptions,
     ),
   };
@@ -965,6 +1014,12 @@ function resolveProviderManagedExecution(
 
 export function preferredChatRuntime(
   agentConnections: ConnectionConfig[],
+  /**
+   * #4388: the engine this Station chose for its built-in Agent
+   * (`AppConfig.builtinAgentEngineConnectionId`). When it is ready it is the
+   * runtime named, not whichever of Claude Code or Codex sorts first.
+   */
+  chosenConnectionId?: string | null,
 ): ConnectionConfig | null {
   const ready = agentConnections.filter(isAgentConnectionSelectable);
   // Strict "connected" parity with the pre-rename executionClass literal —
@@ -980,6 +1035,10 @@ export function preferredChatRuntime(
   const managed = ready.filter(
     (connection) => connectionEngineId(connection) === 'station',
   );
+  const chosen = chosenConnectionId
+    ? connected.find((connection) => connection.id === chosenConnectionId)
+    : undefined;
+  if (chosen) return chosen;
   const preferredIds = ['claude', 'codex'];
   for (const id of preferredIds) {
     const match = connected.find((connection) => connection.id === id);

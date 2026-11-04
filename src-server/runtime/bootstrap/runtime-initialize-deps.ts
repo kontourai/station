@@ -11,6 +11,7 @@ import type { EngineAgentCatalog } from '../../domain/agent-registry.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
+import type { AcpAdapterOptions } from '../../providers/adapters/acp-adapter.js';
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -21,6 +22,7 @@ import type { AttachedSessionSource } from '../../providers/sessions/attached-se
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -54,6 +56,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
@@ -65,6 +68,7 @@ interface RuntimeInitializationContext {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -106,6 +110,9 @@ interface RuntimeInitializationContext {
   ) => Promise<BuiltinAgentEngineBinding | null>;
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
+  hostImagesPreview?: FeaturePreviewSelector;
+  durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -133,6 +140,8 @@ interface RuntimeInitializationContext {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** #3994: an ACP agent's terminals as command terminal sessions. */
+  acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   toolNameReverseMapping: Map<string, string>;
   eventLog: RuntimeEventLog;
   bedrockAdapter: BedrockAdapter;
@@ -167,6 +176,7 @@ interface RuntimeInitializationContext {
   }) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: import('@voltagent/core').VoltAgent) => void;
@@ -195,7 +205,10 @@ export function createRuntimeInitializationDeps(
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
+    hostImagesPreview: context.hostImagesPreview,
+    durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
+    getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,
     monitoringEmitter: context.monitoringEmitter,
@@ -216,6 +229,7 @@ export function createRuntimeInitializationDeps(
     resolveUnattendedGrant: context.resolveUnattendedGrant,
     integrationSecretResolver: context.integrationSecretResolver,
     resolveAcpPreToolPolicy: context.resolveAcpPreToolPolicy,
+    acpAgentTerminals: context.acpAgentTerminals,
     eventLog: context.eventLog,
     bedrockAdapter: context.bedrockAdapter,
     claudeAdapter: context.claudeAdapter,

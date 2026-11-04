@@ -270,15 +270,20 @@ installed local service or remote server updates separately. Opening the panel
 never applies an update; there is no shared "Update both" operation, and app
 and server versions need not be equal.
 
-For a staged service update, **Download …** leaves the running version in
-place. **Restart server to update to …** opens a confirmation that lists the
+For a staged service update, **Download server update** leaves the running
+version in place. **Restart server** opens a confirmation that lists the
 running agent turns the caller may see and counts hidden turns. It offers
 **Restart now** or **When idle**; closing the confirmation changes nothing.
 Older servers and source checkouts that expose a direct update action require
 **Update and restart** confirmation. Closing the Updates panel keeps its
 existing server observer mounted so it can follow an accepted restart and
-recheck its outcome. Source-installation/manual host instructions remain in
-the server section, and **Update policies and details** opens System settings.
+recheck its outcome. The section shows the running version once in its
+header, with one status badge and one primary action; address, channel,
+install facts, finished-update history and the method explanation fold into a
+collapsed **Details**, while errors, warnings and the restart confirmation stay
+visible. Manual host instructions remain in the server section, the source
+disclosure inside its **Details**, and **Update policies and details** opens
+System settings.
 
 ### When the server is older than the app
 
@@ -295,12 +300,12 @@ version, instead. A bare `X.Y.Z` client never counts as newer than a
 prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
 against a `0.1.12-preview.N` server, which tracks another ring and cannot
 update itself to the stable release. When the server is older, the Updates
-panel says so and names both versions in one readable form,
-a Nightly by its build date
-([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)).
-If the service's launcher runs the server and its verified manifest names a
-newer release, **Review server update** focuses the panel's server section.
-Its existing server controls own download, restart confirmation, and progress;
+panel says so in one line in its server section
+([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)),
+whose header already shows the server version; the notice has no action of
+its own. If the service's launcher runs the server and its verified manifest
+names a newer release, the section's own controls own download, restart
+confirmation, and progress;
 the launch comparison never applies the update itself. Any other server keeps
 its manual host guidance. This older-server notice never appears for a dev or
 locally built app, equal versions, a server that
@@ -319,7 +324,8 @@ keeps the native updater adapter; the connected-server section reuses
 ### Advanced source installer boundary
 
 The checkout-backed bundle installer survives behind the **Source installation
-details** disclosure on the server updates card, under the action
+details** disclosure on the server updates card (inside the card's **Details**
+unless the server is built in), under the action
 **Rebuild and reinstall desktop app from source…**. It is a distinct advanced
 workflow, not the normal desktop update path: the source query behind it mounts
 only while the disclosure is open, it names the affected host from the

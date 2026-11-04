@@ -115,16 +115,90 @@ describe('Workspace Pane preview routes', () => {
       kind: 'image',
       preview: { dataUrl: `data:image/png;base64,${png}` },
     });
-    for (const path of [
-      join(outside, 'private.html'),
-      join(worktree, 'escaped.html'),
-      join(worktree, 'missing.html'),
-      join(worktree, '..', 'outside', 'private.html'),
-    ]) {
+    for (const [path, status, reason] of [
+      [join(outside, 'private.html'), 403, 'outside-project'],
+      [join(worktree, 'escaped.html'), 403, 'outside-project'],
+      [join(worktree, 'missing.html'), 404, 'missing'],
+      [join(worktree, '..', 'outside', 'private.html'), 403, 'outside-project'],
+    ] as const) {
       const response = await request(path);
-      expect(response.status, path).toBe(404);
+      expect(response.status, path).toBe(status);
+      expect((await json(response.clone())).reason, path).toBe(reason);
       expect(JSON.stringify(await json(response))).not.toContain('Private');
     }
+  });
+
+  test('a refused visual read says why, without revealing files outside the Project', async () => {
+    const workspace = makeTempDir('station-visual-reasons-');
+    const other = makeTempDir('station-visual-other-');
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+    writeFileSync(join(workspace, 'shot.png'), png);
+    writeFileSync(join(workspace, 'notes.txt'), 'notes');
+    writeFileSync(join(workspace, 'big.png'), Buffer.alloc(512 * 1024 + 1));
+    writeFileSync(join(other, 'x.png'), png);
+    symlinkSync(join(other, 'x.png'), join(workspace, 'escape.png'));
+    symlinkSync(join(other, 'gone.png'), join(workspace, 'dangling.png'));
+    symlinkSync(other, join(workspace, 'linked-dir'));
+    const app = appFor(workspace);
+    const read = async (path: string, slug = 'alpha') => {
+      const response = await app.request(`/${slug}/file-preview/visual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const body = (await json(response)) as {
+        reason?: string;
+        error?: string;
+      };
+      return { status: response.status, reason: body.reason, body };
+    };
+
+    expect((await read(join(workspace, 'shot.png'))).status).toBe(200);
+    expect((await read('shot.png')).status).toBe(200);
+    // Outside the Project: refused before the filesystem is consulted, so an
+    // existing and a missing file answer alike.
+    for (const path of [join(other, 'x.png'), join(other, 'nope.png')])
+      expect(await read(path), path).toMatchObject({
+        status: 403,
+        reason: 'outside-project',
+      });
+    expect(await read('nope.png')).toMatchObject({
+      status: 404,
+      reason: 'missing',
+    });
+    expect(await read(join(workspace, 'notes.txt'))).toMatchObject({
+      status: 415,
+      reason: 'unsupported-type',
+    });
+    // The extension decides before containment: no existence probe outside.
+    expect(await read(join(other, 'secret.txt'))).toMatchObject({
+      status: 415,
+      reason: 'unsupported-type',
+    });
+    expect(await read('big.png')).toMatchObject({
+      status: 413,
+      reason: 'too-large',
+    });
+    // Links that leave the Project, whether or not their target exists.
+    for (const path of [
+      'escape.png',
+      'dangling.png',
+      'linked-dir/x.png',
+      'linked-dir/gone.png',
+    ])
+      expect(await read(path), path).toMatchObject({
+        status: 403,
+        reason: 'outside-project',
+      });
+    expect(await read('shot.png', 'missing-project')).toMatchObject({
+      status: 404,
+      reason: 'no-workspace',
+    });
+    for (const path of [join(other, 'x.png'), 'escape.png'])
+      expect(JSON.stringify((await read(path)).body)).not.toContain(other);
   });
 
   test('answers only the requested paths that are previewable regular files', async () => {

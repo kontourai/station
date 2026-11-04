@@ -24,8 +24,8 @@ export function MobileSheetPending({
       overlayStyle={style}
       returnFocusTarget={returnFocusTarget}
       initialFocusPolicy="panel"
-      overlayClassName="mobile-task-switcher__overlay"
-      panelClassName="mobile-task-switcher__panel"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--end"
+      panelClassName="composer-popover-panel"
     >
       <ResponsiveDialogHeader
         title={label}
@@ -33,7 +33,7 @@ export function MobileSheetPending({
         closeLabel={`Close ${label.toLowerCase()}`}
         onClose={onClose}
       />
-      <p role="status" aria-busy="true" className="mobile-task-switcher__list">
+      <p role="status" aria-busy="true" className="composer-mode-sheet__notes">
         Loading {label.toLowerCase()}…
       </p>
     </ResponsiveDialogSurface>

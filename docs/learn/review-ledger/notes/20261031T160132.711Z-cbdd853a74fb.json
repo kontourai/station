@@ -1,0 +1,7 @@
+{
+  "revision": "549215c2e6a0b79bf575d478dae84d7c7764980a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the shipped manual's static-content scope and the generated architecture topic against the module map and outbound flush/settlement callers. Regenerated and checked 127 MCP topics; the changed busy-conversation handoff and queued receipt are described in the architecture topic. This source review does not establish live state or authentication coverage.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

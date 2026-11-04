@@ -3,15 +3,18 @@ import {
   applyChildWorkDelta,
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
+  type ChildWorkEndedBy,
   type ChildWorkItem,
   type ChildWorkModel,
   type ChildWorkParent,
   type ChildWorkRegistryState,
   type ChildWorkResult,
   type ChildWorkTerminalStatus,
+  type ChildWorkTranscriptRef,
   type ChildWorkUsage,
   childWorkForReporter,
   createEmptyChildWorkRegistry,
+  parseChildWorkTranscriptRef,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -88,6 +91,7 @@ export const SETTLED_AWAITING_OWN_TERMINAL_MAX = 64;
 const TITLE_MAX_CHARS = 200;
 
 interface CodexChildFacts {
+  protocol?: 'v1' | 'v2';
   depth?: number;
   totalTokens?: number;
   lastAgentMessage?: string;
@@ -285,12 +289,30 @@ function isRunning(record: CodexSessionRecord, childId: string): boolean {
 }
 
 interface ChildIdentity {
+  protocol?: 'v1' | 'v2';
   parent?: ChildWorkParent;
   depth?: number;
   title?: string;
   kindLabel?: string;
   /** #3163: the child's own model, from a fact about the child itself. */
   model?: ChildWorkModel;
+}
+
+/**
+ * The child's own rollout, named by its thread id under the session's Codex
+ * home. Absent when the id is not a Codex thread id or the home is unknown:
+ * no ref is better than one that reads the wrong home.
+ */
+function codexChildTranscriptRef(
+  record: CodexSessionRecord,
+  childId: string,
+): ChildWorkTranscriptRef | undefined {
+  if (!record.codexHome) return undefined;
+  return parseChildWorkTranscriptRef({
+    kind: 'codex-thread',
+    threadId: childId,
+    configHome: record.codexHome,
+  });
 }
 
 /**
@@ -312,10 +334,14 @@ function registerChild(
     return;
   }
   const facts = state.children.get(childId) ?? {};
+  if (identity.protocol === 'v2' || !facts.protocol)
+    facts.protocol = identity.protocol;
   if (facts.depth === undefined && identity.depth !== undefined) {
     facts.depth = identity.depth;
   }
   state.children.set(childId, facts);
+  // Readable while the child runs: Codex appends to the rollout as it goes.
+  const transcript = codexChildTranscriptRef(context.record, childId);
   if (!existing) {
     const item: ChildWorkItem = {
       producer: 'engine-subagent',
@@ -327,6 +353,7 @@ function registerChild(
       ...(identity.title ? { title: identity.title } : {}),
       ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
       ...(identity.model ? { model: identity.model } : {}),
+      ...(transcript ? { transcript } : {}),
       // #2486 review: `stopProviderTask` needs the child's own active turn
       // id to target a `turn/interrupt` at — a control offered before that
       // arrives is a button `stopProviderTask` can only answer
@@ -358,6 +385,7 @@ function registerChild(
       missing.kindLabel = identity.kindLabel;
     }
     if (!existing.model && identity.model) missing.model = identity.model;
+    if (!existing.transcript && transcript) missing.transcript = transcript;
     if (Object.keys(missing).length > 0) {
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }
@@ -386,7 +414,11 @@ function settleChild(
   context: ChildWorkContext,
   childId: string,
   status: ChildWorkTerminalStatus,
-  extra: { summary?: string; durationMs?: number } = {},
+  extra: {
+    summary?: string;
+    durationMs?: number;
+    endedBy?: ChildWorkEndedBy;
+  } = {},
 ): void {
   const state = stateOf(context.record);
   if (state.closed) return;
@@ -406,6 +438,7 @@ function settleChild(
     reporterThreadId: context.record.externalThreadId,
     childId,
     status,
+    ...(extra.endedBy ? { endedBy: extra.endedBy } : {}),
     ...(result ? { result } : {}),
     ...(Object.keys(usage).length > 0 ? { usage } : {}),
     identity: {
@@ -436,15 +469,24 @@ function syncChildStopControl(
 ): void {
   const existing = itemFor(context.record, childId);
   if (existing?.status !== 'running') return;
-  const hasTarget =
-    stateOf(context.record).children.get(childId)?.activeTurnId !== undefined;
+  const facts = stateOf(context.record).children.get(childId);
+  const hasTarget = facts?.activeTurnId !== undefined;
   const hasControl = existing.controls?.stop === 'provider-task-stop';
-  if (hasTarget === hasControl) return;
+  const turnId = facts?.protocol === 'v1' ? facts.activeTurnId : undefined;
+  const steer =
+    turnId && new TextEncoder().encode(turnId).length <= 512
+      ? turnId
+      : undefined;
+  if (hasTarget === hasControl && existing.controls?.steer?.turnId === steer)
+    return;
   emit(context, {
     kind: 'upsert',
     item: {
       ...existing,
-      controls: hasTarget ? { stop: 'provider-task-stop' } : {},
+      controls: {
+        ...(hasTarget ? { stop: 'provider-task-stop' as const } : {}),
+        ...(steer ? { steer: { turnId: steer } } : {}),
+      },
     },
   });
 }
@@ -543,8 +585,15 @@ export function observeCodexSubagentItem(
       // started item carries an empty one). It is the child's model, not a
       // kind of child, and is absent when the engine left it empty.
       const model = extractString(item.model)?.trim();
+      if (senderThreadId !== reportingThreadId) return true;
       for (const childId of receivers) {
+        if (
+          childId === context.record.codexThreadId ||
+          childId === reportingThreadId
+        )
+          continue;
         registerChild(context, childId, {
+          protocol: 'v1',
           parent: parentFor(
             context.record,
             reportingThreadId,
@@ -635,6 +684,7 @@ function observeSubAgentActivity(
   const agentPath = extractString(item.agentPath);
   const name = agentPath?.split('/').filter(Boolean).at(-1);
   registerChild(context, childId, {
+    protocol: 'v2',
     parent: parentFor(
       context.record,
       reportingThreadId,
@@ -781,6 +831,24 @@ export function codexRunningChildTurnId(
 ): string | undefined {
   if (itemFor(record, childId)?.status !== 'running') return undefined;
   return stateOf(record).children.get(childId)?.activeTurnId;
+}
+
+export function codexChildSteerTarget(
+  record: CodexSessionRecord,
+  childId: string,
+  turnId: string,
+): 'ready' | 'unsupported' | 'no-active-task' {
+  const facts = stateOf(record).children.get(childId);
+  if (
+    itemFor(record, childId)?.status !== 'running' ||
+    !facts?.activeTurnId ||
+    facts.activeTurnId !== turnId
+  )
+    return 'no-active-task';
+  if (facts.protocol !== 'v1') return 'unsupported';
+  if (itemFor(record, childId)?.controls?.steer?.turnId !== turnId)
+    return 'no-active-task';
+  return 'ready';
 }
 
 /**
@@ -953,15 +1021,26 @@ function finalAgentMessage(items: unknown): string | undefined {
 }
 
 /**
- * Session end: every child still running can no longer report, so it settles
- * `unresolved` (nothing observed says how it ended). Called beside
+ * Session end: every child still running can no longer report. Codex runs
+ * its children as threads inside the app-server, so when that process died
+ * under them they settle `unresolved` with `endedBy: 'engine-exit'`, shown
+ * as interrupted: an observed end. A requested stop, and a door that cannot
+ * say the process is gone, leave `endedBy` off. Called beside
  * `settleUnresolvedCodexToolCalls`, before `session.exited`. Idempotent.
  */
-export function settleOpenCodexChildren(context: ChildWorkContext): void {
+export function settleOpenCodexChildren(
+  context: ChildWorkContext,
+  endedBy: ChildWorkEndedBy | undefined,
+): void {
   const state = context.record.childWork;
   if (!state || state.closed) return;
   for (const item of runningChildren(context.record)) {
-    settleChild(context, item.childId, 'unresolved');
+    settleChild(
+      context,
+      item.childId,
+      'unresolved',
+      endedBy ? { endedBy } : {},
+    );
   }
   state.closed = true;
   state.children.clear();

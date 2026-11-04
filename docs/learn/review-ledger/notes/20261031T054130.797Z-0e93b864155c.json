@@ -1,0 +1,7 @@
+{
+  "revision": "5dd26c0e86b053bd692321efc2673d599232dadd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the Basis chip fit and interrupted-child batch owners against current MessageBubble and CHILD_WORK_STATUS_LABEL. The phone timestamp follows the chip/actions, stays whole and on screen, and does not overlap the chip; existing overflow, hit testing and whole Basis prefix checks remain. Completed child execution is labelled Run finished, independently of task outcome. These are fixture defects from the approved presentation change, not new product behavior. Reproduced all three hosted failures locally, repaired expectations, then forced the timestamp leading and restored Completed copy: all three updated assertions failed for the intended reason. Production files restored byte-identically; 84 owner/sibling tests passed with one intentional missing-Chromium guard skip. Existing prose remains accurate; added both test owners to this record so later changes are mapped.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx","src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx"]}
+  ]
+}

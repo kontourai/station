@@ -1,3 +1,5 @@
+import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerFailure } from '../../providers/provider-failure.js';
@@ -15,6 +17,7 @@ import {
   clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
@@ -28,6 +31,7 @@ import type {
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type {
+  ApprovalMode,
   EngineId,
   ModelLaunchPlan,
   ModelSelectionReceipt,
@@ -37,9 +41,11 @@ import type {
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  isApprovalMode,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -58,11 +64,11 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
+import { isStationChatFolder } from './no-project-chat-folder.js';
 import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
@@ -79,7 +85,7 @@ import {
 import {
   SESSION_START_INDETERMINATE_CODE,
   SessionStartIndeterminateError,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -343,6 +349,8 @@ export function trackOrchestrationSession(options: {
   );
 }
 
+export class OrchestrationProviderSessionNotFoundError extends Error {}
+
 export async function resolveOrchestrationAdapterForThread(options: {
   threadId: string;
   threadProviders: Map<string, EngineId>;
@@ -386,7 +394,9 @@ export async function resolveOrchestrationAdapterForThread(options: {
     return materialized;
   }
 
-  throw new Error(`No provider session found for thread: ${options.threadId}`);
+  throw new OrchestrationProviderSessionNotFoundError(
+    `No provider session found for thread: ${options.threadId}`,
+  );
 }
 
 export function projectOrchestrationEventToReadModel(options: {
@@ -528,6 +538,9 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  readDurabilityProfile?: (
+    provider: string | undefined,
+  ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
   events?: CanonicalRuntimeEvent[];
@@ -566,6 +579,7 @@ export function buildOrchestrationSessionSummary(options: {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
+  readOwnedWork?: (threadId: string) => OwnedSessionActivity | undefined;
   /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
@@ -631,13 +645,18 @@ export function buildOrchestrationSessionSummary(options: {
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
+  const appliedApprovalMode = extractAppliedApprovalMode(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
-    (options.conversationFirstPromptedTurn
-      ? extractDisplayTitle([options.conversationFirstPromptedTurn])
-      : undefined) ??
-    extractDisplayTitle(events) ??
+    // The conversation's first prompt comes before this thread's own events,
+    // so one pass over both lets a meaningful later prompt outrank a
+    // low-content first one (#4266).
+    extractDisplayTitle(
+      options.conversationFirstPromptedTurn
+        ? [options.conversationFirstPromptedTurn, ...events]
+        : events,
+    ) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const lastRuntimeError = findTerminalFailureEvent(events);
@@ -690,6 +709,7 @@ export function buildOrchestrationSessionSummary(options: {
     (id) => !settledRequestIds.has(id),
   );
   const summary: OrchestrationSessionSummary = {
+    durability: options.readDurabilityProfile?.(base.provider),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -709,9 +729,11 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+    // #4389: a no-project chat's scratch folder is one Station made too.
+    ...(base.cwd && isStationChatFolder(base.cwd)
       ? { cwdManagedWorkspace: true as const }
       : {}),
+    ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -787,6 +809,24 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  const ownedWork = options.readOwnedWork?.(base.threadId);
+  if (
+    ownedWork &&
+    (ownedWork.runningChildCount > 0 || ownedWork.pendingStopCount > 0)
+  ) {
+    summary.ownedWork = {
+      ...ownedWork,
+      state: ownedWork.pendingStops.some((stop) => stop.custody === 'unknown')
+        ? 'unknown'
+        : ownedWork.pendingStops.some((stop) => stop.custody === 'peer')
+          ? 'waiting-on-peer'
+          : ownedWork.pendingStopCount > 0
+            ? 'stopping'
+            : 'running',
+      ownLifecycleState: lifecycle.lifecycleState,
+    };
+    summary.lifecycleState = 'running';
+  }
   // #2456: a delegated session, as its parent's child work. Derived from the
   // summary's own folds (delegation + open turn + lifecycle), so it can never
   // disagree with the members it is computed from.
@@ -929,23 +969,33 @@ function extractModelSelectionReceipt(
 
 /**
  * Home needs enough identity to distinguish historical sessions without
- * projecting their full prompts. Only the first meaningful user turn is
- * considered, and injected timezone context is removed before bounding.
+ * projecting their full prompts. The first user turn that says something is
+ * the title, and injected timezone context is removed before bounding.
+ *
+ * #4266: a low-content prompt ("Continue", "ok go ahead", the memory-recovery
+ * continuation; `isLowContentPrompt`) is skipped, so the next prompted turn
+ * names the session instead. Only when every prompt is low-content does the
+ * first of them stand, which still says more than an engine fallback name.
  */
 export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
+  let lowContentTitle: string | undefined;
   for (const event of events) {
-    if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
-      continue;
-    }
+    if (event.method !== 'turn.started') continue;
+    // A long prompt stored out of line titles from its preview: a title is
+    // a short prefix either way.
+    const text = runtimeEventContentText(event.prompt)?.text;
+    if (!text) continue;
     const prompt = clientOriginSender(event.clientOrigin)
-      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
-      : event.prompt;
+      ? (unframeAgentMessage(text) ?? text)
+      : text;
     const title = displayPromptTitle(prompt);
-    if (title) return title;
+    if (!title) continue;
+    if (!isLowContentPrompt(title)) return title;
+    lowContentTitle ??= title;
   }
-  return undefined;
+  return lowContentTitle;
 }
 
 function displayPromptTitle(prompt: string): string | undefined {
@@ -1050,6 +1100,28 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * generation and must not be surfaced as if it confirms the current one. Stop
  * there and report absent rather than keep scanning into older history.
  */
+/**
+ * #4433: the approval mode the engine last reported applying, as the client
+ * folds it live (`session.configured` / `turn.started` metadata; an event
+ * without a mode changes nothing). Newest first over the projection, which
+ * keeps the latest of each.
+ */
+function extractAppliedApprovalMode(
+  events: readonly CanonicalRuntimeEvent[],
+): ApprovalMode | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (
+      event?.method !== 'session.configured' &&
+      event?.method !== 'turn.started'
+    )
+      continue;
+    const mode = event.metadata?.approvalMode;
+    if (isApprovalMode(mode)) return mode;
+  }
+  return undefined;
+}
+
 function extractReportedModel(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {

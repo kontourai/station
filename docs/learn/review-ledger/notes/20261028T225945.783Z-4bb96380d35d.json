@@ -1,0 +1,7 @@
+{
+  "revision": "842ea31f73218e41fe18c622deb9cb39d5ef1f44",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Source-impact review: the module map describes instance-pinned client-secret grants, per-request secret resolution and the .station-instance identity. Searched this document for MCP tool-server OAuth client, secret-binding grant, integration directory contents and credential-store claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}

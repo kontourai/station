@@ -1,0 +1,18 @@
+{"kind": "capture", "codexVersion": "0.164.0", "model": "gpt-5.6-luna", "capture": "sanitized selected RPC observations", "ids": "per-capture aliases", "scope": "disposable parent and child"}
+{"kind": "parent_started", "parent": "id-1"}
+{"kind": "parent_message", "phase": "commentary", "text": ""}
+{"kind": "parent_message", "phase": "commentary", "text": "I’ll spawn exactly one subagent with the requested instruction and wait for its completion."}
+{"kind": "parent_tool", "phase": "item/started", "tool": "spawnAgent", "status": "inProgress", "sender_matches": true, "receivers": [], "states": []}
+{"kind": "parent_tool", "phase": "item/completed", "tool": "spawnAgent", "status": "completed", "sender_matches": true, "receivers": ["id-2"], "states": ["pendingInit"]}
+{"kind": "observed_child_turn", "thread": "id-2", "turn": "id-3"}
+{"kind": "steer_sent", "child": "id-2", "turn": "id-3"}
+{"kind": "thread_read", "child": "id-2", "status": {"type": "active", "activeFlags": []}, "turns": [{"id": "id-3", "status": "inProgress"}]}
+{"kind": "steer_result", "turn_matches": true, "error": null}
+{"kind": "parent_tool", "phase": "item/started", "tool": "wait", "status": "inProgress", "sender_matches": true, "receivers": ["id-2"], "states": []}
+{"kind": "child_message", "phase": "final_answer", "text": ""}
+{"kind": "child_message", "phase": "final_answer", "text": "STEER_ACKNOWLEDGED"}
+{"kind": "child_completed", "child": "id-2", "status": "completed", "error": null}
+{"kind": "parent_tool", "phase": "item/completed", "tool": "wait", "status": "completed", "sender_matches": true, "receivers": ["id-2"], "states": ["completed"]}
+{"kind": "parent_message", "phase": "final_answer", "text": ""}
+{"kind": "parent_message", "phase": "final_answer", "text": "The subagent completed successfully after running the requested command."}
+{"kind": "parent_completed", "status": "completed", "error": null}

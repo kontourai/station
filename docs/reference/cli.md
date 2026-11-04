@@ -3,6 +3,20 @@
 The Station CLI controls running Stations and supports selected local and
 checkout operations. Availability depends on how it was launched.
 
+## Local speech and media tools
+
+### `media-tools`
+
+`station media-tools status [--json]` prints component IDs, versions, pinned
+download bytes, resolution, byte progress and failures. It performs no download.
+`station media-tools download --yes [--json]` requires explicit consent before
+contacting the selected Station, then starts its missing component downloads.
+Both accept `--station`, or `--api-base` and the usual credential selection.
+These commands require the Station operator and either the Walkthroughs or Local
+speech preview, enabled in Settings → Advanced → Feature previews. A 202 response means downloading
+has started; inspect `status` for readiness or failure. See
+[local speech](../guides/local-speech.md) for platforms and limits.
+
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
@@ -378,6 +392,18 @@ operating-system keyring. Bearer material is absent from saved Station metadata,
 exports, status output, and ordinary app-data files. Unavailable keyrings fail
 closed without a plaintext fallback.
 
+On macOS the CLI reaches the login Keychain through Apple's `/usr/bin/security`
+tool rather than an addon inside `node`. Keychain approval therefore belongs to
+that stable tool and survives CLI and runtime upgrades. `station stations list`,
+`stations show`, and other status displays check only whether a credential
+exists, and never trigger a Keychain dialog. A command that reads, stores, or
+deletes a credential gives up after 5 seconds in a non-interactive shell, or
+after 2 minutes from a terminal. It exits non-zero with an error saying macOS
+is waiting for Keychain approval or that the keychain is locked. To fix it, run
+the command once from a terminal at the Mac and choose **Always Allow**, or
+unlock the keychain with `security unlock-keychain`. Credentials saved by
+earlier versions ask for approval once more, this time for `security`.
+
 `--api-base` accepts either the bare server origin
 or that origin with a trailing `/api` (e.g. copied from a browser Network-tab request
 URL) — both normalize to the same value. The CLI's own resource paths already
@@ -566,7 +592,8 @@ station stations forget <name>
 station stations project show|use <name>|clear
 station stations export
 station target [--station=<name>|--api-base=<url>]
-station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]
+station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]
+station triage draft-report < report.json
 ```
 
 Adding, showing, exporting, or targeting a Station does not change the
@@ -632,57 +659,81 @@ Without `--print`, success prints only the bare address.
 ### `triage`
 
 `station triage` creates an opaque owner-only run under
-`$STATION_ROOT/cache/triage/<uuid>`. Each run has schema-v1 `context.json`,
+`$STATION_ROOT/cache/triage/<uuid>`. Each run has schema-v2 `context.json`,
 readable `summary.md`, the versioned Station-owned `playbook.md`, bounded
-`problem.md`, and `related-issues.json`. Runs with nonempty agent output also
-retain a redacted `diagnosis.md` and local `issue-draft.md`, including when the
-agent exits unsuccessfully. These files retain at most the first 64 KiB of
-stdout, so they are not a guarantee of a complete diagnosis. The
-context contains only bounded, redacted CLI provenance, selected Station facts,
-and source-doctor facts when the checkout launcher injects that callback. When
-an existing credential is available, it uses the authenticated raw
-`/api/diagnostics/bundle` seam and retains only allowlisted app
+`problem.md`, and `related-issues.json`. Headless runs with nonempty agent
+output also retain a redacted `diagnosis.md` and local `issue-draft.md`,
+including when the agent exits unsuccessfully. These files retain at most the
+first 64 KiB of stdout, so they are not a guarantee of a complete diagnosis.
+The context contains only bounded, redacted CLI provenance, selected Station
+facts, and source-doctor facts when the checkout launcher injects that
+callback. When an existing credential is available, it uses the authenticated
+raw `/api/diagnostics/bundle` seam and retains only allowlisted app
 version/platform/build facts, a summarized doctor report, and a re-sanitized,
 bounded log tail. It drops bundle config and every other field. It does not
 read keyring values directly, pairing/local-grant secrets, databases, arbitrary
 environment values, provider payloads, or unbounded logs; absent authentication
 or an unreachable Station is recorded as unavailable, never fatal.
 
+`localLogs` in the context names the log directory of this machine's default
+Station runtime home, with the home directory shown as `~` (for example
+`~/.station/instances/stable/logs`; the durable server logs are in its
+`server/` subdirectory), and whether it exists. A directory outside the home
+directory is recorded as `null` instead of a raw absolute path. That runtime is
+not necessarily the Station the run targets.
+
 ```bash
+station triage
 station triage --context-only
-station triage --agent=codex
+station triage --headless --agent=codex
 station triage --agent=claude
 station triage --problem='Beta stopped opening' --search-issues --agent=codex
+station triage draft-report < report.json
 ```
 
-`--context-only` skips agent probing and launch while still collecting the same
-read-only source-doctor and authenticated remote facts available to a normal
-run. Without an explicit agent,
-Station selects the only detected supported agent. When both are detected in a
-TTY it asks the owner to choose; in a non-interactive shell it preserves
-artifacts and tells the caller to choose `--agent=codex` or `--agent=claude`.
-When no supported agent is installed and none was explicitly requested, the
-command succeeds with artifacts only. Explicitly requesting an unavailable
-agent fails after preserving those artifacts.
+**Interactive and headless modes.** When both stdin and stdout are a terminal,
+`station triage` starts the selected agent as an interactive troubleshooting
+conversation. The agent inherits the terminal, uses its normal approval
+prompts, and receives no mode or bypass flags; its only argument is a
+single-line instruction to read the run's `playbook.md` and `context.json`.
+`playbook.md` is then the same troubleshooting playbook (v2) the in-app Station
+Assistant follows. Its terminal section tells the agent that Station and its
+tools may be unavailable, to investigate with the run files, the local log
+directory and Station's read commands such as `station doctor`, never to kill
+or restart a process without the person's explicit yes, and how to file. Station
+captures no output from an interactive session and writes no `diagnosis.md`;
+the run is `completed` when the agent exits successfully.
+
+`--headless`, or stdin or stdout that is not a terminal, selects the one-shot
+read-only diagnosis described below, with its read-only v1 playbook.
+`--context-only` never launches an agent and also writes the v1 playbook.
+
+Without an explicit agent, Station selects the only detected supported agent.
+When both are detected in a TTY it asks the owner to choose; in a
+non-interactive shell it preserves artifacts and tells the caller to choose
+`--agent=codex` or `--agent=claude`. When no supported agent is installed and
+none was explicitly requested, the command succeeds with artifacts only.
+Explicitly requesting an unavailable agent fails after preserving those
+artifacts.
 
 `--problem` stores a bounded, redacted symptom. `--search-issues` explicitly
 allows sending it to `gh issue list --repo kontourai/station`; an interactive run asks
 the same yes/no question before searching unless that flag already supplied
 consent. `--context-only` skips prompting but still performs a search explicitly
 requested by `--search-issues`. Results retain only
-bounded issue number/title/state fields. No GitHub write command exists here.
+bounded issue number/title/state fields.
 
 An agent launch separately makes the run files available to that agent and its
 configured model service; issue-search consent is not a promise of offline
 model processing. Use `--context-only` to collect without launching an agent.
 
-The launcher requests Codex's read-only sandbox, no approval prompts, an
-ephemeral session, and ignored user config. For Claude it requests safe plan
-mode, disabled session persistence/Chrome/slash commands, and a Read/Glob/Grep
-tool set. Both receive a short argument pointing at the run-local playbook,
-not a multiline prompt argument; processes use argv arrays with no shell. The
-playbook consumes only Station's consented related-issue artifact. Station
-captures a bounded stdout prefix, redacts it, and writes
+In headless mode, the launcher requests Codex's read-only sandbox, no approval
+prompts, an ephemeral session, and ignored user config. For Claude it requests
+safe plan mode, disabled session persistence/Chrome/slash commands, and a
+Read/Glob/Grep tool set. Both receive a short argument pointing at the
+run-local playbook, not a multiline prompt argument; processes use argv arrays
+with no shell. The playbook consumes only Station's consented related-issue
+artifact. Station captures a bounded stdout prefix, redacts it, and writes
 `diagnosis.md` plus `issue-draft.md` with model/agent and harness attribution;
 the playbook forbids repairs, service commands, state/database writes,
 source patches, and every GitHub write. Posting or repair remains an explicit later
@@ -693,11 +744,56 @@ Live stdout is forwarded to the terminal before that redaction, and child
 stderr is inherited directly. The stored-artifact redaction is not a guarantee
 about terminal output. The [triage owner](../../packages/cli/src/commands/triage.ts)
 passes mode flags and instructions; fixture tests do not establish enforcement
-by every installed agent version.
+by every installed agent version. In interactive mode the playbook's rules are
+instructions to the agent; the agent's own approval prompts are the only
+enforcement.
+
+**`station triage draft-report`** reads one JSON object,
+`{"title": "...", "fields": {"<field-id>": "...", ...}}`, on stdin, using the
+`troubleshoot-report.yml` field ids. It prints JSON with the redacted `title`
+and `fields`, the prefilled issue-form `url`, the field ids `included` in it,
+and any `overflow` fields that did not fit, returned whole for pasting into the
+form. It uses the same redactor and link builder as the in-app
+`draft_troubleshoot_report` tool: credentials, non-public links and home
+directories (shown as `~`) are removed. Input over 256 KiB, an unknown key or
+field id, a title over 200 characters, or a field over 20,000 characters is
+refused rather than truncated. The command sends nothing. Filing stays a
+separate step: the interactive playbook shows the complete redacted text, asks
+for an explicit yes, and posts with
+`gh issue create --repo kontourai/station --label reported:troubleshoot` only
+when `gh` is authenticated and the account has triage permission on the
+repository; otherwise it gives the person the form link.
 
 ---
 
 ## Configuration
+
+### `policy`
+
+Machine administrators use these commands to check and confirm a
+[managed policy](../guides/managed-policy.md).
+
+```bash
+station policy check <file> [--json]
+station policy show [--json] [--api-base=<url>|--station=<name>]
+```
+
+`check` is offline and runs the same validation as server startup. It exits
+`0` and prints the organization, the support link, what the policy manages and
+its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+missing, unreadable, a directory or other non-regular file, a symbolic link,
+invalid JSON, repeats a key name, or does not match the schema. It does not
+check root ownership; the server checks that only at the installed path.
+With `--json` it prints `{valid, path, digest, summary}` or
+`{valid: false, path, reason, problems}`.
+
+`show` reads the policy installed on this machine and asks the target Station
+(`GET /api/settings/managed-policy`) which policy it loaded at startup. It
+compares the two only when the target is a loopback address; for a remote
+target it says the comparison was skipped. When the fingerprints differ, it
+says a restart is needed. When the installed policy is invalid, it reports the
+startup error and exits `1`. With `--json` it prints `{installed, running,
+restartNeeded}`, where `restartNeeded` is `null` when nothing could be compared.
 
 ### `telemetry`
 
@@ -827,7 +923,10 @@ configuration. Exports carry only required environment-name hints for them:
 never a binding id, Datum reference, or materialized value. `--include-secrets`
 can still export an ordinary legacy environment entry for compatibility, but it
 never exports a binding-backed entry (including a temporary legacy overlap).
-Imports reject `secretEnvRefs` outright.
+Imports reject `secretEnvRefs` and an OAuth client's `oauthClient.clientSecretRef`
+outright, and exports drop both. An import also applies Station's OAuth client
+rules: a pre-registered client needs its `issuer`, and an existing
+integration's bound client secret keeps its issuer and endpoint.
 
 > **Warning:** `--include-secrets` writes ordinary legacy credentials as
 > plaintext to the export. Binding material and binding references are never
@@ -886,6 +985,10 @@ Agent, integration and workspace-guidance data. Recognized workspace guidance
 is merged into local `config/app.json`, replacing the same keys when present;
 this is a real configuration write. Matching Agent and integration IDs can also
 be replaced. The command does not ask the remote API to activate these files.
+Imported trust classification, permissions, hint settings, receipts and
+ownership are ignored. A new imported integration takes Station's own
+classification (trusted, unless Station's bundled curated catalog classifies
+it) and the default ask permission; existing person choices are preserved.
 
 Each completed import writes a ledger under the Station home recording the source path,
 format, what was applied, and any fields that could not be represented, so a
@@ -914,6 +1017,48 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--data='{"key":"value"}'`
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
+
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
 
 ### `agents`
 
@@ -1135,13 +1280,117 @@ station sessions list codex
 station sessions interrupt codex runtime-thread --turn=turn-1
 ```
 
+#### Wait on, digest, read and search your own Sessions
+
+These four actions take a Session id, not an Agent. They are the CLI's
+form of the Station Control tools `wait_session`, `get_session_digest`,
+`read_conversation` and `search_sessions` (#3427), but they read as **you**,
+with the saved credential, never as an agent. The agent-only routes behind
+those tools keep refusing a request with no agent caller. Each accepts the
+shared target flags and `--json`. `--on` is refused: these reads answer on the
+targeted Station, so use `--station=<name>` to read another one.
+
+```
+station sessions wait <session-id> [--until=turn-settled|idle] [--after-cursor=<n>] [--timeout=<seconds>] [--json]
+station sessions digest <session-id> [--turn-limit=<n>] [--cursor=<cursor>] [--json]
+station sessions transcript <session-id> [--around=<message-id>|--cursor=<cursor>] [--limit=<n>] [--json]
+station sessions search <query...> [--continuation=<token>] [--json]
+```
+
+`wait` and `digest` need the **Session reads from the station CLI** Feature
+Preview (`session-cli-reads`, Settings → Advanced → Feature previews). While
+it is off they exit non-zero with the preview's own message. A Station that
+predates these reads is reported as one that needs updating, not as a missing
+Session. `transcript` and `search` use routes that already served people, so
+they need no preview.
+
+The extra actions are under `sessions` rather than a new `session` verb, so
+one verb owns Session reads. `read` already means the per-Agent read
+(`sessions read <agent> <session-id>`), so the paged, bounded transcript read
+is `transcript`.
+
+**`wait`** only observes. The Session keeps running whatever the wait does.
+It repeats bounded server-side waits (at most 50 seconds each) until the
+condition holds or `--timeout` (1–86400 seconds, default 3600) runs out.
+
+- `--until=turn-settled` (the default) waits for a turn to end after
+  `--after-cursor`. Without a cursor it waits for the turn running now, and if
+  nothing is running it reports the Session idle.
+- `--until=idle` waits until no turn is running.
+
+| Exit | Outcome |
+| --- | --- |
+| 0 | `completed` (the turn completed) or `idle` |
+| 3 | `failed` (the turn was aborted, failed or exited) or `restart-interrupted` |
+| 5 | `wait-timeout`: the budget ran out with the Session still running |
+| 6 | `superseded` (a newer Session serves the conversation; wait on `currentSessionId`) or `unknown` |
+| 2 | `observation-lost`: a read failed after the wait began, or the Station stayed unreachable for 60 seconds |
+| 130 | `cancelled` (Ctrl-C) |
+
+A turn that a Station restart cut off is reported as `restart-interrupted`,
+with its `interruptedTurn`. It is never reported as settled, and never as a
+silent idle, because nothing proves its work completed. With no cursor, it is
+reported only while it is still the Session's newest turn end and nothing is
+running.
+
+Some conditions make the wait keep going rather than end:
+
+- **The Station stops answering**, as it does while restarting, or is not
+  answering yet when the wait starts. The wait keeps calling with its cursor
+  for up to 60 seconds, so it still sees a turn that the restart cut off. A
+  `turn-settled` wait cut off before its first answer has no cursor yet. If a
+  new turn is already running when it reconnects, it waits for that turn and
+  does not report the cut-off one. Pass `--after-cursor` from an earlier answer
+  to avoid this.
+- **Every wait slot is taken** (4 per person, 256 per Station). The wait waits
+  for a free slot within its budget.
+
+A superseded Session is reported as `superseded`, even when it is idle,
+because its being idle says nothing about the conversation's work. A wait that ends with
+`wait-timeout` prints the `eventCursor` to pass back as `--after-cursor`.
+`--json` prints one `{ ok, kind: "sessions.wait", data }` line, where `data`
+has the outcome, exit code, last state and turn fields, and a safe
+`lastError` category for `observation-lost`.
+
+**`digest`** is the Session's recorded summary, newest turn first, with no
+model summarizing it. It shows each turn's request, how it ended, tool use,
+files and pull requests. **`transcript`** is the paged transcript read,
+starting at a search hit with `--around`. **`search`** finds your
+conversation transcripts by phrase. A partial result lists its
+`incompleteSources` and prints a `--continuation` for the next page.
+
+### `activity`
+
+List your Sessions by most recent activity, the CLI's form of
+`list_project_activity` and `list_active_work` (#3427), read as you.
+
+```
+station activity [--project=<slug>] [--active-within=<minutes>] [--limit=<n>] [--cursor=<cursor>] [--json]
+```
+
+- Without `--project`, it lists every Session you may read in the Projects
+  you may view and in the global space.
+- `--project` narrows the list to that Project's Sessions. A Project you may
+  not view reads as not found, exactly like one that does not exist.
+- `--active-within` keeps only Sessions that are running a turn or were
+  active in that many minutes.
+
+Each row has the Session id, status word, whether a turn is running, its
+Project, title, worktree branch or folder, and any active work claims.
+Sessions on another Station or SSH Environment are never listed. It needs the
+same `session-cli-reads` Feature Preview as `sessions wait`.
+
 ### `conversation`
 
-Export a conversation as a portable thread, or in a provider-native format.
+Export a conversation as a portable thread, or in a provider-native format,
+or fork it into a new conversation.
 
 ```
 station conversation export <agent> <conversationId>
+station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
 ```
+
+`export`:
 
 - `--format=<fmt>` — `thread` (default), `anthropic-messages`, `openai-chat`, `gemini`, `markdown`
 - `--output=<path>` — write to a file instead of stdout
@@ -1149,6 +1398,49 @@ station conversation export <agent> <conversationId>
 Accepts the shared target flags (`--api-base`, saved Stations); the exported
 `thread` format is the portable conversation envelope, and the provider
 formats are one-way projections of it.
+
+`fork` makes the same request as the web app's fork
+(`POST /agents/:slug/conversations/:conversationId/fork`, SDK
+`forkConversation`), as you: a new conversation that starts from the source's
+history up to a completed assistant turn. The source is unchanged. It prints
+the new conversation id; `--json` prints `{ok, kind: "conversation.fork", data}`
+with the route's reply.
+
+- `--target-agent=<slug>` — the Agent for the fork (default: the source Agent)
+- `--project=<slug>` — the fork's Project (default: the source's)
+- `--turn=<id>` — branch at this completed assistant turn (default: the latest)
+- `--idempotency-key=<key>` — retrying with the same key returns the same fork
+  instead of a second one
+
+The engine replays text from the selected history; engine cursor, tool state
+and approval state do not carry. Exit codes: 0 forked, 1 usage error, 2 Station
+unreachable, 3 refused (for example, not found, no completed turn at the branch
+point, or a target Agent not available in the Project). An agent forks through
+Station Control's `fork_conversation`, which the route holds to the agent's
+scope; a person's fork is not.
+
+### `claims`
+
+List the work claims in the Sessions you can read.
+
+```
+station claims list [--json]
+```
+
+A claim is what a Session says it is working on (a work item, paths and a
+note), made with Station Control's `claim_work`. It is information, not a lock.
+`list` reads `GET /api/orchestration/work-claims` (SDK `listWorkClaims`), the
+read behind the Station UI's claim chips: the active claims (unreleased,
+unexpired, Session not ended) of the Sessions you can read. Agents read the
+same claims through `list_project_activity`. `--json` prints
+`{ok, kind: "claims.list", data: {claims}}` with each claim as the route
+answers it. A claim the contract cannot read fails the command instead of
+being left out.
+
+A claimant is always a Session today, so there is no `claim`, `release` or
+`supersede` verb for a person yet. Exit codes: 0 success, 1 usage error,
+2 Station unreachable, 3 refused (including a Station too old to answer work
+claims).
 
 ### `delegate`
 
@@ -1162,16 +1454,31 @@ delegation uses, over `station-control-delegation.ts`'s service functions
 the already-wired `POST /delegations` and `POST /delegations/options`).
 
 ```
-station delegate --agent=<slug> [--attach=<path>]... [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
-station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
+station delegate --agent=<slug> [--client-turn-id=<key>] [--attach=<path>]... [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
+station delegate --session=<conversation-id> [--client-turn-id=<key>] [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
 station delegate status <task-id> [--on=<environment>] [--json]
 station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
-station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
+station delegate continue <legacy-id> <message> [--client-turn-id=<key>] [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
 station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
 station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>] [--json]
+station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
 ```
+
+Create and continuation calls retain a key chosen before their send. Use
+`--client-turn-id=<key>` with the identical input for a deliberate retry.
+Successful JSON handles carry `clientTurnId`; JSON failures retain it with the
+known Conversation ID. Text failures print the request key. The CLI never
+resends automatically. A prepared create defaults to its stable `attemptId`.
+An uncertain create can retain a reservation even when no Session is visible;
+keep its key and inspect the original work before choosing another request.
+
+`list` reads your delegated tasks on one Environment (the current one, or
+`--on`): the inventory Station Control's `list_delegated_tasks` returns, from
+`GET /delegations` (SDK `listDelegatedTasks`). `--limit` bounds it (default 50,
+at most 100; anything else is a usage error before any request). When more tasks
+exist, the human output says so and `--json` carries `truncated: true`.
 
 `--session=<conversation-id>` is the one continuation selector across
 foreground chat and delegation. It resolves the Conversation's current child
@@ -1632,7 +1939,8 @@ List and resolve orchestration approval requests (`request.opened` events awaiti
 a `request.resolved`) for an external-engine Agent, without raw `curl` against
 `/api/orchestration/commands`. Adds no new server routes: `list` reads
 `GET /api/orchestration/sessions/:threadId` (or `.../sessions/read-model` to scan
-every thread for `--agent`'s provider when `--thread` is omitted) and derives
+every thread when `--thread` is omitted, narrowed to `--agent`'s provider
+when `--agent` is given) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
@@ -1650,11 +1958,12 @@ not find is posted without the id and the server decides; nothing is refused
 client-side.
 
 ```
-station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
+station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
 ```
 
-`--agent` must be a persisted Agent ID whose execution binds to an external
+Without `--agent`, `list` reads every session on the Station. `--agent`
+must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
@@ -1674,6 +1983,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
@@ -1956,10 +2266,30 @@ station schedule delete <job> [--api-base=<url>]
 
 `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
-`{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`. The same
+`{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
+optional `target` that runs each time in a conversation (see
+[Automations](../user/automations.md)). There is no `station automations`
+alias for these verbs: that name's `enable`, `disable` and `delete` are
+reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and
 station-control MCP; only scheduler SSE/webhook transport plumbing is
 intentionally API-only.
+
+### `automation`
+
+```
+station automation deliveries [--limit=<1-200>] [--api-base=<url>]
+```
+
+Requires management access and the **GitHub automation observations** Feature
+Preview. Prints `deliveries` (default 50) and `polls` through
+`GET /automations/deliveries`: each row's outcome (`matched`, `no-match`,
+`ignored`, `refused` with a reason, or `duplicate`), its semantic key, and its
+rule and episode ids. `polls` retains partial coverage and failed observations
+with their last poll time and cursor; missing coverage is not success. Station
+currently records matches for `github-poll`
+sources and starts no Automation work. The other `AUTOMATION_OPERATOR_SURFACE`
+verbs are not available yet.
 
 ### `runs`
 
@@ -2026,6 +2356,24 @@ station auth users get <alias> [--api-base=<url>]
 ```
 station branding get [--api-base=<url>]
 ```
+
+### `workload`
+
+```
+station workload status [--api-base=<url>]
+```
+
+Prints this Station's engine workload memory budgets as JSON: whether Linux
+enforcement is `ready`, `unmanaged` or `unavailable` (with its reason), the
+per-engine and total limits and whether each came from the environment, a
+saved setting or the default, the host's memory, and whether a saved change
+applies to new engines now or after a restart, and each running scope with
+the limit it was launched with and the OOM kills seen in it. A Station without the route
+exits nonzero and says it does not report workload budgets. Only `--station`
+and `--api-base` choose the Station; any other flag, including `--home` and
+`--instance`, is refused rather than ignored. For a local instance, pass its
+server address as `--api-base=http://127.0.0.1:<port>`. See
+[Linux service workload budgets](../guides/development.md#linux-service-workload-budgets).
 
 ### `feedback`
 
@@ -2214,7 +2562,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`, real acquired working-copy
+versioned re-acquirable `media-tools/`, the default project directories under
+`workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
@@ -2452,10 +2801,50 @@ on a `service PATH` line:
 `{ position, unit, current }` with `position` counted from 0 within the shared
 directories. Drift is advice and does not change `healthy` or the exit code.
 The comparison reads the unit file Station wrote, not systemd drop-ins or the
-loaded job, and uses the environment of the shell that runs `status`. A
-reinstall command is prefixed with `STATION_ROOT=…` when the registration's
-recorded root differs from the one a shell without `STATION_ROOT` would
-derive.
+loaded job, and uses the environment of the shell that runs `status`.
+
+On macOS and Linux the reinstall command (here, for stale scheduling, and in
+`station upgrade` guidance) repeats the installed unit's own `service run`
+arguments: instance, home, ports, host, features and allowed origins. The
+unit is named by instance alone, so a manifest in the home `status` read can
+describe an earlier install. On Windows the command comes from the manifest
+beside the task's wrapper. A service that runs an installer-owned archive is
+reinstalled through that install's channel launcher (`station`,
+`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+itself, so when the unit records another root no command is given. Otherwise
+the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
+differs from the one a shell without `STATION_ROOT` would derive. When no
+command can be given, the explanation names the installed unit file to
+inspect.
+
+If the installed unit's `--base` is another home than the one `status` read,
+this home's manifest is left over from an earlier install. Two spellings of
+one home (a symlinked parent, or macOS `/tmp` and `/private/tmp`) are not
+stale: a manifest is stale only when it is a different file, by device and
+inode, from the one in the unit's home. `status` prints a
+`manifest       stale` line naming that manifest, the unit file, and the
+`--base` to use. It also prints an `rm -- <manifest>` command that removes
+only the leftover manifest, offered only while the unit's home holds its own
+readable manifest. When that manifest is missing, or its `service/` directory
+cannot be listed, `status` says so and offers no removal. A manifest file that
+exists but cannot be read (for example mode `0000`) is unsafe rather than
+unreadable: `status` refuses with the same "expected owned mode 0600" error it
+gives for the home it read. Station never runs the command, and
+`service uninstall` would remove the installed unit instead. An unsafe or
+invalid manifest in the unit's home refuses `status`, as it does in the home
+`status` read. The remaining lines (manifest, registry, origins, instance
+health and update) are read from the unit's home, and the origins are the
+unit's own `--allowed-origin` flags. `--json` carries the same facts as
+`staleManifest: { path, removeCommand, unitHome, unitManifest, unitPath }`,
+where `unitManifest` is `present`, `absent`, or `unreadable` (with
+`unitManifestReason`) and `removeCommand` is null when no removal is offered.
+`service start`, `stop`, and `uninstall` from such a home act on nothing,
+exit 1, and name the `--base` that addresses the installed service. When the
+unit's home has no readable manifest, `start` and `stop` there cannot converge
+either, so the refusal instead names the two commands that resolve it:
+`service install --instance=<id>` from this home, which rewrites the unit to
+run from it, or `service uninstall --instance=<id> --base=<unit home>`, which
+removes the installed unit and reports it as uninstalled.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
@@ -2467,6 +2856,16 @@ disappear before bootstrap. On Linux they use `systemctl --user start|stop`.
 On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
+
+The official task requires an interactive logon by the installing user. An SSH
+session alone does not satisfy that requirement. After a bounded start timeout,
+the CLI reports the scheduler's last task result in hexadecimal when readable;
+it adds the logon remedy only when the task principal is verified to use an
+interactive token. Failed installation still rolls back. An absent registration
+is reported without attempting to query its scheduling settings; an unreadable
+registration remains unknown rather than being treated as absent. For an
+operator-managed headless task using the existing foreground supervisor, see
+[Windows over SSH](../guides/deployment.md#headless-station-on-a-windows-host-over-ssh).
 
 `schtasks /Create` leaves a task with Task Scheduler's defaults: a 72-hour
 execution time limit, and battery rules that keep the task from starting on
@@ -2548,7 +2947,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has `TMPDIR=<home>/tmp/engine-spawn`, which Station reaps by age), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
@@ -2558,7 +2957,7 @@ Detached processes are tracked per instance in `.station/instances/<instance-id>
 **The server runs under the [process supervisor](../design/process-supervisor.md).**
 `start` launches `station-supervisor.js` from the instance's build directory,
 and the supervisor runs the core server as a supervised generation and holds
-its four listeners. The instance record, the home registry entry, and the
+its three listeners. The instance record, the home registry entry, and the
 active-local-station record name the supervisor's pid (`"supervised": true`
 in the record): the supervisor owns the instance while core server generations
 come and go beneath it. `station restart` hands off to a new generation in
@@ -2642,21 +3041,26 @@ required to reach Station from:
   MagicDNS name), or
 - a single-origin HTTPS reverse proxy that only forwards the UI port.
 
+Malformed or reset upstream response bodies close the downstream connection
+without a clean end, so clients observe truncation. The listener contains
+response errors and continues serving subsequent requests.
+
 `STATION_API_BASE` (set before `station start`) is the explicit override: when
 set, it is the **only** case where the UI server injects an absolute
 `window.__API_BASE__` value into `index.html`, and that override always wins
 over the same-origin default. Leave it unset for the common case above.
 
-**Voice and Terminal** connect directly to their own dedicated WS ports
-(`GET /api/system/voice-port` and `GET /api/system/terminal-port` return the
-real, backend-authoritative port — the UI client queries these rather than
-assuming a fixed offset from its own resolved API base), not through the
-UI-server's HTTP/SSE reverse proxy. This resolves correctly on `localhost`, a
-LAN/tailnet host, and any setup where the dedicated WS port itself is
-reachable from the client. It remains a real, pre-existing limitation only
-under a single-origin HTTPS reverse proxy that forwards *just* the UI port
-and does not also separately expose the dedicated Voice/Terminal ports —
-in that specific case, Voice/Terminal will not be reachable.
+**Voice** connects directly to its own dedicated WS port
+(`GET /api/system/voice-port` returns the real, backend-authoritative port —
+the UI client queries it rather than assuming a fixed offset from its own
+resolved API base), not through the UI-server's HTTP/SSE reverse proxy. This
+resolves correctly on `localhost`, a LAN/tailnet host, and any setup where the
+dedicated WS port itself is reachable from the client. It remains a real,
+pre-existing limitation only under a single-origin HTTPS reverse proxy that
+forwards *just* the UI port and does not also separately expose the voice
+port — in that specific case, Voice will not be reachable. The **Coding
+terminal** uses `/api/terminal/socket` on the API origin, which the UI server
+forwards, so it needs no extra port.
 
 The **MCP Apps** sandbox proxy uses an ephemeral `127.0.0.1` port by default.
 `MCP_UI_FRAME_PORT` pins a nonzero port when a deployment needs a stable value.
@@ -2738,6 +3142,7 @@ Every command currently refuses with “not yet available,” before reading a h
 or contacting a Station. The compiled server guard likewise returns 404 for
 `/api/outside-agent/*`. R2a's host command/shared-service implementation is
 exercised only in isolated tests; R2b adds passkey review, and R6 owns exposure.
+[R3's OAuth endpoints](outside-agent-oauth.md) remain inert and add no CLI enablement command.
 The comparison code is display-only; approval selects a request ID.
 
 Inspect and maintain Station's stable local identity and connect to saved
@@ -2801,7 +3206,13 @@ station environment peers remove <environment-id>
   the already-validated loopback listener origin as `https://<magicdns>`.
   `--tailscale-serve-port` selects a strict port from 1 through 65535 (default
   443) and requires `--tailscale`; the selected port is used for the endpoint,
-  mapping, and manual teardown guidance. Offer expiry
+  mapping, and manual teardown guidance. Before minting a Tailscale offer, the
+  CLI probes the verified local host with the published Origin. If the host
+  refuses that Origin, it prints the exact `--allowed-origin=<https-origin>`
+  startup setting to apply and asks you to restart the instance. It does not
+  change the allowlist or remove the Serve mapping automatically. An explicit
+  remote `--advertise-url` is described as operator-managed reachability rather
+  than loopback; test it from the joining Device. Offer expiry
   never changes Serve and Station never enables Funnel. The printed QR and
   link grant **Standard** (`orchestration:read orchestration:operate
   terminal:operate`), the same grant the **Paired devices** panel offers.
@@ -3085,6 +3496,9 @@ station upgrade
 ### `fresh`
 
 Clean the selected Station home without starting the app.
+After stopping the selected instance, the command takes the home maintenance
+lease before removing the home and its owned build outputs. Another live or
+unverifiable runtime lease on that home refuses cleanup, even with `--force`.
 
 ```
 station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--port=<n>] [--ui-port=<n>]
@@ -3180,7 +3594,10 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
+also excluded; a restored home requires host tools or fresh download consent.
+See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
+Defaults are 100,000 entries (files and directories), 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
@@ -3191,6 +3608,12 @@ station home backup [--output=<directory>] [--home=<dir>] [--base=<dir>] [--json
 If `--output` is omitted, Station creates a timestamped sibling of the home.
 The destination must not already exist or be inside the home.
 
+New backups use `station.home-backup/v2` and retain empty directories as well
+as file content. Restore them with a CLI that supports v2; older tools refuse
+this archive version. The current reader also accepts v1 backups, whose
+unrecorded empty directories cannot be recovered. Update snapshots use their
+separate v2 format and additionally count recorded links toward their entry cap.
+
 ### `home restore`
 
 Validate manifest entries and content hashes, stage the copied home, then
@@ -3199,6 +3622,10 @@ rename the previous home aside and publish the staged directory. The
 maintenance lease, checks recorded live instances and attempts rollback on
 publication failure. The two renames are not a single crash-atomic exchange:
 the retained previous home is the recovery copy if publication is interrupted.
+For v2 archives, directory paths and contents must match the manifest before
+the current home is replaced. Duplicate, aliased, unsafe or incomplete directory
+plans are refused. Directory preservation does not reconcile effect history
+created after the backup or grant a restored home execution authority.
 
 The CLI identifies the result as **recovered from a copy**, prints the backup's
 snapshot time, and notes that work after that snapshot may be missing. Its JSON
@@ -3241,10 +3668,11 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records for that home before renaming it. Unlike backup
-and restore, this path does not acquire the home maintenance lease or separately
-consult the home-scoped service registry. Stop every process using the home
-first; use `station service stop` for a supervised service. A successful reset
+the lifecycle instance records, then holds the home maintenance lease while
+rechecking inactivity and renaming the home. Live or unverifiable runtime
+leases refuse reset. This path does not separately consult the home-scoped
+service registry. Stop every process using the home first; use
+`station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash
@@ -3338,6 +3766,14 @@ confinement, and Station's own artifact verification. Do not substitute
 `npm rebuild node-pty`: it executes the package's lifecycle scripts directly,
 skipping every one of those checks. Agent execution does not use
 `node-pty` and is unaffected either way.
+
+For each running instance, `Terminal shell host (<instance>)` passes when its
+supervisor granted the core `workloads` (read from the supervisor's status),
+so shells survive a core restart; otherwise it warns and says why, and shells
+run in the core server, ending with it and reopening after it. `Terminal PTY
+host bundle (<instance>)` warns when `station-pty-host.js` is missing beside
+the server bundle. With no instance running, one `Terminal shell host` line
+says so.
 
 ```
 station doctor [--json]
@@ -3664,6 +4100,11 @@ station plugin preview ./path/to/local-plugin
 Output includes suggested `--skip` flags if conflicts are detected.
 
 ### `plugin list`
+
+`station plugin recovery-backups` lists retained install recovery material for
+the targeted Station and prints manual recovery guidance. It requires the
+operator credential. See [plugin recovery](../guides/plugins.md) for the
+identity and manual-recovery limitations.
 
 List the installed-plugin projection visible to this caller, including rejected
 rows when the server exposes them. Records can include contributions,
@@ -4090,3 +4531,20 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+### `walkthrough`
+
+```bash
+station walkthrough import <file> --project <slug>
+station walkthrough list --project <slug> [--cursor=<nextCursor>]
+station walkthrough show <id> --project <slug>
+```
+
+The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
+webm, follows its operation and prints the completed id. Errors preserve
+unavailability and download sizes, with `station media-tools download --yes`
+as the consent-required remedy. List and show print JSON. Normal
+Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
+for limits and privacy. Enable the default-off **Walkthroughs** preview in
+Settings → Advanced → Feature previews. Off commands exit nonzero and retain the
+server's `feature_preview_disabled`, preview ID and Settings path.

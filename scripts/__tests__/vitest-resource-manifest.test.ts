@@ -105,6 +105,19 @@ function worstCaseOrdinaryCommand(excludes: readonly string[]): string[] {
 }
 
 describe('Vitest resource manifest', () => {
+  it('names the files missing from and unexpectedly in a compact ordinary selection', () => {
+    const groups = {
+      ordinary: ['scripts/__tests__/expected.test.ts'],
+    } as ReturnType<typeof buildVitestResourceGroups>;
+    const spawnSync = (() => ({
+      status: 0,
+      stdout: 'scripts/__tests__/unexpected.test.ts\n',
+      stderr: '',
+    })) as never;
+    expect(() => assertOrdinaryVitestSelection(groups, { spawnSync })).toThrow(
+      /missing from selection \(1\): scripts\/__tests__\/expected\.test\.ts; unexpected in selection \(1\): scripts\/__tests__\/unexpected\.test\.ts/,
+    );
+  });
   it('partitions Vitest discovery exactly once with no omitted files', () => {
     const discovered = repositoryDiscovery.files;
     const groups = repositoryDiscovery.groups;
@@ -202,6 +215,16 @@ describe('Vitest resource manifest', () => {
       expect(groups.ordinary).toContain(file);
     }
   }, 70_000);
+
+  it('keeps the small retention case ordinary and the full backlog process-heavy', () => {
+    const groups = repositoryDiscovery.groups;
+    expect(groups.ordinary).toContain(
+      'packages/agent-runtime/src/__tests__/turn-retention.test.ts',
+    );
+    expect(groups.processHeavy).toContain(
+      'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
+    );
+  });
 
   it('keeps every current direct child-process importer out of ordinary', () => {
     const groups = repositoryDiscovery.groups;

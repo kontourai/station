@@ -26,7 +26,7 @@ function renderNotice(state: ConversationOpenRecoveryNoticeProps['state']) {
 describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   // `resolved` reaches the notice only as a resolution that refused
   // continuation.
-  test.each(['missing-session', 'resolved'] as const)(
+  test.each(['missing-session', 'resolved', 'fork-ready'] as const)(
     '%s is a verdict and says read-only',
     (state) => {
       expect(renderNotice(state)).toContain('This chat is read-only.');
@@ -48,4 +48,16 @@ describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
     expect(text).toContain("Couldn't check this chat.");
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
+});
+
+// Owner direction: never offer an action the caller cannot take, and never
+// point at one that is not on screen.
+test('a notice with no Retry does not tell the reader to retry', () => {
+  render(
+    <ConversationOpenRecoveryNotice title="New chat" state="unverified" />,
+  );
+  const notice = screen.getByRole('status');
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(notice.textContent).not.toContain('Retry');
+  expect(notice.textContent).toContain('Sending is paused.');
 });

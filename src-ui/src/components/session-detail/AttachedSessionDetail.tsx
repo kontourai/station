@@ -91,6 +91,7 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
     approvalId: _approvalId,
     approvalThreadId: _approvalThreadId,
     approvalEventId: _approvalEventId,
+    approvalContentEvent: _approvalContentEvent,
     approvalToolName: _approvalToolName,
     approvalSessionGrant: _approvalSessionGrant,
     approvalServerGrant: _approvalServerGrant,

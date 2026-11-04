@@ -1,0 +1,41 @@
+{
+  "revision": "e3a5dd41c19ad7046ff8f8f48a38fc025c136ebe",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the single-owner ingress pairing prerequisite against the exchange change; explicit approval and transport setup remain separate. No public deployment or TLS run.","inputs":["deploy/public-ingress/README.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Device administration and pairing ownership against the exchange replacement predicate. The source change keeps revocation and approval owners; no full module-map audit.","inputs":["docs/architecture/module-map.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed pairing-scope references against the threat-model clarification; automation authorization is unchanged. No automation runtime was exercised.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed explicit participant pairing and grant boundaries against account-specific same-client replacement. Home-control scopes and approvals are unchanged; no home transfer run.","inputs":["docs/design/channel-home-authority.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed Device and notification delivery scope against the pairing change. Replacement still clears subscriptions only for a revoked Device; no native notification delivery run.","inputs":["docs/design/notification-delivery.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed operator pairing and Device administration boundaries against the exchange change; explicit approval and operator authorization remain required. No passkey or live browser ceremony.","inputs":["docs/design/operator-device-access.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed account candidate, operator approval and Device replacement against approved issuer/subject matching and real exchange tests. Added the account/unbound separation; no live Serve run.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed deployment and owner-approved Device pairing claims against the changed replacement predicate. Network and deployment configuration are unchanged; no deployment run.","inputs":["docs/guides/deployment.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed owner-approved pairing and controller credential prerequisites against the exchange rule. Home-control authority and transfer operations were not exercised.","inputs":["docs/guides/home-transfer-controller.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed external integration and private access guidance against the deployment-authentication clarification. No external integration or deployment was run.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed operator sign-in and pairing prerequisites against the exchange-only change. Passkey session behavior is unchanged; no passkey ceremony was executed.","inputs":["docs/guides/operator-passkeys.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed paired-Device subscription and revocation claims against the exchange transaction: subscription clearing remains attached to actual revocation. No push service or device run.","inputs":["docs/guides/web-push-notifications.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed pairing and Device authorization references against the exchange predicate. Route shapes and operator approval remain unchanged; no complete API audit or deployed verification.","inputs":["docs/reference/api.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed pairing configuration and admission references against the exchange predicate. No configuration field or default changed; no deployment run.","inputs":["docs/reference/config.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed client-instance correlation and pairing exchange references against issuer/subject isolation and focused service tests. No installed Connect client or physical Device run.","inputs":["docs/reference/connect.md","src-server/services/ssh/__tests__/device-pairing-service.test.ts","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed Device pairing and identity contract references against the exchange change. Wire types and approval contracts are unchanged; no full contract audit.","inputs":["docs/reference/contracts.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed Serve origin and pairing environment references against the replacement predicate. No environment variable or default changed; no live Serve verification.","inputs":["docs/reference/env-vars.md","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed approved account binding, ingress provenance and Device revocation against the exchange implementation and focused tests. Added the correlation and account-isolation boundary; no live threat exercise.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/device-pairing-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a8ce35c6d1aaf2ed2ce1d7c0f201fca2eac1b292",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Dismissal guidance (Undo in the toast, Cmd/Ctrl+Z, Restore to inbox) still holds; a toast failure no longer reports a saved dismissal as failed.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

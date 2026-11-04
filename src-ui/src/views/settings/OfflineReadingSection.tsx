@@ -14,6 +14,7 @@ import {
   readOfflineReading,
   subscribeOfflineReading,
 } from '../../lib/offlineReading';
+import { requestPersistentStorage } from '../../lib/persistentStorage';
 import {
   checkServerHealth,
   probeServerConnection,
@@ -59,6 +60,8 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
     if (!namespace || !scope || !binding) return;
     setBusy(true);
     setError(undefined);
+    // Asked from the person's own opt-in: some browsers prompt for it.
+    if (enabled) void requestPersistentStorage();
     try {
       await configureOfflineReading(namespace, binding, enabled, () =>
         scope.isCurrent(),

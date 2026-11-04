@@ -162,3 +162,36 @@ export function useInvalidateNotifications() {
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+
+/** Uses the existing stored-notification snooze endpoint. */
+export async function snoozeNotification(
+  id: string,
+  until: string,
+): Promise<void> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/notifications/${encodeURIComponent(id)}/snooze`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ until }),
+    },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    error?: string;
+  };
+  if (!response.ok || !result.success) {
+    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+  }
+}
+
+export function useSnoozeNotificationMutation() {
+  return useApiMutation(
+    (input: { id: string; until: string }) =>
+      snoozeNotification(input.id, input.until),
+    {
+      invalidateKeys: [['notifications'], ['attention']],
+    },
+  );
+}

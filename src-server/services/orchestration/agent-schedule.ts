@@ -53,11 +53,6 @@ import {
   wakeUpClientTurnId,
 } from '@kontourai/station-contracts/agent-schedule';
 import {
-  CLIENT_ORIGIN_VERSION,
-  type ClientOrigin,
-  UNKNOWN_CLIENT_REPORTED_ORIGIN,
-} from '@kontourai/station-contracts/client-origin';
-import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
@@ -66,20 +61,11 @@ import {
   writeTransaction,
 } from './delegation-result-delivery.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
+import { submitStationFramedTurn } from './station-turn-handoff.js';
 import type {
   ThreadInboxPayload,
   ThreadInboxSubmission,
 } from './thread-inbox.js';
-
-/**
- * The origin a wake-up's turn records: Station's own server code, never a
- * person, as a delegated result's is.
- */
-const AGENT_WAKE_UP_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
-  version: CLIENT_ORIGIN_VERSION,
-  actor: Object.freeze({ kind: 'internal' as const }),
-  reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
-});
 
 export { wakeUpClientTurnId };
 
@@ -848,20 +834,11 @@ export class AgentWakeUpDelivery {
     }
     let submitted: ThreadInboxSubmission;
     try {
-      submitted = this.ports.submit({
+      submitted = submitStationFramedTurn(this.ports.submit, {
         conversationId: record.conversationId,
         clientTurnId: wakeUpClientTurnId(record.id),
-        payload: {
-          message: wakeUpMessage(record.note),
-          actor: {
-            userId: record.actor.userId,
-            ownerAttribution: record.actor.attribution,
-            ...(record.actor.principal
-              ? { principal: record.actor.principal }
-              : {}),
-          },
-          clientOrigin: AGENT_WAKE_UP_CLIENT_ORIGIN,
-        },
+        message: wakeUpMessage(record.note),
+        actor: record.actor,
       });
     } catch (error) {
       this.ports.logger.warn('agent wake-up could not be sent', {

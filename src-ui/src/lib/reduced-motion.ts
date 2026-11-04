@@ -17,3 +17,22 @@ export function prefersReducedMotion(): boolean {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
 }
+
+/**
+ * A motion token (`--motion-fast`, `--motion-base`, …) read from `style` in
+ * milliseconds, for animations driven from script that must last exactly as
+ * long as the CSS ones. Tokens are authored in seconds or milliseconds, and
+ * the reduced-motion block in `tokens.css` collapses them to 0.01ms, so a
+ * caller honours reduced motion without checking it separately. An unset or
+ * unparsable token reads as `fallback`.
+ */
+export function motionTokenMs(
+  style: CSSStyleDeclaration,
+  token: `--motion-${string}`,
+  fallback = 0,
+): number {
+  const raw = style.getPropertyValue(token).trim();
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return raw.endsWith('ms') ? value : value * 1000;
+}

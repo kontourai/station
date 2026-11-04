@@ -1,7 +1,8 @@
 # Settings launch triage
 
 Status: source-based decision inventory, 2026-10-19. Covers all **76 catalog
-entries** in this branch (73 existing entries plus three developer opt-ins),
+entries** in this branch (73 existing entries plus three developer opt-ins;
+a fourth opt-in added later is listed with its date),
 and additional nested controls below. Baseline:
 `ac9a23234b1e5ec036b3c240b1ed910de24db19c`. This is a Settings review, not an
 app-wide launch certification. “Keep” means the option has a clear purpose;
@@ -81,6 +82,9 @@ changed. No inventory item below is silently marked launch-hardened.
 | Flow delivery preview (`experimental-flow`) | Gate (implemented) | Independent device opt-in; no live complete delivery/value qualification claimed. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
 | Veritas readiness preview (`experimental-readiness`) | Gate (implemented) | Independent device opt-in; readiness output is not merge approval. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
 | Trust preview (`experimental-trust`) | Gate (implemented) | Independent device opt-in; evidence display is not an independent trust verdict. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
+| Sheet gestures preview (`experimental-sheet-gestures`) | Gate (implemented) | Added 2026-10-26, after this inventory's baseline. Independent device opt-in for phone-sheet handles and inbox swipe-to-reveal Snooze/Dismiss; no physical-device qualification claimed. | [source](../../src-ui/src/components/useResponsiveSheetGesture.ts) |
+| Station routes preview (`experimental-station-routes`) | Gate (implemented) | Added 2026-10-27, after this inventory's baseline. Independent device opt-in; reveals Devices › Routes. Native app failover is not claimed ([design](station-routes.md)). | [source](../../src-ui/src/hooks/developer-features.ts) |
+| Routes (`station-routes`) | Gate (implemented) | Added 2026-10-27. The current Station's routes on this device, behind the Station routes preview. | [source](../../src-ui/src/views/settings/StationRoutesSection.tsx) |
 | Shared answers (`shared-answers`) | Keep | Manage existing public answer links; revocation and target visibility are the value. | [source](../../src-ui/src/views/settings/AnswerSharesSection.tsx) |
 | Plugin visibility (`plugin-visibility`) | Keep | Installed-plugin discoverability control, separate from permissions; make the distinction clear. | [source](../../src-ui/src/views/settings/PluginVisibilitySection.tsx) |
 | Device hosts (`device-hosts`) | Move / qualify | SSH device-helper hosts are developer infrastructure; move under Developer tools after connect/capture/revoke qualification. | [source](../../src-ui/src/views/settings/DeviceHostsPanel.tsx) |
@@ -103,6 +107,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Collector address (`otelTelemetryEndpoint`) | Move | Operator OTLP collector setup, restart-bound; hide until configuring a collector. | [source](../../src-ui/src/views/settings/StationConfigSection.tsx) |
 | Collector key reference (`otelTelemetryKeyRef`) | Move | Protected collector credential reference; show with collector setup. | [source](../../src-ui/src/views/settings/StationConfigSection.tsx) |
 | Diagnostics bundle (`diagnostics-bundle`) | Keep | Clear support task; compact action. Download contents/redaction need their own security evidence. | [source](../../src-ui/src/views/SettingsView.tsx) |
+| Troubleshoot with an agent (`diagnostics-troubleshoot`, added 2026-11-02, #4470) | Keep | Starts the in-app troubleshooting conversation; falls back to Report a problem without an engine. Playbook rules are agent instructions, not enforcement. | [source](../../src-ui/src/views/SettingsView.tsx) |
 | Approval guardian (`approval-guardian`) | Gate candidate | Off-by-default extra-model approval decisions deserve explicit developer qualification; not equivalent to human approval. | [source](../../src-server/services/approvals/approval-guardian.ts) |
 | Default approval mode (`default-approval-mode`) | Keep | Security-critical default: state unattended-run consequences; never hide effective permissions behind a preview. | [source](../../src-ui/src/views/settings/StationConfigSection.tsx) |
 | Default model (`default-model`) | Simplify | Fallback after more specific Agent/Project/connection choices; scope to supported managed turns. | [source](../../src-server/runtime/frameworks/framework-model-factory.ts) |
@@ -130,6 +135,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Ask before deleting a conversation (`confirm-conversation-delete`) | Keep | User-controlled safeguard for one conversation; does not disable all destructive confirmations. | [source](../../src-ui/src/components/chat/ConversationHistory.tsx) |
 | Theme (`theme`) | Keep | Basic appearance preference; both themes need actual visual checks. | [source](../../src-ui/src/main.tsx) |
 | Haptic feedback (`haptic-feedback`) | Keep | Native mobile capability; omit on unsupported browser/desktop surfaces. | [source](../../src-ui/src/platform/native/haptics.ts) |
+| Terminal screen reader mode (`terminal-screen-reader`) | Keep | Accessibility preference, off by default because browsers report no screen reader; not yet used with real assistive technology. | [source](../../src-ui/src/components/coding-layout/TerminalPanel.tsx) |
 | Accent color (`accent-color`) | Keep | Basic appearance preference; contrast and keyboard focus still need verification. | [source](../../src-ui/src/main.tsx) |
 | Keyboard shortcuts (`keyboard-shortcuts`) | Keep | Rebinding has clear value; conflict, reset and platform reserved keys matter. | [source](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx) |
 | Push notifications (`push-notifications`) | Keep / qualify | Permission, subscription and actual delivery differ across browser/APNs/FCM; do not equate toggle-on with received alerts. | [source](../../src-ui/src/App.tsx) |

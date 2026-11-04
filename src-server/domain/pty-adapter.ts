@@ -5,12 +5,27 @@ export interface IPtyProcess {
    * cwd is not a substitute: shells can `cd` after their PTY is opened.
    */
   getCwd?(): Promise<string | null>;
+  /**
+   * Suspend/resume read delivery while the journal drains. An adapter that
+   * implements pause must report outputIncomplete on an exit observed while
+   * paused, including after resuming to drain an observed exiting child.
+   */
+  pause?(): void;
+  resume?(): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
+  /** End owned descendant groups when the backend can establish that custody. */
+  terminate?(): Promise<void>;
   onData(cb: (data: string) => void): () => void;
   onExit(
-    cb: (event: { exitCode: number; signal: number | null }) => void,
+    cb: (event: {
+      exitCode: number;
+      signal: number | null;
+      outputIncomplete?: boolean;
+      /** A command session's output passed its cap and it was ended. */
+      outputCapped?: boolean;
+    }) => void,
   ): () => void;
 }
 
@@ -35,9 +50,9 @@ export interface IPtyAdapter {
 
 /**
  * Thrown by an adapter whose PTY backend could not be loaded at all —
- * distinct from one shell candidate failing to spawn. `TerminalService`
- * rethrows it untouched so terminal routes report the specific degraded
- * reason instead of the generic "no viable shell found" (#1244).
+ * distinct from one shell candidate failing to spawn, so the terminal socket
+ * reports `pty-unavailable` with the specific degraded reason instead of the
+ * generic "no viable shell found" (#1244).
  */
 export class PtyUnavailableError extends Error {
   readonly code = 'PTY_UNAVAILABLE';

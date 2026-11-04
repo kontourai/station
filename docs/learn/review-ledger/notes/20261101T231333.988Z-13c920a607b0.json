@@ -1,0 +1,7 @@
+{
+  "revision": "f70b1b1e8b34eb485099c293b2cd2fbdfbe2dac1",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Refs #3568 and #3575. Re-read Engine failure classification, queued foreground retries, keyed input conflicts and durable-inbox reconciliation. Traced StationHttpError and ChatHttpError through packages/sdk/src/client/api-error-message.ts and chatHttpError.ts: a missing explicit kind falls back to PROVIDER_FAILURE_KINDS, so inbox_key_conflict now yields conflict and retryable false. Explicit failurePhase is preserved; the map does not invent an acknowledgement, authorize automatic replay or change request-key/head reconciliation. The existing SDK prose remains accurate and links the corrected contracts table. Wire-contract and source-inventory selection passes 96 tests; SDK constructor behavior here was source-reviewed, not newly live-provider qualified.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

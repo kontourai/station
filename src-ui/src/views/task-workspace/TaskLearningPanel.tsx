@@ -8,12 +8,14 @@ import {
   usePromoteTaskLearningMutation,
   useTaskLearningQuery,
 } from '@kontourai/station-sdk';
+import type { LearningReviewRequestScope } from '@kontourai/station-sdk/learning-review-query';
 import { type FormEvent, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
+import { LearningRecordReviewButton } from '../learning-review/LearningRecordActions';
 
 const KIND_LABEL = { decision: 'Decision', dead_end: 'Dead end' } as const;
 
@@ -27,7 +29,19 @@ function defaultTitle(candidate: TaskLearningCandidate) {
  * offered for the Project's knowledge store. A person promotes each one,
  * edited, or dismisses it. Nothing is promoted on its own.
  */
-export function TaskLearningPanel({ taskId }: { taskId: string }) {
+export function TaskLearningPanel({
+  taskId,
+  projectId,
+  projectSlug,
+  taskCreatedAt,
+  authority,
+}: {
+  taskId: string;
+  projectId?: string;
+  projectSlug?: string;
+  taskCreatedAt?: string;
+  authority?: LearningReviewRequestScope;
+}) {
   const learning = useTaskLearningQuery(taskId);
   const titleId = useId();
   const view = learning.data;
@@ -83,6 +97,11 @@ export function TaskLearningPanel({ taskId }: { taskId: string }) {
                   taskId={taskId}
                   candidate={candidate}
                   stores={view.stores}
+                  learningContext={
+                    projectId && projectSlug && taskCreatedAt && authority
+                      ? { projectId, projectSlug, taskCreatedAt, authority }
+                      : undefined
+                  }
                 />
               ))}
             </ul>
@@ -98,6 +117,25 @@ export function TaskLearningPanel({ taskId }: { taskId: string }) {
                     data-testid="task-learning-reviewed"
                   >
                     <p className="task-memory__text">{candidate.record.text}</p>
+                    {projectId && projectSlug && taskCreatedAt && authority && (
+                      <LearningRecordReviewButton
+                        slug={projectSlug}
+                        projectId={projectId}
+                        authority={authority}
+                        selection={{
+                          kind: 'task-standing',
+                          taskId,
+                          taskCreatedAt,
+                          recordKind:
+                            candidate.record.kind === 'dead_end'
+                              ? 'dead-end'
+                              : 'decision',
+                          key: candidate.record.key,
+                          version: candidate.record.version,
+                        }}
+                      />
+                    )}
+
                     <p className="task-memory__meta">
                       <span className="task-memory__tier">
                         {KIND_LABEL[candidate.record.kind]}
@@ -147,10 +185,17 @@ function CandidateItem({
   taskId,
   candidate,
   stores,
+  learningContext,
 }: {
   taskId: string;
   candidate: TaskLearningCandidate;
   stores: readonly TaskLearningStore[];
+  learningContext?: {
+    projectId: string;
+    projectSlug: string;
+    taskCreatedAt: string;
+    authority: LearningReviewRequestScope;
+  };
 }) {
   const { record, review } = candidate;
   // A promotion is recorded and its store is here, but the record is not in
@@ -182,6 +227,22 @@ function CandidateItem({
   return (
     <li className="task-memory__entry" data-testid="task-learning-candidate">
       <p className="task-memory__text">{record.text}</p>
+      {learningContext && (
+        <LearningRecordReviewButton
+          slug={learningContext.projectSlug}
+          projectId={learningContext.projectId}
+          authority={learningContext.authority}
+          selection={{
+            kind: 'task-standing',
+            taskId,
+            taskCreatedAt: learningContext.taskCreatedAt,
+            recordKind: record.kind === 'dead_end' ? 'dead-end' : 'decision',
+            key: record.key,
+            version: record.version,
+          }}
+        />
+      )}
+
       <p className="task-memory__meta">
         <span className="task-memory__tier" data-tier="standing">
           {KIND_LABEL[record.kind]}

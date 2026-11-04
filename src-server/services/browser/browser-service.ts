@@ -6,14 +6,19 @@
 import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
+import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import type { RecordingLimiter } from '../projects/recording-limiter.js';
+import { encodeBrowserRecording } from '../projects/task-browser-recording.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import type { BrowserConsoleSnapshot } from './browser-console-log.js';
 import {
   type BrowserHost,
   createLocalBrowserHostResolver,
 } from './browser-host.js';
+import { BrowserHumanRecording } from './browser-human-recording.js';
 import { BrowserLiveSurfaces } from './browser-live-surfaces.js';
 import { LocalTargetStore } from './browser-local-targets.js';
+import type { BrowserNetworkSnapshot } from './browser-network-log.js';
 import { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserProfile,
@@ -50,6 +55,10 @@ export interface BrowserServiceOptions {
   consentPort?: number;
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
+  networkPreviewEnabled?: () => boolean;
+  recordingResolver?: Pick<MediaToolsResolver, 'resolveFfmpeg'>;
+  recordingLimiter?: RecordingLimiter;
+  experienceEnabled?: () => boolean;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
    * cached: the managed device hub and its stream helpers (#1970), whose
@@ -67,6 +76,7 @@ export interface BrowserServiceOptions {
 }
 
 export interface BrowserService {
+  humanRecordings?: BrowserHumanRecording;
   registry: BrowserSessionRegistry;
   acquisition: ChromiumAcquisition;
   localTargets: LocalTargetStore;
@@ -92,6 +102,11 @@ export interface BrowserService {
     browserSessionId: string,
     after?: number,
   ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
+  networkFor(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<BrowserNetworkSnapshot | undefined>;
   shutdown(): Promise<void>;
 }
 
@@ -154,6 +169,9 @@ export function createBrowserService(
   const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
+    ...(options.experienceEnabled
+      ? { experienceEnabled: options.experienceEnabled }
+      : {}),
     isStationAddress: (url) =>
       isStationSelfUrl(url, listeners(), localInterfaceAddresses()),
     // #90 D13: the resolver is the one path to a host; local only today.
@@ -170,6 +188,7 @@ export function createBrowserService(
       }
       return new ChromiumServerHost({
         executablePath,
+        faviconEnabled: options.experienceEnabled,
         egressPolicy: egressPolicyFor(profile, listeners, localTargets),
         onEvent: (event) => {
           if (
@@ -190,13 +209,29 @@ export function createBrowserService(
         sessions: registry,
         surfaces: options.liveSurfaces.registry,
         authorizeProject: options.liveSurfaces.authorizeProject,
+        networkPreviewEnabled: options.networkPreviewEnabled,
+        ...(options.experienceEnabled
+          ? { experienceEnabled: options.experienceEnabled }
+          : {}),
         onError: (message, error) =>
           logger.warn(`browser: ${message}`, {
             error: error instanceof Error ? error.message : String(error),
           }),
       })
     : undefined;
+  const humanRecordings =
+    surfaces && options.liveSurfaces && options.recordingResolver
+      ? new BrowserHumanRecording({
+          registry,
+          surfaces: options.liveSurfaces.registry,
+          surfaceIdFor: (id) => surfaces.surfaceIdFor(id),
+          resolver: options.recordingResolver,
+          encode: encodeBrowserRecording,
+          limiter: options.recordingLimiter,
+        })
+      : undefined;
   return {
+    ...(humanRecordings ? { humanRecordings } : {}),
     registry,
     acquisition,
     localTargets,
@@ -213,7 +248,10 @@ export function createBrowserService(
         : { ok: false, code: 'no-dialog' },
     consoleFor: (browserSessionId, after) =>
       surfaces?.consoleFor(browserSessionId, after),
+    networkFor: async (browserSessionId, after, limit) =>
+      surfaces?.networkFor(browserSessionId, after, limit),
     shutdown: async () => {
+      await humanRecordings?.dispose();
       // Surfaces first: no viewer keeps streaming from a browser being shut.
       await surfaces?.dispose();
       await registry.shutdown();

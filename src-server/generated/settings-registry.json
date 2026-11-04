@@ -133,6 +133,24 @@
       "configKey": "experimentalTrustEnabled"
     },
     {
+      "id": "experimental-station-routes",
+      "label": "Station routes preview",
+      "help": "Opt in to learning every address a saved Station reports and showing each route in its connection details.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-station-routes",
+      "configKey": "experimentalStationRoutesEnabled"
+    },
+    {
+      "id": "experimental-sheet-gestures",
+      "label": "Sheet gestures preview",
+      "help": "Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
+      "configKey": "experimentalSheetGesturesEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",
@@ -145,6 +163,20 @@
       "scope": "station",
       "section": "plugin-visibility",
       "route": "/settings?view=plugin-visibility&highlight=plugin-visibility"
+    },
+    {
+      "id": "browser-project-settings",
+      "label": "Browser agent access and local servers",
+      "scope": "station",
+      "section": "browser-devices",
+      "route": "/settings?view=browser-devices&highlight=browser-project-settings"
+    },
+    {
+      "id": "device-setup",
+      "label": "Device setup",
+      "scope": "station",
+      "section": "browser-devices",
+      "route": "/settings?view=browser-devices&highlight=device-setup"
     },
     {
       "id": "device-hosts",
@@ -175,6 +207,51 @@
       "section": "host-runtime",
       "route": "/settings?view=host-runtime&highlight=terminal-shell",
       "configKey": "terminalShell"
+    },
+    {
+      "id": "terminal-history",
+      "label": "Keep terminal history",
+      "help": "New terminals write their output to disk, so it survives a restart.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history",
+      "configKey": "terminalHistoryEnabled"
+    },
+    {
+      "id": "terminal-history-location",
+      "label": "Terminal history location",
+      "help": "Terminal history is stored in this directory, and ended terminals’ history moves here.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-location",
+      "configKey": "terminalHistoryDirectory"
+    },
+    {
+      "id": "terminal-history-max-age",
+      "label": "Terminal history maximum age",
+      "help": "History of terminals that ended more than this many days ago is deleted.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-max-age",
+      "configKey": "terminalHistoryMaxAgeDays"
+    },
+    {
+      "id": "terminal-history-per-terminal",
+      "label": "Maximum history per terminal",
+      "help": "Each terminal keeps at most this many MiB of history; the oldest output goes first.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-per-terminal",
+      "configKey": "terminalHistoryMaxTerminalMiB"
+    },
+    {
+      "id": "terminal-history-total",
+      "label": "Maximum total history",
+      "help": "All terminals together keep at most this many MiB; the oldest ended terminals go first.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-total",
+      "configKey": "terminalHistoryMaxTotalMiB"
     },
     {
       "id": "mcp-ui-host",
@@ -313,6 +390,13 @@
       "route": "/settings?view=diagnostics&highlight=diagnostics-bundle"
     },
     {
+      "id": "diagnostics-troubleshoot",
+      "label": "Troubleshoot with an agent",
+      "scope": "informational",
+      "section": "diagnostics",
+      "route": "/settings?view=diagnostics&highlight=diagnostics-troubleshoot"
+    },
+    {
       "id": "approval-guardian",
       "label": "Approval guardian",
       "help": "A second model screens tool calls that would pause for your approval and clears the safe ones so they run uninterrupted.",
@@ -378,7 +462,7 @@
     {
       "id": "default-max-turns",
       "label": "Default max turns",
-      "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
+      "help": "Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-max-turns",
@@ -403,6 +487,15 @@
       "configKey": "defaultWorkspaceIsolation"
     },
     {
+      "id": "no-project-chat-folder",
+      "label": "Chats without a project",
+      "help": "A new chat with no project runs in a private folder of its own, or in your home folder.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=no-project-chat-folder",
+      "configKey": "noProjectChatFolder"
+    },
+    {
       "id": "workspace-checkpoints",
       "label": "Workspace checkpoints",
       "help": "After a restart, Station snapshots the session project’s directory in git each turn so later turns can be compared or recovered.",
@@ -412,6 +505,24 @@
       "configKey": "workspaceCheckpoints"
     },
     {
+      "id": "checkout-stale-after-commits",
+      "label": "Stale checkout after commits",
+      "help": "The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-commits",
+      "configKey": "checkoutStaleAfterCommits"
+    },
+    {
+      "id": "checkout-stale-after-days",
+      "label": "Stale checkout after days",
+      "help": "The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=checkout-stale-after-days",
+      "configKey": "checkoutStaleAfterDays"
+    },
+    {
       "id": "usage-limit-auto-resume",
       "label": "Resume after usage limits",
       "help": "When Claude Code or Codex stops on a usage limit with a known reset time, Station sends the stopped turn again after the limit resets.",
@@ -419,6 +530,15 @@
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=usage-limit-auto-resume",
       "configKey": "usageLimitAutoResume"
+    },
+    {
+      "id": "claude-artifacts",
+      "label": "Claude Code artifacts",
+      "help": "Claude Code sessions can publish HTML and Markdown files as shareable Claude artifact pages.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=claude-artifacts",
+      "configKey": "claudeArtifactsEnabled"
     },
     {
       "id": "review-guides",
@@ -464,6 +584,15 @@
       "section": "chat",
       "route": "/settings?view=chat&highlight=default-chat-font-size",
       "configKey": "defaultChatFontSize"
+    },
+    {
+      "id": "chat-title-model",
+      "label": "Chat title model",
+      "help": "Choose the model that names a chat after its first reply.",
+      "scope": "station",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=chat-title-model",
+      "configKey": "titleModel"
     },
     {
       "id": "smooth-answer-reveal",
@@ -540,7 +669,7 @@
     {
       "id": "theme",
       "label": "Theme",
-      "help": "The interface renders in this color scheme in your interface.",
+      "help": "The interface renders light, dark, or follows this device’s appearance.",
       "scope": "account",
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=theme",
@@ -554,6 +683,15 @@
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=haptic-feedback",
       "configKey": "hapticsEnabled"
+    },
+    {
+      "id": "terminal-screen-reader",
+      "label": "Terminal screen reader mode",
+      "help": "Terminals on this device keep a text copy of the screen for screen readers and announce new output.",
+      "scope": "device",
+      "section": "appearance",
+      "route": "/settings?view=appearance&highlight=terminal-screen-reader",
+      "configKey": "terminalScreenReader"
     },
     {
       "id": "accent-color",
@@ -651,11 +789,39 @@
       "configKey": "openLastStationOnLaunch"
     },
     {
+      "id": "station-routes",
+      "label": "Routes",
+      "scope": "device",
+      "section": "station-routes",
+      "route": "/settings?view=station-routes&highlight=station-routes"
+    },
+    {
       "id": "personal-knowledge-store",
       "label": "My knowledge store",
       "scope": "station",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
+    },
+    {
+      "id": "app-version",
+      "label": "Version",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=app-version"
+    },
+    {
+      "id": "open-source-licenses",
+      "label": "Open source licenses",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=open-source-licenses"
+    },
+    {
+      "id": "legal",
+      "label": "Legal",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=legal"
     }
   ]
 }

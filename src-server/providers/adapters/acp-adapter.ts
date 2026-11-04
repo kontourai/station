@@ -1,11 +1,12 @@
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import { providerFailure } from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
  *
  * This file owns: connection resolution, lazy ACPProcess lifecycle per
- * threadId, Client construction (reusing createACPBridgeClient's
+ * threadId, client callback construction (reusing createACPBridgeClient's
  * fs/terminal/ext-* handlers, with a canonical `requestPermission`
  * override), turn start/complete/abort, and getCommands()/getPrerequisites()
  * aggregation. It does not translate events itself: native ACP events are
@@ -15,14 +16,13 @@ import { providerFailure } from '../provider-failure.js';
  * Reused substrate (called, not rewritten): ACPProcess (spawn/initialize/
  * newSession/prompt/cancel/setMode/setConfigOption/extMethod/destroy),
  * createACPBridgeClient (fs/terminal/
- * ext-notification/ext-method Client handlers), ApprovalRegistry (satisfies
+ * ext-notification/ext-method handlers), ApprovalRegistry (satisfies
  * createACPBridgeClient's parameter type only), ACPConnectionConfig/ACPConfig.
  */
 
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
 import {
-  type Client,
   type ContentBlock,
   type McpServer,
   type PermissionOption,
@@ -30,7 +30,7 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -94,6 +94,7 @@ import {
   ACPProcess,
   type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
+import type { AcpSessionTerminals } from '../../services/acp/acp-session-terminals.js';
 import {
   clearEngineSignInRefusal,
   engineSignInStatus,
@@ -119,6 +120,14 @@ import {
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+  type LaunchedRoot,
+  launchedRootOf,
+  removeLaunchedRoot,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
 import {
   acpPassthroughSessions,
   acpResumeSessions,
@@ -375,6 +384,25 @@ export function acpConnectionDefaultCwd(config: {
 /** How long a passed start preflight stands for the start that follows. */
 export const START_PREFLIGHT_REUSE_MS = 60_000;
 
+/**
+ * chat-host-images: whether an ACP engine process exiting on its own ends its
+ * session's temp-root launch. Only the session's current process, while no
+ * approval-floor relaunch is starting its replacement: that replacement shares
+ * the folder and, until it is swapped in, `record.process` is still the old
+ * process.
+ */
+export function acpEngineExitEndsLaunch(input: {
+  current: boolean;
+  record: { process?: unknown; relaunching?: boolean };
+  engine: unknown;
+}): boolean {
+  return (
+    input.current &&
+    input.record.process === input.engine &&
+    !input.record.relaunching
+  );
+}
+
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
@@ -452,18 +480,34 @@ export interface AcpAdapterOptions {
   mintStationControlMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    coordinatorGeneration?: number,
   ) => { url: string; token: string } | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    coordinatorGeneration?: number,
   ) => { url: string; token: string } | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop and on a failed start. Never required; a
    * missing closure just means the token lives out its bounded TTL. */
   revokeStationControlMcpAuth?: (
     threadId: string,
-    serverId?: 'station-control' | 'station-knowledge',
+    serverId?:
+      | 'station-control'
+      | 'station-knowledge'
+      | 'coordinator-control'
+      | 'coordinator-knowledge',
   ) => void;
+  /**
+   * #3994: the agent session's terminals as command terminal sessions,
+   * confined to `cwd`. Undefined where the host has no terminal sessions;
+   * its terminals are then plain child processes.
+   */
+  agentTerminals?: (input: {
+    threadId: string;
+    projectSlug?: string;
+    cwd: string;
+  }) => AcpSessionTerminals | undefined;
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
@@ -476,7 +520,7 @@ interface AcpSlashCommand {
 /**
  * A pending mid-turn `session/request_permission` call, keyed by requestId.
  * `resolve` is invoked by `respondToRequest` with the adapter-level decision;
- * the `Client.requestPermission` handler built in this file awaits this and
+ * the `requestPermission` handler built in this file awaits this and
  * maps the decision + `options` into the ACP `RequestPermissionOutcome` via
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
@@ -612,6 +656,16 @@ export interface AcpSessionRecord {
   openCodeEditGrant?: boolean;
   /** #3290: launches a replacement process for this session on a floor. */
   relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
+  /**
+   * chat-host-images: a relaunch is starting a replacement engine that
+   * shares this launch's temp folder; the old process dying meanwhile must
+   * not release it.
+   */
+  relaunching?: boolean;
+  /** The current process exited while a relaunch was starting its replacement. */
+  exitedDuringRelaunch?: boolean;
+  /** chat-host-images: the temp-root launch this session committed. */
+  hostImageLaunch?: LaunchedRoot;
   /** The MCP servers the session was established with, for a relaunch. */
   mcpServers?: McpServer[];
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
@@ -1211,6 +1265,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     );
 
     const terminals = new Map<string, ManagedTerminal>();
+    const sessionTerminals = this.options.agentTerminals?.({
+      threadId: input.threadId,
+      ...(typeof input.metadata?.projectSlug === 'string' && {
+        projectSlug: input.metadata.projectSlug,
+      }),
+      cwd,
+    });
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
 
@@ -1220,12 +1281,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
     const launchEnv = registryLaunchEnvFor(config);
-    const launch = (floor: OpenCodeApprovalFloor | undefined) =>
+    // Resolved once: a relaunch onto another approval floor keeps the same
+    // session directory.
+    const tmpDir = engineSessionTmpDir(input.threadId);
+    const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
         args: config.args,
         cwd,
         launchEnv,
+        ...(tmpDir ? { tmpDir } : {}),
         credentialEnv: () => engineCredentialEnvFor(config),
         // #3957: not offered, because OpenCode's own tools already write
         // every edit; its client write would only be a redundant copy. The
@@ -1248,11 +1313,39 @@ export class AcpAdapter implements ProviderAdapterShape {
           this.buildClient(record, {
             cwd,
             terminals,
+            ...(sessionTerminals && { sessionTerminals }),
             nextTerminalId: () => `acp-term-${++terminalCounter}`,
             logger,
           }),
         logger,
       });
+    // chat-host-images: an engine that exits on its own publishes no
+    // session.exited, so the launch's temp root is released when that
+    // process exits while it is still this session's current process and no
+    // relaunch is starting its replacement (which shares the folder; a
+    // relaunch swaps `record.process` before destroying the old one).
+    const launch = (floor: OpenCodeApprovalFloor | undefined) => {
+      const engine = launchProcess(floor);
+      (
+        engine as { once?: (event: string, listener: () => void) => unknown }
+      ).once?.('exit', () => {
+        if (
+          record.relaunching &&
+          this.sessions.get(input.threadId) === record &&
+          record.process === engine
+        )
+          record.exitedDuringRelaunch = true;
+        if (
+          acpEngineExitEndsLaunch({
+            current: this.sessions.get(input.threadId) === record,
+            record,
+            engine,
+          })
+        )
+          removeLaunchedRoot(input.threadId, record.hostImageLaunch);
+      });
+      return engine;
+    };
     const acpProcess = launch(startApprovalFloor);
     record.process = acpProcess;
     record.relaunch = launch;
@@ -1261,6 +1354,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       settleStart = resolve;
     });
     this.sessions.set(input.threadId, record);
+    // Recorded only once this record is the thread's session.
+    commitEngineLaunch(input.threadId, tmpDir ? { own: tmpDir } : undefined);
+    record.hostImageLaunch = launchedRootOf(input.threadId);
 
     try {
       await acpProcess.start();
@@ -1332,14 +1428,33 @@ export class AcpAdapter implements ProviderAdapterShape {
       // server path. The reconciliation right after
       // `resolveAcpPassthroughMcpServers` below — mint-but-not-delivered ⇒
       // revoke now, with its own receipt — is what closes that gap.
+      if (
+        agentToolServers?.some(
+          (server) =>
+            server.coordinatorDerived &&
+            server.coordinatorGeneration === undefined,
+        )
+      )
+        throw new Error('Coordinator generation is required.');
       if (requestedToolServerIds?.includes('station-control')) {
         if (mcpHttp === true) {
-          stationControlAuth = input.tenantExecutionContext
+          const derived =
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived === true;
+          stationControlAuth = derived
             ? this.options.mintStationControlMcpAuth?.(
                 input.threadId,
                 input.tenantExecutionContext,
+                agentToolServers?.find(
+                  (server) => server.id === 'station-control',
+                )?.coordinatorGeneration,
               )
-            : this.options.mintStationControlMcpAuth?.(input.threadId);
+            : input.tenantExecutionContext
+              ? this.options.mintStationControlMcpAuth?.(
+                  input.threadId,
+                  input.tenantExecutionContext,
+                )
+              : this.options.mintStationControlMcpAuth?.(input.threadId);
           if (!stationControlAuth) {
             // The engine said yes and Station still produced nothing: a
             // Station-side wiring gap, never a fact about the engine. Saying
@@ -1380,6 +1495,15 @@ export class AcpAdapter implements ProviderAdapterShape {
           ? this.options.mintStationKnowledgeMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              ...(agentToolServers?.find(
+                (server) => server.id === 'station-knowledge',
+              )?.coordinatorDerived
+                ? [
+                    agentToolServers.find(
+                      (server) => server.id === 'station-knowledge',
+                    )?.coordinatorGeneration,
+                  ]
+                : []),
             )
           : undefined;
       const stationKnowledgeUnavailable = {
@@ -1440,7 +1564,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (stationControlAuth && !resolved.stationControlDelivered) {
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-control',
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived
+              ? 'coordinator-control'
+              : 'station-control',
           );
           stationControlAuth = undefined;
           // `not-found` short-circuits BEFORE
@@ -1468,7 +1595,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (stationKnowledgeAuth && !resolved.stationKnowledgeDelivered) {
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-knowledge',
+            agentToolServers?.find(
+              (server) => server.id === 'station-knowledge',
+            )?.coordinatorDerived
+              ? 'coordinator-knowledge'
+              : 'station-knowledge',
           );
           stationKnowledgeAuth = undefined;
         }
@@ -1480,13 +1611,25 @@ export class AcpAdapter implements ProviderAdapterShape {
         // rather than misleading), but the credential lifetime should not
         // depend on which way the resolution failed.
         if (stationControlAuth) {
-          this.options.revokeStationControlMcpAuth?.(input.threadId);
+          if (
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived
+          )
+            this.options.revokeStationControlMcpAuth?.(
+              input.threadId,
+              'coordinator-control',
+            );
+          else this.options.revokeStationControlMcpAuth?.(input.threadId);
           stationControlAuth = undefined;
         }
         if (stationKnowledgeAuth)
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-knowledge',
+            agentToolServers?.find(
+              (server) => server.id === 'station-knowledge',
+            )?.coordinatorDerived
+              ? 'coordinator-knowledge'
+              : 'station-knowledge',
           );
         logger.warn?.(
           `ACP connection '${config.id}': MCP passthrough resolution failed unexpectedly; continuing without passthrough tool servers.`,
@@ -2752,13 +2895,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     context: {
       cwd: string;
       terminals: Map<string, ManagedTerminal>;
+      sessionTerminals?: AcpSessionTerminals;
       nextTerminalId: () => string;
       logger: AcpLogger;
     },
-  ): Client {
+  ): ACPClientCallbacks {
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
+      ...(context.sessionTerminals && {
+        sessionTerminals: context.sessionTerminals,
+      }),
       // Constructed only to satisfy createACPBridgeClient's parameter type —
       // never invoked, since `requestPermission` is overridden below with the
       // adapter's own canonical implementation.
@@ -2811,17 +2958,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       const governedEdit =
         record.approvalFloor === 'confined' &&
         isOpenCodeEditShaped(params.toolCall?.kind, params.toolCall?.rawInput);
-      const needsPerson =
+      let needsPerson =
         toolRequestNeedsPerson(toolName, params.toolCall?.kind) ||
         (governedEdit &&
           openCodeEditNeedsPerson(
             params.toolCall?.rawInput,
             record.session.cwd ?? context.cwd,
           ));
-      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
-        const granted = mapAcpDecisionToOutcome('accept', params.options);
-        if (granted.outcome !== 'cancelled') return { outcome: granted };
-      }
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -2869,8 +3012,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        // `defer` (and defensive `ask`) preserve ACP's one existing approval
-        // flow below; Station never opens a second prompt.
+        if (decision.behavior === 'ask' && decision.required)
+          needsPerson = true;
+        // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
         !needsPerson &&
@@ -2884,6 +3028,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         return {
           outcome: mapAcpDecisionToOutcome('accept', params.options),
         };
+      }
+
+      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
+        const granted = mapAcpDecisionToOutcome('accept', params.options);
+        if (granted.outcome !== 'cancelled') return { outcome: granted };
       }
 
       // #3290: the chat's approval mode answers what it allows (Auto: a file
@@ -3050,6 +3199,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const next = record.relaunch(floor);
     let configOptions: unknown[] | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    record.relaunching = true;
     try {
       const establish = (async () => {
         await next.start();
@@ -3104,12 +3254,19 @@ export class AcpAdapter implements ProviderAdapterShape {
           destroyError,
         );
       });
+      // chat-host-images: the old process died while its replacement was
+      // starting, and the replacement did not take over. No later exit will
+      // fire and ACP publishes no session.exited, so the launch ends here.
+      if (record.exitedDuringRelaunch)
+        removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
       return {
         ok: false,
         reason: `the new engine process did not resume the session (${errorMessage(error)})`,
       };
     } finally {
       if (timer) clearTimeout(timer);
+      record.relaunching = false;
+      record.exitedDuringRelaunch = false;
     }
 
     record.process = next;
@@ -3757,6 +3914,9 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 

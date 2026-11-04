@@ -10,6 +10,7 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { hasPrincipalNotificationAudience } from '@kontourai/station-shared/notification-envelope';
 import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
@@ -66,6 +67,7 @@ export function createNotificationRoutes(
     notification: Notification,
     request: Request,
   ): boolean => {
+    if (hasPrincipalNotificationAudience(notification)) return false;
     const sessionId = notificationMetadataSessionId(notification);
     // Existing personal-only constructors omit both hooks.  A partial hosted
     // composition, on the other hand, cannot make a session row public.
@@ -334,7 +336,7 @@ export function createNotificationRoutes(
   return app;
 }
 
-function readerSurfaceId(request: Request): SurfaceId | undefined {
+export function readerSurfaceId(request: Request): SurfaceId | undefined {
   const origin = resolveClientOriginForRequest(request);
   if (origin.actor.kind === 'device') return `device:${origin.actor.deviceId}`;
   const clientSession = request.headers.get('x-station-client-session');

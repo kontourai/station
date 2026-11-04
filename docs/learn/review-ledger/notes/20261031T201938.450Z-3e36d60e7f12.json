@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing guide links and focused evidence route; shard coverage change does not alter server scope instructions.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

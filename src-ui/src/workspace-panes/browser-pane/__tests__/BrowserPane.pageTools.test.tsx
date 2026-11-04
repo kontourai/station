@@ -27,8 +27,24 @@ import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LiveSurfaceControlState } from '../../../live-surface/LiveSurfaceCanvas';
 
+const artifactFixture = vi.hoisted(() => ({
+  enabled: false,
+  experience: false,
+  attach: vi.fn(async (_files: File[]) => {}),
+}));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set([
+      ...(artifactFixture.enabled ? ['browser-artifacts'] : []),
+      ...(artifactFixture.experience ? ['browser-experience'] : []),
+    ]),
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../useBrowserArtifactIntake', () => ({
+  useBrowserArtifactIntake: () => () => artifactFixture.attach,
 }));
 
 const controlHolder: { state: LiveSurfaceControlState | null } = {
@@ -145,7 +161,7 @@ function renderPane(routes: Record<string, Route>) {
 /** Choose an item from the ⋯ menu once the session has enabled it. */
 async function chooseFromMenu(name: string) {
   fireEvent.click(
-    await screen.findByRole('button', { name: 'More browser actions' }),
+    await screen.findByRole('button', { name: /^More browser actions/ }),
   );
   let item = await screen.findByRole('menuitem', { name });
   if ((item as HTMLButtonElement).disabled) {
@@ -153,7 +169,7 @@ async function chooseFromMenu(name: string) {
     fireEvent.keyDown(document, { key: 'Escape' });
     await new Promise((resolve) => setTimeout(resolve, 200));
     fireEvent.click(
-      await screen.findByRole('button', { name: 'More browser actions' }),
+      await screen.findByRole('button', { name: /^More browser actions/ }),
     );
     item = await screen.findByRole('menuitem', { name });
   }
@@ -174,6 +190,57 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   controlHolder.state = null;
+  artifactFixture.enabled = false;
+  artifactFixture.experience = false;
+  artifactFixture.attach.mockClear();
+});
+
+test('artifact and experience controls are available together', async () => {
+  artifactFixture.enabled = true;
+  artifactFixture.experience = true;
+  renderPane({
+    'GET /api/browser/projects/alpha/access': ok({
+      projectId: 'p-alpha',
+      role: 'operator',
+      operator: true,
+      canDrive: true,
+      browser: 'ready',
+      experiencePreviewEnabled: true,
+    }),
+    [SUMMARY]: ok(sessionView()),
+    [`GET /api/browser/sessions/${SESSION}/network?after=0`]: ok({
+      generation: 1,
+      entries: [],
+      dropped: 0,
+      latestSeq: 0,
+    }),
+  });
+  await screen.findByTestId('live-canvas');
+  // None of these is toolbar chrome any more.
+  for (const name of ['Network', 'Record', 'Float over chat', /^Console/])
+    expect(screen.queryByRole('button', { name })).toBeNull();
+  await chooseFromMenu('Network');
+  expect(
+    await screen.findByRole('region', { name: 'Network diagnostics' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: /^More browser actions/ }),
+  );
+  expect(screen.getByRole('menuitem', { name: 'Annotate' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'Record' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'Hide network' })).toBeTruthy();
+  expect(
+    screen.getByRole('menuitem', { name: /Float over chat/ }),
+  ).toBeTruthy();
+  // One screenshot row: its tray attaches to chat, and the one-step
+  // Screenshot to chat is a command-palette command.
+  expect(
+    screen
+      .getAllByRole('menuitem', { name: /Screenshot/ })
+      .map((item) => item.getAttribute('aria-label')),
+  ).toEqual(['Screenshot']);
+  expect(screen.getByRole('menuitem', { name: /Zoom/ })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: /Appearance/ })).toBeTruthy();
 });
 
 describe('a dialog held for the person in control', () => {
@@ -403,7 +470,7 @@ describe('the console drawer', () => {
         capturing: true,
       }),
     });
-    await clickWhenEnabled('Console');
+    await chooseFromMenu('Console');
     const list = await screen.findByRole('list', { name: 'Console messages' });
     expect(within(list).getByText('booted')).toBeTruthy();
     expect(
@@ -441,6 +508,101 @@ describe('the console drawer', () => {
 });
 
 describe('screenshots', () => {
+  test('the menu starts a recording and the recording bar stops it', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    let state: 'recording' | 'encoding' = 'recording';
+    const path = `/api/browser/sessions/${SESSION}/recordings`;
+    const fake = renderPane({
+      [SUMMARY]: ok(sessionView()),
+      [`POST ${path}`]: () => ({
+        body: { success: true, data: { recordingId: 'r1' } },
+      }),
+      [`GET ${path}/r1`]: () => ({
+        body: { success: true, data: { id: 'r1', state } },
+      }),
+      [`POST ${path}/r1/stop`]: () => {
+        state = 'encoding';
+        return { body: { success: true } };
+      },
+      [`DELETE ${path}/r1`]: () => ({ body: { success: true } }),
+    });
+    await chooseFromMenu('Record');
+    expect(await screen.findByText('Recording…')).toBeTruthy();
+    await clickWhenEnabled('Stop recording');
+    await waitFor(() =>
+      expect(fake.calls).toContainEqual(
+        expect.objectContaining({ method: 'POST', path: `${path}/r1/stop` }),
+      ),
+    );
+    expect(await screen.findByText('Finishing recording…')).toBeTruthy();
+  });
+  test('marks screenshot page provenance as untrusted in the attachment metadata', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:shot'),
+      revokeObjectURL: vi.fn(),
+    });
+    renderPane({
+      [SUMMARY]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+        new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        }),
+    });
+    await chooseFromMenu('Screenshot');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Attach to chat' }),
+    );
+    await waitFor(() => expect(artifactFixture.attach).toHaveBeenCalledOnce());
+    const files = artifactFixture.attach.mock.calls[0]![0];
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(files[1]!);
+    });
+    expect(JSON.parse(text)).toMatchObject({
+      kind: 'browser-screenshot',
+      untrustedPageContent: {
+        notice: expect.stringContaining('untrusted'),
+        url: 'https://shop.example.com/cart',
+      },
+    });
+  });
+  test('refuses attaching a screenshot after its browser generation changes', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    let generation = 1;
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:shot'),
+      revokeObjectURL: vi.fn(),
+    });
+    renderPane({
+      [SUMMARY]: () => ({
+        body: { success: true, data: sessionView({ generation }) },
+      }),
+      [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+        new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        }),
+    });
+    await chooseFromMenu('Screenshot');
+    const attach = await screen.findByRole('button', {
+      name: 'Attach to chat',
+    });
+    generation = 2;
+    fireEvent.click(attach);
+    expect(
+      await screen.findByText(
+        'The browser changed before the screenshot could be attached.',
+      ),
+    ).toBeTruthy();
+    expect(artifactFixture.attach).not.toHaveBeenCalled();
+  });
   test('a screenshot of the page is offered to save under a descriptive file name', async () => {
     controlHolder.state = control();
     const created: Blob[] = [];
@@ -470,7 +632,7 @@ describe('screenshots', () => {
     expect(
       screen.getByRole('img', { name: 'Screenshot of shop.example.com' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss screenshot' }));
     await waitFor(() =>
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:shot-1'),
     );
@@ -543,24 +705,36 @@ describe('the toolbar', () => {
     // Not a toolbar button.
     expect(screen.queryByRole('button', { name: 'Close session' })).toBeNull();
     fireEvent.click(
-      await screen.findByRole('button', { name: 'More browser actions' }),
+      await screen.findByRole('button', { name: /^More browser actions/ }),
     );
     const menu = await screen.findByRole('menu', {
-      name: 'More browser actions',
+      name: /^More browser actions/,
     });
-    // The order a person reads: Screenshot, Viewport, Sessions, Agent access,
-    // Local servers; then a separator; then Close session, last.
+    // Grouped the way a person reads: Capture, View, Inspect, Session; then
+    // Close session alone, last, in an unlabelled group of its own.
+    expect(
+      within(menu)
+        .getAllByRole('group')
+        .map((group) => group.getAttribute('aria-label')),
+    ).toEqual(['Capture', 'View', 'Inspect', 'Session', null]);
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
       'Screenshot',
       'Viewport: Desktop',
+      'Rotate viewport',
+      'Console',
+      'Reload without cache',
+      'Stop loading',
       'Sessions',
-      'Agent access',
-      'Local servers',
+      'Browser settings…',
       'Close session',
     ]);
     const close = items.at(-1)!;
-    expect(close.previousElementSibling?.tagName).toBe('HR');
+    const closeGroup = close.closest('[role="group"]')!;
+    expect(closeGroup.hasAttribute('aria-label')).toBe(false);
+    expect(within(closeGroup as HTMLElement).getAllByRole('menuitem')).toEqual([
+      close,
+    ]);
     fireEvent.click(close);
     await waitFor(() =>
       expect(
@@ -609,10 +783,10 @@ describe('the toolbar', () => {
       });
       await screen.findByTestId('live-canvas');
       fireEvent.click(
-        await screen.findByRole('button', { name: 'More browser actions' }),
+        await screen.findByRole('button', { name: /^More browser actions/ }),
       );
       const menu = await screen.findByRole('menu', {
-        name: 'More browser actions',
+        name: /^More browser actions/,
       });
       await waitFor(() => expect(menu.style.top).not.toBe(''));
       const top = Number.parseFloat(menu.style.top);
@@ -628,7 +802,7 @@ describe('the toolbar', () => {
     }
   });
 
-  test('the Console button counts errors logged since it was last opened, and opening it clears the count', async () => {
+  test('the ⋯ menu counts console errors logged since the console was last opened, and opening it clears the count', async () => {
     controlHolder.state = control();
     let reads = 0;
     renderPane({
@@ -679,12 +853,23 @@ describe('the toolbar', () => {
     // errors after it are.
     const badged = await screen.findByRole(
       'button',
-      { name: 'Console, 2 unseen errors' },
+      { name: 'More browser actions, 2 new console errors' },
       { timeout: 8_000 },
     );
     expect(reads).toBe(1);
     fireEvent.click(badged);
-    expect(await screen.findByRole('button', { name: 'Console' })).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Console: 2 new' }),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'More browser actions' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More browser actions' }),
+    );
+    expect(
+      await screen.findByRole('menuitem', { name: 'Hide console' }),
+    ).toBeTruthy();
   }, 15_000);
 });
 
@@ -748,7 +933,7 @@ describe('the console across a reopen (a new browser generation)', () => {
     expect(
       await screen.findByRole(
         'button',
-        { name: 'Console, 1 unseen error' },
+        { name: 'More browser actions, 1 new console error' },
         { timeout: 8_000 },
       ),
     ).toBeTruthy();

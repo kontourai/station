@@ -16,6 +16,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { MessageRating } from '../components/chat/message-bubble/MessageRating';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 
 describe('MessageRating accessibility', () => {
   beforeEach(() => {
@@ -67,5 +68,89 @@ describe('MessageRating accessibility', () => {
         messageIndex: 4,
       }),
     );
+  });
+});
+
+test('failed reason writes keep the entered feedback visible and do not pretend it was saved', async () => {
+  saveRating
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(
+      new Error('Feedback history is full. Delete feedback to continue.'),
+    );
+  render(
+    <MessageRating
+      conversationId="conversation-1"
+      messageIndex={4}
+      messagePreview="Response"
+      agentSlug="agent"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Bad response' }));
+  const input = await screen.findByPlaceholderText('Why? (optional)');
+  fireEvent.change(input, { target: { value: 'Keep this reason' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(await screen.findByText('Rating not saved')).toBeTruthy();
+  expect(
+    (screen.getByPlaceholderText('Why? (optional)') as HTMLInputElement).value,
+  ).toBe('Keep this reason');
+});
+
+// #4470: thumbs-down can hand the reply to troubleshooting.
+describe('This looks like a Station bug', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    saveRating.mockResolvedValue(undefined);
+    deleteRating.mockResolvedValue(undefined);
+  });
+
+  test('appears only after thumbs-down, records the rating as usual, and hands off with the conversation and turn', async () => {
+    window.history.pushState({}, '', '/chat');
+    const capture = captureTroubleshootSeeds();
+    try {
+      render(
+        <MessageRating
+          conversationId="conversation-rated"
+          messageIndex={2}
+          messagePreview="A reply"
+          agentSlug="codex"
+          sessionId="session-rated"
+          turnId="turn-rated"
+        />,
+      );
+      expect(
+        screen.queryByRole('button', { name: 'This looks like a Station bug' }),
+      ).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bad response' }));
+      await waitFor(() => expect(saveRating).toHaveBeenCalledTimes(1));
+      expect(saveRating).toHaveBeenCalledWith({
+        agentSlug: 'codex',
+        conversationId: 'conversation-rated',
+        messageIndex: 2,
+        messagePreview: 'A reply',
+        rating: 'thumbs_down',
+        expectedSessionId: 'session-rated',
+        expectedTurnId: 'turn-rated',
+      });
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'This looks like a Station bug' }),
+      );
+      expect(capture.seeds).toEqual([
+        {
+          route: '/chat',
+          errorSummary:
+            'reply-marked-station-bug: The person marked this reply as a Station bug.',
+          conversationId: 'conversation-rated',
+          turnId: 'turn-rated',
+        },
+      ]);
+      // The bug report writes nothing into the rating: no reason, no re-save.
+      expect(saveRating).toHaveBeenCalledTimes(1);
+      expect(deleteRating).not.toHaveBeenCalled();
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
   });
 });

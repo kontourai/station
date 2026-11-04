@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
   useScopedProjectRunLocationsQuery,
@@ -21,10 +22,13 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
   dispatchNewChatIntent,
   type NewChatHandoff,
+  type NewChatStartSelection,
 } from '../../lib/newChatIntent';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
@@ -42,11 +46,13 @@ import {
 import {
   GLOBAL_CONTEXT,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
   withProjectRunLocations,
   workspaceHintText,
 } from '../modals/new-chat-modal-utils';
+import { VISUAL_SKILLS_PREVIEW_ID } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, SkeletonList } from '../state';
 
 // The pickers and setup guidance load on first use, outside Home's bundle.
@@ -160,7 +166,7 @@ export function reloadHeldHomeDraftsForTests() {
 }
 
 type ChipMenu = {
-  kind: 'agents' | 'project' | 'model';
+  kind: 'agents' | 'project' | 'model' | 'station';
   trigger: HTMLElement | null;
   agentSlug?: string;
 };
@@ -190,6 +196,9 @@ export function HomeStartComposer({
 }) {
   const { namespace } = useAuthorityPersistence();
   const { setDockState } = useNavigation();
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const draftStore = useMemo(() => {
     if (!projectSlug) return homeDraftStore;
     const key = JSON.stringify([namespace, projectSlug]);
@@ -255,7 +264,18 @@ export function HomeStartComposer({
     agentConnections,
     selectedContextResolved,
   } = selection;
-  const start = useStartSelection(selection, context);
+  const baseStart = useStartSelection(selection, context);
+  // The Permissions chip's pick rides every selection this composer sends.
+  const [approvalPick, setApprovalPick] = useState<ApprovalMode>();
+  const start = {
+    ...baseStart,
+    startSelection: (
+      ...args: Parameters<typeof baseStart.startSelection>
+    ): NewChatStartSelection => {
+      const chosen = baseStart.startSelection(...args);
+      return approvalPick ? { ...chosen, approvalMode: approvalPick } : chosen;
+    },
+  };
   const bindProject = useBindStartProject();
   const [prompt, setPromptState] = useState('');
   // The field's current text, readable synchronously by a draft that comes
@@ -388,6 +408,7 @@ export function HomeStartComposer({
     if (projectSlug) setDockState(true);
     const text = prompt;
     const files = startFiles;
+    const sentPick = approvalPick;
     const accepted = dispatchNewChatIntent({
       initialPrompt: text,
       ...(files.length ? { initialFiles: files } : {}),
@@ -397,7 +418,14 @@ export function HomeStartComposer({
       // back; started: it lives in its chat now.
       onClosed: (outcome, dockDraft) => {
         if (outcome === 'dismissed') draftStore.hold(dockDraft ?? text);
-        else clearSentFiles(files);
+        else {
+          clearSentFiles(files);
+          // The pick was that chat's own; the next start begins from defaults,
+          // unless a newer pick was made meanwhile.
+          setApprovalPick((current) =>
+            current === sentPick ? undefined : current,
+          );
+        }
       },
     });
     if (!accepted) {
@@ -445,16 +473,33 @@ export function HomeStartComposer({
           ? start.modelChoiceFor(agent)?.environmentId
           : undefined,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
+        modelNote: agent
+          ? newChatProjectModelNote({
+              projectChatDefaults: selection.projectChatDefaults,
+              agentSlug: agent.slug,
+              effectiveModel: selection.defaultEffectiveModelForAgent(agent),
+              chosen: !!start.modelChoiceFor(agent),
+            })
+          : undefined,
+        approvalProjectDefault:
+          selection.projectChatDefaults?.approvalMode.resolved,
+        approvalProjectDefaultUnavailable:
+          selection.projectChatDefaultsUnavailable,
+        approvalPick,
+        onApprovalPick: setApprovalPick,
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const icons = useProjectIcons();
+  // #4389: where a No project chat runs on this Station.
+  const noProjectChatFolder = useConfig()?.noProjectChatFolder ?? 'private';
   const option = viewModel.currentContextOption;
   const isGlobal = context === GLOBAL_CONTEXT;
   const workspaceHint = resolveNewChatWorkspaceHint({
     agent,
     project: viewModel.selectedProject,
     acpConnections,
+    noProjectChatFolder: isGlobal ? noProjectChatFolder : undefined,
   });
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }
@@ -496,40 +541,21 @@ export function HomeStartComposer({
         }
         stationControl={
           <StartStationControl
-            prompt={prompt}
-            projectSlug={viewModel.selectedProject?.slug}
-            projectName={viewModel.selectedProject?.name}
-            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
-            agentSlug={agent?.slug}
-            executionAgentId={
-              agent ? start.modelChoiceFor(agent)?.executionAgentId : undefined
-            }
-            expectedDefinitionFingerprint={
-              agent
-                ? start.modelChoiceFor(agent)?.expectedDefinitionFingerprint
-                : undefined
-            }
             environmentId={
               agent ? start.modelChoiceFor(agent)?.environmentId : undefined
             }
-            providerOptions={
-              agent ? start.modelChoiceFor(agent)?.providerOptions : undefined
-            }
-            model={agent ? start.modelChoiceFor(agent)?.modelId : undefined}
+            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
+            canChoose={Boolean(agent)}
+            projectSelected={Boolean(viewModel.selectedProject)}
             disabled={
               pending ||
               contextPending ||
               fixedProjectMissing ||
               !selectedContextResolved
             }
-            onPromptChange={setPrompt}
-            onStarted={(_task, station, sentPrompt) => {
-              clearSent(sentPrompt);
-              setNotice({
-                text: `Task started on ${station}. Open Activity to follow its progress.`,
-                tone: 'status',
-              });
-            }}
+            onOpen={(trigger) =>
+              setMenu({ kind: 'station', trigger, agentSlug: agent?.slug })
+            }
           />
         }
         projectFixed={Boolean(projectSlug)}
@@ -538,15 +564,20 @@ export function HomeStartComposer({
           setMenu({ kind: 'agents', trigger });
         }}
         project={projectChip}
+        onClearProject={() => bindProject(GLOBAL_CONTEXT)}
         onOpenProject={(trigger) => setMenu({ kind: 'project', trigger })}
-        overflowActions={[
-          {
-            key: 'skills',
-            label: 'Use a visual skill',
-            haspopup: 'dialog',
-            onSelect: () => handOff({ kind: 'skills' }),
-          },
-        ]}
+        overflowActions={
+          visualSkillsEnabled
+            ? [
+                {
+                  key: 'skills',
+                  label: 'Use a visual skill',
+                  haspopup: 'dialog',
+                  onSelect: () => handOff({ kind: 'skills' }),
+                },
+              ]
+            : []
+        }
         canStart={canStart}
         pending={pending}
         files={{
@@ -563,6 +594,7 @@ export function HomeStartComposer({
           if (projectSlug) setDockState(true);
           const sentText = prompt;
           const sentFiles = startFiles;
+          const sentPick = approvalPick;
           const accepted = dispatchNewChatIntent({
             startWithDefault: true,
             initialPrompt: prompt,
@@ -590,6 +622,11 @@ export function HomeStartComposer({
               if (outcome === 'started') {
                 clearSent(sentText);
                 clearSentFiles(sentFiles);
+                // The pick was that chat's own; the next start begins from
+                // the defaults again, unless a newer pick was made meanwhile.
+                setApprovalPick((current) =>
+                  current === sentPick ? undefined : current,
+                );
               }
             },
           });

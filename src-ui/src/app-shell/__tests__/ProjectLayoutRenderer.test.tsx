@@ -39,6 +39,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { captureTroubleshootSeeds } from '../../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { navigationStore } from '../../contexts/navigation-store';
 import { pluginRegistry } from '../../core/PluginRegistry';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -118,6 +119,10 @@ const pluginBoundaryMock = vi.hoisted(() => vi.fn());
 /** Every call to a layout-PLACEMENT seam, in call order. Asserted empty by the
  *  unplaced-Review case; hoisted because the SDK mock factory closes over it. */
 const placementCalls = vi.hoisted(() => [] as string[]);
+
+vi.mock('../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set(['browser-experience']),
+}));
 
 vi.mock('@kontourai/station-sdk', async () => ({
   FullScreenError: ({ description }: { description: string }) => (
@@ -661,6 +666,35 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.queryByText('Review rendered for demo')).toBeNull();
   });
 
+  test('re-checking an unplaced Review keeps the workbench mounted instead of flickering', () => {
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(404, 'Layout not found'),
+      errorUpdatedAt: 1,
+      fetchStatus: 'idle',
+    });
+    const view = render(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+
+    // What TanStack reports once a refetch of the 404 starts.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      errorUpdatedAt: 1,
+      fetchStatus: 'fetching',
+    });
+    view.rerender(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+    expect(screen.queryByText('Current layout view')).toBeNull();
+  });
+
   test('a Review request that failed for any other reason is not an unplaced layout (#2065)', () => {
     // A 500 or a dead server means Station could not ASK whether the layout is
     // placed. Substituting the builtin there would answer a question nobody
@@ -1165,6 +1199,81 @@ describe('ProjectLayoutRenderer', () => {
     loadStatus.mockRestore();
   });
 
+  // #4470.
+  test('a placed pane in an outage offers Troubleshoot seeded with its reason', () => {
+    const catalog = codingCatalog();
+    const descriptor = parseWorkspacePaneDescriptor({
+      version: '1.0',
+      id: 'pane:plugin%3Areview:main',
+      name: 'Review',
+      rendererId: 'renderer:plugin%3Areview:main',
+      renderer: { kind: 'plugin-component', name: 'review.main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    });
+    const instance = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: 'pane:plugin%3Areview:main',
+      instanceId: 'instance:plugin:project-uuid:review',
+      stateKey: 'state:plugin:project-uuid:review',
+      boundContext: { projectId: 'project-uuid' },
+    });
+    if (!descriptor || !instance)
+      throw new Error('Plugin pane fixture was refused');
+    catalogMock.mockReturnValue({
+      ...catalog,
+      entries: [
+        ...catalog.entries.slice(0, 2),
+        {
+          descriptor,
+          instance,
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'health-unavailable', source: 'health' },
+          },
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    render(
+      withQueryClient(
+        <ConnectionsProvider>
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />
+        </ConnectionsProvider>,
+      ),
+    );
+    drillIntoHostPane();
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('Coding host did not mount');
+    window.history.pushState({}, '', '/projects/project-route/coding');
+    const capture = captureTroubleshootSeeds();
+    try {
+      render(
+        <ConnectionsProvider>
+          {hostProps.renderPane(instance)}
+        </ConnectionsProvider>,
+      );
+      expect(screen.getByText('Review unavailable')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+      expect(capture.seeds).toEqual([
+        {
+          route: '/projects/project-route/coding',
+          errorSummary:
+            'pane-health-unavailable: Review: The pane is temporarily unavailable. Try again shortly.',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
   const stackCrumbs = () =>
     within(screen.getByRole('list', { name: 'Breadcrumb' }))
       .getAllByRole('listitem')
@@ -1656,7 +1765,12 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText('Readiness pane')).toBeTruthy();
     expect(screen.getByText('Trust pane')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
-    expect(screen.getByRole('button', { name: 'Open Browser' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+        'button',
+        { name: /^Open Browser$/ },
+      ),
+    ).toBeTruthy();
     expect(layoutQueryMock.mock.calls).toEqual(
       expect.arrayContaining([['project-route', 'coding']]),
     );
@@ -1965,7 +2079,7 @@ describe('ProjectLayoutRenderer', () => {
       'Coding file workspace unavailable',
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'did not fall back',
+      "The file pane couldn't load.",
     );
   });
 
@@ -2050,9 +2164,12 @@ describe('ProjectLayoutRenderer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
-        screen.getByRole('button', {
-          name: 'Open Browser',
-        }) as HTMLButtonElement
+        within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+          'button',
+          {
+            name: /^Open Browser$/,
+          },
+        ) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     expect(
@@ -2146,9 +2263,12 @@ describe('ProjectLayoutRenderer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
-        screen.getByRole('button', {
-          name: 'Open Browser',
-        }) as HTMLButtonElement
+        within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+          'button',
+          {
+            name: /^Open Browser$/,
+          },
+        ) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     expect(
@@ -2964,6 +3084,14 @@ describe('ProjectLayoutRenderer past the wide fold (#3040 review M5)', () => {
           .querySelector('.coding-workbench__lower')
           ?.getAttribute('data-active'),
       ).toBe('true');
+      // The lower panel asks its pane frame to fill it; a block frame left
+      // the terminal a 16px strip at 1440 (WorkspacePaneFrame.fill.geometry).
+      expect(
+        screen
+          .getByText('Terminal pane /repo/workspace')
+          .closest('section[data-workspace-pane-lifecycle]')
+          ?.classList.contains('workspace-pane-frame--fill'),
+      ).toBe(true);
     } finally {
       Object.defineProperty(window, 'matchMedia', {
         configurable: true,

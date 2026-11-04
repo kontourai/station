@@ -1,0 +1,7 @@
+{
+  "revision": "bc956eb745f249cb63216f38296775def58f778f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"responsive-action-surfaces.txt only dropped the exception row for the deleted ProjectSidebarPresenceTray.tsx; no inventory rule or other entry changed. responsive-surface:ratchet passes. No claims in this document reference the tray.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

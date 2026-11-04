@@ -154,6 +154,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
     const detail = focusChatEventDetailForAction(
       resolveConversationOpenAction({
         threadId: session.threadId,
+        conversationId: session.conversationId,
         agentSlug: session.assignedAgentSlug,
         controlMode: session.controlMode,
         projectSlug: session.projectSlug,
@@ -257,6 +258,48 @@ function ProjectLiveWorkRow(props: ProjectLiveWorkRowProps) {
   );
 }
 
+/** The icon, title, meta and trailing state both live-work rows share. */
+function LiveWorkRowContent({
+  session,
+  owner,
+  now,
+  laneId,
+  stateWord,
+  workingOn,
+}: Pick<ProjectLiveWorkRowProps, 'session' | 'owner' | 'now' | 'laneId'> & {
+  stateWord: string;
+  workingOn?: string;
+}) {
+  return (
+    <>
+      <AgentIcon
+        agent={owner}
+        size="small"
+        className="project-page__live-work-icon"
+      />
+      <span className="project-page__live-work-body">
+        <span className="project-page__live-work-title">
+          {sessionTitle(session)}
+        </span>
+        <span className="project-page__live-work-meta">
+          {liveWorkMeta(session, owner.name, now)}
+        </span>
+        {workingOn !== undefined && (
+          <span className="project-page__live-work-working-on">
+            {workingOn}
+          </span>
+        )}
+      </span>
+      <span className="project-page__live-work-trailing">
+        <span className="project-page__live-work-state">{stateWord}</span>
+        <span className="project-page__live-work-cta" aria-hidden="true">
+          {liveWorkCallToAction(session, laneId)}
+        </span>
+      </span>
+    </>
+  );
+}
+
 function SessionLiveWorkRow({
   session,
   owner,
@@ -271,25 +314,13 @@ function SessionLiveWorkRow({
       className="project-page__live-work-row"
       onClick={() => open(session)}
     >
-      <AgentIcon
-        agent={owner}
-        size="small"
-        className="project-page__live-work-icon"
+      <LiveWorkRowContent
+        session={session}
+        owner={owner}
+        now={now}
+        laneId={laneId}
+        stateWord={status.word}
       />
-      <span className="project-page__live-work-body">
-        <span className="project-page__live-work-title">
-          {sessionTitle(session)}
-        </span>
-        <span className="project-page__live-work-meta">
-          {liveWorkMeta(session, owner.name, now)}
-        </span>
-      </span>
-      <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">{status.word}</span>
-        <span className="project-page__live-work-cta" aria-hidden="true">
-          {liveWorkCallToAction(session, laneId)}
-        </span>
-      </span>
     </button>
   );
 }
@@ -341,24 +372,14 @@ function TaskRoomLiveWorkRow({
           aria-label={`${target.actor.label} published live presence`}
         />
       ) : null}
-      <AgentIcon
-        agent={owner}
-        size="small"
-        className="project-page__live-work-icon"
+      <LiveWorkRowContent
+        session={session}
+        owner={owner}
+        now={now}
+        laneId={laneId}
+        stateWord={status.word}
+        workingOn={presence}
       />
-      <span className="project-page__live-work-body">
-        <span className="project-page__live-work-title">{title}</span>
-        <span className="project-page__live-work-meta">
-          {liveWorkMeta(session, owner.name, now)}
-        </span>
-        <span className="project-page__live-work-working-on">{presence}</span>
-      </span>
-      <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">{status.word}</span>
-        <span className="project-page__live-work-cta" aria-hidden="true">
-          {liveWorkCallToAction(session, laneId)}
-        </span>
-      </span>
       <span className="project-page__live-work-controls project-page__live-work-row-actions">
         <button
           type="button"

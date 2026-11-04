@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { remoteTransportFetch } from '@kontourai/station-shared/mcp';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
 import {
@@ -12,14 +13,22 @@ import {
   mintStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import { isCatalogSuppliedIntegration } from './integration-origin.js';
+import {
+  gateMediatedMcpCall,
+  type MediatedGateResult,
+} from './mediated-untrusted-content-gate.js';
 import {
   ConnectAccountRequiredError,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  type ToolServerOAuthClientSecretSource,
   toolServerCredentialCandidates,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
 } from './tool-server-oauth.js';
+import { sharedUntrustedContentLedger } from './untrusted-content-policy.js';
 
 const launchOwner = new AsyncLocalStorage<{ accountId: string | undefined }>();
 export function withEngineMcpAccountOwner<T>(
@@ -55,6 +64,12 @@ type ProxyBinding = {
   accessToken: (rejected?: string) => Promise<string>;
   needsSignIn: (rejectedToken?: string) => Promise<void>;
   messageEndpoint?: string;
+  /** #3483: address-pinned for a catalog-supplied server; else the platform fetch. */
+  fetch?: typeof globalThis.fetch;
+  /** #3483: the untrusted-content permission for one `tools/call`. */
+  gate: (toolName: string) => Promise<MediatedGateResult>;
+  /** #3483: a `tools/call` result came back; marks the conversation if untrusted. */
+  recordRead: () => void;
 };
 const bindings = new Map<string, ProxyBinding>();
 const bindingKey = (session: string, server: string) =>
@@ -83,6 +98,8 @@ export function createEngineMcpOAuthResolver(options: {
   port: () => number;
   getIntegration: (id: string) => Promise<ToolDef>;
   needsSignIn?: (id: string, resource: string) => Promise<unknown>;
+  /** Reads a configured OAuth client secret for token refresh. */
+  oauthClientSecrets?: ToolServerOAuthClientSecretSource;
 }) {
   return async (
     servers: readonly ResolvedAgentToolServer[],
@@ -92,7 +109,10 @@ export function createEngineMcpOAuthResolver(options: {
   ): Promise<ReadonlyMap<string, string>> => {
     const prepared: {
       server: ResolvedAgentToolServer;
-      binding: Omit<ProxyBinding, 'expiresAt' | 'signal'>;
+      binding: Omit<
+        ProxyBinding,
+        'expiresAt' | 'signal' | 'gate' | 'recordRead'
+      >;
     }[] = [];
     for (const server of servers) {
       if (server.transport !== 'sse' && server.transport !== 'streamable-http')
@@ -130,6 +150,11 @@ export function createEngineMcpOAuthResolver(options: {
         let knownOAuth = Boolean(
           def.credentialOwnership || def.probe?.authorization,
         );
+        const oauthClient = toolServerOAuthClientConfig(
+          def,
+          options.oauthClientSecrets,
+          { homeDir: options.homeDir() },
+        );
         for (const owner of toolServerCredentialCandidates(
           def,
           principalId,
@@ -142,10 +167,13 @@ export function createEngineMcpOAuthResolver(options: {
             `http://127.0.0.1:${options.port()}/integrations/${encodeURIComponent(def.id)}/oauth/callback`,
             undefined,
             owner,
+            oauthClient,
           );
           const tokens = await provider.tokens();
+          // A configured client already marks the integration as OAuth; do
+          // not read its secret just to learn that.
           knownOAuth ||= Boolean(
-            tokens || (await provider.clientInformation()),
+            tokens || def.oauthClient || (await provider.clientInformation()),
           );
           if (tokens) {
             selected = provider;
@@ -154,6 +182,13 @@ export function createEngineMcpOAuthResolver(options: {
         }
         if (!selected) {
           if (knownOAuth) throw new EngineMcpNeedsSignInError(server.id);
+          // #3483: without the proxy the engine would connect to a
+          // catalog-supplied server itself, where Station cannot check the
+          // addresses it reaches. Refused rather than handed over.
+          if (isCatalogSuppliedIntegration(options.homeDir(), def.id))
+            throw new StationOwnedToolServerError(
+              `Integration '${server.id}' came from a catalog and can only connect through Station. Sign in to its account under Connections → Tools.`,
+            );
           continue;
         }
         const provider = selected;
@@ -166,6 +201,7 @@ export function createEngineMcpOAuthResolver(options: {
           binding: {
             endpoint: resource,
             transport: server.transport,
+            fetch: remoteTransportFetch(def),
             current: async () => {
               await current();
               const tokens = await provider.tokens();
@@ -213,10 +249,23 @@ export function createEngineMcpOAuthResolver(options: {
           bindings.delete(key);
         },
       );
+      const definition = () => options.getIntegration(server.id);
       bindings.set(bindingKey(sessionId!, server.id), {
         ...binding,
         expiresAt,
         signal: lifetime.signal,
+        gate: (toolName) =>
+          gateMediatedMcpCall({
+            conversationIds: [sessionId],
+            serverId: server.id,
+            toolNames: [toolName],
+            definition,
+          }),
+        recordRead: () =>
+          sharedUntrustedContentLedger.markConversation(
+            sessionId!,
+            definition().then((def) => def.contentTrust === 'untrusted'),
+          ),
       });
       result.set(
         server.id,

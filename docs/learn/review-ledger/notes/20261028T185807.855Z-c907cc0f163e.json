@@ -1,0 +1,33 @@
+{
+  "revision": "61eaaa7e92e66b74f6e25ae3df32a0dfbb82b9e9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the restart-notice and Continue paragraph. Traced: projection stamps interruptedTurnBoundaryId on the [TURN_INTERRUPTED] row; withoutRepeatedRestartNotice drops a repeated notice and moves its boundary to the stopped row; continuableInterruptedBoundary offers Continue only for the latest non-ephemeral row with no turn in flight, no pending send, not a replay; ChatDockBody sends TURN_INTERRUPTED_CONTINUE_PROMPT via handleSend with clientTurnId continue-interrupted:<boundary>, behind the continue-interrupted-turn preview. Verified live on an isolated Station: a hard kill mid-turn, boot recovery, a double tap started one turn under that key. ChatMessageList's renderAfterMessage and the 44px coarse-pointer rule for system-event actions do not change any other claim here.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/chat-dock/interruptedTurnContinue.ts","src-ui/src/components/chat/message-bubble/visibleContent.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Added the continue-interrupted-turn row and paragraph. Checked against the registry constructor's rememberConsumer definition (id, label, off by default), the UI gate (useSurfaceVisibilityFlags in ChatDockBody), the latest-row/no-running-turn rule and the server's per-thread clientTurnId dedup that makes a second tap or device not resend. docs:feature-previews:check passes.","inputs":["docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Added the UI-only preview paragraph: task-review and continue-interrupted-turn are offered from FeaturePreviewRegistry's constructor via rememberConsumer, which the docs check already resolves; the UI reads the catalog at its entry point and Continue's server send keeps ordinary access checks. Rest of the guide unchanged and still accurate.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The runtime-event-projection change only adds interruptedTurnBoundaryId metadata to the interrupted-turn banner row and exports the Continue prompt and key helpers; no tool-policy projection or delivery claim here is affected.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList gained an optional renderAfterMessage slot drawn after a default-rendered message; the UIBlockActionsContext, form re-entry and send path this document describes are unchanged.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"chat.css adds an interrupted-turn-continue row and a coarse-pointer 44px minimum for system-event actions and that row; ChatMessageList's new slot renders inside the existing message anchor. No placement, rail, sheet or gutter claim here changes.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The chat.css change keeps the 44px touch-target rule: system-event actions and the Continue row get min-height 44px under (max-width: 768px), (pointer: coarse); measured 44px at 390px wide on a live render. No other claim affected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"ConversationMessage metadata gains optional interruptedTurnBoundaryId on the restart banner row; restart-interruption semantics described here (declarations dropped, Sessions left idle) are unchanged.","inputs":["docs/guides/self-configuring-agent.md","packages/shared/src/conversation-message.ts"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDockBody adds the Continue action behind a Station-wide feature preview; no configuration key, file or environment variable is added or changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"No contracts package change: the boundary id is read from the existing SessionStateChangedEvent.interruptedTurnBoundary; ChatDockBody and its offline-settling test mock only add the feature-previews read. Claims unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"useChatInput.handleSend takes an optional clientTurnId and passes it to the existing sendMessage turnId argument; no SDK export or clientTurnId rule documented here changes (keys stay at most 200 code units; continue-interrupted:<boundary> is about 80).","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"handleSend's new optional clientTurnId does not touch skill-experience drafts or their foreground target; claims unchanged.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDockBody's Continue action is a preview-gated chat affordance; no concept (work/session, engine, continued-turn identity) described here changes.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"handleSend's optional clientTurnId and the chat.css 44px rule for system-event actions change no getting-started flow; ordinary sends still mint their own key.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

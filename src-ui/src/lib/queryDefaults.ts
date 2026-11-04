@@ -45,3 +45,20 @@ export function stationQueryDefaults(): NonNullable<DefaultOptions['queries']> {
     retry: stationDefaultQueryRetry,
   };
 }
+
+/**
+ * The mutation defaults for the same clients. `networkMode: 'always'`: a write
+ * made while the browser reports offline is attempted now and fails visibly,
+ * instead of pausing in memory and firing on the next `online` event, possibly
+ * minutes later. Station has no general offline write protocol: approvals are
+ * live decisions with expiring authority, and configuration writes carry no
+ * revision precondition (docs/design/offline-outbound-queue.md), so a silent
+ * late replay is wrong. Writes designed to wait say so themselves: chat turns
+ * go through the outbound queue, and account preferences pause with
+ * `networkMode: 'online'` and show that they are waiting.
+ */
+export function stationMutationDefaults(): NonNullable<
+  DefaultOptions['mutations']
+> {
+  return { networkMode: 'always' };
+}

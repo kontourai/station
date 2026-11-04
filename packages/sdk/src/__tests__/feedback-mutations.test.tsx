@@ -12,7 +12,10 @@ import {
 const { authenticatedFetch } = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
 }));
-vi.mock('../client/http', () => ({ authenticatedFetch }));
+vi.mock('../client/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../client/http')>()),
+  authenticatedFetch,
+}));
 
 const keys = [
   ['feedback', 'ratings'],

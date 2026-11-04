@@ -44,6 +44,8 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
+import { InboxDismissUndo } from './components/chat-dock/inbox-dismissals';
+import { ConversationWorkStateProvider } from './components/chat-dock/useConversationWorkState';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
@@ -85,7 +87,10 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
-import { stationQueryDefaults } from './lib/queryDefaults';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from './lib/queryDefaults';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -199,7 +204,10 @@ const bootstrapQueryClient = new QueryClient({
         console.error(`[query:${query.queryKey}]`, error);
     },
   }),
-  defaultOptions: { queries: stationQueryDefaults() },
+  defaultOptions: {
+    queries: stationQueryDefaults(),
+    mutations: stationMutationDefaults(),
+  },
 });
 
 // Debug: Track all hash changes globally with more detail
@@ -358,7 +366,11 @@ function renderApp(): void {
                                                             <ActivityReviewProvider>
                                                               <BrandingThemeBridge />
                                                               <WorkClaimsProvider>
-                                                                <App />
+                                                                <ConversationWorkStateProvider>
+                                                                  <InboxDismissUndo>
+                                                                    <App />
+                                                                  </InboxDismissUndo>
+                                                                </ConversationWorkStateProvider>
                                                               </WorkClaimsProvider>
                                                             </ActivityReviewProvider>
                                                           </PaneRelationsProvider>

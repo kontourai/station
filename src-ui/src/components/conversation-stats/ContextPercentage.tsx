@@ -1,19 +1,24 @@
 import { useEffect } from 'react';
+import type { ChatLiveUsage } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
+import { Button } from '../Button';
 import { getContextWindowColor } from './utils';
 import './ContextPercentage.css';
 
-interface ContextPercentageProps {
+/** What the context share of one conversation is derived from. */
+export interface ContextPercentageSource {
   agentSlug: string;
   conversationId: string;
   apiBase: string;
   messageCount?: number;
   /** A current provider observation can update the meter before refetch. */
-  liveUsage?: {
-    contextTokens?: number;
-    contextWindowTokens?: number;
-  };
+  liveUsage?: Pick<ChatLiveUsage, 'contextTokens' | 'contextWindowTokens'>;
+}
+
+interface ContextPercentageProps extends ContextPercentageSource {
   onClick?: () => void;
+  /** Server-owned policy/result, supplied by the existing stats/composer owner. */
+  compaction?: { threshold: number; state: string };
 }
 
 function contextPercentage(
@@ -34,13 +39,37 @@ function contextPercentage(
 }
 
 /**
- * The composer's context meter: a short track and the rounded share of the
- * context window used. It sits in the composer's meta row beside the model it
- * measures; the exact figure is the tooltip, the breakdown is the stats panel
- * it opens.
- *
- * The track has its own width. It used to be `flex: 1` inside a shrink-to-fit
- * button, so it resolved to 0px and the meter read "Context:  (4.0%)".
+ * The share of the context window a conversation uses, or `null` while it is
+ * unknown: a current provider observation first, then the stats read (which
+ * refetches as messages arrive). One derivation for the composer's meter and
+ * the phone's Actions sheet, so the two can never disagree.
+ */
+export function useContextPercentage({
+  agentSlug,
+  conversationId,
+  apiBase,
+  messageCount,
+  liveUsage,
+}: ContextPercentageSource): number | null {
+  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
+  useEffect(() => {
+    if (messageCount !== undefined && messageCount > 0) {
+      refetch();
+    }
+  }, [messageCount, refetch]);
+  return (
+    contextPercentage(
+      liveUsage?.contextTokens,
+      liveUsage?.contextWindowTokens,
+    ) ??
+    contextPercentage(stats?.contextWindowPercentage, 100) ??
+    null
+  );
+}
+
+/**
+ * Context usage beside Send. The ring contains the rounded percentage;
+ * its tooltip names the exact share and activation opens conversation stats.
  */
 export function ContextPercentage({
   agentSlug,
@@ -49,46 +78,47 @@ export function ContextPercentage({
   messageCount,
   liveUsage,
   onClick,
+  compaction,
 }: ContextPercentageProps) {
-  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
-  const percentage =
-    contextPercentage(
-      liveUsage?.contextTokens,
-      liveUsage?.contextWindowTokens,
-    ) ??
-    contextPercentage(stats?.contextWindowPercentage, 100) ??
-    null;
-
-  useEffect(() => {
-    if (messageCount !== undefined && messageCount > 0) {
-      refetch();
-    }
-  }, [messageCount, refetch]);
+  const percentage = useContextPercentage({
+    agentSlug,
+    conversationId,
+    apiBase,
+    messageCount,
+    liveUsage,
+  });
 
   if (percentage === null) return null;
 
-  const label = `Context ${percentage.toFixed(1)}% used`;
+  const label = `Context ${percentage.toFixed(1)}% used${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       disabled={!onClick}
       className="context-meter"
       aria-label={label}
       title={label}
     >
-      <span className="context-meter__track" aria-hidden="true">
-        <span
+      <svg
+        className="context-meter__ring"
+        viewBox="0 0 40 40"
+        aria-hidden="true"
+      >
+        <circle className="context-meter__track" cx="20" cy="20" r="17" />
+        <circle
           className="context-meter__fill"
-          style={{
-            transform: `scaleX(${Math.min(percentage, 100) / 100})`,
-            background: getContextWindowColor(percentage),
-          }}
+          cx="20"
+          cy="20"
+          r="17"
+          pathLength="100"
+          strokeDasharray={`${Math.min(percentage, 100)} 100`}
+          style={{ stroke: getContextWindowColor(percentage) }}
         />
-      </span>
+      </svg>
       <span className="context-meter__value" aria-hidden="true">
         {Math.round(percentage)}%
       </span>
-    </button>
+    </Button>
   );
 }

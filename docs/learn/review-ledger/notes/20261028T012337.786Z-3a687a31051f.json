@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"ConnectStationDialog copy-only delta (no access request sent on identification failure; device can't approve itself while pending). Relationship and grant semantics unchanged; prose accurate.","inputs":["docs/guides/machine-relationships.md","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

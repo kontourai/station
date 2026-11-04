@@ -11,17 +11,21 @@ import {
 import { lowSortingIntentId } from './shared-working-state-editing.js';
 
 /**
- * Snapshot headroom a write that inserts text must leave, so a person can
- * still delete from a Task document that inserts have filled (#4007). A
- * deletion adds no atoms; it costs one known-operation entry, about 120 bytes.
+ * Snapshot and evidence-record headroom an insertion must leave, so a person
+ * can still delete from an insert-full Task document (#4007). A
+ * deletion adds one operation digest and may split live runs, while contiguous
+ * deleted positions collapse to a range without their former text. Deletes
+ * consume this finite reserve; it does not promise unlimited deletion saves
+ * or bypass the Station-wide evidence ledger (#4055).
  */
 export const TASK_ROOM_INSERT_RESERVE_BYTES = 16 * 1024;
 
 /**
- * A conservative round figure for messages: plain ASCII text of this length
- * always fits (the exact bound is pinned by its test; #4007 measured 5,472).
+ * A conservative seed guarantee for messages: every proposal brief of this
+ * length fits in an empty document. Remaining lifetime capacity also depends
+ * on retained operation identities and tombstone ranges.
  */
-export const TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY = 5_400;
+export const TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY = 12_000;
 
 const PLACEHOLDER = 'x'.repeat(MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES);
 
@@ -30,8 +34,7 @@ const PLACEHOLDER = 'x'.repeat(MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES);
  * the room's working state applies before it commits (#4007). Scope and actor
  * identities are not known before the Task exists, so they are taken at
  * their maximum length: this can refuse a few characters early, never late.
- * The Station-wide evidence ledger is not consulted; a full ledger is still
- * refused explicitly when the seed is written.
+ * Coalesced room seeding does not reserve immutable ledger capacity.
  */
 export function taskRoomDocumentSeedFits(text: string): boolean {
   return taskRoomDocumentSeedRefusal(text) === null;

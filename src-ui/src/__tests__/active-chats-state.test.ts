@@ -162,6 +162,41 @@ describe('active chat state helpers', () => {
     });
   });
 
+  test('a peer chat retains its receiver binding and uncertain message without becoming a local conversation', () => {
+    const peerChat = {
+      environmentId: 'desktop-win',
+      stationName: 'desktop-win',
+      conversationId: 'receiver-conversation',
+      agentId: 'codex',
+      projectSlug: 'windows-checkout',
+      pending: { id: 'one-message', text: 'Inspect this', dispatched: true },
+    };
+    const saved = serializeActiveChats({
+      remote: {
+        ...createDefaultChatState(),
+        agentSlug: 'codex',
+        projectSlug: 'source-project',
+        peerChat,
+      },
+    });
+    const restored = hydrateActiveChats(saved).remote!;
+    expect(restored.peerChat).toEqual(peerChat);
+    expect(restored.conversationId).toBeUndefined();
+    expect(restored.projectSlug).toBe('source-project');
+    expect(restored.conversationOpenPending).toBe(false);
+    for (const malformed of [{}, null, { environmentId: 'desktop-win' }]) {
+      const invalid = hydrateActiveChats([
+        { ...saved[0], peerChat: malformed },
+      ]);
+      expect(invalid.remote?.peerChat).toBeUndefined();
+      expect(invalid.remote?.peerChatInvalid).toBe(true);
+      expect(
+        hydrateActiveChats(serializeActiveChats(invalid)).remote
+          ?.peerChatInvalid,
+      ).toBe(true);
+    }
+  });
+
   test('#749 reload persists only the last child identity and fails closed pending a fresh open resolution', () => {
     const [persisted] = serializeActiveChats({
       'chat:749': {
@@ -491,6 +526,57 @@ describe('active chat state helpers', () => {
     expect(chat).toEqual(before);
   });
 
+  describe('assignConversationIdState title (#4266)', () => {
+    const fresh = (overrides: Partial<ChatUIState>): ChatUIState => ({
+      ...createDefaultChatState(),
+      title: 'New chat',
+      ...overrides,
+    });
+
+    test('names a chat from its first meaningful message when its first send is confirmed', () => {
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: 'Continue' },
+              { role: 'user', content: 'Fix the dock header' },
+            ] as ChatUIState['messages'],
+          }),
+          'conv-1',
+        ),
+      ).toMatchObject({
+        conversationId: 'conv-1',
+        title: 'Fix the dock header',
+      });
+    });
+
+    test('keeps an existing title, an already-assigned conversation, and a low-content-only chat untitled', () => {
+      const messages = [
+        { role: 'user', content: 'Fix the dock header' },
+      ] as ChatUIState['messages'];
+      expect(
+        assignConversationIdState(fresh({ title: 'Renamed', messages }), 'c')
+          .title,
+      ).toBe('Renamed');
+      expect(
+        assignConversationIdState(
+          fresh({ conversationId: 'c-old', messages }),
+          'c-new',
+        ).title,
+      ).toBe('New chat');
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: 'ok' },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('New chat');
+    });
+  });
+
   describe('reorderQueuedMessageState (#613)', () => {
     const chatWithQueue = (queuedMessages: string[]): ChatUIState => ({
       ...createDefaultChatState(),
@@ -660,6 +746,34 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     expect(rehydrated.s1?.queuedMessageFailure).toEqual(
       chats.s1.queuedMessageFailure,
     );
+    expect(
+      rehydrated.s1?.queuedMessageMetadata?.map(
+        (item) => item.originUnverified,
+      ),
+    ).toEqual([true, true]);
+  });
+
+  test('an uncertain inbox steer keeps its reconciliation identity across reload', () => {
+    const state = {
+      ...chats.s1,
+      queuedMessages: ['steer'],
+      queuedMessageMetadata: [
+        {
+          id: 'steer-key',
+          mode: 'steer' as const,
+          delivery: 'indeterminate' as const,
+          inboxSteerConversationId: 'conversation-a',
+        },
+      ],
+    };
+    const restored = hydrateActiveChats(serializeActiveChats({ s1: state }));
+    expect(restored.s1?.queuedMessageMetadata).toMatchObject([
+      {
+        id: 'steer-key',
+        delivery: 'indeterminate',
+        inboxSteerConversationId: 'conversation-a',
+      },
+    ]);
   });
 
   test('a chat with no queue rehydrates with an empty one and no stale reason', () => {

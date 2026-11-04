@@ -75,19 +75,21 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
 
   override async startSession(input: ProviderSessionStartInput) {
     const now = new Date().toISOString();
-    this.events.push({
-      eventId: `${input.threadId}:configured`,
-      method: 'session.configured',
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      createdAt: now,
-      metadata: input.metadata,
-    } as CanonicalRuntimeEvent);
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}`,
+        method,
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        createdAt: now,
+        metadata: input.metadata,
+      } as CanonicalRuntimeEvent);
     return {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready' as const,
+      metadata: input.metadata,
       createdAt: now,
       updatedAt: now,
     };
@@ -97,6 +99,7 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
     this.turns += 1;
     const turnId = `turn-${this.turns}`;
     const base = {
+      invocationId: input.invocationId,
       provider: this.provider,
       threadId: input.threadId,
       turnId,
@@ -170,6 +173,7 @@ function fixture() {
     }),
     getProject: async () => undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => {
       const detail = await service.readSession(id, INTERNAL_SESSION_READ_SCOPE);
       if (!detail) return null;
@@ -371,7 +375,12 @@ test('another user still cannot open the reserved-tail conversation', async () =
   expect(store.conversationSessions('conv-private')).toHaveLength(2);
   await expect(
     service.resolveConversationOpen('conv-private', OWNER_AUTHORITY),
-  ).resolves.toMatchObject({ status: 'resolved' });
+  ).resolves.toMatchObject({
+    status: 'resolved',
+    // #4179: described by its predecessor, but the next send starts the
+    // reserved tail.
+    nextTurnStartsSession: true,
+  });
 
   await expect(
     service.resolveConversationOpen(

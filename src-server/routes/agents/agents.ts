@@ -521,6 +521,29 @@ export function createAgentRoutes(
         );
         if (fullAccessRefused) return fullAccessRefused;
       }
+      // Tool grants on plugin-owned Agents are operator authority, kept outside
+      // the package. Gate any submitted change, including removal.
+      if (
+        updates.tools &&
+        typeof updates.tools === 'object' &&
+        (Object.hasOwn(updates.tools, 'autoApprove') ||
+          Object.hasOwn(updates.tools, 'unattendedAutoApprove')) &&
+        agentService.isPluginOwnedAgent(slug)
+      ) {
+        const previous = await agentService.getAgent(slug);
+        const changed = (
+          ['autoApprove', 'unattendedAutoApprove'] as const
+        ).some(
+          (field) =>
+            Object.hasOwn(updates.tools!, field) &&
+            JSON.stringify(updates.tools![field]) !==
+              JSON.stringify(previous.tools?.[field]),
+        );
+        if (changed) {
+          const refused = refuseUngrantedFullAccess(c, ['never']);
+          if (refused) return refused;
+        }
+      }
       const skillError = validateSkills(updates.skills, skillService);
       if (skillError) {
         return c.json({ success: false, error: skillError }, 400);

@@ -1,0 +1,7 @@
+{
+  "revision": "4cfcb0fc875e3703dddab9344e8c6f5a1bc95b5e",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed plugin-owned Agent attended and unattended tool grants against agent-approval-overrides.ts, AgentService.updateAgent and the Agent route full-access check; added the plugin ownership, filtering and persistence boundary. Source inspection only; no provider journey exercised.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

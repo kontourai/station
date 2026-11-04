@@ -4,8 +4,12 @@ import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
+import {
+  __resetReasoningDisclosureIntents,
+  ReasoningSection,
+} from '../components/chat/ReasoningSection';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { ToolCallBatch } from '../components/chat/ToolCallBatch';
 import { classifyToolCallRun } from '../components/chat/tool-call-groups';
@@ -14,6 +18,7 @@ import {
   type ToolCallLike,
   type ToolCallRun,
 } from '../components/chat/tool-call-runs';
+import type { ChatContentPart } from '../contexts/active-chats-state';
 
 function renderCall(part: ToolCallLike, index: number) {
   return (
@@ -31,6 +36,103 @@ function runFor(parts: ToolCallLike[]): ToolCallRun {
   return block;
 }
 
+describe.each(['streaming', 'settled', 'folded'] as const)(
+  'reasoning in %s activity',
+  (phase) => {
+    afterEach(__resetReasoningDisclosureIntents);
+    const contentParts: ChatContentPart[] = [
+      { type: 'reasoning', content: 'Compare the available sources' },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'source',
+        toolName: 'Read',
+        args: { file_path: 'source.ts' },
+        state: 'completed',
+        result: 'source contents',
+      },
+    ];
+
+    function message(showReasoning: boolean) {
+      if (phase === 'streaming')
+        return (
+          <StreamingMessageView
+            sessionId="reasoning-activity"
+            agentIcon={null}
+            agentIconStyle={{}}
+            fontSize={14}
+            streamingText="The answer"
+            hasContent
+            contentParts={contentParts}
+            contentRevision={1}
+            showReasoning={showReasoning}
+            renderToolCall={(part, index) => (
+              <ToolCallDisplay key={index} toolCall={part} />
+            )}
+            renderReasoning={(content, index, hasAnswerText) => (
+              <ReasoningSection
+                key={index}
+                content={content}
+                fontSize={14}
+                show
+                hasAnswerText={hasAnswerText}
+              />
+            )}
+          />
+        );
+      return (
+        <MessageContent
+          contentParts={[
+            ...contentParts,
+            { type: 'text', content: 'The answer' },
+          ]}
+          textContent=""
+          chatFontSize={14}
+          showReasoning={showReasoning}
+          showToolDetails={false}
+          isStreamingMessage={false}
+          foldWork={phase === 'folded'}
+        />
+      );
+    }
+
+    test('one call and reasoning share a disclosure that keeps both records reachable', async () => {
+      render(message(true));
+      const summary = await screen.findByRole('button', {
+        name: /Read source.ts · 1 reasoning step/,
+      });
+      expect(screen.getByText('The answer')).toBeTruthy();
+      expect(screen.queryByText('Compare the available sources')).toBeNull();
+      fireEvent.click(summary);
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Read source.ts · 1 reasoning step',
+        }),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: /Reasoning · 4 words/ }),
+      );
+      expect(screen.getByText('Compare the available sources')).toBeTruthy();
+      expect(screen.getByText('Read source.ts')).toBeTruthy();
+      const rows = screen.getByRole('dialog').textContent ?? '';
+      expect(rows.indexOf('Compare the available sources')).toBeLessThan(
+        rows.lastIndexOf('Read source.ts'),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Close tool call details' }),
+      );
+    });
+
+    test('hidden reasoning leaves a solo tool inline without exposing a step count', async () => {
+      render(message(false));
+      expect(await screen.findByText('Read source.ts')).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /reasoning|Reasoning/ }),
+      ).toBeNull();
+      expect(screen.queryByText('Compare the available sources')).toBeNull();
+    });
+  },
+);
+
 describe('ToolCallBatch', () => {
   test('a multi-call run renders as a button with an accessible name from the summary', () => {
     const run = runFor([
@@ -39,12 +141,14 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -63,18 +167,21 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'c',
         toolName: 'Bash',
         args: { command: 'npm build' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -97,12 +204,14 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -568,7 +677,7 @@ test('a live batch button keeps the inventory and progress count; the sheet titl
   expect(
     screen.getByRole('heading', { name: group.aggregateSummary }),
   ).toBeTruthy();
-  expect(group.summary).toBe('1 file read, 1 command · 1 done');
+  expect(group.summary).toBe('1 file read, 1 command · 1 done · 1 running');
   expect(group.aggregateSummary).toBe('1 file read, 1 command');
 });
 

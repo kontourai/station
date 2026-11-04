@@ -1,0 +1,7 @@
+{
+  "revision": "f98d3d8036428bf25e2225f02639b7134db2b628",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Source-impact review: plugin-install-transaction.ts only strips secret-binding references (withoutBindingReferences) from a required integration's registry definition before its first save; install order, admission and outcomes are unchanged. Searched this document for MCP tool-server OAuth client, issuer, secret-binding reference, registry-install and required-integration claims; none describes the changed behavior beyond links that still resolve, so its claims stay accurate.","inputs":["examples/builder-delivery-viewer/README.md","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

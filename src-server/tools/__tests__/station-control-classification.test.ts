@@ -79,23 +79,36 @@ describe('station-control tool classification', () => {
     // labelled a reader; it is auto-approved as a bounded write.
     // #4003: task_summary_update and task_record write one bounded revision
     // or record version of the caller's own Task's memory.
+    // #4138: task_thread_reply and task_thread_resolve append one review event
+    // to a thread on the caller's own Task; they never delete or reopen.
+    // #3994: terminal_run only records a request; a person approves each run.
     expect(boundedWrite).toEqual([
+      'terminal_run',
       'notify_user',
       'html_render',
       'html_preview',
       'task_summary_update',
       'task_record',
+      'task_thread_reply',
+      'task_thread_resolve',
     ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_terminal_run',
       'station-control_task_summary_update',
       'station-control_task_record',
+      'station-control_task_thread_reply',
+      'station-control_task_thread_resolve',
       'station-control_html_render',
       'station-control_html_preview',
       'station-control_notify_user',
     ]);
     // Skill listing is a read, so it stays on the auto-approved list.
     expect(SC_AUTO_APPROVED_TOOLS).toContain('station-control_list_skills');
+    expect(classifyControlTool('device_capture_to_task')).toBe('mutating');
+    expect(SC_AUTO_APPROVED_TOOLS).not.toContain(
+      'station-control_device_capture_to_task',
+    );
     // Spot-check the contract: CRUD/install/dispatch are mutating. Most
     // list/get/navigate/status tools are read-only; delegation discovery is
     // gated because selecting an SSH environment may reconnect it.

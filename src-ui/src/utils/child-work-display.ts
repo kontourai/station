@@ -1,6 +1,6 @@
 import type {
+  ChildWorkDisplayStatus,
   ChildWorkModel,
-  ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
@@ -12,17 +12,20 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * outcome is called.
  *
  * A terminal reads as what was OBSERVED: "No result" and "Stop requested —
- * not confirmed" are not "Completed" and not "Stopped".
+ * not confirmed" are not "Run finished" and not "Stopped".
  */
-export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
+export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkDisplayStatus, string> = {
   running: 'Running',
-  completed: 'Completed',
+  completed: 'Run finished',
   failed: 'Failed',
   cancelled: 'Stopped',
   // Decision F: a stop nobody confirmed is not a stop that happened.
   'stopped-unconfirmed': 'Stop requested — not confirmed',
   // The reporter stopped listing it without an outcome.
   unresolved: 'No result',
+  // `unresolved` with `endedBy: 'engine-exit'` (`childWorkDisplayStatus`):
+  // its engine process ended while it ran, an observed end, not a gap.
+  interrupted: 'Interrupted',
 };
 
 /** `m:ss`, or `h:mm:ss` past an hour. */

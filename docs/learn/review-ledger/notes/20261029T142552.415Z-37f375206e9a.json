@@ -1,0 +1,7 @@
+{
+  "revision": "d00b8f40f6948501b190b7c074a1d09de87deeef",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Comment-only change in chat.css and ChatInputArea; the model-picker sentence (shown but unavailable while a reply runs; hidden when Station reports it can't change) still holds.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

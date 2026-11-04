@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"SessionModelPicker gained an optional resetDisabledReason that disables the reset with a stated reason; this guide makes no claim about the reset button or engine-switch gating. Unaffected.","inputs":["docs/guides/agents.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

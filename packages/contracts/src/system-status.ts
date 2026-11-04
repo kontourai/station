@@ -325,3 +325,66 @@ export type HomeRecoveryDisclosure =
       snapshotCreatedAt: string;
       authorityTransferred: false;
     };
+
+/** Where an effective workload memory budget came from. */
+export type WorkloadBudgetSource = 'environment' | 'settings' | 'default';
+
+/**
+ * `GET /api/system/workload`: this Station's engine workload memory budgets.
+ * `enforcement.state` is `ready` only while a Linux systemd user service
+ * enforces them; `unmanaged` means this host does not enforce budgets at all
+ * (macOS, Windows, Linux outside a Station service) and `unavailable` that
+ * enforcement failed to start (`reason`). `applies` says whether a saved
+ * change reaches new scopes now or only after Station restarts.
+ */
+export interface WorkloadBudgetStatus {
+  enforcement: {
+    state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping';
+    reason?: string;
+    platform: string;
+  };
+  hostMemoryBytes: number;
+  limits?: {
+    memoryMaxBytes: number;
+    totalMemoryMaxBytes: number;
+    swapMaxBytes: number;
+    tasksMax: number;
+  };
+  sources?: { memory: WorkloadBudgetSource; totalMemory: WorkloadBudgetSource };
+  settings: { memoryMiB?: number; totalMemoryMiB?: number };
+  settingsError?: string;
+  settingsWritable: boolean;
+  applies: 'new-scopes' | 'restart';
+  activeScopes: number;
+  /**
+   * Running scopes, each with the per-engine limit it was launched with
+   * (a saved change reaches only scopes launched after it) and the OOM kills
+   * Station has observed inside it. Absent from older hosts.
+   */
+  scopes?: Array<{
+    unit: string;
+    sessionId?: string;
+    memoryMaxBytes?: number;
+    oomKills: number;
+    /** When Station first saw the latest kill (to its 1 s poll interval). */
+    lastOomKillAt?: string;
+    /**
+     * An engine scope's holder: `placed` keeps the scope's own OOM count
+     * readable after the engine dies; `unplaced` means that count will be
+     * unknown. Absent for command scopes.
+     */
+    holder?: 'placed' | 'unplaced';
+    /** Why an engine scope's holder is unplaced. */
+    holderReason?: WorkloadHolderUnplacedReason;
+  }>;
+}
+
+/**
+ * Why an engine scope has no holder in it: the host has no setsid(1) or
+ * sleep(1) to start one, the scope's processes do not include it, or the
+ * holder that was found has since gone.
+ */
+export type WorkloadHolderUnplacedReason =
+  | 'holder-unavailable'
+  | 'not-in-scope'
+  | 'holder-gone';

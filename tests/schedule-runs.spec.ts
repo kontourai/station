@@ -131,9 +131,11 @@ test.describe('Schedule run history', () => {
     page,
   }) => {
     await mockScheduleRunsApi(page);
-    await page.goto('/schedule');
+    await page.goto('/automations');
 
-    await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible({
+    await expect(
+      page.getByRole('heading', { name: 'Automations' }),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByText('daily-report')).toBeVisible();
@@ -183,7 +185,7 @@ test.describe('Schedule run history', () => {
       outputRef: undefined,
       failureMessage: 'Agent connection was refused',
     });
-    await page.goto('/schedule');
+    await page.goto('/automations');
 
     await page.getByTestId('job-row-daily-report').click();
     // The cell is named by its own contents: an aria-label of just "Failed"

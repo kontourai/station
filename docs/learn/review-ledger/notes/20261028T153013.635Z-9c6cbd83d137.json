@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Added STATION_MCP_CURATED_REGISTRY and STATION_MCP_SUBREGISTRY_URL, checked against mcpSubregistryIntegrationProviders/configuredMcpSubregistryUrl (off/0/false/no; https only, refused value shown as source error).","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

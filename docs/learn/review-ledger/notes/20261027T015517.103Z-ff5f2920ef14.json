@@ -1,0 +1,13 @@
+{
+  "revision": "8563f68ddea187318e3ba36656e78f2081e39ee3",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"AuthorityQueryContext.tsx delta: the failed-observation persistence context is built by a named helper with the same values (a refused credential reports 'unavailable' and offers no reobserve; any other failure reports 'unverified' with reobserve); no behavior changed, so this document's authority and reconnect claims remain accurate.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"AuthorityQueryContext.tsx delta: the failed-observation persistence context is built by a named helper with the same values (a refused credential reports 'unavailable' and offers no reobserve; any other failure reports 'unverified' with reobserve); no behavior changed, so this document's authority and reconnect claims remain accurate.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"FilePartPreview.tsx delta: the chip's thumbnail key, preview gallery and picture moved into named helpers with the same behavior (thumbnail for large still images, icon while one is made, full bytes in the previewer); the GET /api/attachments/:ref fetch, 404 chip and retry are unchanged, so this document's claims remain accurate.","inputs":["docs/reference/api.md","src-ui/src/components/chat/FilePartPreview.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"FilePartPreview.tsx delta: the chip's thumbnail key, preview gallery and picture moved into named helpers with the same behavior (thumbnail for large still images, icon while one is made, full bytes in the previewer); the GET /api/attachments/:ref fetch, 404 chip and retry are unchanged, so this document's claims remain accurate.","inputs":["docs/reference/config.md","src-ui/src/components/chat/FilePartPreview.tsx"]}
+  ]
+}

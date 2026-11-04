@@ -1,0 +1,7 @@
+{
+  "revision": "094e10a06e10d88e36bc24c66e986f7942b2b85a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delegated task results paragraph: added the interrupted row. Checked against delegation-result-delivery.ts recordInterrupted (keyed by settlementKey kind 'interrupted' over the recovery abort's eventId, outcome 'interrupted', no output quoted), canDeliverRow (interrupted identity needs no invocation or inputless proof), and session-turn-wait.ts evaluateSessionWait (interrupted only for a recovery abort that closed the open turn and is not provider-triggered). Executed delegation-result-delivery.integration.test.ts including the engine-opened negative case.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/delegation-result-delivery.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/session-turn-wait.ts"]}
+  ]
+}

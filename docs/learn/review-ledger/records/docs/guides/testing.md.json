@@ -240,7 +240,25 @@
 
     "scripts/__tests__/server-scenario.test.ts",
 
-    ".github/workflows/server-scenario.yml"
+    ".github/workflows/server-scenario.yml",
+
+    "scripts/lib/heavy-check-slots.mjs",
+
+    "scripts/heavy-check-slot.mjs",
+
+    "scripts/lib/slot-holder-exec.mjs",
+
+    "scripts/lib/verification-coordinator.mjs",
+
+    "scripts/lib/verification-completion-phases.mjs",
+
+    "patches/vitest-runner-4.1.12.patch",
+
+    "scripts/__tests__/vitest-resource-manifest.test.ts",
+
+    "scripts/install-playwright-browsers.mjs",
+
+    "scripts/__tests__/install-playwright-browsers.test.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "1389a2d72d36b16dbd1ad6ae74299fc6521b2338",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rechecked against the cleanup commit: the threat model changes \"can no longer hold pending slots\" to \"cannot hold a pending slot\" and drops \"again\"; claims unchanged; pairing-route-scopes.ts only merges two stacked JSDoc blocks on refusedOnWebSocket; no route rule, scope or refusal logic changed. Reread the edited lines in context against their sources; no claim changed.","inputs":["docs/security/remote-access-threat-model.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

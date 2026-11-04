@@ -28,6 +28,89 @@ Distribution owners can control whether a plugin layout is shown, enabled, or
 available for project use without changing the plugin itself; see
 [Distribution Profiles](./distribution-profiles.md).
 
+## Bundle origins and CSP
+
+Installed in-process browser plugins and draft previews load JavaScript by
+same-origin URL, without a shell CSP nonce. Desktop installed plugins use the
+host-authenticated `station-plugin:` protocol (the exact
+`http://station-plugin.localhost` alias only in the Windows configuration). The Rust handler serves
+only `/api/plugins/<name>/bundle.js` and `bundle.css` from this desktop's
+supervised local Station. It attaches the host-held credential, refuses
+redirects and responses over 16 MiB, and revalidates local ownership and active
+authorization before delivering bytes. The server's installed-artifact reader
+checks the recorded content digest when present and rechecks it after reading.
+The credential never crosses into the WebView. Before scheduling work or
+accessing credentials, the registration closure requires an allowed webview
+label (`main` or `workspace-pane-pop-out-<canonical-v4-UUID>`) and a per-launch
+capability. Labels identify webviews, **not frames**: child frames share their
+parent's label. The host installs the capability only in the shell's top realm
+at the exact packaged origin (or configured development origin in debug).
+Origin checks use plain string comparisons; the canonical webview label check
+uses a regular expression.
+An explicit `window === window.top` check matters on Windows, where WebView2
+injects initialization scripts into subframes too. Browser Preview and unknown
+labels, and requests with missing or wrong capabilities, receive an empty 403
+before slot reservation or credentials. A four-request limit **per label**
+includes queued blocking work; excess requests for that label receive 429.
+Other windows retain their own capacity. The UI loads each window's plugins
+sequentially. Outside desktop delivery, the UI starts every installed
+bundle's download together, a stylesheet fetch and a same-origin script
+`preload` for each, then still applies and executes them one at a time in
+registry order, so each registration is read at its own script's load event.
+Each stylesheet's deadline starts at its plugin's turn, not at its download.
+See the [registry](../../src-ui/src/core/PluginRegistry.ts).
+
+The capability is a per-launch 256-bit secret checked in constant time. It
+is derived using HMAC over a fixed message, not bound to label, path or port;
+those admission checks are separate. It authorizes installed assets only and
+is not the native bearer. Script/stylesheet URL queries carry it because these
+elements cannot supply custom request headers. Subresource loads do not update
+navigation history. The handler sends `Cache-Control: no-store` and
+`Referrer-Policy: no-referrer` (including stylesheet subresources), and the UI
+sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
+asset path to the server, never the query.
+
+Host load failures omit asset URLs. Pane technical details, Home-role recovery
+and reportable console capture use shared redaction to keep native plugin paths
+(`/api/plugins/<name>/<asset>`) and source coordinates, removing queries and
+fragments. Settings and routes do not store the capability. The complete URL
+can remain in `script.src`, `link.href`, `data-station-plugin` markers and page resource timing entries;
+trusted shell code and developer tools can inspect it for the page's lifetime.
+The original developer console is unchanged. This is not isolation from
+in-process plugins or same-origin shell scripts. Cross-origin and opaque
+sandboxed frames cannot read the top realm's property or DOM. No IPC command
+returns the capability.
+
+The frame boundary relies on the inspected Tauri 2.12.1
+[initialization-script contract](https://docs.rs/tauri/2.12.1/tauri/webview/struct.WebviewBuilder.html#method.initialization_script)
+and its Windows exception. Tauri's
+[IPC handler](https://docs.rs/crate/tauri/2.12.1/source/src/ipc/protocol.rs)
+routes by webview label and validates an invoke key; a label-scoped command is
+not an independent main-frame attestation. The initialization code is in
+[`pluginBundleCapability.js`](../../src-ui/src/platform/native/pluginBundleCapability.js).
+Its realm guards are executed in TS tests; installed platform behavior still
+requires real-shell qualification. Credential-store prompts have no timeout;
+the permit deliberately covers them to keep queued credential work bounded.
+
+Other cross-origin script URLs are refused, including when remote-bundle
+consent is enabled (#3001). There is no fetch-and-inline fallback. The same
+refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a browser at
+another loopback origin; use the normal same-origin proxy setup.
+Desktop draft execution remains unavailable: draft revisions use a separate
+Project authorization contract and are not exposed through this installed-only
+protocol. A safe Desktop extension needs a separate Project/revision-bound
+path authorized by the draft contract, with a server-side digest check and the
+same webview gate; an isolated frame is preferred. This remains follow-up work.
+Use Station's same-origin browser UI for draft previews.
+Installed bundle failures leave the shell usable and report Extensions
+unavailable. Remote declarations that already use isolated frames keep that
+path; server-side contributions do not use this script loader.
+No stored plugin, grant, or layout record changes in this slice.
+
+Plugins are not handed the shell nonce. In-process code can still read `.nonce`
+from the DOM and reach Tauri internals: that is the existing in-process
+authority model. Same-origin plugin code shares that realm and its session.
+
 ## Use the Project repository
 
 A plugin layout can declare `workspaceBinding: 'repository'` at the top level
@@ -84,6 +167,73 @@ Project's catalog does not issue is simply not on the rail. Station states
 the declaration on every layout read; it is not stored in the Project's
 layout record and a request body cannot set it. See
 [layout management](../reference/api.md#layout-management).
+
+## Required Home and Inbox/Chat slots
+
+Home and Inbox/Chat have defaults that cannot be disabled or uninstalled:
+`builtin:workspace-home` and `builtin:workspace-chat`. They are built-in
+surfaces today. The [required-slot contract](../../packages/contracts/src/required-slots.ts)
+models them as defaults so the Home and Chat extraction slices can replace
+their implementation with bundled plugins later. OPEN-1's separate approval
+slot remains undecided; this change does not create one.
+
+The [installation adapter](../../src-server/services/plugins/required-slot-service.ts)
+reads the current Home grant, installation, lifecycle state and installed
+bytes on each request. The existing `workspace-home-role.json` envelope is
+read directly, without rewriting consent or creating another selection store.
+An approved, unchanged Home still holds Home. A missing, disabled, changed or
+broken override falls back to the default, including when the descriptor offers
+an inert standard-data degradation rung. Removing the Home grant removes
+only the override. Inbox and conversations retain their shared built-in Chat
+pane and their existing state.
+
+`requiredSlots` declarations are parsed as an object with optional `home`
+and `chat` filler identifiers. Omission means use the default; explicit
+`null`, empty strings, whitespace and `none` are refused by the manifest
+reader and installer. These declarations are inert preferences, not authority
+or an activation path. Distribution selection remains slice g; Home assignment
+still requires the existing Home-role consent channel, and Chat replacement
+remains slice l. The provider-overrides API refuses slot assignments rather
+than silently accepting an unauthorized configuration change.
+
+Both actual [Home](../../src-ui/src/views/HomeView.tsx) and
+[Inbox/Chat](../../src-ui/src/components/chat-dock/ChatDock.tsx) callers use
+[RequiredSlotHost](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx).
+A failing override renders the default without a recovery signal. The pure
+resolver returns `safeMode: true` when the default is unavailable. Home’s
+production caller reports selection refusal with an explanation and Close Home,
+using the same continuation-or-Settings target as pane recovery. Chat mounts its
+built-in directly; neither caller currently computes a module-load failure.
+Default render errors instead reach
+[WorkspacePaneFrame](../../src-ui/src/workspace-panes/WorkspacePaneFrame.tsx),
+which retains Retry, failure details and the pane's Close/Minimize actions.
+Home's Close returns to its continuation, or Settings when none is available.
+The [renderer diagnostic channel](../../src-ui/src/workspace-panes/requiredSlotRecovery.tsx)
+reports `{ slot, defaultFiller, reason }` for selection refusal and after
+three default boundary catches in the same pane occurrence, including render,
+layout-effect, passive-effect and update failures. Chat’s Close clears the
+conversation and remounts empty Chat; if that remount crashes it counts too.
+Home’s Close navigates away. The third catch emits once per slot and occurrence.
+Healthy renders, elapsed time, and conversation changes do not reset the count.
+Removing an occurrence from the host document, or switching the host to another
+document, prunes its history. A standalone frame retains history until that
+frame unmounts. Chat placements without a pane frame report no repeated-render
+diagnostic.
+Even after that diagnostic, the frame keeps its recovery actions.
+
+There is no `station:required-slot-safe-mode` window event. Module-local
+subscribers reduce accidental forgery/suppression through DOM events, but
+in-page plugins share the renderer realm: **these diagnostics are not recovery
+authority**. Slice f must obtain its signal through a kernel-owned channel,
+never this callback or a window event. Kernel recovery UI, explicit safe-mode
+entry and authoritative retry accounting remain slice f work. The server's
+installation response cannot attest browser load/render health.
+
+Boundary and read-through migration proof lives in
+[`required-slots.test.ts`](../../src-server/routes/plugins/__tests__/required-slots.test.ts).
+Component tests cover fallback, recovery signaling and the actual Home and
+Chat caller wiring. These tests do not qualify bundled-plugin extraction,
+independent security review or hosted release behavior.
 
 ## Directory Structure
 
@@ -204,6 +354,7 @@ Common fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `requiredSlots` | object | no | Legacy inert preferences for `home` and `chat`; identifiers must be non-empty and cannot be `none`. Does not assign or grant a role. See [required slots](#required-home-and-inboxchat-slots). |
 | `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
 | `telemetry` | PublisherTelemetryDeclaration | no | Bounded publisher analytics declaration. Agent Plugins puts it in the Station extension; install requires a signed, verified public registry identity. See [Publisher analytics](#publisher-analytics). |
@@ -391,6 +542,17 @@ and need registry access; a local catalog does not promise a network-free build.
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
 | `matt-pocock-engineering` | Attributed pinned Skills and five visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
+
+The bundled **Integrations** catalog also offers Exa web search, Context7 and
+Microsoft Learn documentation, Lightpanda browsing and MarkItDown conversion.
+See [starter integration setup and qualification](../../examples/registry/integrations/README.md)
+for provider data boundaries, local runtime requirements and the public-registry
+direction. Adding an integration saves it disabled; configure and enable it in
+Connections before selecting it for an Agent.
+Remote HTTP/SSE entries have no executable to discover: their marketplace row
+shows installed state rather than `missing binary`. A catalog row does not
+attest that its remote connection or tools are working; inspect the connection
+probe and execute the required task separately.
 
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
@@ -1032,7 +1194,9 @@ Implements `listAvailable()`, `listInstalled()`, `install(id)`, and
 | `sync()` | `Promise<void>` |
 
 `getToolDef` returns the integration definition or `null` when this provider
-does not own the ID. `sync` reconciles that provider's definitions. The
+does not own the ID. Station's MCP subregistry sources are providers of this
+kind ([design](../design/mcp-subregistry-curation.md)); a refused entry
+answers `install` with its reasons and `getToolDef` with `null`. `sync` reconciles that provider's definitions. The
 [integration registry aggregator](../../src-server/providers/registries/integration-registry-provider.ts)
 calls both methods on its providers. `update(id)` and
 `installByCommand(command)` are optional. The
@@ -1085,6 +1249,13 @@ Plugins declare permissions in `plugin.json`. The server enforces them at instal
 - `events.read-payload` — additionally required when a subscription requests the full event envelope; metadata subscriptions never receive payload data
 
 Grants are stored in `<STATION_HOME>/plugin-grants.json` and revoked on plugin removal.
+
+Each install also records a trust decision in `<STATION_HOME>/plugin-trust.json`:
+the verified signer, provenance and the tier Station decided. Plugins installed
+before these records existed are recorded as grandfathered at the tier they run
+at today (when more than 1024 were installed, none is, and each is decided
+again). The tier does not yet change how a plugin's panes render. See
+[install trust records](../design/plugin-installation-lifecycle.md#install-trust-records).
 
 Trusted permissions are not granted from plugin-rendered UI. Station opens a
 short-lived, host-owned review page that lists the exact requested capabilities.
@@ -1386,6 +1557,24 @@ is no general pin-update/migration or user-facing code-rollback operation here.
 of managed recovery. See [Applied registry trust policy](../design/registry-trust-policy.md)
 and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
 refusals, retention and the legacy path's limits.
+
+If an install and its compensation both fail, the error gives a retained
+backup id. Enable **Plugin recovery inventory** in **Settings → Advanced →
+Feature previews**. An operator can run `station plugin recovery-backups` against that
+Station to list the id, creation time, integration names, size, local path and
+manual recovery guidance. The API is `GET /api/plugins/recovery-backups` and
+requires the operator credential. Newly created backups carry their home
+identity; older backups without that identity are omitted because the shared
+temporary root may contain other Stations' backups. Find an older backup by
+its id and full path in the Station operator log.
+
+Stop Station and take a separate copy of its home and the retained backup.
+Compare the saved plugin and integrations with the current home, trust
+overlays and grant records. Preserve later person choices, and restore only
+reviewed components manually. Do not overwrite the entire registry-install
+file with its saved copy. Restart Station and review plugin permissions and
+integrations before enabling it. Automated restore is intentionally absent
+until a cross-store atomic boundary can protect newer state and grants.
 
 ## Build System
 

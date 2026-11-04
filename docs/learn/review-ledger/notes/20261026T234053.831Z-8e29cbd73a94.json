@@ -1,0 +1,11 @@
+{
+  "revision": "2aef3e23fb3e424be6c895f4dead5235031c3ee9",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reworded the setup bullet for any fresh environment (new clone, container or cloud session) rather than cloud sessions only: match .nvmrc and packageManager, unshallow before trusting local docs freshness, work in a provided single checkout, and arm auto-merge through the GitHub connector when gh is absent. Meaning otherwise unchanged; budgets pass.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"CLAUDE.md imports AGENTS.md unchanged; it inherits the reworded fresh-environment bullet as written.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Still points to AGENTS.md for handoff rules; the reworded bullet adds no handoff or merge rule.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

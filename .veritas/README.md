@@ -36,7 +36,7 @@ own runtime locations. Neither path is protected policy source.
 
 ## Evidence Checks
 
-- `component-style-hygiene` (required, default): runs `npm run lint:component-style`; prevents new named legacy-token and standard-action/dialog bypass signatures in shell/SDK code. The inherited baseline is per file/signature; rendered usability and clone review remain separate. See [Component and style ownership](../docs/guides/code-hygiene.md#component-and-style-ownership).
+- `component-style-hygiene` (required, default): runs `npm run lint:component-style`; prevents new named legacy-token, standard-action/dialog bypass and hand-rolled alert-with-action signatures in shell, SDK and pane-package code. The inherited baseline is per file/signature; rendered usability and clone review remain separate. See [Component and style ownership](../docs/guides/code-hygiene.md#component-and-style-ownership).
 - `code-hygiene` (required, default): runs the published Veritas Oxlint plugin through `npm run lint:hygiene`; explained suppressions across source/tests and deterministic timing in pure contract tests. Comment findings remain a separate advisory scan. See [Code hygiene](../docs/guides/code-hygiene.md).
 - `style-standard` (required, default): runs `npm run lint:check`.
 - `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.

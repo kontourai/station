@@ -1,6 +1,9 @@
 # Verified noncredential prose matches at exact historical locations.
 # The second match repeated the first in its explanatory comment.
 # Neither entry exempts a whole file, commit, or future match.
+# Synthetic redaction-test value, now assembled at runtime; this pins its
+# original historical location only.
+bd378e30b91d1abdf916b0dedbbe908b4d33e213:src-server/services/projects/__tests__/task-device-capture.test.ts:generic-api-key:209
 c48f31f8ce965ee706327a33ffba6cc69638cb87:packages/cli/src/commands/delegate.ts:generic-api-key:1330
 6036d762eee2f8adec304242c93d24f215616a40:.gitleaksignore:generic-api-key:1
 d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:generic-api-key:1034
@@ -101,3 +104,53 @@ f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__
 # Approval source: T3 thread b775132c-7785-4a1f-a8e8-d3b7286c26bf.
 # No credential authority; fresh same-path occurrences remain scanned.
 69ada7f1f6c54fa851b774ceb8ceb9e92c803623:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25
+# A fake base64url test credential in the macOS Keychain store test at one historical
+# location; the fixture is now a low-entropy placeholder.
+5ceb74ee2ef51157fe72b87bb34e0372f41c6ce4:packages/cli/src/__tests__/profile-keyring-macos.test.ts:generic-api-key:74
+# A fake API token in the workload recovery-note redaction test at one historical
+# location; the fixture now assembles the token at runtime.
+3279790c906a9f5d96abf325580b3fa78bf8227c:src-server/services/infra/__tests__/workload-budget.test.ts:curl-auth-header:169
+
+# Verified non-credential test fixtures at exact historical locations of this PR.
+55c77fba1dbabf93973b2029e1445d7a8b0d5e9a:src-server/providers/__tests__/codex-stderr-tail.test.ts:generic-api-key:137
+5d4a061c7dd7d7f6a0877043018581093ac856d6:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:84
+5d4a061c7dd7d7f6a0877043018581093ac856d6:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:123
+a73c165e529c8947150199a5b1293e65634ff999:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:46
+a73c165e529c8947150199a5b1293e65634ff999:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:47
+21523510be2a39d713e3d6f8bea068d5a4158849:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:31
+21523510be2a39d713e3d6f8bea068d5a4158849:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:42
+1f035bced4997697a7438c94a52e0a185de58436:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:91
+f593af702092e3ca78989e79aeca1949ea5fada2:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:32
+f593af702092e3ca78989e79aeca1949ea5fada2:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:56
+c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-adapter-transport.test.ts:generic-api-key:177
+
+# Synthetic Discord snowflake fixture IDs at exact historical locations.
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:15
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:42
+
+# Synthetic test snowflakes in the prepared commit; current fixtures build IDs at runtime.
+# Exact historical fingerprints only.
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:114
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:140
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:141
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:142
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:143
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:159
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:160
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:168
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:186
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:190
+
+# #4470: synthetic pairing-credential test fixture from an earlier commit (it
+# base64-decodes to 'BootstrapSecret1234567890abcdefgh'). The file no longer
+# holds that literal; it builds a different synthetic value at runtime.
+84dddacc0a10c4d9a5222ce5104a0f0fb7c63ecd:packages/shared/src/__tests__/triage-context.test.ts:generic-api-key:43
+
+# #4473: Brian approved this exact historical synthetic-fixture fingerprint on 2026-11-02.
+# Mocked peer bearer, not an issued credential; future same-path findings remain scanned.
+82c1480f6c4aebad1b13d1a338f8f3ab29021639:src-server/routes/environments/__tests__/peer-chat-routes.test.ts:generic-api-key:13
+
+# #4470: synthetic GitHub-token-shaped test fixture from an earlier commit (a
+# repeated 'A1b2C3d4E5' pattern, not an issued credential). The file no longer
+# holds that literal; it builds the value at runtime.
+2d86f2a487009120ede353d3c6e98e13ab16d540:src-ui/src/__tests__/ChatDockBody.terminalSessionMarker.test.tsx:github-pat:499

@@ -1,13 +1,110 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  getChildWorkInstructions,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionDetailWindow,
   getOrchestrationSessionEventPage,
   interruptTurn,
+  steerChildWork,
+  steerTurn,
 } from '../client/orchestration';
+import { sentTurnKey } from '../client/sent-turn-key';
+
+const capability = vi.hoisted(() => vi.fn());
+vi.mock('../client/publicStationCapabilities', () => ({
+  fetchPublicStationCapabilities: capability,
+}));
 
 describe('orchestration lifecycle-control client', () => {
+  test('steer selects and retains one input key across an uncertain retry', async () => {
+    const failure = Object.freeze(new TypeError('Lost steer response.'));
+    const bodies: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        throw failure;
+      }),
+    );
+    const send = (clientInputId?: string) =>
+      steerTurn('http://station.test', {
+        threadId: 'existing-thread',
+        turnId: 'existing-turn',
+        text: 'same input',
+        clientInputId,
+      });
+    const first = await send().catch((error: unknown) => error);
+    expect(first).toBe(failure);
+    const key = sentTurnKey(first);
+    expect(key).toEqual(expect.any(String));
+    const second = await send(key).catch((error: unknown) => error);
+    expect(second).toBe(failure);
+    expect(sentTurnKey(second)).toBe(key);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({
+      type: 'steerTurnOnce',
+      clientInputId: key,
+    });
+    expect(bodies[1]).toEqual(bodies[0]);
+  });
+
   afterEach(() => vi.unstubAllGlobals());
+
+  test('child command and history are gated by the host capability and retain the exact target', async () => {
+    capability.mockResolvedValue({
+      capabilities: { childWorkSteering: false },
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ success: true, data: { outcome: 'steered' } }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const input = {
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: 'hello',
+      clientInputId: 'key',
+    };
+    await expect(steerChildWork('http://station.test', input)).rejects.toThrow(
+      'does not support',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    capability.mockResolvedValue({ capabilities: { childWorkSteering: true } });
+    await steerChildWork('http://station.test', input);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/commands',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ type: 'steerChildWork', ...input }),
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { entries: [], nextOffset: 10 },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    expect(
+      await getChildWorkInstructions(
+        'http://station.test',
+        'parent/one',
+        'child/one',
+        { offset: 10, limit: 10 },
+      ),
+    ).toEqual({ entries: [], nextOffset: 10 });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://station.test/api/orchestration/sessions/parent%2Fone/child-work/child%2Fone/instructions?offset=10&limit=10',
+      expect.anything(),
+    );
+  });
 
   test('requests newest-first conversation hydration without decoding its opaque cursor', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(

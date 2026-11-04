@@ -1,0 +1,7 @@
+{
+  "revision": "b0f08968a133e827b9d9e8c515f18d574605421a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed VerificationCoordinator lease ownership and test claims against the Windows fixture delta, directory remover and process identity owner. The fixtures now check same-parent removal and real process birth; coordinator behavior and the map's bounded test claims are unchanged. Orphan startup and other coordinator failures remain unconfirmed.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}

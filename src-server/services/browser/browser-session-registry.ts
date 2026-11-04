@@ -17,6 +17,14 @@ import {
 } from 'node:fs';
 import { join, posix } from 'node:path';
 import {
+  BROWSER_PANE_TAB_LIMIT,
+  type BrowserNavigationView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
+import {
+  type BrowserColorScheme,
+  browserColorSchemeParams,
+} from './browser-color-scheme.js';
+import {
   type BrowserHost,
   type BrowserHostKind,
   type BrowserHostResolver,
@@ -25,6 +33,7 @@ import {
   type CdpTransport,
   LOCAL_BROWSER_HOST_ID,
 } from './browser-host.js';
+import { readBrowserViewportOffset } from './browser-pick.js';
 import {
   ABOUT_BLANK,
   type BrowserUrlRejection,
@@ -47,6 +56,7 @@ export type BrowserSessionEndReason =
 /** Who caused a session action. Authority is decided by the caller, not here. */
 export type BrowserSessionActor =
   | { kind: 'operator' }
+  | { kind: 'operator-device' }
   | { kind: 'project-admin'; principalId: string }
   | { kind: 'agent'; principalId?: string; sessionId: string }
   | { kind: 'system' };
@@ -63,7 +73,9 @@ export type BrowserSessionActionKind =
   // Added by the Browser pane lane (#90 wave 2).
   | 'history-navigated'
   | 'reloaded'
+  | 'loading-stopped'
   | 'viewport-changed'
+  | 'zoom-changed'
   | 'page-navigated'
   | 'dialog-handled'
   // A person answered a JavaScript dialog Station held for them (the
@@ -228,7 +240,12 @@ export interface BrowserSessionRecord {
   reach: BrowserProfileReach;
   threadId?: string;
   url: string;
+  title?: string;
+  favicon?: string;
+  openerBrowserSessionId?: string;
   viewport: BrowserViewport;
+  zoomFactor?: number;
+  colorScheme?: BrowserColorScheme;
   generation: number;
   hostKind: BrowserHostKind;
   /** Which Station runs this session's browser (#90 D13); `local` today. */
@@ -284,11 +301,17 @@ export type BrowserSessionErrorCode =
   | 'url-not-allowed'
   | 'invalid-project'
   | 'invalid-viewport'
+  | 'invalid-zoom'
+  | 'invalid-appearance'
   | 'invalid-actor'
   | 'not-found'
   | 'not-live'
   | 'stale-generation'
   | 'no-history-entry'
+  | 'control-refused'
+  | 'control-interrupted'
+  | 'surface-busy'
+  | 'feature-preview-disabled'
   | 'page-busy'
   | 'screenshot-too-large'
   | 'stopped';
@@ -370,6 +393,26 @@ export function isValidBrowserViewport(
   return browserViewportProblem(value) === undefined;
 }
 
+export function isValidBrowserZoom(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0.5 &&
+    value <= 2
+  );
+}
+
+export function browserEffectiveViewport(
+  viewport: BrowserViewport,
+  factor: number,
+): BrowserViewport {
+  return {
+    ...viewport,
+    width: Math.round(viewport.width / factor),
+    height: Math.round(viewport.height / factor),
+  };
+}
+
 export function isValidBrowserProjectId(
   projectId: unknown,
 ): projectId is string {
@@ -385,6 +428,7 @@ export function isValidBrowserProjectId(
 function principalKeyFor(actor: BrowserSessionActor): string | undefined {
   switch (actor.kind) {
     case 'operator':
+    case 'operator-device':
       return 'operator';
     case 'project-admin':
       return `principal:${actor.principalId}`;
@@ -431,6 +475,7 @@ export function actorOwnsSessionProfile(
   actor: BrowserSessionActor,
 ): boolean {
   if (actor.kind === 'operator') return true;
+  if (actor.kind === 'operator-device') return false;
   const key = principalKeyFor(actor);
   return key !== undefined && key === record.principalKey;
 }
@@ -469,6 +514,7 @@ export interface BrowserSessionRegistryOptions {
   /** Test seams for the screenshot bounds. */
   screenshotDeadlineMs?: number;
   screenshotMaxBytes?: number;
+  experienceEnabled?: () => boolean;
 }
 
 /** A navigation this soon after someone's input is theirs (a link click). */
@@ -489,7 +535,12 @@ export interface BrowserLiveTarget {
   generation: number;
 }
 
-export type BrowserHistoryDirection = 'back' | 'forward' | 'reload';
+export type BrowserHistoryDirection =
+  | 'back'
+  | 'forward'
+  | 'reload'
+  | 'hard-reload'
+  | 'stop';
 
 interface StoreShape {
   version: number;
@@ -613,6 +664,42 @@ export class BrowserSessionRegistry {
     return shot;
   }
 
+  /** Capture an annotation image with its stable viewport origin. */
+  async captureAnnotationScreenshot(browserSessionId: string) {
+    const previous = this.inflightShots.get(browserSessionId);
+    const shot = (async () => {
+      if (previous) await previous.catch(() => {});
+      const live = this.liveTarget(browserSessionId);
+      if (!live)
+        throw new BrowserSessionError(
+          'not-live',
+          'The browser is not running.',
+        );
+      const scroll = await readBrowserViewportOffset(live);
+      const image = await this.captureScreenshotOnce(browserSessionId);
+      const after = await readBrowserViewportOffset(live);
+      const target = this.liveTarget(browserSessionId);
+      if (
+        after.x !== scroll.x ||
+        after.y !== scroll.y ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId
+      )
+        throw new BrowserSessionError(
+          'stale-generation',
+          'The page changed during annotation capture.',
+        );
+      return { ...image, scroll };
+    })().finally(() => {
+      if (this.inflightShots.get(browserSessionId) === shot)
+        this.inflightShots.delete(browserSessionId);
+    });
+    this.inflightShots.set(browserSessionId, shot);
+    return shot;
+  }
+
   private async captureScreenshotOnce(
     browserSessionId: string,
   ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
@@ -675,7 +762,31 @@ export class BrowserSessionRegistry {
     );
   }
 
-  /** Back, forward or reload, within the session's own history. */
+  async inspectNavigation(
+    browserSessionId: string,
+  ): Promise<BrowserNavigationView> {
+    const record = this.requireLive(browserSessionId, undefined);
+    const generation = record.generation;
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError('not-live', 'The browser is not running.');
+    const history = await live.host.cdp().send<{
+      currentIndex: number;
+      entries: Array<{ title?: string }>;
+    }>('Page.getNavigationHistory', {}, live.target.cdpSessionId);
+    this.requireLive(browserSessionId, generation);
+    const index = history.currentIndex;
+    const valid =
+      Number.isInteger(index) && index >= 0 && index < history.entries.length;
+    return {
+      generation,
+      title: valid ? (history.entries[index].title ?? '').slice(0, 300) : '',
+      canGoBack: valid && index > 0,
+      canGoForward: valid && index < history.entries.length - 1,
+    };
+  }
+
+  /** Back, forward, reload or stop, within the session's own target. */
   async navigateHistory(
     browserSessionId: string,
     direction: BrowserHistoryDirection,
@@ -683,6 +794,7 @@ export class BrowserSessionRegistry {
   ): Promise<BrowserSessionRecord> {
     this.assertRunning();
     const record = this.requireLive(browserSessionId, options.generation);
+    const generation = record.generation;
     const live = this.liveTarget(browserSessionId);
     if (!live) {
       throw new BrowserSessionError(
@@ -692,12 +804,27 @@ export class BrowserSessionRegistry {
     }
     const cdp = live.host.cdp();
     const session = live.target.cdpSessionId;
-    if (direction === 'reload') {
+    if (direction === 'stop') {
+      await cdp.send('Page.stopLoading', {}, session);
+      this.requireLive(browserSessionId, generation);
+      this.record(record, 'loading-stopped', options.actor, {
+        url: record.url,
+      });
+      return structuredClone(record);
+    }
+    if (direction === 'reload' || direction === 'hard-reload') {
       await this.whileNavigating(browserSessionId, record.url, () =>
-        cdp.send('Page.reload', {}, session),
+        cdp.send(
+          'Page.reload',
+          direction === 'hard-reload' ? { ignoreCache: true } : {},
+          session,
+        ),
       );
-      this.requireLive(browserSessionId, record.generation);
-      this.record(record, 'reloaded', options.actor, { url: record.url });
+      this.requireLive(browserSessionId, generation);
+      this.record(record, 'reloaded', options.actor, {
+        url: record.url,
+        detail: direction,
+      });
       return structuredClone(record);
     }
     const history = await cdp.send<{
@@ -721,7 +848,7 @@ export class BrowserSessionRegistry {
     await this.whileNavigating(browserSessionId, entry.url, () =>
       cdp.send('Page.navigateToHistoryEntry', { entryId: entry.id }, session),
     );
-    this.requireLive(browserSessionId, record.generation);
+    this.requireLive(browserSessionId, generation);
     // Actor-driven: the person or agent chose this entry, so its full URL is
     // kept (only page-originated URLs are redacted).
     record.url = entry.url;
@@ -757,18 +884,130 @@ export class BrowserSessionRegistry {
     const session = live.target.cdpSessionId;
     const mobile = viewport.mobile === true;
     const previous = record.viewport;
+    const zoom =
+      this.options.experienceEnabled?.() === true
+        ? (record.zoomFactor ?? 1)
+        : 1;
     try {
-      await applyViewport(cdp, session, viewport);
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(viewport, zoom),
+      );
     } catch (error) {
       // All or nothing: a half-applied emulation (new size, old touch mode)
       // must not outlive the refusal. Best effort; the original error wins.
-      await applyViewport(cdp, session, previous).catch(() => {});
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(previous, zoom),
+      ).catch(() => {});
       throw error;
     }
     this.requireLive(browserSessionId, record.generation);
     record.viewport = { ...viewport };
+    if (zoom === 1 && this.options.experienceEnabled?.() !== true)
+      delete record.zoomFactor;
     this.record(record, 'viewport-changed', options.actor, {
       detail: `${viewport.width}x${viewport.height}@${viewport.deviceScaleFactor}${mobile ? ' mobile' : ''}`,
+    });
+    return structuredClone(record);
+  }
+
+  async setZoom(
+    browserSessionId: string,
+    factor: number,
+    options: {
+      generation?: number;
+      actor: BrowserSessionActor;
+      guard: () => void;
+    },
+  ): Promise<BrowserSessionRecord> {
+    this.assertRunning();
+    if (this.options.experienceEnabled?.() !== true)
+      throw new BrowserSessionError(
+        'feature-preview-disabled',
+        'Browser experience is disabled.',
+      );
+    if (!isValidBrowserZoom(factor))
+      throw new BrowserSessionError(
+        'invalid-zoom',
+        'Zoom must be between 50% and 200%.',
+      );
+    const record = this.requireLive(browserSessionId, options.generation);
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError('not-live', 'The browser is not running.');
+    const cdp = live.host.cdp();
+    const previous = browserEffectiveViewport(
+      record.viewport,
+      record.zoomFactor ?? 1,
+    );
+    try {
+      await applyViewport(
+        cdp,
+        live.target.cdpSessionId,
+        browserEffectiveViewport(record.viewport, factor),
+        options.guard,
+      );
+      this.requireLive(browserSessionId, live.generation);
+      options.guard();
+    } catch (error) {
+      try {
+        options.guard();
+        await applyViewport(
+          cdp,
+          live.target.cdpSessionId,
+          previous,
+          options.guard,
+        );
+      } catch {}
+      throw error;
+    }
+    record.zoomFactor = factor;
+    this.record(record, 'zoom-changed', options.actor, {
+      detail: `${Math.round(factor * 100)}%`,
+    });
+    return structuredClone(record);
+  }
+
+  async setColorScheme(
+    browserSessionId: string,
+    scheme: BrowserColorScheme,
+    options: {
+      generation?: number;
+      actor: BrowserSessionActor;
+      guard: () => void;
+    },
+  ): Promise<BrowserSessionRecord> {
+    this.assertRunning();
+    if (this.options.experienceEnabled?.() !== true)
+      throw new BrowserSessionError(
+        'feature-preview-disabled',
+        'Browser experience is disabled.',
+      );
+    if (scheme !== 'system' && scheme !== 'light' && scheme !== 'dark')
+      throw new BrowserSessionError(
+        'invalid-appearance',
+        'Appearance must be system, light or dark.',
+      );
+    const record = this.requireLive(browserSessionId, options.generation);
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError('not-live', 'The browser is not running.');
+    options.guard();
+    await live.host
+      .cdp()
+      .send(
+        'Emulation.setEmulatedMedia',
+        browserColorSchemeParams(scheme),
+        live.target.cdpSessionId,
+      );
+    options.guard();
+    this.requireLive(browserSessionId, live.generation);
+    record.colorScheme = scheme;
+    this.record(record, 'color-scheme-changed', options.actor, {
+      detail: scheme,
     });
     return structuredClone(record);
   }
@@ -785,8 +1024,7 @@ export class BrowserSessionRegistry {
   ): void {
     const record = this.sessions.get(browserSessionId);
     if (
-      !record ||
-      record.state !== 'live' ||
+      record?.state !== 'live' ||
       record.generation !== generation ||
       !isAllowedBrowserUrl(url)
     )
@@ -1271,12 +1509,19 @@ export class BrowserSessionRegistry {
         clearTimeout(entry.idleTimer);
         entry.idleTimer = undefined;
       }
+      if (this.options.experienceEnabled?.() !== true) {
+        delete record.zoomFactor;
+        delete record.colorScheme;
+      }
       const target = await entry.host.openTarget({
         profileDir: browserProfileDir(
           this.options.stationHome,
           record.profileRef,
         ),
-        viewport: record.viewport,
+        viewport: browserEffectiveViewport(
+          record.viewport,
+          record.zoomFactor ?? 1,
+        ),
       });
       if (record.state === 'closed') {
         // Closed while opening: nothing may run in a closed session.
@@ -1289,6 +1534,15 @@ export class BrowserSessionRegistry {
       // page whose load handler calls alert() must not hold anything up.
       offEarlyDialogs = this.answerDialogsUntilLive(record, entry, target);
       try {
+        if (record.colorScheme) {
+          await entry.host
+            .cdp()
+            .send(
+              'Emulation.setEmulatedMedia',
+              browserColorSchemeParams(record.colorScheme),
+              target.cdpSessionId,
+            );
+        }
         if (record.url !== ABOUT_BLANK) {
           await entry.host
             .cdp()
@@ -1381,6 +1635,102 @@ export class BrowserSessionRegistry {
       entry.offExit = host.onExit((reason) =>
         this.onHostExit(profile.key, entry, reason),
       );
+      const offTitle = host.onTitleChanged?.((targetId, title) => {
+        for (const [id, target] of entry.targets) {
+          const record = this.sessions.get(id);
+          if (
+            target.targetId !== targetId ||
+            (record?.state !== 'live' && record?.state !== 'opening') ||
+            record.title === title
+          )
+            continue;
+          record.title = title.slice(0, 300);
+          record.updatedAt = this.now().toISOString();
+          this.persistSoon();
+          this.notify(record);
+        }
+      });
+      const offFavicon = host.onFaviconChanged?.((targetId, favicon) => {
+        for (const [id, target] of entry.targets) {
+          const record = this.sessions.get(id);
+          if (
+            target.targetId !== targetId ||
+            !record ||
+            (record.state !== 'live' && record.state !== 'opening')
+          )
+            continue;
+          record.favicon = favicon;
+          this.notify(record);
+        }
+      });
+      const offTargetClosed = host.onTargetClosed?.((targetId) => {
+        for (const [id, target] of entry.targets) {
+          if (target.targetId !== targetId) continue;
+          entry.targets.delete(id);
+          const record = this.sessions.get(id);
+          if (record && record.state !== 'closed') {
+            record.state = 'closed';
+            record.endReason = 'closed';
+            this.record(record, 'closed', SYSTEM);
+          }
+        }
+        this.scheduleIdleShutdown(profile.key, entry);
+      });
+      const offPopup = host.onPopup?.((openerTargetId, target, url) => {
+        const openerId = [...entry.targets].find(
+          ([, live]) => live.targetId === openerTargetId,
+        )?.[0];
+        const opener = openerId ? this.sessions.get(openerId) : undefined;
+        if (
+          opener?.state !== 'live' ||
+          this.hosts.get(profile.key) !== entry ||
+          this.activeSessionCount(profile.key) >= BROWSER_PANE_TAB_LIMIT ||
+          !isAllowedBrowserUrl(url)
+        )
+          return false;
+        const at = this.now().toISOString();
+        const id = this.newId();
+        const record: BrowserSessionRecord = {
+          browserSessionId: id,
+          projectId: opener.projectId,
+          projectSlug: opener.projectSlug,
+          principalKey: opener.principalKey,
+          reach: opener.reach,
+          ...(opener.threadId ? { threadId: opener.threadId } : {}),
+          openerBrowserSessionId: opener.browserSessionId,
+          url: redactBrowserUrl(url),
+          viewport: { ...opener.viewport },
+          ...(opener.zoomFactor !== undefined
+            ? { zoomFactor: opener.zoomFactor }
+            : {}),
+          generation,
+          hostKind: opener.hostKind,
+          hostId: opener.hostId,
+          profileRef: opener.profileRef,
+          state: 'live',
+          createdAt: at,
+          updatedAt: at,
+          history: { entries: [], total: 0 },
+          activity: emptyActivity(),
+        };
+        entry.targets.set(id, target);
+        this.sessions.set(id, record);
+        const offDialogs = this.answerDialogsUntilLive(record, entry, target);
+        try {
+          this.record(record, 'created', SYSTEM, { url: record.url });
+        } finally {
+          offDialogs();
+        }
+        return true;
+      });
+      const offExit = entry.offExit;
+      entry.offExit = () => {
+        offTitle?.();
+        offFavicon?.();
+        offTargetClosed?.();
+        offPopup?.();
+        offExit();
+      };
       this.hosts.set(profile.key, entry);
       return entry;
     })();
@@ -1391,6 +1741,7 @@ export class BrowserSessionRegistry {
   private onHostExit(key: string, entry: HostEntry, reason: string): void {
     if (this.hosts.get(key) !== entry) return;
     this.hosts.delete(key);
+    entry.offExit();
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     const changed: BrowserSessionRecord[] = [];
     for (const record of this.sessions.values()) {
@@ -1424,6 +1775,17 @@ export class BrowserSessionRegistry {
       void entry.host.shutdown().catch(() => {});
     }, this.options.idleShutdownMs ?? DEFAULT_BROWSER_IDLE_SHUTDOWN_MS);
     entry.idleTimer.unref?.();
+  }
+
+  private activeSessionCount(key: string): number {
+    let count = 0;
+    for (const record of this.sessions.values())
+      if (
+        this.keyOf(record) === key &&
+        (record.state === 'live' || record.state === 'opening')
+      )
+        count += 1;
+    return count;
   }
 
   private normalize(rawUrl: string): string {
@@ -1632,6 +1994,13 @@ export class BrowserSessionRegistry {
       // Records from before #90 D13 ran on this Station.
       if (typeof record.hostId !== 'string')
         record.hostId = LOCAL_BROWSER_HOST_ID;
+      if (!isValidBrowserZoom(record.zoomFactor)) delete record.zoomFactor;
+      if (
+        record.colorScheme !== 'system' &&
+        record.colorScheme !== 'light' &&
+        record.colorScheme !== 'dark'
+      )
+        delete record.colorScheme;
       if (
         !record.history ||
         !Array.isArray(record.history.entries) ||
@@ -1669,7 +2038,7 @@ export class BrowserSessionRegistry {
     const store: StoreShape = {
       version: STORE_VERSION,
       generations: Object.fromEntries(this.generations),
-      sessions,
+      sessions: sessions.map(({ favicon: _favicon, ...record }) => record),
     };
     try {
       mkdirSync(join(this.options.stationHome, 'browser'), {
@@ -1763,8 +2132,10 @@ async function applyViewport(
   cdp: CdpTransport,
   session: string,
   viewport: BrowserViewport,
+  guard?: () => void,
 ): Promise<void> {
   const mobile = viewport.mobile === true;
+  guard?.();
   await cdp.send(
     'Emulation.setDeviceMetricsOverride',
     {
@@ -1775,9 +2146,11 @@ async function applyViewport(
     },
     session,
   );
+  guard?.();
   await cdp.send(
     'Emulation.setTouchEmulationEnabled',
     { enabled: mobile },
     session,
   );
+  guard?.();
 }

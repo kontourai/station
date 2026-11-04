@@ -15,8 +15,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ChatRequestContext } from '../../../components/chat/ChatRequestContext';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
@@ -153,12 +155,12 @@ test('a settled child with no reported end shows no elapsed', () => {
 test('unresolved and unconfirmed-stop terminals never read as Completed or Stopped', () => {
   mount(row({ status: 'unresolved' }));
   expect(screen.getByText('No result')).toBeTruthy();
-  expect(screen.queryByText('Completed')).toBeNull();
+  expect(screen.queryByText('Run finished')).toBeNull();
   cleanup();
   mount(row({ status: 'stopped-unconfirmed' }));
   expect(screen.getByText('Stop requested — not confirmed')).toBeTruthy();
   expect(screen.queryByText('Stopped')).toBeNull();
-  expect(screen.queryByText('Completed')).toBeNull();
+  expect(screen.queryByText('Run finished')).toBeNull();
 });
 
 test('a transcript-file handle gets no button; a session handle opens that session', () => {
@@ -584,10 +586,14 @@ test('#3163: View transcript reads the child by session and id, renders it read-
   // Closed: nothing is read.
   expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith({
-    threadId: 'exec-1',
-    childId: 'task-1',
-  });
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
+    {
+      threadId: 'exec-1',
+      childId: 'task-1',
+      requestScope: undefined,
+    },
+    undefined,
+  );
   const region = screen.getByRole('region', { name: 'Subagent transcript' });
   expect(region.textContent).toContain('Reply INNER');
   expect(region.textContent).toContain('Tool · Agent');
@@ -599,6 +605,80 @@ test('#3163: View transcript reads the child by session and id, renders it read-
   expect(
     screen.queryByRole('region', { name: 'Subagent transcript' }),
   ).toBeNull();
+});
+
+test('a peer chat reads its subagent transcript through the receiver bridge under the source authority', () => {
+  const requestScope = {
+    apiBase: 'http://source.test',
+    authorityKey: 'source',
+    isCurrent: () => true,
+  };
+  const apiBase = `${requestScope.apiBase}/api/environments/peers/desktop-win/chat-api`;
+  useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
+  render(
+    <ChatRequestContext.Provider value={{ apiBase, requestScope }}>
+      <ul>
+        <ChildWorkRow
+          row={row({ status: 'completed', transcript: TRANSCRIPT })}
+          now={100_000}
+          showProvenance={false}
+          onOpenSession={onOpenSession}
+        />
+      </ul>
+    </ChatRequestContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
+    { threadId: 'exec-1', childId: 'task-1', requestScope },
+    apiBase,
+  );
+});
+
+test('#4266: a subagent reply in the transcript renders as Markdown, a prompt as written', async () => {
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({
+      isSuccess: true,
+      data: {
+        pages: [
+          {
+            entries: [
+              {
+                message: 0,
+                kind: 'text',
+                role: 'user',
+                text: 'List **every** file.',
+              },
+              {
+                message: 1,
+                kind: 'text',
+                role: 'assistant',
+                text: 'Found 2 files in this folder:\n\n- `README.md`\n- `notes.txt`',
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  mount(
+    row({
+      status: 'completed',
+      transcript: { kind: 'codex-thread', threadId: 'child-thread-1' },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  const region = screen.getByRole('region', { name: 'Subagent transcript' });
+  // Markdown renders lazily.
+  await waitFor(() =>
+    expect(
+      [...region.querySelectorAll('.child-work-transcript__markdown li')].map(
+        (item) => item.textContent?.trim(),
+      ),
+    ).toEqual(['README.md', 'notes.txt']),
+  );
+  expect(region.textContent).not.toContain('`');
+  // The parent's task stays as it was written.
+  expect(region.textContent).toContain('List **every** file.');
 });
 
 test('#3163: a transcript the engine no longer has says so', () => {

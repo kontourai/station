@@ -39,7 +39,7 @@ const RELEASE = {
 function tree({
   marker = PREBUILT_ARCHIVE_MARKER_CONTENT as string | null,
   release = RELEASE as unknown,
-  git = false,
+  git = false as boolean | 'placeholder' | 'worktree',
 } = {}) {
   const root = makeTempDir('station-prebuilt-archive-');
   writeFileSync(
@@ -49,7 +49,17 @@ function tree({
   if (marker !== null) {
     writeFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), marker);
   }
-  if (git) mkdirSync(join(root, '.git'));
+  if (git === true) {
+    // A checkout git can open: a `.git` directory with a HEAD.
+    mkdirSync(join(root, '.git'));
+    writeFileSync(join(root, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  } else if (git === 'worktree') {
+    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere/.git/worktrees/x\n');
+  } else if (git === 'placeholder') {
+    // What an engine sandbox started in the root leaves behind (#4380).
+    mkdirSync(join(root, '.git'));
+    mkdirSync(join(root, '.agents'));
+  }
   return root;
 }
 
@@ -65,6 +75,17 @@ describe('isPrebuiltArchiveRoot', () => {
 
   test('does not claim a checkout even when a marker is present', () => {
     expect(isPrebuiltArchiveRoot(tree({ git: true }))).toBe(false);
+    expect(isPrebuiltArchiveRoot(tree({ git: 'worktree' }))).toBe(false);
+  });
+
+  test('an empty .git placeholder does not turn the archive into a checkout (#4380)', () => {
+    const root = tree({ git: 'placeholder' });
+    expect(isPrebuiltArchiveRoot(root)).toBe(true);
+    expect(resolveLifecycleCodeRoot(root)).toEqual({
+      kind: 'prebuilt-archive',
+      root,
+      release: RELEASE,
+    });
   });
 
   test('requires the exact marker and valid release provenance', () => {

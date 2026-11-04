@@ -1,0 +1,7 @@
+{
+  "revision": "222d56928518e93b1e638bbc95c38df5ea55e568",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 5 of #4279: overlapping sign-ins opened before the pin are refused at the code exchange before the code or verifier is sent; plugin files colliding with sidecar names in any case or Unicode form are refused. Checked against tool-server-oauth.ts, config-loader-storage.ts and the round-5 tests. Other inputs: the connections guide adds that an already-open sign-in is rechecked at its code exchange, and that sidecar names are reserved in any case or Unicode form; the provider rechecks the declared issuer or pin when a consent flow reuses its cached client, including at the code exchange.","inputs":["docs/guides/connections.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

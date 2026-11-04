@@ -154,7 +154,7 @@
 
 .transcript-turn-rail__preview-turn {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .transcript-turn-rail__preview-prompt,
@@ -242,4 +242,17 @@
   .chat-input__activity
   .transcript-turn-actions {
   display: none;
+}
+
+/* Turn markers form a map beside the independent native scrollbar. */
+.transcript-turn-rail__tick {
+  border-radius: var(--k-radius-sm);
+  height: 4px;
+}
+.transcript-turn-rail__tick[aria-current="location"] {
+  height: 6px;
+  width: 14px;
+}
+.transcript-turn-rail::before {
+  background: transparent;
 }

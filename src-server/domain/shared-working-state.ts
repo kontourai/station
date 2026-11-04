@@ -8,7 +8,8 @@ import { isRecord } from '../utils/is-record.js';
  * this small RGA reference implementation makes ordering and recovery
  * executable without adopting a vendor CRDT wire format.
  */
-export const SHARED_WORKING_STATE_SCHEMA_VERSION = 1 as const;
+export const SHARED_WORKING_STATE_SCHEMA_VERSION = 2 as const;
+export const MAX_WORKING_STATE_SNAPSHOT_BYTES = 512 * 1024;
 export const DEFAULT_RETAINED_WORKING_STATE_OPERATIONS = 256;
 const DEFAULT_DEFERRED_WORKING_STATE_OPERATIONS = 64;
 const DEFAULT_DEFERRED_WORKING_STATE_BYTES = 65_536;
@@ -127,18 +128,11 @@ interface AppliedOperation {
   readonly priorRevision: RevisionId;
 }
 
-export interface WorkingStateSnapshot {
-  readonly schemaVersion: typeof SHARED_WORKING_STATE_SCHEMA_VERSION;
+interface WorkingStateSnapshotBase {
   readonly scope: WorkingStateScope;
   /** A snapshot is a checkpoint of its own exact revision, never a loose hint. */
   readonly checkpointRevision: RevisionId;
   readonly revision: RevisionId;
-  readonly atoms: readonly {
-    readonly id: AtomId;
-    readonly after: AtomId | null;
-    readonly value: string;
-    readonly deleted: boolean;
-  }[];
   readonly knownOperations: readonly KnownOperation[];
   /** Deferred causal work survives snapshot/restore with its admission class. */
   readonly deferred: readonly {
@@ -146,6 +140,21 @@ export interface WorkingStateSnapshot {
     readonly admission: 'live' | 'trusted';
   }[];
 }
+
+/** v1 is retained verbatim until the next accepted mutation, including old receipts. */
+export type WorkingStateSnapshot = WorkingStateSnapshotBase &
+  (
+    | {
+        readonly schemaVersion: 1;
+        readonly atoms: readonly {
+          readonly id: AtomId;
+          readonly after: AtomId | null;
+          readonly value: string;
+          readonly deleted: boolean;
+        }[];
+      }
+    | { readonly schemaVersion: 2; readonly runs: readonly TextRun[] }
+  );
 
 type ResyncResult =
   | {
@@ -285,7 +294,8 @@ function parseOperation(value: unknown): TextDocumentOperation | null {
   const actor = value.actor;
   const attribution = value.attribution;
   if (
-    value.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION ||
+    (value.schemaVersion !== 1 &&
+      value.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION) ||
     !isNonEmpty(value.operationId) ||
     !isNonEmpty(value.documentId) ||
     !isNonEmpty(value.replicaId) ||
@@ -371,12 +381,171 @@ function validAuthorization(
   );
 }
 
+/** Contiguous scalar positions from one insert; null text is a deleted range. */
+interface TextRun {
+  readonly operationId: OperationId;
+  readonly start: number;
+  readonly after: AtomId | null;
+  readonly length: number;
+  readonly text: string | null;
+}
+
+function atomPosition(
+  id: string,
+): { operationId: string; index: number } | null {
+  const operationId = atomOwner(id);
+  if (!operationId) return null;
+  const index = Number(id.slice(operationId.length + 1));
+  return Number.isSafeInteger(index) &&
+    index >= 0 &&
+    atomId(operationId, index) === id
+    ? { operationId, index }
+    : null;
+}
+
+function runId(run: TextRun): string {
+  return atomId(run.operationId, run.start);
+}
+
+function normalizeRuns(runs: readonly TextRun[]): TextRun[] {
+  const result: TextRun[] = [];
+  for (const run of [...runs].sort(
+    (a, b) =>
+      compareWorkingStateIds(a.operationId, b.operationId) || a.start - b.start,
+  )) {
+    const prior = result.at(-1);
+    if (
+      prior &&
+      prior.operationId === run.operationId &&
+      prior.start + prior.length === run.start &&
+      run.after === atomId(prior.operationId, run.start - 1) &&
+      (prior.text === null) === (run.text === null)
+    ) {
+      result[result.length - 1] = {
+        ...prior,
+        length: prior.length + run.length,
+        text: prior.text === null ? null : prior.text + run.text,
+      };
+    } else result.push({ ...run });
+  }
+  return result;
+}
+
+function atomRuns(atoms: readonly Atom[]): TextRun[] {
+  return normalizeRuns(
+    atoms.map((atom) => {
+      const position = atomPosition(atom.id);
+      if (!position)
+        throw new Error('shared working-state atom id is malformed');
+      return {
+        operationId: position.operationId,
+        start: position.index,
+        after: atom.after,
+        length: 1,
+        text: atom.deleted ? null : atom.value,
+      };
+    }),
+  );
+}
+
+function containingRun(
+  runs: readonly TextRun[],
+  index: number,
+): TextRun | undefined {
+  // Runs within an insertion are sorted and non-overlapping.
+  let low = 0;
+  let high = runs.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    const run = runs[middle];
+    if (index < run.start) high = middle - 1;
+    else if (index >= run.start + run.length) low = middle + 1;
+    else return run;
+  }
+  return undefined;
+}
+
+function runSlice(
+  run: TextRun,
+  start: number,
+  end: number,
+  scalars?: readonly string[],
+): TextRun {
+  return {
+    operationId: run.operationId,
+    start,
+    after: start === run.start ? run.after : atomId(run.operationId, start - 1),
+    length: end - start,
+    text:
+      run.text === null
+        ? null
+        : (scalars ?? [...run.text])
+            .slice(start - run.start, end - run.start)
+            .join(''),
+  };
+}
+
+/** Split only at branch anchors, so even huge tombstone ranges need no atom expansion. */
+function orderedRuns(runs: readonly TextRun[]): TextRun[] {
+  const boundaries = new Map<string, Set<number>>();
+  for (const run of runs) {
+    if (run.after === null) continue;
+    const position = atomPosition(run.after)!;
+    const offsets = boundaries.get(position.operationId) ?? new Set<number>();
+    offsets.add(position.index + 1);
+    boundaries.set(position.operationId, offsets);
+  }
+  const children = new Map<string | null, TextRun[]>();
+  for (const run of runs) {
+    const cuts = [...(boundaries.get(run.operationId) ?? [])]
+      .filter((offset) => offset > run.start && offset < run.start + run.length)
+      .sort((a, b) => a - b);
+    const scalars = run.text === null ? undefined : [...run.text];
+    let start = run.start;
+    for (const end of [...cuts, run.start + run.length]) {
+      const part = runSlice(run, start, end, scalars);
+      const siblings = children.get(part.after) ?? [];
+      siblings.push(part);
+      children.set(part.after, siblings);
+      start = end;
+    }
+  }
+  for (const siblings of children.values())
+    siblings.sort((a, b) => compareWorkingStateIds(runId(a), runId(b)));
+  const stack = [...(children.get(null) ?? [])].reverse();
+  const result: TextRun[] = [];
+  while (stack.length > 0) {
+    const run = stack.pop()!;
+    result.push(run);
+    const descendants =
+      children.get(atomId(run.operationId, run.start + run.length - 1)) ?? [];
+    for (let index = descendants.length - 1; index >= 0; index -= 1)
+      stack.push(descendants[index]);
+  }
+  return result;
+}
+
+/** Ordered visible scalar identities for the editor; tombstones remain private. */
+export function* workingStateVisibleAtoms(
+  snapshot: WorkingStateSnapshot,
+): Generator<{ readonly id: string; readonly value: string }> {
+  const runs =
+    snapshot.schemaVersion === 1 ? atomRuns(snapshot.atoms) : snapshot.runs;
+  for (const run of orderedRuns(runs)) {
+    if (run.text === null) continue;
+    let index = run.start;
+    for (const value of run.text)
+      yield { id: atomId(run.operationId, index++), value };
+  }
+}
+
 /**
  * Private shared implementation behind distinct live and recovery capabilities.
  */
 class SharedWorkingStateCore {
   readonly #scope: WorkingStateScope;
-  readonly #atoms = new Map<AtomId, Atom>();
+  readonly #runs = new Map<OperationId, TextRun[]>();
+  #legacyAtoms: readonly Atom[] | undefined;
   readonly #knownOperations = new Map<OperationId, string>();
   readonly #deferred = new Map<OperationId, DeferredOperation>();
   readonly #maxRetainedOperations: number;
@@ -426,12 +595,13 @@ class SharedWorkingStateCore {
 
   get revision(): RevisionId {
     if (this.#revision) return this.#revision;
-    this.#revision = `swsr-v1:${digest({
-      schemaVersion: SHARED_WORKING_STATE_SCHEMA_VERSION,
+    const schemaVersion = this.#legacyAtoms ? 1 : 2;
+    this.#revision = `swsr-v${schemaVersion}:${digest({
+      schemaVersion,
       documentId: this.#scope.documentId,
-      atoms: [...this.#atoms.values()]
-        .map((atom) => ({ ...atom }))
-        .sort((left, right) => compareWorkingStateIds(left.id, right.id)),
+      ...(this.#legacyAtoms
+        ? { atoms: this.#legacyAtoms }
+        : { runs: this.#runProjection() }),
       knownOperations: this.#knownOperationProjection(),
       deferredOperations: this.#deferredProjection(),
     })}`;
@@ -439,30 +609,35 @@ class SharedWorkingStateCore {
   }
 
   text(): string {
-    const children = new Map<AtomId | null, Atom[]>();
-    for (const atom of this.#atoms.values()) {
-      const siblings = children.get(atom.after) ?? [];
-      siblings.push(atom);
-      children.set(atom.after, siblings);
-    }
-    for (const siblings of children.values())
-      siblings.sort((left, right) => compareWorkingStateIds(left.id, right.id));
-    const output: string[] = [];
-    const stack = [...(children.get(null) ?? [])].reverse();
-    while (stack.length > 0) {
-      const atom = stack.pop()!;
-      if (!atom.deleted) output.push(atom.value);
-      const descendants = children.get(atom.id) ?? [];
-      for (let index = descendants.length - 1; index >= 0; index -= 1)
-        stack.push(descendants[index]);
-    }
-    return output.join('');
+    return orderedRuns(this.#runProjection())
+      .map((run) => run.text ?? '')
+      .join('');
+  }
+
+  #runProjection(): TextRun[] {
+    return normalizeRuns([...this.#runs.values()].flat());
+  }
+
+  #hasAtom(id: AtomId): boolean {
+    const position = atomPosition(id);
+    return (
+      position !== null &&
+      containingRun(
+        this.#runs.get(position.operationId) ?? [],
+        position.index,
+      ) !== undefined
+    );
+  }
+
+  #upgrade(): void {
+    this.#legacyAtoms = undefined;
   }
 
   apply(operation: unknown, authorization: unknown): ApplyResult {
     if (
       isRecord(operation) &&
       typeof operation.schemaVersion === 'number' &&
+      operation.schemaVersion !== 1 &&
       operation.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION
     ) {
       return this.#record({
@@ -487,6 +662,7 @@ class SharedWorkingStateCore {
     if (
       isRecord(operation) &&
       typeof operation.schemaVersion === 'number' &&
+      operation.schemaVersion !== 1 &&
       operation.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION
     ) {
       return this.#record({
@@ -521,7 +697,10 @@ class SharedWorkingStateCore {
   ): ResyncResult {
     if (negotiateSharedWorkingStateVersion(offeredVersions) === null) {
       this.#telemetry('resync', 'unsupported_version');
-      return { outcome: 'unsupported_version', supportedVersions: [1] };
+      return {
+        outcome: 'unsupported_version',
+        supportedVersions: [SHARED_WORKING_STATE_SCHEMA_VERSION],
+      };
     }
     if (
       afterRevision === null ||
@@ -562,6 +741,8 @@ class SharedWorkingStateCore {
 
   /** Drops only bounded delta payloads; snapshot preserves all deferred work. */
   compact(): WorkingStateSnapshot {
+    for (const [owner, runs] of this.#runs)
+      this.#runs.set(owner, normalizeRuns(runs));
     this.#history = [];
     this.#replayCheckpointRevision = this.revision;
     this.#telemetry('compact', 'applied');
@@ -571,13 +752,15 @@ class SharedWorkingStateCore {
   snapshot(): WorkingStateSnapshot {
     const revision = this.revision;
     return {
-      schemaVersion: SHARED_WORKING_STATE_SCHEMA_VERSION,
+      ...(this.#legacyAtoms
+        ? {
+            schemaVersion: 1 as const,
+            atoms: this.#legacyAtoms.map((atom) => ({ ...atom })),
+          }
+        : { schemaVersion: 2 as const, runs: this.#runProjection() }),
       scope: { ...this.#scope },
       checkpointRevision: revision,
       revision,
-      atoms: [...this.#atoms.values()]
-        .map((atom) => ({ ...atom }))
-        .sort((left, right) => compareWorkingStateIds(left.id, right.id)),
       knownOperations: this.#knownOperationProjection(),
       deferred: [...this.#deferred.values()]
         .sort((left, right) =>
@@ -615,6 +798,7 @@ class SharedWorkingStateCore {
           ...deferred,
           admission: 'trusted',
         });
+        this.#upgrade();
         this.#invalidateRevision();
         const released = this.#reconcileDeferred(authorization);
         return this.#record({
@@ -690,28 +874,65 @@ class SharedWorkingStateCore {
     if (
       operation.kind === 'insert' &&
       operation.after &&
-      !this.#atoms.has(operation.after)
+      !this.#hasAtom(operation.after)
     )
       missing.push(operation.after);
     if (operation.kind === 'delete')
       missing.push(
-        ...operation.target.filter((target) => !this.#atoms.has(target)),
+        ...operation.target.filter((target) => !this.#hasAtom(target)),
       );
     return stableStrings(missing);
   }
 
   #applyReady(operation: TextDocumentOperation, operationHash: string): void {
     const priorRevision = this.revision;
+    this.#upgrade();
     if (operation.kind === 'insert') {
-      let after = operation.after;
-      for (const [index, value] of [...operation.text].entries()) {
-        const id = atomId(operation.operationId, index);
-        this.#atoms.set(id, { id, after, value, deleted: false });
-        after = id;
+      this.#runs.set(operation.operationId, [
+        {
+          operationId: operation.operationId,
+          start: 0,
+          after: operation.after,
+          length: [...operation.text].length,
+          text: operation.text,
+        },
+      ]);
+    } else {
+      const targets = new Map<OperationId, Set<number>>();
+      for (const target of operation.target) {
+        const position = atomPosition(target)!;
+        const indices = targets.get(position.operationId) ?? new Set<number>();
+        indices.add(position.index);
+        targets.set(position.operationId, indices);
       }
-    } else
-      for (const target of operation.target)
-        this.#atoms.get(target)!.deleted = true;
+      for (const [owner, indices] of targets) {
+        const changed: TextRun[] = [];
+        const sorted = [...indices].sort((a, b) => a - b);
+        for (const run of this.#runs.get(owner)!) {
+          const deleted = sorted.filter(
+            (index) => index >= run.start && index < run.start + run.length,
+          );
+          if (run.text === null || deleted.length === 0) {
+            changed.push(run);
+            continue;
+          }
+          const scalars = [...run.text];
+          let start = run.start;
+          for (let cursor = 0; cursor < deleted.length; ) {
+            const first = deleted[cursor];
+            if (start < first)
+              changed.push(runSlice(run, start, first, scalars));
+            let end = first + 1;
+            while (++cursor < deleted.length && deleted[cursor] === end) end++;
+            changed.push({ ...runSlice(run, first, end, scalars), text: null });
+            start = end;
+          }
+          if (start < run.start + run.length)
+            changed.push(runSlice(run, start, run.start + run.length, scalars));
+        }
+        this.#runs.set(owner, normalizeRuns(changed));
+      }
+    }
     this.#knownOperations.set(operation.operationId, operationHash);
     this.#invalidateRevision();
     this.#history.push({ operation: cloneOperation(operation), priorRevision });
@@ -731,6 +952,7 @@ class SharedWorkingStateCore {
     ) {
       return false;
     }
+    this.#upgrade();
     this.#deferred.set(operation.operationId, {
       operation,
       digest: operationHash,
@@ -743,6 +965,7 @@ class SharedWorkingStateCore {
 
   #removeDeferred(operationId: OperationId): DeferredOperation {
     const entry = this.#deferred.get(operationId)!;
+    this.#upgrade();
     this.#deferred.delete(operationId);
     this.#invalidateRevision();
     this.#deferredBytes -= Buffer.byteLength(
@@ -850,63 +1073,155 @@ class SharedWorkingStateCore {
     this.#invalidateRevision();
     if (
       !isRecord(snapshot) ||
-      snapshot.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION ||
+      (snapshot.schemaVersion !== 1 && snapshot.schemaVersion !== 2) ||
       !validScope(snapshot.scope) ||
       snapshot.scope.documentId !== this.#scope.documentId ||
       snapshot.scope.projectId !== this.#scope.projectId ||
       snapshot.scope.taskId !== this.#scope.taskId ||
       !isNonEmpty(snapshot.revision) ||
       snapshot.checkpointRevision !== snapshot.revision ||
-      !Array.isArray(snapshot.atoms) ||
+      (snapshot.schemaVersion === 1
+        ? !Array.isArray(snapshot.atoms)
+        : !Array.isArray(snapshot.runs)) ||
       !Array.isArray(snapshot.knownOperations) ||
       !Array.isArray(snapshot.deferred)
     )
       throw new Error('shared working-state snapshot is malformed');
-    const atomIds = new Set<string>();
-    for (const rawAtom of snapshot.atoms) {
-      if (
-        !isRecord(rawAtom) ||
-        !isNonEmpty(rawAtom.id) ||
-        (rawAtom.after !== null && !isNonEmpty(rawAtom.after)) ||
-        typeof rawAtom.value !== 'string' ||
-        !isWellFormedUnicode(rawAtom.value) ||
-        [...rawAtom.value].length !== 1 ||
-        typeof rawAtom.deleted !== 'boolean' ||
-        atomIds.has(rawAtom.id)
-      )
+    if (snapshot.schemaVersion === 1) {
+      if (!Array.isArray(snapshot.atoms))
         throw new Error('shared working-state snapshot is malformed');
-      atomIds.add(rawAtom.id);
-      this.#atoms.set(rawAtom.id, {
-        id: rawAtom.id,
-        after: rawAtom.after,
-        value: rawAtom.value,
-        deleted: rawAtom.deleted,
-      });
-    }
-    const colors = new Map<AtomId, 'visiting' | 'visited'>();
-    for (const atom of this.#atoms.values()) {
-      if (atom.after !== null && !this.#atoms.has(atom.after)) {
-        throw new Error(
-          'shared working-state snapshot lacks predecessor closure',
-        );
+      const atoms = new Map<AtomId, Atom>();
+      const atomIds = new Set<string>();
+      for (const rawAtom of snapshot.atoms) {
+        if (
+          !isRecord(rawAtom) ||
+          !isNonEmpty(rawAtom.id) ||
+          (rawAtom.after !== null && !isNonEmpty(rawAtom.after)) ||
+          typeof rawAtom.value !== 'string' ||
+          !isWellFormedUnicode(rawAtom.value) ||
+          [...rawAtom.value].length !== 1 ||
+          typeof rawAtom.deleted !== 'boolean' ||
+          atomIds.has(rawAtom.id)
+        )
+          throw new Error('shared working-state snapshot is malformed');
+        atomIds.add(rawAtom.id);
+        atoms.set(rawAtom.id, {
+          id: rawAtom.id,
+          after: rawAtom.after,
+          value: rawAtom.value,
+          deleted: rawAtom.deleted,
+        });
       }
-      if (colors.get(atom.id) === 'visited') continue;
-      const path: AtomId[] = [];
-      for (
-        let cursor: AtomId | null = atom.id;
-        cursor !== null;
-        cursor = this.#atoms.get(cursor)!.after
-      ) {
-        if (colors.get(cursor) === 'visiting') {
+      const colors = new Map<AtomId, 'visiting' | 'visited'>();
+      for (const atom of atoms.values()) {
+        if (atom.after !== null && !atoms.has(atom.after)) {
           throw new Error(
-            'shared working-state snapshot has cyclic predecessors',
+            'shared working-state snapshot lacks predecessor closure',
           );
         }
-        if (colors.get(cursor) === 'visited') break;
-        colors.set(cursor, 'visiting');
-        path.push(cursor);
+        if (colors.get(atom.id) === 'visited') continue;
+        const path: AtomId[] = [];
+        for (
+          let cursor: AtomId | null = atom.id;
+          cursor !== null;
+          cursor = atoms.get(cursor)!.after
+        ) {
+          if (colors.get(cursor) === 'visiting') {
+            throw new Error(
+              'shared working-state snapshot has cyclic predecessors',
+            );
+          }
+          if (colors.get(cursor) === 'visited') break;
+          colors.set(cursor, 'visiting');
+          path.push(cursor);
+        }
+        for (const id of path) colors.set(id, 'visited');
       }
-      for (const id of path) colors.set(id, 'visited');
+      this.#legacyAtoms = [...atoms.values()].sort((a, b) =>
+        compareWorkingStateIds(a.id, b.id),
+      );
+      for (const run of atomRuns(this.#legacyAtoms)) {
+        const group = this.#runs.get(run.operationId) ?? [];
+        group.push(run);
+        this.#runs.set(run.operationId, group);
+      }
+    } else {
+      if (!Array.isArray(snapshot.runs))
+        throw new Error('shared working-state snapshot is malformed');
+      for (const raw of snapshot.runs) {
+        if (
+          !isRecord(raw) ||
+          !isNonEmpty(raw.operationId) ||
+          !Number.isSafeInteger(raw.start) ||
+          Number(raw.start) < 0 ||
+          !Number.isSafeInteger(raw.length) ||
+          Number(raw.length) < 1 ||
+          !Number.isSafeInteger(Number(raw.start) + Number(raw.length)) ||
+          (raw.after !== null && !isNonEmpty(raw.after)) ||
+          (raw.text !== null &&
+            (typeof raw.text !== 'string' ||
+              !isWellFormedUnicode(raw.text) ||
+              [...raw.text].length !== raw.length))
+        )
+          throw new Error('shared working-state snapshot has malformed run');
+        const run: TextRun = {
+          operationId: raw.operationId,
+          start: Number(raw.start),
+          after: raw.after,
+          length: Number(raw.length),
+          text: raw.text,
+        };
+        const group = this.#runs.get(run.operationId) ?? [];
+        group.push(run);
+        this.#runs.set(run.operationId, group);
+      }
+      for (const [owner, group] of this.#runs) {
+        group.sort((a, b) => a.start - b.start);
+        let end = 0;
+        for (const run of group) {
+          if (
+            run.start !== end ||
+            (run.start > 0 && run.after !== atomId(owner, run.start - 1))
+          )
+            throw new Error(
+              'shared working-state snapshot has overlapping or missing run positions',
+            );
+          end += run.length;
+        }
+      }
+      const parents = new Map<string, string | null>();
+      for (const run of [...this.#runs.values()].flat()) {
+        let parent: TextRun | undefined;
+        if (run.after !== null) {
+          const position = atomPosition(run.after);
+          if (position)
+            parent = containingRun(
+              this.#runs.get(position.operationId) ?? [],
+              position.index,
+            );
+          if (!parent)
+            throw new Error(
+              'shared working-state snapshot lacks predecessor closure',
+            );
+        }
+        parents.set(runId(run), parent ? runId(parent) : null);
+      }
+      const visited = new Set<string>();
+      for (const id of parents.keys()) {
+        const path = new Set<string>();
+        for (
+          let cursor: string | null = id;
+          cursor !== null && !visited.has(cursor);
+          cursor = parents.get(cursor)!
+        ) {
+          if (path.has(cursor))
+            throw new Error(
+              'shared working-state snapshot has cyclic predecessors',
+            );
+          path.add(cursor);
+        }
+        for (const entry of path) visited.add(entry);
+      }
     }
     for (const rawKnown of snapshot.knownOperations) {
       if (
@@ -920,13 +1235,13 @@ class SharedWorkingStateCore {
         );
       this.#knownOperations.set(rawKnown.operationId, rawKnown.digest);
     }
-    for (const atom of this.#atoms.values()) {
-      const owner = atomOwner(atom.id);
-      if (!owner || !this.#knownOperations.has(owner))
+    for (const owner of this.#runs.keys()) {
+      if (!this.#knownOperations.has(owner))
         throw new Error(
           'shared working-state snapshot atom lacks known operation',
         );
     }
+    const legacyAtoms = this.#legacyAtoms;
     for (const rawDeferred of snapshot.deferred) {
       if (
         !isRecord(rawDeferred) ||
@@ -965,6 +1280,8 @@ class SharedWorkingStateCore {
         );
       }
     }
+    this.#legacyAtoms = legacyAtoms;
+    this.#invalidateRevision();
     if (snapshot.revision !== this.revision)
       throw new Error('shared working-state snapshot revision is not provable');
   }

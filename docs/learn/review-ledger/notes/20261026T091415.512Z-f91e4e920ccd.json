@@ -1,0 +1,7 @@
+{
+  "revision": "c61141cefecae58952217ba9d3ab118e6eaec898",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Source delta (#4203 round 5): the inventory's transcript-check cache is keyed also by the high-water row's global_sequence, so a thread deleted and recreated under the same id is projected afresh. Checked: no claim about the inventory's transcript-check cache or thread deletion. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

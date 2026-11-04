@@ -8,7 +8,14 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -35,6 +42,7 @@ const BUILTIN_CODING_DRILL_INS = BUILTIN_CODING_LAYOUT.drillIns ?? [];
 
 const harness = vi.hoisted(() => ({
   isMobile: false,
+  browserPreview: true,
   chatTitle: 'Fix the flaky login test',
   shortcuts: new Map<
     string,
@@ -95,6 +103,11 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     );
   },
 }));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(harness.browserPreview ? ['browser-experience'] : []),
+}));
+
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: (
     id: string,
@@ -160,6 +173,9 @@ interface StackProps {
   /** The Terminal pane for the lower panel, drawn by `renderTerminal`. */
   terminal?: WorkspacePaneInstance;
   renderTerminal?: () => ReactNode;
+  /** A dock region shows the Terminal; `undock` takes it back. */
+  terminalDocked?: boolean;
+  undock?: () => void;
   /** Which panes the reader may remove (the host's close). */
   closable?: (instance: WorkspacePaneInstance) => boolean;
   /** The pane host's content; a stub when the test does not care. */
@@ -173,6 +189,8 @@ function Stack({
   wide = false,
   terminal,
   renderTerminal,
+  terminalDocked,
+  undock,
   closable,
   children,
 }: StackProps) {
@@ -198,7 +216,12 @@ function Stack({
       hostDocument={() => document}
       terminal={
         terminal
-          ? { instance: terminal, render: renderTerminal ?? (() => null) }
+          ? {
+              instance: terminal,
+              render: renderTerminal ?? (() => null),
+              docked: terminalDocked,
+              undock,
+            }
           : undefined
       }
       paneLabel={label}
@@ -230,6 +253,10 @@ const crumbs = () =>
 const rail = () => screen.getByRole('navigation', { name: 'Views' });
 
 async function drillInto(name: 'Files' | 'Diff') {
+  if (harness.isMobile)
+    fireEvent.click(
+      screen.getByRole('button', { name: /Switch tool, current:/ }),
+    );
   fireEvent.click(within(rail()).getByRole('button', { name }));
   await act(async () => undefined);
 }
@@ -245,6 +272,7 @@ async function historyBackSettled() {
 
 beforeEach(() => {
   harness.isMobile = false;
+  harness.browserPreview = true;
   harness.chatMounts = 0;
   harness.chatSlots = null;
   harness.needsYou = 0;
@@ -272,10 +300,115 @@ test('central phone chat preserves the ambient dock state while mounting and lea
   harness.isMobile = true;
   navigationStore.setDockState(false, false);
   const view = renderStack({ centerChat: true });
-  expect(crumbs()).toEqual(['Inbox']);
+  expect(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  ).toBeTruthy();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
   view.unmount();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+});
+
+test('phone tool picker switches through canonical history and preserves the chat draft', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const composer = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.change(composer, { target: { value: 'Keep my draft' } });
+  expect(screen.queryByRole('navigation', { name: 'Views' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  );
+  const picker = screen.getByRole('dialog', { name: 'Tools' });
+  fireEvent.click(within(picker).getByRole('button', { name: 'Files' }));
+  await act(async () => undefined);
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBe(
+    files.instanceId,
+  );
+  expect(
+    screen.getByRole('button', { name: 'Switch tool, current: Files' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
+  await historyBackSettled();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Message' })).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('Keep my draft');
+  expect(harness.chatMounts).toBe(1);
+});
+
+test('a phone stack re-fits to the window when the chrome above it settles', () => {
+  harness.isMobile = true;
+  const observed: { measure: () => void; target: Element }[] = [];
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private readonly measure: () => void) {}
+      observe(target: Element) {
+        observed.push({ measure: this.measure, target });
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  let top = 189;
+  const rect = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      return DOMRect.fromRect({
+        y: this.classList.contains('coding-workbench') ? top : 0,
+        width: 390,
+        height: 0,
+      });
+    });
+  try {
+    renderStack();
+    const stack =
+      window.document.querySelector<HTMLElement>('.coding-workbench')!;
+    const first = Number.parseFloat(stack.style.height);
+    expect(first).toBeGreaterThan(0);
+    // The shell above finishes its layout: the stack moves up and its host
+    // box grows, with the visual viewport unchanged.
+    top = 53;
+    act(() => {
+      for (const { measure, target } of observed)
+        if (target === stack.parentElement) measure();
+    });
+    expect(Number.parseFloat(stack.style.height)).toBe(first + 136);
+  } finally {
+    rect.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test('dismissing the phone tool sheet leaves the active tool unchanged', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const trigger = screen.getByRole('button', {
+    name: 'Switch tool, current: Chat',
+  });
+  trigger.focus();
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', { name: 'Close tools' }));
+  await act(async () => undefined);
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
+  await waitFor(() => expect(window.document.activeElement).toBe(trigger));
+});
+
+test('a tool opened while the phone picker is visible does not reopen the picker on return', async () => {
+  harness.isMobile = true;
+  renderStack();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  );
+  act(() => navigationStore.setActiveWorkspacePane(files.instanceId, scopeKey));
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  act(() => navigationStore.updateParams({ pane: null, paneScope: null }));
+  expect(
+    screen
+      .getByRole('button', { name: 'Switch tool, current: Chat' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
 });
 
 describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
@@ -600,8 +733,10 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
   });
 
   test('persistence is said only when it is a problem', async () => {
-    const view = renderStatic({ persistence: 'owned' });
+    const onUseHere = vi.fn();
+    const view = renderStatic({ persistence: 'owned', onUseHere });
     expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Use here' })).toBeNull();
     view.rerender(
       <NavigationProvider>
         <CodingWorkbench
@@ -618,6 +753,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
           hostOpen={null}
           onOpenCatalog={vi.fn()}
           persistence="contended"
+          onUseHere={onUseHere}
         >
           <div />
         </CodingWorkbench>
@@ -625,6 +761,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     );
     await act(async () => undefined);
     expect(screen.getByRole('status').textContent).toMatch(/another tab/);
+    // #4407: the banner offers to take the views over in this tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Use here' }));
+    expect(onUseHere).toHaveBeenCalledOnce();
   });
 
   test('the chords stand down only in an editor that owns the keys, and decline when there is nowhere to go', async () => {
@@ -876,6 +1015,35 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(lowerPanel()?.hasAttribute('inert')).toBe(true);
     expect(screen.getByTestId('lower-terminal')).toBeTruthy();
     expect(sidePanel().getAttribute('data-active')).toBe('true');
+  });
+
+  test('a Terminal shown in a dock is not drawn below too; opening it below moves it back', async () => {
+    const renderTerminal = vi.fn(() => (
+      <div data-testid="lower-terminal">terminal</div>
+    ));
+    const undock = vi.fn();
+    const view = renderStack({ wide: true, terminal, renderTerminal });
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    expect(screen.getByTestId('lower-terminal')).toBeTruthy();
+
+    view.rerender(
+      <NavigationProvider>
+        <Stack
+          wide
+          terminal={terminal}
+          renderTerminal={renderTerminal}
+          terminalDocked
+          undock={undock}
+        />
+      </NavigationProvider>,
+    );
+    expect(lowerPanel()).toBeNull();
+    expect(screen.queryByTestId('lower-terminal')).toBeNull();
+    expect(undock).not.toHaveBeenCalled();
+
+    fireEvent.click(railItem('Terminal'));
+    expect(undock).toHaveBeenCalledTimes(1);
   });
 
   test('a URL naming the Terminal on a wide screen opens it below and clears the side', async () => {
@@ -1191,20 +1359,27 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
         </CodingWorkbench>
       </NavigationProvider>,
     );
-    // The tip is drawn on the body while the item is hovered or focused
-    // (the rail scrolls, and would clip a tip of its own).
+    // The tip is drawn on the body while the item is hovered (the rail
+    // scrolls, and would clip a tip of its own).
     const tip = (name: string) => {
-      fireEvent.focusIn(railItem(name));
+      fireEvent.pointerEnter(railItem(name));
       const shown = screen.getByRole('tooltip');
       expect(shown.parentElement).toBe(window.document.body);
       const text = shown.textContent;
-      fireEvent.focusOut(railItem(name));
+      fireEvent.pointerLeave(railItem(name));
       expect(screen.queryByRole('tooltip')).toBeNull();
       return text;
     };
     expect(tip('Files')).toBe('src/app/files.ts');
     expect(railItem('Files').getAttribute('aria-label')).toBe('Files');
     expect(tip('Diff, 2 changed files')).toBe('Diff, 2 changed files');
+
+    // #4401: focus handed back to a rail item after a pointer interaction
+    // (a closed panel restores it) is not visible focus, so it raises no tip
+    // that would stay over the rail once the pointer has gone.
+    act(() => railItem('Files').focus());
+    expect(window.document.activeElement).toBe(railItem('Files'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
 
@@ -1724,6 +1899,75 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     await act(async () => undefined);
     expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
     expect(window.document.activeElement).toBe(trigger);
+  });
+
+  test('the visible Browser action and shortcut open a Project-bound pane', () => {
+    const open = vi.fn(
+      (_instance: WorkspacePaneInstance) => WORKSPACE_PANE_OPENED,
+    );
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName="Coding"
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={{ open }}
+          onOpenCatalog={vi.fn()}
+          browserPreviewAvailability={{
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          }}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Open Browser$/ }));
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0]![0].boundContext?.projectId).toBe('project-uuid');
+    act(() => harness.shortcuts.get('browser.open')?.handler());
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test('the Coding Browser entry point is unavailable while its preview is off', () => {
+    harness.browserPreview = false;
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName="Coding"
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={{ open }}
+          onOpenCatalog={vi.fn()}
+          browserPreviewAvailability={{
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          }}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    expect(screen.queryByRole('button', { name: /^Open Browser$/ })).toBeNull();
+    act(() => harness.shortcuts.get('browser.open')?.handler());
+    expect(open).not.toHaveBeenCalled();
   });
 
   test('a File Preview beside Chat offers the way back to Files in its head; other panels do not (U5)', async () => {

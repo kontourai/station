@@ -38,7 +38,9 @@ export function NewProjectDirectoryField({
             id="new-project-directory"
             value={directory}
             onChange={onDirectoryChange}
-            placeholder="/path/to/project"
+            // #4405 (A33): `~/…` is accepted on every host; `/path/to/project`
+            // read as a POSIX-only path on a Windows Station.
+            placeholder="~/code/my-project"
             className="editor-input path-autocomplete__input new-project-modal__working-dir-input"
             browsable
             aria-invalid={error ? true : undefined}

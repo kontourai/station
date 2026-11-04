@@ -12,11 +12,18 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERSISTED_QUERY_KEY_PREFIXES } from '../lib/queryPersistence';
 
-const connectionStatus: { status: 'connected' | 'connecting' | 'error' } = {
+const connectionStatus: {
+  status: 'connected' | 'connecting' | 'error';
+  bootId: string;
+} = {
   status: 'connecting',
+  bootId: 'boot-a',
 };
 
 vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    activeConnection: { id: 'host', lastBootId: connectionStatus.bootId },
+  }),
   useConnectionStatus: () => ({
     status: connectionStatus.status,
     checking: false,
@@ -43,9 +50,28 @@ function wrapper(queryClient: QueryClient) {
 
 beforeEach(() => {
   connectionStatus.status = 'connecting';
+  connectionStatus.bootId = 'boot-a';
 });
 
 describe('useQueryCacheReconnectSync', () => {
+  it('invalidates the automation capability on reconnect and a changed boot', () => {
+    const queryClient = new QueryClient();
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { rerender } = renderHook(() => useQueryCacheReconnectSync(), {
+      wrapper: wrapper(queryClient),
+    });
+    connectionStatus.status = 'connected';
+    rerender();
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: ['scheduler', 'conversation-target-capability'],
+    });
+    spy.mockClear();
+    connectionStatus.bootId = 'boot-b';
+    rerender();
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: ['scheduler', 'conversation-target-capability'],
+    });
+  });
   it('invalidates every whitelisted query on the first successful connect after boot (connecting -> connected)', () => {
     connectionStatus.status = 'connecting';
     const queryClient = new QueryClient();

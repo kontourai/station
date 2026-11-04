@@ -1,0 +1,9 @@
+{
+  "revision": "751d37bbf721e7e5bfdd5b899c9af20cd548634e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed own-property lookup compatibility repair after hosted SDK/Board/Basis/examples and iOS build failure on Object.hasOwn. Object.getOwnPropertyDescriptor preserves the exact allowlisted own-key behavior using older standard-library support; inherited constructor/prototype keys remain excluded. No code/kind/retryability/schema change. Contract91 tests and all four affected consumer typecheck lanes pass. Existing public failure and resource-spend claims remain accurate; no prose change needed.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed own-property lookup compatibility repair after hosted SDK/Board/Basis/examples and iOS build failure on Object.hasOwn. Object.getOwnPropertyDescriptor preserves the exact allowlisted own-key behavior using older standard-library support; inherited constructor/prototype keys remain excluded. No code/kind/retryability/schema change. Contract91 tests and all four affected consumer typecheck lanes pass. Existing public failure and resource-spend claims remain accurate; no prose change needed.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

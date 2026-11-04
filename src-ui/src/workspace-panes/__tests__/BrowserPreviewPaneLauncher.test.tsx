@@ -61,6 +61,41 @@ afterEach(() => {
 });
 
 describe('BrowserPreviewPaneLauncher', () => {
+  test('a view-only device opens a pane to choose an existing session', async () => {
+    const open = vi.fn(
+      (
+        _instance: import('@kontourai/station-contracts/workspace-pane').WorkspacePaneInstance,
+      ) => WORKSPACE_PANE_OPENED,
+    );
+    const transport = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/browser/sessions' && init?.method === 'POST')
+        return Response.json(
+          { success: false, code: 'access-denied' },
+          { status: 403 },
+        );
+      if (path === '/api/browser/projects/alpha/access')
+        return Response.json({
+          success: true,
+          data: {
+            projectId: 'project-uuid-1',
+            role: 'operator',
+            operator: false,
+            canDrive: false,
+            browser: 'ready',
+          },
+        });
+      return Response.json({ success: false }, { status: 500 });
+    });
+    renderLauncher({ open }, transport);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Browser' }));
+    await waitFor(() => expect(open).toHaveBeenCalledOnce());
+    const instance = open.mock.calls[0]![0];
+    expect(instance.boundContext?.projectId).toBe('project-uuid-1');
+    expect(
+      readBrowserPreviewPaneState(window.localStorage, instance.stateKey),
+    ).toBeNull();
+  });
   test('opens a server session for the address, then a pane attached to it', async () => {
     // `satisfies` pins the fake to the real contract (#1596).
     const open = vi.fn(((_instance, preparation) =>

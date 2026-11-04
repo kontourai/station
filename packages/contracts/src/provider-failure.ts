@@ -11,6 +11,7 @@ import {
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
@@ -23,9 +24,11 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
+  INBOX_KEY_CONFLICT_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   MODEL_OVERRIDE_UNSUPPORTED_CODE,
   MUSE_APPROVAL_DECIDE_FAILED_CODE,
@@ -43,6 +46,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
+  WORKLOAD_COMMAND_OOM_KILLED_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -63,6 +67,26 @@ export const RESOURCE_ENGINE_START_CAPACITY_CODE =
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
+
+export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
+  sandbox_unavailable:
+    'The host could not create the engine sandbox. Ask its operator to repair the host sandbox prerequisites, then start a new task; keep sandbox protections enabled.',
+  provider_model_unavailable:
+    'The configured provider could not route the requested model. Check provider credentials and model availability before continuing; this error does not establish quota exhaustion.',
+} as const;
+
+export type EngineStartupFailureCode =
+  keyof typeof ENGINE_STARTUP_FAILURE_GUIDANCE;
+
+export function engineStartupFailureGuidance(
+  code: unknown,
+): string | undefined {
+  return typeof code === 'string' &&
+    Object.getOwnPropertyDescriptor(ENGINE_STARTUP_FAILURE_GUIDANCE, code) !==
+      undefined
+    ? ENGINE_STARTUP_FAILURE_GUIDANCE[code as EngineStartupFailureCode]
+    : undefined;
+}
 
 /** Fixed eligibility for a caller-requested retry; never an automatic replay instruction. */
 export const PROVIDER_FAILURE_RETRYABLE = {
@@ -119,6 +143,8 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  sandbox_unavailable: 'permission_denied',
+  provider_model_unavailable: 'model_unavailable',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
   [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',
@@ -131,6 +157,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   foreground_invocation_unavailable: 'conflict',
   delegation_attempt_capacity: 'busy',
+  create_request_capacity: 'busy',
+  create_request_conflict: 'conflict',
+  create_request_indeterminate: 'indeterminate',
   continuation_place_refused: 'input_unsupported',
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
@@ -151,6 +180,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [AUTH_RATE_LIMITED_ERROR_CODE]: 'rate_limited',
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
+  [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
@@ -159,6 +189,11 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_ESCALATION_REQUIRES_RESTART_CODE]: 'warning',
   [ENGINE_SESSION_BINDING_DEAD_CODE]: 'session_gone',
   [ENGINE_TURN_FAILED_CODE]: 'provider_error',
+  // The kernel killed the engine for memory; Station or a person continues
+  // the turn in a successor Session.
+  [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
+  // A command inside the engine's scope was killed; the engine kept running.
+  [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
@@ -178,6 +213,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [PROVIDER_SESSION_START_FAILED_CODE]: 'unavailable',
   [CLIENT_TURN_IN_FLIGHT_CODE]: 'busy',
   [CLIENT_TURN_INPUT_CONFLICT_CODE]: 'conflict',
+  [INBOX_KEY_CONFLICT_CODE]: 'conflict',
   [CLIENT_TURN_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',

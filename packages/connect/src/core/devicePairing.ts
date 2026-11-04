@@ -356,6 +356,10 @@ const PAIRING_REQUEST_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
     'That pairing code has already been claimed by another device. Create a new code on the Station for this one.',
   offer_capacity_reached:
     'This Station already has as many pairing codes open as it allows. Finish or cancel one on the Station, then try again.',
+  insufficient_scope:
+    'This Station refused this access request. Ask its operator to review permissions.',
+  origin_forbidden:
+    'This Station does not allow access requests from this app address.',
   invalid_request:
     'This Station rejected these pairing details. Check the code and the device name, then try again.',
   request_denied:
@@ -387,10 +391,22 @@ const PAIRING_REQUEST_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
 export function describePairingRequestFailure(error: unknown): string {
   const code = pairingFailureCode(error);
   const known = code ? PAIRING_REQUEST_FAILURE_MESSAGES[code] : undefined;
-  if (known) return known;
+  if (typeof known === 'string') return known;
   return code
     ? `This Station refused the pairing request (${code}). Create a new code on the Station and try again.`
     : 'This Station refused the pairing request. Create a new code on the Station and try again.';
+}
+
+export function describeAccessRequestFailure(error: unknown): string {
+  const code = pairingFailureCode(error);
+  const known = code ? PAIRING_REQUEST_FAILURE_MESSAGES[code] : undefined;
+  if (code !== 'rate_limited' && typeof known === 'string') return known;
+  const status = (error as { status?: number } | null)?.status;
+  if (status === 403)
+    return 'This Station does not allow access requests from this app address.';
+  if (status === 429)
+    return 'Too many access requests. Wait a moment, then try again.';
+  return 'Could not send your request. Check the connection and try again.';
 }
 
 export function requestDevicePairing(input: {

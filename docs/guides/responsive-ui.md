@@ -50,10 +50,13 @@ by themselves produce a complete visual dialog.
   media query;
 - an overlay context, linked to the surface it was opened from, so a menu
   inside it can take a layer above it (see [Action rows](#action-rows)).
+- the phone-sheet drag handle, behind the Sheet gestures device preview
+  (see [Sheet drag handle](#sheet-drag-handle)).
 
 A consumer may keep its content mounted with `open={false}` to preserve a
-pending decision. The closed surface is hidden and releases dialog history and
-focus; reopening captures a new return-focus target. The approval sheet uses
+pending decision. The closed surface is hidden, is not a `dialog` (no role, no
+modal claim, `inert`), and releases dialog history and focus; reopening reuses
+the same node and captures a new return-focus target. The approval sheet uses
 this lifecycle so dismissal cannot reset an in-flight answer.
 
 Give the surface an accessible name. Do not add a second document Escape
@@ -88,6 +91,38 @@ until one of its explicit actions answers it. `useRequestSheet(pending)` closes
 the sheet when an answer given on this page settles the request; a request
 resolved elsewhere leaves the pending list instead, which unmounts the card and
 its sheet together. Desktop keeps the feature's inline card.
+
+### Sheet drag handle
+
+With the Sheet gestures developer preview on, a phone-width surface renders a
+drag handle centred over its panel's top edge
+([`useResponsiveSheetGesture`](../../src-ui/src/components/useResponsiveSheetGesture.ts),
+snap math in [`sheetSnap.ts`](../../src-ui/src/components/sheetSnap.ts)). It
+appears only while the panel is measured within 12px of its overlay's bottom
+edge, so floating cards and centred dialogs get none, and only for a
+dismissible `role="dialog"`: never for an `alertdialog`. The handle is a
+sibling of the panel, not a child, so consumer markup, scrolling and controls
+are untouched; its 44px hit area is 120px wide so it covers no title or close
+control.
+
+Dragging up grows the panel, past the consumer's own `max-height`, to Full:
+from where the panel rests up to the top safe area plus `--k-space-4`. Dragging
+down shrinks it back to the consumer's own height, then slides it out.
+Release snaps to the nearest of dismiss, Default and Full; flings use the
+dock's thresholds, and a downward fling from Full only returns to Default. A
+tap toggles Default and Full. Dismissal calls the surface's ordinary
+`onClose` after the slide, so history entries, close guards and focus return
+are the close button's; a consumer that declines to close gets its sheet back.
+The handle is `aria-hidden` and pointer-only: keyboard and assistive
+technology users keep the close control and Escape, and Full is a convenience,
+not the only way to reach content.
+
+The Full height is measured and published as
+`--responsive-sheet-full-height`, with `data-sheet-expanded` on the overlay;
+both are the gesture's, not the consumer's. A consumer with its own grab
+gesture passes `sheetGesture={false}` (`RequestSheet` does, because its drag is
+hide-only). Only the handle is draggable: a drag that starts anywhere else in
+the sheet scrolls or activates what it started on.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
@@ -143,8 +178,12 @@ at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
 with the Android inset projection and falls back to window dimensions. The
 separate document publisher, installed by `main.tsx`, exposes
-`--visual-viewport-bottom-inset` for fixed siblings. The hook is not a global
-singleton: do not add redundant subscriptions in every nested panel.
+`--visual-viewport-bottom-inset` for fixed siblings. Every call, and the SDK
+and Connect modals, reads one per-window store
+(`@kontourai/station-shared/visual-viewport`) that reads the geometry once per
+frame, so another call adds a re-render rather than more listeners. Still read
+it at the boundary and size descendants from its custom properties instead of
+calling it in every nested panel.
 
 Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
 Keep one bounded scroll owner per region; use overscroll containment where a
@@ -159,10 +198,25 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
-The chat header's **Inventory** control opens the full reader directly on both
-sizes. This is separate from the compact Basis/answer inspection described
+The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
+desktop and phones. Keeping secondary actions there avoids wrapping the
+phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
+
+### Coding tools on phones
+
+The Coding workbench uses the shared mobile predicate to replace the desktop
+rail with a header tool picker. Its Tools Dialog lists the current host's panes
+with labels and counts; the same navigation owner selects them. The tool gets
+the full workbench width. See [mobile tool navigation](../design/placement.md#mobile-tool-navigation-2026-10-27).
+
+A tool can use [ToolControls](../../src-ui/src/components/ToolControls.tsx) for
+contextual controls that float within its own scrolling region. Render them
+only for the active task, as File preview does for Go to line. The surface is
+sticky near that region's top so its controls stay clear of a bottom keyboard;
+its content must supply labels, dismissal, and 44px touch targets. Keep terminal
+accessory keys in their existing row rather than adding a second floating dock.
 
 ## Controls and enforcement
 
@@ -190,19 +244,25 @@ not a universal accessibility, keyboard or device certificate.
 At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
-`--k-text-lg` (18px). Desktop density remains owned by each surface. The task
-picker uses 18px titles with up to two lines, Agent icons, 14px project/status
-metadata, and a pinned New chat action at the lower right. Project names wrap.
+`--k-text-lg` (18px). Desktop density remains owned by each surface.
+The embedded mobile Inbox uses two-line titles, project artwork and engine
+marks, short status labels, and a separate recency timestamp. Search opens
+from its icon without opening the keyboard on Inbox entry. The dock header
+owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
+and shares the desktop Inbox's scope and history preferences. It stays mounted
+behind a conversation, retaining its search and list position.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
-an accessible name. It opens the start composer: its two chips stay on one line (the Agent
-chip gives up width first) and attach, mic and the overflow sit with Start, so
-a phone gets the chips on row one and [attach mic ⋯ … Start] on row two with no
+an accessible name. It opens the start composer, in the dock as a draft in the
+dock body (full screen on a phone). New-chat and running-chat selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) for their presentation. Its chips (in the dock's draft also the
+Project control, and **Run a task…** when there is more than one Station) wrap
+rather than overflow, and attach, mic and the overflow sit with Start, so a
+phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
 viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
-scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
+scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 
@@ -219,9 +279,9 @@ something; Connections is the first adopter.
 
 The mobile chat header keeps the conversation title on one line with the
 assistant beneath it. Coding omits the repeated conversation crumb on its chat
-page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
-reachable. The Project control’s New chats caption names future context;
-it does not move the open conversation. A phone browser retries an unavailable Station without reloading, and
+page; pane drill-ins retain the return-to-chat crumb. Conversation switching remains directly
+reachable. Choose the Project in the new-chat composer; the active conversation
+keeps its original Project. A phone browser retries an unavailable Station without reloading, and
 rechecks on foreground or network return. A refused credential waits for explicit
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
@@ -338,6 +398,75 @@ browser/native keyboard run. The [testing guide](testing.md) explains how to
 record PASS, FAIL and NOT_VERIFIED without turning missing prerequisites into
 success.
 
+### Context menus and holds
+
+A right-click, the keyboard's context-menu key, or a touch hold on an item opens
+the menu that item already has. It adds no item actions that are not reachable
+another way. An item with a `⋯` opens that same menu through the
+`handleRef` on [`ActionOverflowMenu`](../../src-ui/src/components/ActionOverflowMenu.tsx)
+(pull request rows; chat messages through their own `⋯` menus in
+[`TurnActionsMenu`](../../src-ui/src/components/chat/TurnActionsMenu.tsx)).
+An item with no `⋯`, such as a file in the tree, opens a
+[`ContextMenu`](../../src-ui/src/components/ContextMenu.tsx) at the pointer, on
+the layer above whatever hosts the item. A phone inbox row's hold opens its
+Details sheet.
+
+Wire the gesture with
+[`useContextMenuGesture`](../../src-ui/src/hooks/useContextMenuGesture.ts).
+Only a finger or pen can hold (500ms, cancelled by 8px of movement or a scroll).
+The click the hold ends in is swallowed for up to 700ms on the item or on a
+surface the item renders, including the menu or sheet the hold opened under the
+finger. Any new press there ends that window, so a deliberate tap on the menu
+acts. A menu rendered outside the item, like the file tree's, is never
+affected. A press inside what the
+item opened never starts a hold on the item, and a right-click there is that
+surface's own. The platform's own long-press `contextmenu` for the same hold
+is refused to the platform. On the item or its `⋯` menu's backdrop it reopens
+the menu, which Chromium's long-press can close by moving focus. Opens must be
+idempotent. Set `touchHold: false` on mostly
+selectable text: chat messages open their menu only on a mouse right-click,
+because a held finger there selects text. `useLongPress` is a different
+gesture: one control whose click it owns, plus a second act behind a hold.
+
+[`wantsNativeContextMenu`](../../src-ui/src/lib/native-context-menu.ts) leaves
+three cases to the platform: Shift held on a mouse right-click (`button === 2`),
+a text-entry field, and a press on selected text. The terminal opens its own
+menu (Copy, Paste, Add to chat) and the guard leaves a menu it already
+answered alone. Because the Shift case requires
+the right mouse button, Shift+F10 is meant to open Station's menu. That rests on
+keyboard-raised events reporting `button: 0`, which jsdom tests assume and no
+desktop WebView run has confirmed. In the Tauri apps,
+[`NativeContextMenuGuard`](../../src-ui/src/components/NativeContextMenuGuard.tsx)
+refuses every other right-click that no control claimed. Without it the
+WebView would offer Reload and, in nightly and dev builds, Inspect Element.
+Shift+right-click is the deliberate route to the inspector. A link to another
+origin gets the guard's one menu of its own: Open link (a click on the link, so
+it routes the way a left-click does) and Copy link. A browser tab keeps the
+browser's own menu. The behavior is covered in jsdom by the
+`*.contextMenu.test.tsx` suites, `NativeContextMenuGuard.test.tsx`, and the hold
+cases in `FileTreePanel.test.tsx` and `InboxRow.test.tsx`, and was rendered in
+Chromium. It has not been verified in WKWebView or WebView2, or on an iOS or
+Android device.
+
+### Inbox swipe actions
+
+The Sheet gestures device preview also enables a left swipe on touch inbox rows
+in the dock panel and embedded mobile Inbox. The shared row reveals the existing clock
+and × with labels and 72px-wide targets. A swipe only reveals the controls; the
+clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
+rail. Vertical movement stays available to the scroll container, and the swipe’s
+trailing click cannot open the conversation. Details and long press retain the
+same actions with the preview off.
+
+Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
+work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
+use the existing debounce; running progress does not restore a dismissed row.
+The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
+hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
+and renders 390px and 1440px in both themes. Physical-device behavior remains
+unverified.
+
 ### Coding on a phone
 
 The built-in Coding layout keeps Chat in its workbench at phone widths, with
@@ -346,6 +475,33 @@ controller and leaves unrelated dock state intact. Its chat header does not
 repeat the app toolbar’s navigation and Station controls. VisualViewport fitting
 bounds the workbench above the on-screen keyboard; actual device and browser
 checks remain necessary.
+
+### Phone chat shell
+
+A chat on a phone is full screen, as in a messaging app: opening one from
+Home, the Inbox, the drawer or a started draft maximizes the dock. The half
+height is a deliberate peek. The open dock's bar carries a 44px **Full screen
+chat** / **Restore chat size** control beside its leading control, so both
+states are one tap. With no chat yet, the bar offers New chat and the
+Inbox title, not a pressed **Back to chat** or Chat actions.
+
+The drawer lists places and Projects. The chat bar's **Inbox** remains the
+conversation list; the drawer does not duplicate it with Recent chats.
+The collapsed chat bar offers **Full screen chat** directly in its leading
+button slot, preserving the one-row layout and 44px target at narrow widths.
+
+The answer's **⋯** sheet lists the answer's actions itself (Provenance,
+Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose
+popup covered the sheet title. Notifications open as a bottom sheet over a
+dimmed page, exposed as a dialog; desktop keeps the anchored popover. A phone
+Inbox row's second line reads the engine mark, the engine's name and then the
+project, from the start of the row.
+
+A short window with a fine pointer (a desktop browser emulating a phone held
+sideways) keeps the desktop shell, as `MOBILE_MEDIA_QUERY` decides. Its open
+bottom dock track never takes the content row's floor, `min(35%, 160px)` of the
+frame, so a page in `main` keeps room above the dock. Device emulation that
+resizes only the viewport reports `pointer: fine`; it is not a phone check.
 
 
 ## Fresh-phone welcome and initial CSS

@@ -3,6 +3,7 @@ import {
   toolPolicyDeliveryExplanation,
   toolPolicyDeliveryLabel,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
@@ -11,9 +12,10 @@ import {
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
+  approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -47,6 +49,10 @@ interface ApprovalModeChipProps {
    * session's pick and above the Station default.
    */
   agentDefault?: unknown;
+  /** A new chat's Project layer; see `resolveEffectiveApprovalMode`. */
+  projectDefault?: ProjectChatApprovalDefault;
+  /** That layer could not be read; see `resolveEffectiveApprovalMode`. */
+  projectDefaultUnavailable?: boolean;
   /**
    * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
    * layer below the connection's own default. Absent leaves resolution
@@ -110,6 +116,8 @@ export function ApprovalModeChip({
   toolPolicyDelivery,
   sessionOverride,
   agentDefault,
+  projectDefault,
+  projectDefaultUnavailable,
   stationDefault,
   lastAppliedApprovalMode,
   sessionOverrideState,
@@ -133,6 +141,9 @@ export function ApprovalModeChip({
     engineConnectionId,
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
+    projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
+    projectDefaultUnavailable:
+      !notApplied && isNewSession && projectDefaultUnavailable === true,
     stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
       !notApplied &&
@@ -208,10 +219,14 @@ export function ApprovalModeChip({
       : !isOverride && appliedMode
         ? approvalModeLabel(appliedMode)
         : // #3290: before Station takes over, OpenCode's own rules decide.
+          // Codex likewise runs its own configuration until a pick.
           effective.mode === 'connection-default' &&
             engineConnectionId === 'opencode'
           ? "OpenCode's own settings"
-          : effective.label;
+          : effective.mode === 'connection-default' &&
+              engineConnectionId === 'codex'
+            ? "Codex's own settings"
+            : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : isPendingRestrict || isRefused
@@ -225,9 +240,7 @@ export function ApprovalModeChip({
             : 'Own settings'
           : agentDefaultShown
             ? `${approvalModeChipLabel(effective.mode)} (agent default)`
-            : displayedMode === 'connection-default'
-              ? 'Engine default'
-              : approvalModeChipLabel(displayedMode);
+            : approvalModeChipLabel(displayedMode);
   const notAppliedNote =
     notApplied && isApprovalMode(sessionOverride)
       ? ` — ${approvalModeLabel(sessionOverride)} was not applied: Station couldn't switch the engine to its approval rules`
@@ -237,8 +250,10 @@ export function ApprovalModeChip({
       ? selectedLabel
       : agentDefaultShown
         ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-        : notApplied && appliedMode
-          ? selectedLabel
+        : (notApplied && appliedMode) || chipText === selectedLabel
+          ? // #4390: the inherited mode's short and full names are both
+            // "Default"; never announce "Default — Default".
+            selectedLabel
           : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
   const sourceNote = isOverride
@@ -247,14 +262,13 @@ export function ApprovalModeChip({
       ? 'Confirmed by the engine'
       : effective.mode === 'connection-default'
         ? 'Engine settings; active mode not confirmed'
-        : `From ${effective.source === 'account default' ? 'your saved default' : effective.source}`;
+        : approvalModeSourceNote(effective.source);
 
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className={`choice-trigger chat-input__approval-chip ${
+        className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'
             : isOverride
@@ -272,20 +286,13 @@ export function ApprovalModeChip({
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
+        }${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        <span className="chat-input__chip-stack">
-          <span className="chat-input__chip-caption" aria-hidden="true">
-            Approval
-          </span>
-          <span className="chat-input__approval-chip-label" aria-hidden="true">
-            {chipText}
-          </span>
-        </span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={chipText}
+        valueClassName="chat-input__approval-chip-label"
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadComposerModeSheet}

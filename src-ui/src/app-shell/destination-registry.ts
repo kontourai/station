@@ -77,7 +77,12 @@ export interface DestinationDefinition {
     label?: string;
     route?: string;
   };
-  palette?: { order: number; params?: Readonly<Record<string, string | null>> };
+  palette?: {
+    order: number;
+    params?: Readonly<Record<string, string | null>>;
+    /** One plain line under the row, for a destination its name does not explain. */
+    detail?: string;
+  };
   /** Stable semantic owner used by sidebar selection and management routing. */
   managementGroup?: ManagementDestinationId;
   managementViewTypes?: readonly NavigationView['type'][];
@@ -429,9 +434,9 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     id: 'schedule',
-    route: '/schedule',
-    label: () => 'Schedule',
-    keywords: ['schedule', 'cron', 'jobs', 'boo'],
+    route: '/automations',
+    label: () => 'Automations',
+    keywords: ['automations', 'schedule', 'cron', 'jobs', 'check-backs', 'boo'],
     icon: 'schedule',
     managementGroup: 'schedule',
     palette: { order: 70 },
@@ -500,7 +505,11 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // whether or not this row is offered.
     customizeNav: { group: 'this-station', order: 100 },
     managementGroup: 'developer',
-    palette: { order: 80 },
+    palette: {
+      order: 80,
+      // #4407: "Developer" alone said nothing about what is there.
+      detail: 'Logs, diagnostics and internals of this Station',
+    },
     managementViewTypes: ['developer'],
     view: { type: 'developer' },
   },
@@ -544,16 +553,16 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     // archive#3313 (Settings IA, option A): Feature Previews and always-on
-    // Developer folded into this one surface. #2059 (D3): it is the panel
-    // footer's gear now rather than a row — and the way every destination in
-    // the Manage group is reached.
+    // Developer folded into this one surface. #2059 (D3): it left the panel's
+    // rows, and it is the way every destination in the Manage group is
+    // reached. The footer's account menu ("Open settings") opens it.
     id: 'settings',
     route: '/settings',
     label: () => 'Settings',
     keywords: ['settings', 'preferences', 'config'],
     icon: 'settings',
     // Listed last in Customize as well, without leaving its other doors: the
-    // footer gear, ⌘, and the palette still open it directly.
+    // footer's account menu, ⌘, and the palette still open it directly.
     customizeNav: { group: 'this-station', order: 110 },
     palette: { order: 100 },
     managementViewTypes: ['settings'],

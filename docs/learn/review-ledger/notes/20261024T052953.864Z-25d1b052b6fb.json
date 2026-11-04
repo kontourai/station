@@ -1,0 +1,7 @@
+{
+  "revision": "ada254fbbea67effa0ff7e4670eb5f731ee7bb58",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed profile metadata validator, typed manifest reader, packager option, portable builder propagation and CLI flag. Metadata binds source and payload content with per-architecture complete declared check IDs and evidence digest; unknown/duplicate/failed/missing fields or wrong payload are refused. The package/runtime-consumer focused suites passed 38 tests with one platform skip, server-tests types and lint passed. Controlled passing declarations are fixtures only: no runtime qualification or release receipt was issued. Existing diagnostic reports cannot substitute for the complete profile, parent signing authority is unchanged, and installationAuthority remains false. Lifecycle admission/issuer evidence production are still unfinished.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs","src-server/services/telemetry-companion-artifact.mjs","src-server/services/telemetry-companion-qualification.mjs","scripts/build-portable-server-archive.mjs","scripts/lib/portable-server-archive.mjs"]}
+  ]
+}

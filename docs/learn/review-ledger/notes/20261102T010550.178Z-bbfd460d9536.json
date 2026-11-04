@@ -1,0 +1,7 @@
+{
+  "revision": "cdf23df0d6fd5a7fb00b08a51b63324de242ea7b",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Refs #3568 and #3575. Re-read the full SDK scope instructions. The conversation-open decoder imports only contracts, keeps optional older-host omission, and is exercised through resolveConversationOpen rather than a private helper export. Browser inventory/composer consumers are being rechecked. The SDK reference owns the contract explanation; no app-internal import or cancellation/cache behavior was added.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

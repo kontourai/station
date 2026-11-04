@@ -2,9 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../../__test-utils__/owner-standing.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -42,7 +44,7 @@ test.each([
   { tier: undefined, legacy: 'true', dnt: '' },
   { tier: 'lite', legacy: 'true', dnt: '1' },
 ])(
-  'a real STANDARD paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
+  'a real ungranted paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
   async ({ tier, legacy, dnt }) => {
     vi.stubEnv('STATION_CHANNEL', 'nightly');
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -79,7 +81,7 @@ test.each([
     const pairing = security.devicePairing;
     const offer = pairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString('standard'),
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const pending = pairing.requestPairing({
       requesterPosition: 'off-box',
@@ -93,7 +95,7 @@ test.each([
       proof: offer.challenge,
       requestId: pending.requestId,
     });
-    expect(paired.device.scope).toBe(pairingScopePresetString('standard'));
+    expect(paired.device.scope).toBe(DEVICE_WITHOUT_HOST_SHELL);
     const logger = createLogger({
       name: 'paired-telemetry-test',
       level: 'error',
@@ -248,7 +250,7 @@ async function authorAdmissionFixture(capability = true) {
       requestId: pending.requestId,
     });
   };
-  const standard = pair(pairingScopePresetString('standard'));
+  const standard = pair(DEVICE_WITHOUT_HOST_SHELL);
   const managing = pair(
     `${pairingScopePresetString('standard')} access:manage`,
   );
@@ -455,3 +457,353 @@ test('a config route without the runtime author consent capability still refuses
     await f.cleanup();
   }
 });
+
+/**
+ * The disclosure read reports, per caller, which usage-sharing writes the
+ * server will accept. Each reported capability is checked against the real
+ * route's answer for the same credential, so a capability can only be true
+ * when the write succeeds and false when it is refused — including the
+ * per-direction rule inside `PUT /config/app` (lower allowed, raise refused).
+ */
+test.each([
+  {
+    preset: 'read-only',
+    expected: {
+      acknowledge: false,
+      recordNotice: false,
+      lower: false,
+      raise: false,
+    },
+  },
+  {
+    preset: 'operate-only',
+    expected: {
+      acknowledge: false,
+      recordNotice: false,
+      lower: true,
+      raise: false,
+    },
+  },
+  {
+    // The owner's own Standard device holds owner-device standing.
+    preset: 'standard',
+    expected: {
+      acknowledge: true,
+      recordNotice: true,
+      lower: true,
+      raise: true,
+    },
+  },
+  {
+    preset: 'standard+access:manage',
+    expected: {
+      acknowledge: true,
+      recordNotice: true,
+      lower: true,
+      raise: true,
+    },
+  },
+] as const)(
+  'the disclosure reports what a $preset device may do, and every write agrees',
+  async ({ preset, expected }) => {
+    vi.stubEnv('DO_NOT_TRACK', '');
+    vi.stubEnv('STATION_TELEMETRY_TIER', undefined);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENDPOINT', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
+    const home = makeTempDir('station-telemetry-capabilities-');
+    ensureStationHomeSchemaSync(home);
+    await saveAppConfigFile(home, {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      telemetryTier: { kontour: 'lite', operator: 'lite' },
+    });
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const logger = createLogger({
+      name: 'telemetry-capabilities',
+      level: 'error',
+    });
+    const service = new UsageTelemetryService({
+      homeDir: home,
+      appConfig: await loader.loadAppConfig(),
+      version: '1.2.3',
+      logger,
+      env: {},
+    });
+    const security = new EnvironmentSecurityService({ homeDir: home });
+    await security.initialize();
+    const scope =
+      preset === 'standard+access:manage'
+        ? `${pairingScopePresetString('standard')} access:manage`
+        : preset === 'operate-only'
+          ? DEVICE_WITHOUT_HOST_SHELL
+          : pairingScopePresetString(preset);
+    const offer = security.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope,
+    });
+    const pending = security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Capability test device',
+    });
+    security.devicePairing.confirmRequest(pending.requestId, {
+      kind: 'presented-credential',
+    });
+    const device = security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (credential, request) =>
+          request
+            ? security.authorizeCredential(credential, request)
+            : security.verifyCredential(credential),
+        resolveGrantedScope: (credential) =>
+          security.resolveGrantedScope(credential),
+        resolveCredentialAuthority: () => 'device-credential',
+        resolveCredentialDeviceId: (credential) =>
+          security.identifyDevice(credential)?.id,
+        resolveCredentialDeviceKind: () => 'device',
+        allowedOrigins: [],
+      },
+    });
+    app.route('/config', createConfigRoutes(loader, logger));
+    app.route(
+      '/api/usage-telemetry',
+      createUsageTelemetryDisclosureRoutes(service, security),
+    );
+    const call = (path: string, method = 'GET', body?: unknown) =>
+      app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${device.credential}`,
+            'content-type': 'application/json',
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        {
+          incoming: { socket: { remoteAddress: '127.0.0.1' } },
+        } as HttpBindings,
+      );
+    try {
+      const disclosure = await readJson<{
+        data: { inventoryRevision: string; capabilities: unknown };
+      }>(await call('/api/usage-telemetry/disclosure'));
+      expect(disclosure.data.capabilities).toEqual({
+        ...expected,
+        // Not caller-specific: the baseline a write is compared against.
+        defaults: { kontour: 'lite', operator: 'lite' },
+      });
+      const status = await readJson<{
+        data: { liteInventoryRevision: string };
+      }>(await call('/api/usage-telemetry/status'));
+
+      const outcomes = {
+        lower: (
+          await call('/config/app', 'PUT', {
+            telemetryTier: { operator: 'off' },
+          })
+        ).ok,
+        raise: await (async () => {
+          await loader.updateAppConfig({ telemetryTier: { operator: 'off' } });
+          return (
+            await call('/config/app', 'PUT', {
+              telemetryTier: { operator: 'lite' },
+            })
+          ).ok;
+        })(),
+        recordNotice: (
+          await call('/api/usage-telemetry/lite-notices', 'POST', {
+            publisher: 'operator',
+            inventoryRevision: status.data.liteInventoryRevision,
+          })
+        ).ok,
+        acknowledge: (
+          await call(
+            '/api/usage-telemetry/disclosure/acknowledgements',
+            'POST',
+            {
+              acknowledgementProtocol: 2,
+              inventoryRevision: disclosure.data.inventoryRevision,
+            },
+          )
+        ).ok,
+      };
+      expect(
+        outcomes,
+        'a reported capability disagreed with its route',
+      ).toEqual(expected);
+    } finally {
+      await service.shutdown();
+      loader.dispose();
+    }
+  },
+);
+
+/**
+ * Under Do Not Track the EFFECTIVE tier is Off, but the config route compares
+ * a write against the saved choice or, with none saved, the default with DNT
+ * ignored. The disclosure reports that baseline (`capabilities.defaults`), and
+ * the route's lower/raise answer for an ungranted device agrees with it,
+ * including when the environment default or the operator's destination
+ * policy (`telemetryPublisherPolicy`) makes it something other than Lite.
+ */
+test.each([
+  {
+    environmentTier: undefined,
+    policy: undefined,
+    doNotTrack: '1',
+    baseline: 'lite',
+    keepStatus: 200,
+  },
+  {
+    environmentTier: 'off',
+    policy: undefined,
+    doNotTrack: '1',
+    baseline: 'off',
+    keepStatus: 403,
+  },
+  {
+    environmentTier: undefined,
+    policy: { kontour: 'off', operator: 'off' },
+    doNotTrack: '',
+    baseline: 'off',
+    keepStatus: 403,
+  },
+] as const)(
+  'the reported baseline is the one PUT /config/app uses (environment tier $environmentTier, policy $policy, DNT "$doNotTrack")',
+  async ({ environmentTier, policy, doNotTrack, baseline, keepStatus }) => {
+    vi.stubEnv('DO_NOT_TRACK', doNotTrack);
+    vi.stubEnv('STATION_TELEMETRY_TIER', environmentTier);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENDPOINT', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
+    const home = makeTempDir('station-telemetry-dnt-baseline-');
+    ensureStationHomeSchemaSync(home);
+    // No saved choice: the baseline is the DNT-ignored default. The operator
+    // sets a destination policy in person; it is written here directly.
+    await saveAppConfigFile(home, {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      ...(policy ? { telemetryPublisherPolicy: policy } : {}),
+    });
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const logger = createLogger({
+      name: 'telemetry-dnt-baseline',
+      level: 'error',
+    });
+    const service = new UsageTelemetryService({
+      homeDir: home,
+      appConfig: await loader.loadAppConfig(),
+      version: '1.2.3',
+      logger,
+      env: process.env,
+    });
+    const security = new EnvironmentSecurityService({ homeDir: home });
+    await security.initialize();
+    const offer = security.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: DEVICE_WITHOUT_HOST_SHELL,
+    });
+    const pending = security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'DNT baseline device',
+    });
+    security.devicePairing.confirmRequest(pending.requestId, {
+      kind: 'presented-credential',
+    });
+    const device = security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (credential, request) =>
+          request
+            ? security.authorizeCredential(credential, request)
+            : security.verifyCredential(credential),
+        resolveGrantedScope: (credential) =>
+          security.resolveGrantedScope(credential),
+        resolveCredentialAuthority: () => 'device-credential',
+        resolveCredentialDeviceId: (credential) =>
+          security.identifyDevice(credential)?.id,
+        resolveCredentialDeviceKind: () => 'device',
+        allowedOrigins: [],
+      },
+    });
+    app.route('/config', createConfigRoutes(loader, logger));
+    app.route(
+      '/api/usage-telemetry',
+      createUsageTelemetryDisclosureRoutes(service, security),
+    );
+    const call = (path: string, method = 'GET', body?: unknown) =>
+      app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${device.credential}`,
+            'content-type': 'application/json',
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        {
+          incoming: { socket: { remoteAddress: '127.0.0.1' } },
+        } as HttpBindings,
+      );
+    try {
+      const disclosure = await readJson<{
+        data: {
+          publishers: Record<string, { tier: string; reason: string }>;
+          capabilities: { defaults: Record<string, string> };
+        };
+      }>(await call('/api/usage-telemetry/disclosure'));
+      // DNT forces the effective tier Off; that is NOT the write baseline.
+      if (doNotTrack)
+        expect(disclosure.data.publishers.operator).toMatchObject({
+          tier: 'off',
+          reason: 'DNT',
+        });
+      expect(disclosure.data.capabilities.defaults).toEqual({
+        kontour: baseline,
+        operator: baseline,
+      });
+      // Choosing Anonymous counts keeps a Lite baseline and raises an Off one.
+      expect(
+        (
+          await call('/config/app', 'PUT', {
+            telemetryTier: { kontour: 'lite', operator: 'lite' },
+          })
+        ).status,
+      ).toBe(keepStatus);
+    } finally {
+      await service.shutdown();
+      loader.dispose();
+    }
+  },
+);

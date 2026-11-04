@@ -120,7 +120,8 @@ export function createSessionLifecycleModule(
             throw new Error(`Session not found: ${input.threadId}`);
           }
           const from = foldedSessionLifecycleState(
-            detail.session.lifecycleState,
+            detail.session.ownedWork?.ownLifecycleState ??
+              detail.session.lifecycleState,
           );
           const validation = validateSessionLifecycleTransition(from, input.to);
           if (!validation.ok) {
@@ -160,7 +161,8 @@ export function createSessionLifecycleModule(
               throw new Error(`Session not found: ${input.threadId}`);
             }
             const revalidatedFrom = foldedSessionLifecycleState(
-              revalidated.session.lifecycleState,
+              revalidated.session.ownedWork?.ownLifecycleState ??
+                revalidated.session.lifecycleState,
             );
             if (revalidatedFrom !== from) {
               throw new Error(

@@ -71,17 +71,24 @@ export type PluginCommandRequirementResolver = (input: {
  *   session read goes through; a session the caller cannot read is `missing`,
  *   exactly like one that does not exist. A composer target must be that
  *   same session.
- * - `project` and `task` answer EXISTENCE only: the deps below take no caller
- *   authority, so project membership is not consulted. A person who can reach
- *   admission can learn whether a project or task exists even when they cannot
- *   read it (kontourai/station#2969).
+ * - `project` and `task` require the caller's Project read authority; an
+ *   unreadable Project or Task is missing, just like an absent one.
  */
 export function createPluginCommandRequirementResolver(deps: {
   canReadSession(sessionId: string, authority: Request): boolean;
-  projectExists(projectSlug: string): boolean;
-  taskInProject(taskId: string, projectSlug: string | undefined): boolean;
+  canReadProject(
+    projectSlug: string,
+    authority: Request,
+    principal: PrincipalRef,
+  ): Promise<boolean>;
+  canReadTask(
+    taskId: string,
+    projectSlug: string | undefined,
+    authority: Request,
+    principal: PrincipalRef,
+  ): Promise<boolean>;
 }): PluginCommandRequirementResolver {
-  return async ({ requirement, request, authority }) => {
+  return async ({ requirement, request, authority, principal }) => {
     const context = request.context ?? {};
     if (requirement === 'active-chat' || requirement === 'session') {
       const sessionId =
@@ -99,11 +106,17 @@ export function createPluginCommandRequirementResolver(deps: {
         : 'missing';
     }
     if (requirement === 'project')
-      return context.projectSlug && deps.projectExists(context.projectSlug)
+      return context.projectSlug &&
+        (await deps.canReadProject(context.projectSlug, authority, principal))
         ? 'available'
         : 'missing';
     return context.taskId &&
-      deps.taskInProject(context.taskId, context.projectSlug)
+      (await deps.canReadTask(
+        context.taskId,
+        context.projectSlug,
+        authority,
+        principal,
+      ))
       ? 'available'
       : 'missing';
   };

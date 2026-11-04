@@ -500,9 +500,7 @@ function NativeRelayAccountSessionPanel({
     onSuccess: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
       setError(null);
-      setNotice(
-        'Station account session is active for this selected route. Device approval and Project access remain separate.',
-      );
+      setNotice('Signed in on this route.');
     },
     onError: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
@@ -533,9 +531,7 @@ function NativeRelayAccountSessionPanel({
       )
         return;
       setError(null);
-      setNotice(
-        `Access was added for Project ${accepted.scope.localProjectSlug}. Device approval remains separate.`,
-      );
+      setNotice(`Access added for Project ${accepted.scope.localProjectSlug}.`);
       onInvitationAccepted?.(accepted, operation.capturedScope);
     },
     onError: (_, id) => {
@@ -567,7 +563,7 @@ function NativeRelayAccountSessionPanel({
       }
       setError(null);
       setNotice(
-        'Station confirmed this account session was revoked. Device access remains separate.',
+        'Station confirmed the account session was revoked; device access is unchanged.',
       );
     },
     onError: (_, id) => {

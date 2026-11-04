@@ -19,7 +19,7 @@ describe('StatusGlyph', () => {
       ['Running', 'Running', '●', 'active'],
       ['Ready', 'Idle', '○', 'muted'],
       ['Draft', 'Draft', '◇', 'muted'],
-      ['Unanswerable', 'Elsewhere', '?', 'warning'],
+      ['Unanswerable', 'Read only', '?', 'warning'],
       ['Completed', 'Done', '✓', 'success'],
     ] as const;
     expect(Object.keys(STATUS_GLYPH_BY_STATE)).toEqual(

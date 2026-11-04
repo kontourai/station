@@ -1,3 +1,4 @@
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /**
  * @vitest-environment jsdom
  *
@@ -39,13 +40,21 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const listConversationInboxMock = vi.hoisted(() => vi.fn());
+const scopeMock = vi.hoisted(() => ({ current: undefined as any }));
 const addEphemeralMessageMock = vi.hoisted(() => vi.fn());
 const cancelTurnMock = vi.hoisted(() => vi.fn());
+const handleSendMock = vi.hoisted(() => vi.fn(async () => {}));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   steerOrchestrationTurn: (...args: unknown[]) =>
     steerOrchestrationTurnMock(...args),
+}));
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  listConversationInbox: (...args: unknown[]) =>
+    listConversationInboxMock(...args),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -62,7 +71,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => scopeMock.current,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -210,7 +219,7 @@ function buildChatInput() {
     commandQuery: null,
     slashCommands: [],
     handleInputChange: vi.fn(),
-    handleSend: vi.fn(async () => {}),
+    handleSend: handleSendMock,
     handleCancel: cancelTurnMock,
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
@@ -306,44 +315,166 @@ describe('ChatDockBody stale busy wait', () => {
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    listConversationInboxMock.mockReset();
+    scopeMock.current = undefined;
     addEphemeralMessageMock.mockReset();
     cancelTurnMock.mockReset();
+    handleSendMock.mockClear();
   });
 
   // A refused steer is a send that did not go: the short-dock composer line
   // repeats it, so the notice carries sendFailure. (A steer whose delivery
   // cannot be confirmed is held as unconfirmed since #3127, not a failure.)
-  test('a refused steer is a send-failure notice', async () => {
-    steerOrchestrationTurnMock.mockResolvedValueOnce({
-      outcome: 'no-active-turn',
-    });
-    // The steer path reads the held message from the store (#3127).
+  test.each([false, true])(
+    'a refused steer is a send-failure notice (typed conflict=%s)',
+    async (conflict) => {
+      if (conflict)
+        steerOrchestrationTurnMock.mockRejectedValueOnce(
+          Object.assign(new Error('key names different input'), {
+            code: 'client_turn_input_conflict',
+            status: 409,
+            stationEnvelope: true,
+          }),
+        );
+      else
+        steerOrchestrationTurnMock.mockResolvedValueOnce({
+          outcome: 'no-active-turn',
+        });
+      // The steer path reads the held message from the store (#3127).
+      activeChatsStore.initChat('thread-busy');
+      activeChatsStore.updateChat('thread-busy', {
+        queuedMessages: ['steer me'],
+        queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+      });
+      renderDock({
+        session: buildSession({
+          queuedMessages: ['steer me'],
+          queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+          status: 'sending',
+          orchestrationProvider: 'claude',
+          orchestrationDurability: STEERING_ENGINE_DURABILITY,
+          orchestrationSessionStarted: true,
+          orchestrationTurnOpen: true,
+        } as Partial<ChatSession>),
+      });
+      await screen.findByTestId('queued-messages');
+      const onSteer = queuedMessagesPropsMock.current?.onSteer;
+      expect(onSteer).toBeTypeOf('function');
+      await act(async () => {
+        await onSteer('steer me', 'steer-1');
+      });
+      expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+      expect(addEphemeralMessageMock).toHaveBeenCalledWith(
+        'thread-busy',
+        expect.objectContaining({ role: 'system', sendFailure: true }),
+      );
+    },
+  );
+
+  test('an unanswered inbox steer is reconciled through the inbox without invoking the adapter', async () => {
+    scopeMock.current = {
+      apiBase: 'http://localhost:3242',
+      authorityKey: 'owner',
+      isCurrent: () => true,
+    };
+    listConversationInboxMock.mockResolvedValueOnce([
+      {
+        kind: 'steer',
+        ownedByCaller: true,
+        expectedHead: '["thread",1]',
+        clientTurnId: 'steer-1',
+        message: 'steer me',
+        state: 'unconfirmed',
+      },
+    ]);
     activeChatsStore.initChat('thread-busy');
+    const metadata = [
+      {
+        id: 'steer-1',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        inboxSteerConversationId: 'conversation-a',
+        inboxSteerHead: '["thread",1]',
+      },
+    ];
     activeChatsStore.updateChat('thread-busy', {
       queuedMessages: ['steer me'],
-      queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+      queuedMessageMetadata: metadata,
     });
     renderDock({
       session: buildSession({
         queuedMessages: ['steer me'],
-        queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+        queuedMessageMetadata: metadata,
         status: 'sending',
         orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         orchestrationSessionStarted: true,
         orchestrationTurnOpen: true,
       } as Partial<ChatSession>),
     });
     await screen.findByTestId('queued-messages');
-    const onSteer = queuedMessagesPropsMock.current?.onSteer;
-    expect(onSteer).toBeTypeOf('function');
     await act(async () => {
-      await onSteer('steer me', 'steer-1');
+      await queuedMessagesPropsMock.current?.onSteer('steer me', 'steer-1');
     });
-    expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
-    expect(addEphemeralMessageMock).toHaveBeenCalledWith(
-      'thread-busy',
-      expect.objectContaining({ role: 'system', sendFailure: true }),
+    expect(listConversationInboxMock).toHaveBeenCalledWith(
+      'http://localhost:3242',
+      'conversation-a',
+      expect.any(Object),
     );
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()['thread-busy'].queuedMessages,
+    ).toEqual([]);
+  });
+
+  test('a legacy inbox steer without its original head remains held', async () => {
+    scopeMock.current = {
+      apiBase: 'http://localhost:3242',
+      authorityKey: 'owner',
+      isCurrent: () => true,
+    };
+    listConversationInboxMock.mockResolvedValueOnce([
+      {
+        kind: 'steer',
+        ownedByCaller: true,
+        expectedHead: '["thread",1]',
+        clientTurnId: 'legacy',
+        message: 'keep me',
+        state: 'sent',
+      },
+    ]);
+    activeChatsStore.initChat('thread-busy');
+    const metadata = [
+      {
+        id: 'legacy',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        inboxSteerConversationId: 'conversation-a',
+      },
+    ];
+    activeChatsStore.updateChat('thread-busy', {
+      queuedMessages: ['keep me'],
+      queuedMessageMetadata: metadata,
+    });
+    renderDock({
+      session: buildSession({
+        queuedMessages: ['keep me'],
+        queuedMessageMetadata: metadata,
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      } as Partial<ChatSession>),
+    });
+    await screen.findByTestId('queued-messages');
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('keep me', 'legacy');
+    });
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()['thread-busy'].queuedMessages,
+    ).toEqual(['keep me']);
   });
 
   test.each([false, true])(
@@ -386,7 +517,9 @@ describe('ChatDockBody stale busy wait', () => {
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
   });
 
-  test('a live wait keeps draft-only with no Check again', async () => {
+  // A chat reopened mid-turn resolves `busy`, but its open turn is live: the
+  // composer takes Steer or Queue as it does in the tab that started the turn.
+  test('a live wait leaves Send enabled with no Check again', async () => {
     renderDock({
       session: buildSession({
         status: 'sending',
@@ -395,6 +528,8 @@ describe('ChatDockBody stale busy wait', () => {
     });
     await waitFor(() => expect(chatInputPropsMock.current).not.toBeNull());
     expect(chatInputPropsMock.current?.turnInFlight).toBe(true);
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(false);
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
@@ -423,7 +558,7 @@ describe('ChatDockBody stale busy wait', () => {
     ).toBeTruthy();
   });
 
-  test('the live wait still promises drafting', async () => {
+  test('the live wait sends the draft into the open turn', async () => {
     realControlsMock.enabled = true;
     renderDock({
       session: buildSession({
@@ -432,9 +567,17 @@ describe('ChatDockBody stale busy wait', () => {
       }),
     });
     expect(
-      await screen.findByPlaceholderText(
-        'Draft a follow-up while this turn finishes…',
-      ),
+      await screen.findByPlaceholderText('Queue a follow-up…'),
     ).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send.hasAttribute('disabled')).toBe(false);
+    await act(async () => {
+      fireEvent.click(send);
+    });
+    expect(handleSendMock).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      expect.objectContaining({ queueOnBusy: true }),
+    );
   });
 });

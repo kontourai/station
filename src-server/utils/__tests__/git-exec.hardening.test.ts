@@ -1203,8 +1203,6 @@ describe.skipIf(process.platform === 'win32')(
           acpBridge: { shutdown: vi.fn(async () => {}) },
           feedbackService: { stop: vi.fn() },
           voiceService: { stop: vi.fn(async () => {}) },
-          terminalWsServer: { stop: vi.fn() },
-          terminalService: { dispose: vi.fn(async () => {}) },
           configLoader: { dispose: vi.fn(async () => {}) },
         });
         const outcome = await settledWithin(running);

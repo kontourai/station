@@ -1,0 +1,7 @@
+{
+  "revision": "50613535a040b57e7f87fabf185b77b10e608508",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited: added Use your own OAuth client (spec selection order, client-id-required state, secret binding, default and per-sign-in scopes as the person's choice, issuer pin, ownership) and the Gmail Developer Preview example with vendor scope facts and NOT_VERIFIED live sign-in. Checked existing OAuth MCP claims against tool-server-oauth.ts, mcp-service.ts and the new fixture tests. Other inputs: the connections guide adds Use your own OAuth client and a Gmail preview example; station-runtime.ts only passes the secret-binding resolver to the engine MCP OAuth resolver so configured OAuth client secrets can refresh; mcp-manager.ts only passes an integration's configured OAuth client and secret resolver to its remote OAuth providers; engine-mcp-oauth.ts only gives its providers the configured OAuth client and counts a configured client as known OAuth; the OAuth provider adds pre-registered and CIMD client selection, a per-bucket issuer pin, the client-id-required refusal and configured scopes.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/plugins/engine-mcp-oauth.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

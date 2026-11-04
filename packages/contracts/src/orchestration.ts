@@ -9,6 +9,7 @@ import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -133,6 +134,14 @@ export type OrchestrationCommand =
       clientInputId?: string;
     }
   | {
+      type: 'steerChildWork';
+      threadId: string;
+      childId: string;
+      turnId: string;
+      input: string;
+      clientInputId: string;
+    }
+  | {
       type: 'respondToRequest';
       /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
       expectedSkillExperience?: {
@@ -153,6 +162,16 @@ export type OrchestrationCommand =
        */
       sessionGrantScope?: 'server';
       /**
+       * docs/design/event-content-spill.md: required to allow a request whose
+       * content EventStore stored out of line (`spilledContent` set). The
+       * `sha256-<hex>` digest of the stored request event exactly as
+       * delivered (`JSON.stringify` of the reference-bearing payload), which
+       * the client computes only after loading every reference. With it,
+       * `expectedRequestEventId` must name the same event. Decline and
+       * cancel never need it.
+       */
+      viewedContentDigest?: string;
+      /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
        * `accept`; the server validates it against the exact opened event.
@@ -166,6 +185,11 @@ export type OrchestrationCommand =
       answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
+  | {
+      type: 'releaseUnknownOwnedWork';
+      threadId: string;
+      confirmation: 'child-process-may-still-be-running';
+    }
   | {
       /**
        * #2436: record the conversation's approval posture. Ordered by server
@@ -546,6 +570,19 @@ export type SteerTurnResult =
        * from #2898 on return a plain sentence for any unknown outcome.
        */
       outcome: 'confinement-changed';
+      threadId: string;
+    };
+
+export type SteerChildWorkResult =
+  | { outcome: 'steered'; threadId: string; childId: string; turnId: string }
+  | { outcome: 'indeterminate'; threadId: string; clientInputId: string }
+  | {
+      outcome:
+        | 'unsupported'
+        | 'no-active-task'
+        | 'confinement-changed'
+        | 'unavailable'
+        | 'not-authorized';
       threadId: string;
     };
 
@@ -1110,7 +1147,24 @@ export interface TerminalAttribution {
   detail?: string;
 }
 
+export interface OwnedSessionActivity {
+  runningChildCount: number;
+  pendingStopCount: number;
+  pendingStops: Array<{
+    custody: 'local' | 'peer' | 'unknown';
+    reason: string;
+    count: number;
+  }>;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Aggregate owned execution activity; the parent's own event fold is retained. */
+  ownedWork?: OwnedSessionActivity & {
+    state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
+    ownLifecycleState: SessionLifecycleState;
+  };
+  /** Current adapter declaration, projected at read time. */
+  durability?: ProviderDurabilityProfile;
   controlMode: SessionControlMode;
   /**
    * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer
@@ -1125,13 +1179,22 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   attachedSource?: AttachedSessionSourceMetadata;
   /**
    * Present when `cwd` is a folder Station created for this chat rather than
-   * one the user chose: an ACP engine started with no project or connection
-   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`.
-   * The server decides (`isManagedAcpWorkspace`), so clients name the folder
+   * one the user chose: an otherwise-unbound ACP or confined Codex session
+   * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`,
+   * and (#4389) a chat with no Project runs in `<stationHome>/scratch/<id>`.
+   * The server decides (`isStationChatFolder`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
    */
   cwdManagedWorkspace?: true;
+  /**
+   * #4433: the approval mode this session's engine last reported applying
+   * (the newest `session.configured` or `turn.started` carrying
+   * `metadata.approvalMode`). Durable, so a client that reopens or resyncs
+   * a chat shows what the engine reported instead of falling back to the
+   * inherited default until the next report.
+   */
+  appliedApprovalMode?: ApprovalMode;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
@@ -1174,6 +1237,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
+  /**
+   * When the event that produced the current `lifecycleState` was recorded.
+   * For a finished session this is the real finish time, which `updatedAt`
+   * and `lastEventAt` are not (later bookkeeping events move them). Absent
+   * when no event in the folded window changed the state; consumers then
+   * fall back to `updatedAt`.
+   */
+  lifecycleChangedAt?: string;
   transitionReason?: SessionTransitionReason;
   transitionSource?: SessionTransitionSource;
   pendingReview?: boolean;
@@ -1406,6 +1477,13 @@ export interface OrchestrationSessionEventWindow {
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /**
+   * The page's oldest event is its oldest turn's `turn.started`, re-added
+   * across events the page's budget left out: the page is not contiguous, and
+   * `nextCursor` reads that gap first. Absent when the page is contiguous, and
+   * from hosts that predate the field.
+   */
+  turnStartDetached?: true;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
   /**
@@ -1430,6 +1508,8 @@ export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {
   conversationId: string;
   currentSessionId: string;
+  /** Server's current person-continuation decision; absent on older hosts. */
+  memoryContinuation?: { eligible: boolean; turnId?: string };
   /**
    * Immutable execution-session lineage for this transcript.  A conversation
    * may replace its current Session during a handoff, so a historical turn
@@ -1525,6 +1605,26 @@ export type ConversationHandoffEffectStatus =
   | 'indeterminate';
 
 /** Authorized durable effect truth; never re-resolves mutable Agent setup. */
+export interface ConversationContextSeedReceipt {
+  seedDigest: string;
+  /** Session-local sequence intervals; never compare across Sessions. */
+  sourceCutoffs: readonly {
+    sessionId: string;
+    afterSequence: number;
+    throughSequence: number;
+  }[];
+  omission: {
+    totalMessages: number;
+    includedMessages: number;
+    omittedMessages: number;
+    newestShortened: boolean;
+    nonTextMessages: number;
+  };
+}
+
+export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
+  'conversation-context-unavailable';
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;
@@ -1532,6 +1632,16 @@ export interface ConversationHandoffStatusProjection {
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+  /** A pinned handoff seed, not proof of provider transcript retention. */
+  contextDelivery?: ConversationContextSeedReceipt & {
+    status: ConversationHandoffEffectStatus;
+    mode?: 'seed-text' | 'native-memory';
+    nativeBinding?: 'matched' | 'changed' | 'unavailable';
+    /** Complete text projection only; omitted/shortened history is never acknowledged. */
+    acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
+  };
+  /** Completed literal-seed ranges witnessed for this matched native identity. */
+  nativeAcceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
 }
 
 /**
@@ -1620,8 +1730,12 @@ export interface ConversationInboxEntry {
    * send answers or Station restarts).
    */
   clientTurnId?: string;
-  /** Only follow-ups today; steer and display-only kinds may follow. */
-  kind: 'follow-up';
+  /** How the message is placed in the conversation. */
+  kind: 'follow-up' | 'steer' | 'display';
+  /** The execution head admitted with this entry, when supplied. */
+  expectedHead?: string;
+  /** Whether the authenticated reader is the recorded sender. */
+  ownedByCaller?: boolean;
   state: ConversationInboxEntryState;
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
@@ -1831,8 +1945,10 @@ export interface ConversationListItem {
   /** False when the transcript is owned by an external runtime event store. */
   mutable: boolean;
   /**
-   * Durable title provenance for mutable store conversations. A UI must ask
-   * before replacing a human-owned title; runtime conversations have none.
+   * Durable title provenance. A UI must ask before replacing a human-owned
+   * title on a mutable store conversation. A runtime conversation carries
+   * `prompt`, `provider` (supplied with its start) or `generated` (the title
+   * model's, #4266), and none for a title recorded before #4266.
    * `agent` is a title a station-control agent set with `rename_session`: it
    * is not a person's, so any later rename replaces it without asking.
    */
@@ -1850,8 +1966,16 @@ export interface ConversationListItem {
   answerability: RequestAnswerability;
   controlMode?: SessionControlMode;
   lifecycleState?: SessionLifecycleState;
+  /** The current execution's `OrchestrationSessionSummary.lifecycleChangedAt`. */
+  lifecycleChangedAt?: string;
   pendingReview?: boolean;
   provider?: string;
+  /**
+   * The engines this conversation actually ran on, distinct, in the order
+   * they first ran (one per execution session, so a handoff between engines
+   * lists both). Absent from older hosts and for file-store conversations.
+   */
+  executionProviders?: string[];
   /** Engine-reported identity preferred for a resumed conversation header. */
   model?: string;
   /** Adapter-accepted model identity, distinct from a reported model claim. */
@@ -1889,6 +2013,7 @@ export interface ConversationListItem {
  */
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
+  durability?: ProviderDurabilityProfile;
   sessionId: string;
   /** Present only when this receiver verified the persisted execution owner as itself. */
   environment?: { kind: 'current' };
@@ -1901,7 +2026,35 @@ export interface ConversationOpenExecution {
   acceptedModel?: string;
 }
 
-export type ConversationOpenResolution =
+/**
+ * What THIS caller may write next, as the server's own HTTP boundary answers
+ * it for the exact routes a client would post to: `continue` for sending a
+ * turn into this conversation, `startChat` for starting a new chat. Computed
+ * per request, so a paired device without the needed scope learns it from
+ * the server instead of re-deriving the route table. Absent on older servers
+ * and when the request carries no authenticated principal; absent means
+ * unknown, and the server still enforces either way.
+ */
+export interface ConversationOpenCallerAccess {
+  continue: boolean;
+  startChat: boolean;
+}
+
+export type ConversationOpenResolution = (
+  | {
+      /** A saved, authorized fork with no provider Session until first send. */
+      status: 'fork-ready';
+      conversation: ConversationListItem;
+      transcript: {
+        available: true;
+        owner: 'fork-context';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: boolean;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
   | {
       status: 'resolved';
       conversation: ConversationListItem;
@@ -1918,6 +2071,20 @@ export type ConversationOpenResolution =
       canContinue: boolean;
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
+      /**
+       * #4179: whether the next ordinary turn starts a new Session (on the
+       * Agent's then-current engine binding) rather than running in
+       * `currentSessionId`: that Session's lifecycle is terminal, its engine
+       * binding ended (`closed`/`dead`/`error`), or a continuation is
+       * reserved but not started. The same rule as the server's continuation
+       * decision, read with this resolution; a model change the Session
+       * cannot apply per turn also starts one, and is not counted here.
+       * Absent on older servers, and when the server would refuse that turn
+       * (a handoff awaiting its target, a context delivery not yet
+       * reconciled). It sits on the resolution rather than on
+       * `execution`, whose field set older clients validate strictly.
+       */
+      nextTurnStartsSession?: boolean;
       /**
        * #2309: the conversation's activity read with this resolution — fresher
        * than any copy on the `conversation` row the caller supplied.
@@ -1941,7 +2108,8 @@ export type ConversationOpenResolution =
       canContinue: false;
       answerability: RequestAnswerability;
       recoveryActions: readonly ('retry' | 'start-new')[];
-    };
+    }
+) & { callerAccess?: ConversationOpenCallerAccess };
 
 export interface ConversationForkProvenance {
   sourceConversationId: string;

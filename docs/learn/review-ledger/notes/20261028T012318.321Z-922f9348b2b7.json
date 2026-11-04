@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/desktop-tray.md","note":"SystemSection delta is the core-app-updates row label only. Tray health, controls and service commands unaffected; prose accurate.","inputs":["docs/guides/desktop-tray.md","src-ui/src/views/settings/SystemSection.tsx"]}
+  ]
+}

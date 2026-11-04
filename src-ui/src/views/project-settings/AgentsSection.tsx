@@ -4,10 +4,12 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { useAgentsQuery } from '@kontourai/station-sdk';
 import type { Dispatch, SetStateAction } from 'react';
+import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
+import { ErrorState, Skeleton } from '../../components/state';
 import type { ProjectForm } from './types';
 import { globalAgentsOnly } from './utils';
 
@@ -20,7 +22,8 @@ export function AgentsSection({
   projectSlug?: string;
   setForm: Dispatch<SetStateAction<ProjectForm | null>>;
 }) {
-  const { data: fetchedAgents = [] } = useAgentsQuery() as {
+  const agentsQuery = useAgentsQuery();
+  const { data: fetchedAgents = [] } = agentsQuery as {
     data?: Array<{
       slug: AgentId;
       name: string;
@@ -67,6 +70,17 @@ export function AgentsSection({
       title="Agents"
       description="Choose which agents are offered when a conversation starts in this project."
     >
+      {agentsQuery.isLoading ? (
+        <Skeleton variant="block" />
+      ) : agentsQuery.isError ? (
+        <ErrorState
+          variant="compact"
+          title="Could not load agents"
+          action={
+            <Button onClick={() => void agentsQuery.refetch()}>Retry</Button>
+          }
+        />
+      ) : null}
       <PageRow
         title="Default agent"
         description="Used when you haven’t started a chat in this project yet. Your last choice takes precedence."
@@ -74,6 +88,7 @@ export function AgentsSection({
         <select
           className="editor-select"
           aria-label="Default agent"
+          disabled={agentsQuery.isLoading || agentsQuery.isError}
           value={form.defaultAgent ?? ''}
           onChange={(event) =>
             setForm((current) =>
@@ -110,8 +125,9 @@ export function AgentsSection({
           : `${selected.size} agent${selected.size !== 1 ? 's' : ''} selected.`}
       </span>
       {!allSelected && (
-        <button
-          className="secondary-btn small"
+        <Button
+          size="sm"
+          disabled={agentsQuery.isLoading || agentsQuery.isError}
           type="button"
           onClick={() =>
             setForm((currentForm) =>
@@ -120,7 +136,7 @@ export function AgentsSection({
           }
         >
           Use all agents
-        </button>
+        </Button>
       )}
       <div className="editor__tools-server">
         <div className="editor__tools-list">
@@ -130,10 +146,17 @@ export function AgentsSection({
               className={`editor__tool-item${allSelected || selected.has(agent.slug) ? ' editor__tool-item--active' : ''}`}
             >
               <Checkbox
+                id={`project-agent-${agent.slug}`}
+                disabled={agentsQuery.isLoading || agentsQuery.isError}
                 checked={allSelected || selected.has(agent.slug)}
                 onChange={() => toggle(agent.slug)}
-              />
-              <div className="editor__tool-info">
+              >
+                <span className="sr-only">Make {agent.name} available</span>
+              </Checkbox>
+              <label
+                htmlFor={`project-agent-${agent.slug}`}
+                className="editor__tool-info"
+              >
                 <div className="editor__tool-name">
                   <AgentIcon
                     agent={agent}
@@ -142,7 +165,7 @@ export function AgentsSection({
                   />{' '}
                   {agent.name}
                 </div>
-              </div>
+              </label>
             </div>
           ))}
         </div>

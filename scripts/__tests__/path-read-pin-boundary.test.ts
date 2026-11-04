@@ -101,6 +101,14 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads only package.json created in a trackTempDirs checkout fixture,
+  // never repository source. Its real service and route imports select it.
+  'src-server/services/projects/__tests__/project-working-configuration.test.ts',
+  // Read captured public Sigstore bundles under __fixtures__/sigstore (test
+  // data, not production source); their verifier and trust-rule imports
+  // select them for changes.
+  'src-server/services/plugins/__tests__/plugin-install-trust.test.ts',
+  'src-server/services/plugins/__tests__/plugin-sigstore-verifier.test.ts',
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',
@@ -156,6 +164,14 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks src-ui/src/components/coding-layout for terminal imports (a repo
+  // scan in REPO_SCAN_SUITES, #3994); it reads each file the walk finds, so
+  // no single pin could stand for it.
+  'packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts',
+  // Walks packages/sdk/src and src-ui/src for capability gates (a repo scan in
+  // REPO_SCAN_SUITES, #4177); its anchored roots are directories, which no
+  // single file pin can stand for.
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
@@ -202,6 +218,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // inside the fake `opencode` scripts it writes and spawns. Its import of
   // opencode-model-capabilities.ts selects it for source changes.
   'src-server/services/acp/__tests__/opencode-model-capabilities.test.ts',
+  // Same shape: its module-anchored read is the fake workload host under
+  // __fixtures__/, and its only readFileSync is that host's pid file in the
+  // temp home it spawns into. No repository source to pin.
+  'packages/supervisor/src/__tests__/workloads.test.ts',
   // Device hosts: these read only their own fixtures (real OpenSSH
   // transcripts, anchored to the test file) or, for the resolver, walk the
   // server source tree to prove a structural rule. Neither names a source
@@ -559,6 +579,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  // The heavy-check slot queue lives under a makeTempDir root reached through
+  // the workspace or temp fixture object.
+  'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
@@ -569,6 +593,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the versions directory of the temporary install root its harness creates',
   'scripts/__tests__/service-launcher-e2e.test.ts':
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
+  'src-server/services/infra/__tests__/workload-budget.test.ts':
+    'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':
@@ -642,6 +668,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // directory to codingDiffFixture, whose git closure fixes cwd to that root.
   // Its index reads and filesystem race controls also use only owned temp roots.
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // repository() returns a tracked temporary root; git(dir, ...) fixes cwd
+  // to that root for the large-index fixture's sole ls-files call.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,

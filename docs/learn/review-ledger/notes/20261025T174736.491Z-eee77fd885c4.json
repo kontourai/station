@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDock/ChatDockBody engine labels now follow chatEngineIdentity; no Agent or app setting, default or config claim changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

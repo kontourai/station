@@ -138,11 +138,9 @@
  *
  * ### Why this module exists at all, given the SDK
  *
- * The SDK already answers `-32601` for a method with no handler
- * (`jsonrpc.js` responds `methodNotFound` when no handler claims a request,
- * and `acp.js` only registers the catch-all `if (implementation.extMethod)`).
- * So *simply not supplying `onExtMethod`* would produce the identical wire
- * code with no new code at all.
+ * The SDK already answers `-32601` for an unhandled request when the client
+ * app has no matching handler or raw fallback. Omitting Station's extension
+ * request fallback would therefore produce the identical wire code.
  *
  * This module is therefore not what makes the wire correct — it is what
  * makes the refusal **observable and legible**: the named log line, the
@@ -156,7 +154,7 @@
  * (Layer 1) for the surrounding design, and archive#1820 for the outbound
  * half, which this module deliberately does not implement.
  */
-import { RequestError } from '@agentclientprotocol/sdk';
+import { RequestError } from '@agentclientprotocol/sdk/unstable';
 import { acpInboundExtensionRequests } from '../../telemetry/metrics.js';
 
 export type AcpInboundExtensionHandler = (

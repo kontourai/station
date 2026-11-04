@@ -21,6 +21,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   memo,
+  type FocusEvent as ReactFocusEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -39,6 +40,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import {
+  getShortcutContext,
   type ShortcutWhen,
   useKeyboardShortcuts,
 } from '../../contexts/KeyboardShortcutsContext';
@@ -49,8 +51,10 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLayoutSessionPanels } from '../../hooks/useLayoutSessionPanels';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { NO_SESSION_PANELS_KEY } from '../../lib/layout-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
+import { createEmptyBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
 import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
@@ -61,12 +65,15 @@ import type {
 } from '../../workspace-panes/WorkspacePaneHostCommands';
 import type { WorkspacePaneHostOpenAction } from '../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
+import { describeWorkspacePaneOpenRefusal } from '../../workspace-panes/workspacePaneHostOpenOutcome';
 import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspacePaneHostReducerTree';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
+import { Dialog } from '../Dialog';
 import {
+  ArrowDownGlyph,
   ArrowLeftGlyph,
   ArrowRightGlyph,
   CheckGlyph,
@@ -76,6 +83,7 @@ import {
   DocumentGlyph,
   FolderGlyph,
   GlobeGlyph,
+  MessageGlyph,
   PlusGlyph,
   ShieldGlyph,
   TargetGlyph,
@@ -108,7 +116,7 @@ import './CodingWorkbench.css';
 /** Whether keyboard focus is in something that edits text. */
 /**
  * Whether focus is in an editor that owns these keys itself — CodeMirror
- * (⌘[ outdents), xterm, a contenteditable rich editor — whose own handler
+ * (⌘[ outdents), the terminal, a contenteditable rich editor — whose own handler
  * takes the key. There the stack declines. A plain input, textarea or the
  * composer does not own ⌘[ or Alt+←: off macOS, Alt+← there is the browser's
  * Back, which would leave the layout, so the stack handles the chord instead.
@@ -118,12 +126,13 @@ function focusInKeyOwningEditor(): boolean {
   if (!(focused instanceof Element)) return false;
   return Boolean(
     focused.closest(
-      '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
+      '[contenteditable=""], [contenteditable="true"], .cm-editor, .station-terminal',
     ),
   );
 }
 
 const STACK_CHORD_WHEN: ShortcutWhen = { not: 'terminalFocused' };
+const STACK_HISTORY_WHEN: ShortcutWhen = { not: 'browserFocused' };
 const USER_MOVE_WINDOW_MS = 1000;
 /** A separator press that moves less than this is a click, not a resize. */
 const DRAG_THRESHOLD_PX = 2;
@@ -183,9 +192,15 @@ export interface CodingWorkbenchProps {
   /**
    * The Terminal pane and how to draw it, for the lower panel on a wide
    * screen. The host renders it there and nowhere else while wide, so one
-   * terminal is never mounted twice.
+   * terminal is never mounted twice. `docked`: a dock region shows this
+   * Terminal, so the lower panel is not drawn; opening it moves it back.
    */
-  terminal?: { instance: WorkspacePaneInstance; render(): ReactNode };
+  terminal?: {
+    instance: WorkspacePaneInstance;
+    render(): ReactNode;
+    docked?: boolean;
+    undock?(): void;
+  };
   /**
    * A state the layout reports above both pages — its catalog loading or
    * failing, a pane host it could not mount. The Chat page stays usable.
@@ -214,6 +229,11 @@ export interface CodingWorkbenchProps {
    * host is drawn chromeless, so its "saved in this tab" line is gone.
    */
   persistence?: 'owned' | 'contended' | 'unavailable';
+  /**
+   * While `persistence` is 'contended', take the views over from the other
+   * tab so this one saves ("Use here", #4407).
+   */
+  onUseHere?(): void;
   /** Whether the reader may close this drill-in (one they opened, not a built-in). */
   closable?(instance: WorkspacePaneInstance): boolean;
   /**
@@ -277,6 +297,7 @@ export function CodingWorkbench({
   provisional = false,
   popOut,
   persistence = 'owned',
+  onUseHere,
   closable,
   children,
 }: CodingWorkbenchProps) {
@@ -307,7 +328,9 @@ export function CodingWorkbench({
       ? location.paneId
       : null;
   const sideOpen = sidePaneId !== null;
-  const lowerOpen = wide && terminal !== undefined && panels.lowerOpen;
+  const terminalDocked = terminal?.docked === true;
+  const lowerOpen =
+    wide && terminal !== undefined && panels.lowerOpen && !terminalDocked;
   /** The stack's page: on a wide screen Chat is always it. */
   const page: 'chat' | 'drill-in' = wide ? 'chat' : location.page;
   const paneId = wide ? sidePaneId : location.paneId;
@@ -317,20 +340,90 @@ export function CodingWorkbench({
   // it replaces did), so a focused terminal or preview is not left under the
   // keyboard.
   const isMobile = useIsMobile();
+  const [toolPicker, setToolPicker] = useState<{
+    paneId: string | null;
+  } | null>(null);
+  const [browserNotice, setBrowserNotice] = useState<string | null>(null);
+  const browserExperienceEnabled =
+    useSurfaceVisibilityFlags().has('browser-experience');
+  const openBrowser = () => {
+    if (
+      !browserExperienceEnabled ||
+      !hostOpen ||
+      browserPreviewAvailability?.state !== 'available'
+    )
+      return false;
+    const existing = instances.find(
+      (item) =>
+        item.descriptorId === WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
+    );
+    if (existing) {
+      if (hostOpen.focusExisting?.(existing.instanceId)) {
+        setBrowserNotice(null);
+        return true;
+      }
+      setBrowserNotice('This Browser pane is no longer available.');
+      return false;
+    }
+    const instance = createEmptyBrowserPreviewPaneInstance(projectId);
+    if (!instance) {
+      setBrowserNotice('Station could not open the Browser pane.');
+      return false;
+    }
+    const outcome = hostOpen.open(instance);
+    setBrowserNotice(
+      outcome.ok ? null : describeWorkspacePaneOpenRefusal(outcome.reason),
+    );
+    return outcome.ok;
+  };
+  useKeyboardShortcut(
+    'browser.open',
+    'j',
+    ['cmd', 'shift'],
+    'Open or focus Browser',
+    openBrowser,
+    !!browserPreviewAvailability && browserExperienceEnabled,
+    0,
+    undefined,
+    !hostOpen || browserPreviewAvailability?.state !== 'available',
+  );
+  const toolPickerOpen =
+    isMobile && toolPicker !== null && toolPicker.paneId === paneId;
+  const setToolPickerOpen = (open: boolean) =>
+    setToolPicker(open ? { paneId } : null);
+  useEffect(() => {
+    if (toolPicker && (!isMobile || toolPicker.paneId !== paneId)) {
+      setToolPicker(null);
+    }
+  }, [isMobile, paneId, toolPicker]);
   const visualViewport = useMobileVisualViewport();
   const rootRef = useRef<HTMLDivElement>(null);
   const [fittedHeight, setFittedHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!isMobile || !rootRef.current) {
+    const root = rootRef.current;
+    if (!isMobile || !root) {
       setFittedHeight(null);
       return;
     }
-    const top = rootRef.current.getBoundingClientRect().top;
-    const available = Math.max(
-      0,
-      visualViewport.offsetTop + visualViewport.height - top,
-    );
-    setFittedHeight((current) => (current === available ? current : available));
+    const measure = () => {
+      const top = root.getBoundingClientRect().top;
+      const available = Math.max(
+        0,
+        visualViewport.offsetTop + visualViewport.height - top,
+      );
+      setFittedHeight((current) =>
+        current === available ? current : available,
+      );
+    };
+    measure();
+    // Chrome above the stack can settle after the first measure (the page
+    // shell finishing its own layout); the host box resizes when it does, and
+    // a top measured before that left the stack short of the window.
+    const host = root.parentElement;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
   }, [isMobile, visualViewport.height, visualViewport.offsetTop]);
   const [chatTitle, setChatTitle] = useState('Chat');
   const chatPageRef = useRef<HTMLElement>(null);
@@ -461,11 +554,17 @@ export function CodingWorkbench({
   }, []);
   // The chords stand down only inside an editor that owns the keys.
   const backChord = useCallback(
-    () => (focusInKeyOwningEditor() ? false : goBack()),
+    () =>
+      getShortcutContext('terminalFocused') || focusInKeyOwningEditor()
+        ? false
+        : goBack(),
     [goBack],
   );
   const forwardChord = useCallback(
-    () => (focusInKeyOwningEditor() ? false : goForward()),
+    () =>
+      getShortcutContext('terminalFocused') || focusInKeyOwningEditor()
+        ? false
+        : goForward(),
     [goForward],
   );
   useKeyboardShortcut(
@@ -476,7 +575,7 @@ export function CodingWorkbench({
     backChord,
     true,
     0,
-    STACK_CHORD_WHEN,
+    STACK_HISTORY_WHEN,
   );
   useKeyboardShortcut(
     'codingStack.forward',
@@ -486,7 +585,7 @@ export function CodingWorkbench({
     forwardChord,
     true,
     0,
-    STACK_CHORD_WHEN,
+    STACK_HISTORY_WHEN,
   );
   // ── Escape is the layout's own "up": it closes the panel the reader is
   // in (wide) or returns a drill-in to the conversation, and with nothing
@@ -654,8 +753,8 @@ export function CodingWorkbench({
   // The fold crossed the other way with the lower panel open: below it the
   // Terminal is a drill-in, so it becomes the page (in place — the reader
   // did not navigate) rather than vanishing with the lower panel. Its tabs
-  // and their server-side processes carry across the remount; xterm's local
-  // scrollback does not.
+  // and their server-side processes carry across the remount; output
+  // replays from the server's journal.
   const wasWide = useRef(wide);
   useLayoutEffect(() => {
     const was = wasWide.current;
@@ -752,6 +851,7 @@ export function CodingWorkbench({
         focusRailItem(terminal.instance.instanceId);
       return;
     }
+    if (terminalDocked) terminal.undock?.();
     updatePanels({ lowerOpen: true });
     setAnnouncement(`${label} below the conversation`);
     if (viaKeyboard) setLowerFocusRequest((request) => request + 1);
@@ -777,6 +877,8 @@ export function CodingWorkbench({
     }
     // The drill-in already on screen is not a new page.
     if (page === 'drill-in' && instance.instanceId === paneId) return;
+    if (instance.instanceId === terminalId && terminalDocked)
+      terminal?.undock?.();
     userMoveRef.current = performance.now();
     navigationStore.setActiveWorkspacePane(instance.instanceId, scopeKey);
   };
@@ -1016,7 +1118,7 @@ export function CodingWorkbench({
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
-  // bar's two slots beside it (#3046) rather than as a second row.
+  // bar's slots beside it (#3046) rather than as a second row.
   // The folded inbox's edge: a slim strip on the Chat column's left edge
   // that reopens the inbox (the reader's own choice) and carries the inbox's
   // "Needs you" count so a fold never hides that something is waiting. Fine
@@ -1026,11 +1128,17 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
   const chatBarSlots = useMemo(
-    () => ({ leading: barLeading, trailing: barTrailing, namesPane: true }),
-    [barLeading, barTrailing],
+    () => ({
+      start: barStart,
+      leading: barLeading,
+      trailing: barTrailing,
+      namesPane: true,
+    }),
+    [barStart, barLeading, barTrailing],
   );
   // The panel heads: the pane's own controls join the head row.
   const [sideHeadLeading, setSideHeadLeading] = useState<HTMLElement | null>(
@@ -1151,6 +1259,7 @@ export function CodingWorkbench({
     <div
       ref={rootRef}
       className="coding-workbench"
+      data-mobile={isMobile || undefined}
       data-mode={wide ? 'panels' : 'stack'}
       style={
         fittedHeight === null
@@ -1166,67 +1275,107 @@ export function CodingWorkbench({
         <div className="coding-workbench__bar">
           {/* The rail is last in the tab order (bar, Chat, the open panel,
               then the rail); a reader who wants a tool first skips to it. */}
-          <button
-            type="button"
-            className="coding-workbench__skip"
-            onClick={() => {
-              rootRef.current
-                ?.querySelector<HTMLElement>(
-                  '.coding-workbench__rail-item[data-rail-item]',
-                )
-                ?.focus();
-            }}
-          >
-            Skip to views
-          </button>
-          <nav
-            className="coding-workbench__nav"
-            aria-label={`${stackName} navigation`}
-          >
-            <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
-              <li className="coding-workbench__crumb">
-                <button
-                  type="button"
-                  className="coding-workbench__crumb-link"
-                  onClick={openInbox}
-                >
-                  Inbox
-                </button>
-              </li>
-              {(!isMobile || page === 'drill-in') && (
+          {!isMobile && (
+            <button
+              type="button"
+              className="coding-workbench__skip"
+              onClick={() => {
+                rootRef.current
+                  ?.querySelector<HTMLElement>(
+                    '.coding-workbench__rail-item[data-rail-item]',
+                  )
+                  ?.focus();
+              }}
+            >
+              Skip to views
+            </button>
+          )}
+          {chatBar ? (
+            <div className="coding-workbench__bar-trailing" ref={setBarStart} />
+          ) : null}
+          {isMobile ? (
+            <nav
+              className="coding-workbench__mobile-nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <Button
+                variant="ghost"
+                className="coding-workbench__mobile-back"
+                onClick={page === 'drill-in' ? returnToChatPage : openInbox}
+              >
+                <ArrowLeftGlyph />
+                {page === 'drill-in' ? 'Chat' : 'Inbox'}
+              </Button>
+              <button
+                type="button"
+                className="choice-trigger coding-workbench__tool-trigger"
+                ref={(node) => {
+                  currentCrumbRef.current = node;
+                }}
+                aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
+                aria-haspopup="dialog"
+                aria-expanded={toolPickerOpen}
+                onClick={() => setToolPickerOpen(true)}
+              >
+                {page === 'drill-in' && drilledIn ? (
+                  railGlyph(drilledIn.descriptorId)
+                ) : (
+                  <MessageGlyph />
+                )}
+                <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+            </nav>
+          ) : (
+            <nav
+              className="coding-workbench__nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
                 <li className="coding-workbench__crumb">
-                  {page === 'drill-in' ? (
-                    <button
-                      type="button"
-                      className="coding-workbench__crumb-link"
-                      onClick={returnToChatPage}
-                    >
-                      {chatTitle}
-                    </button>
-                  ) : (
+                  <button
+                    type="button"
+                    className="coding-workbench__crumb-link"
+                    onClick={openInbox}
+                  >
+                    Inbox
+                  </button>
+                </li>
+                {(!isMobile || page === 'drill-in') && (
+                  <li className="coding-workbench__crumb">
+                    {page === 'drill-in' ? (
+                      <button
+                        type="button"
+                        className="coding-workbench__crumb-link"
+                        onClick={returnToChatPage}
+                      >
+                        {chatTitle}
+                      </button>
+                    ) : (
+                      <span
+                        className="coding-workbench__crumb-current"
+                        aria-current="page"
+                      >
+                        {chatTitle}
+                      </span>
+                    )}
+                  </li>
+                )}
+                {page === 'drill-in' ? (
+                  <li className="coding-workbench__crumb">
                     <span
                       className="coding-workbench__crumb-current"
                       aria-current="page"
+                      ref={currentCrumbRef}
+                      tabIndex={-1}
                     >
-                      {chatTitle}
+                      {drillInLabel}
                     </span>
-                  )}
-                </li>
-              )}
-              {page === 'drill-in' ? (
-                <li className="coding-workbench__crumb">
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                    ref={currentCrumbRef}
-                    tabIndex={-1}
-                  >
-                    {drillInLabel}
-                  </span>
-                </li>
-              ) : null}
-            </ol>
-          </nav>
+                  </li>
+                ) : null}
+              </ol>
+            </nav>
+          )}
           {chatBar ? (
             <div
               className="coding-workbench__bar-leading"
@@ -1240,6 +1389,18 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
+          {browserExperienceEnabled && browserPreviewAvailability ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={
+                !hostOpen || browserPreviewAvailability.state !== 'available'
+              }
+              onClick={() => openBrowser()}
+            >
+              Open Browser
+            </Button>
+          ) : null}
           {page === 'drill-in' ? paneMenu : null}
         </div>
         <p className="coding-workbench__announcement" aria-live="polite">
@@ -1248,12 +1409,24 @@ export function CodingWorkbench({
         {notice ? (
           <div className="coding-workbench__state">{notice}</div>
         ) : null}
-        {persistenceProblem ? (
+        {browserNotice ? (
           <p className="coding-workbench__notice" role="status">
-            {persistenceProblem === 'contended'
-              ? 'These views are open in another tab, so changes here are not saved.'
-              : 'Changes to these views cannot be saved right now.'}
+            {browserNotice}
           </p>
+        ) : null}
+        {persistenceProblem ? (
+          <div className="coding-workbench__notice">
+            <p role="status">
+              {persistenceProblem === 'contended'
+                ? 'These views are open in another tab, so changes here are not saved.'
+                : 'Changes to these views cannot be saved right now.'}
+            </p>
+            {persistenceProblem === 'contended' && onUseHere ? (
+              <Button variant="ghost" size="sm" onClick={onUseHere}>
+                Use here
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         <div
           ref={pagesRef}
@@ -1422,7 +1595,7 @@ export function CodingWorkbench({
               </div>
             </section>
           </div>
-          {wide && terminal && lowerVisited ? (
+          {wide && terminal && lowerVisited && !terminalDocked ? (
             <>
               {lowerOpen ? (
                 <PanelSeparator
@@ -1494,36 +1667,109 @@ export function CodingWorkbench({
           ) : null}
         </div>
       </div>
-      <CodingViewRail
-        instances={railInstances}
-        mode={wide ? 'panels' : 'stack'}
-        currentPaneId={page === 'drill-in' ? paneId : null}
-        pressed={
-          wide
-            ? {
-                ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
-                ...(lowerOpen && terminalId
-                  ? { [terminalId]: lowerPanelId }
-                  : {}),
-              }
-            : undefined
-        }
-        paneLabel={paneLabel}
-        paneDetail={paneDetail}
-        badges={badges}
-        onOpenView={openView}
-        onAddPane={hostOpen ? requestCatalog : undefined}
-        browserLauncher={
-          browserPreviewAvailability ? (
-            <BrowserPreviewPaneLauncher
-              projectId={projectId}
-              projectSlug={projectSlug}
-              host={hostOpen}
-              availability={browserPreviewAvailability}
-            />
-          ) : null
-        }
-      />
+      {isMobile ? (
+        <Dialog
+          open={toolPickerOpen}
+          title="Tools"
+          overlayClassName="coding-workbench__tool-overlay"
+          panelClassName="coding-workbench__tool-sheet"
+          closeLabel="Close tools"
+          onClose={() => setToolPickerOpen(false)}
+          size="sm"
+        >
+          <nav className="coding-workbench__tool-list" aria-label="Views">
+            <Button
+              variant="ghost"
+              aria-current={page === 'chat' ? 'page' : undefined}
+              onClick={() => {
+                setToolPickerOpen(false);
+                goToChatPage();
+              }}
+            >
+              <MessageGlyph />
+              <span>Chat</span>
+            </Button>
+            {railInstances.map((instance) => (
+              <Button
+                key={instance.instanceId}
+                variant="ghost"
+                aria-label={
+                  badges[instance.descriptorId] === undefined
+                    ? paneLabel(instance)
+                    : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
+                }
+                aria-current={
+                  instance.instanceId === paneId ? 'page' : undefined
+                }
+                title={paneDetail?.(instance) ?? undefined}
+                onClick={(event) => {
+                  setToolPickerOpen(false);
+                  openView(instance, activatedByKeyboard(event));
+                }}
+              >
+                {railGlyph(instance.descriptorId)}
+                <span>{paneLabel(instance)}</span>
+                {badges[instance.descriptorId] === undefined ? null : (
+                  <span className="coding-workbench__tool-count">
+                    {badges[instance.descriptorId]}
+                  </span>
+                )}
+              </Button>
+            ))}
+            {browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null}
+            {hostOpen ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setToolPickerOpen(false);
+                  requestCatalog();
+                }}
+              >
+                <PlusGlyph />
+                Add tool
+              </Button>
+            ) : null}
+          </nav>
+        </Dialog>
+      ) : (
+        <CodingViewRail
+          instances={railInstances}
+          mode={wide ? 'panels' : 'stack'}
+          currentPaneId={page === 'drill-in' ? paneId : null}
+          pressed={
+            wide
+              ? {
+                  ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
+                  ...(lowerOpen && terminalId
+                    ? { [terminalId]: lowerPanelId }
+                    : {}),
+                }
+              : undefined
+          }
+          paneLabel={paneLabel}
+          paneDetail={paneDetail}
+          badges={badges}
+          onOpenView={openView}
+          onAddPane={hostOpen ? requestCatalog : undefined}
+          browserLauncher={
+            browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1672,6 +1918,7 @@ const CenterChat = memo(function CenterChat({
   onInboxNeedsYouChange,
 }: {
   slots: {
+    start: HTMLElement | null;
     leading: HTMLElement | null;
     trailing: HTMLElement | null;
     namesPane: boolean;
@@ -1843,13 +2090,23 @@ function RailTip({ label, children }: { label: string; children: ReactNode }) {
     });
   };
   const hide = () => setPlace(null);
+  // #4401: keyboard focus only. A closed panel hands focus back to its rail
+  // item; on a pointer that focus is not visible, and a tip shown for it
+  // stayed over the rail after the pointer had left.
+  const showForVisibleFocus = (event: ReactFocusEvent<HTMLElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.matches(':focus-visible')
+    )
+      show(event);
+  };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus listeners for the tooltip of the button inside; the span itself is not a control.
     <span
       className="coding-workbench__rail-tip-anchor"
       onPointerEnter={show}
       onPointerLeave={hide}
-      onFocus={show}
+      onFocus={showForVisibleFocus}
       onBlur={hide}
     >
       {children}

@@ -1,0 +1,7 @@
+{
+  "revision": "d0b2802259cb460e4139d32822cf0fbb6e80e092",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed integration storage delta: publication acquires sorted integration locks followed by shared OAuth pin leases, holds both through sidecar snapshot, directory replacement and compensation, and releases in reverse order. The pin lease retains the existing per-process queue and cross-process file lock. Real publication and restore regressions reproduced lost first-issuer pins before the fix, passed after it, failed again when the lease was removed from a clean commit, and passed after byte-exact restoration. 221 storage and transaction tests passed. The existing storage ownership and qualified-evidence claims remain accurate; no live provider proof.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-storage.ts"]}
+  ]
+}

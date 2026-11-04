@@ -20,13 +20,11 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
  * - a pull request and its checks: links are a per-conversation read the
  *   hover card makes on demand, and the link observation carries no checks
  *   state.
+ *
+ * Nor an unsent draft (#4266): a whole chip line for it pushed the row a line
+ * taller. It is a pencil on the project line (`DraftMarker`).
  */
-export type InboxRowChipKind =
-  | 'remote'
-  | 'draft'
-  | 'woke'
-  | 'agent-message'
-  | 'claim';
+export type InboxRowChipKind = 'remote' | 'woke' | 'agent-message' | 'claim';
 
 export interface InboxRowChip {
   kind: InboxRowChipKind;
@@ -59,7 +57,6 @@ function claimChip(claims: readonly WorkClaimView[]): InboxRowChip | undefined {
 export function inboxRowChips(
   item: Pick<HomeWorkItem, 'environmentLabel' | 'receivedAgentMessage'>,
   local: {
-    hasUnsentDraft?: boolean;
     isWoken?: boolean;
     claims?: readonly WorkClaimView[];
   } = {},
@@ -71,9 +68,6 @@ export function inboxRowChips(
   if (claim) chips.push(claim);
   if (item.environmentLabel) {
     chips.push({ kind: 'remote', label: item.environmentLabel });
-  }
-  if (local.hasUnsentDraft) {
-    chips.push({ kind: 'draft', label: 'Unsent draft' });
   }
   if (local.isWoken) {
     chips.push({ kind: 'woke', label: 'Woke from snooze' });

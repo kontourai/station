@@ -82,6 +82,8 @@ export class DeviceToolError extends Error {
   constructor(
     readonly code: 'tool-unavailable' | 'tool-failed' | 'tool-timeout',
     message: string,
+    readonly exitCode?: number,
+    readonly stderrPresent?: boolean,
   ) {
     super(message);
     this.name = 'DeviceToolError';
@@ -134,15 +136,29 @@ function runBoundedTool(
  * closed — a push payload travels this way, never in argv. Without it the
  * tool's stdin is `ignore`d, so a tool that reads stdin sees EOF rather
  * than waiting on an open pipe until the deadline.
+ * Scene analysis can opt into partial output: reserve up to one second within
+ * the deadline for SIGTERM to flush stdout, then SIGKILL and settle even if
+ * a descendant holds the pipe. Overflow and other failures still reject.
  */
 export function runBoundedToolCapture(
   command: string,
   args: readonly string[],
-  options: { timeoutMs: number; stdin?: string; maxBuffer?: number },
+  options: {
+    timeoutMs: number;
+    stdin?: string;
+    maxBuffer?: number;
+    partialOnTimeout?: boolean;
+    signal?: AbortSignal;
+    tail?: { truncated: boolean };
+  },
   spawnTool: typeof spawn = spawn,
 ): Promise<string> {
   const maxBuffer = options.maxBuffer ?? 256 * 1024;
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DeviceToolError('tool-failed', `${command} cancelled`));
+      return;
+    }
     let child: ReturnType<typeof spawn>;
     try {
       child = spawnTool(command, [...args], {
@@ -151,7 +167,7 @@ export function runBoundedToolCapture(
         stdio: [
           options.stdin === undefined ? 'ignore' : 'pipe',
           'pipe',
-          'ignore',
+          'pipe',
         ],
       });
     } catch {
@@ -161,15 +177,20 @@ export function runBoundedToolCapture(
     const chunks: Buffer[] = [];
     let size = 0;
     let settled = false;
+    let timedOut = false;
+    let stderrPresent = false;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (error: DeviceToolError | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(flushTimer);
+      options.signal?.removeEventListener('abort', onAbort);
       if (error) reject(error);
       else resolve(Buffer.concat(chunks).toString('utf8'));
     };
-    /** Kill the tool, let go of its pipes, and fail now — once. */
-    const abort = (error: DeviceToolError) => {
+    /** Kill the tool, let go of its pipes, and settle now — once. */
+    const abort = (error: DeviceToolError | null) => {
       if (settled) return;
       try {
         child.kill('SIGKILL');
@@ -177,33 +198,73 @@ export function runBoundedToolCapture(
         // Already gone.
       }
       child.stdout?.destroy();
+      child.stderr?.destroy();
       child.stdin?.destroy();
       finish(error);
     };
-    const timer = setTimeout(
-      () => abort(new DeviceToolError('tool-timeout', `${command} timed out`)),
-      options.timeoutMs,
-    );
+    function onAbort() {
+      abort(new DeviceToolError('tool-failed', `${command} cancelled`));
+    }
+    const flushMs = options.partialOnTimeout
+      ? Math.min(1000, options.timeoutMs * 0.1)
+      : 0;
+    const timer = setTimeout(() => {
+      if (!options.partialOnTimeout) {
+        abort(new DeviceToolError('tool-timeout', `${command} timed out`));
+        return;
+      }
+      timedOut = true;
+      flushTimer = setTimeout(() => abort(null), flushMs);
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        abort(null);
+      }
+    }, options.timeoutMs - flushMs);
     child.stdout?.on('data', (chunk: Buffer) => {
       size += chunk.byteLength;
       if (size > maxBuffer) {
-        abort(new DeviceToolError('tool-failed', `${command} failed`));
-        return;
+        if (!options.tail) {
+          abort(new DeviceToolError('tool-failed', `${command} failed`));
+          return;
+        }
+        options.tail.truncated = true;
       }
       chunks.push(chunk);
+      if (options.tail) {
+        while (size - chunks[0]!.length >= maxBuffer)
+          size -= chunks.shift()!.length;
+        if (size > maxBuffer) {
+          const excess = size - maxBuffer;
+          chunks[0] = chunks[0]!.subarray(excess);
+          size -= excess;
+        }
+      }
     });
     // A destroyed stream may still report an error; the call has settled.
     child.stdout?.on('error', () => {});
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (chunk.length) stderrPresent = true;
+    });
+    child.stderr?.on('error', () => {});
     child.on('error', () =>
       finish(new DeviceToolError('tool-failed', `${command} failed`)),
     );
     child.on('close', (code) => {
       finish(
-        code === 0
+        code === 0 || (timedOut && options.partialOnTimeout)
           ? null
-          : new DeviceToolError('tool-failed', `${command} failed`),
+          : new DeviceToolError(
+              'tool-failed',
+              `${command} failed`,
+              code ?? undefined,
+              stderrPresent,
+            ),
       );
     });
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
+    if (settled) return;
     if (options.stdin !== undefined) {
       child.stdin?.on('error', () => {
         // The exit status reports the failure; a closed pipe adds nothing.

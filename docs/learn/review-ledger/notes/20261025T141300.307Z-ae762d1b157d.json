@@ -1,0 +1,13 @@
+{
+  "revision": "c35373269efaf8f0b2019cc9addceba1fc463d26",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed fix round 2 at c35373269ef: full history-based append admission, latest-send key correlation for agent replies and send failures, Sent follow-up preservation, repeated and late replies/failures without reopening Resolved, pendingFollowUp and thread-specific keyed delivery projection. Checked bounded context/bare relocation searches, relocated Unicode boundaries, retained-quote compatibility, capture commit revision format and 32768-pixel bounds against the owning source and regression tests. The existing Unicode export is intentionally retained. Contracts typecheck and all 116 contract files / 1988 tests passed. At the clean committed source, A mutation caught 10 failures, B caught the operation-count regression, and C-G reversion caught each named regression; every byte-exact restored run passed 84 tests. No runtime or publication qualification is added.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/task-review.test.ts","packages/contracts/src/task-review.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Task, Session, turn and evidence vocabulary against the fix-round-2 contracts reference. Thread state and delivery projection remain separate from Task status, authorization and verification of evidence. The delivery key and pending follow-up semantics alter no glossary definition; source-only contracts remain ahead of server, SDK and UI integration. No prose change is needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public-boundary reading routes and exact-version/authenticated-result evidence requirements against fix-round-2 task-review changes. The contracts reference records required consumer migration for keyed event/request delivery, history-based append checks and per-thread delivery status; no HTTP route, SDK transport, UI or hosted capability is introduced. Existing integration routing and availability qualifications remain accurate; no prose change is needed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts guidance against fix-round-2 parser, state projection and relocation changes. Helpers remain pure and environment-free under the owning task-review subpath; exports retain their names, shape/semantic changes are explicit in the reference and lane report, and contracts typecheck plus 116 files / 1988 tests passed. No package instruction changes are needed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

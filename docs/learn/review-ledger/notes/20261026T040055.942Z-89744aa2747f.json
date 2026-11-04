@@ -1,0 +1,7 @@
+{
+  "revision": "b3ff8062a292ec9cbf902839ec113ff4239eaa96",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#4200 review fix round: added that start, stop and uninstall refuse from a stale-manifest home, checked against the refusal in service.ts before the uninstall/start/stop dispatch.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

@@ -22,6 +22,23 @@ export function registerFullscreenChatSurface(): () => void {
 }
 
 /**
+ * Opaque readers, including Inbox and New chat, cover the retained chat.
+ * A covered transcript is not being read, even while its dock stays open.
+ */
+let chatReaderCovers = 0;
+
+/** Register only while an opaque reader visibly covers this chat. */
+export function registerChatReaderCover(): () => void {
+  chatReaderCovers += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    chatReaderCovers -= 1;
+  };
+}
+
+/**
  * Is this chat the one on screen: the page is visible, a Chat surface is
  * showing, and the chat it shows is this one (by chat key, execution session,
  * or conversation).
@@ -39,6 +56,7 @@ export function isChatInForeground(ids: {
   }
   const navigation = navigationStore.getSnapshot();
   if (!navigation.isDockOpen && fullscreenChatSurfaces === 0) return false;
+  if (chatReaderCovers > 0) return false;
   const candidates = [ids.chatKey, ids.threadId, ids.conversationId].filter(
     (value): value is string => Boolean(value),
   );

@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Only ci-fast-checks-job-graph.test.ts changed (third PR shard slot from #4365); the per-diff selection and shard guidance remain accurate.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

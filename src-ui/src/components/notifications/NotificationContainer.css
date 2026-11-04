@@ -90,15 +90,18 @@
   display: flex;
 }
 
+/* A toast floats over the transcript, so it takes the raised surface rather
+   than the page's own background. Its shadow stays small: the scrolling
+   stack clips anything wider into a hard-edged slab. */
 .toast-card {
   width: 100%;
   min-width: 0;
   padding: 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  background: var(--bg-primary);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel-raised);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
-  color: var(--text-primary);
+  color: var(--k-text);
   pointer-events: auto;
 }
 
@@ -132,7 +135,7 @@
 
 .toast-card__eyebrow {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--k-text-sm);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -206,7 +209,7 @@
   background: var(--bg-tertiary);
   color: var(--text-muted);
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__dismiss {
@@ -215,6 +218,10 @@
   height: 44px;
   flex: 0 0 auto;
   place-items: center;
+  /* The 44px target reaches into the card's padding instead of growing the
+     card below a one-line message. */
+  margin-block: calc(-1 * var(--k-space-3));
+  margin-inline-end: calc(-1 * var(--k-space-2));
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -323,7 +330,7 @@
 
 .toast-card__repeat {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__action-error {
@@ -337,14 +344,43 @@
   opacity: 0.7;
 }
 
+/* Severity is the card itself, not just a stripe: the tone's soft fill over
+   the raised surface, a toned border, and a toned label with its mark. */
 .toast-card--success {
-  border-inline-start: var(--k-space-1) solid var(--k-positive);
+  --toast-tone: var(--k-positive);
+  --toast-tone-soft: var(--k-positive-soft);
 }
 .toast-card--warning {
-  border-inline-start: var(--k-space-1) solid var(--k-caution);
+  --toast-tone: var(--k-caution);
+  --toast-tone-soft: var(--k-caution-soft);
 }
 .toast-card--error {
-  border-inline-start: var(--k-space-1) solid var(--k-negative);
+  --toast-tone: var(--k-negative);
+  --toast-tone-soft: var(--k-negative-soft);
+}
+.toast-card--success,
+.toast-card--warning,
+.toast-card--error {
+  border-color: color-mix(in oklab, var(--toast-tone) 55%, var(--k-line));
+  border-inline-start: var(--k-space-1) solid var(--toast-tone);
+  background:
+    linear-gradient(var(--toast-tone-soft), var(--toast-tone-soft)),
+    var(--k-panel-raised);
+}
+
+.toast-card__severity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--toast-tone);
+  font-weight: 700;
+  vertical-align: top;
+}
+
+.toast-card__severity svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 640px) {
@@ -377,6 +413,61 @@
        second live regime. `flex: 1 1 120px` is NOT dead (it changes the
        button's wrap width at this breakpoint, measured) and stays. */
     flex: 1 1 120px;
+  }
+
+  /* #4396: an agent-turn card was 392x176 at 412px — a quarter of a phone
+     screen over the transcript or composer, for news that is one line long.
+     On a phone it is a snackbar instead: outcome and chat on the left, Open
+     and × on one row. The eyebrow, the time and the answer snippet stay on
+     the card at wider widths and in the notification history; the chord hint
+     is a keyboard's and a phone has none. */
+  .toast-card--turn {
+    display: flex;
+    align-items: center;
+    gap: var(--k-space-2);
+    padding: var(--k-space-1) var(--k-space-1) var(--k-space-1) 12px;
+  }
+
+  .toast-card--turn .toast-card__header {
+    display: contents;
+  }
+
+  .toast-card--turn .toast-card__content {
+    flex: 1 1 auto;
+    padding-right: 0;
+  }
+
+  .toast-card--turn .toast-card__meta,
+  .toast-card--turn .toast-card__diagnostics,
+  .toast-card--turn .toast-card__shortcut {
+    display: none;
+  }
+
+  .toast-card--turn .toast-card__message,
+  .toast-card--turn .toast-card__conversation span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toast-card--turn .toast-card__conversation {
+    margin-top: 0;
+    font-size: var(--k-text-sm);
+  }
+
+  .toast-card--turn .toast-card__actions {
+    order: 1;
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  .toast-card--turn .toast-card__action {
+    flex: 0 0 auto;
+  }
+
+  .toast-card--turn .toast-card__dismiss {
+    order: 2;
+    margin: 0;
   }
 }
 
@@ -422,7 +513,7 @@
   padding-block: var(--k-space-2);
   color: var(--k-text-muted);
   cursor: pointer;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .toast-card__diagnostics summary:focus-visible {

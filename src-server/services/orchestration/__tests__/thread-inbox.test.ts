@@ -13,22 +13,56 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  APICallError,
+  type LanguageModelV3,
+  type LanguageModelV3StreamPart,
+} from '@ai-sdk/provider';
+import {
+  createAgentRuntime,
+  openSqliteAgentJournal,
+  runWithAgentTurn,
+} from '@kontourai/agent-runtime';
+import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
+import {
+  EXTERNAL_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { Memory } from '@voltagent/core';
+import type { PrepareStepFunction, UIMessage } from 'ai';
+import { simulateReadableStream } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import type {
+  ProviderAdapterMetadata,
   ProviderSendTurnInput,
+  ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
+import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
+import {
+  durableAgentMemory,
+  flushDurableAgentMemory,
+  persistDurableAuthoredMessage,
+} from '../../../runtime/agents/durable-agent-memory.js';
+import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import { createInboxStepPreparation } from '../../../runtime/conversation/inbox-model-step.js';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
+import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { evaluateSessionWait } from '../session-turn-wait.js';
-import { TURN_DEDUP_MAX_ENTRIES } from '../sqlite-turn-dedup-persistence.js';
+import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import {
   ThreadInboxDelivery,
   type ThreadInboxDeliveryPorts,
@@ -59,7 +93,36 @@ type OwningTurn = Readonly<{
   request: Readonly<ProviderSendTurnInput>;
 }>;
 class CountingAdapter extends GateTestAdapter {
+  override readonly metadata: ProviderAdapterMetadata = {
+    displayName: 'Scripted Claude',
+    description: 'Scripted native steer for inbox delivery',
+    capabilities: ['agent-runtime'],
+    durability: STEERING_ENGINE_DURABILITY,
+  };
+  constructor(
+    durability: ProviderDurabilityProfile = STEERING_ENGINE_DURABILITY,
+  ) {
+    super();
+    this.metadata = { ...this.metadata, durability };
+  }
   readonly entered: OwningTurn[] = [];
+  private readonly liveSessions = new Set<string>();
+  override async startSession(input: ProviderSessionStartInput) {
+    const session = await super.startSession(input);
+    this.liveSessions.add(input.threadId);
+    return session;
+  }
+  override async hasSession(threadId?: string): Promise<boolean> {
+    return threadId !== undefined && this.liveSessions.has(threadId);
+  }
+  readonly steers: string[] = [];
+  async steerTurn(
+    _threadId: string,
+    input: string,
+    _turnId: string,
+  ): Promise<void> {
+    this.steers.push(input);
+  }
   override async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
@@ -81,6 +144,7 @@ class CountingAdapter extends GateTestAdapter {
 
 interface World {
   adapter: CountingAdapter;
+  registry: IProviderAdapterRegistry;
   store: EventStore;
   bus: EventBus;
   service: OrchestrationService;
@@ -96,6 +160,7 @@ function boot(
   path: string,
   ports: Partial<ThreadInboxDeliveryPorts> = {},
   wrapStore?: (store: ThreadInboxStore) => ThreadInboxStore,
+  suppliedAdapter?: CountingAdapter,
 ) {
   incarnation += 1;
   const birth = `boot-${incarnation}`;
@@ -107,13 +172,14 @@ function boot(
     }),
   });
   const bus = new EventBus();
-  const adapter = new CountingAdapter();
+  const adapter = suppliedAdapter ?? new CountingAdapter();
+  const registry: IProviderAdapterRegistry = {
+    register() {},
+    get: (provider) => (provider === adapter.provider ? adapter : undefined),
+    list: () => [adapter],
+  };
   const service = new OrchestrationService({
-    adapterRegistry: {
-      register() {},
-      get: (provider) => (provider === adapter.provider ? adapter : undefined),
-      list: () => [adapter],
-    },
+    adapterRegistry: registry,
     eventBus: bus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
@@ -177,10 +243,21 @@ function boot(
     // The production schedule, scaled down: a busy flag that outlives its
     // terminal is looked at again.
     retryDelaysMs: [5, 10, 20, 40],
+    recordPostToolSteer: (input) => service.recordPostToolSteer(input),
+    postToolMaySteer: (threadId, turnId) =>
+      service.canSteerAtPostToolBoundary(threadId, turnId),
     ...ports,
   });
   inbox.start();
-  const world: World = { adapter, store, bus, service, inbox, afterStart };
+  const world: World = {
+    adapter,
+    registry,
+    store,
+    bus,
+    service,
+    inbox,
+    afterStart,
+  };
   open.push(world);
   return world;
 }
@@ -350,6 +427,1112 @@ afterEach(async () => {
 
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
+
+  test.each(['none', 'missing', 'missing-metadata'] as const)(
+    'steer dispatch refuses %s steering declaration even for a native-named provider',
+    async (declaration) => {
+      const world = boot(path());
+      await runningFirstTurn(world);
+      const metadata = world.adapter.metadata;
+      if (declaration === 'missing-metadata')
+        Reflect.deleteProperty(world.adapter, 'metadata');
+      else
+        metadata.durability =
+          declaration === 'missing' ? undefined : EXTERNAL_ENGINE_DURABILITY;
+      try {
+        const result = await world.service.dispatchWithReceipt({
+          type: 'steerTurn',
+          threadId: THREAD,
+          turnId: 'turn-1',
+          input: 'must not steer',
+          clientInputId: 'profile-none',
+        });
+        expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+        expect(world.adapter.steers).toEqual([]);
+      } finally {
+        Reflect.set(world.adapter, 'metadata', metadata);
+      }
+    },
+  );
+
+  test('an absent adapter or Session remains unknown and refuses steering before effect', async () => {
+    const world = boot(path());
+    expect(
+      world.service.durabilityProfileForProvider('missing-engine'),
+    ).toBeUndefined();
+    expect(await world.service.steerFidelityForThread('missing-session')).toBe(
+      'none',
+    );
+    const result = await world.service.dispatchWithReceipt({
+      type: 'steerTurn',
+      threadId: 'missing-session',
+      input: 'must not steer',
+    });
+    expect(result.result).toEqual({
+      outcome: 'no-active-turn',
+      threadId: 'missing-session',
+    });
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('a removed adapter refuses steering a recorded live Session without replay or a crash', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    vi.spyOn(world.registry, 'get').mockReturnValue(undefined);
+    expect(
+      world.service.durabilityProfileForProvider('claude'),
+    ).toBeUndefined();
+    const result = await world.service.dispatchWithReceipt({
+      type: 'steerTurn',
+      threadId: THREAD,
+      turnId: 'turn-1',
+      input: 'must not steer',
+    });
+    expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('a completed Session read without an adapter declaration refuses queued steering', async () => {
+    let world: World;
+    world = boot(path(), {
+      steerFidelity: (threadId) =>
+        world.service.steerFidelityForThread(threadId),
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, turnId, clientInputId, payload }) => {
+        const result = await world.service.dispatchWithReceipt(
+          {
+            type: 'steerTurn',
+            threadId,
+            turnId,
+            clientInputId,
+            input: payload.message,
+          },
+          { userId: payload.actor.userId },
+        );
+        if (!result.result || !('outcome' in result.result))
+          throw new Error('Steer dispatch did not return a placement outcome.');
+        return result.result;
+      },
+    });
+    await runningFirstTurn(world);
+    delete world.adapter.metadata.durability;
+    world.inbox.submitSteer({
+      conversationId: THREAD,
+      clientTurnId: 'missing-profile',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    });
+    await world.inbox.idle();
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      {
+        state: 'refused',
+        reasonCode: 'unsupported-engine',
+        message: FOLLOW_UP,
+      },
+    ]);
+    expect(world.adapter.steers).toEqual([]);
+    world.adapter.metadata.durability = STEERING_ENGINE_DURABILITY;
+    await world.inbox.reconcile();
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {
+    const file = path();
+    let world: World;
+    const ports: Partial<ThreadInboxDeliveryPorts> = {
+      steerFidelity: (threadId) =>
+        world.service.steerFidelityForThread(threadId),
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, turnId, clientInputId, payload }) => {
+        const dispatched = await world.service.dispatchWithReceipt(
+          {
+            type: 'steerTurn',
+            threadId,
+            turnId,
+            clientInputId,
+            input: payload.message,
+          },
+          { userId: payload.actor.userId },
+        );
+        return dispatched.result as { outcome: string; turnId?: string };
+      },
+    };
+    world = boot(file, ports);
+    await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'real-dispatch-steer',
+      payload,
+      expectedHead,
+    };
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
+    expect(
+      world.store.readSteerInput({
+        threadId: THREAD,
+        clientInputId: input.clientTurnId,
+        input: FOLLOW_UP,
+        turnId: 'turn-1',
+      }),
+    ).toMatchObject({ outcome: 'steered' });
+    await crash(world);
+    world = boot(file, ports);
+    await world.inbox.reconcile();
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('rejects a stale expected head without writing an inbox entry', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    const currentHead = world.inbox.currentHead(THREAD);
+    expect(currentHead).not.toBe(JSON.stringify([THREAD, 0]));
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'stale-head',
+        payload,
+        expectedHead: JSON.stringify([THREAD, 0]),
+      }),
+    ).toEqual({ outcome: 'stale-head', currentHead });
+    expect(world.inbox.list(THREAD)).toEqual([]);
+  });
+
+  test.each(['steer', 'follow-up'] as const)(
+    '%s cannot reuse a predecessor head with the same sequence',
+    async (kind) => {
+      let current = THREAD;
+      const world = boot(path(), {
+        currentSessionId: () => current,
+        headSequence: () => 1,
+      });
+      await runningFirstTurn(world);
+      const expectedHead = world.inbox.currentHead(THREAD);
+      current = 'successor-session';
+      expect(
+        (kind === 'steer'
+          ? world.inbox.submitSteer.bind(world.inbox)
+          : world.inbox.submit.bind(world.inbox))({
+          conversationId: THREAD,
+          clientTurnId: 'old-session-head',
+          payload,
+          expectedHead,
+        }),
+      ).toEqual({
+        outcome: 'stale-head',
+        currentHead: world.inbox.currentHead(THREAD),
+      });
+      expect(world.inbox.list(THREAD)).toEqual([]);
+    },
+  );
+
+  test('replays the same keyed submission after the conversation head advances', async () => {
+    const world = boot(path());
+    const turn = await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'head-retry',
+      payload,
+      expectedHead,
+    };
+    expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
+    expect(
+      JSON.parse(
+        world.store.threadInboxStore().read(THREAD, input.clientTurnId)!
+          .payload,
+      ),
+    ).toMatchObject({ expectedHead });
+    await emit(
+      world,
+      'turn.started',
+      { turnId: 'turn-1', prompt: 'later', inputKind: 'steer' },
+      turn,
+    );
+    expect(world.inbox.currentHead(THREAD)).not.toBe(expectedHead);
+    expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
+    expect(
+      world.inbox.submit({ ...input, expectedHead: `${expectedHead}-changed` }),
+    ).toEqual({ outcome: 'conflict' });
+    expect(world.inbox.list(THREAD)).toHaveLength(1);
+  });
+
+  test.each([
+    'deliver',
+    'conflict',
+    'hold',
+    'wrong-turn',
+    'ambiguous',
+    'policy-throw',
+    'dispatch-error',
+    'turn-end',
+    'compacted',
+    'duplicate',
+    'crash-replay',
+    'stream-restart',
+  ] as const)(
+    'the Station post-tool loop applies the durable steer decision %s',
+    async (mode) => {
+      const conflict = mode === 'conflict';
+      const held = ['hold', 'wrong-turn', 'ambiguous'].includes(mode);
+      const refused = mode === 'policy-throw';
+      const requestFailed = mode === 'dispatch-error';
+      const ended = mode === 'turn-end';
+      const file = path();
+      let receiptReads = 0;
+      const world = boot(file, {
+        steerFidelity: () => 'emulated',
+        ...(mode === 'hold' ? { postToolMaySteer: () => false } : {}),
+        ...(refused
+          ? {
+              placementRefusal: () => {
+                throw new Error('policy unavailable');
+              },
+            }
+          : {}),
+        inspectSteer: () => {
+          if (conflict && ++receiptReads > 1)
+            throw new ClientTurnInputConflictError();
+          return undefined;
+        },
+      });
+      const owner = await runningFirstTurn(world);
+      const other =
+        mode === 'ambiguous'
+          ? boot(path(), { steerFidelity: () => 'emulated' })
+          : undefined;
+      if (other) await runningFirstTurn(other);
+      const memoryHome = makeTempDir('station-inbox-memory-');
+      const memory = new FileMemoryAdapter({ projectHomeDir: memoryHome });
+      const acknowledgementMemory = [
+        'duplicate',
+        'crash-replay',
+        'stream-restart',
+      ].includes(mode)
+        ? new Memory({
+            storage:
+              mode === 'crash-replay' ? durableAgentMemory(memory) : memory,
+          })
+        : undefined;
+      const memoryWrites = acknowledgementMemory
+        ? vi.spyOn(acknowledgementMemory, 'addMessages')
+        : undefined;
+      let nestedPreparation: PrepareStepFunction | undefined;
+      const capturedSteps: Array<{
+        step: Parameters<PrepareStepFunction>[0];
+        messages: unknown;
+      }> = [];
+      const database =
+        mode === 'crash-replay'
+          ? new DatabaseSync(join(memoryHome, 'steers.sqlite'))
+          : undefined;
+      database?.exec(
+        'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON',
+      );
+      const journal = database && openSqliteAgentJournal({ database });
+      let dead = false;
+      const identity = {
+        id: 'steer-original',
+        pid: 123,
+        birth: 'original',
+        identityKind: 'exact' as const,
+      };
+      const liveness = (candidate: { id: string }) =>
+        dead && candidate.id === identity.id
+          ? ('dead' as const)
+          : ('live' as const);
+      const key = {
+        scopeId: 'station',
+        conversationId: THREAD,
+        invocationId: 'steer-replay',
+      };
+      const lease =
+        journal &&
+        (await createAgentRuntime({
+          journal,
+          owner: identity,
+          liveness,
+          implementation: 'steer-proof/1',
+        }).start({ key, input: 'original', implementation: 'steer-proof/1' }));
+      if (lease) {
+        await memory.createConversation({
+          id: THREAD,
+          userId: OWNER,
+          resourceId: 'inbox-proof',
+          title: 'Crash replay',
+          metadata: {},
+        });
+        await persistDurableAuthoredMessage(
+          lease,
+          memory,
+          'read the file',
+          OWNER,
+        );
+      }
+      let repeatedModel: LanguageModelV3 | undefined;
+      let entered!: () => void;
+      let resume!: () => void;
+      const requestEntered = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const requestResumed = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      let calls = 0;
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 0, reasoning: 0 },
+      };
+      const model = new MockLanguageModelV3({
+        doStream: async () => {
+          const round = calls++;
+          if (round === 1 && !held && !conflict && !refused) {
+            expect(world.inbox.list(THREAD)).toMatchObject([
+              { state: 'sending' },
+            ]);
+            if (ended) {
+              entered();
+              await requestResumed;
+            }
+            if (requestFailed)
+              throw new APICallError({
+                message: 'model request failed before acknowledgement',
+                url: 'https://model.fixture',
+                requestBodyValues: {},
+                isRetryable: true,
+              });
+          }
+          return {
+            stream: simulateReadableStream<LanguageModelV3StreamPart>({
+              chunks:
+                round < 2
+                  ? [
+                      {
+                        type: 'tool-call' as const,
+                        toolCallId: `tool-${round}`,
+                        toolName: 'inspect',
+                        input: '{}',
+                      },
+                      {
+                        type: 'finish' as const,
+                        finishReason: {
+                          unified: 'tool-calls' as const,
+                          raw: 'tool_calls',
+                        },
+                        usage,
+                      },
+                    ]
+                  : [
+                      { type: 'text-start' as const, id: 'answer' },
+                      {
+                        type: 'text-delta' as const,
+                        id: 'answer',
+                        delta: 'done',
+                      },
+                      { type: 'text-end' as const, id: 'answer' },
+                      {
+                        type: 'finish' as const,
+                        finishReason: { unified: 'stop' as const, raw: 'stop' },
+                        usage,
+                      },
+                    ],
+            }),
+          };
+        },
+      });
+      let tools = 0;
+      const agent = await new VoltAgentFramework().createTempAgent({
+        name: 'inbox-proof',
+        memoryAdapter: memory,
+        hooks: { beforeToolCall: async () => true },
+        instructions: 'Use inspect.',
+        model,
+        maxSteps: 3,
+        tools: [
+          {
+            name: 'inspect',
+            description: 'Inspect',
+            parameters: { type: 'object', properties: {} },
+            execute: async () => {
+              if (tools++ === 0) {
+                world.inbox.submitSteer({
+                  conversationId: THREAD,
+                  clientTurnId: 'post-tool',
+                  payload,
+                  expectedHead: world.inbox.currentHead(THREAD),
+                });
+                await world.inbox.idle();
+                expect(world.inbox.list(THREAD)).toMatchObject([
+                  { state: 'queued' },
+                ]);
+              }
+              return 'result';
+            },
+          },
+        ],
+      });
+      const invoke = () =>
+        runWithAuthorizedTurnCorrelation(
+          {
+            accountId: OWNER,
+            sessionId: THREAD,
+            turnId: mode === 'wrong-turn' ? 'old-turn' : 'turn-1',
+            correlationId: 'post-tool-proof',
+          },
+          async () => {
+            const result = await agent.streamText('read the file', {
+              conversationId: THREAD,
+              userId: OWNER,
+              prepareStep: (async (step) => {
+                if (
+                  ['duplicate', 'crash-replay', 'stream-restart'].includes(mode)
+                ) {
+                  nestedPreparation ??= createInboxStepPreparation(undefined, {
+                    memory: acknowledgementMemory,
+                    userId: OWNER,
+                    conversationId: THREAD,
+                  });
+                  const prepared = await nestedPreparation(step);
+                  capturedSteps.push({
+                    step: { ...step, messages: structuredClone(step.messages) },
+                    messages: prepared?.messages ?? step.messages,
+                  });
+                  const candidate = prepared?.model;
+                  if (
+                    candidate &&
+                    typeof candidate !== 'string' &&
+                    candidate.specificationVersion === 'v3'
+                  )
+                    repeatedModel ??= candidate;
+                  return prepared;
+                }
+                if (mode === 'compacted' && step.stepNumber >= 2) {
+                  const reply = step.messages.findIndex(
+                    (message) =>
+                      message.role === 'assistant' &&
+                      Array.isArray(message.content) &&
+                      message.content.some(
+                        (part) =>
+                          part.type === 'tool-call' &&
+                          part.toolCallId === 'tool-1',
+                      ),
+                  );
+                  if (reply < 0)
+                    throw new Error(
+                      'The compaction fixture has no later model reply.',
+                    );
+                  return {
+                    messages: [
+                      ...step.messages.filter(
+                        (message) => message.role === 'system',
+                      ),
+                      ...step.messages.slice(reply),
+                    ],
+                  };
+                }
+                return undefined;
+              }) satisfies PrepareStepFunction,
+            });
+            for await (const _chunk of result.fullStream) {
+              /* Drain the real loop. */
+            }
+            await Promise.all([result.text, result.usage, result.finishReason]);
+          },
+        );
+      const run = lease ? runWithAgentTurn(lease, invoke) : invoke();
+      if (ended) {
+        await requestEntered;
+        try {
+          await emit(
+            world,
+            'turn.completed',
+            {
+              turnId: 'turn-1',
+              outputText: 'ended before dispatch acknowledgement',
+            },
+            owner,
+          );
+          await world.inbox.idle();
+          expect(world.inbox.list(THREAD)).toMatchObject([
+            { state: 'unconfirmed' },
+          ]);
+        } finally {
+          resume();
+          await run;
+        }
+      } else await run;
+      other?.inbox.stop();
+      if (requestFailed || ended) {
+        expect(calls).toBe(requestFailed ? 2 : 3);
+        expect(world.inbox.list(THREAD)).toMatchObject([
+          { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
+        ]);
+        expect(
+          world.store
+            .listEventPayloads(THREAD, ['turn.started'])
+            .filter(
+              (event) =>
+                event.method === 'turn.started' && event.inputKind === 'steer',
+            ),
+        ).toEqual([]);
+        world.inbox.submit({
+          conversationId: THREAD,
+          clientTurnId: 'F2',
+          payload: { ...payload, message: 'follow-up F2' },
+        });
+        if (!ended)
+          await emit(
+            world,
+            'turn.completed',
+            { turnId: 'turn-1', outputText: 'model request failed' },
+            owner,
+          );
+        await world.inbox.idle();
+        expect(followUpSends()).toEqual([]);
+        expect(world.inbox.cancel(THREAD, 'post-tool', OWNER).kind).toBe(
+          'cancelled',
+        );
+        await settle(world);
+        expect(sends).toEqual(['read the file', 'follow-up F2']);
+        expect(world.inbox.list(THREAD)).toContainEqual(
+          expect.objectContaining({ clientTurnId: 'F2', state: 'sent' }),
+        );
+        return;
+      }
+      expect(calls).toBe(3);
+      if (mode === 'stream-restart') {
+        expect(nestedPreparation).toBeDefined();
+        const beforeRestart = capturedSteps.length;
+        await invoke();
+        expect(calls).toBe(4);
+        const restarted = capturedSteps[beforeRestart]!;
+        expect(restarted.step.stepNumber).toBe(0);
+        expect(restarted.messages).toEqual(restarted.step.messages);
+      }
+      if (mode === 'crash-replay') {
+        expect(journal).toBeDefined();
+        lease!.pause();
+        dead = true;
+        await journal!.close();
+        const reopened = openSqliteAgentJournal({ database: database! });
+        const successor = createAgentRuntime({
+          journal: reopened,
+          owner: { ...identity, id: 'steer-successor', birth: 'successor' },
+          liveness,
+          implementation: 'steer-proof/1',
+        });
+        const recovered = await successor.recover(key);
+        if (typeof recovered === 'string')
+          throw new Error(`Recovery refused: ${recovered}`);
+        try {
+          nestedPreparation = undefined;
+          await persistDurableAuthoredMessage(
+            recovered,
+            memory,
+            'read the file',
+            OWNER,
+          );
+          await runWithAgentTurn(recovered, invoke);
+          expect(capturedSteps).toHaveLength(6);
+          expect(
+            capturedSteps.slice(3).map((captured) => captured.messages),
+          ).toEqual(
+            capturedSteps.slice(0, 3).map((captured) => captured.messages),
+          );
+          await flushDurableAgentMemory(recovered);
+          expect(
+            (await memory.getMessages(OWNER, THREAD)).filter(
+              (message) =>
+                message.role === 'user' &&
+                message.parts.some(
+                  (part: UIMessage['parts'][number]) =>
+                    part.type === 'text' && part.text === FOLLOW_UP,
+                ),
+            ),
+          ).toHaveLength(1);
+          expect(model.doStreamCalls).toHaveLength(3);
+        } finally {
+          await reopened.close();
+          database!.close();
+        }
+      }
+      if (mode === 'duplicate') {
+        if (!repeatedModel)
+          throw new Error(
+            'The fixture did not capture a carrying model request.',
+          );
+        await expect(
+          repeatedModel.doStream(model.doStreamCalls[1]),
+        ).rejects.toThrow('already attempted');
+        expect(model.doStreamCalls).toHaveLength(3);
+        expect(memoryWrites).toHaveBeenCalledTimes(1);
+      }
+      if (!held && !conflict && !refused) {
+        expect(
+          world.store.listEventPayloads(THREAD, ['turn.started']),
+        ).toContainEqual(
+          expect.objectContaining({ inputKind: 'steer', prompt: FOLLOW_UP }),
+        );
+        expect(await memory.getMessages(OWNER, THREAD)).toContainEqual(
+          expect.objectContaining({
+            role: 'user',
+            parts: [{ type: 'text', text: FOLLOW_UP }],
+          }),
+        );
+      }
+      for (const call of model.doStreamCalls.slice(1)) {
+        expect(
+          call.prompt.filter(
+            (message) =>
+              message.role === 'user' &&
+              message.content.some(
+                (part) => part.type === 'text' && part.text === FOLLOW_UP,
+              ),
+          ),
+        ).toHaveLength(conflict || held || refused ? 0 : 1);
+        if (!conflict && !held && !refused) {
+          const steer = call.prompt.findIndex(
+            (message) =>
+              message.role === 'user' &&
+              message.content.some(
+                (part) => part.type === 'text' && part.text === FOLLOW_UP,
+              ),
+          );
+          const anchor = call.prompt.findIndex(
+            (message) =>
+              message.role === 'tool' &&
+              message.content.some(
+                (part) =>
+                  part.type === 'tool-result' && part.toolCallId === 'tool-0',
+              ),
+          );
+          const reply = call.prompt.findIndex(
+            (message) =>
+              message.role === 'assistant' &&
+              message.content.some(
+                (part) =>
+                  part.type === 'tool-call' && part.toolCallId === 'tool-1',
+              ),
+          );
+          if (anchor >= 0) expect(steer).toBe(anchor + 1);
+          else expect(mode).toBe('compacted');
+          if (reply >= 0) expect(steer).toBeLessThan(reply);
+        }
+      }
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        held
+          ? { state: 'queued' }
+          : conflict
+            ? { state: 'refused', reasonCode: 'client_turn_input_conflict' }
+            : refused
+              ? { state: 'refused', reasonCode: 'placement_policy_failed' }
+              : { state: 'sent', turnId: 'turn-1' },
+      ]);
+      expect(world.adapter.steers).toEqual([]);
+      await crash(world);
+      const second = boot(file, { steerFidelity: () => 'emulated' });
+      await second.inbox.reconcile();
+      expect(second.inbox.list(THREAD)).toMatchObject([
+        { state: held ? 'queued' : conflict || refused ? 'refused' : 'sent' },
+      ]);
+      if (!held && !conflict && !refused) {
+        const later = await new VoltAgentFramework().createTempAgent({
+          name: 'inbox-proof',
+          instructions: 'Reply.',
+          model,
+          maxSteps: 1,
+          memoryAdapter: new FileMemoryAdapter({ projectHomeDir: memoryHome }),
+        });
+        const response = await later.streamText('next turn', {
+          conversationId: THREAD,
+          userId: OWNER,
+        });
+        for await (const _chunk of response.fullStream) {
+          /* Drain the next memory-backed request. */
+        }
+        expect(model.doStreamCalls.at(-1)?.prompt).toContainEqual(
+          expect.objectContaining({
+            role: 'user',
+            content: [{ type: 'text', text: FOLLOW_UP }],
+          }),
+        );
+      }
+      if (held) {
+        await startSession(second);
+        await settle(second);
+        expect(followUpSends()).toEqual([FOLLOW_UP]);
+      } else expect(followUpSends()).toEqual([]);
+    },
+  );
+
+  test.each(['admission', 'native-race', 'fallback-race'] as const)(
+    'a typed steer conflict at %s cannot become another engine effect',
+    async (phase) => {
+      let reads = 0;
+      const steer = vi.fn(async () => {
+        throw new ClientTurnInputConflictError();
+      });
+      const world = boot(path(), {
+        steerFidelity: () =>
+          phase === 'fallback-race' ? 'emulated' : 'native',
+        inspectSteer: () => {
+          reads += 1;
+          if (phase === 'admission' || (phase === 'fallback-race' && reads > 1))
+            throw new ClientTurnInputConflictError();
+          return undefined;
+        },
+        steer,
+      });
+      const owner = await runningFirstTurn(world);
+      const submit = () =>
+        world.inbox.submitSteer({
+          conversationId: THREAD,
+          clientTurnId: 'typed-conflict',
+          payload,
+          expectedHead: world.inbox.currentHead(THREAD),
+        });
+      if (phase === 'admission') {
+        expect(submit).toThrow(ClientTurnInputConflictError);
+        expect(world.inbox.list(THREAD)).toEqual([]);
+      } else {
+        expect(submit().outcome).toBe('queued');
+        await world.inbox.idle();
+        if (phase === 'fallback-race') {
+          await emit(
+            world,
+            'turn.completed',
+            { turnId: 'turn-1', outputText: 'done' },
+            owner,
+          );
+          await settle(world);
+        }
+        expect(world.inbox.list(THREAD)).toMatchObject([
+          { state: 'refused', reasonCode: 'client_turn_input_conflict' },
+        ]);
+      }
+      expect(followUpSends()).toEqual([]);
+      expect(steer).toHaveBeenCalledTimes(phase === 'native-race' ? 1 : 0);
+    },
+  );
+
+  test('session reads project the registered adapter declaration without a provider-name default', async () => {
+    const declaration: ProviderDurabilityProfile = {
+      ...STEERING_ENGINE_DURABILITY,
+      steerPlacement: {
+        state: 'none',
+        detail: 'This registered adapter cannot steer.',
+      },
+    };
+    const world = boot(path(), {}, undefined, new CountingAdapter(declaration));
+    await runningFirstTurn(world);
+    const sessions = await world.service.listSessionReadModel(
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(sessions).toContainEqual(
+      expect.objectContaining({ provider: 'claude', durability: declaration }),
+    );
+    expect(
+      (await world.service.readSession(THREAD, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.durability,
+    ).toEqual(declaration);
+  });
+
+  test('cancelling steer S during fidelity resolution cannot steer following F', async () => {
+    let resolveFidelity!: (value: 'native') => void;
+    const fidelity = new Promise<'native'>((resolve) => {
+      resolveFidelity = resolve;
+    });
+    const steer = vi.fn(async () => ({ outcome: 'steered', turnId: 'turn-1' }));
+    let observed!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      observed = resolve;
+    });
+    const world = boot(path(), {
+      steerFidelity: () => {
+        observed();
+        return fidelity;
+      },
+      inspectSteer: () => undefined,
+      steer,
+    });
+    await runningFirstTurn(world);
+    world.inbox.submitSteer({
+      conversationId: THREAD,
+      clientTurnId: 'S',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    });
+    await reading;
+    world.inbox.cancel(THREAD, 'S', OWNER);
+    queueFollowUp(world, 'F');
+    resolveFidelity('native');
+    await world.inbox.idle();
+    expect(steer).not.toHaveBeenCalled();
+    expect(world.inbox.list(THREAD)).toContainEqual(
+      expect.objectContaining({
+        clientTurnId: 'F',
+        state: 'queued',
+        kind: 'follow-up',
+      }),
+    );
+  });
+
+  test.each(['before-claim', 'after-claim'] as const)(
+    'native steer restart at %s preserves text and head without replaying a claim',
+    async (point) => {
+      const file = path();
+      let world: World;
+      let handoffs = 0;
+      const ports: Partial<ThreadInboxDeliveryPorts> = {
+        steerFidelity: () => 'native',
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({ threadId, clientInputId, payload, turnId }) => {
+          const input = {
+            threadId,
+            clientInputId,
+            input: payload.message,
+            turnId,
+          };
+          if (!world.store.claimSteerInput(input))
+            return world.store.readSteerInput(input)!;
+          handoffs += 1;
+          world.store.confirmSteerInput(input, turnId);
+          return { outcome: 'steered', turnId };
+        },
+      };
+      world = boot(file, ports, (store) => ({
+        ...store,
+        claimNext: (...args) => {
+          if (point === 'after-claim') store.claimNext(...args);
+          throw new Error('power lost at handoff claim');
+        },
+      }));
+      await runningFirstTurn(world);
+      const expectedHead = world.inbox.currentHead(THREAD);
+      world.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'crash-point',
+        payload,
+        expectedHead,
+      });
+      await world.inbox.idle();
+      expect(handoffs).toBe(0);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        {
+          message: FOLLOW_UP,
+          expectedHead,
+          state: point === 'before-claim' ? 'queued' : 'sending',
+        },
+      ]);
+      await crash(world);
+      world = boot(file, ports);
+      await world.inbox.reconcile();
+      expect(handoffs).toBe(point === 'before-claim' ? 1 : 0);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        {
+          message: FOLLOW_UP,
+          expectedHead,
+          state: point === 'before-claim' ? 'sent' : 'unconfirmed',
+        },
+      ]);
+      await crash(world);
+      world = boot(file, ports);
+      await world.inbox.reconcile();
+      expect(handoffs).toBe(point === 'before-claim' ? 1 : 0);
+    },
+  );
+
+  test('a native steer is handed off once and survives a restart', async () => {
+    const file = path();
+    let world: World;
+    let handoffs = 0;
+    const ports: Partial<ThreadInboxDeliveryPorts> = {
+      steerFidelity: () => 'native',
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, clientInputId, payload, turnId }) => {
+        const input = {
+          threadId,
+          clientInputId,
+          input: payload.message,
+          turnId,
+        };
+        if (!world.store.claimSteerInput(input))
+          return world.store.readSteerInput(input)!;
+        handoffs += 1;
+        world.store.confirmSteerInput(input, turnId);
+        return { outcome: 'steered', turnId };
+      },
+    };
+    world = boot(file, ports);
+    await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'steer-native',
+      payload,
+      expectedHead,
+    };
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(handoffs).toBe(1);
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+    await crash(world);
+    world = boot(file, ports);
+    await world.inbox.reconcile();
+    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+    await world.inbox.idle();
+    expect(handoffs).toBe(1);
+  });
+
+  test('an emulated steer waits across restart and starts once after the turn boundary', async () => {
+    const file = path();
+    const ports: Partial<ThreadInboxDeliveryPorts> = {
+      steerFidelity: () => 'emulated',
+      inspectSteer: () => undefined,
+      steer: vi.fn(async () => ({ outcome: 'steered', turnId: 'wrong' })),
+    };
+    const first = boot(file, ports);
+    await runningFirstTurn(first);
+    const expectedHead = first.inbox.currentHead(THREAD);
+    expect(
+      first.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'steer-fallback',
+        payload,
+        expectedHead,
+      }).outcome,
+    ).toBe('queued');
+    await first.inbox.idle();
+    expect(followUpSends()).toEqual([]);
+    await crash(first);
+    const second = boot(file, ports);
+    await second.inbox.reconcile();
+    expect(followUpSends()).toEqual([]);
+    await startSession(second);
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect(ports.steer).not.toHaveBeenCalled();
+    expect(second.inbox.list(THREAD)).toMatchObject([
+      { state: 'sent', kind: 'steer' },
+    ]);
+  });
+
+  test('a possibly handed-off steer is surfaced and never repeated after restart', async () => {
+    const file = path();
+    let world: World;
+    let handoffs = 0;
+    const ports: Partial<ThreadInboxDeliveryPorts> = {
+      steerFidelity: () => 'native',
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, clientInputId, payload, turnId }) => {
+        const input = {
+          threadId,
+          clientInputId,
+          input: payload.message,
+          turnId,
+        };
+        expect(world.store.claimSteerInput(input)).toBe(true);
+        handoffs += 1;
+        throw new Error('acknowledgement lost');
+      },
+    };
+    world = boot(file, ports);
+    await runningFirstTurn(world);
+    const expectedHead = world.inbox.currentHead(THREAD);
+    world.inbox.submitSteer({
+      conversationId: THREAD,
+      clientTurnId: 'uncertain-steer',
+      payload,
+      expectedHead,
+    });
+    await world.inbox.idle();
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'unconfirmed' }]);
+    await crash(world);
+    world = boot(file, ports);
+    await world.inbox.reconcile();
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'unconfirmed' }]);
+    expect(handoffs).toBe(1);
+  });
+
+  test.each(
+    [false, true].flatMap((surfaced) =>
+      (['confirmed', 'conflict'] as const).map((receiptOutcome) => ({
+        surfaced,
+        receiptOutcome,
+      })),
+    ),
+  )(
+    'interrupted steer placement with $receiptOutcome receipt (already surfaced=$surfaced)',
+    async ({ surfaced, receiptOutcome }) => {
+      const file = path();
+      const first = boot(file, { steerFidelity: () => 'emulated' });
+      await runningFirstTurn(first);
+      const expectedHead = first.inbox.currentHead(THREAD);
+      first.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'confirmed-steer',
+        payload,
+        expectedHead,
+      });
+      await first.inbox.idle();
+      const receipt = {
+        threadId: THREAD,
+        clientInputId: 'confirmed-steer',
+        input: payload.message,
+        turnId: 'turn-1',
+      };
+      expect(
+        first.store
+          .threadInboxStore()
+          .claimNext(
+            THREAD,
+            JSON.stringify({ threadId: THREAD, turnId: 'turn-1' }),
+            Date.now(),
+          ).kind,
+      ).toBe('claimed');
+      expect(first.store.claimSteerInput(receipt)).toBe(true);
+      if (receiptOutcome === 'confirmed')
+        first.store.confirmSteerInput(receipt, 'turn-1');
+      if (surfaced) {
+        const entry = first.store
+          .threadInboxStore()
+          .read(THREAD, 'confirmed-steer')!;
+        first.store
+          .threadInboxStore()
+          .settle(
+            entry,
+            'unconfirmed',
+            { reasonCode: 'may_have_been_sent' },
+            Date.now(),
+          );
+      }
+      await crash(first);
+      let second: World;
+      const steer = vi.fn(async () => ({
+        outcome: 'steered',
+        turnId: 'turn-1',
+      }));
+      second = boot(file, {
+        steerFidelity: () => 'native',
+        inspectSteer: (input) => {
+          if (receiptOutcome === 'conflict')
+            throw new ClientTurnInputConflictError();
+          return second.store.readSteerInput(input);
+        },
+        steer,
+      });
+      await second.inbox.reconcile();
+      expect(steer).not.toHaveBeenCalled();
+      expect(second.inbox.list(THREAD)).toMatchObject([
+        receiptOutcome === 'confirmed'
+          ? { state: 'sent', turnId: 'turn-1' }
+          : { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
+      ]);
+    },
+  );
 
   test('a follow-up queued during a turn, then a restart before its terminal, is sent exactly once', async () => {
     const file = path();
@@ -1530,4 +2713,170 @@ describe('thread inbox (#3568)', () => {
       state: 'cancelled',
     });
   });
+});
+
+describe('withdrawing several entries, and a sender placement policy (#3628)', () => {
+  const path = () =>
+    join(makeTempDir('thread-inbox-withdraw-'), 'orchestration.sqlite');
+
+  /**
+   * Two of the owner's entries queued while the conversation read busy, then
+   * the conversation goes idle with no event to drive it: the moment a
+   * withdrawal meets.
+   */
+  async function twoQueuedOnAnIdleTarget(
+    extra: Partial<ThreadInboxDeliveryPorts> = {},
+  ) {
+    const held = { busy: true };
+    let world!: World;
+    world = boot(path(), {
+      coordinatorBusy: (threadId) =>
+        held.busy || world.service.hasActiveTurn(threadId),
+      // No re-check inside the test: only a drive can place them.
+      retryDelaysMs: [60 * 60_000],
+      maxRetries: 1,
+      ...extra,
+    });
+    await startSession(world);
+    for (const key of ['wake-1', 'wake-2'])
+      expect(
+        world.inbox.submit({
+          conversationId: THREAD,
+          clientTurnId: key,
+          payload: { message: `message ${key}`, actor: { userId: OWNER } },
+        }),
+      ).toMatchObject({ outcome: 'queued' });
+    await settle(world);
+    expect(sends).toEqual([]);
+    held.busy = false;
+    return world;
+  }
+
+  test('cancelling one at a time drives in between: the other entry is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(world.inbox.cancel(THREAD, 'wake-1', OWNER)).toMatchObject({
+      kind: 'cancelled',
+    });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+  });
+
+  test('cancelQueued withdraws every entry before driving: nothing is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'wake-2'], OWNER),
+    ).toEqual(['wake-1', 'wake-2']);
+    await settle(world);
+    expect(sends).toEqual([]);
+    expect(world.inbox.list(THREAD).map((entry) => entry.state)).toEqual([
+      'cancelled',
+      'cancelled',
+    ]);
+  });
+
+  test('cancelQueued leaves another sender’s entry and an unknown key alone', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'missing'], 'someone-else'),
+    ).toEqual([]);
+  });
+
+  test('a placement policy refusal settles the entry refused and sends nothing', async () => {
+    const asked: string[] = [];
+    const world = await twoQueuedOnAnIdleTarget({
+      placementRefusal: ({ clientTurnId, queuedAt }) => {
+        asked.push(clientTurnId);
+        expect(typeof queuedAt).toBe('number');
+        return clientTurnId === 'wake-1'
+          ? { reasonCode: 'coordinator_retired', reason: 'Not the target.' }
+          : undefined;
+      },
+    });
+    // An event drives the idle conversation.
+    await emit(world, 'session.state-changed', { state: 'ready' });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+    expect(world.inbox.list(THREAD)).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'wake-1',
+        state: 'refused',
+        reasonCode: 'coordinator_retired',
+      }),
+      expect.objectContaining({ clientTurnId: 'wake-2', state: 'sent' }),
+    ]);
+    expect(asked).toEqual(['wake-1', 'wake-2']);
+  });
+});
+
+test('restart preserves delivery proof before applying coordinator policy', async () => {
+  const file = join(
+    makeTempDir('review-policy-recovery-'),
+    'orchestration.sqlite',
+  );
+  const first = boot(file);
+  const firstTurn = await runningFirstTurn(first);
+  const cs = first.store.coordinatorStore();
+  cs.designate({
+    conversationId: THREAD,
+    actor: { userId: OWNER },
+    replace: false,
+    now: Date.now(),
+  });
+  for (const sessionId of ['source-a', 'source-b'])
+    cs.recordItem(
+      OWNER,
+      { kind: 'finished', sessionId, itemKey: sessionId, title: sessionId },
+      Date.now(),
+    );
+  const claim = cs.claimWake({
+    designation: cs.designation(OWNER)!,
+    now: Date.now(),
+    compose: () => FOLLOW_UP,
+  });
+  if (claim.outcome !== 'claimed') throw new Error('claim prerequisite');
+  const key = coordinatorWakeClientTurnId(claim.wake.id);
+  first.afterStart.hang = true;
+  first.inbox.submit({ conversationId: THREAD, clientTurnId: key, payload });
+  await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(followUpSends()).toEqual([FOLLOW_UP]);
+  expect(first.inbox.entry(THREAD, key)?.state).toBe('sending');
+  await crash(first);
+
+  let policy: CoordinatorWakeDelivery | undefined;
+  const second = boot(file, {
+    placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+      policy?.placementRefusal({
+        conversationId,
+        clientTurnId,
+        userId: payload.actor.userId,
+        queuedAt,
+      }),
+  });
+  policy = new CoordinatorWakeDelivery({
+    store: second.store.coordinatorStore(),
+    mayRead: (_userId, sessionId) => sessionId !== 'source-b',
+    conversationOf: (id) => id,
+    delegatedBy: () => undefined,
+    submit: (input) => second.inbox.submit(input),
+    withdrawQueuedWakes: () => 0,
+    logger: { warn: vi.fn() },
+    setTimer: () => () => {},
+  });
+  try {
+    await startSession(second);
+    await second.inbox.reconcile();
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect({
+      entry: second.inbox.entry(THREAD, key)?.state,
+      nonDelivery: second.inbox.nonDeliveryReason(THREAD, key),
+      released: second.store
+        .coordinatorStore()
+        .waitingItems(OWNER)
+        .map((item) => item.sessionId),
+    }).toEqual({ entry: 'sent', nonDelivery: undefined, released: [] });
+  } finally {
+    policy.stop();
+  }
 });

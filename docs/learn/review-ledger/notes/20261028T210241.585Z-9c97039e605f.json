@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the advisory paragraph: the binding authority releases the secret only for its recorded issuer and endpoint. Checked against secret-binding-administration.ts. Other inputs: the advisory paragraph adds the issuer/resource-bound grant; the provider decides its client once per consent, swaps a re-registered client with its tokens atomically on success, records requested scopes, and passes issuer/resource to the secret resolver.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

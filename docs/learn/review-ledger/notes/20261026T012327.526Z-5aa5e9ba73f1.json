@@ -1,0 +1,7 @@
+{
+  "revision": "80940ca7a449cd9d7e3e4279bdeb8166d4c92e75",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"#4189 delta only: the changed sources alter just the service reinstall-remedy derivation (service-remedy.ts/service-unit.ts via the service status call in service.ts and station upgrade scheduling guidance in lifecycle.ts) and add stationRoot to readArchiveInstallState in prebuilt-archive.ts. Searched this document for reinstall/remedy, service PATH, scheduling guidance and install-state claims; none describe the changed behavior, so no prose change. Other claims bound to these sources were not re-reviewed.","inputs":["docs/reference/outside-agent-oauth.md","packages/cli/src/__tests__/lifecycle.test.ts","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

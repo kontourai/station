@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked App push provider and notification event dispatch through the listener and shared transport; push subscription and browser delivery remain separate.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx","src-ui/src/hooks/useServerEvents.ts"]}
+  ]
+}

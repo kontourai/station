@@ -1,0 +1,13 @@
+{
+  "revision": "ae5d0021ff51f84c59b83083924f22ea79242949",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#4305 added one inventory line to docs/ui/responsive-action-surfaces.txt for src-ui/src/views/settings/AccountSharingSection.tsx (exception: ResponsiveSurfaceActions row plus ConfirmModal, no committed 390px fixture). Checked the inventory guidance here: it describes the format and ratchet generally and makes no per-surface claim this line changes; no prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"#4305 added one inventory line to docs/ui/responsive-action-surfaces.txt for src-ui/src/views/settings/AccountSharingSection.tsx (exception: ResponsiveSurfaceActions row plus ConfirmModal, no committed 390px fixture). This document lists the inventory only as a recorded source and quotes no entry from it; no claim here changes, no prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"#4305 added one inventory line to docs/ui/responsive-action-surfaces.txt for src-ui/src/views/settings/AccountSharingSection.tsx (exception: ResponsiveSurfaceActions row plus ConfirmModal, no committed 390px fixture). This document lists the inventory only as a recorded source and quotes no entry from it; no claim here changes, no prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#4305 added one inventory line to docs/ui/responsive-action-surfaces.txt for src-ui/src/views/settings/AccountSharingSection.tsx (exception: ResponsiveSurfaceActions row plus ConfirmModal, no committed 390px fixture). This document lists the inventory only as a recorded source and quotes no entry from it; no claim here changes, no prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

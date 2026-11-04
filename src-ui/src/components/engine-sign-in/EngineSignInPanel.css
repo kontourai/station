@@ -50,12 +50,26 @@
   border-top: 1px solid var(--k-line);
   padding-top: var(--k-space-2);
 }
+.engine-sign-in__methods li > div {
+  flex: 1;
+  min-width: 0;
+}
+.engine-sign-in__methods li > button,
+.engine-sign-in__key > button {
+  flex: none;
+  white-space: nowrap;
+}
 .engine-sign-in__keys {
   display: grid;
   gap: var(--k-space-2);
 }
+/* The name on its own line, so every key's field and button share one row
+   whatever the name's length. */
+.engine-sign-in__key > label {
+  flex: 1 0 100%;
+}
 .engine-sign-in__key input {
-  min-width: 14rem;
+  min-width: 0;
   flex: 1;
   font: inherit;
   padding: 0.3rem 0.5rem;

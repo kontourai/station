@@ -45,6 +45,7 @@ import {
   handleSessionStopSettledEvent,
 } from './sessionHandlers';
 import {
+  handleHostImagesEvent,
   handleReasoningDeltaEvent,
   handleTextDeltaEvent,
   handleToolCompletedEvent,
@@ -259,6 +260,9 @@ function dispatchProjectedOrchestrationEvent(
     case 'session.exited':
       handleSessionExitedEvent(event);
       return;
+    case 'session.cancellation-requested':
+      // Intent is not a terminal outcome; settlement owns completion and queue handling.
+      return;
     case 'turn.started':
       if (chat.usageLimitStopped)
         activeChatsStore.updateChat(
@@ -378,6 +382,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'conversation.forked':
       handleConversationForkedEvent(event);
+      return;
+    case 'content.host-images':
+      handleHostImagesEvent(event);
       return;
     default: {
       const _exhaustive: never = event;

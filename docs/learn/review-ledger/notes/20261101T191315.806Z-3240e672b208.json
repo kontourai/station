@@ -1,0 +1,7 @@
+{
+  "revision": "04f5373d847a434e41ac196ced96cb15f4d62955",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Replaced the stale claim that the SDK session store is follow-up work under #3994: #4414 shipped TerminalSessionStore (packages/sdk/src/client/terminal-session-store.ts, exported from packages/sdk/src/index.ts and documented in docs/reference/sdk.md), which speaks the terminal-transport protocol over /api/terminal/socket. The surrounding claims about the codec, scope predicate and API link are unchanged.","inputs":["packages/contracts/README.md"]}
+  ]
+}

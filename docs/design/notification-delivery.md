@@ -32,6 +32,10 @@ queued, or the app is hidden. Visibility uses viewport intersection and document
 visibility; it does not detect an overlapping dialog or another occluding surface.
 Actions that transfer from Station details close that dialog before reporting their
 outcome in a toast. Failed actions stay available to retry.
+[NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
+adds **Troubleshoot** to an error-tone toast that has fewer than two actions
+and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
+see [troubleshoot with an agent](troubleshoot-in-app.md).
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
@@ -79,6 +83,15 @@ change background delivery guarantees. A request answered with a form (a
 harness question) carries no decision actions in notification history or
 Attention: an Allow or Deny there names no answer and no exact request event,
 so the command route would refuse it. Its Open session link leads to the form.
+A request whose content, or the content of a call it gates, was stored out of
+line carries only Deny there: allowing it needs the whole request loaded,
+which the conversation's card does ([event content spill](event-content-spill.md)).
+The same holds when Station cannot read the request back, and a card that
+offered Allow before such content arrived is rewritten when it does, or when
+Station refuses an Allow from it. The rewrite emits `notification:updated`,
+so open notification history and Attention views refetch and stop offering
+Allow. It is not pushed again, so a native notification already delivered is
+not updated; any Allow that still reaches Station is refused.
 While its request is open the item still counts as waiting on you: the
 session's generic composer stays hidden and Dismiss stays secondary.
 
@@ -454,7 +467,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   the session read model once per reading principal: each phone reads with
   the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
-  operator for a credential minted with home-possession, else the device
+  operator for a credential minted with home-possession or a device holding
+  [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02), else the device
   itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below

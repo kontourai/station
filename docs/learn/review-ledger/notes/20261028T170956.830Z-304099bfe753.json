@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 1 of #4279: added Authorization server field and the Authorization server binding section (GHSA-6qxp-vccf-f47h; declared issuer checked from configuration before the secret is read, required to bind a secret, pinned while bound; public-client rationale), one-per-line scopes, empty choice = server scopes, scoped dynamic registration, Gmail issuer step with Google issuer as a vendor fact to confirm. Checked against tool-server-oauth.ts, mcp-service.ts, secret-binding-administration.ts and the Alice/Bob test. Other inputs: the connections guide adds Authorization server binding and updates scope wording; the provider replaces the first-use issuer pin with the declared-issuer check, registers dynamic clients for the configured scopes, and accepts an empty scope choice.","inputs":["docs/guides/connections.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

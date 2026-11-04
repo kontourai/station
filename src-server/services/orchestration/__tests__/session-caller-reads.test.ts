@@ -239,12 +239,14 @@ test('hot global sequence reads compile once and retain fresh bindings', () => {
   expect(store.readGlobalSequence('missing')).toBeUndefined();
   append({ method: 'turn.started', turnId: 'next', prompt: 'next' });
   expect(store.readGlobalSequence('event-2')).toBe(2);
-  expect(
-    prepare.mock.calls.filter(
-      ([sql]) =>
-        sql === 'SELECT global_sequence FROM orchestration_events WHERE id = ?',
-    ),
-  ).toHaveLength(1);
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(
+      prepare.mock.calls.filter(
+        ([sql]) =>
+          sql ===
+          'SELECT global_sequence FROM orchestration_events WHERE id = ?',
+      ),
+    ).toHaveLength(1);
 });
 
 test('existence reads discover provider sessions before authorizing them', async () => {
@@ -294,15 +296,18 @@ test('hot statement survives cold dynamic query churn while the oldest cold quer
     );
     expect(store.readGlobalSequence('event-1')).toBe(1);
   }
-  expect(
-    prepare.mock.calls.filter(
-      ([sql]) =>
-        sql === 'SELECT global_sequence FROM orchestration_events WHERE id = ?',
-    ),
-  ).toHaveLength(1);
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(
+      prepare.mock.calls.filter(
+        ([sql]) =>
+          sql ===
+          'SELECT global_sequence FROM orchestration_events WHERE id = ?',
+      ),
+    ).toHaveLength(1);
   const before = prepare.mock.calls.length;
   store.listEventPayloads('thread', ['method-0']);
-  expect(prepare.mock.calls.length).toBe(before + 1);
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+    expect(prepare.mock.calls.length).toBe(before + 1);
 });
 
 test('delegation status retains legacy runtime_error before a later unrelated event', async () => {

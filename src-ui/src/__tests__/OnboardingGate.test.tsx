@@ -1938,10 +1938,7 @@ describe('OnboardingGate', () => {
 
     expect(screen.getByText('App')).toBeTruthy();
     expect(
-      await screen.findByText(/Preparing the connection to Tailnet Station/),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/Waiting for approval on Tailnet Station/),
+      await screen.findByText(/Waiting for approval on Tailnet Station/),
     ).toBeTruthy();
   });
 

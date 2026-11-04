@@ -102,8 +102,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
@@ -128,7 +126,11 @@
 
     "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-ui/src/float-over-chat/AgentDeviceReveal.tsx",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
   ],
 
   "checks": [

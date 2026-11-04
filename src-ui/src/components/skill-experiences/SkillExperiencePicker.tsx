@@ -10,6 +10,12 @@ import { Button } from '../Button';
 import { Empty, SkeletonList } from '../state';
 import { SkillExperienceForm } from './SkillExperienceForm';
 
+/**
+ * The server feature preview (`feature-preview-registry.ts`) that offers this
+ * picker in the start composers. Off, no entry point opens it.
+ */
+export const VISUAL_SKILLS_PREVIEW_ID = 'visual-skills';
+
 export function SkillExperiencePicker({
   query,
   selected,

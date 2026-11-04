@@ -21,6 +21,7 @@
  * here reads a session id from tool input or from any header other than the
  * credential.
  */
+import { createHash } from 'node:crypto';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -37,17 +38,47 @@ import {
   stationControlCallerPrincipal,
 } from '../../tools/station-control-shared.js';
 import { INTERNAL_TENANT_HEADER } from '../../utils/internal-api-token.js';
+import { codexToolRequestIsBound } from './codex-bound-request.js';
 import {
   stationControlTokenAssurance,
   verifyStationControlMcpTokenEntry,
 } from './station-control-mcp-token.js';
 
 export interface StationControlCallerRecord {
+  /** Rechecked only for a coordinator-scoped in-process credential. */
+  readonly coordinatorCurrent?: () => boolean;
   readonly principal?: SessionActingPrincipal;
   readonly localProjectId?: string;
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
   readonly conversationId?: string;
+}
+
+/** Exact recorded identity/scope for a separately issued external-client lease. */
+export function stationControlExternalClientRecordBinding(
+  record: StationControlCallerRecord | undefined,
+): string | undefined {
+  if (
+    record?.principal?.source !== 'session-owner' ||
+    !record.principal.id ||
+    record.projectIdSource !== 'session-record' ||
+    !record.localProjectId ||
+    !record.projectSlug ||
+    !record.conversationId
+  )
+    return undefined;
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        record.principal.id,
+        record.principal.source,
+        record.localProjectId,
+        record.projectIdSource,
+        record.projectSlug,
+        record.conversationId,
+      ]),
+    )
+    .digest('hex');
 }
 
 /** Reads the server's own records for a verified session. */
@@ -72,6 +103,7 @@ export interface StationControlCallerRecordSources {
   /** `ProjectConfig.id` for a local slug, or undefined when there is none. */
   localProjectId(slug: string): string | undefined;
   conversationId(sessionId: string): string | undefined;
+  coordinatorOwner?(conversationId: string): string | undefined;
 }
 
 /**
@@ -128,6 +160,13 @@ export function createStationControlCallerRecordResolver(
         : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(conversationId ? { conversationId } : {}),
+      ...(sources.coordinatorOwner && principal
+        ? {
+            coordinatorCurrent: () =>
+              sources.coordinatorOwner?.(conversationId ?? sessionId) ===
+              principal.id,
+          }
+        : {}),
     };
   };
 }
@@ -147,6 +186,11 @@ export function stationControlCallerRecordSources(runtime: {
     conversationForSession(
       sessionId: string,
     ): { readonly conversationId: string } | undefined;
+    coordinatorStore?(): {
+      designationForConversation(
+        id: string,
+      ): { actor: { userId: string } } | undefined;
+    };
   };
   getProject(slug: string): { readonly id: string };
 }): StationControlCallerRecordSources {
@@ -166,6 +210,10 @@ export function stationControlCallerRecordSources(runtime: {
     },
     conversationId: (sessionId) =>
       runtime.eventStore?.conversationForSession(sessionId)?.conversationId,
+    coordinatorOwner: (conversationId) =>
+      runtime.eventStore
+        ?.coordinatorStore?.()
+        .designationForConversation(conversationId)?.actor.userId,
   };
 }
 
@@ -189,7 +237,10 @@ function resolveVerifiedStationControlCaller(
   if (
     !verified ||
     (verified.serverId !== 'station-control' &&
-      verified.serverId !== 'station-knowledge')
+      verified.serverId !== 'codex-tools' &&
+      verified.serverId !== 'station-knowledge' &&
+      verified.serverId !== 'coordinator-control' &&
+      verified.serverId !== 'coordinator-knowledge')
   )
     return null;
   let record: StationControlCallerRecord | undefined;
@@ -197,9 +248,21 @@ function resolveVerifiedStationControlCaller(
   try {
     assurance = stationControlTokenAssurance(verified.channel);
     record = resolveRecord?.(verified.sessionId);
+    if (
+      (verified.serverId === 'coordinator-control' ||
+        verified.serverId === 'coordinator-knowledge') &&
+      record?.coordinatorCurrent?.() !== true
+    )
+      return null;
   } catch {
     return null;
   }
+  if (
+    verified.callerRecordBinding &&
+    stationControlExternalClientRecordBinding(record) !==
+      verified.callerRecordBinding
+  )
+    return null;
   const caller: StationControlCaller = Object.freeze({
     sessionId: verified.sessionId,
     assurance,
@@ -267,6 +330,12 @@ export function resolveStationControlCallerForRequest(
     return null;
   const token = request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER);
   if (!token) return null;
+  const entry = verifyStationControlMcpTokenEntry(token);
+  if (
+    entry?.serverId === 'codex-tools' &&
+    !codexToolRequestIsBound(request, token)
+  )
+    return null;
   const verified = resolveVerifiedStationControlCaller(token, resolveRecord);
   if (!verified) return null;
   const requestTenant =

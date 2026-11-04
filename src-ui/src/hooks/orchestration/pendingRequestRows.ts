@@ -1,3 +1,9 @@
+import {
+  hasRuntimeEventContentRefs,
+  isRuntimeEventContentRef,
+  type RuntimeEventContentRef,
+  requestBoundCallIds,
+} from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
@@ -86,9 +92,9 @@ function openApprovalRequests(
  * command there. Only `command` is read, as a string or an argv array, and
  * only for a plain command approval.
  */
-function commandOnlyArgs(
+export function commandOnlyArgs(
   payload: Record<string, unknown> | undefined,
-): { command: string | string[] } | undefined {
+): { command: string | string[] | RuntimeEventContentRef } | undefined {
   // A network prompt or a stdin write is not a request to run the command:
   // its title says what it is ("network access to …", "input to a running
   // command"), and a "Run …" label would misstate it.
@@ -96,6 +102,9 @@ function commandOnlyArgs(
     return undefined;
   const command = payload?.command;
   if (typeof command === 'string' && command.trim()) return { command };
+  // A long command stored out of line shows as its marked preview until
+  // the card has loaded it (docs/design/event-content-spill.md).
+  if (isRuntimeEventContentRef(command)) return { command };
   if (
     Array.isArray(command) &&
     command.length > 0 &&
@@ -143,7 +152,19 @@ export function unansweredApprovalRequests(
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
     const inputRequest = inputRequestFromRequestEvent(request);
-    const args = toolInput ?? commandOnlyArgs(request.payload);
+    // docs/design/event-content-spill.md: a request that names its call
+    // only by id (a Codex file change) is approved over that call's
+    // arguments, which may be stored out of line; the card shows and loads
+    // them from the bound `tool.started`.
+    const boundCallIds = requestBoundCallIds(request);
+    const boundArgs = events.find(
+      (
+        event,
+      ): event is Extract<CanonicalRuntimeEvent, { method: 'tool.started' }> =>
+        event.method === 'tool.started' &&
+        boundCallIds.includes(event.toolCallId),
+    )?.arguments;
+    const args = toolInput ?? commandOnlyArgs(request.payload) ?? boundArgs;
     const toolCallId = request.payload?.toolCallId;
     return {
       type: 'tool-invocation',
@@ -165,6 +186,10 @@ export function unansweredApprovalRequests(
       ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
+      // docs/design/event-content-spill.md: loaded whole before Allow.
+      ...(request.spilledContent || hasRuntimeEventContentRefs(args)
+        ? { approvalContentEvent: request }
+        : {}),
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
       approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
     };

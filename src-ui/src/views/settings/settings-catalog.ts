@@ -16,6 +16,8 @@ export type SettingsSectionId =
   | 'feature-previews'
   | 'answer-shares'
   | 'plugin-visibility'
+  // Configuration the Browser and Device panes keep out of their chrome.
+  | 'browser-devices'
   // #1973: machines this Station runs simulators and emulators on over SSH.
   | 'device-hosts'
   // #3557: people with devices tied to them, their Station group and tokens.
@@ -39,7 +41,12 @@ export type SettingsSectionId =
   | 'notifications'
   | 'voice'
   | 'pairing'
+  // docs/design/station-routes.md: every address this device reaches the
+  // current Station on. Behind the Station routes preview.
+  | 'station-routes'
   | 'developer-tools'
+  // The release-required app facts: version, open source notices, legal.
+  | 'about'
   | 'knowledge';
 
 export interface SettingsCatalogEntry {
@@ -75,7 +82,8 @@ export interface SettingsCatalogEntry {
     | 'desktop'
     | 'operator'
     | 'developer'
-    | 'experimental-trust';
+    | 'experimental-trust'
+    | 'experimental-station-routes';
 }
 
 /**
@@ -108,6 +116,8 @@ export const SETTINGS_SECTIONS = [
     title: 'Plugin visibility',
     group: 'this-station',
   },
+  // Configuration the Browser and Device panes keep out of their chrome.
+  { id: 'browser-devices', title: 'Browser & devices', group: 'this-station' },
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
@@ -149,10 +159,13 @@ export const SETTINGS_SECTIONS = [
   // #2182: reaching this Station from a phone. It was the one non-voice row
   // of "Voice & Features", which is what made "Features" necessary.
   { id: 'pairing', title: 'Pairing', group: 'you' },
+  { id: 'station-routes', title: 'Routes', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
   // #2144 decision 5: Knowledge keeps a group of its own this slice.
+  // What this installed app is, and the notices a store release must carry.
+  { id: 'about', title: 'About Station', group: 'you' },
   { id: 'knowledge', title: 'My knowledge store', group: 'knowledge' },
 ] as const satisfies readonly {
   id: SettingsSectionId;
@@ -274,6 +287,21 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['experimentalTrustEnabled'],
   },
   {
+    id: 'experimental-station-routes',
+    title: 'Station routes preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    keywords: ['routes', 'tailscale', 'lan', 'failover', 'connection'],
+    configKeys: ['experimentalStationRoutesEnabled'],
+  },
+  {
+    id: 'experimental-sheet-gestures',
+    title: 'Sheet gestures preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalSheetGesturesEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',
@@ -285,6 +313,20 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'plugin-visibility',
     keywords: ['plugins share grant collaborator board panes'],
     conditional: 'operator',
+  },
+  {
+    id: 'browser-project-settings',
+    title: 'Browser agent access and local servers',
+    section: 'browser-devices',
+    keywords: [
+      'browser javascript evaluate agent local server localhost share',
+    ],
+  },
+  {
+    id: 'device-setup',
+    title: 'Device setup',
+    section: 'browser-devices',
+    keywords: ['simulator emulator hub agent device access share project'],
   },
   {
     id: 'device-hosts',
@@ -318,6 +360,42 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Terminal shell',
     section: 'host-runtime',
     configKeys: ['terminalShell'],
+  },
+  // #3994: terminal history retention, one row per setting.
+  {
+    id: 'terminal-history',
+    title: 'Keep terminal history',
+    section: 'host-runtime',
+    keywords: ['retention journal scrollback disk usage clear'],
+    configKeys: ['terminalHistoryEnabled'],
+  },
+  {
+    id: 'terminal-history-location',
+    title: 'Terminal history location',
+    section: 'host-runtime',
+    keywords: ['retention journal directory folder move'],
+    configKeys: ['terminalHistoryDirectory'],
+  },
+  {
+    id: 'terminal-history-max-age',
+    title: 'Terminal history maximum age',
+    section: 'host-runtime',
+    keywords: ['retention journal days expire'],
+    configKeys: ['terminalHistoryMaxAgeDays'],
+  },
+  {
+    id: 'terminal-history-per-terminal',
+    title: 'Maximum history per terminal',
+    section: 'host-runtime',
+    keywords: ['retention journal size limit mib'],
+    configKeys: ['terminalHistoryMaxTerminalMiB'],
+  },
+  {
+    id: 'terminal-history-total',
+    title: 'Maximum total history',
+    section: 'host-runtime',
+    keywords: ['retention journal size limit mib budget'],
+    configKeys: ['terminalHistoryMaxTotalMiB'],
   },
   {
     id: 'mcp-ui-host',
@@ -434,6 +512,12 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'diagnostics',
     keywords: ['health logs download'],
   },
+  {
+    id: 'diagnostics-troubleshoot',
+    title: 'Troubleshoot with an agent',
+    section: 'diagnostics',
+    keywords: ['troubleshoot triage bug broken help support debug'],
+  },
   // ── Permissions (#2182) ─────────────────────────────────────────────────
   // What agents may do without asking. `approval-guardian` is an always-on
   // screener rather than a fallback, which is why the Control group's caption
@@ -507,16 +591,44 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultWorkspaceIsolation'],
   },
   {
+    id: 'no-project-chat-folder',
+    title: 'Chats without a project',
+    section: 'agent-runs',
+    keywords: ['no project', 'home folder', 'scratch', 'private folder'],
+    configKeys: ['noProjectChatFolder'],
+  },
+  {
     id: 'workspace-checkpoints',
     title: 'Workspace checkpoints',
     section: 'agent-runs',
     configKeys: ['workspaceCheckpoints'],
   },
   {
+    id: 'checkout-stale-after-commits',
+    title: 'Stale checkout after commits',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterCommits'],
+  },
+  {
+    id: 'checkout-stale-after-days',
+    title: 'Stale checkout after days',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterDays'],
+  },
+  {
     id: 'usage-limit-auto-resume',
     title: 'Resume after usage limits',
     section: 'agent-runs',
     configKeys: ['usageLimitAutoResume'],
+  },
+  {
+    id: 'claude-artifacts',
+    title: 'Claude Code artifacts',
+    section: 'agent-runs',
+    configKeys: ['claudeArtifactsEnabled'],
+    keywords: ['claude', 'artifact', 'publish', 'claude.ai', 'page'],
   },
   {
     id: 'review-guides',
@@ -563,6 +675,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Default chat font size',
     section: 'chat',
     configKeys: ['defaultChatFontSize'],
+  },
+  {
+    id: 'chat-title-model',
+    title: 'Chat title model',
+    section: 'chat',
+    keywords: ['conversation title', 'generated title'],
+    configKeys: ['titleModel'],
   },
   {
     // The id is the stable URL/palette identity and stays as minted even
@@ -656,7 +775,7 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Theme',
     section: 'appearance',
     configKeys: ['theme'],
-    keywords: ['mode', 'dark', 'light', 'catppuccin'],
+    keywords: ['mode', 'dark', 'light', 'system', 'catppuccin'],
     searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
   },
   {
@@ -665,6 +784,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
+  },
+  {
+    id: 'terminal-screen-reader',
+    title: 'Terminal screen reader mode',
+    section: 'appearance',
+    configKeys: ['terminalScreenReader'],
+    keywords: ['accessibility', 'a11y', 'voiceover', 'nvda', 'announce'],
   },
   {
     id: 'accent-color',
@@ -745,10 +871,36 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'station-routes',
+    title: 'Routes',
+    section: 'station-routes',
+    conditional: 'experimental-station-routes',
+    keywords: ['tailscale', 'lan', 'address', 'failover', 'connection'],
+  },
+  {
     id: 'personal-knowledge-store',
     title: 'My knowledge store',
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
+  },
+  // ── About ── appended last so earlier rows keep their order.
+  {
+    id: 'app-version',
+    title: 'Version',
+    section: 'about',
+    keywords: ['build', 'release', 'channel', 'commit'],
+  },
+  {
+    id: 'open-source-licenses',
+    title: 'Open source licenses',
+    section: 'about',
+    keywords: ['third party', 'notices', 'attribution', 'oss'],
+  },
+  {
+    id: 'legal',
+    title: 'Legal',
+    section: 'about',
+    keywords: ['privacy policy', 'license', 'support', 'terms'],
   },
 ] as const satisfies readonly Omit<SettingsCatalogEntry, 'scope'>[];
 
@@ -816,6 +968,8 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
+  // Routes are saved in this device's own connection profile.
+  'station-routes': 'device',
 };
 
 /**
@@ -865,7 +1019,11 @@ function scopeForKeylessSection(
     section === 'developer-tools'
   )
     return 'device';
-  if (section === 'host-runtime' || section === 'diagnostics')
+  if (
+    section === 'host-runtime' ||
+    section === 'diagnostics' ||
+    section === 'about'
+  )
     return 'informational';
   return 'station';
 }
@@ -998,6 +1156,7 @@ export function matchingSettingsRows(
     isOperator?: boolean;
     developerToolsEnabled?: boolean;
     experimentalTrustEnabled?: boolean;
+    experimentalStationRoutesEnabled?: boolean;
   } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
@@ -1011,6 +1170,11 @@ export function matchingSettingsRows(
     if (
       entry.conditional === 'experimental-trust' &&
       options.experimentalTrustEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-station-routes' &&
+      options.experimentalStationRoutesEnabled !== true
     )
       return false;
     if (entry.conditional === 'operator' && options.isOperator !== true) {
@@ -1049,6 +1213,7 @@ export function settingsPaletteCommands(options: {
   isDesktop: boolean;
   developerToolsEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }): readonly SettingsPaletteCommand[] {
   // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
   //
@@ -1067,7 +1232,9 @@ export function settingsPaletteCommands(options: {
       (entry.conditional !== 'developer' ||
         options.developerToolsEnabled === true) &&
       (entry.conditional !== 'experimental-trust' ||
-        options.experimentalTrustEnabled === true),
+        options.experimentalTrustEnabled === true) &&
+      (entry.conditional !== 'experimental-station-routes' ||
+        options.experimentalStationRoutesEnabled === true),
   ).map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile

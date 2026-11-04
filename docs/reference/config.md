@@ -64,13 +64,16 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | field | type | default | description |
 |---|---|---|---|
 | `defaultMaxTurns` | positive integer | `200` | VoltAgent step cap after `guardrails.maxSteps` and top-level Agent `maxSteps`. Missing/zero values fall through in the resolver, but the settings write interface requires a positive integer. This is a finite cap, not unlimited execution; the Strands adapter does not apply this setting. |
+| `checkoutStaleAfterCommits` | positive integer | `50` | Commits behind its upstream branch at which a Project's checkout reads as stale for the `stale-project-checkout` preview ([Project checkout freshness](api.md#project-checkout-freshness)). |
+| `checkoutStaleAfterDays` | positive integer | `3` | Days a Project's checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale for the same preview. |
 | `defaultMaxOutputTokens` | positive integer | no Station-applied cap | Output-token cap passed by Station's framework adapters when an Agent has no `guardrails.maxTokens`. Provider/model limits still apply. |
 | `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
 | `defaultChatFontSize` | number | `14` | Chat UI font size in pixels (10–24) |
+| `titleModel` | string (≤255) | unset | Model that names a Station-run conversation after its first completed turn, in the background. Only this setting turns it on: unset, no model is called (`structureModel` is never used for titles, since the prompt quotes the conversation), and the conversation keeps the title derived from its first message that names something (a prompt like "Continue" or "ok" never titles it). A generated title replaces only a prompt-derived one, never one supplied with the start. A hosted Station never generates titles. The generator uses bounded text generation, not a structured-output pass: it truncates each source text after 500 characters, requests at most 64 output tokens, waits up to 10 seconds, and normalizes accepted titles to NFC with a 60-character limit. The timeout stops waiting, not the provider call; failure leaves the existing title. See the [runtime caller](../../src-server/services/orchestration/conversation-title-generation.ts) and [model call](../../src-server/routes/chat/chat-title-generation.ts). |
 | `registryUrl` | string | bundled starter registry, if present | Plugin registry URL or path. Relative paths resolve from the process working directory (the install root under the CLI). When unset, `examples/registry/default.json` is used if present; otherwise no default registry provider is registered. Changing it takes effect after restarting Station. See [Plugin registry](../guides/plugins.md#plugin-registry). |
 | `builtinAgentEngineConnectionId` | engine connection id \| `null` | unset | Which engine runs the built-in Station identity. `null` is an authored choice of Station's own engine. When unset, Station adopts the single ready control-plane-capable engine and records that adoption here, so a later readiness change does not move it; genuine ambiguity records nothing and leaves the choice to you. See [agent engine unification](../design/agent-engine-unification.md#711-the-station-identitys-engine-is-app-state-not-agent-state). |
-| `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick, its Agent's default, and the signed-in person's per-engine default for new interactive chats; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose scope carries `approval:full-access` (for a device tied to a person, only while that person's Station group is Admin); an Agent can never set it. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). When the device's person is in the Member group, the refusal names that group and People as the first step, and carries the grant command only if the device's own grant also lacks the scope. See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
+| `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick, its Agent's default, its Project's new-chat approval mode ([Project new-chat defaults](api.md#project-new-chat-defaults)), and the signed-in person's per-engine default for new interactive chats; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose scope carries `approval:full-access` (for a device tied to a person, only while that person's Station group is Admin); an Agent can never set it. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). When the device's person is in the Member group, the refusal names that group and People as the first step, and carries the grant command only if the device's own grant also lacks the scope. See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
 | `runtime` | `"voltagent"` \| `"strands"` | `"voltagent"` | Agent framework runtime. Use `--features=strands-runtime` to opt in to Strands. |
 | `gitRemote` | string | — | Not currently used. The update path reads the git remote from the Station checkout itself, never from config. |
 | `serverUpdateDownloadPolicy` | `"never"` \| `"after-24h"` \| `"immediately"` | `"after-24h"` | For a Station service run by the fixed launcher (an archive install): when the server downloads an available update by itself, once a check (on boot, or when a newer client connects) finds it. Downloading verifies and stages the release and keeps the server running; only Restart, or Update when idle, applies it. Other install kinds ignore it. |
@@ -79,14 +82,21 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
+| `terminalHistoryEnabled` | boolean | `true` | Whether terminals opened afterwards write their output to disk. Off keeps only the in-memory tail. See [Journal](../design/terminal.md#journal). |
+| `terminalHistoryDirectory` | absolute path | `<home>/terminal-journals` | Where terminal history is kept. Ended terminals' history moves there on the next open, usage read or start; a running one moves after it ends. A relative path is refused, and an agent cannot change it. |
+| `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
+| `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
+| `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
 | `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
+| `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
 
 ### nearby discovery
 
 `lanDiscoveryEnabled` is a Station boolean, default `false`, saved in
-`config/app.json`. Changing it requires the bound local operator; an ordinary
-remote `access:manage` grant does not suffice. **Settings → Pairing → Discover
+`config/app.json`. Changing it requires the bound Station owner (the local
+operator, or one of the owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)); an `access:manage` grant alone does not suffice. **Settings → Pairing → Discover
 this Station nearby** changes that intent without changing listener binding,
 ports or firewall rules.
 
@@ -216,6 +226,12 @@ event-loop delays; foreground config reads still check the current signature.
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
 
+**Upgrade note for Automations.** Previously written server logs may still
+contain automation names and engine errors. Upgrading does not rewrite or
+redact those files. Review access to retained files and copies at external
+collectors. The retention settings below remove older, inactive day files;
+the active UTC day is retained even when a lower limit is configured.
+
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
@@ -240,8 +256,9 @@ file mode `0600` when opening a day file. Failure leaves the durable sink
 unwritable while redacted stdout logging continues. The Windows branch skips
 those POSIX checks; this code is not a Windows ACL guarantee.
 
-Diagnostics chooses its rendering from the request's bound
-[`home-possession` locality](../../src-server/security/runtime-request-security.ts),
+Diagnostics chooses its rendering from the request's bound owner authority:
+[`home-possession` locality](../../src-server/security/runtime-request-security.ts)
+or [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02),
 not from a caller-supplied query or the socket address alone. That locality is
 minted through local-grant secret possession or a qualifying same-machine
 UI-bootstrap exchange. Pairing codes, access requests, operator credentials,
@@ -253,7 +270,8 @@ The internal server token starts with home-possession, but the
 [station-control authority guard](../../src-server/security/station-control-authority-guard.ts)
 withdraws it from ordinary tool requests unless their caller is a bound
 operator. A tool's use of a local HTTP hop does not by itself guarantee
-unredacted logs. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
+unredacted logs. Agent access additionally requires the session-specific grant
+described below. The [mint routes](../../src-server/runtime/routes/runtime-routes.ts)
 and [diagnostics handler](../../src-server/routes/system/diagnostics.ts) show the
 issuance and read boundaries.
 
@@ -287,7 +305,9 @@ The transcript's own reads are byte-budgeted and hand on the reference rather
 than the bytes, so the browser fetches previews from
 `GET /api/attachments/:ref` (station#3385) — an authenticated, same-origin
 route that serves inert `application/octet-stream` and 404s once a blob is
-reclaimed.
+reclaimed. The sending browser's own chips skip that fetch for the turn it just
+sent: when `turn.started` records the reference, the client drops its inline
+copy and caches the bytes it sent under that reference instead.
 
 | variable | default | description |
 |---|---|---|
@@ -312,9 +332,41 @@ for per-message limits and Task incarnation binding.
 
 The write side above has a matching self-read path — Station can answer "what did you just log" without an operator tailing a file by hand.
 
-- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). Locality does not change who may hit the route; it changes whether the body is redacted.
+- **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). The pairing-scope gate still applies; agent callers also need the grant below.
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
-- **Redaction on egress:** without bound home-possession, the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound home-possession, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
+- **Redaction on egress:** without bound owner authority (home-possession or owner-device standing), the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound owner authority, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
+
+Agent log reads are denied by default, including calls made with the internal
+token and no verified caller. An operator may grant one verified **bound**
+session through `POST /api/agents/unattended-grants` as the owner in person (the
+operator credential, a home-possession credential or a device with owner-device
+standing) and `access:manage`. Use `toolName: "station-control:read_logs"` and a
+`principalKey` that is the JSON string for
+`{"kind":"diagnostics-session","sessionId":"<session-id>"}`. Revoke the
+same pair through `POST /api/agents/unattended-grants/revoke`. This grant can
+expose unrelated conversation content; it is not a conversation-scoped read.
+An agent cannot grant itself access, and caller-less, delegated-custody and
+bearer-exposed calls remain denied even if a session has a grant. A failed or
+revoked grant lookup denies the read.
+
+### Preparing an in-app troubleshooting run (#4470)
+
+- **`POST /api/diagnostics/troubleshoot/prepare`** — body
+  `{ surface?: 'desktop'|'web'|'mobile'|'unknown', seed?: { route?, errorSummary?, conversationId?, turnId? } }`
+  (strict, at most 16 KiB). Writes an owner-only run under
+  this Station's home, `<home>/cache/triage/<uuid>`, and returns the run id, the Station
+  Assistant id, a bounded ambient seed, an opening message and display facts.
+  The `/api/diagnostics` POST tier (`orchestration:operate`) applies; every
+  agent caller is refused with 403. A seed route over 512 characters, an
+  error summary over 2,000 characters, a conversation id over 256 characters
+  or a turn id over 200 characters is refused with 400, as is an id with
+  whitespace or a control character. The response carries a closed `code`
+  (`route-too-long`, `route-not-in-app`, `error-summary-too-long`,
+  `conversation-id-too-long`, `conversation-id-invalid`, `turn-id-too-long`,
+  `turn-id-invalid`) and every limit. Advertised by the
+  `troubleshootPrepare` capability flag. Types:
+  `@kontourai/station-contracts/troubleshoot`. See
+  [troubleshoot with an agent](../design/troubleshoot-in-app.md).
 
 ### Correlating `read_logs` output with monitoring events (station#1897)
 
@@ -327,8 +379,8 @@ substring search, not a structured join or a complete transcript.
 
 Remote log redaction can replace a secret-shaped binding value, while the
 monitoring path does not use that same log-redaction pass. Such a value cannot
-be joined reliably from the remote log output; local home-possession reads
-retain it.
+be joined reliably from the remote log output; owner reads (home-possession or
+owner-device standing) retain it.
 
 | Correlation key | Log binding field | Monitoring event field | Bound at |
 |---|---|---|---|
@@ -337,11 +389,12 @@ retain it.
 | Station user id | `station.user.id` | `station.user.id` | `POST /api/orchestration/chat` |
 
 [Scheduler attempts](../../src-server/services/scheduling/builtin-scheduler.ts)
-bind `station.scheduler.job_name` and `station.scheduler.job_run_id`. These are
-scheduler-local keys: a run ID is not a conversation ID. The
+bind `station.scheduler.job_run_id`, an opaque job id and target kind for
+all jobs. Job names and engine errors remain in admitted run records. These are scheduler-local keys: a run ID is not a conversation ID. The
 [execution owner](../../src-server/services/scheduling/builtin-scheduler-execution.ts)
-invokes the scheduled-turn adapter after durable admission; monitor actions
-have their own Task dispatch path. Use the job's receipts when following an
+invokes the scheduled-turn adapter after durable admission; a job with a
+`target` uses the conversation runner instead, whose turn carries the key
+`scheduler:<runId>`; monitor actions have their own Task dispatch path. Use the job's receipts when following an
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---
@@ -529,7 +582,7 @@ external-engine approval are separate; see the [Agent guide](../guides/agent-con
 | `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
 | `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks, and on the Station engine after the untrusted-content permission ([connections](../guides/connections.md#tools-after-untrusted-content)). The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
 | `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agent-configuration.md#unattended-runs) |
 
@@ -625,3 +678,22 @@ above; they do not currently appear as buttons.
 | Logs | [Logger](../../src-server/utils/logger.ts), [store](../../src-server/services/infra/server-log-store.ts), [reader](../../src-server/services/infra/server-log-reader.ts), [diagnostics route](../../src-server/routes/system/diagnostics.ts) |
 | Attachments | [Blob store](../../src-server/services/orchestration/attachment-blob-store.ts), [event store and bindings](../../src-server/services/orchestration/event-store.ts), [authorized read route](../../src-server/routes/orchestration/attachments.ts) |
 | Personal conversation roots | [Bootstrap predicate and creation](../../src-server/knowledge-store/conversation-root-bootstrap.ts), [runtime caller](../../src-server/runtime/bootstrap/station-runtime.ts) |
+
+
+## Isolated repair profiles and retained runs
+
+The personal operator repair preview stores redacted-by-API metadata in private
+`<STATION_HOME>/security/repair-profiles.json` and run records/evidence under
+`<STATION_HOME>/automation/repairs/`. Profile files hold parsed Datum references,
+never materialized provider/App secrets. Execution and publisher profiles have
+separate revisions and start disabled; source/rule enablement has its own
+configuration fingerprint. Use the [operator API](api.md#isolated-github-repair-preview)
+instead of editing custody or grant records by hand.
+
+Unarchived and archived run ceilings are sixteen and 128 respectively. An
+indeterminate run remains unknown after explicit admission release; consumed
+grants and its episode replay fence stay retained. Both paths fall under the
+existing home-store registry's `security`/`automation` state roots. Mutable source
+workspaces are separate owned temporary directories and are removed only after
+verified worker stop. See [setup and recovery](../guides/agent-efficiency.md#run-an-isolated-github-repair)
+for costs, budgets, cancellation and export/retention boundaries.

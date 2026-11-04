@@ -46,11 +46,15 @@ export interface DurabilityCapability {
 
 /** Every capability is explicit; an omitted cell is an invalid declaration. */
 export interface ProviderDurabilityProfile {
-  steerPlacement: DurabilityCapability;
+  steerPlacement: DurabilityCapability & {
+    boundary?: 'engine-defined' | 'station-observed';
+  };
   crashContinuation: DurabilityCapability;
   toolReplay: DurabilityCapability;
   pendingApprovals: DurabilityCapability;
-  contextCarriage: DurabilityCapability;
+  contextCarriage: DurabilityCapability & {
+    history?: 'station-memory' | 'seed';
+  };
   fork: DurabilityCapability;
   /** State describes Station's recovery support; ownership is independent. */
   compaction: DurabilityCapability & {
@@ -58,6 +62,13 @@ export interface ProviderDurabilityProfile {
   };
   partialOutput: DurabilityCapability;
   usage: DurabilityCapability;
+}
+
+/** Read a declared profile; an absent carrier remains unknown. */
+export function readProviderDurabilityProfile<T>(
+  source: { readonly durability?: T } | null | undefined,
+): T | undefined {
+  return source?.durability;
 }
 
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
@@ -266,6 +277,8 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
+  'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
   'workspacePaneHostAction';
 
@@ -355,6 +368,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
@@ -641,8 +655,8 @@ export const PROVIDER_MUSE = 'muse';
  *   too (flagSettings.fastMode/disableAutoMode), so they're included.
  * - `codex` (`codex-adapter.ts`/`codex-approval-mode.ts`): `resolveCodexApprovalKnobs`
  *   reads `approvalMode`; `mapReasoningEffort` reads `effort`, falling back to
- *   `reasoningEffort` — both genuinely applied, so both are listed; `fastMode`
- *   is read directly (`codex-adapter.ts` ~lines 71-73, 555-633, 683-718).
+ *   `reasoningEffort`. `mapServiceTier` sends the exact `serviceTier` at session
+ *   start/resume and each turn, falling back to the legacy `fastMode` flag.
  * - `acp` (`acp-adapter.ts`): `modelOptions.mode` is the requested ACP
  *   session mode (station#1945). The adapter applies it from the fresh
  *   session catalog — `setConfigOption` when a `category: "mode"` option
@@ -675,7 +689,13 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'fastMode',
       'autoMode',
     ],
-    [PROVIDER_CODEX]: ['approvalMode', 'effort', 'reasoningEffort', 'fastMode'],
+    [PROVIDER_CODEX]: [
+      'approvalMode',
+      'effort',
+      'reasoningEffort',
+      'fastMode',
+      'serviceTier',
+    ],
     [PROVIDER_ACP]: ['mode'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
@@ -785,6 +805,65 @@ export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
+
+/**
+ * `runtime.error` code for a turn whose engine process was killed because its
+ * workload scope exhausted its memory budget. The evidence is the kernel's own
+ * `oom_kill` count in the engine scope's `memory.events`, read before the
+ * scope is stopped: the engine exited by SIGKILL and the scope recorded an
+ * OOM kill that was not already reported as a command kill, or systemd
+ * reported the scope `oom-kill` (`childWorkloadMemoryExhausted` in
+ * `@kontourai/station-shared/child-workload`). A signal alone, or an unknown
+ * count, is never enough. `details.workload` carries `result`,
+ * `memoryPeakBytes`, `memoryMaxBytes`, `oomKills` and `unreportedOomKills`
+ * when observed. Published by the Codex adapter today; the conversation is then
+ * continued with a Station recovery note.
+ */
+export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
+
+/**
+ * Before #4257 the Codex adapter published a memory kill as a
+ * `codex-turn-orphaned` `runtime.error` whose message began with this
+ * sentence. Stored failures keep that shape.
+ */
+const LEGACY_CODEX_MEMORY_KILL_PREFIX =
+  'Codex was killed because memory was exhausted.';
+
+/**
+ * Whether a `runtime.error` reports an engine memory kill: today's
+ * {@link ENGINE_MEMORY_EXHAUSTED_CODE}, or the shape stored before #4257.
+ */
+export function isEngineMemoryExhaustedFailure(failure: {
+  readonly code?: unknown;
+  readonly message?: unknown;
+}): boolean {
+  return (
+    failure.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    (failure.code === 'codex-turn-orphaned' &&
+      typeof failure.message === 'string' &&
+      failure.message.trimStart().startsWith(LEGACY_CODEX_MEMORY_KILL_PREFIX))
+  );
+}
+
+/** The last raw error decides whether a turn can be continued. */
+export function lastRuntimeError<T extends { readonly method?: unknown }>(
+  events: readonly T[],
+): T | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method === 'runtime.error') return event;
+  }
+  return undefined;
+}
+
+/**
+ * `runtime.warning` code: the kernel OOM killer killed a process inside an
+ * engine's workload scope (normally a command the engine started) while the
+ * engine kept running. `details` carries `newKills`, `oomKills` and
+ * `memoryMaxBytes`. Which command it was is not known to Station; the engine
+ * reports that command's own failure.
+ */
+export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
 
 /**
  * A provider reported a failed query/turn without disproving its native binding.
@@ -932,6 +1011,25 @@ export const PROVIDER_SESSION_START_FAILED_CODE =
 export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
 /** The key already names a different submitted intent. No turn was accepted. */
 export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+
+/** A steer request with this refusal did not acquire a new input claim. */
+export const INBOX_KEY_CONFLICT_CODE = 'inbox_key_conflict';
+
+export function errorCodeOf(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
+export function isSteerConflictCode(code: unknown): boolean {
+  return (
+    code === CLIENT_TURN_INPUT_CONFLICT_CODE || code === INBOX_KEY_CONFLICT_CODE
+  );
+}
+
 /** This keyed input cannot be represented completely by the supported digest. */
 export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
   'client_turn_input_unsupported';
@@ -1002,6 +1100,9 @@ export interface AttachedSessionSourceMetadata {
 export interface ResolvedAgentToolServer {
   /** Station tool-server id (`ToolDef.id`, kind 'mcp'). */
   id: string;
+  /** Added solely by the coordinator designation, not authored by the Agent or Project. */
+  coordinatorDerived?: true;
+  coordinatorGeneration?: number;
   displayName?: string;
   transport?: 'stdio' | 'sse' | 'streamable-http';
   command?: string;
@@ -1371,4 +1472,41 @@ export interface ProviderTurnStartResult {
   threadId: string;
   turnId: string;
   resumeCursor?: unknown;
+}
+
+/**
+ * The send key of the turn Station sends to continue a conversation whose
+ * engine was killed for memory: one per dead Session and turn, so every path
+ * that continues it (Station's automatic continuation, a person's Continue on
+ * any device) names the same turn and the conversation inbox and turn
+ * deduplication admit it once. Derived server-side; clients only test it.
+ */
+export const MEMORY_CONTINUATION_CLIENT_TURN_PREFIX = 'memory-continue-';
+
+const MEMORY_CONTINUATION_KEY = /^memory-continue-[0-9a-f]{40}(-p[2-5]?)?$/;
+
+/**
+ * Who asked for a continuation after a memory kill, read from its send key:
+ * Station's automatic continuation uses the bare key; a person's Continue
+ * uses `-p` (then `-p2` to `-p5` after a cancelled or refused one).
+ */
+export function memoryContinuationKeyKind(
+  clientTurnId: string | undefined,
+): 'automatic' | 'person' | undefined {
+  const match = clientTurnId
+    ? MEMORY_CONTINUATION_KEY.exec(clientTurnId)
+    : null;
+  if (!match) return undefined;
+  return match[1] ? 'person' : 'automatic';
+}
+
+/** Whether a turn is Station's continuation after a memory kill. */
+export function isStationMemoryContinuationTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    memoryContinuationKeyKind(turn.clientTurnId) !== undefined
+  );
 }

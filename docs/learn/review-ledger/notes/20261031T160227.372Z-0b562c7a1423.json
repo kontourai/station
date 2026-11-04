@@ -1,0 +1,7 @@
+{
+  "revision": "549215c2e6a0b79bf575d478dae84d7c7764980a",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Rechecked queued admission and lookup text against outboundQueue and useOutboundQueueFlush after correcting the lookup comment: direct admission retires the browser row, whereas a queued lookup stays retained for inspection. No behavior changed in this review; provider and authentication behavior are outside this source check.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "fc718a60a20625f07d41a0d6afb653a346337a01",
+
+  "notes": [
+    {"path":"docs/user/sharing-answers.md","note":"TurnActionsMenu handle open is now idempotent; the More answer actions route and rows are unchanged.","inputs":["docs/user/sharing-answers.md","src-ui/src/components/chat/TurnActionsMenu.tsx"]}
+  ]
+}

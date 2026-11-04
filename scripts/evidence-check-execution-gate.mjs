@@ -369,9 +369,29 @@ function validate(repoRoot) {
       `scoped evidence routing must read the fast lane: ${error.message}`,
     );
   }
-  const readinessRouted =
+  let readinessWrapper = '';
+  try {
+    readinessWrapper = readFileSync(
+      resolve(repoRoot, 'scripts/run-veritas-readiness.mjs'),
+      'utf8',
+    );
+  } catch {
+    // Direct Veritas invocations do not need the wrapper.
+  }
+  const readinessCommand =
     typeof readinessScript === 'string' &&
-    /\bveritas\s+readiness\b/.test(readinessScript) &&
+    (/\bveritas\s+readiness\b/.test(readinessScript) ||
+      (/^node scripts\/run-veritas-readiness\.mjs(?:\s|$)/.test(
+        readinessScript,
+      ) &&
+        readinessWrapper.includes(
+          '../node_modules/@kontourai/veritas/bin/veritas.mjs',
+        ) &&
+        readinessWrapper.includes(
+          "[entry, 'readiness', ...process.argv.slice(2)]",
+        )));
+  const readinessRouted =
+    readinessCommand &&
     (fastLaneSource.includes("['run', 'veritas:readiness']") ||
       fastLaneSource.includes(
         "['run', 'veritas:readiness', '--', '--format', 'json']",

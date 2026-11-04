@@ -1,0 +1,9 @@
+{
+  "revision": "e3928b195e6394c4359daf9a5b454071b00b585a",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Reviewed the corpus.json builtOn addition against BearingUsagePricingSnapshotCapture and the direct @kontourai/bearing dependency: Bearing validates reviewed pricing catalogs and supplies hash-bound immutable snapshots. The manifest's documents, sections, ordering, publish:false manual and topics are unchanged, so the Pages admission/bundle/rendering explanation remains accurate. The exact CI-pinned Corpus check passed and all four docs-kit-manifest tests passed. The existing dev-only Console advisory is retained; no deployment, live billing or price applicability is inferred.","inputs":["docs/pages/README.md","corpus.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the corpus.json builtOn addition and the documented Corpus/Pages ownership. Added the missing direct Bearing consumer declaration for reviewed catalog validation and immutable usage-price snapshots; no document admission, topics, decision pins, renderer, freshness policy or publication setting changed. The exact pinned hosted-gate command passes locally, as do the four manifest consistency cases. This corrects the hosted builtOn omission without weakening a gate or changing the guide's maintained workflow.","inputs":["docs/guides/documentation.md","corpus.json"]}
+  ]
+}

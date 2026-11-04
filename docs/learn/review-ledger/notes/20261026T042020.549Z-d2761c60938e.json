@@ -1,0 +1,7 @@
+{
+  "revision": "9a288f830f5d989db75315535e81946c6ec1c6cc",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Source delta (#4203 review): listSessionInventoryEvents no longer lists an unresolved tool.completed that a later completion of the same thread/call (same-turn rule) superseded, within the frozen high-water mark, matching the transcript's station#1569 H1 fold. Added that a superseded unresolved completion is not listed (matching the transcript), bounded by the read's frozen high-water mark; checked against event-store.ts and session-inventory-unresolved-tools.test.ts.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

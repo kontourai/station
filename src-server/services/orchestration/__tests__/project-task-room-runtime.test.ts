@@ -355,6 +355,10 @@ function fixture(
       value: unknown;
     }) => Promise<void>;
     revokeAfterWorkingRead?: boolean;
+    failTaskReadAfterWorkingRead?: boolean;
+    subscribeMembershipChanges?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['subscribeMembershipChanges'];
     recoveryValue?: unknown;
     readRecovery?: () => Promise<
       | { kind: 'available'; generation: string; value: unknown }
@@ -374,6 +378,7 @@ function fixture(
   let watches = 0;
   let unwatches = 0;
   let revoked = false;
+  let failTaskRead = false;
   const readSourceSeal = options.readSourceSeal
     ? vi.fn(options.readSourceSeal)
     : undefined;
@@ -431,7 +436,14 @@ function fixture(
     ...(readSourceSeal ? { readSourceSeal } : {}),
   };
   const runtime = new ProjectTaskRoomRuntime({
-    taskGraph: { readTaskView: (id) => (id === task.id ? task : null) },
+    subscribeMembershipChanges: options.subscribeMembershipChanges,
+    taskGraph: {
+      readTaskView: (id) => {
+        if (failTaskRead)
+          throw new Error('Task graph read failed after document read');
+        return id === task.id ? task : null;
+      },
+    },
     projectForId: (id) =>
       id === task.projectId ? { id, slug: 'project' } : undefined,
     history: () => room,
@@ -439,8 +451,10 @@ function fixture(
       ? { revisionEvidence: options.revisionEvidence }
       : {}),
     working: {
+      readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
+        if (options.failTaskReadAfterWorkingRead) failTaskRead = true;
         return { kind: 'snapshot' as const, revision: 'empty', text: '' };
       },
       settle: async (input) => {
@@ -735,6 +749,7 @@ describe('ProjectTaskRoomRuntime', () => {
             : undefined,
         history: () => historyEffects,
         working: {
+          readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
           read: vi.fn(async () => ({ kind: 'unavailable' as const })),
           settle: publicationEffects.settle,
           receipt: vi.fn(async () => ({ kind: 'missing' as const })),
@@ -1126,7 +1141,7 @@ describe('ProjectTaskRoomRuntime', () => {
     'throwing-observer',
     'revoked-subscriber',
   ] as const)(
-    'gives %s document delivery an event-loop turn before synchronous evidence validation',
+    'gives %s document delivery an event-loop turn without validating unrequested evidence',
     async (mode) => {
       const order: string[] = [];
       let armed = false;
@@ -1212,7 +1227,6 @@ describe('ProjectTaskRoomRuntime', () => {
         expect(order).toEqual([
           mode === 'revoked-subscriber' ? 'terminal' : 'document',
           'delivery-turn',
-          'evidence-validation',
         ]);
       } finally {
         subscription.unsubscribe();
@@ -1374,14 +1388,11 @@ describe('ProjectTaskRoomRuntime', () => {
   // stale lease. What removes it is TTL expiry — `expiresAt` is renewed by the
   // heartbeat and `#prune` drops the participant on the next read.
   //
-  // This is the server half of the sidebar presence tray's claim (#2066). The
-  // tray tells the user a participant that stops heartbeating is dropped "up
-  // to about forty seconds" later: THIS bound plus the client's poll
-  // (`LIVE_ACTIVITY_POLL_INTERVAL_MS`, pinned in
-  // `packages/sdk/src/__tests__/live-activity.test.ts`). An earlier version of
-  // the copy said "about half a minute", which quoted this constant alone and
-  // omitted the poll — so quoting the copy here means quoting the CURRENT one.
-  // Nothing else in the projection's chain expires a human participant.
+  // A reader of the live-activity projection sees a participant that stops
+  // heartbeating dropped at most this lease after its last heartbeat, plus
+  // however long that reader waits between polls (the SDK's
+  // `LIVE_ACTIVITY_POLL_INTERVAL_MS`). Nothing else in the projection's chain
+  // expires a human participant.
   test('liveActivity: a participant that stops heartbeating expires from the projection', async () => {
     // Only `Date` is faked: the runtime reads the clock through `Date.now()`
     // and its sqlite/async work must keep running for real.
@@ -1422,9 +1433,9 @@ describe('ProjectTaskRoomRuntime', () => {
       projection: { participants: [] },
     });
 
-    // The literal the tray's copy is written against, pinned alongside the
-    // derived arithmetic above so widening the bound cannot quietly keep this
-    // test green while the copy goes stale.
+    // The literal lease, pinned alongside the arithmetic above (which is
+    // derived from the same constant) so widening the bound cannot quietly
+    // keep this test green.
     expect(DEFAULT_LIVE_WORK_BOUNDS.ttlMs).toBe(30_000);
   });
 
@@ -1577,11 +1588,6 @@ describe('ProjectTaskRoomRuntime', () => {
       maxWorkingSnapshotBytes: 16 * 1024 * 1024,
       responseTimeoutMs: 120_000,
     });
-    const reader = store.createProjectTaskRoomWorkingState({
-      maxRetainedOperations: 10_000,
-      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
-      responseTimeoutMs: 120_000,
-    });
     const scope = {
       projectId: task.projectId,
       taskId: task.id,
@@ -1597,8 +1603,13 @@ describe('ProjectTaskRoomRuntime', () => {
     expect(seeded).toMatchObject({
       kind: 'seeded',
       operationCount: 10_000,
-      baseRevision: expect.stringMatching(/^swsr-v1:/),
-      revision: expect.stringMatching(/^swsr-v1:/),
+      baseRevision: expect.stringMatching(/^swsr-v2:/),
+      revision: expect.stringMatching(/^swsr-v2:/),
+    });
+    const reader = store.createProjectTaskRoomWorkingState({
+      maxRetainedOperations: 10_000,
+      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
+      responseTimeoutMs: 120_000,
     });
     await expect(
       reader.read({ scope, after: seeded.baseRevision }),
@@ -2771,6 +2782,7 @@ describe('ProjectTaskRoomRuntime', () => {
           close: async () => ({ kind: 'closed' }),
         }) as ProjectTaskRoomAuthority,
       working: {
+        readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
         read: async () => {
           revoked = true;
           return { kind: 'snapshot' as const, revision: 'one', text: 'secret' };
@@ -2808,6 +2820,31 @@ describe('ProjectTaskRoomRuntime', () => {
       }),
     ).resolves.toEqual({ kind: 'not-found' });
     await guarded.close();
+  });
+
+  test('releases the membership listener when subscription setup throws', async () => {
+    let active = 0;
+    const { runtime } = fixture({
+      subscribeMembershipChanges: () => {
+        active += 1;
+        return () => {
+          active -= 1;
+        };
+      },
+      failTaskReadAfterWorkingRead: true,
+    });
+    try {
+      await expect(
+        runtime.subscribe({
+          taskId: task.id,
+          request: new Request('http://station'),
+          emit: () => {},
+        }),
+      ).rejects.toThrow('Task graph read failed');
+      expect(active).toBe(0);
+    } finally {
+      await runtime.close();
+    }
   });
 
   test('releases the room watch immediately when initial subscription authorization fails', async () => {

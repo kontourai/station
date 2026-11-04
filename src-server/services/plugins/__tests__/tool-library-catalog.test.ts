@@ -61,3 +61,31 @@ test('the MCP library never offers engine-native tools as installable MCP source
     enabled: true,
   });
 });
+
+test('the MCP library does not offer a subregistry entry Station refuses to add', async () => {
+  const listing = (unavailable: string[]) => ({
+    name: 'com.example/x',
+    version: '1',
+    schema: 's',
+    authMode: 'dcr' as const,
+    qualification: { state: 'qualified' as const },
+    unavailable,
+  });
+  registry.items = [
+    {
+      id: 'addable',
+      installed: false,
+      mcpServer: listing([]),
+    },
+    {
+      id: 'refused',
+      installed: false,
+      mcpServer: listing(['Sign-in needs an OAuth client.']),
+    },
+  ];
+  const sources = await toolLibraryCatalog('/unused-test-home', {
+    listIntegrations: async () => [],
+    getMCPToolCatalog: () => [],
+  });
+  expect(sources.map((source) => source.id)).toEqual(['addable']);
+});

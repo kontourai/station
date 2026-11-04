@@ -267,7 +267,12 @@ export interface CodexCaptureReplay {
  */
 export function replayCodexCapture(
   capture: readonly string[],
-  options: { limit?: number; useCapturedTimestamps?: boolean } = {},
+  options: {
+    limit?: number;
+    useCapturedTimestamps?: boolean;
+    /** The session's resolved `CODEX_HOME`, as `startSession` records it. */
+    codexHome?: string;
+  } = {},
 ): CodexCaptureReplay {
   let frameTime = Date.parse('2026-09-23T00:00:00.000Z');
   const nowIso = () => new Date(frameTime).toISOString();
@@ -287,6 +292,7 @@ export function replayCodexCapture(
     model: 'gpt-5.5',
     nowIso,
   });
+  if (options.codexHome) record.codexHome = options.codexHome;
   transport.registerSession(record);
   const { parentThreadId, parentTurnId } = codexCaptureIds(capture);
   transport.setCodexThreadId(record, parentThreadId);

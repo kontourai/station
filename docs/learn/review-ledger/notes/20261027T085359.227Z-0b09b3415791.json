@@ -1,0 +1,7 @@
+{
+  "revision": "ee47185b27a5ec0e926dfa897c8d4312c8768cc6",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Test-evidence change only: the cited test constructs SessionTranscriptReads and now also passes listResolvedEventPayloads (the event-content-spill seed reader's required dependency) — an empty stub, or in the usage projection test the production resolveEventContent(listEvents) composition. No assertion, fixture data or tested behavior changed, so this document's usage attribution/projection claims that cite it remain accurate. No prose change.","inputs":["docs/guides/monitoring.md","src-server/analytics/__tests__/usage-observation-projection.test.ts"]}
+  ]
+}

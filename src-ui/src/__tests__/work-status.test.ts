@@ -238,7 +238,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(status.line).not.toContain('raw adapter text');
   });
 
-  it('a request nothing here can answer is idle and Elsewhere, its basis off the row, even mid-turn', () => {
+  it('a request nothing here can answer is idle and Read only, its basis off the row, even mid-turn', () => {
     const summary = folded('detachedApproval');
     expect(summary.answerability).toMatchObject({
       answerable: false,
@@ -248,7 +248,7 @@ describe('the status ladder, from real server summaries', () => {
     const status = workStatus(item, NOW, facts);
     expect(status.rung).toBe('unanswerable');
     expect(status.lane).toBe('idle');
-    expect(status.line).toBe('Elsewhere');
+    expect(status.line).toBe('Read only');
     expect(status.reason).toBe(item.unanswerableNotice);
     expect(item.unanswerableNotice).toMatch(/observed by station-a/);
     // No kind is recorded for a request nothing here can answer.
@@ -426,7 +426,11 @@ const TABLE: ReadonlyArray<
   ],
   [
     'failed with a reason',
-    { lifecycleLabel: 'Failed', failureNotice: 'rate limit exceeded' },
+    {
+      lifecycleLabel: 'Failed',
+      failureNotice: 'rate limit exceeded',
+      terminalAt: NOW - 60_000,
+    },
     undefined,
     'Failed · rate limit exceeded',
     'finished',
@@ -434,7 +438,7 @@ const TABLE: ReadonlyArray<
   ],
   [
     'failed with none',
-    { lifecycleLabel: 'Failed' },
+    { lifecycleLabel: 'Failed', terminalAt: NOW - 60_000 },
     undefined,
     'Failed',
     'finished',
@@ -442,7 +446,7 @@ const TABLE: ReadonlyArray<
   ],
   [
     'stopped',
-    { lifecycleLabel: 'Stopped' },
+    { lifecycleLabel: 'Stopped', terminalAt: NOW - 60_000 },
     undefined,
     'Stopped',
     'finished',
@@ -452,7 +456,7 @@ const TABLE: ReadonlyArray<
     'elsewhere (nothing here can answer): the basis is the reason, not the line',
     { lifecycleLabel: 'Unanswerable', unanswerableNotice: 'Observed by a.' },
     undefined,
-    'Elsewhere',
+    'Read only',
     'idle',
     'idle',
   ],
@@ -537,10 +541,11 @@ const TABLE: ReadonlyArray<
     'settled',
   ],
   [
-    'done, not opened: Just finished, with no extra claim on the row',
+    'done after the last view: Just finished, with no extra claim on the row',
     {
       lifecycleLabel: 'Completed',
       conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
+      acknowledgedAt: NOW - 30 * 60_000,
     },
     undefined,
     'Done',
@@ -548,10 +553,10 @@ const TABLE: ReadonlyArray<
     'recentlyFinished',
   ],
   [
-    'followed from another app: Elsewhere, the app in the reason',
+    'read-only attached: the engine does not prove the originating app',
     { lifecycleLabel: 'Running', controlMode: 'read-only-attached' },
     undefined,
-    'Elsewhere',
+    'Read only',
     'external',
     'external',
   ],
@@ -562,7 +567,6 @@ function bucketOf(row: HomeWorkItem): string {
     items: [row],
     now: NOW,
     snoozedUntil: new Map(),
-    terminalSince: new Map(),
   });
   return Object.entries(partition)
     .filter(([, rows]) => Array.isArray(rows) && rows.includes(row))
@@ -631,7 +635,10 @@ describe('the status ladder, state by state', () => {
         item({ lifecycleLabel: 'Running', controlMode: 'read-only-attached' }),
         NOW,
       ),
-    ).toMatchObject({ line: 'Elsewhere', reason: 'Started in Claude Code' });
+    ).toMatchObject({
+      line: 'Read only',
+      reason: 'Claude Code · Replies unavailable here',
+    });
   });
 
   it('formats a duration in the coarse vocabulary: 12s, then 4m, then 1h 4m', () => {
@@ -709,7 +716,7 @@ describe('status facts for chat, task and merged rows', () => {
     ['todo', 'Task · To do', 'idle', 'idle'],
     ['ready', 'Task · To do', 'idle', 'idle'],
     ['triage', 'Task · To do', 'idle', 'idle'],
-    ['in_progress', 'Task · In progress', 'running', 'running'],
+    ['in_progress', 'Task · In progress', 'idle', 'idle'],
     ['review', 'Task · In review', 'needsYou', 'waiting'],
     ['verification', 'Task · In review', 'needsYou', 'waiting'],
     ['blocked', 'Task · Blocked', 'needsYou', 'blocked'],
@@ -733,7 +740,7 @@ describe('status facts for chat, task and merged rows', () => {
       expect(row.item).toMatchObject({
         kind: 'task',
         title: 'Plan the release',
-        agentLabel: 'No agent assigned',
+        agentLabel: 'Task',
         taskSessionId: undefined,
       });
       expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
@@ -751,7 +758,7 @@ describe('status facts for chat, task and merged rows', () => {
     ['todo', 2, 'Task · Needs answer', 'needsYou', 'answer'],
     // The answer is what a person can act on, ahead of the lock.
     ['blocked', 1, 'Task · Needs answer', 'needsYou', 'answer'],
-    ['in_progress', 0, 'Task · In progress', 'running', 'running'],
+    ['in_progress', 0, 'Task · In progress', 'idle', 'idle'],
     // A finished Task's leftover question asks nobody.
     ['done', 3, 'Task · Done', 'finished', 'done'],
     ['canceled', 1, 'Task · Canceled', 'finished', 'stopped'],
@@ -783,12 +790,11 @@ describe('status facts for chat, task and merged rows', () => {
       // Home partitions without facts; both consumers name the same state.
       expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
       // And Home's lane model files it in that lane.
-      if (lane === 'needsYou' || lane === 'running') {
+      if (lane === 'needsYou' || lane === 'idle') {
         const lanes = partitionHomeWorkItems({
           items: [row.item],
           now: NOW,
           snoozedUntil: new Map(),
-          terminalSince: new Map(),
           workFacts: new Map(row.facts ? [[row.item.id, row.facts]] : []),
         });
         expect(lanes[lane].map((item) => item.id)).toEqual(['task-1']);

@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,
@@ -19,6 +20,7 @@ import type {
 import type {
   ApprovalMode,
   EngineId,
+  ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import type { RequestDeliveryEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ExecutionMode } from '@kontourai/station-contracts/tool';
@@ -36,6 +38,7 @@ import type {
   FlowGateVerdictInfo,
   FlowRunBinding,
 } from './contexts/active-chats-state';
+import type { PeerChatBinding } from './lib/peer-chat';
 import type { EffectiveModelSource } from './utils/execution';
 import type { TransformationReceipt } from './utils/heif-normalizer';
 import type { PlanArtifact } from './utils/planArtifacts';
@@ -184,6 +187,17 @@ export interface ChatMessage {
    */
   stationCheckBack?: boolean;
   /**
+   * Station's own continuation after the engine was killed for exceeding its
+   * memory budget: written by Station, not the person.
+   */
+  stationMemoryContinuation?: boolean;
+  /**
+   * The interrupted-turn boundary this row reports: the restart notice, or
+   * the stopped row that says "Station restarted mid-turn" in its place.
+   * Continue keys its send on it.
+   */
+  interruptedTurnBoundaryId?: string;
+  /**
    * #3419: the agent that sent this user-role row, from the server's own
    * record. Its presence is what makes the row an incoming agent message
    * rather than the person's; `content` is the sender's own words.
@@ -218,6 +232,7 @@ export interface ChatMessage {
     result?: any;
     output?: any;
     htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+    claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
     stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
     error?: string;
     errorText?: string;
@@ -229,6 +244,12 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalContentEvent`. */
+    approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+    /** See `MessagePart.spilledText`. */
+    spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+    /** See `MessagePart.contentThreadId`. */
+    contentThreadId?: string;
     /** See `MessagePart.approvalToolName`. */
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
@@ -278,6 +299,8 @@ export interface ChatMessage {
   }>;
   /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
+  /** chat-host-images: host image paths this turn's reply named, by path. */
+  hostImages?: ChatHostImageMap;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
   /**
@@ -335,6 +358,8 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -422,6 +447,7 @@ export interface ChatSession {
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   orchestrationProvider?: EngineId;
+  orchestrationDurability?: ProviderDurabilityProfile;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /** This tab's transcript is served by the bounded orchestration window. */
@@ -457,6 +483,8 @@ export interface ChatSession {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: EngineConnectionId;
+  /** See ChatUIState.agentConnectionObservedFor (active-chats-state.ts). */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   currentModeId?: string | null;

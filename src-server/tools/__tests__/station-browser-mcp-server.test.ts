@@ -12,6 +12,7 @@ import { createStationBrowserMcpServer } from '../station-browser-mcp-server.js'
 import {
   classifyStationBrowserTool,
   STATION_BROWSER_MCP_SERVER_ID,
+  STATION_BROWSER_TOOL_NAMES,
 } from '../station-browser-policy.js';
 import { createStationControlMcpServer } from '../station-control-mcp-server.js';
 
@@ -22,6 +23,7 @@ const registered = (server: McpServer) =>
   ).sort();
 
 const BROWSER_TOOLS = [
+  'browser_capture_to_task',
   'browser_click',
   'browser_close',
   'browser_color_scheme',
@@ -29,8 +31,10 @@ const BROWSER_TOOLS = [
   'browser_evaluate',
   'browser_hover',
   'browser_navigate',
+  'browser_network',
   'browser_open',
   'browser_press',
+  'browser_record_to_task',
   'browser_resize',
   'browser_scroll',
   'browser_select',
@@ -44,6 +48,7 @@ describe('station-browser', () => {
   test('is its own server with the browser tools only; station-control serves none of them', () => {
     expect(STATION_BROWSER_MCP_SERVER_ID).toBe('station-browser');
     expect(registered(createStationBrowserMcpServer())).toEqual(BROWSER_TOOLS);
+    expect(STATION_BROWSER_TOOL_NAMES).toEqual(BROWSER_TOOLS);
     expect(
       registered(createStationControlMcpServer()).filter((name) =>
         name.startsWith('browser_'),
@@ -60,6 +65,9 @@ describe('station-browser', () => {
     expect(classifyStationBrowserTool('browser_snapshot')).toBe('sensitive');
     expect(classifyStationBrowserTool('browser_wait_for')).toBe('sensitive');
     expect(classifyStationBrowserTool('browser_click')).toBe('sensitive');
+    expect(classifyStationBrowserTool('browser_record_to_task')).toBe(
+      'sensitive',
+    );
   });
 
   test("the default agent's auto-approve list approves no station-browser tool", () => {

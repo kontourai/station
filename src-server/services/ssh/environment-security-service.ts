@@ -30,6 +30,7 @@ import {
   DEVICE_PAIRING_PROTOCOL_VERSION,
   ENVIRONMENT_SECURITY_SCHEMA_VERSION,
   type EnvironmentSecurityRecord,
+  PAIRING_SCOPES,
   type PairedDevice,
   PUBLIC_HANDSHAKE_SCHEMA_VERSION,
   type PublicStationHandshake,
@@ -42,7 +43,9 @@ import {
 } from '@kontourai/station-contracts';
 import {
   CLIENT_PROTOCOL_HEADER_CAPABILITY,
+  PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+  pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY,
@@ -68,7 +71,8 @@ import {
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
 import packageJson from '../../../package.json' with { type: 'json' };
-import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
+import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
+import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
@@ -132,6 +136,12 @@ interface EnvironmentSecurityServiceOptions {
   now?: () => number;
   isProcessAlive?: (pid: number) => boolean;
   hostIdentity?: string;
+  /**
+   * Deployment environment the handshake's capability flags are resolved
+   * against (#4177). Read once at construction, like the hosted tenant
+   * registry itself; defaults to `process.env`.
+   */
+  environment?: NodeJS.ProcessEnv;
 }
 
 interface EnvironmentSecurityLockRecord {
@@ -210,6 +220,7 @@ export class EnvironmentSecurityService {
   readonly #now: () => number;
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
+  readonly #hosted: boolean;
   #devicePairingService?: DevicePairingService;
   readonly #groups: StationGroupsService;
 
@@ -224,6 +235,9 @@ export class EnvironmentSecurityService {
     this.#now = options.now ?? Date.now;
     this.#isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
     this.#hostIdentity = options.hostIdentity ?? resolveHostname();
+    this.#hosted = isHostedTenantExecutionRequired(
+      options.environment ?? process.env,
+    );
     this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
   }
 
@@ -308,6 +322,7 @@ export class EnvironmentSecurityService {
       environmentId: record.environmentId,
       now: this.#now,
       capScope: this.#capScope,
+      ownerDeviceStanding: !this.#hosted,
     });
     await this.#seedGroups(this.#devicePairingService);
     return record;
@@ -343,6 +358,7 @@ export class EnvironmentSecurityService {
         environmentId: current.environmentId,
         now: this.#now,
         capScope: this.#capScope,
+        ownerDeviceStanding: !this.#hosted,
       });
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.
@@ -475,7 +491,35 @@ export class EnvironmentSecurityService {
       return DEFAULT_GRANT_PAIRING_SCOPE;
     // #3557: never the raw grant: a device tied to a person is capped by
     // that person's Station group, here and in every reader of this.
-    return this.#devicePairingService?.effectiveScope(candidate);
+    const scope = this.#devicePairingService?.effectiveScope(candidate);
+    // An owner device reaches the `access:manage` route tier, as the host
+    // launcher browser does. Derived per request and never stored, so the
+    // grant and the scope on the wire are unchanged (principals.md R2).
+    if (
+      scope !== undefined &&
+      !pairingScopeIncludes(scope, PAIRING_SCOPE_ACCESS_MANAGE) &&
+      this.credentialHasOwnerStanding(candidate)
+    )
+      return PAIRING_SCOPES.filter(
+        (token) =>
+          token === PAIRING_SCOPE_ACCESS_MANAGE ||
+          pairingScopeIncludes(scope, token),
+      ).join(' ');
+    return scope;
+  }
+
+  /** See `DevicePairingService.credentialHasOwnerStanding`. */
+  credentialHasOwnerStanding(candidate: string): boolean {
+    return (
+      this.#devicePairingService?.credentialHasOwnerStanding(candidate) ?? false
+    );
+  }
+
+  /** {@link credentialHasOwnerStanding}, by device id, for background work. */
+  deviceHasOwnerStanding(deviceId: string): boolean {
+    return (
+      this.#devicePairingService?.deviceHasOwnerStanding(deviceId) ?? false
+    );
   }
 
   verifyOperatorCredential(candidate: string): boolean {
@@ -655,6 +699,8 @@ export class EnvironmentSecurityService {
         this.#devicePairingService?.credentialMayManagePairing(candidate) &&
         (isPairingApprovalLeaf(request) ||
           isDeviceAccessManagementLeaf(request) ||
+          (request.method.toUpperCase() === 'GET' &&
+            request.path === '/api/pairing/endpoint-suggestions') ||
           (request.method.toUpperCase() === 'POST' &&
             request.path === '/api/pairing/offers') ||
           (request.method.toUpperCase() === 'DELETE' &&
@@ -755,9 +801,9 @@ export class EnvironmentSecurityService {
       // clients already parse, so adding this cannot change their behavior.
       compatibility: { ...HOST_STATION_COMPATIBILITY },
       // Additive (archive#1095): same guarantee as `compatibility` above.
-      // STATION_CAPABILITY_FLAGS is the single source of truth — add a flag
-      // there, not here.
-      capabilities: { ...STATION_CAPABILITY_FLAGS },
+      // station-capability-flags.ts is the single source of truth — add a
+      // flag there, not here. It withdraws flags this deployment can't serve.
+      capabilities: resolveStationCapabilityFlags({ hosted: this.#hosted }),
     };
   }
 

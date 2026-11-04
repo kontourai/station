@@ -1,0 +1,7 @@
+{
+  "revision": "86e58ecfcbe022d4504761c6243332c7492f5f3e",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Checked against the restart-recovery fix (round 2): event-store's single and batched turn-scoped terminal lookups, session-lifecycle's terminal identity guard, and wait_session now accept a recoveryTerminal turn.aborted without an invocationId for its matching turn; recovery treats a newer same-id start under another invocation as moved on. wait_session's settle rule is documented in self-configuring-agent.md; no claim in this document describes these guards, and invocationId attribution is unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

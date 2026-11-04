@@ -1,0 +1,7 @@
+{
+  "revision": "7641e738a9fa2fe14955b2d0d044205ddc321cce",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed terminal credential scope, capability refusal, bounded replay, retry, authority and callback behavior against SDK and gateway tests; native and hosted use remain unverified.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/terminal-output-session.test.ts","packages/sdk/src/client/http.ts","packages/sdk/src/client/terminal-output-session.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d51815112d8deacc4bb7dd70cd181fdb26ba4db7",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Fix round: src-ui/AGENTS.md brief now splits shell and pane-package owners; theming claims unaffected.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]}
+  ]
+}

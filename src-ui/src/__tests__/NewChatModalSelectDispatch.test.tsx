@@ -1,3 +1,6 @@
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement, ReactNode } from 'react';
 /**
  * @vitest-environment jsdom
  *
@@ -22,25 +25,24 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InstalledSkillExperienceV1,
   SkillExperienceDefinitionV1,
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
-import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import {
@@ -50,33 +52,22 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
-const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
-  complete: null,
-}));
+// The Station control reads this caller's Station inventory; its own
+// behavior is covered in `StartStationControl.test.tsx`.
 vi.mock('../components/chat-start/StartStationControl', () => ({
-  StartStationControl: ({
-    prompt,
-    onStarted,
-  }: ComponentProps<typeof StartStationControl>) => (
-    <button
-      type="button"
-      onClick={() => {
-        const handle: DelegatedTaskHandle = {
-          conversationId: 'task:remote',
-          taskId: 'task:remote',
-          sessionId: 'session:remote',
-          currentSessionId: 'session:remote',
-          status: 'dispatched',
-          environment: { kind: 'peer', id: 'env-kontour', name: 'Kontour' },
-          target: { kind: 'agent', id: agentId('assistant') },
-        };
-        remoteRun.complete = () => onStarted(handle, 'Kontour', prompt);
-      }}
-    >
-      Stage a remote task
-    </button>
-  ),
+  StartStationControl: () => <span>Runs on this Station</span>,
 }));
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderComponent(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -133,9 +124,34 @@ const selectionModelState = {
   refreshSetup: undefined as (() => Promise<void>) | undefined,
 };
 
+// Undefined except where a test needs the task launcher's authority scope.
+const hostScope = vi.hoisted(() => ({
+  current: undefined as
+    | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+    | undefined,
+}));
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => hostScope.current,
+}));
+// The remote start's task launcher, reduced to the props this modal hands it.
+const launcher = vi.hoisted(() => ({
+  props: null as null | {
+    initialPrompt?: string;
+    initialEnvironmentId?: string;
+    onDraftChange?: (prompt: string) => void;
+    onDelegated: (
+      task: unknown,
+      targetName: string,
+      placement: { stationName: string; prompt: string },
+    ) => void;
+  },
+}));
+vi.mock('../components/chat-dock/DelegationLauncher', () => ({
+  DelegationLauncher: (props: NonNullable<typeof launcher.props>) => {
+    launcher.props = props;
+    return <div role="dialog" aria-label="Run on a Station" />;
+  },
 }));
 
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
@@ -161,8 +177,16 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isFetching: false,
   }),
 }));
+const featurePreviews = vi.hoisted(() => ({
+  current: [{ id: 'visual-skills', enabled: true }] as Array<{
+    id: string;
+    enabled: boolean;
+  }>,
+}));
 const experienceInventory = vi.hoisted(() => ({
   current: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
+  /** The `enabled` the modal last asked the inventory query for. */
+  queried: undefined as boolean | undefined,
 }));
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
@@ -171,14 +195,38 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews.current }),
   useAgentsQuery: () => ({ data: selectionModelState.agents }),
   useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
-  useSkillExperienceInventoryQuery: () => ({
-    data: experienceInventory.current,
-    refetch: vi.fn(),
-  }),
+  useSkillExperienceInventoryQuery: (config?: { enabled?: boolean }) => {
+    experienceInventory.queried = config?.enabled;
+    return {
+      data: experienceInventory.current,
+      refetch: vi.fn(),
+    };
+  },
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: materializeMock }),
   useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
+}));
+
+// The Station list is the SDK's environment and peer reads, which this file
+// stands in for wholesale: this Station and one paired peer, so the Station
+// control (shown only with a choice of Stations) is offered.
+vi.mock('../hooks/useExecutionStationCatalog', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useExecutionStations: () => ({
+    enabled: true,
+    settled: true,
+    stations: [
+      { id: 'current', name: 'This Station' },
+      { id: 'peer-kontour', name: 'Kontour' },
+    ],
+    nameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    knownNameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    stationsUnavailable: false,
+  }),
 }));
 
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
@@ -238,7 +286,7 @@ const { buildCodingChatInitialMessage } = await import(
   '../components/coding-layout/chatContextDraft'
 );
 const { composerDraftContext } = await import(
-  '../components/chat-dock/ChatDockModalStack'
+  '../components/chat-dock/DockStartComposer'
 );
 const { pluginAuthoringComposerDraft } = await import(
   '../views/plugin-management/plugin-authoring-primer'
@@ -246,10 +294,15 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
+  hostScope.current = undefined;
+  launcher.props = null;
   resetStartChoicesForTests();
   // Chip choices are remembered in storage; no test may inherit another's.
   localStorage.clear();
   experienceInventory.current = { experiences: [], diagnostics: [] };
+  featurePreviews.current = [{ id: 'visual-skills', enabled: true }];
   selectionModelState.isGlobal = true;
   selectionModelState.selectedProject = undefined;
   selectionModelState.agents = [AGENT];
@@ -372,11 +425,29 @@ function clickAgent(slug: string) {
 }
 
 describe('NewChatModal select dispatch invariant (#3013)', () => {
+  test.each([
+    ['none', 'Native engine fork unavailable'],
+    ['emulated', 'Engine fork is emulated'],
+    ['native', 'Native engine fork declared'],
+  ] as const)(
+    'fork disclosure follows the selected engine durability profile: %s',
+    (state, label) => {
+      const profile = ENGINE_CAPABILITY_MATRICES.station.durability.fork;
+      const original = profile.state;
+      try {
+        profile.state = state;
+        renderForkModal();
+        expect(screen.getByText(label)).toBeTruthy();
+      } finally {
+        profile.state = original;
+      }
+    },
+  );
   test('fork mode defaults to the source Agent and explicitly discloses replay-only state', async () => {
     selectionModelState.agents = [AUTHORED_CODEX, AGENT];
     renderForkModal();
 
-    expect(screen.getByRole('dialog', { name: 'Fork from here' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Fork from here' })).toBeTruthy();
     expect(screen.getByRole('note').textContent).toMatch(
       /new independent conversation.*engine cursor.*tool state.*approval state do not carry/i,
     );
@@ -1114,7 +1185,10 @@ describe('intent-first preparation', () => {
       />,
     );
     await waitFor(() => expect(materializeMock).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole('button', { name: 'Close new chat' }));
+    // The draft has no close button: Escape (or leaving for a chat) dismisses.
+    fireEvent.keyDown(screen.getByRole('region', { name: 'New chat' }), {
+      key: 'Escape',
+    });
     await act(async () => complete?.({ data: AUTHORED_CODEX }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onSelect).not.toHaveBeenCalled();
@@ -1200,6 +1274,7 @@ describe('visual skill selection through the New Chat picker', () => {
         name: new RegExp(experience.definition.title),
       }),
     );
+    expect(experienceInventory.queried).toBe(true);
     fireEvent.change(
       screen.getByRole('textbox', { name: /What would you like to build/ }),
       { target: { value: 'My edited proposal' } },
@@ -1219,6 +1294,73 @@ describe('visual skill selection through the New Chat picker', () => {
         inputs: { idea: 'My edited proposal' },
       },
     });
+  });
+  test('with the visual-skills preview off, an installed visual skill is neither fetched nor offered', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    featurePreviews.current = [{ id: 'visual-skills', enabled: false }];
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    expect(experienceInventory.queried).toBe(false);
+    expect(screen.queryByRole('region', { name: 'Visual skills' })).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    ).toBeNull();
+  });
+  test('turning the visual-skills preview off after choosing a skill starts without it', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    const onSelect = vi.fn();
+    // A fresh element each time, so React re-renders with the new flags.
+    const modal = () => (
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />
+    );
+    const view = render(modal());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    featurePreviews.current = [{ id: 'visual-skills', enabled: false }];
+    view.rerender(modal());
+    fireEvent.click(
+      document.querySelector(
+        'button[data-agent-slug="assistant"]',
+      ) as HTMLButtonElement,
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const carriesSkill = onSelect.mock.calls[0].some(
+      (argument: unknown) =>
+        typeof argument === 'object' &&
+        argument !== null &&
+        'start' in argument,
+    );
+    expect(carriesSkill).toBe(false);
   });
   test('inventory-only hosts retain the inputs and visibly refuse preparing a start', () => {
     const experience = installedExperience();
@@ -1288,27 +1430,6 @@ describe('the start composer in the dock', () => {
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
   }
-
-  test.each([
-    ['new draft', 'new draft'],
-    ['submitted draft', ''],
-  ])(
-    'remote task completion preserves the latest draft (%s)',
-    (latest, expected) => {
-      remoteRun.complete = null;
-      start(undefined, { initialPrompt: 'submitted draft' });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Stage a remote task' }),
-      );
-      fireEvent.change(message(), { target: { value: latest } });
-      expect(remoteRun.complete).not.toBeNull();
-      act(() => remoteRun.complete!());
-      expect(message().value).toBe(expected);
-      expect(screen.getByRole('status').textContent).toContain(
-        'Task started on Kontour',
-      );
-    },
-  );
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
@@ -1452,6 +1573,162 @@ describe('the start composer in the dock', () => {
 
   // Home's composer sends what its chips show; the dock starts exactly that
   // and never substitutes its own default.
+  test.each([
+    ['new draft', 'new draft'],
+    ['submitted draft', ''],
+  ])(
+    'a remote start hands its task and Station on, keeping the latest draft (%s)',
+    async (latest, expected) => {
+      const fingerprint = 'b'.repeat(64);
+      const profile: AgentData = {
+        slug: agentId('reviewer'),
+        name: 'Reviewer',
+        available: true,
+        definitionFingerprint: fingerprint,
+      };
+      selectionModelState.agents = [profile];
+      selectionModelState.recommendedAgent = profile;
+      hostScope.current = {
+        apiBase: 'http://station.test',
+        authorityKey: 'authority-1',
+        isCurrent: () => true,
+      };
+      const onTaskStarted = vi.fn();
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'submitted draft',
+        onTaskStarted,
+        startSelection: {
+          context: '__global__',
+          agentSlug: profile.slug,
+          model: {
+            modelId: 'remote-model',
+            executionAgentId: agentId('reviewer'),
+            expectedDefinitionFingerprint: fingerprint,
+            environmentId: 'env-brian-media',
+            providerOptions: {},
+          },
+        },
+      });
+      await screen.findByRole('dialog', { name: 'Run on a Station' });
+      expect(onSelect).not.toHaveBeenCalled();
+      const props = launcher.props!;
+      expect(props.initialEnvironmentId).toBe('env-brian-media');
+      act(() => props.onDraftChange?.(latest));
+      const task = { sessionId: 'session:remote' };
+      act(() =>
+        props.onDelegated(task, 'Reviewer', {
+          stationName: 'brian-media',
+          prompt: 'submitted draft',
+        }),
+      );
+      expect(onTaskStarted).toHaveBeenCalledWith(task, 'brian-media');
+      expect(
+        screen.queryByRole('dialog', { name: 'Run on a Station' }),
+      ).toBeNull();
+      expect(message().value).toBe(expected);
+    },
+  );
+
+  test.each([false, true])(
+    'a paired chat chooses the receiver project and reports open failures (failure: %s)',
+    async (openFails) => {
+      const fingerprint = 'c'.repeat(64);
+      const profile: AgentData = {
+        slug: agentId('codex'),
+        name: 'Codex',
+        available: true,
+        definitionFingerprint: fingerprint,
+      };
+      selectionModelState.agents = [profile];
+      selectionModelState.recommendedAgent = profile;
+      hostScope.current = {
+        apiBase: 'http://station.test',
+        authorityKey: 'source-authority',
+        isCurrent: () => true,
+      };
+      featurePreviews.current = [{ id: 'paired-station-chats', enabled: true }];
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json({
+          success: true,
+          data: [
+            {
+              id: 'receiver-only-project',
+              slug: 'windows-checkout',
+              name: 'Windows checkout',
+              workingDirectory: 'C:\\work\\station',
+              hasWorkingDirectory: true,
+              layoutCount: 0,
+              hasKnowledge: false,
+            },
+          ],
+        }),
+      );
+      vi.stubGlobal('fetch', fetch);
+      setClientCredentialResolver(async () => ({
+        origin: 'http://station.test',
+        credential: 'source-token',
+        requestAuthority: hostScope.current!,
+      }));
+      const onPeerChatStarted = vi.fn(() => {
+        if (openFails) throw new Error('Could not open the chat.');
+      });
+      const onTaskStarted = vi.fn();
+      const onSelect = start(vi.fn(), {
+        initialPrompt: 'Which machine is this?',
+        onPeerChatStarted,
+        onTaskStarted,
+        startSelection: {
+          context: '__global__',
+          agentSlug: profile.slug,
+          model: {
+            modelId: 'remote-model',
+            executionAgentId: agentId('codex'),
+            expectedDefinitionFingerprint: fingerprint,
+            environmentId: 'peer-kontour',
+            providerOptions: {},
+          },
+        },
+      });
+      await screen.findByText(/Choose a project on the selected Station/);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: /Project: Choose a project/,
+        }),
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Windows checkout/ }),
+      );
+      await waitFor(() => expect(startButton().disabled).toBe(false));
+      fireEvent.click(startButton());
+      expect(onPeerChatStarted).toHaveBeenCalledWith(
+        profile,
+        expect.objectContaining({
+          environmentId: 'peer-kontour',
+          projectSlug: 'windows-checkout',
+          model: 'remote-model',
+          pending: expect.objectContaining({
+            text: 'Which machine is this?',
+            dispatched: false,
+          }),
+        }),
+      );
+      if (openFails)
+        expect(
+          await screen.findByText('Could not open the chat.'),
+        ).toBeTruthy();
+      expect(onTaskStarted).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('dialog', { name: 'Run on a Station' }),
+      ).toBeNull();
+      expect(String(fetch.mock.calls[0]?.[0])).toContain(
+        '/peer-kontour/chat-api/api/projects',
+      );
+      vi.unstubAllGlobals();
+    },
+  );
+
   describe("a start carrying Home's selection", () => {
     test('carries an explicit This Station selection for a plain Agent without fabricating an engine override', async () => {
       selectionModelState.agents = [AGENT];
@@ -1745,6 +2022,23 @@ describe('the start composer in the dock', () => {
       handoff: { kind: 'skills' },
     });
     expect(screen.getByRole('region', { name: 'Visual skills' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'More start options' }),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+  });
+
+  test('with the visual-skills preview off, the composer offers no visual skills, even on a skills hand-off', () => {
+    featurePreviews.current = [];
+    start(vi.fn(), {
+      initialPrompt: 'From Home',
+      handoff: { kind: 'skills' },
+    });
+    expect(screen.queryByRole('region', { name: 'Visual skills' })).toBeNull();
+    // "Use a visual skill" is the menu's only action, so no menu at all.
+    expect(
+      screen.queryByRole('button', { name: 'More start options' }),
+    ).toBeNull();
     expect(message().value).toBe('From Home');
   });
 
@@ -1915,6 +2209,7 @@ test('New Task start surface retains its label and Escape closes it', () => {
     />,
   );
   expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
+  // No title bar: the draft's own line names what Start will do.
   expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
   fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
     key: 'Escape',

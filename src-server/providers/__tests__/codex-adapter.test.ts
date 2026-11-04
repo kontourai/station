@@ -14,9 +14,20 @@ import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/statio
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  mintStationControlMcpHeaderAuth,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { prepareNoProjectChatScratch } from '../../services/orchestration/no-project-chat-folder.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import { buildOrchestrationSessionSummary } from '../../services/orchestration/orchestration-session-state.js';
+import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
 import {
   CodexAdapter,
   projectCodexQuotaSnapshot,
@@ -37,6 +48,7 @@ import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.j
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
   CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+  CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
   codexCaptureServerMessagesBeforeClientInterrupt,
 } from './codex-collab-fixtures.js';
 
@@ -151,8 +163,10 @@ function parseLine(line: string): any {
  * `process.stdin.destroy()` alone does NOT close the underlying pipe fd)
  * BEFORE delivering the page-1 result (which carries a `nextCursor`,
  * guaranteeing the parent writes a page-2 request). That page-2 write
- * deterministically hits the closed pipe — the EPIPE a dead/broken codex
- * binary produces in production. The child stays alive so only the stdin
+ * hits the closed pipe on Unix — the EPIPE a dead/broken codex binary
+ * produces in production. The Windows test also closes the parent writer
+ * because closing fd 0 leaves an inherited pipe handle open there.
+ * The child stays alive so only the stdin
  * door can settle the in-flight catalog read.
  */
 const EPIPE_AFTER_FIRST_PAGE_CHILD = [
@@ -164,7 +178,7 @@ const EPIPE_AFTER_FIRST_PAGE_CHILD = [
   'const l=b.slice(0,i);b=b.slice(i+1);if(!l.trim())continue;',
   'const m=JSON.parse(l);n++;',
   "if(n===1){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}})+'\\n');}",
-  'if(n===3){fs.closeSync(0);',
+  'if(n===3){process.stdin.on("error",()=>{});process.stdin.destroy();fs.closeSync(0);',
   "setTimeout(()=>{process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{data:[{model:'gpt-a',displayName:'GPT A'}],nextCursor:'more'}})+'\\n');},100);}",
   '}',
   '});',
@@ -2138,6 +2152,11 @@ describe('CodexAdapter', () => {
       processFactory: () => processHandle!,
     });
     expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
+    expect(
+      Object.entries(adapter.metadata.durability)
+        .filter(([, cell]) => cell.state === 'native')
+        .map(([key]) => key),
+    ).toEqual(['steerPlacement']);
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
     const startSessionPromise = adapter.startSession({
@@ -2573,6 +2592,115 @@ describe('CodexAdapter', () => {
     const PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
     const CHILD_ID = '00000000-0000-7000-8000-000000000004';
     const CHILD_TURN_ID = '00000000-0000-7000-8000-000000000005';
+
+    test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          'unknown-child',
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(
+        await adapter.steerChildWork(threadId, CHILD_ID, 'old-turn', 'hello'),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello child',
+      );
+      await respondToLatestPendingRequest(adapter, threadId, {
+        turnId: CHILD_TURN_ID,
+      });
+      expect(await pending).toEqual({
+        outcome: 'steered',
+        turnId: CHILD_TURN_ID,
+      });
+      const requests = processHandle.stdin.lines.slice(before).map(parseLine);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        method: 'turn/steer',
+        params: {
+          threadId: CHILD_ID,
+          expectedTurnId: CHILD_TURN_ID,
+          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+        },
+      });
+      await adapter.stopAll();
+    });
+
+    test('v2 child refuses direct steer without sending an RPC', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-v2-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          CHILD_ID,
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'unsupported' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      await adapter.stopAll();
+    });
+
+    test('child steer reports an ended-turn rejection from Codex without retrying', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer-race';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello',
+      );
+      await flushIo();
+      const record = (adapter as any).transport.requireSession(threadId);
+      const id = [...record.pendingRpcRequests.keys()].at(-1);
+      writeServerMessage(adapter, threadId, {
+        id,
+        error: { code: -32600, message: 'no active turn' },
+      });
+      expect(await pending).toEqual({ outcome: 'no-active-task' });
+      expect(
+        processHandle.stdin.lines
+          .slice(before)
+          .map(parseLine)
+          .map((message) => message.method),
+      ).toEqual(['turn/steer']);
+      await adapter.stopAll();
+    });
     // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl: same
     // parent ids, two children — registered in this order (004 spawned
     // before 006 in the capture's own collabAgentToolCall spawnAgent items).
@@ -2603,6 +2731,56 @@ describe('CodexAdapter', () => {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     }
+
+    test('a spawned child names its own rollout under the CODEX_HOME the session was spawned with', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/child-home' },
+          profileRef: 'child-home',
+        }),
+      });
+      const transport = (adapter as any).transport;
+      const published: any[] = [];
+      const publish = transport.publish.bind(transport);
+      transport.publish = (event: any, record?: unknown) => {
+        published.push(event);
+        return publish(event, record);
+      };
+      const threadId = 'thread-child-transcript-ref';
+      try {
+        await replayCodexCollabPrefix(
+          adapter,
+          threadId,
+          CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+        );
+        // The home the process was actually spawned with...
+        expect(processFactory.mock.calls[0][0]).toMatchObject({
+          CODEX_HOME: '/profiles/child-home',
+        });
+        // ...is the one the running child's published ref names.
+        const refs = published.flatMap((event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot'
+            ? event.delta.running
+                .filter((item: any) => item.childId === CHILD_ID)
+                .map((item: any) => item.transcript)
+            : [],
+        );
+        expect(refs.length).toBeGreaterThan(0);
+        expect(refs.at(-1)).toEqual({
+          kind: 'codex-thread',
+          threadId: CHILD_ID,
+          configHome: '/profiles/child-home',
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    });
 
     test('per-child stop sends exactly two interrupts — the child, then the parent — and both settle cancelled', async () => {
       processHandle = new FakeCodexProcess();
@@ -3403,6 +3581,87 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test.each(['thread/start', 'thread/resume'] as const)(
+    'applies an Ultrafast tier on %s and changes speed independently of effort',
+    async (method) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      try {
+        const started = adapter.startSession({
+          provider: 'codex',
+          threadId: 'speed-tiers',
+          cwd: '/tmp/project',
+          modelOptions: {
+            serviceTier: 'ultrafast',
+            fastMode: true,
+            effort: 'high',
+          },
+          ...(method === 'thread/resume'
+            ? { resumeCursor: { codexThreadId: 'native-speed' } }
+            : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, 'speed-tiers', {
+          id: '1',
+          result: { userAgent: 'test' },
+        });
+        await flushIo();
+        const startRequest = processHandle.stdin.lines
+          .map(parseLine)
+          .find((line) => line.method === method);
+        expect(startRequest.params.serviceTier).toBe('ultrafast');
+        writeServerMessage(adapter, 'speed-tiers', {
+          id: '2',
+          result: { thread: { id: 'native-speed' } },
+        });
+        await withTimeout(started, 'speed start');
+
+        const choices = [
+          [{ serviceTier: 'priority', effort: 'high' }, 'priority'],
+          [{ serviceTier: 'flex' }, 'flex'],
+          [{ serviceTier: 'default', fastMode: true }, 'default'],
+          [{ serviceTier: 'ultrafast' }, 'ultrafast'],
+          [{ fastMode: true }, 'fast'],
+          [{ fastMode: false }, undefined],
+          [{}, undefined],
+          [{ serviceTier: null }, null],
+        ] as const;
+        for (const [index, [modelOptions, expectedTier]] of choices.entries()) {
+          const sent = adapter.sendTurn({
+            threadId: 'speed-tiers',
+            input: 'Continue',
+            modelOptions,
+          });
+          await flushIo();
+          const request = processHandle.stdin.lines
+            .map(parseLine)
+            .filter((line) => line.method === 'turn/start')
+            .at(-1);
+          expect(request.params.serviceTier).toBe(expectedTier);
+          if ('effort' in modelOptions)
+            expect(request.params.effort).toBe('high');
+          writeServerMessage(adapter, 'speed-tiers', {
+            id: request.id,
+            result: { turn: { id: `speed-${index}` } },
+          });
+          await withTimeout(sent, 'speed turn');
+          writeServerMessage(adapter, 'speed-tiers', {
+            method: 'turn/completed',
+            params: {
+              threadId: 'native-speed',
+              turn: { id: `speed-${index}`, status: 'completed', items: [] },
+            },
+          });
+          await flushIo();
+        }
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
   test('normalizes an empty effort override to the provider default', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -4112,8 +4371,14 @@ describe('CodexAdapter', () => {
               ],
               serviceTiers: [
                 { id: 'standard', name: 'Standard', description: '' },
-                { id: 'fast', name: 'Fast', description: '' },
+                { id: 'priority', name: 'Fast', description: '' },
+                {
+                  id: 'ultrafast',
+                  name: 'Ultrafast',
+                  description: 'Higher cost, lower latency.',
+                },
               ],
+              defaultServiceTier: 'ultrafast',
             },
           ],
           nextCursor: 'next-page',
@@ -4129,6 +4394,12 @@ describe('CodexAdapter', () => {
             {
               model: 'gpt-5.5',
               displayName: 'GPT-5.5',
+            },
+            {
+              model: 'legacy-speed',
+              displayName: 'Legacy speed',
+              additionalSpeedTiers: ['fast', 'ultrafast'],
+              defaultServiceTier: 'ultrafast',
             },
           ],
           nextCursor: null,
@@ -4147,12 +4418,41 @@ describe('CodexAdapter', () => {
           effortLabels: { low: 'Fast', high: 'Thorough' },
           supportsFastMode: true,
           fastModeLabel: 'Fast',
+          serviceTiers: [
+            { id: 'standard', name: 'Standard' },
+            { id: 'priority', name: 'Fast' },
+            {
+              id: 'ultrafast',
+              name: 'Ultrafast',
+              description: 'Higher cost, lower latency.',
+            },
+          ],
+          defaultServiceTier: 'ultrafast',
         },
       },
       {
         id: 'gpt-5.5',
         name: 'GPT-5.5',
         originalId: 'gpt-5.5',
+      },
+      {
+        id: 'legacy-speed',
+        name: 'Legacy speed',
+        originalId: 'legacy-speed',
+        capabilities: {
+          supportsFastMode: true,
+          fastModeLabel: 'Fast',
+          serviceTiers: [
+            { id: 'default', name: 'Standard' },
+            { id: 'fast', name: 'Fast' },
+            {
+              id: 'ultrafast',
+              name: 'Ultrafast',
+              description: 'Lower latency, higher cost.',
+            },
+          ],
+          defaultServiceTier: 'ultrafast',
+        },
       },
     ]);
     // #2482: selector validation skips the catalog read on this declaration,
@@ -4286,9 +4586,20 @@ describe('CodexAdapter', () => {
     });
   });
 
-  test('escalates cancellation until a SIGTERM-resistant child exits', async () => {
+  test('escalates cancellation until a SIGTERM-resistant child exits', async ({
+    onTestFinished,
+  }) => {
     let child: ChildProcessWithoutNullStreams | undefined;
-    let ready: Promise<void> | undefined;
+    let announceReady!: () => void;
+    let refuseReady!: (error: Error) => void;
+    let announceClose!: () => void;
+    const ready = new Promise<void>((resolve, reject) => {
+      announceReady = resolve;
+      refuseReady = reject;
+    });
+    const closed = new Promise<void>((resolve) => {
+      announceClose = resolve;
+    });
     const adapter = new CodexAdapter({
       processFactory: () => {
         child = spawn(
@@ -4297,28 +4608,34 @@ describe('CodexAdapter', () => {
             '-e',
             "process.on('SIGTERM',()=>{});process.stdin.resume();process.stdout.write('ready\\n')",
           ],
-          { stdio: 'pipe' },
+          { stdio: 'pipe', windowsHide: true },
         );
-        ready = new Promise((resolve) =>
-          child!.stdout.once('data', () => resolve()),
-        );
+        child.stdout.once('data', () => announceReady());
+        child.once('error', refuseReady);
+        child.once('close', () => announceClose());
         return child;
       },
     });
-    const controller = new AbortController();
-
-    try {
-      const models = adapter.listModels({ signal: controller.signal });
-      await ready;
-      controller.abort(new Error('catalog cancelled'));
-
-      await expect(models).rejects.toThrow('catalog cancelled');
-      expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
-    } finally {
-      if (child?.exitCode === null && child.signalCode === null) {
+    onTestFinished(async () => {
+      if (
+        child?.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+      )
         child.kill('SIGKILL');
-      }
-    }
+      if (child) await closed;
+    });
+    const controller = new AbortController();
+    const models = adapter.listModels({ signal: controller.signal });
+    // The factory is asynchronous: awaiting an unassigned `ready` skipped
+    // startup altogether. Observe the child's actual readiness before aborting.
+    await Promise.race([ready, models]);
+    expect(child).toBeDefined();
+    controller.abort(new Error('catalog cancelled'));
+    await expect(models).rejects.toThrow('catalog cancelled');
+    // taskkill acknowledges termination before Node delivers the close event.
+    await closed;
+    expect(child!.exitCode !== null || child!.signalCode !== null).toBe(true);
   });
 
   // #774: a one-shot catalog whose child closes its stdin reader (any
@@ -4328,28 +4645,48 @@ describe('CodexAdapter', () => {
   // `model/list` page (whose result carries a nextCursor, so a page-2
   // request is guaranteed), then destroys its stdin BEFORE delivering the
   // page-1 response — the parent's page-2 write therefore lands on a
-  // closed pipe (EPIPE) deterministically, while the child stays alive so
+  // closed pipe (EPIPE) on Unix. Windows retains another inherited pipe
+  // handle, so close the parent's writable stream before forwarding page 1;
+  // page 2 then raises the real stream's write-after-end error instead.
+  // The child stays alive so
   // the process 'exit' door never fires: the stdin door is the only
   // teardown path exercised.
-  test('rejects a model catalog read whose app-server stdin closes mid-flight instead of crashing', async () => {
+  test('rejects a model catalog read whose app-server stdin closes mid-flight instead of crashing', async ({
+    onTestFinished,
+  }) => {
     let child: ChildProcessWithoutNullStreams | undefined;
+    let announceClose!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      announceClose = resolve;
+    });
     const adapter = new CodexAdapter({
       processFactory: () => {
         child = spawn(process.execPath, ['-e', EPIPE_AFTER_FIRST_PAGE_CHILD], {
           stdio: 'pipe',
           windowsHide: true,
         });
+        if (process.platform === 'win32') {
+          const stdin = child.stdin;
+          child.stdout.on('data', (chunk: Buffer) => {
+            if (chunk.toString().includes('nextCursor')) stdin.end();
+          });
+        }
+        child.once('close', () => announceClose());
         return child;
       },
     });
-
-    try {
-      await expect(adapter.listModels()).rejects.toThrow(
-        'Codex app-server stdin write failed',
-      );
-    } finally {
-      child?.kill('SIGKILL');
-    }
+    onTestFinished(async () => {
+      if (
+        child?.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+      )
+        child.kill('SIGKILL');
+      if (child) await closed;
+    });
+    await expect(adapter.listModels()).rejects.toThrow(
+      'Codex app-server stdin write failed',
+    );
   });
 
   test('rejects a non-advancing model pagination cursor', async () => {
@@ -4476,6 +4813,82 @@ describe('CodexAdapter', () => {
       method: 'runtime.warning',
       code: 'codex-json-parse',
     });
+  });
+
+  test('a sandbox helper startup refusal reaches delegation as safe actionable guidance', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    const starting = adapter.startSession({
+      provider: 'codex',
+      threadId: 'sandbox-start-refusal',
+      cwd: makeSessionWorkspace('sandbox-start-refusal-'),
+    });
+    const failed = starting.catch((error: unknown) => error);
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '1',
+      result: {},
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'sandbox-start-refusal', {
+      id: '2',
+      error: {
+        code: -32603,
+        message:
+          'failed to load AGENTS.md: fs sandbox helper: bwrap: No permissions to create namespace /private/secret-proof',
+      },
+    });
+    const failure = await failed;
+    expect(failure).toMatchObject({ code: 'sandbox_unavailable' });
+    expect(String(failure)).not.toContain('secret-proof');
+    await adapter.stopAll();
+    await drain;
+    const terminal = events
+      .filter((event) => event.method === 'runtime.error')
+      .at(-1);
+    expect(terminal).toMatchObject({
+      code: 'sandbox_unavailable',
+      kind: 'permission_denied',
+      retryable: false,
+    });
+    const snapshot = snapshotFor({
+      target: {
+        apiBase: 'http://current.invalid',
+        environmentId: 'current',
+        environmentName: 'Current',
+        kind: 'current',
+      },
+      metadata: {
+        taskId: 'sandbox-start-refusal',
+        conversationId: 'sandbox-start-refusal',
+        targetKind: 'agent',
+        targetId: 'codex',
+      },
+      detail: {
+        session: {
+          threadId: 'sandbox-start-refusal',
+          status: 'error',
+          lifecycleState: 'failed',
+          terminalAttribution: { kind: 'runtime_error' },
+        },
+        events,
+      },
+    });
+    expect(snapshot.status).toBe('failed');
+    const reason = snapshot.reason;
+    expect(reason).toMatchObject({
+      code: 'sandbox_unavailable',
+      detail: expect.stringMatching(/host.*sandbox/i),
+    });
+    const projected = projectDelegatedTaskEvent(1, terminal);
+    expect(projected.text).toBe(reason?.detail);
+    expect(
+      JSON.stringify({ failure, terminal, reason, projected }),
+    ).not.toContain('secret-proof');
   });
 
   test('retains a failed-start session until process exit is confirmed', async () => {
@@ -4787,6 +5200,224 @@ describe('CodexAdapter', () => {
     ).rejects.toThrow('This Codex approval request is not open.');
   });
 
+  test('an unbound Codex session starts and sends turns in its private workspace, reused after restart', async () => {
+    const stationHome = makeSessionWorkspace('codex-managed-home-');
+    const defaultHome = makeSessionWorkspace('codex-default-home-');
+    const input = {
+      provider: 'codex',
+      threadId: 'unbound-private-workspace',
+      cwd: defaultHome,
+      cwdDefaulted: true,
+      metadata: { connectionId: 'codex-connection' },
+    } as const;
+    const starts: string[] = [];
+    for (let restart = 0; restart < 2; restart += 1) {
+      processHandle = new FakeCodexProcess();
+      const child = processHandle;
+      const write = child.stdin._write.bind(child.stdin);
+      child.stdin._write = (chunk, encoding, callback) => {
+        write(chunk, encoding, callback);
+        const request = parseLine(chunk.toString());
+        if (!request.id) return;
+        const result =
+          request.method === 'thread/start' ||
+          request.method === 'thread/resume'
+            ? { thread: { id: 'native-private' } }
+            : request.method === 'turn/start'
+              ? { turn: { id: 'private-turn' } }
+              : {};
+        queueMicrotask(() =>
+          child.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`),
+        );
+      };
+      const adapter = new CodexAdapter({
+        processFactory: () => child,
+        managedWorkspaceHomeDir: stationHome,
+      });
+      const session = await adapter.startSession({
+        ...input,
+        ...(restart
+          ? { resumeCursor: { codexThreadId: 'native-private' } }
+          : {}),
+      });
+      const start = child.stdin.lines
+        .map(parseLine)
+        .find(
+          (line) =>
+            line.method === (restart ? 'thread/resume' : 'thread/start'),
+        );
+      expect(start.params.cwd).not.toBe(defaultHome);
+      expect(start.params.cwd).toContain(
+        join('runtime', 'codex-workspaces', 'session'),
+      );
+      expect(existsSync(start.params.cwd)).toBe(true);
+      expect(session.cwd).toBe(start.params.cwd);
+      const summary = buildOrchestrationSessionSummary({
+        persisted: session,
+        events: [],
+        answerability: {
+          threadAttachment: 'detached',
+          providerRegistered: true,
+          observedBy: 'test',
+          observedAt: session.updatedAt,
+        },
+      });
+      expect(summary.cwdManagedWorkspace).toBe(true);
+      starts.push(start.params.cwd);
+      await adapter.sendTurn({
+        threadId: input.threadId,
+        input: 'Check CPU usage',
+      });
+      const turn = child.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'turn/start');
+      expect(turn.params.threadId).toBe('native-private');
+      expect(turn.params).not.toHaveProperty('cwd');
+      expect((await adapter.listSessions())[0]?.cwd).toBe(start.params.cwd);
+      child.emit('exit', 0);
+    }
+    expect(starts[1]).toBe(starts[0]);
+  });
+
+  test.each([
+    {
+      name: 'explicit directory',
+      cwdDefaulted: false,
+      confinement: 'workspace' as const,
+    },
+    {
+      name: 'operator session',
+      cwdDefaulted: true,
+      confinement: 'host' as const,
+    },
+  ])(
+    'keeps the $name instead of preparing an unbound workspace',
+    async ({ cwdDefaulted, confinement }) => {
+      processHandle = new FakeCodexProcess();
+      const cwd = makeSessionWorkspace('codex-explicit-folder-');
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const started = adapter.startSession({
+        provider: 'codex',
+        threadId: 'keep-cwd',
+        cwd,
+        cwdDefaulted,
+        confinement,
+      });
+      await vi.waitFor(() =>
+        expect(
+          processHandle!.stdin.lines
+            .map(parseLine)
+            .some((line) => line.method === 'initialize'),
+        ).toBe(true),
+      );
+      writeServerMessage(adapter, 'keep-cwd', { id: '1', result: {} });
+      await vi.waitFor(() =>
+        expect(
+          processHandle!.stdin.lines
+            .map(parseLine)
+            .some((line) => line.method === 'thread/start'),
+        ).toBe(true),
+      );
+      const start = processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'thread/start');
+      expect(start.params.cwd).toBe(cwd);
+      writeServerMessage(adapter, 'keep-cwd', {
+        id: '2',
+        result: {
+          thread: { id: 'native-keep-cwd' },
+          sandbox: {
+            type: 'workspaceWrite',
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+          activePermissionProfile: { id: 'station-workspace' },
+        },
+      });
+      await started;
+    },
+  );
+
+  test('a no-project chat keeps its scratch folder instead of preparing a second private workspace (#4389, #4448)', async () => {
+    const stationHome = makeSessionWorkspace('codex-scratch-home-');
+    const scratch = await prepareNoProjectChatScratch(
+      'scratch-conversation',
+      stationHome,
+    );
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+      managedWorkspaceHomeDir: stationHome,
+    });
+    const started = adapter.startSession({
+      provider: 'codex',
+      threadId: 'keep-scratch',
+      cwd: scratch,
+      cwdDefaulted: true,
+    });
+    await vi.waitFor(() =>
+      expect(
+        processHandle!.stdin.lines
+          .map(parseLine)
+          .some((line) => line.method === 'initialize'),
+      ).toBe(true),
+    );
+    writeServerMessage(adapter, 'keep-scratch', { id: '1', result: {} });
+    await vi.waitFor(() =>
+      expect(
+        processHandle!.stdin.lines
+          .map(parseLine)
+          .some((line) => line.method === 'thread/start'),
+      ).toBe(true),
+    );
+    const start = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(start.params.cwd).toBe(scratch);
+    expect(existsSync(join(stationHome, 'runtime', 'codex-workspaces'))).toBe(
+      false,
+    );
+    writeServerMessage(adapter, 'keep-scratch', {
+      id: '2',
+      result: {
+        thread: { id: 'native-keep-scratch' },
+        sandbox: {
+          type: 'workspaceWrite',
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: { id: 'station-workspace' },
+      },
+    });
+    const session = await started;
+    expect(session.cwd).toBe(scratch);
+  });
+
+  test('a private workspace preparation failure refuses the session before spawning', async () => {
+    const stationHome = makeSessionWorkspace('codex-workspace-failure-');
+    writeFileSync(join(stationHome, 'runtime'), 'not a directory');
+    const spawn = vi.fn(() => new FakeCodexProcess());
+    const adapter = new CodexAdapter({
+      processFactory: spawn,
+      managedWorkspaceHomeDir: stationHome,
+    });
+    await expect(
+      adapter.startSession({
+        provider: 'codex',
+        threadId: 'cannot-prepare',
+        cwd: stationHome,
+        cwdDefaulted: true,
+      }),
+    ).rejects.toThrow();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   test('replacement MCP selection disables inherited servers on the thread without writing harness configuration', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({ processFactory: () => processHandle! });
@@ -4924,36 +5555,97 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
-  test('an absent approvalMode omits approvalPolicy/sandbox so Codex config applies (station#1950)', async () => {
-    processHandle = new FakeCodexProcess();
-    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+  test.each([
+    { policy: undefined, sandbox: undefined, expected: 'connection-default' },
+    { policy: 'untrusted', sandbox: 'workspaceWrite', expected: 'ask' },
+    { policy: 'on-request', sandbox: 'workspaceWrite', expected: 'auto' },
+    { policy: 'never', sandbox: 'workspaceWrite', expected: 'never' },
+    { policy: 'never', sandbox: 'dangerFullAccess', expected: 'never' },
+    {
+      policy: 'on-request',
+      sandbox: 'externalSandbox',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+    { policy: 'never', sandbox: 'readOnly', expected: 'connection-default' },
+    {
+      policy: 'on-failure',
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+    },
+    {
+      policy: 'on-request',
+      sandbox: undefined,
+      expected: 'connection-default',
+    },
+    {
+      policy: { reject: { sandbox_approval: true } },
+      sandbox: 'workspaceWrite',
+      expected: 'connection-default',
+      requested: 'auto',
+    },
+  ])(
+    'reports Codex settings $policy/$sandbox as $expected without changing the startup request',
+    async ({ policy, sandbox, expected, requested }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
 
-    const sessionPromise = adapter.startSession({
-      provider: 'codex',
-      threadId: 'thread-inherit-default',
-      cwd: '/tmp/project',
-      modelId: 'gpt-5-codex',
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '1',
-      result: { userAgent: 'test' },
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-inherit-default', {
-      id: '2',
-      result: { thread: { id: 'codex-thread-inherit' }, model: 'gpt-5-codex' },
-    });
-    await withTimeout(sessionPromise, 'startSession inherit default');
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-inherit-default',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        ...(requested ? { modelOptions: { approvalMode: requested } } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-inherit-default', {
+        id: '2',
+        result: {
+          thread: { id: 'codex-thread-inherit' },
+          model: 'gpt-5-codex',
+          ...(policy ? { approvalPolicy: policy } : {}),
+          ...(sandbox
+            ? {
+                sandbox:
+                  sandbox === 'externalSandbox'
+                    ? { type: sandbox, networkAccess: 'enabled' }
+                    : {
+                        type: sandbox,
+                        networkAccess: false,
+                        writableRoots: [],
+                        excludeTmpdirEnvVar: false,
+                        excludeSlashTmp: false,
+                      },
+              }
+            : {}),
+        },
+      });
+      await withTimeout(sessionPromise, 'startSession inherit default');
 
-    const threadStart = processHandle.stdin.lines
-      .map(parseLine)
-      .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).not.toHaveProperty('approvalPolicy');
-    expect(threadStart.params).not.toHaveProperty('sandbox');
+      const threadStart = processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'thread/start');
+      expect(threadStart.params.approvalPolicy).toBe(
+        requested === 'auto' ? 'on-request' : undefined,
+      );
+      expect(threadStart.params).not.toHaveProperty('sandbox');
 
-    await adapter.stopAll();
-  });
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+      expect(configured.method).toBe('session.configured');
+      expect(configured.metadata?.approvalMode).toBe(expected);
+      expect(configured.metadata?.approvalPolicy).toEqual(policy);
+      await adapter.stopAll();
+    },
+  );
 
   test('native review isolation overrides writable approval modes on thread/start and every turn/start', async () => {
     processHandle = new FakeCodexProcess();
@@ -5038,6 +5730,7 @@ describe('CodexAdapter', () => {
       result: {
         thread: { id: 'codex-thread-applied-mode' },
         model: 'gpt-5-codex',
+        approvalPolicy: 'untrusted',
       },
     });
     await withTimeout(sessionPromise, 'startSession applied-mode');
@@ -5048,7 +5741,7 @@ describe('CodexAdapter', () => {
     const configured = await nextEvent(iterator, 'session.configured');
     expect(configured).toMatchObject({
       method: 'session.configured',
-      metadata: { approvalMode: 'auto' },
+      metadata: { approvalMode: 'ask' },
     });
 
     const turnPromise = adapter.sendTurn({
@@ -5472,7 +6165,7 @@ describe('CodexAdapter', () => {
       );
       expect(configured).toMatchObject({ approvalPolicy: 'never' });
       expect(configured).not.toHaveProperty('sandbox');
-      expect(configured).not.toHaveProperty('approvalMode');
+      expect(configured).toHaveProperty('approvalMode', 'connection-default');
     });
 
     test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
@@ -5647,7 +6340,10 @@ describe('CodexAdapter', () => {
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/station/app-homes/codex' },
+        {
+          CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-app-home',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -5703,10 +6399,13 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(started, 'startSession');
 
-      expect(processFactory).toHaveBeenCalledWith({ CODEX_HOME: profileHome }, [
-        '-c',
-        `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-      ]);
+      expect(processFactory).toHaveBeenCalledWith(
+        {
+          CODEX_HOME: profileHome,
+          STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
+        },
+        undefined,
+      );
       const events = [
         await nextEvent(iterator, 'session.started'),
         await nextEvent(iterator, 'session.configured'),
@@ -5950,6 +6649,7 @@ describe('CodexAdapter', () => {
         {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
           CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env',
         },
         undefined,
       );
@@ -5989,7 +6689,10 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/me/.codex_vibe' },
+        {
+          CODEX_HOME: '/Users/me/.codex_vibe',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env-only',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -6094,6 +6797,7 @@ describe('CodexAdapter', () => {
             OPENAI_API_KEY: '',
             CONNECTION_ONLY: 'kept',
             CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+            STATION_WORKLOAD_SESSION_ID: 'thread-profile-overlay',
           },
           undefined,
         );
@@ -6396,7 +7100,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await adapter.stopAll();
   });
 
-  test('SECURITY: delivers the built-in station-control server as a -c mcp_servers.station-control.url override with the minted per-session URL, never via env', async () => {
+  test('SECURITY: delivers the built-in Station credential through private thread config, never argv or env', async () => {
     const processHandle = new FakeCodexProcess();
     let capturedArgs: string[] | undefined;
     const mintStationControlMcpAuth = vi.fn(
@@ -6450,14 +7154,18 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     expect(mintStationControlMcpAuth).toHaveBeenCalledWith(
       'thread-station-control',
     );
-    expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control"',
-    ]);
+    expect(capturedArgs).toBeUndefined();
+    const configuredRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(configuredRequest.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:3141/mcp/station-control?token=minted-for-thread-station-control',
+    });
     // The exact env-never-crosses assertion: nothing in the spawn argv
     // (or anywhere else reachable from the adapter's call) carries the
     // real INTERNAL_API_TOKEN env-var name or an `env` key at all.
-    expect(JSON.stringify(capturedArgs)).not.toContain(
+    expect(JSON.stringify(capturedArgs ?? [])).not.toContain(
       'STATION_INTERNAL_API_TOKEN',
     );
 
@@ -6596,4 +7304,172 @@ test('external adoption forks the native thread and records its distinct child b
   });
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;
+});
+
+test.each(['start', 'resume', 'fork'] as const)(
+  'private Station MCP header configuration reaches Codex %s over stdin and is revoked on stop',
+  async (mode) => {
+    const process = new FakeCodexProcess();
+    const token = `private-${mode}-credential`;
+    const revoke = vi.fn();
+    let spawnArgs: string[] | undefined;
+    let spawnEnv: Record<string, string> | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: (env, args) => {
+        spawnEnv = env;
+        spawnArgs = args;
+        return process;
+      },
+      resolveSourceHome: () => '/fixture/codex-home',
+      mintStationControlMcpAuth: () => ({
+        url: 'http://127.0.0.1:41031/mcp/station-control',
+        token,
+      }),
+      revokeStationControlMcpAuth: revoke,
+    });
+    const sourceId = '0199a001-0000-7000-8000-000000000001';
+    const childId = '0199a001-0000-7000-8000-000000000002';
+    const input = {
+      provider: 'codex',
+      threadId: `private-${mode}`,
+      cwd: '/fixture/project',
+      agent: {
+        slug: 'agent',
+        toolServers: [
+          {
+            id: 'station-control',
+            transport: 'stdio' as const,
+            command: 'node',
+            args: [builtinStationControlServerPath()],
+          },
+        ],
+      },
+    };
+    const pending =
+      mode === 'fork'
+        ? adapter.adoptSession(
+            {
+              ...input,
+              sourceSessionId: sourceId,
+              sourceKind: 'codex-rollout',
+              sourceAffinity: {
+                kind: 'codex-config-home',
+                ref: 'a'.repeat(64),
+              },
+              sourceBoundary: {
+                kind: 'completed-turn',
+                providerTurnId: 'completed-one',
+                observedEventId: 'observed-one',
+              },
+            },
+            {
+              onProviderChildCreated: () => {},
+              onProviderChildCreationStarted: () => {},
+            },
+          )
+        : adapter.startSession({
+            ...input,
+            ...(mode === 'resume'
+              ? { resumeCursor: { codexThreadId: sourceId } }
+              : {}),
+          });
+    await flushIo();
+    process.stdout.write(
+      `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+    );
+    await flushIo();
+    const request = process.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === `thread/${mode}`);
+    expect(request.params.config).toEqual({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:41031/mcp/station-control',
+      'mcp_servers.station-control.http_headers': {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    expect(JSON.stringify(spawnArgs)).not.toContain(token);
+    expect(JSON.stringify(spawnEnv)).not.toContain(token);
+    process.stdout.write(
+      `${JSON.stringify({
+        id: '2',
+        result: {
+          thread: {
+            id: childId,
+            ...(mode === 'fork'
+              ? {
+                  forkedFromId: sourceId,
+                  threadSource: `station-adoption:${input.threadId}`,
+                  turns: [
+                    { id: 'completed-one', status: 'completed', items: [] },
+                  ],
+                }
+              : {}),
+          },
+          model: 'gpt-test',
+          cwd: '/fixture/project',
+          approvalPolicy: 'on-request',
+          sandbox: { type: 'workspaceWrite' },
+        },
+      })}\n`,
+    );
+    await pending;
+    await adapter.stopSession(input.threadId);
+    expect(revoke).toHaveBeenCalledWith(input.threadId);
+  },
+);
+
+test('cancelled Codex startup revokes the real private credential and a later start gets a fresh incarnation', async () => {
+  const processes: FakeCodexProcess[] = [];
+  const credentials: string[] = [];
+  const adapter = new CodexAdapter({
+    processFactory: () => {
+      const process = new FakeCodexProcess();
+      processes.push(process);
+      return process;
+    },
+    mintStationControlMcpAuth: (threadId) => {
+      const auth = mintStationControlMcpHeaderAuth(41031, threadId);
+      credentials.push(auth.token);
+      return auth;
+    },
+    revokeStationControlMcpAuth: revokeStationControlMcpToken,
+  });
+  const input = {
+    provider: 'codex',
+    threadId: 'private-rotation',
+    cwd: '/fixture/project',
+    agent: {
+      slug: 'agent',
+      toolServers: [
+        {
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+        },
+      ],
+    },
+  };
+  const cancelled = adapter.startSession(input);
+  const rejection = expect(cancelled).rejects.toThrow();
+  await flushIo();
+  expect(verifyStationControlMcpToken(credentials[0])).toBeDefined();
+  await adapter.stopSession(input.threadId);
+  await rejection;
+  expect(verifyStationControlMcpToken(credentials[0])).toBeUndefined();
+  const restarted = adapter.startSession(input);
+  await flushIo();
+  expect(credentials[1]).not.toBe(credentials[0]);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeDefined();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '1', result: { userAgent: 'fixture' } })}\n`,
+  );
+  await flushIo();
+  processes[1]!.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: 'restarted' }, model: 'gpt-test' } })}\n`,
+  );
+  await restarted;
+  await adapter.stopSession(input.threadId);
+  expect(verifyStationControlMcpToken(credentials[1])).toBeUndefined();
 });

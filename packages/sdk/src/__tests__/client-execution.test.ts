@@ -1,6 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ChatHttpError as ClientChatHttpError } from '../client';
+import { ChatHttpError as ClientChatHttpError, sentTurnKey } from '../client';
 import {
   continueExecutionMessage,
   ForegroundMessageIndeterminateError,
@@ -8,12 +8,139 @@ import {
   getConversationHandoffStatus,
   getTurnDelivery,
   handoffExecutionMessage,
+  queueExecutionMessage,
+  submitConversationSteer,
 } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
 import { ChatHttpError } from '../query-domains/chatRuntimeStream';
 
 describe('client execution', () => {
+  test.each([false, true])(
+    'queued input retains automatic background admission=%s on the wire',
+    async (automaticBackground) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              outcome: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'queued-key',
+              entry: { state: 'queued' },
+            },
+          }),
+          { status: 202 },
+        ),
+      );
+      vi.stubGlobal('fetch', fetcher);
+      await queueExecutionMessage('http://station.test', {
+        target: { agent: agentId('station') },
+        conversationId: 'conv',
+        clientTurnId: 'queued-key',
+        message: 'go later',
+        automaticBackground,
+      });
+      expect(fetcher.mock.calls[0][0]).toBe(
+        `http://station.test/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
+      );
+      expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({
+        whenBusy: 'queue',
+        clientTurnId: 'queued-key',
+      });
+    },
+  );
+
   afterEach(() => vi.unstubAllGlobals());
+
+  test('steering submits the observed session head and refuses an older Station without one', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { currentHead: '["session-a",7]' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              kind: 'steer',
+              state: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'k',
+              message: 'go',
+              expectedHead: '["session-a",7]',
+            },
+          }),
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, data: { entries: [] } })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'k',
+        message: 'go',
+      }),
+    ).resolves.toMatchObject({ kind: 'steer' });
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'steer',
+        key: 'k',
+        message: 'go',
+        expectedHead: '["session-a",7]',
+      }),
+    });
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'new',
+        message: 'no',
+      }),
+    ).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test('steering does not accept a receipt for a different key', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { currentHead: '["session-a",7]' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              kind: 'steer',
+              state: 'queued',
+              conversationId: 'conv',
+              clientTurnId: 'other',
+              message: 'go',
+            },
+          }),
+          { status: 202 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      submitConversationSteer('http://station.test', 'conv', {
+        key: 'k',
+        message: 'go',
+      }),
+    ).rejects.toThrow();
+  });
 
   test('sends the canonical target to the controlling Station', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -80,6 +207,7 @@ describe('client execution', () => {
         agent: agentId('station'),
       },
       automaticBackground: true,
+      clientTurnId: 'background-key',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -88,6 +216,7 @@ describe('client execution', () => {
         body: JSON.stringify({
           message: 'Replay later',
           target: { environment: { kind: 'current' }, agent: 'station' },
+          clientTurnId: 'background-key',
         }),
       }),
     );
@@ -132,13 +261,131 @@ describe('client execution', () => {
               clientTurnId: 'queued-key',
               message: 'waiting',
             });
-      await expect(pending).rejects.toMatchObject({
+      const caught = await pending.catch((error: unknown) => error);
+      expect(caught).toMatchObject({
         name: 'ForegroundMessageQueuedError',
         status: 202,
         outcome: 'queued',
         receipt,
       });
+      expect(sentTurnKey(caught)).toBe('queued-key');
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(['send', 'continue'] as const)(
+    '%s returns its generated wire key and chooses a fresh key for another call',
+    async (kind) => {
+      const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                conversationId: 'conv-keys',
+                sessionId: 'session-keys',
+                providerTurnId: 'turn-keys',
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const send = () =>
+        kind === 'send'
+          ? sendExecutionMessage('http://station.test', {
+              message: 'hello',
+              target: { agent: agentId('station') },
+            })
+          : continueExecutionMessage('http://station.test', 'conv-keys', {
+              message: 'hello',
+            });
+      const first = await send();
+      const second = await send();
+      const keys = fetchMock.mock.calls.map(
+        ([, init]) => JSON.parse(String(init?.body)).clientTurnId,
+      );
+      expect(keys[0]).toEqual(expect.any(String));
+      expect(keys[0]).not.toBe(keys[1]);
+      expect(first).toMatchObject({ clientTurnId: keys[0] });
+      expect(second).toMatchObject({ clientTurnId: keys[1] });
+    },
+  );
+
+  test.each(['send', 'background', 'continue'] as const)(
+    '%s retains the exact wire input when an uncertain send is deliberately retried',
+    async (kind) => {
+      const failure = Object.freeze(
+        new TypeError('Response lost after sending.'),
+      );
+      const bodies: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          throw failure;
+        }),
+      );
+      const send = (clientTurnId?: string) =>
+        kind === 'continue'
+          ? continueExecutionMessage(
+              'http://station.test',
+              'retry-conversation',
+              { message: 'same input', clientTurnId },
+            )
+          : sendExecutionMessage('http://station.test', {
+              conversationId: 'retry-conversation',
+              message: 'same input',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+              ...(kind === 'background' ? { automaticBackground: true } : {}),
+              clientTurnId,
+            });
+      const first = await send().catch((error: unknown) => error);
+      expect(first).toBe(failure);
+      const key = sentTurnKey(first);
+      expect(key).toEqual(expect.any(String));
+      const second = await send(key).catch((error: unknown) => error);
+      expect(second).toBe(failure);
+      expect(sentTurnKey(second)).toBe(key);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(bodies[0]);
+    },
+  );
+
+  test('continuation preserves a frozen transport error and its supplied key', async () => {
+    const failure = Object.freeze(new TypeError('The answer was lost.'));
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(failure));
+    const caught = await continueExecutionMessage(
+      'http://station.test',
+      'conv-keys',
+      {
+        message: 'hello',
+        clientTurnId: 'continue-key',
+      },
+    ).catch((error: unknown) => error);
+    expect(caught).toBe(failure);
+    expect(sentTurnKey(caught)).toBe('continue-key');
+  });
+
+  test.each(['', '   ', 'x'.repeat(201), 42, null])(
+    'rejects invalid continuation key %j before any request',
+    async (clientTurnId) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        Reflect.apply(continueExecutionMessage, undefined, [
+          'http://station.test',
+          'conv-keys',
+          {
+            message: 'hello',
+            clientTurnId,
+          },
+        ]),
+      ).rejects.toThrow(TypeError);
+      expect(fetchMock).not.toHaveBeenCalled();
     },
   );
 

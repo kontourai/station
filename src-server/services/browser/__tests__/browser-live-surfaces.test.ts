@@ -8,13 +8,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createLiveSurfaceRoutes } from '../../../routes/live-surface.js';
-import { LiveSurfaceRegistry } from '../../live-surface/registry.js';
+import {
+  claimHumanControl,
+  LiveSurfaceRegistry,
+} from '../../live-surface/registry.js';
 import { createBrowserProjectAuthorizer } from '../browser-access.js';
 import {
   type BrowserHost,
   type CdpTransport,
   createLocalBrowserHostResolver,
 } from '../browser-host.js';
+import { withBrowserHumanControl } from '../browser-human-control.js';
 import {
   BrowserLiveSurfaces,
   browserSurfaceId,
@@ -192,6 +196,40 @@ async function openSession(
 }
 
 describe('BrowserLiveSurfaces registration', () => {
+  test('human chrome work is fenced when another person takes control', async () => {
+    const h = harness();
+    const session = await openSession(h.sessions, OPERATOR);
+    const entry = h.surfaces.get(
+      h.binder.surfaceIdFor(session.browserSessionId)!,
+    )!;
+    const request = requestAs('operator', '/api/browser/sessions/x/zoom');
+    let afterTakeover = false;
+    await expect(
+      withBrowserHumanControl(
+        {
+          entry,
+          request,
+          human: {
+            kind: 'human',
+            principal: 'human:local:operator',
+            device: 'device:operator',
+          },
+          current: () => true,
+        },
+        async (guard) => {
+          guard();
+          claimHumanControl(entry, {
+            kind: 'human',
+            principal: 'human:local:operator',
+            device: 'device:other',
+          });
+          guard();
+          afterTakeover = true;
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'control-interrupted' });
+    expect(afterTakeover).toBe(false);
+  });
   test('a live session registers a surface named for its session and generation', async () => {
     const { sessions, surfaces, binder } = harness();
     const session = await openSession(sessions, OPERATOR);

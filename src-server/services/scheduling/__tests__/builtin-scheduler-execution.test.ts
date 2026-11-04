@@ -721,7 +721,10 @@ describe('executeSchedulerJobAttempt', () => {
       outbox: spy.outbox,
     });
     const [first] = await notificationService.list();
-    expect(first).toMatchObject({ status: 'delivered', body: 'first failure' });
+    expect(first).toMatchObject({
+      status: 'delivered',
+      title: 'An automation failed',
+    });
     expect(await notificationService.dismiss(first!.id)).toBe('dismissed');
 
     await announceSchedulerJobFailure({
@@ -738,7 +741,8 @@ describe('executeSchedulerJobAttempt', () => {
       (entry) => entry.status === 'delivered',
     );
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]).toMatchObject({ body: 'second failure' });
+    expect(delivered[0]).toMatchObject({ title: 'An automation failed' });
+    expect(delivered[0]!.id).not.toBe(first!.id);
     // Stamped because a notification really was written for THIS run.
     expect(spy.markAnnounced).toHaveBeenCalledWith(
       'run-b-1',
@@ -788,10 +792,13 @@ describe('executeSchedulerJobAttempt', () => {
       outbox: spy.outbox,
     });
 
-    const bodies = (await notificationService.list()).map(
-      (entry) => entry.body,
-    );
-    expect(bodies).toContain('failure after the lease');
+    const notices = await notificationService.list();
+    expect(notices).toHaveLength(2);
+    expect(
+      notices.some(
+        (entry) => entry.id !== existing!.id && entry.status === 'delivered',
+      ),
+    ).toBe(true);
     expect(spy.markAnnounced).toHaveBeenCalledWith(
       'run-d-1',
       'token-for-run-d-1',

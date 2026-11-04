@@ -1,3 +1,4 @@
+import { currentAgentTurn, RuntimeError } from '@kontourai/agent-runtime';
 import {
   mcpToolApprovalKey,
   resolveAuthoredToolApproval,
@@ -26,6 +27,7 @@ import {
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { parseToolName } from '../../utils/tool-name-normalizer.js';
+import { waitDurableToolApproval } from '../agents/durable-agent-tools.js';
 import { CompletionHandler } from '../streaming/handlers/CompletionHandler.js';
 import { MetadataHandler } from '../streaming/handlers/MetadataHandler.js';
 import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
@@ -213,51 +215,62 @@ export function createElicitationCallback(
 
       // Parse tool name for UI display
       const { server, tool } = parseToolName(toolName);
+      return waitDurableToolApproval(
+        approvalId,
+        MS_PER_MINUTE,
+        (approvalId, timeoutMs) => {
+          if (currentAgentTurn() && approvalRegistry.has(approvalId))
+            throw new Error(
+              'This durable approval already has a pending registry wait.',
+            );
+          logger.info(
+            '[Elicitation] NOT auto-approved, injecting approval request',
+            {
+              approvalId,
+              toolName,
+              originalName: toolMapping?.original,
+              autoApproveList: autoApprove,
+            },
+          );
 
-      logger.info(
-        '[Elicitation] NOT auto-approved, injecting approval request',
-        {
-          approvalId,
-          toolName,
-          originalName: toolMapping?.original,
-          autoApproveList: autoApprove,
+          // Inject event (will appear at next chunk boundary)
+          injectableStream.inject({
+            type: 'tool-approval-request',
+            approvalId,
+            toolName,
+            server,
+            tool,
+            toolDescription: request.toolDescription,
+            toolArgs: request.toolArgs,
+            purpose: request.purpose,
+          } as unknown as any);
+
+          // Wait for user approval
+          const conversationId = getConversationId();
+          return approvalRegistry.register(approvalId, {
+            timeoutMs,
+            metadata: {
+              agentName: agentSpec.name,
+              conversationId,
+              // Only for the relayed conversation itself.
+              ...(orchestrationThreadId &&
+              orchestrationThreadId === conversationId
+                ? { orchestrationThreadId }
+                : {}),
+              description:
+                typeof request.toolDescription === 'string'
+                  ? request.toolDescription
+                  : undefined,
+              server,
+              source: 'runtime',
+              title: toolMapping?.original || toolName,
+              tool,
+              toolName,
+              purpose: request.purpose,
+            },
+          });
         },
       );
-
-      // Inject event (will appear at next chunk boundary)
-      injectableStream.inject({
-        type: 'tool-approval-request',
-        approvalId,
-        toolName,
-        server,
-        tool,
-        toolDescription: request.toolDescription,
-        toolArgs: request.toolArgs,
-        purpose: request.purpose,
-      } as unknown as any);
-
-      // Wait for user approval
-      const conversationId = getConversationId();
-      return approvalRegistry.register(approvalId, {
-        metadata: {
-          agentName: agentSpec.name,
-          conversationId,
-          // Only for the relayed conversation itself.
-          ...(orchestrationThreadId && orchestrationThreadId === conversationId
-            ? { orchestrationThreadId }
-            : {}),
-          description:
-            typeof request.toolDescription === 'string'
-              ? request.toolDescription
-              : undefined,
-          server,
-          source: 'runtime',
-          title: toolMapping?.original || toolName,
-          tool,
-          toolName,
-          purpose: request.purpose,
-        },
-      });
     }
     return false;
   };
@@ -275,6 +288,7 @@ export function createStreamingPipeline(
     userId: string | undefined;
     traceId: string;
     plugin?: string;
+    preserveInputChunks?: boolean;
     /** Engine + model, carried onto tool events so they can be grouped by them (archive#3074). */
     provider?: string;
     model?: string;
@@ -291,7 +305,12 @@ export function createStreamingPipeline(
 
   // Add handlers in order (elicitation handled via callback + injectable stream)
   pipeline
-    .use(new ReasoningHandler({ enableThinking: true }))
+    .use(
+      new ReasoningHandler({
+        enableThinking: true,
+        preserveInputChunks: contextData.preserveInputChunks,
+      }),
+    )
     .use(new ToolCallHandler())
     .use(metadataHandler)
     .use(completionHandler);
@@ -461,6 +480,11 @@ function outwardFailureStatus(error: unknown): {
  * outward generic.
  */
 export function outwardTurnFailureText(error: unknown): string {
+  if (
+    error instanceof RuntimeError &&
+    error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+  )
+    return 'This response reached the durable output limit. Its saved output is preserved; start a new turn to continue.';
   const { statusCode, statusInferred } = outwardFailureStatus(error);
   if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
   if (statusCode !== undefined)
@@ -477,8 +501,8 @@ export function outwardTurnFailureText(error: unknown): string {
 /**
  * Write SSE error.
  *
- * The text is always the fixed outward generic; the provider's own message
- * never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
+ * Provider failures use the fixed outward generic; a typed durable output limit
+ * uses Station's fixed limit sentence. The provider's own message never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
  * a bare integer carries no provider-controlled text, and it is what lets
  * the station-agent relay tell the user WHY the turn failed ("rejected the
  * credentials", "rate-limited") instead of only that it did. An inferred
@@ -493,7 +517,15 @@ export async function writeSSEError(
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
-      errorText: outwardTransportError('sse'),
+      errorText:
+        error instanceof RuntimeError &&
+        error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+          ? outwardTurnFailureText(error)
+          : outwardTransportError('sse'),
+      ...(error instanceof RuntimeError &&
+      error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+        ? { code: error.code }
+        : {}),
       statusCode,
       ...(statusCode === 429
         ? { failureKind: modelProviderFailureKind(error) }

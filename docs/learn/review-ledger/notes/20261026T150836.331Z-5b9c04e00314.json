@@ -1,0 +1,7 @@
+{
+  "revision": "7eab2f3b904885c6fca78e9475283273d487aa84",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Checked against the staged-attachment hydrate fix (bindAndHydrate now returns exactly ChatAttachmentInput, no clientAttachmentId) and the retained-turn decode tolerating the legacy field: no claim here describes the hydrated attachment shape or retained-envelope attachment keys, so the text stays accurate.","inputs":["packages/monument/README.md","src-server/services/orchestration/prepared-turn-intent.ts"]}
+  ]
+}

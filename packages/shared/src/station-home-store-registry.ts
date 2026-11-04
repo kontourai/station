@@ -21,7 +21,8 @@
  * - `external`: content kept in the home that an update does not snapshot
  *   or roll back: the default project directories under `workspaces/`
  *   (users' repositories, with their `node_modules` and its symbolic links),
- *   left in place exactly as the trial left it. Copying it made every update
+ *   left in place exactly as the trial left it. Versioned media-tools installs
+ *   are also external: downloads for a new pin leave the old version intact. Copying it made every update
  *   backup as large as the user's code (#2675 D review).
  *   Accepted gap, stated plainly: `workspaces/` is NOT free of
  *   Station-versioned data. Station writes `<project>/.station/` stores into
@@ -37,8 +38,9 @@
  * `__tests__/station-home-store-registry.test.ts` fails CI when Station's own
  * source names a home root that is missing here.
  *
- * The same `live` set is what `station home backup` leaves out, so the two
- * backups cannot disagree about what is product data.
+ * Both backup kinds omit `live` roots and re-acquirable `media-tools`. Full
+ * home backups still include other in-home external content; update snapshots
+ * omit all external paths.
  */
 export type StationHomeRootClass = 'state' | 'live' | 'external';
 
@@ -52,6 +54,7 @@ export const STATION_HOME_ROOTS: Readonly<
   '.review-evidence-coordination': 'state',
   '.storage-transactions': 'state',
   'action-operations.json': 'state',
+  'attention-snoozes.json': 'state',
   'agent-plugin-data': 'state',
   agents: 'state',
   analytics: 'state',
@@ -72,9 +75,11 @@ export const STATION_HOME_ROOTS: Readonly<
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
+  'conversation-work-state.json': 'state',
   coordination: 'state',
   data: 'state',
   'delegation-attempt-claims.json': 'state',
+  'create-request-claims.json': 'state',
   devices: 'state',
   environments: 'state',
   feedback: 'state',
@@ -88,17 +93,24 @@ export const STATION_HOME_ROOTS: Readonly<
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
+  // Versioned, pinned downloads are re-acquirable; trials retain older pins.
+  'media-tools': 'external',
   'notifications.json': 'state',
+  'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
   'plugin-grants.json': 'state',
   'plugin-install-publication.mutation': 'state',
+  // Install trust records; rolled back with the installation journal that
+  // tracks their migration, so the two stay consistent.
+  'plugin-trust.json': 'state',
   plugins: 'state',
   pricing: 'state',
   'project-creation-requests': 'state',
   'project-resource-shadow.json': 'state',
   // Private source selections and AWS profile names; credentials stay with AWS.
   'project-s3-sources.json': 'state',
+  'project-working-configuration': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
@@ -113,11 +125,18 @@ export const STATION_HOME_ROOTS: Readonly<
   'setup-imports.json': 'state',
   skills: 'state',
   'station-home-recovery.json': 'state',
+  'task-captures': 'state',
   'task-graph.json': 'state',
   'task-outputs': 'state',
   'terminal-history': 'state',
+  // Durable terminal session identities and their bounded output journals.
+  'terminal-journals': 'state',
+  'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
+  // #3483: durable untrusted-content marks per conversation. A protection,
+  // so it is restored with the conversations it marks.
+  'untrusted-conversation-marks.json': 'state',
   vectordb: 'state',
   workflows: 'state',
   'workspace-home-role.json': 'state',
@@ -256,7 +275,9 @@ export function containsExternalStationHomePath(
  */
 export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
   Object.freeze([
+    // Includes chat-app links, bindings, kill switches and delivery receipts.
     ['data', 'orchestration.sqlite'],
+    ['data', 'agent-runtime', 'steps.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],
     ['authentication', 'application-sessions.sqlite'],

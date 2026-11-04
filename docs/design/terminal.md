@@ -1,23 +1,388 @@
 # Integrated terminal
 
-Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Also implemented: the script runner, agent terminal tools with per-run approval, and Add to chat as a composer chip (see [Agent integration](#agent-integration)). Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
-> stack end to end. Nothing here is implemented yet; the current behavior is
-> owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),
-> the [terminal WebSocket server](../../src-server/services/terminal/terminal-ws-server.ts),
+> stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
+> owned by [`TerminalSessions`](../../src-server/services/terminal/terminal-sessions.ts),
+> the [terminal gateway](../../src-server/services/terminal/terminal-gateway.ts),
 > and [`TerminalPanel`](../../src-ui/src/components/coding-layout/TerminalPanel.tsx).
 > Station's implementation is written independently; no code is ported from
 > other products.
 
+## First implementation boundary (#3994, part a)
+
+The new [TerminalSessions service](../../src-server/services/terminal/terminal-sessions.ts) owns server-generated UUIDs, immutable
+Project/binding scope, realpath-confined launch directories, durable session
+metadata, and sanitized sequence journals. `ShellHost` returns a process handle
+whose write, resize, signal and exit operations can later proxy a supervisor
+workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts) uses the existing node-pty adapter. The [journal](../../src-server/services/terminal/terminal-journal.ts), [stream filter](../../src-server/services/terminal/terminal-output-sanitizer.ts), and [real PTY tests](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts) own the storage/filter evidence. Under a supervisor that grants
+`workloads` (protocol 1.3), the supervisor's workload host owns the PTY and its
+journal, and the core reads it through the workload protocol (see Shell host
+below); otherwise the service owns both.
+
+A personal-operator HTTP control seam at
+`/api/projects/:slug/terminal-sessions` exercises the production service without
+shipping another emulator. It supports project bindings and `thread:<id>`
+bindings resolved through the existing authorized session/worktree resolver.
+Standalone worktree keys are refused until a server-owned binding resolver
+exists. The API reference describes its requests and limits.
+
+This seam admits only a current operator acting in person on a personal host.
+Account, hosted, paired-device, agent and plugin access is refused. Its service
+checks observe versus operate authority separately. HTTP list/journal reads
+explicitly require `terminal:observe`; creation, input, resize and deletion
+require `terminal:operate`. Operate also permits observing. The observe token
+is explicit operator promotion only; no preset, default or existing grant is
+changed. The in-person operator restriction still applies after ingress. Observer tests exercise that service
+boundary with an injected authority; they do not prove pairing or remote grants.
+At this boundary the old socket, Coding UI, process projections, and project
+close endpoint still used the legacy service; Delivery 6 removed it.
+
+Session metadata and journal output survive disposal and a new service instance.
+In-process shells do not survive server exit, and restored sessions are ended
+and never execute their old input again. Supervisor workloads do survive (see
+Shell host). Opening with a legacy terminal id imports
+a provenance-bound history filename once and retains the mapping in the durable
+record. The legacy writer emits a receipt only for a fresh file or a previously
+verified receipt; it records the Project id captured when the shell opened,
+original session id and
+a digest of the bytes. A pre-existing raw file is never retroactively assigned
+an owner on rewrite. Unowned files, a wrong first claimant, colliding old
+filenames, changed receipt bytes and interrupted imports are refused. Existing
+unowned history stays on disk for explicit ownership recovery, which remains
+follow-up work. Stored browser tabs
+are not migrated by this tranche.
+
+The journal retains known cursor, editing, scrolling, SGR, mode, charset, title
+and hyperlink controls. Other control functions, including DCS graphics,
+clipboard/palette extensions and terminal queries/replies, are omitted. ESC and
+C1 introducers restart pending parsing consistently, including across callbacks.
+This conservative rendering subset is not full VT/emulator fidelity; extending
+it requires a rendering contract and security review.
+
+Journal limits are constructor configuration: disk defaults to 16 MiB and 5,000
+lines; memory to 2 MiB and 5,000 lines, with 64 KiB disk segments. Whole records
+and oldest segments are evicted, so retained history can be smaller than a limit.
+`persist: false` keeps only the memory tail. Output records never split Unicode
+code points. A resume older than retained output reports `reset`; the caller
+must replace its replay. Reads serialize with appends and compaction. Ordinary PTY
+bursts pause read delivery at half of the bounded writer capacity and resume
+at or below a quarter. Queued callbacks coalesce into segment appends; reads seal
+the pending batch and remain ordered between surrounding appends. A storage failure marks the session failed and its journal unavailable.
+An exit observed while read delivery is paused does the same: node-pty may tear down
+the socket before its public exit callback, so complete final output cannot
+be established. While paused, the POSIX adapter polls the owned child's status
+starting at 50 ms with exponential backoff capped at one second. Only a positive
+Z/E exit status or a normal, empty, diagnostic-free `ps` exit 1 releases paused delivery
+and retains output uncertainty on the exit event. Observation failures stay
+paused and retry; storage drain still resumes delivery normally. Such an exit
+is never reported as clean.
+Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
+queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
+a backend that ignores backpressure or an explicitly undersized queue can
+still exceed that hard bound. Such overload is latched and uses the same owned
+HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+default limits. The real PTY suite sends 8 MiB through disk and memory modes,
+checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
+service and reads its journal after clean disposal. This provides
+filesystem persistence across service recreation, not power-loss qualification.
+
+The retention settings, clear-history actions and doctor reporting have since
+shipped (see [Journal](#journal) and [Migration](#migration)). Restart and
+command sessions have their server side (see Session kinds and Sessions below);
+the UI offers Restart shell for an exited shell and runs package scripts as
+command sessions with their own tabs; ACP command sessions have no UI.
+`terminal:observe` is
+governed by the Admin ceiling; no preset gains it. Its description names future
+remote-watch admission. The complete scope vocabulary uses 253 of the parser's
+256 characters, leaving three characters. Part b1 adds the personal-operator socket
+below; part b2 adds device admission, the SDK runtime and the Coding cutover;
+phase 3 adds the Ghostty view.
+
+## Transport implementation boundary (#3994, part b1)
+
+[TerminalGateway](../../src-server/services/terminal/terminal-gateway.ts) mounts
+`/api/terminal/socket` on the main API listener through the
+[Station Hono provider](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts).
+Every connection, including loopback, must pass the existing first-frame auth
+protocol. The runtime sends its credential through the normal HTTP admission
+pipeline and retains that authenticated Request for per-operation checks.
+Part b1 admitted only the operator in person through a first-frame credential;
+part b2 (below) replaces that with ticket admission before the upgrade and
+admits the operator's own paired devices. Account, hosted, member, agent and
+plugin admission stays refused. No request-supplied principal, cwd or
+executable is accepted.
+
+[TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
+serializes open, attach, list, input, resize, restart, close and detach. Only
+adjacent resizes on the same channel coalesce; input and lifecycle commands are
+barriers. Restart answers `done` with `restartedAfterSeq` (see Sessions below).
+The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
+input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
+four-byte channel, eight-byte sequence, big-endian). JSON controls and the
+bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-operator-transport).
+
+The journal remains the single output source. Invalidation subscribes before
+attach reads, and reads serialize with appends/compaction. Gateway reads are
+paged to 64 KiB; live and replay output both use the journal's sanitizer.
+Each channel also admits at most 128 unacknowledged output frames, including
+sanitized empty frames. ACKs release slots so a replay can span bounded pages.
+The attachment advertises this limit to new clients; older clients can ignore it.
+A retained resume sends only records after `fromSeq`. Lost retention sends an
+explicit reset after outstanding output drains. Clients must acknowledge
+replay before input is accepted. Input sequences start at one on each new
+channel; duplicate or skipped input is refused. Input is never retried by the
+server, and channel ids cannot be reused on a socket. A reconnect replays only
+output; callers must not resend input with an uncertain outcome.
+
+`terminal:observe`, added by the part (a) ingress hardening, uses explicit operator
+promotion only. No default grant, preset or stored credential gains it. The
+shared scope predicate permits observe to read and operate to read/write;
+the production personal-operator gate remains an additional restriction.
+The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+uses injected identities and current grants with real PTYs. Its observer and
+revocation evidence qualifies that gateway/service boundary, not live pairing.
+The listener integration suite proves the registered gateway mounts and stops
+on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+
+The gateway evidence stops at b1. The public SDK's output-only
+[`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
+adds authenticated attachment, applied-output credit and bounded reconnect for
+an existing terminal. Its real-gateway consumer tests cover loopback
+authentication, bounded PTY replay and first-frame refusal; its transport controls cover reset ordering,
+revocation and disposal. It does not open or operate a shell or replace the
+Coding view. See the [SDK contract](../reference/sdk.md#terminal-output-sessions).
+
+Part b2 below delivers device admission, the session store and the Coding
+cutover.
+
+## Operator devices and Coding cutover (#3994, part b2)
+
+Owner decision (2026-10-31): every one of the operator's own paired devices is
+the operator for terminals: a browser through a same-origin proxy, a tailnet
+name or the relay's HTTP route, and the Desktop, iOS and Android shells. A
+device tied to no person, not a delegation grant and not a personal token is
+the operator's own ([`isOperatorsOwnDevice`](../../src-server/security/coding-authority.ts));
+members stay refused. The [threat model](../security/remote-access-threat-model.md#terminal-socket-on-operator-devices-3994)
+records the admission and its residual risks.
+
+- **Through the UI server.** The CLI's [UI server](../../packages/cli/src/commands/lifecycle.ts)
+  forwards only the `/api/terminal/socket` upgrade to the API listener and
+  strips every `x-station-*`, `tailscale-*` and forwarding header, so a phone
+  that reached Station through the UI port or a tailnet name opens the same
+  socket. Other upgrades are dropped.
+- **Ticket admission before upgrade.** `POST /api/terminal/tickets` mints a
+  [single-use 30-second ticket](../../src-server/services/terminal/terminal-tickets.ts)
+  through ordinary HTTP admission; the socket offers it as a subprotocol and
+  the [gateway](../../src-server/services/terminal/terminal-gateway.ts)
+  redeems it before allocating anything. The first-frame path and its pending
+  budget are gone, closing the slot-holding gap the previous section described.
+  Native shells mint through their host transport; no Rust WebSocket bridge.
+- **Fairness and liveness (#4077).** 64 sockets, eight per identity, eight
+  reserved for the operator in person; nothing keyed by address, so a shared
+  relay or proxy address cannot lock others out. Protocol ping/pong terminates
+  half-open peers, a socket lives at most an hour, and every capacity or
+  lifetime close falls back to terminate after one second.
+- **Server-resolved programs.** Socket `open` takes a launch profile name
+  (`shell`, or an `agent` connection and live mode) that the server resolves
+  from saved configuration, a `legacyTerminalId` for the one-time history
+  import, and nothing else. A missing PTY backend reports `pty-unavailable`
+  with the server's reason, so Coding falls back to `POST /api/coding/exec`.
+  A `cwd` operation (operate authority) feeds Send to chat.
+- **Legacy consumers re-pointed.** Engine sign-in starts a server-owned
+  launch in `TerminalSessions` under a scope no Project can take and the panel
+  attaches by id. `DELETE /api/projects/:slug/terminals/:id` and the
+  `/api/orchestration/processes/terminals*` projections accept socket session
+  ids under the caller's own terminal authority, keeping their shapes.
+- **SDK store.** [`TerminalSessionStore`](../../packages/sdk/src/client/terminal-session-store.ts)
+  multiplexes every session on one socket per Station, coalesces input per
+  frame, keeps resize latest-wins, buffers bounded output for late
+  subscribers, resumes each channel from its applied sequence with backoff and
+  wakes on `online` or visibility. Its `TerminalSession` interface is what a
+  renderer consumes; the later Ghostty view uses the same interface.
+- **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
+  keeps the session lifecycle and selection hand-off on the store and renders
+  through the public `TerminalView` ([emulator boundary](#emulator-implementation-boundary-3994-phase-3)),
+  which owns the theme, input and the mobile key row. Tabs derive from the
+  server's session list for the Project
+  binding, read through one shared query, so every view of it (the lower
+  panel, a dock region, another device) shows the same tabs; only a tab whose
+  session is not open yet is a view's own. An empty panel opens a shell only
+  after that list says the binding has none, so a new browser tab or device
+  adopts the running shells. That first shell is opened through
+  `POST /api/projects/:slug/terminal-sessions` with `adopt`, which answers
+  with the binding's running shell when it has one; opens are serialized, so
+  two clients opening an empty binding at once get one shell. A shell's
+  default name is the `ordinal` the server stored when it opened ("Shell N",
+  never reused while any record of the binding remains), so views agree on it
+  and neither closing one nor evicting the oldest ended ones renames another. The Coding layout's lower panel yields to a
+  dock region showing `coding:terminal`, and opening it there moves the
+  Terminal back: one view of the shells at a time. Saved
+  `coding-terminal-tabs` are migrated once into the first Project that opens:
+  labels kept, the old id named for history import, any stored program
+  dropped; unowned history falls back to a fresh shell. No group or split
+  record is added.
+
+The real-socket evidence is in the
+[admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
+(platform-independent, real sockets and the SDK store, scripted PTY) and the
+POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
+Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+(DataChannel) route are not qualified: the broker route has no socket path and
+stays refused at the client. The legacy listener, port discovery and
+`TerminalService` are removed (Delivery 6).
+
+### Whole-store retention and process custody
+
+The service reserves each retained record's per-terminal history limit and
+raw in-memory tail limit against whole-store budgets (defaults: 1 GiB disk,
+64 MiB of raw tail payload and 32 records). The smallest budget-derived slot
+count governs admission; a single journal that cannot fit is refused. The
+disk limits are the [retention settings](#journal); the record and tail
+budgets remain core constructor controls, not a measured process-RSS bound.
+With the default settings, at most 32 journal instances/tails and 512 MiB of
+journal files can be retained.
+
+Agent command sessions (`kind: 'command'`, #4453) are retained in their own
+pool of 16 records, with output capped per command, apart from every other
+session. A pool only expires its own ended records, so a busy agent can never
+expire a person's shell history, and commands get no shell number and are
+never restored.
+
+When a slot is needed, the oldest ended or failed record in the same pool,
+eligible for the caller's operate authority, expires: its journal and cache entry are discarded
+and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
+records therefore do not consume admission forever. A caller cannot evict
+another Project/binding it cannot operate. Startup applies the same fixed
+retention policy as trusted store maintenance, including to older homes with
+more records or larger previous per-journal settings. Expired UUIDs are refused;
+retention does not implicitly launch a replacement. Legacy raw history retains
+its separate migration ownership and limits.
+
+The [node-pty backend](../../src-server/adapters/node-pty-adapter.ts) now exposes
+an owned termination operation. On POSIX it uses a bounded process census,
+matches both descendants and the owned controlling tty (including reparented
+jobs), freezes each discovered process group, then kills
+the quiescent groups with children before parents. Job-control groups, nohup
+and HUP-ignoring jobs no longer rely on the shell's HUP handler. Cleanup
+failures are reported; missing census support cannot become successful close.
+The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
+unknown or changed tty identity refuses all census signals; the adapter kills
+its owned shell handle and reports the cleanup failure instead of guessing
+at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
+The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
+other POSIX hosts and already-daemonized workloads are not newly qualified;
+supervisor workload custody remains the route to stronger survival/cleanup.
+A fully detached `setsid` job that has lost both ancestry and its controlling
+tty is outside this census. A real-PTY negative control observes that survivor
+and cleans it up independently; close does not qualify daemon custody.
+
+### Replay controls before Ghostty
+
+The socket and HTTP read route apply a second streaming filter to stored and
+live output. HTTP replay refuses more than 64 KiB of journal payload with 413;
+it never returns a silently truncated page.
+OSC 8 hyperlinks admit only absolute `http:` and `https:` URLs; `file:`,
+`javascript:`, malformed URLs and URI control bytes are omitted while link text
+remains visible. Filtering preserves journal sequence identities. Credit is
+charged for transmitted bytes, and parser state advances only after a record
+fits. The minimum window is 16 KiB so a buffered allowed rendering control can
+complete inside one credit window.
+
+OSC 0/1/2 titles and bidi characters in otherwise valid https URIs deliberately
+remain terminal content. Scheme validation prevents active local/script links;
+visual spoofing remains the renderer's responsibility, so these values grant
+no Station or navigation authority.
+
+Part b1 let any reachable peer hold one of 32 pending first-frame slots, which
+could lock the operator out. Part b2 removed that path: admission is
+ticket-bound before upgrade, with per-identity fairness, reserved operator
+slots and no address-keyed state (see
+[part b2](#operator-devices-and-coding-cutover-3994-part-b2)). Socket data pauses above 2 MiB of queued wire bytes and retries
+on the heartbeat; cursor/filter state advances only after sending. Control
+replies have a separate 256 KiB reserve before close code 4429. Frame overhead
+therefore cannot close a client merely for using its channel credit.
+
+A current observer's complete mouse/focus reports are acknowledged as discarded,
+including while replaying. They never reach the shell. Ordinary observer input
+and all observer lifecycle mutations remain refused. Fragmented or unsupported
+reports are refused rather than forwarded. Permission checks still use the
+stored session's Project/binding and the current authority.
+
+Ghostty must treat OSC 0/1/2 titles as untrusted terminal state, never as HTML,
+a Station identity, browser navigation or native-window authority; replay must
+not overwrite application chrome. ESC c reset, CSI repeat counts and mouse,
+focus and paste modes remain part of the conservative rendering subset. The
+Ghostty adapter needs bounded parsing/rendering work, an explicit reset/title
+contract and detached reply/report writers during replay. This tranche does
+not qualify those emulator behaviors or establish full VT fidelity.
+
+## Emulator implementation boundary (#3994, phase 3)
+
+[`TerminalView`](../reference/sdk.md#terminal-view) is Station's surface over
+Ghostty's `libghostty-vt`, compiled to WebAssembly from the Ghostty v1.4.0 tag
+(`83fb956`) with Zig 0.17.0 by
+[`scripts/ghostty-vt/build-wasm.mjs`](../../scripts/ghostty-vt/build-wasm.mjs).
+The vendored module omits Kitty graphics and state snapshots. Station's adapter
+is written from Ghostty's public headers; its struct offsets and enum values
+are checked against the module's own `ghostty_type_json()` manifest.
+
+The emulator runs in a Web Worker. Only rows the render state marks dirty
+cross to the UI thread, named by stable row ids; one frame is in flight at a
+time and hidden terminals produce none. A view copies the output it posts to
+its worker, so views sharing one store session (a put-away dock region and
+the lower panel) each keep theirs, and a view with no box never resizes the
+shared PTY. Replayed journal output updates the
+screen with the reply writer and bell detached, so a reattach cannot type
+query answers at the prompt. Program titles stay untrusted text. Links admit
+only `http:`/`https:` URLs and `path:line[:col]`; OSC 8 targets are read
+through `ghostty_grid_ref_hyperlink_uri` and pass the same scheme check.
+
+Accessibility follows [Accessibility](#accessibility): the mirror is Ghostty's
+plain-text formatting of scrollback and screen (emulator rows, not bytes) and
+is kept only in screen reader mode; announcements are coalesced to one per
+second with a length cap; Escape then Tab leaves the terminal. Browsers expose
+no screen-reader signal, so the mode follows the host's setting or an explicit
+`detectScreenReader` callback. Station's setting is the device preference
+Settings › Appearance › Terminal screen reader mode (`terminalScreenReader`),
+off by default and restored by Restore device defaults. Shell-integration
+marks, images and ligatures remain deferred.
+
+A view handed a different session while mounted (Reconnect terminal, a
+read-only change) resets its emulator to a fresh terminal (RIS plus
+scrollback) before the new attachment replays, since a fresh attachment
+replays from the oldest retained output; a retention `reset` does the same.
+The [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+fails when the reset is removed.
+
+The view keeps Copy, Paste, Find and Select all (⌘ on a Mac, Ctrl+Shift
+elsewhere), Shift+F10 and the Escape-then-Tab exit. Other ⌘ chords on a Mac and
+other Ctrl+Shift letter chords elsewhere are left to the page, so Station's
+command palette, Settings and shortcut list work from a focused terminal; the
+rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
+under "In a terminal" from the SDK's `terminalViewShortcuts`.
+
+A view refits on every change to its box through one `ResizeObserver`:
+renderer and emulator at once, the PTY with the latest size at most every
+100 ms. A real browser on an isolated Station (#3994) confirmed `tput cols`
+and `tput lines` match the drawn grid after splitter drags, collapse and
+expand, a reload (the lower panel's height persists), 1440/1024/390 widths, a
+shorter viewport standing in for the phone keyboard, rotation, a
+devicePixelRatio change and moving between the bottom panel and the right
+dock, and that `vi` redraws to fill after a drag. The scrollbar sits in the
+inset; as a flex item it had taken two columns when scrollback first
+appeared. The [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+and the [key-row geometry suite](../../src-ui/src/components/coding-layout/__tests__/TerminalKeyRow.geometry.test.tsx)
+fail when the observer, the PTY resize or the inset scrollbar is removed.
+
 ## Why
 
-The terminal is a core surface, not a Coding-layout accessory. The current
-stack has structural problems that incremental fixes would not remove:
+The terminal is a core surface, not a Coding-layout accessory. The legacy
+Coding stack motivates the replacement:
 
-- Output fans out to every connected socket, and commands act on any session
-  ID a socket names (stopgap fix tracked separately; this design removes the
-  shape that allowed it).
+- #3781 confines output and commands to sessions opened on the connection;
+  opening a session still lacks a Project-principal authorization seam.
 - A second listener on `port + 1` breaks same-origin proxies and the relay.
 - Shells die 60 seconds after their last viewer leaves; the client never
   reconnects on its own.
@@ -25,7 +390,8 @@ stack has structural problems that incremental fixes would not remove:
   replayed with terminal queries intact, so a reattach can type junk at the
   prompt.
 - The working directory is whatever the client sends.
-- xterm.js runs with only the fit addon and a hard-coded palette.
+- The Coding terminal ran xterm.js with only the fit addon and a hard-coded
+  palette; TerminalView replaces it.
 - Terminals belong to no thread, chat, or worktree, and the agent cannot use
   them.
 
@@ -112,11 +478,44 @@ resize, signal, list, and journal reads. Two implementations:
 - **In-process** runs node-pty inside the core server. Tests use it, and it
   is the fallback when no supervisor is present.
 
+**Implemented (#3994, protocol 1.3).**
+[`SupervisorShellHost`](../../src-server/services/terminal/supervisor-shell-host.ts)
+is the host whenever the supervisor grants this core `workloads`. Otherwise
+`InProcessShellHost` is, unchanged; that covers a direct start, `--watch`,
+a 1.2 supervisor, and a build without a workload host. The shell, its PTY
+(ConPTY on Windows) and its journal live in the supervisor's workload host
+([`pty-workload-host.ts`](../../src-server/services/terminal/pty-workload-host.ts)),
+which uses this journal and sanitizer unchanged. `TerminalSessions` reads
+that journal through the host while the shell runs, and from disk once it
+has exited. Draining for a handoff, it detaches from its shells instead of
+ending them. On the next generation's start it reattaches every session it
+recorded as running and the host still runs; the rest are marked exited. A
+session whose start was never recorded is ended. Clients reconnect and
+resume from their last sequence, so output from while no core was attached
+is replayed, not lost. `ShellHost.attach` and `HostedShellProcess` are the
+only additions to the host interface. Write, resize, signal and terminate
+stay on the process handle, and reads on its journal. The
+[supervisor design](process-supervisor.md) covers the protocol, kill-tree
+escalation and the evidence. Windows job objects per workload, Settings
+controls for the host, and the UI for ACP command sessions are not implemented.
+
 The supervisor survives a core server restart or upgrade, not a machine
-reboot. After a reboot, Station restores instead: the server record reopens
-the same terminals, groups, and splits, and the pane workspace restores where
-they are shown. The terminals reopen in the same working directories with their journals shown
-above a "restored after restart" divider. Nothing is re-run automatically.
+reboot. After a reboot, Station restores instead.
+
+**Implemented (#3994).** On start, `TerminalSessions` reopens a shell that
+ended only because its host went away: a record still `running` whose host
+no longer knows it (the supervisor restarted, or the machine rebooted), or a
+shell the in-process host stopped with its core (`hostStopped`). It keeps the
+same `terminalId`, appends a "restored after restart" divider to the same
+journal, and starts a fresh shell in the recorded directory, so the earlier
+output stays above the divider and nothing is re-run. A shell the supervisor
+still runs is reattached, never restored over (#4412); one that ended by
+itself while its host kept running (`attach` answers `'ended'`) stays ended.
+Only shells restore: agent and server-owned launches are programs, so they
+stay ended. A shell restores only while its Project exists and its directory
+still resolves to the same path. There is no group or split record (owner
+decision, 2026-10-31); tabs come back because the binding's session list
+does.
 
 #### Session kinds
 
@@ -135,6 +534,34 @@ visible in the UI:
 Policy, authorization, and binding live in the core server; the supervisor
 only spawns, relays bytes, and writes journals.
 
+**Implemented (#3994, server side).** A command session is a
+`TerminalSessions` record with `kind: 'command'`, opened only by the server
+(`openInternal`) with a server-resolved program. Both hosts run it through
+[`command-process.ts`](../../src-server/services/terminal/command-process.ts):
+pipes, stdout and stderr together, its own process group on POSIX, a 16 MiB
+default output cap (a cap outside 1 KiB to 1 GiB is refused, not clamped).
+Output past the cap is not journaled; the command is ended, and its record
+reports `outputCapped`. The exit also records the signal number that ended it.
+
+An ACP engine's `terminal/create`, `terminal/output`, `terminal/wait_for_exit`,
+`terminal/kill` and `terminal/release` run on these sessions
+([`acp-session-terminals.ts`](../../src-server/services/acp/acp-session-terminals.ts))
+wherever the host has terminal sessions (a personal host). They are recorded
+under the agent session's Project (or `.agent-terminals` when it has none) and
+its `thread:<id>` binding, with the same journal and sanitizer as a user's
+shell, so the operator can list, read and type into them. The requested `cwd`
+must be inside the agent session's directory; anything else is refused with
+`-32602`. The ACP answers keep their protocol meaning: an exit is an exit code
+or a signal name, never both; a command that cannot start is exit 127 (not
+found) or 126 with the reason as its output; `outputByteLimit` truncates from
+the beginning on a character boundary. `truncated` is also true when retention
+or the cap dropped output, which the plain child-process path could not lose.
+Kill ends the command and keeps its output; release also forgets the id.
+Under the supervisor the command survives a core handoff and is reattached as
+a session; reattaching the engine that started it is not implemented, so its
+ACP connection does not survive. Hosted hosts have no terminal sessions and
+keep plain child processes for agent terminals.
+
 ### Sessions
 
 Every session has a server-generated `terminalId` that is unique across the
@@ -150,6 +577,34 @@ can never act on a session it was not granted.
 Restart and cwd changes are explicit operations. They end the shell and open
 a new journal segment; earlier segments stay readable.
 
+Deleting a Project ends its running sessions in every binding (#3994); their
+records and history stay until retention expires them, and they are never
+restored. In a dock region, a related terminal pane renders only under the
+dock's own Project, so the region already holds a deleted Project's pane
+back; the pane also resolves its Project by id and shows "That Project is
+gone" rather than attaching. The
+[session suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts),
+the [Project route suite](../../src-server/routes/projects/__tests__/projects.routes.test.ts)
+and the [pane suite](../../src-ui/src/workspace-panes/__tests__/TerminalSessionPane.test.tsx)
+cover it.
+
+**Implemented (#3994, server side).** `TerminalSessions.restart`, the socket's
+`restart` command and `POST …/terminal-sessions/:id/restart` require operate
+authority. The session keeps its id; its program is resolved again (an agent
+tab's launch profile is re-resolved, never stored); an optional relative
+`subdirectory` is confined to the binding's root like `open`'s, and without
+one the current directory must still be inside that root. The old run ends,
+the journal is sealed so the next run starts a new segment (a journal reopened
+by a supervisor workload starts one too), and the record carries
+`restart: {count, afterSeq, at}`. The new run drops the previous run's end
+time and `hostStopped` marker, so its own exit dates age expiry and decides
+whether it is restored after a host restart. A package script is resolved
+again by name; other command sessions and server-owned launches are refused:
+no program is stored for them. The Coding terminal
+offers Restart shell when its shell has exited, and Restart for an ended script
+(`TerminalSession.restart()`); Reconnect stays for a lost connection, and a
+watch-only view offers neither.
+
 ### Journal
 
 Each session writes an append-only journal of numbered output records.
@@ -159,20 +614,24 @@ and bytes) and appends segments to disk; compaction trims segments past the
 retention limit. Attach asks for `fromSeq`: served from the tail when
 covered, from disk when not, and a fresh snapshot otherwise.
 
-Retention is configurable in Settings, with these controls:
+Retention is configurable in Settings › Host options (implemented, #3994):
 
-| Setting | Default | Notes |
-| --- | --- | --- |
-| Keep terminal history | On | Off keeps only the in-memory tail; nothing is written to disk |
-| Storage location | `<home>/terminal-journals` | Any local directory; moving it migrates existing journals |
-| Maximum age | 30 days | Journals of closed terminals older than this are deleted |
-| Maximum size per terminal | 16 MiB | Oldest segments are compacted away first |
-| Maximum total size | 1 GiB | Least recently attached terminals are trimmed first |
+| Setting (`AppConfig` key) | Default | Range | Notes |
+| --- | --- | --- | --- |
+| Keep terminal history (`terminalHistoryEnabled`) | On | | Off: terminals opened afterwards keep only the in-memory tail and write nothing to disk |
+| Terminal history location (`terminalHistoryDirectory`) | `<home>/terminal-journals` | absolute path | Ended terminals' journals move there; a running one moves after it ends |
+| Terminal history maximum age (`terminalHistoryMaxAgeDays`) | 30 days | 1–3650 | An ended terminal's journal is deleted this long after it ended |
+| Maximum history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1 MiB–1 GiB | Oldest segments are compacted away first |
+| Maximum total history (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16 MiB–1 TiB, at least the per-terminal maximum | The oldest ended terminals are expired first; running ones are pinned |
 
-Settings shows current usage and a clear-history action per project and for
-everything. Each limit has a rejection path: a value outside its allowed
-range is refused, not clamped. Defaults are starting points to tune once real
-usage is measured.
+The service reads them before each open and each usage read, and on start,
+so a change applies without a restart. Settings shows usage per Project
+(`GET /api/terminal/history`, observe) and clears ended terminals' history
+for one Project or everything (`DELETE /api/terminal/history[?projectId=]`,
+operate); running terminals keep theirs and are counted. Each value outside
+its range, a relative location and a total below the per-terminal size are
+refused with the setting's name, not clamped; an agent cannot move the
+location. Defaults are starting points to tune once real usage is measured.
 
 ### Transport
 
@@ -180,9 +639,10 @@ One authenticated WebSocket per client at `/api/terminal/socket` on the main
 origin, multiplexing every terminal the client has open as channels. This
 costs one of the browser's per-origin HTTP/1.1 connections (see
 [ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md))
-and retires `port + 1` and `GET /api/system/terminal-port`. Auth uses the
-existing first-frame gate and pairing scopes, with `terminal:operate` joined
-by a new `terminal:observe`.
+and retires `port + 1` and `GET /api/system/terminal-port`. Auth is a
+single-use ticket minted over HTTP and redeemed before the upgrade (part b2;
+the first-frame gate is gone), with `terminal:operate` joined by a new
+`terminal:observe`.
 
 - Control messages are small JSON frames (attach, detach, resize, restart,
   close, list, error).
@@ -194,13 +654,17 @@ by a new `terminal:observe`.
 - Reconnect is automatic with backoff, and every channel resumes from its
   last acknowledged sequence.
 
-A decision record will supersede the terminal exception in ADR 0018 when the
-transport lands.
+[A decision record](../decisions/terminal-same-origin-only.md) supersedes the
+terminal exception in ADR 0018.
 
 #### Remote devices
 
-Terminals work fully over every route Station serves, including the relay
-and broker, governed only by permissions. A paired device or principal gets
+Terminals work over the same-origin routes Station serves (a UI or API
+port, a same-origin proxy, a tailnet name, the relay's HTTP route and the
+native shells), governed only by permissions. The browser broker
+(DataChannel) route is intentionally unsupported: it has no socket path, and
+the SDK refuses it with `raw-egress-unavailable` before dialing. The rest of
+this section is the original proposal. A paired device or principal gets
 what its scopes grant: `terminal:observe` to watch, `terminal:operate` to
 type, resize, restart, and close, each checked per project. The relay and
 broker carry the terminal socket like any other authenticated stream; their
@@ -230,7 +694,9 @@ Station writes its own browser adapter for Ghostty's official
 `libghostty-vt` C ABI, independently and from Ghostty's public headers and
 documentation. The WebAssembly is built from a pinned Ghostty revision by a
 reproducible Zig script, committed as a vendored asset with Ghostty's MIT
-license, and its revision is checked by a test. The adapter owns:
+license, and its revision is checked by a test. The engine loads only that
+vendored file, and only when its bytes match the SHA-256 recorded beside it;
+no SDK option names a different module. The adapter owns:
 
 - A per-terminal handle over the C ABI and a render snapshot of rows and
   styles.
@@ -257,9 +723,8 @@ the web surface.
 #### Accessibility
 
 A canvas-rendered terminal is invisible to assistive technology unless the
-adapter exposes its text separately. xterm.js's screen reader mode covers
-this today, so shipping the Ghostty surface without an equivalent would be a
-regression. The emulator phase does not ship until this exists:
+adapter exposes its text separately. xterm.js's screen reader mode covered
+this, so the Ghostty surface had to ship with an equivalent:
 
 - **Accessible output buffer.** A visually hidden, focusable text mirror of
   the screen and scrollback, built from the emulator's rows (not from raw
@@ -269,13 +734,16 @@ regression. The emulator phase does not ship until this exists:
 - **Announcements.** New output is announced through a polite live region,
   coalesced and rate-limited so a flooding command does not drown the
   reader. Bell, shell exit, and a finished script run are announced.
-- **Screen reader mode** in terminal settings, defaulting on when the
-  operating system reports a screen reader. When off, the mirror is not
-  kept, so sighted users pay nothing for it.
+- **Screen reader mode** in Settings. Implemented as a device preference,
+  off by default: browsers report no screen reader, so it cannot default on
+  when one is active. When off, the mirror is not kept, so sighted users pay
+  nothing for it.
 - **Keyboard parity.** Everything in the context menu, find, links, splits,
   and the drawer is reachable from the keyboard, with visible focus and
   shortcuts listed in the shortcut registry. Focus can always leave the
   terminal with a documented key, since the terminal otherwise captures Tab.
+  Implemented for the view's own keys (listed in the shortcuts sheet); splits
+  and drawer shortcuts do not exist yet.
 - **Contrast and motion.** Theme colors meet the design system's contrast
   rules in light and dark; cursor blink follows reduced-motion settings.
 - **Mobile.** The mirror works with VoiceOver and TalkBack in the mobile
@@ -303,14 +771,16 @@ regression. The emulator phase does not ship until this exists:
   infers a process from equal pane keys.
 - Default shortcuts: toggle drawer, new terminal, split, split vertical,
   close, find. Registered in the shortcut registry so they appear in the
-  shortcut list.
+  shortcut list. Not implemented: only the view's own keys are listed (see
+  the [emulator boundary](#emulator-implementation-boundary-3994-phase-3)),
+  and there are no splits or groups (owner decision, 2026-10-31).
 
 ### Plugins
 
 A plugin opens a terminal through the pane workspace's open, reveal, and
-close capability. The pane relationships contract (#3875) specifies it; it is
-not yet implemented. The terminal is a closed built-in target rather than a
-plugin-supplied key:
+close capability ([related panes](../reference/sdk.md#opening-a-terminal)),
+specified by the pane relationships contract (#3875). The terminal is a
+closed built-in target rather than a plugin-supplied key:
 
 - The target shape is plain data declared in the pane host contract,
   `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
@@ -322,18 +792,38 @@ plugin-supplied key:
   fall inside that captured Project on that Station. Otherwise the open is
   reported as the contract's context mismatch, so a plugin cannot name a
   thread in another project even where it holds a grant.
-- Station's terminal host binding then checks the caller's own grants for
-  that project. Creating a terminal (`new`) needs `terminal:operate`. Opening
-  an existing `terminalId` needs `terminal:observe` and is read-only unless
-  the caller also holds `terminal:operate`. Holding a pane or plugin grant
-  never implies terminal access.
+- Station's terminal host binding then checks the terminal grants for
+  that project. The server keeps refusing plugin principals, so a plugin
+  holds none: the pane is Station's own UI and its socket authenticates as
+  the person viewing, whose grant decides. Creating a terminal (`new`) needs
+  `terminal:operate` and starts only the server-resolved `shell` profile.
+  Opening an existing `terminalId` needs `terminal:observe` and is read-only
+  unless the viewer also holds `terminal:operate`. Holding a pane or plugin
+  grant never implies terminal access.
 - The pane host reports the outcome (opened, focused, replaced, unavailable,
   or context mismatch) in the same form it uses for its other targets.
+
+Implementation: [`relatedPanesHost`](../../src-ui/src/workspace-panes/relatedPanesHost.ts)
+decodes the target for both the direct and the frame transport, then admits
+it against the caller and the viewer's grant
+([`relatedTerminalSessions`](../../src-ui/src/workspace-panes/relatedTerminalSessions.ts)).
+For a thread binding it checks that the thread's session records the
+caller's Project. For a `terminalId` it checks that the session runs in that
+Project and binding. A `new` shell is started before the pane is placed and
+is ended if the placement is refused. The session shows in its own
+`terminal-pane:` dock pane
+([`TerminalSessionPane`](../../src-ui/src/workspace-panes/TerminalSessionPane.tsx),
+descriptor `pane:builtin:workspace-terminal`), with the Tools by default and
+keyed to that one session and binding. Its stored record, Station fence and
+relation follow every other related occurrence; no group or split record is
+added. The Coding lower panel keeps serving the `project` binding through its
+server-derived tab list. [Related Terminal](../../examples/related-terminal/README.md)
+is the sample plugin.
 
 ### Agent integration
 
 - **Add to chat** attaches a selection with its line range and cwd, through
-  the existing credential scan.
+  the existing credential scan. Implemented, without the line range.
 - **Script runner** runs project scripts and chat code blocks in a visible
   terminal, opening a new one if the active terminal is busy, and reports
   exit codes through the end marker.
@@ -345,11 +835,42 @@ plugin-supplied key:
 
   Both are recorded in the thread's activity.
 
+**Implemented (#3994).**
+
+- **Script runner.** The Coding terminal's New terminal list offers the
+  binding directory's `package.json` scripts. Choosing one runs it by name as a
+  command session (`launch: {kind: 'script', name}`, no PTY), through the
+  package manager its `packageManager` field or lockfile names. The script's
+  tab shows Running, Exit N (positive for 0) or Failed. Restart resolves the script again
+  by name under the same id, so the earlier run stays above the new one. An
+  ended run keeps its tab until it is closed or the script runs again. The
+  view starts a new line at each bare line feed, since a program without a
+  PTY writes no carriage returns; the journal keeps its bytes. Script runs are
+  retained with shells, not in the agent command pool. Running scripts from
+  chat code blocks and the end-marker busy check remain open.
+- **Agent tools.** `terminal_run` records a request and returns at once; the
+  person sees a card above the composer with the exact command and the
+  absolute directory, and approves (Run) or declines that one run; for a
+  minute after an approved run ends, a note says how it ended. Owner
+  decision: ask each time, with no remembered approval. An approved run starts
+  as a command session in the agent's `thread:<id>` binding as the approving
+  person, under their terminal authority, and is refused if its directory no
+  longer resolves to the one shown. `terminal_read` follows a run's state and
+  pages its output by sequence. An unanswered request expires after ten
+  minutes, at most three wait per chat, and requests live in memory. Reading a
+  terminal the person shares with the thread is not implemented; an agent
+  reads only its own runs.
+- **Add to chat.** The terminal menu's Add to chat puts the selection in the
+  chat's composer as a terminal chip, after the credential scan. It names the
+  shell's directory when the host can read it; a supervisor workload's cannot
+  be read, so that chip names none. The chip is sent with the next message as
+  a literal fenced block. Line ranges are not recorded.
+
 ## Migration
 
 | Current surface | Outcome |
 | --- | --- |
-| `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed after the new socket ships |
+| `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed ([decision](../decisions/terminal-same-origin-only.md)) |
 | `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
 | Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
 | `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
@@ -359,9 +880,9 @@ plugin-supplied key:
 | `coding-terminal-*` sessionStorage keys | Content (tabs, active terminal) migrated once into the server record; presentation (open, height) imported once by Coding's panel writer; then ignored |
 | `terminal-history/<id>.txt` | Imported as a first journal segment on first attach |
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
-| `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
+| `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports each running instance's shell host (the supervisor's `workloads` grant, from its status) and the `station-pty-host.js` bundle (#3994) |
 | ACP agent interactive tabs | Interactive supervisor workloads |
-| ACP agent terminal commands | Command supervisor workloads |
+| ACP agent terminal commands | Command sessions; supervisor workloads under a supervisor (server side done) |
 
 ## Delivery
 
@@ -380,12 +901,14 @@ verification.
    splits on the pane workspace's presentation seams, server-side content
    state, shortcuts, the SDK view export with its boundary test, the terminal
    pane target, and the sample plugin. The pane target and the sample plugin
-   depend on the pane workspace capability specified in #3875, which is not
-   yet implemented.
+   ride the related-pane capability (#3875) and are implemented
+   ([Plugins](#plugins)).
 5. **Agent integration:** add to chat, script runner, agent tools.
-6. **Removal:** old listener, endpoints, client components, and the dead
-   `.coding-terminal-fallback` end-to-end check; documentation and the
-   decision record.
+6. **Removal:** done for the `port + 1` listener, its endpoint and SDK
+   function, `TerminalService`, the supervisor's `terminal` listener and the
+   dead `.coding-terminal-fallback` end-to-end check, with
+   [the decision record](../decisions/terminal-same-origin-only.md), and for
+   the xterm.js client components, which `TerminalView` replaced.
 
 ## Verification
 
@@ -403,7 +926,27 @@ verification.
   merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
+- Retention and restore (#3994): the
+  [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+  runs real POSIX PTYs for restore after a host restart (new PID, same
+  directory, divider, no re-run), no restore over a reattached or
+  self-ended shell, age expiry, location migration, history off, the total
+  budget, usage and clearing, stable ordinals, and a two-client race on a
+  real loopback server that yields one shell. ConPTY is not qualified there.
 - Fault injection for each isolation check and for the query stripping.
+- Listener isolation (#3994): each store session notifies only its own
+  subscribers and output never enters React state; the
+  [store suite](../../packages/sdk/src/__tests__/terminal-session-store.test.ts)
+  and the [panel suite](../../src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx)
+  fail when a channel's events reach another session or output re-renders a
+  panel.
+
+**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
+the iOS shell or the Android shell; the screen reader mode has not been used
+with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
+not qualified. The manual screen reader pass listed above has not happened.
+The browser broker (DataChannel) route is unsupported by design, not
+untested.
 
 ## Open questions
 

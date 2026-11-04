@@ -43,6 +43,7 @@ const expectedDependencies = new Map(
       'workspace-composition',
     'packages/sdk/src/index.ts': 'sdk-export',
     'packages/sdk/src/queries.ts': 'sdk-export',
+    'packages/sdk/src/terminal-view/index.ts': 'sdk-export',
     'packages/sdk/src/query-domains/chatRuntimeCoding.ts': 'sdk-route-adapter',
     'packages/sdk/src/query-domains/chatRuntime.ts': 'sdk-export',
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
@@ -167,9 +168,6 @@ const expectedDependencies = new Map(
     // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
     // module: drawn pixels, nothing decided.
     'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
-    // The terminal's xterm colours, read from the `--terminal-*` theme
-    // variables: a colour mapping, nothing run or granted.
-    'src-ui/src/components/coding-layout/terminalTheme.ts': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -196,8 +194,12 @@ const expectedDependencies = new Map(
       'privileged-renderer',
     'src-ui/src/components/coding-layout/chatContextDraft.ts': 'chat-handoff',
     'src-ui/src/components/coding-layout/planSession.ts': 'task-plan',
+    'src-ui/src/components/coding-layout/terminalLinkPath.ts':
+      'privileged-renderer',
     'src-ui/src/components/coding-layout/terminalSelectionHandoff.ts':
       'chat-handoff',
+    'src-ui/src/components/coding-layout/terminalSessionStore.ts':
+      'privileged-renderer',
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',
@@ -252,6 +254,15 @@ const expectedDependencies = new Map(
     // display-only — a renderer-name → SVG-glyph lookup that authorises
     // nothing and reaches no privileged surface.
     'src-ui/src/workspace-panes/workspacePaneGlyphs.tsx': 'presentation',
+    // A terminal a plugin opened through related panes
+    // (docs/design/terminal.md, "Plugins"): the pane attaches to the one
+    // session its record names with the existing terminal renderer as a
+    // leaf, read-only without the viewer's `terminal:operate`, and the host
+    // adapter lists sessions or starts the server-resolved `shell` profile on
+    // the shared session store. Like engine sign-in, the server chooses the
+    // program and the working directory; neither file names one.
+    'src-ui/src/workspace-panes/TerminalSessionPane.tsx': 'terminal-process',
+    'src-ui/src/workspace-panes/relatedTerminalSessions.ts': 'terminal-process',
   }),
 );
 const semantic =

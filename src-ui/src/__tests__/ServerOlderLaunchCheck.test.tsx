@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
-import { act, render } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type UpdateNotice,
@@ -92,23 +92,22 @@ beforeEach(() => {
 });
 
 describe('ServerOlderLaunchCheck notices', () => {
-  test('publishes the version difference and opens server review without applying or following an update', () => {
+  test('publishes one short line with no action, applying and following nothing', () => {
     const { container } = render(tree());
     expect(container.firstChild).toBeNull();
     expect(notices).toEqual([
-      expect.objectContaining({
+      {
+        id: 'server-older',
         target: 'server',
-        message:
-          'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
-        actionLabel: 'Review server update',
-      }),
+        message: `Server is older than this app (${NEWER_CLIENT}).`,
+        // The notice renders only inside Updates, beside the section's own
+        // update control: no detail repeats it and no action reopens Updates.
+        detail: undefined,
+      },
     ]);
     const sequence = openRequest.sequence;
-    act(() => notices[0].onAction?.());
-    expect(openRequest).toMatchObject({
-      target: 'server',
-      sequence: sequence + 1,
-    });
+    expect(notices[0]?.onAction).toBeUndefined();
+    expect(openRequest.sequence).toBe(sequence);
     expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
     expect(sdk.useServiceUpdateProgressQuery).not.toHaveBeenCalled();
   });
@@ -169,7 +168,7 @@ describe('ServerOlderLaunchCheck notices', () => {
     [
       'identity mismatch',
       { serverIdentity: { ...IDENTITY, instanceId: 'other' } },
-      /could not confirm which server answered/,
+      /Could not confirm which server answered/,
     ],
     [
       'unverified release',
@@ -186,16 +185,22 @@ describe('ServerOlderLaunchCheck notices', () => {
     ],
     [
       'operator restriction',
-      { selfUpdateUnavailableReason: 'managed by an operator' },
+      {
+        selfUpdateUnavailableReason: 'managed by an operator',
+        updateAvailable: false,
+      },
       /managed by an operator/,
     ],
   ])(
-    'retains the %s caveat in the notice while routing to review',
+    'retains the %s caveat in the notice, with no action',
     (_label, facts, detail) => {
       status = serviceArchive(facts);
       render(tree());
       expect(notices[0]?.detail).toMatch(detail);
-      expect(notices[0]?.actionLabel).toBe('Review server update');
+      expect(notices[0]?.message).toBe(
+        `Server is older than this app (${NEWER_CLIENT}).`,
+      );
+      expect(notices[0]?.onAction).toBeUndefined();
       expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
     },
   );

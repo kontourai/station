@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { attentionWord } from '../../views/home/work-status';
-import { PlugGlyph } from '../icons/Glyph';
+import { BrainGlyph, PlugGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
 import { KIND_GLYPH } from './ToolCallDisplay';
@@ -63,8 +63,7 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
 /**
  * Renders a run produced by `tool-call-runs.ts#splitToolCallRuns`. This
  * component itself is lazy-loaded (see `MessageContent.tsx`/
- * `StreamingMessage.tsx`) — a run of exactly one call never reaches it (the
- * caller renders that case inline, no extra tap layer, no chunk load), so
+ * `StreamingMessage.tsx`) — a solo call without reasoning stays inline, so
  * by the time this module is on the wire there is always something worth
  * collapsing.
  *
@@ -81,14 +80,18 @@ export function ToolCallBatch<P extends ToolCallLike>({
   const titleId = useId();
   const group = useMemo(() => classifyToolCallRun(run), [run]);
 
-  if (group.calls.length === 1) {
+  if (group.calls.length === 1 && group.interludes.length === 0) {
     const only = group.calls[0];
     return <>{renderCall(only.part, only.index)}</>;
   }
   // The same anatomy as a single row — kind glyph, label, chevron — so a
   // solo call that gains a sibling changes its words, not its shape.
   const kinds = new Set(group.calls.map((call) => call.kind));
-  const Glyph = kinds.size === 1 ? KIND_GLYPH[group.calls[0]!.kind] : PlugGlyph;
+  const Glyph = group.interludes.some(({ part }) => part.type === 'reasoning')
+    ? BrainGlyph
+    : kinds.size === 1
+      ? KIND_GLYPH[group.calls[0]!.kind]
+      : PlugGlyph;
 
   return (
     <div className="tool-call-batch">

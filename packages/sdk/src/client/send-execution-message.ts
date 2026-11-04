@@ -1,6 +1,6 @@
 import {
   type ForegroundMessageInput,
-  type ForegroundMessageReceipt,
+  type KeyedForegroundMessageReceipt,
   sendExecutionMessageWithInventory,
 } from './execution';
 import type { ClientRequestOptions } from './http';
@@ -16,7 +16,7 @@ export function sendExecutionMessage(
   apiBase: string,
   input: ForegroundMessageInput,
   opts?: ClientRequestOptions,
-): Promise<ForegroundMessageReceipt> {
+): Promise<KeyedForegroundMessageReceipt> {
   return sendExecutionMessageWithInventory(
     apiBase,
     input,

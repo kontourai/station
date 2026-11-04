@@ -5,15 +5,20 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ExpandGlyph,
   FolderGlyph,
+  InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
+  RestoreGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
 import './ChatDockHeader.css';
+import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -42,6 +47,11 @@ export interface ChatDockMobileOverflowActions {
   inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
+  /**
+   * Chat inventory, a row of the sheet like the session context below: a
+   * third trailing control in the bar wrapped it onto a second line (#4192).
+   * The trigger passed is ⋯, where focus returns when the reader closes.
+   */
   onOpenInventory?: (trigger: HTMLElement) => void;
   sessionInventory?: {
     sessionId: string;
@@ -81,6 +91,15 @@ export interface ChatDockMobileOverflowActions {
   onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
   /** The chat's ladder line, named on the row ("This chat — Running"). */
   sessionContextStatus?: string;
+  /**
+   * The composer's context meter, again as a row of this sheet. On a phone
+   * the meter is the last chip of a row that scrolls sideways with its
+   * scrollbar hidden, and that row is hidden altogether while typing on a
+   * short screen, so it is easy never to see. The row names the share used
+   * and opens the same Conversation stats panel the meter does. Absent: no
+   * row (ChatDock offers it exactly where it shows the meter).
+   */
+  conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -97,7 +116,23 @@ export interface ChatDockMobileDockToggle {
   onCollapse: () => void;
 }
 
+/**
+ * #4391: the visible full-screen/peek switch of an open dock. Full screen is
+ * where a phone chat lives; the peek (Half) is the deliberate smaller state,
+ * so both directions are one tap in the bar rather than a sheet row.
+ */
+export interface ChatDockMobileExtentToggle {
+  maximized: boolean;
+  onToggle: () => void;
+}
+
 interface ChatDockMobileHeaderProps {
+  inboxActive?: boolean;
+  /**
+   * #4404 (A44): whether there is a chat to go back to. Without one the bar
+   * offers New chat, not a pressed "Back to chat" or chat actions.
+   */
+  hasConversation?: boolean;
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
@@ -108,18 +143,21 @@ interface ChatDockMobileHeaderProps {
   projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
   unreadCount: number;
-  taskSwitcherTriggerRef: RefObject<HTMLButtonElement | null>;
-  onOpenTaskSwitcher: () => void;
+  inboxTriggerRef: RefObject<HTMLButtonElement | null>;
+  onToggleInbox: () => void;
   onToggleSidebar: (trigger: HTMLElement) => void;
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
   dockToggle: ChatDockMobileDockToggle | null;
+  extentToggle?: ChatDockMobileExtentToggle | null;
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
 }
 
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
+  inboxActive = false,
+  hasConversation = true,
   showDrawerToggle,
   showConnection,
   sessionTitle,
@@ -130,12 +168,13 @@ export function ChatDockMobileHeader({
   projectSwitcher,
   activeCount,
   unreadCount,
-  taskSwitcherTriggerRef,
-  onOpenTaskSwitcher,
+  inboxTriggerRef,
+  onToggleInbox,
   onToggleSidebar,
   onDragPointerDown,
   onDragClickCapture,
   dockToggle,
+  extentToggle = null,
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
@@ -144,6 +183,8 @@ export function ChatDockMobileHeader({
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
+  const collapsedExtent =
+    dockToggle?.state === 'collapsed' ? extentToggle : null;
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
   // or have unread replies — the sheet's Chats row is where they are — so it
@@ -181,19 +222,41 @@ export function ChatDockMobileHeader({
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
             aria-label={
-              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
+              collapsedExtent
+                ? 'Full screen chat'
+                : dockToggle.state === 'collapsed'
+                  ? 'Expand chat'
+                  : 'Collapse chat'
             }
             data-no-dock-drag=""
             onClick={
-              dockToggle.state === 'collapsed'
-                ? dockToggle.onExpand
-                : dockToggle.onCollapse
+              collapsedExtent
+                ? collapsedExtent.onToggle
+                : dockToggle.state === 'collapsed'
+                  ? dockToggle.onExpand
+                  : dockToggle.onCollapse
             }
           >
-            <ArrowDownGlyph />
+            {collapsedExtent ? <ExpandGlyph /> : <ArrowDownGlyph />}
           </button>
         ) : null}
-        {projectSwitcher && (
+        {extentToggle && !collapsedExtent && (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
+            aria-label={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            title={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            data-no-dock-drag=""
+            onClick={extentToggle.onToggle}
+          >
+            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
+          </button>
+        )}
+        {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}
             type="button"
@@ -240,34 +303,30 @@ export function ChatDockMobileHeader({
           onClose={() => setIsProjectOpen(false)}
         />
       )}
-      <button
-        ref={taskSwitcherTriggerRef}
-        type="button"
-        className="chat-dock__mobile-identity"
-        data-dock-drag-passthrough=""
-        // The name carries the title and eyebrow on screen, in their order,
-        // so a spoken command matching the visible label reaches it (WCAG
-        // 2.5.3).
-        aria-label={`Chats and tasks — ${sessionTitle}${
-          agentIdentity
-            ? `, ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}${
-                sessionProjectMismatchLabel
-                  ? ` · ${sessionProjectMismatchLabel}`
-                  : ''
-              }`
-            : ''
-        }`}
-        onClick={onOpenTaskSwitcher}
-      >
+      <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
+        {hasConversation || !inboxActive ? (
+          <Button
+            ref={inboxTriggerRef}
+            variant="ghost"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+            aria-label={inboxActive ? 'Back to chat' : 'Inbox'}
+            title={inboxActive ? 'Back to chat' : 'Inbox'}
+            aria-pressed={inboxActive}
+            data-no-dock-drag=""
+            onClick={onToggleInbox}
+          >
+            <InboxGlyph />
+          </Button>
+        ) : null}
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            title={sessionTitle}
+            title={inboxActive ? 'Inbox' : sessionTitle}
           >
-            {sessionTitle}
+            {inboxActive ? 'Inbox' : sessionTitle}
           </span>
-          {agentIdentity && ' '}
-          {agentIdentity && (
+          {!inboxActive && agentIdentity && ' '}
+          {!inboxActive && agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
               {routeLabel ? ` · via ${routeLabel}` : ''}
@@ -276,46 +335,39 @@ export function ChatDockMobileHeader({
             </span>
           )}
         </span>
-      </button>
+      </div>
       <div className="chat-dock__mobile-actions">
-        {overflow.onOpenInventory ? (
+        {hasConversation || showConnection ? (
           <button
+            ref={chatActionsTriggerRef}
             type="button"
-            className="chat-dock__inventory-button"
-            aria-label="Chat inventory"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={isOverflowOpen}
+            aria-label="Chat actions"
+            aria-describedby={
+              activitySummary ? activityDescriptionId : undefined
+            }
+            title={
+              activitySummary ? `Chat actions — ${activitySummary}` : undefined
+            }
             data-no-dock-drag=""
-            onClick={(event) => overflow.onOpenInventory?.(event.currentTarget)}
+            onClick={() => setIsOverflowOpen((open) => !open)}
           >
-            Inventory
+            <span aria-hidden="true">⋯</span>
+            {activitySummary && (
+              <>
+                <span
+                  className="chat-dock__mobile-activity-dot"
+                  aria-hidden="true"
+                />
+                <span id={activityDescriptionId} className="sr-only">
+                  {activitySummary}
+                </span>
+              </>
+            )}
           </button>
         ) : null}
-        <button
-          ref={chatActionsTriggerRef}
-          type="button"
-          className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-          aria-haspopup="dialog"
-          aria-expanded={isOverflowOpen}
-          aria-label="Chat actions"
-          aria-describedby={activitySummary ? activityDescriptionId : undefined}
-          title={
-            activitySummary ? `Chat actions — ${activitySummary}` : undefined
-          }
-          data-no-dock-drag=""
-          onClick={() => setIsOverflowOpen((open) => !open)}
-        >
-          <span aria-hidden="true">⋯</span>
-          {activitySummary && (
-            <>
-              <span
-                className="chat-dock__mobile-activity-dot"
-                aria-hidden="true"
-              />
-              <span id={activityDescriptionId} className="sr-only">
-                {activitySummary}
-              </span>
-            </>
-          )}
-        </button>
         <button
           type="button"
           className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"

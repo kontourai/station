@@ -5,6 +5,7 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { agentMark, engineMark } from './identity-marks';
 
 /**
  * A turn is mid-flight. archive#1073: gated on the summary's turn-level fold, not
@@ -298,7 +299,7 @@ export interface SessionIconAgent {
   iconUrl?: string;
   /** The engine connection the agent is bound to, when the catalog says. */
   execution?: { agentConnectionId?: string };
-  /** `'acp'` for an ACP-bound agent; see `inboxRowIconAgent`. */
+  /** `'acp'` for an ACP-bound agent; see `agentMark`. */
   engineConnectionType?: string;
 }
 
@@ -328,14 +329,12 @@ export function sessionIconAgent(
   agents: readonly SessionIconAgent[],
 ): SessionIconAgent {
   const slug = session.delegation?.targetId ?? session.assignedAgentSlug;
-  const resolved = slug
-    ? agents.find((agent) => agent.slug === slug)
-    : undefined;
-  if (resolved) return resolved;
-  return {
-    name: engineDisplayLabel(session.provider) ?? session.provider,
-    engineId: session.provider,
-  };
+  // `agentMark` is the shared resolver (`identity-marks.ts`); a session row
+  // names the engine in text when no agent resolves, so the engine may stand in.
+  return (
+    agentMark(slug, session.provider, agents, { fallbackToEngine: true }) ??
+    engineMark(session.provider)
+  );
 }
 
 /**

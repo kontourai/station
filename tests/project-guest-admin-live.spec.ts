@@ -265,6 +265,25 @@ test.describe
           guest.getByRole('heading', { name: 'People and access' }),
         ).toBeVisible({ timeout: 15_000 });
         await expect(
+          guest.getByText(/approve collaborator management for this browser/),
+        ).toBeVisible();
+        // Account binding starts read-only; administration requires a
+        // separate, explicit operator grant to this same browser.
+        const promoted = await fetch(
+          `${live.api}/api/pairing/devices/${admittedDeviceId}/scope`,
+          {
+            method: 'POST',
+            headers: operatorHeaders,
+            body: JSON.stringify({
+              scope: ['orchestration:read', 'orchestration:operate'],
+            }),
+          },
+        );
+        expect(promoted.status).toBe(200);
+        await guest
+          .getByRole('button', { name: 'Refresh people and access' })
+          .click();
+        await expect(
           guest.getByText('People administration: can submit changes'),
         ).toBeVisible();
         await expect(
@@ -297,10 +316,14 @@ test.describe
         // The guest creates a manual single-use link (no mail service) and
         // cancels it again: the full write path through the guest UI.
         await guest.getByRole('button', { name: 'Create invitation' }).click();
+        await guest
+          .locator('summary')
+          .filter({ hasText: 'Invitation link' })
+          .click();
         const link = guest.getByRole('textbox', { name: 'Invitation link' });
         await expect(link).toHaveValue(/\/account\/join#invitation=/);
         await expect(
-          guest.getByText(/copy the link now, it is shown once/),
+          guest.getByRole('button', { name: 'Copy invitation', exact: true }),
         ).toBeVisible();
         // Two rows list before the cancel: the accepted admin invitation
         // plus the pending one just created. Only the pending row offers a
@@ -397,6 +420,10 @@ test.describe
           timeout: 15_000,
         });
         await guest.getByRole('button', { name: 'Create invitation' }).click();
+        await guest
+          .locator('summary')
+          .filter({ hasText: 'Invitation link' })
+          .click();
         await expect(
           guest.getByRole('textbox', { name: 'Invitation link' }),
         ).toHaveValue(/\/account\/join#invitation=/, { timeout: 15_000 });

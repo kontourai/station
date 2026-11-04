@@ -111,6 +111,8 @@ export const PAIRING_SCOPE_ORCHESTRATION_READ = 'orchestration:read' as const;
 export const PAIRING_SCOPE_ORCHESTRATION_OPERATE =
   'orchestration:operate' as const;
 export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
+/** Watch terminal output; never grants input or lifecycle operations. */
+export const PAIRING_SCOPE_TERMINAL_OBSERVE = 'terminal:observe' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
@@ -214,6 +216,9 @@ export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
  */
 export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
 
+/** Companion management is separate from home continuity, export consent and personal analytics grants. */
+export const PAIRING_SCOPE_TELEMETRY_MANAGE = 'telemetry:manage' as const;
+
 /**
  * Start, read and cancel a device-code login for an engine credential profile
  * (station#device-code). Deliberately its own token rather than a reuse of
@@ -293,6 +298,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
@@ -301,6 +307,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
@@ -361,10 +368,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * terminal route or the terminal WebSocket, but `standard` already includes
  * `terminal:operate` and there is no way to express "standard minus
  * terminal" by combining existing presets — `terminal:operate` is enforced
- * independently at the WebSocket layer
- * (`PAIRING_WS_SCOPES.terminal`, `pairing-route-scopes.ts`), so a session
- * carrying `standard` scope but never presenting it over HTTP would still
- * pass that separate WS check. A dedicated preset is required to grant
+ * independently by the terminal socket's ticket admission, so a session
+ * carrying `standard` scope could still open a terminal. A dedicated preset is required to grant
  * exactly the delegation surface and nothing else.
  *
  * IMPORTANT nuance (design doc §2, "what it also grants" / correction 2):
@@ -456,6 +461,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_READ]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_TERMINAL_OPERATE]: ['preset', 'default-grant'],
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: ['operator-promotion'],
   // The recorded historical exception: in the frozen default grant, in no
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
@@ -473,6 +479,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
   [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
   [PAIRING_SCOPE_HOME_CONTROL]: ['operator-promotion'],
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: ['operator-promotion'],
   // Operator promotion only, for the same reason as the two tokens above --
   // and for one more that is specific to adding a token to a preset at all:
   // `parsePairingScope` refuses a WHOLE scope string containing one unknown
@@ -512,6 +519,10 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: {
     label: 'Operate',
     summary: 'Can start, continue and steer chats and Agent work.',
+  },
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: {
+    label: 'Watch terminals',
+    summary: 'View terminal output without typing or changing sessions.',
   },
   [PAIRING_SCOPE_TERMINAL_OPERATE]: {
     label: 'Terminal',
@@ -553,6 +564,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Home control',
     summary:
       'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+  },
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: {
+    label: 'Manage telemetry companion',
+    summary:
+      'Can install and manage the optional telemetry companion when signed in as an operator. Does not enable telemetry sending or grant personal source access.',
   },
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',
@@ -712,7 +728,10 @@ export function isPairingScopeSubset(
  */
 // Protocol 3 admits exact-turn inventory lineage. Older readers keep the
 // contribution-only shape; protocol-1 callers remain admitted.
-export const STATION_COMPAT_PROTOCOL_VERSION = 3;
+// Protocol 4 admits Session inventory tool-result rows whose outcome was never
+// observed (`terminalStatus: 'unresolved'`, #4178). Older readers validate
+// that vocabulary exactly, so they keep the omission.
+export const STATION_COMPAT_PROTOCOL_VERSION = 4;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less
@@ -1185,9 +1204,29 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Child steering and its separately paged instruction history. */
+  childWorkSteering?: boolean;
+  /** Consented private terminal outcome reads. */
+  privateOperationalOutcomes?: boolean;
+  /**
+   * `POST /api/scheduler/jobs` accepts a `target` (`SchedulerAutomationTarget`):
+   * each run lands in a conversation through its inbox, so it runs on any
+   * engine. A host without it rejects the field, and its runs are
+   * Station-engine only, so a client offers other engines only with this
+   * flag. Absent on hosted deployments, whose scheduler routes answer 404.
+   */
+  scheduledConversationTarget?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
-  /** Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`). */
+  /**
+   * `GET /api/system/routes` (`station-routes.ts`): the addresses this Station
+   * reports it can be reached on, for a paired device to learn as routes.
+   */
+  connectionRoutes?: boolean;
+  /**
+   * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
+   * Absent on hosted deployments, whose push routes all answer 404 (#4177).
+   */
   webPushNotifications?: boolean;
   /**
    * The `/api/orchestration/events` (+ per-session) SSE stream honors a
@@ -1199,6 +1238,14 @@ export interface StationCapabilityFlags {
   eventStreamResume?: boolean;
   /** The versioned bounded per-session event-window protocol is available. */
   sessionEventWindow?: boolean;
+  /**
+   * `GET /api/orchestration/sessions/:threadId/inputs/:eventId` serves the
+   * exact authored input behind a Session inventory row. A host without it
+   * answers that path 404 like a denied read, so a client gates the read on
+   * this flag instead of reporting a failed read. Absent on hosted
+   * deployments, whose route refuses every read (#4177).
+   */
+  sessionInventoryInputRead?: boolean;
   /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
@@ -1305,6 +1352,30 @@ export interface StationCapabilityFlags {
    * about this build, never a statement that any request is open.
    */
   delegatedInputAnswers?: boolean;
+  /**
+   * #3628: `/api/orchestration/coordinator` reads and sets the person's
+   * coordinator Session. Withdrawn on a hosted Station, which keeps no
+   * conversation inbox to wake it through.
+   */
+  coordinatorSession?: boolean;
+  /**
+   * #3427: this build serves the person-facing Session reads under
+   * `/api/orchestration/session-reads` (a Session wait that reports a turn a
+   * restart cut off, a Session digest, and the Project activity list) for a
+   * person's own credential. A STATIC protocol fact: whether they answer is
+   * the `session-cli-reads` Feature Preview's, refused with
+   * `feature_preview_disabled`. A client gates the reads on this flag so an
+   * older host is told apart from a Session that is not found.
+   */
+  sessionPersonReads?: boolean;
+  /**
+   * #4470: `POST /api/diagnostics/troubleshoot/prepare` prepares an in-app
+   * troubleshooting conversation on the Station Assistant, and the
+   * station-control tools `get_troubleshoot_playbook` and
+   * `draft_troubleshoot_report` exist. Clients offer "Troubleshoot with an
+   * agent" only on this flag.
+   */
+  troubleshootPrepare?: boolean;
 }
 
 export interface PublicStationHandshake {

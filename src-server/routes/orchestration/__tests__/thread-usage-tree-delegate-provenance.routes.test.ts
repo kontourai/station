@@ -31,6 +31,7 @@ import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -44,6 +45,7 @@ import { createRequestDelegationResolver } from '../../../runtime/agents/request
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { isStationInternalRequest } from '../../../services/browser/browser-request-origin.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -259,6 +261,21 @@ async function fixture() {
   } as CanonicalRuntimeEvent);
   appendUsage(store, CONVERSATION, 10);
 
+  // The derived caller names this exact execution, distinct from its conversation.
+  store.appendEvent({
+    eventId: `${TENANT_CODEX_CALLER.sessionId}:start`,
+    threadId: TENANT_CODEX_CALLER.sessionId,
+    sessionId: TENANT_CODEX_CALLER.sessionId,
+    provider: 'codex',
+    method: 'session.started',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    metadata: {
+      userId: TENANT,
+      agentSlug: 'planner',
+      conversationId: CONVERSATION,
+    },
+  });
+
   const { delegateTask, executeExecutionTargetMessage } = await import(
     '../../../tools/station-control-delegation.js'
   );
@@ -293,6 +310,7 @@ async function fixture() {
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => currentUser,
@@ -305,10 +323,15 @@ async function fixture() {
           request.headers.get(CALLER_HEADER) === TENANT_CODEX_CALLER.sessionId
             ? TENANT_CODEX_CALLER
             : null,
-        startedMetadata: (sessionId) =>
-          sessionId === TENANT_CODEX_CALLER.sessionId
-            ? { agentSlug: 'planner' }
-            : undefined,
+        startedMetadata: (sessionId) => {
+          const event = store.latestEventByMethod(
+            sessionId,
+            'session.started',
+          )?.payload;
+          return event?.method === 'session.started'
+            ? event.metadata
+            : undefined;
+        },
         sessionEngine: () => 'codex',
         loadAgentSpec: async () => PLANNER,
         isRegistryDefaultAgent: async () => false,
@@ -360,7 +383,11 @@ async function fixture() {
               }
             : { Authorization: `Bearer ${operator.credential}` }),
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          path.includes('/chat') || path.includes('/delegations')
+            ? keyedTurnRequest(body)
+            : body,
+        ),
       },
       as.internal
         ? ({ incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never)

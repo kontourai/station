@@ -1,3 +1,4 @@
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import type { STTState } from '@kontourai/station-sdk';
 import {
   type ReactNode,
@@ -8,13 +9,20 @@ import {
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
+import {
+  composerReturnSends,
+  isComposerSubmitKey,
+} from '../../lib/composerReturnKey';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import { ComposerChoice } from '../ComposerChoice';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -77,9 +85,7 @@ function StartAttachButton({ onAdd }: { onAdd: (files: File[]) => void }) {
         multiple
         accept={START_FILE_ACCEPT}
         onChange={handleFileSelect}
-        className="attachment-input"
-        tabIndex={-1}
-        aria-hidden="true"
+        hidden
       />
       <button
         type="button"
@@ -127,6 +133,16 @@ export type StartAgentChip =
       environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
+      /** Why this Model, when a `last-used` Project chose or could not use one. */
+      modelNote?: string;
+      /** The selected Project's approval layer, as the server resolved it. */
+      approvalProjectDefault?: ProjectChatApprovalDefault;
+      /** A Project is selected but that layer could not be read. */
+      approvalProjectDefaultUnavailable?: boolean;
+      /** This start's own approval pick, if one was made. */
+      approvalPick?: ApprovalMode;
+      /** Present: the Permissions chip is a picker for `approvalPick`. */
+      onApprovalPick?: (mode: ApprovalMode) => void;
     };
 
 /** The project chip: the context the start runs in. */
@@ -158,6 +174,21 @@ function startAgentChipText(chip: StartAgentChip): string {
   return chip.modelLabel && chip.modelLabel !== MODEL_NOT_REPORTED
     ? `${chip.agent.name} · ${chip.modelLabel}`
     : chip.agent.name;
+}
+
+/** The project chip's words for No project. */
+export const NO_PROJECT_PHRASE = 'Without a project';
+
+/**
+ * Where a start runs, as the project chip words it: "in <Project>", or
+ * "without a project". The dock draft's line reads the same words.
+ */
+export function startProjectPhrase(
+  project: Extract<StartProjectChip, { status: 'ready' }>,
+): string {
+  return project.isGlobal
+    ? NO_PROJECT_PHRASE.toLowerCase()
+    : `in ${project.label}`;
 }
 
 /** The compact text box grows with its text up to this many lines. */
@@ -211,12 +242,14 @@ export function StartComposer({
   onPromptChange,
   textareaRef,
   compact = false,
+  layout = 'hero',
   heading,
   agent,
   onOpenAgents,
   onOpenModel,
   project,
   onOpenProject,
+  onClearProject,
   projectFixed = false,
   stationControl,
   overflowActions,
@@ -237,12 +270,18 @@ export function StartComposer({
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
+  /**
+   * Home and New Chat share the inline Project heading and Station footer.
+   * `draft` supplies the dock's compact spacing.
+   */
+  layout?: 'hero' | 'draft';
   heading?: string;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
   project: StartProjectChip;
   onOpenProject: (trigger: HTMLElement) => void;
+  onClearProject?: () => void;
   projectFixed?: boolean;
   stationControl?: ReactNode;
   overflowActions?: readonly OverflowAction[];
@@ -263,6 +302,11 @@ export function StartComposer({
   children?: ReactNode;
 }) {
   const { coarsePointer } = useDockSlotDevice();
+  // The reply composer's submit keys (#4387): Return (per the device setting)
+  // and Ctrl/Cmd+Return start the chat, so the first prompt sends the way
+  // every later one does.
+  const { chatReturnBehavior } = useDeviceSettings();
+  const returnSends = composerReturnSends(chatReturnBehavior, coarsePointer);
   const rootRef = useRef<HTMLFormElement>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const drop = useChatPaneFileDrop({
@@ -292,6 +336,40 @@ export function StartComposer({
     onOpenModel && agent.status === 'ready'
       ? (agent.agent?.name ?? 'Choose an agent')
       : startAgentChipText(agent);
+  const draft = layout === 'draft';
+  const projectControl = (
+    <>
+      {project.status === 'ready' && (
+        <button
+          type="button"
+          className={`choice-trigger start-composer__project${draft ? ' start-composer__chip' : ''}`}
+          aria-haspopup={projectFixed ? undefined : 'dialog'}
+          aria-label={`Project: ${project.label}`}
+          title={project.folder}
+          disabled={projectFixed}
+          onClick={(event) => onOpenProject(event.currentTarget)}
+        >
+          {!project.isGlobal && (
+            <ProjectIcon
+              project={{ name: project.label, icon: project.icon }}
+              size={displayableProjectIcon(project.icon) ? 18 : 24}
+              accent={project.accent}
+            />
+          )}
+          <span>{project.label}</span>
+          {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
+        </button>
+      )}
+      {project.status === 'loading' && (
+        <span
+          role="status"
+          aria-label="Checking which project the chat starts in"
+        >
+          <Skeleton variant="line" width="6rem" />
+        </span>
+      )}
+    </>
+  );
   return (
     <form
       ref={rootRef}
@@ -303,7 +381,7 @@ export function StartComposer({
         drop.onDrop(event);
         if (event.defaultPrevented) event.stopPropagation();
       }}
-      className={`start-composer${compact ? ' start-composer--compact' : ''}`}
+      className={`start-composer${compact ? ' start-composer--compact' : ''}${draft ? ' start-composer--draft' : ''}`}
       data-coarse-pointer={coarsePointer || undefined}
       aria-label="Start work"
       onSubmit={(event) => {
@@ -313,40 +391,34 @@ export function StartComposer({
     >
       <div className="start-composer__destination">
         <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
+          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
+          {!compact && (
+            <>
+              {project.status === 'ready' && !project.isGlobal && (
+                <> in {projectControl}</>
+              )}
+              {!heading && '?'}
+            </>
+          )}
         </h2>
-        {project.status === 'ready' && (
-          <button
-            type="button"
-            className="choice-trigger start-composer__project"
-            aria-haspopup={projectFixed ? undefined : 'dialog'}
-            aria-label={`Project: ${project.label}`}
-            title={project.folder}
-            disabled={projectFixed}
-            onClick={(event) => onOpenProject(event.currentTarget)}
-          >
-            {!project.isGlobal && (
-              <ProjectIcon
-                project={{ name: project.label, icon: project.icon }}
-                size={displayableProjectIcon(project.icon) ? 18 : 24}
-                accent={project.accent}
-              />
-            )}
-            <span>
-              {project.isGlobal ? 'Without a project' : `in ${project.label}`}
-            </span>
-            {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
-          </button>
-        )}
-        {project.status === 'loading' && (
-          <span
-            role="status"
-            aria-label="Checking which project the chat starts in"
-          >
-            <Skeleton variant="line" width="6rem" />
-          </span>
-        )}
-        {stationControl}
+        {compact ||
+        project.status === 'loading' ||
+        (project.status === 'ready' && project.isGlobal)
+          ? projectControl
+          : null}
+        {!compact &&
+          !projectFixed &&
+          project.status === 'ready' &&
+          !project.isGlobal &&
+          onClearProject && (
+            <Button
+              variant="link"
+              className="start-composer__without-project"
+              onClick={onClearProject}
+            >
+              or start without a project
+            </Button>
+          )}
       </div>
       <div
         className={`start-composer__box${drop.isDraggingFiles ? ' start-composer__box--file-drag' : ''}`}
@@ -389,6 +461,11 @@ export function StartComposer({
           rows={compact ? 1 : 3}
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!isComposerSubmitKey(event, returnSends)) return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
           onPaste={(event) => {
             if (!files) return;
             const pasted = filesFromDataTransfer(event.clipboardData);
@@ -435,7 +512,10 @@ export function StartComposer({
           </p>
         )}
         <div className="start-composer__bar">
-          <fieldset className="start-composer__chips" aria-label="Chat setup">
+          <fieldset
+            className="composer-choices start-composer__chips"
+            aria-label="Chat setup"
+          >
             {agent.status === 'loading' ? (
               <span
                 className="start-composer__chip start-composer__chip--loading"
@@ -445,34 +525,39 @@ export function StartComposer({
                 <Skeleton variant="line" width="9rem" />
               </span>
             ) : (
-              <button
-                type="button"
-                className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+              <ComposerChoice
+                className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}`}
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={
+                  !onOpenModel && agent.status === 'ready'
+                    ? agent.modelNote
+                    : undefined
+                }
                 onClick={(event) => onOpenAgents(event.currentTarget)}
-              >
-                {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
-                <span className="start-composer__chip-text">{agentText}</span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                caption="Agent"
+                value={agentText}
+                icon={
+                  agent.agent && <AgentIcon agent={agent.agent} size="small" />
+                }
+              />
             )}
             {onOpenModel && agent.status === 'ready' && (
-              <button
-                type="button"
-                className="choice-trigger start-composer__chip start-composer__chip--model"
+              <ComposerChoice
+                className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}`}
+                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
-              >
-                <span className="start-composer__chip-text">
-                  {agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
+                caption="Model"
+                valueClassName="chat-input__model-name"
+                value={
+                  agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
                     ? agent.modelLabel
-                    : 'Model'}
-                </span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                    : 'Model'
+                }
+              />
             )}
             {agent.status === 'ready' &&
               (!agent.environmentId || agent.environmentId === 'current') &&
@@ -480,6 +565,12 @@ export function StartComposer({
                 <StartApprovalSummary
                   agent={agent.agent}
                   executionAgentId={agent.executionAgentId}
+                  projectDefault={agent.approvalProjectDefault}
+                  projectDefaultUnavailable={
+                    agent.approvalProjectDefaultUnavailable
+                  }
+                  pick={agent.approvalPick}
+                  onPick={agent.onApprovalPick}
                 />
               )}
             {skill && (
@@ -530,6 +621,14 @@ export function StartComposer({
             </Button>
           </div>
         </div>
+      </div>
+      <div className="start-composer__location">
+        {stationControl}
+        {project.status === 'ready' && project.folder && (
+          <span className="start-composer__folder" title={project.folder}>
+            {project.folder}
+          </span>
+        )}
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}

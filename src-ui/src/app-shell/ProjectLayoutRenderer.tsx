@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '../components/Button';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
 import {
   hostRendersCodingPane,
@@ -39,7 +40,13 @@ import {
 } from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Empty, ErrorState, SkeletonList } from '../components/state';
+import {
+  Empty,
+  ErrorState,
+  SkeletonList,
+  useRetainedReadFailure,
+} from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
@@ -113,6 +120,7 @@ import {
   resolveLayoutDeclaration,
   resolveProjectLayoutRendererKind,
 } from './project-layout-kind';
+import { useDockedCodingTerminal } from './useDockedCodingTerminal';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -457,6 +465,7 @@ export function LayoutStackHost({
   // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
   // where the centre HAS Chat; a bottom-only device keeps the drill-in.
   const wide = useCodingWide() && centerChat;
+  const dockedTerminal = useDockedCodingTerminal(projectSlug);
   /**
    * The host's panes render once the reader has drilled in during this mount,
    * and stay mounted (hidden) after, so a pane keeps its state across the
@@ -469,6 +478,15 @@ export function LayoutStackHost({
   const [hostPersistence, setHostPersistence] = useState<
     'owned' | 'contended' | 'unavailable'
   >('owned');
+  const hostTakeOver = useRef<(() => void) | null>(null);
+  const onHostPersistenceChange = useCallback(
+    (status: 'owned' | 'contended' | 'unavailable', takeOver: () => void) => {
+      hostTakeOver.current = takeOver;
+      setHostPersistence(status);
+    },
+    [],
+  );
+  const useHostHere = useCallback(() => hostTakeOver.current?.(), []);
   /**
    * The Diff rail icon's changed-file count, when the layout already knows
    * it: the git status the Coding panes (the branch toolbar, the Diff) read
@@ -1016,6 +1034,14 @@ export function LayoutStackHost({
           action={
             presentation.reviewExtensions ? (
               <StationExtensionsAccess onlyWhenOff />
+            ) : presentation.state === 'temporarily-unavailable' &&
+              !presentation.pending ? (
+              <TroubleshootAction
+                request={{
+                  code: `pane-${presentation.reasonCode}`,
+                  message: `${paneEntry.descriptor.name}: ${presentation.reasonLabel}`,
+                }}
+              />
             ) : undefined
           }
         />
@@ -1185,11 +1211,14 @@ export function LayoutStackHost({
         terminalInstance
           ? {
               instance: terminalInstance,
+              docked: dockedTerminal.docked,
+              undock: dockedTerminal.undock,
               render: () => (
                 <WorkspacePaneFrame
                   instanceId={terminalInstance.instanceId}
                   paneName={stackPaneLabel(terminalInstance)}
                   onRetry={() => true}
+                  fill
                 >
                   {renderCodingPane(terminalInstance, LOWER_PANE_PRESENTATION)}
                 </WorkspacePaneFrame>
@@ -1205,6 +1234,7 @@ export function LayoutStackHost({
       badges={railBadges}
       popOut={popOut}
       persistence={document ? hostPersistence : 'owned'}
+      onUseHere={useHostHere}
       closable={(instance) =>
         !drillInInstances.some(
           (builtIn) => builtIn.instanceId === instance.instanceId,
@@ -1225,7 +1255,7 @@ export function LayoutStackHost({
           // save notice, no pane-actions chrome — the stack's breadcrumb, rail
           // and ⋯ carry what the reader needs (`CodingWorkbench`).
           presentation="chromeless"
-          onPersistenceStatusChange={setHostPersistence}
+          onPersistenceStatusChange={onHostPersistenceChange}
           onDocumentChange={handleHostDocumentChange}
           onOpenCatalog={requestCatalog}
           onOpenActionChange={captureHostOpen}
@@ -1242,9 +1272,21 @@ export function LayoutStackHost({
               renderPanes,
               instance.instanceId,
               terminalInstance?.instanceId ?? null,
-            )
-              ? renderCodingPane(instance, presentation)
-              : null
+            ) ? (
+              instance.instanceId === terminalInstance?.instanceId &&
+              dockedTerminal.docked ? (
+                <Empty
+                  label="Terminal is open in the dock"
+                  action={
+                    <Button size="sm" onClick={dockedTerminal.undock}>
+                      Move here
+                    </Button>
+                  }
+                />
+              ) : (
+                renderCodingPane(instance, presentation)
+              )
+            ) : null
           }
         />
       ) : null}
@@ -1296,11 +1338,12 @@ export function ProjectLayoutRenderer({
   projectSlug: string;
   layoutSlug: string;
 }) {
-  const {
-    data: persistedLayout,
-    isLoading: layoutLoading,
-    error: layoutQueryError,
-  } = useProjectLayoutQuery(projectSlug, layoutSlug);
+  const layoutQuery = useProjectLayoutQuery(projectSlug, layoutSlug);
+  const persistedLayout = layoutQuery.data;
+  // Re-checking the 404 resets the query to loading; reading the retained
+  // failure keeps the substituted workbench mounted instead of swapping it
+  // out and back on every refetch.
+  const layoutFailure = useRetainedReadFailure(layoutQuery);
 
   /**
    * #2065: a builtin layout kind whose configuration is empty needs no
@@ -1324,8 +1367,9 @@ export function ProjectLayoutRenderer({
    * there is no question an absent record leaves unanswered.
    *
    * Gated on `isUnplacedLayoutRecord` and not merely on `!persistedLayout`:
-   * while the request is in flight, or when it failed for any other reason,
-   * this must not run — a placed plugin layout that happens to be called
+   * before the first answer, or when it failed for any other reason, this
+   * must not run (a re-check of an already-answered 404 keeps it, above) — a
+   * placed plugin layout that happens to be called
    * `review` still owns its own rendering, and flashing the builtin over it
    * is exactly the hijack `project-layout-kind.ts` exists to prevent. That
    * predicate also excludes the 404 that means the PROJECT is missing, which
@@ -1345,7 +1389,7 @@ export function ProjectLayoutRenderer({
    */
   const unplacedBuiltinReview =
     layoutSlug === BUILTIN_REVIEW_LAYOUT.slug &&
-    isUnplacedLayoutRecord(layoutQueryError, layoutLoading);
+    isUnplacedLayoutRecord(layoutFailure?.error, false);
   const layoutConfig =
     persistedLayout ??
     (unplacedBuiltinReview

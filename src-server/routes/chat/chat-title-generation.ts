@@ -1,16 +1,35 @@
 /**
  * Auto-generates a short conversation title from the first exchange
  * (archive#1566). Follows `ApprovalGuardianService`'s cheap-side-model
- * pattern: a one-shot temp agent bound to `appConfig.structureModel`,
- * `generateObject` against a tiny schema, and a fully non-fatal failure
+ * pattern: a one-shot temp agent bound to the title model
+ * (`resolveTitleModel`: `appConfig.titleModel`, set explicitly),
+ * `generateText` for a bounded plain title, and a fully non-fatal failure
  * mode — the caller (`finalizeChatRequest`) fires this off in the
  * background, so nothing here may ever throw or hang the turn.
  */
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import { jsonSchema } from 'ai';
+import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { CHAT_TITLE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
+
+/**
+ * #4266: the model that writes conversation titles, or undefined when title
+ * generation is off.
+ *
+ * Only an explicit `titleModel` turns it on. The title prompt quotes the
+ * conversation, so it goes only to a model the operator chose for this; a
+ * model configured for another purpose (`structureModel`) never receives it.
+ * A hosted Station sends none: no title call is scoped to the tenant whose
+ * conversation it reads, so tenant content would reach a Station-wide model.
+ */
+export function resolveTitleModel(
+  appConfig: Pick<RuntimeContext['appConfig'], 'titleModel'>,
+  environment: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  if (isHostedTenantExecutionRequired(environment)) return undefined;
+  return appConfig.titleModel?.trim() || undefined;
+}
 
 // Bounds how long a slow/hung provider can delay the background title write
 // (never the turn itself — this always runs after the turn has finished).
@@ -39,16 +58,15 @@ export async function generateConversationTitle({
   firstUserText: string;
   assistantText: string;
 }): Promise<string | null> {
-  const structureModel = ctx.appConfig.structureModel;
-  if (!structureModel) {
-    // Empty/absent structureModel means title generation is disabled — the
-    // same convention `ApprovalGuardianService` and its callers rely on.
+  const titleModel = resolveTitleModel(ctx.appConfig);
+  if (!titleModel) {
+    // No title model (or a hosted Station): title generation is off.
     return null;
   }
 
   // archive#1566 review (MEDIUM, accepted with disclosure): this timeout
-  // only stops US from WAITING on `run()` — the underlying `generateObject`
-  // call is abandoned, not cancelled. `createTempAgent`/`generateObject`
+  // only stops US from WAITING on `run()` — the underlying `generateText`
+  // call is abandoned, not cancelled. `createTempAgent`/`generateText`
   // have no `AbortSignal` plumbing to cancel an in-flight provider call
   // (`ApprovalGuardianService` follows the same no-AbortSignal convention,
   // though it awaits its call directly with no timeout at all — the
@@ -64,7 +82,7 @@ export async function generateConversationTitle({
         {
           name: 'Chat Title Generator',
           prompt: '',
-          model: structureModel,
+          model: titleModel,
         } as AgentSpec,
         {
           framework: ctx.framework,
@@ -84,29 +102,16 @@ export async function generateConversationTitle({
         maxSteps: 1,
       });
 
-      if (!agent.generateObject) {
-        return null;
-      }
-
-      const objectResult = await agent.generateObject(
+      const result = await agent.generateText(
         buildTitlePrompt(firstUserText, assistantText),
         {
-          structuredOutputSchema: jsonSchema({
-            type: 'object',
-            additionalProperties: false,
-            required: ['title'],
-            properties: {
-              title: { type: 'string', minLength: 1 },
-            },
-          }),
+          maxOutputTokens: 64,
           conversationId: `chat-title-${Date.now()}`,
           userId: CHAT_TITLE_SERVICE_PRINCIPAL.id,
         },
       );
 
-      return normalizeGeneratedTitle(
-        (objectResult?.object as { title?: unknown } | undefined)?.title,
-      );
+      return normalizeGeneratedTitle(result.text);
     };
 
     const timeout = new Promise<null>((resolve) => {
@@ -143,7 +148,8 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
     return null;
   }
 
-  let title = raw.trim();
+  let title = raw.normalize('NFC').trim();
+  if (/[\r\n]/.test(title) || /[`{}<>]/.test(title)) return null;
   const wrappedInQuotes =
     title.length >= 2 &&
     ((title.startsWith('"') && title.endsWith('"')) ||
@@ -153,6 +159,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
   }
 
   title = title.replace(/\s+/g, ' ').trim();
+  if (!/^[\p{L}\p{M}\p{N} '’&-]+$/u.test(title)) return null;
   if (title.length > MAX_TITLE_CHARS) {
     title = title.slice(0, MAX_TITLE_CHARS).trim();
   }

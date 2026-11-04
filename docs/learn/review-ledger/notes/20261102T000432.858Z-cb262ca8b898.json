@@ -1,0 +1,11 @@
+{
+  "revision": "7df4bc6dccd054712e59d1692d8e0980922fa3ed",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Final formatting-only review after making the fence predicate private: Biome collapses the function signature to one line. No expression, call site or control flow changes; read-only lint passes. The previously recorded six prepared/WAL controls and named fault receipts retain their stated revisions and behavior scope.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/cancellation-fence.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Final formatting-only review after making the fence predicate private: Biome collapses the function signature to one line. No expression, call site or control flow changes; read-only lint passes. The previously recorded six prepared/WAL controls and named fault receipts retain their stated revisions and behavior scope.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/cancellation-fence.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Final formatting-only review after making the fence predicate private: Biome collapses the function signature to one line. No expression, call site or control flow changes; read-only lint passes. The previously recorded six prepared/WAL controls and named fault receipts retain their stated revisions and behavior scope.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/cancellation-fence.ts"]}
+  ]
+}

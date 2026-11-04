@@ -32,7 +32,12 @@ export const AUTOMATION_SOURCE_KINDS = [
 export type AutomationSourceKind = (typeof AUTOMATION_SOURCE_KINDS)[number];
 
 /** Actions a rule may take. A grant names the subset a source permits. */
-export const AUTOMATION_ACTION_KINDS = ['dispatch-task', 'notify'] as const;
+export const AUTOMATION_ACTION_KINDS = [
+  'dispatch-task',
+  'isolated-repair',
+  'publish-branch',
+  'notify',
+] as const;
 
 export type AutomationActionKind = (typeof AUTOMATION_ACTION_KINDS)[number];
 
@@ -190,9 +195,55 @@ export type AutomationAction =
       budget: AutomationBudget;
     }>
   | Readonly<{
+      kind: 'isolated-repair';
+      projectId: string;
+      agentId: string;
+      profileId: string;
+      instructions: string;
+      /** Provider requests and wall time; this is not a token or turn limit. */
+      budget: Readonly<{
+        maxProviderRequests: number;
+        maxWallRuntimeMs: number;
+      }>;
+    }>
+  | Readonly<{
       kind: 'notify';
       priority: 'low' | 'normal' | 'high' | 'urgent';
     }>;
+
+/** Private durable dispatch record; it is never accepted as request authority. */
+export interface AutomationActionIntent {
+  intentId: string;
+  sourceId: string;
+  ruleId: string;
+  episodeKey: string;
+  episodeId: string;
+  deliveryKey: string;
+  policyFingerprint: string;
+  event: AutomationEvent;
+  action: Extract<
+    AutomationAction,
+    { kind: 'dispatch-task' | 'isolated-repair' }
+  >;
+  state:
+    | 'pending'
+    | 'invoking'
+    | 'queued'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'indeterminate'
+    | 'refused';
+  createdAt: number;
+  updatedAt: number;
+  deadlineAt?: number;
+  taskId?: string;
+  taskCreatedAt?: string;
+  sessionId?: string;
+  conversationId?: string;
+  turnId?: string;
+  reason?: string;
+}
 
 /**
  * Groups related events into one episode so a failure that keeps recurring
@@ -284,6 +335,46 @@ export const AUTOMATION_SUPPRESSION_REASONS = [
 
 export type AutomationSuppressionReason =
   (typeof AUTOMATION_SUPPRESSION_REASONS)[number];
+
+/**
+ * Bounded, payload-free view of one recorded delivery, as the ledger keeps it
+ * and `GET /automations/deliveries` returns it. It holds no payload, secret
+ * or delivery GUID: `deliveryKey` is a sha256 of the source id and transport
+ * id.
+ */
+export type AutomationDeliveryRecord = Readonly<{
+  deliveryKey: string;
+  sourceId: string;
+  /** e.g. `workflow_run:<id>:<attempt>:completed`. */
+  semanticKey: string;
+  eventType: string;
+  receivedAt: string;
+  updatedAt: string;
+  outcome: AutomationDeliveryOutcome;
+  reason?: AutomationRefusalReason | AutomationSuppressionReason;
+  ruleId?: string;
+  episodeId?: string;
+  taskId?: string;
+  sessionId?: string;
+}>;
+
+export type AutomationPollOutcome =
+  | 'ok'
+  | 'partial'
+  | 'unauthorized'
+  | 'unavailable';
+
+export interface AutomationPollRecord {
+  sourceId: string;
+  lastPolledAt: string;
+  cursorAt?: string;
+  lastOutcome: AutomationPollOutcome;
+}
+
+export interface AutomationDeliveryPage {
+  deliveries: AutomationDeliveryRecord[];
+  polls: AutomationPollRecord[];
+}
 
 /**
  * Episode lifecycle. `open` may still act; `exhausted` used every allowed

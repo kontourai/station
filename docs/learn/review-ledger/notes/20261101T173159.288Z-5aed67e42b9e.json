@@ -1,0 +1,7 @@
+{
+  "revision": "931ce1614c66e96dd6a8847de284465eda3e8447",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"lifecycle.ts now passes the production UI listener script to node - on stdin instead of -e on the command line (Windows ENAMETOOLONG fix); listener behavior, ports, identity, IPC channel and watch mode are unchanged, and this document makes no claim about how the script is passed.","inputs":["docs/guides/walkthroughs.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

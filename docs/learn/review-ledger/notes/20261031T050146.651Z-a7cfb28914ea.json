@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed cross-runtime-chat-switching mobile region/icon selectors and containment assertions. Renamed switcher observations to Inbox observations; provider continuity owner and 320/390/412 geometry scope remain unchanged. Browser fixtures do not qualify a real device or full live provider journey.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

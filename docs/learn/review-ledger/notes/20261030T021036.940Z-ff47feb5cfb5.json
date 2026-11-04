@@ -1,0 +1,7 @@
+{
+  "revision": "93941c96e5a3f17fd81e1e39f9127555dceaf354",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the composer context meter restyle (ContextPercentage.css: rest fill var(--k-panel-raised), 36px track, canonical hover color-mix; motivated by the meter reading as stray bare text between the row's filled chips on a phone). Section 3.5's claims — the meter sits in the composer meta row beside the model picker it measures, and the phone Actions sheet repeats it — are unchanged in ChatDockBody.tsx and ContextPercentage.tsx; the doc does not specify the meter's chrome. No prose change; render inspected at 390 in dark and light via the Chromium browser fixture, and the registered gallery screens captured before/after (16 byte-identical, one volatile banner region unrelated to the meter).","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

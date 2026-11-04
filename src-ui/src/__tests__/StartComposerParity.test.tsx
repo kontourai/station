@@ -21,6 +21,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { StrictMode, useState } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -41,6 +42,12 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
+async function flushHistory() {
+  for (let turn = 0; turn < 4; turn += 1)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+}
 
 function render(ui: Parameters<typeof renderView>[0]) {
   const client = new QueryClient({
@@ -73,6 +80,16 @@ const state = vi.hoisted(() => ({
   agentConnections: [] as unknown[],
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
+  /** `GET /api/environments/peers`, as this caller may read it. */
+  peers: [] as unknown[],
+  /** `GET /api/projects/:slug/chat-defaults`, by slug. */
+  chatDefaults: {} as Record<string, unknown>,
+  /** What the device reports about this Station (its host name). */
+  device: undefined as { hostName?: string } | undefined,
+  /** `GET /api/environments/ssh`: saved Stations besides this one. */
+  environments: [] as unknown[],
+  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -84,16 +101,17 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   }),
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({
-  useDevicePresentation: () => undefined,
+  useDevicePresentation: () => state.device,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
-    data: [],
+    data: state.environments,
     isSuccess: true,
     isError: false,
   }),
   usePeerCredentialsQuery: () => ({
-    data: [],
+    data: state.peers,
     isSuccess: true,
     isError: false,
   }),
@@ -128,6 +146,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     refetch: async () => ({}),
   }),
+  useProjectChatDefaultsQuery: (slug: string) => ({
+    data: state.chatDefaults[slug],
+    isFetching: false,
+    isPending: false,
+  }),
   useModelPickerCatalogQuery: () => ({
     data: { agentConnections: state.agentConnections, modelConnections: [] },
     isLoading: false,
@@ -152,6 +175,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
+// The caller's server-reported grant: this Station's operator.
+vi.mock('@kontourai/station-sdk/authority-observation', () => ({
+  getAuthorityObservation: async () => ({
+    schemaVersion: 'station.authority-observation/v1',
+    environmentId: 'env-parity',
+    principal: { kind: 'human', id: 'owner' },
+    grant: { kind: 'operator' },
+  }),
+}));
 // The Model picker's own UI has its own tests; here it is the choice it makes.
 vi.mock('../components/session/SessionModelPicker', () => ({
   SessionModelPicker: ({
@@ -257,6 +289,11 @@ beforeEach(() => {
   state.projectsError = false;
   state.agentConnections = [];
   state.runLocations = undefined;
+  state.peers = [];
+  state.chatDefaults = {};
+  state.device = undefined;
+  state.environments = [];
+  state.featurePreviews = [{ id: 'visual-skills', enabled: true }];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -267,8 +304,10 @@ window.addEventListener = ((type: string, listener: never, options?: never) => {
   if (type === 'station:open-new-chat') dockListeners.push(listener);
   return realAdd(type, listener, options);
 }) as typeof window.addEventListener;
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // An open draft folds its history layer on unmount; let that land.
+  await flushHistory();
   for (const listener of dockListeners.splice(0))
     window.removeEventListener('station:open-new-chat', listener);
 });
@@ -322,7 +361,7 @@ function renderBoth(projectSlug?: string) {
     dockSelect,
     starts,
     home: () => within(screen.getByTestId('home')),
-    dock: () => screen.getByRole('dialog', { name: 'New chat' }),
+    dock: () => screen.getByRole('region', { name: 'New chat' }),
     cleanupListener: () =>
       window.removeEventListener('station:open-new-chat', listener),
   };
@@ -334,6 +373,143 @@ const agentChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
+
+describe('a Project’s new-chat defaults preselect the composer', () => {
+  const CLAUDE_APP = {
+    ...CLAUDE,
+    engineConnectionType: 'claude',
+    execution: { agentConnectionId: 'claude' },
+  };
+  const claudeConnection = (models?: Array<{ id: string; name: string }>) => ({
+    id: 'claude',
+    name: 'Claude',
+    type: 'claude',
+    kind: 'agent',
+    config: {},
+    enabled: true,
+    status: 'ready',
+    capabilities: ['agent-runtime'],
+    ...(models
+      ? {
+          runtimeCatalog: {
+            source: 'live',
+            models: models.map((model) => ({ ...model, originalId: model.id })),
+            builtInModels: [],
+          },
+        }
+      : {}),
+  });
+  const lastUsed = (selection: 'fixed' | 'last-used', modelId: string) => ({
+    version: 'station.project-chat-defaults/v1',
+    projectSlug: 'station',
+    model: {
+      selection,
+      lastUsed: [
+        { agentSlug: 'claude', modelId, startedAt: '2026-10-20T10:00:00Z' },
+      ],
+    },
+    approvalMode: {
+      selection,
+      lastUsed: { approvalMode: 'auto', startedAt: '2026-10-20T10:00:00Z' },
+      resolved:
+        selection === 'last-used'
+          ? { approvalMode: 'auto', source: 'last-used' }
+          : { source: 'none' },
+    },
+  });
+  const startInDock = (dock: HTMLElement) => {
+    fireEvent.change(
+      within(formOf(dock)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Pick up where I left off' } },
+    );
+    fireEvent.click(
+      within(formOf(dock)).getByRole('button', { name: 'Start' }),
+    );
+  };
+
+  beforeEach(() => {
+    state.agents = [CLAUDE_APP];
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+  });
+
+  test('last-used opens on the model and approval mode the last chat here started with', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Sonnet/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'The model your last chat in this project started with.',
+    );
+    // The Project layer replaces the account default (Full access here).
+    expect(within(formOf(dock)).getByText('Auto')).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect).toHaveBeenCalledTimes(1);
+    expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('sonnet');
+    expect(ui.dockSelect.mock.calls[0][5]).toBe('project last used');
+    ui.cleanupListener();
+  });
+
+  test('fixed ignores the history and keeps the existing defaults', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBeNull();
+    expect(within(formOf(dock)).getByText('Full access')).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+
+  test('a Station with no Project layer here keeps the personal default; an unread answer says set at start', async () => {
+    state.agentConnections = [claudeConnection()];
+    // `null`: the route answered 404/501 (no Project layer applies).
+    state.chatDefaults = { station: null };
+    const ui = renderBoth();
+    expect(
+      await within(formOf(ui.dock())).findByText('Full access'),
+    ).toBeTruthy();
+    ui.cleanupListener();
+    cleanup();
+    // No answer at all (loading or failed): never a guessed mode.
+    state.chatDefaults = {};
+    const unread = renderBoth();
+    expect(
+      await within(formOf(unread.dock())).findByText('Set at start'),
+    ).toBeTruthy();
+    unread.cleanupListener();
+  });
+
+  test('a last-used model no longer offered falls back and says so', async () => {
+    state.agentConnections = [
+      claudeConnection([
+        { id: 'opus', name: 'Opus' },
+        { id: 'sonnet', name: 'Sonnet' },
+      ]),
+    ];
+    state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'Your last model in this project (retired-model) is no longer offered, so this chat starts on the Agent default model.',
+    );
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+});
 
 describe('Home and the dock start the same way', () => {
   test('startup permissions show the saved account default and name its source before Start', async () => {
@@ -359,15 +535,112 @@ describe('Home and the dock start the same way', () => {
     const ui = renderBoth();
     expect(
       await within(formOf(screen.getByTestId('home'))).findByText(
-        'Permissions: Full access · your default',
+        'Full access',
       ),
     ).toBeTruthy();
     expect(
-      await within(formOf(ui.dock())).findByText(
-        'Permissions: Full access · your default',
-      ),
+      await within(formOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
   });
+
+  test('the Permissions chip picks this start’s mode, and the start carries it', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const typeAndStart = async (root: HTMLElement) => {
+      fireEvent.change(
+        within(formOf(root)).getByRole('textbox', {
+          name: 'What would you like done?',
+        }),
+        { target: { value: 'Go' } },
+      );
+      await waitFor(() =>
+        expect(
+          within(formOf(root)).getByRole('button', { name: 'Start' }),
+        ).not.toHaveProperty('disabled', true),
+      );
+      fireEvent.click(
+        within(formOf(root)).getByRole('button', { name: 'Start' }),
+      );
+    };
+
+    // Home: Ask, chosen in the picker, is what the start sends.
+    fireEvent.click(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Full access/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
+    expect(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Ask\. Chosen for this chat/,
+      }),
+    ).toBeTruthy();
+    await typeAndStart(home);
+    expect(ui.starts.at(-1)!.detail.selection).toMatchObject({
+      agentSlug: 'claude',
+      approvalMode: 'ask',
+    });
+
+    // Default delegates to engine settings and explains the unknown startup mode.
+    fireEvent.click(
+      within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
+    const engineDefault = await within(formOf(home)).findByRole('button', {
+      name: /^Permissions: Default/,
+    });
+    expect(within(engineDefault).getByText('Permissions')).toBeTruthy();
+    expect(within(engineDefault).getByText('Default')).toBeTruthy();
+    fireEvent.click(engineDefault);
+    expect(
+      await screen.findByText(
+        'Uses the engine’s saved permissions; confirmed after startup.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close mode picker' }));
+
+    // The dock: full access takes its confirmation, then reaches onSelect.
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: /,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: Auto/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable full access' }),
+    );
+    await typeAndStart(ui.dock());
+    await waitFor(() => expect(ui.dockSelect).toHaveBeenCalled());
+    expect(ui.dockSelect.mock.calls.at(-1)![18]).toBe('never');
+    ui.cleanupListener();
+  }, 30_000);
 
   test('a Project page fixes its start context independently of the ambient dock', () => {
     const ui = renderBoth('station');
@@ -378,7 +651,9 @@ describe('Home and the dock start the same way', () => {
       'Project: No project',
     );
     expect(
-      within(formOf(home)).getByRole('button', { name: 'Model: Opus' }),
+      within(formOf(home)).getByRole('button', {
+        name: 'Model: Opus',
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(formOf(home)).getByRole('textbox', {
@@ -419,6 +694,34 @@ describe('Home and the dock start the same way', () => {
     ).toBe('Project: missing-project');
     ui.cleanupListener();
   });
+
+  test.each(['home', 'dock'] as const)(
+    'on %s, tapping Runs on opens the Station choice with another Station to run on',
+    async (surface) => {
+      state.peers = [
+        {
+          environmentId: 'env-brian-media',
+          apiBase: 'https://brian-media.example.ts.net',
+          label: 'brian-media',
+          scope: 'orchestration:read orchestration:operate',
+        },
+      ];
+      const ui = renderBoth();
+      const root = surface === 'home' ? screen.getByTestId('home') : ui.dock();
+      fireEvent.click(
+        await within(formOf(root)).findByRole('button', {
+          name: 'Runs on This Station. Choose where this work runs',
+        }),
+      );
+      const menu = await screen.findByRole('dialog', {
+        name: 'Where this work runs',
+      });
+      expect(
+        within(menu).getByRole('button', { name: /brian-media/ }),
+      ).toBeTruthy();
+      ui.cleanupListener();
+    },
+  );
 
   test('both render the shared composer and open on the same selection', () => {
     const ui = renderBoth();
@@ -475,7 +778,7 @@ describe('Home and the dock start the same way', () => {
     // Home re-derives from the remembered choice while it stays mounted.
     await waitFor(() =>
       expect(agentChip(home).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · GPT 5.4',
       ),
     );
     fireEvent.change(
@@ -511,7 +814,7 @@ describe('Home and the dock start the same way', () => {
     );
     await waitFor(() =>
       expect(agentChip(ui.dock()).getAttribute('aria-label')).toBe(
-        'Agent: Codex · gpt-5.4',
+        'Agent: Codex · GPT 5.4',
       ),
     );
     const dock = ui.dock();
@@ -968,7 +1271,9 @@ describe('Home and the dock start the same way', () => {
       { target: { value: 'Go' } },
     );
     expect(
-      within(form).queryByRole('button', { name: 'Project: No project' }),
+      within(form).queryByRole('button', {
+        name: 'Project: No project',
+      }),
     ).toBeNull();
     const startButton = within(form).getByRole('button', {
       name: 'Start',
@@ -1045,6 +1350,15 @@ describe('Home and the dock start the same way', () => {
       }) as HTMLTextAreaElement;
     const startButton = () =>
       screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    test('with the visual-skills preview off, Home offers no visual skills', () => {
+      state.featurePreviews = [{ id: 'visual-skills', enabled: false }];
+      renderHome();
+      // "Use a visual skill" is the menu's only action, so no menu at all.
+      expect(
+        screen.queryByRole('button', { name: 'More start options' }),
+      ).toBeNull();
+    });
+
     async function handOffSkills() {
       fireEvent.click(
         screen.getByRole('button', { name: 'More start options' }),
@@ -1472,7 +1786,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
       />
     </AuthorityPersistenceContext.Provider>,
   );
-  const dock = screen.getByRole('dialog', { name: 'New chat' });
+  const dock = screen.getByRole('region', { name: 'New chat' });
   fireEvent.change(
     within(dock).getByRole('textbox', { name: 'What would you like done?' }),
     { target: { value: 'From Home, edited in the dock' } },
@@ -1480,6 +1794,281 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
   expect(onDraftChange).toHaveBeenLastCalledWith(
     'From Home, edited in the dock',
   );
+});
+
+// The dock's New chat is a draft in the dock body, not a dialog over the
+// page: no title bar or hero, no recent chats, one quiet line naming where
+// Start runs, and the Project and Station controls in the chip row under the
+// text. Home keeps its start box with the hero above it.
+describe("the dock's New chat is a draft, not a dialog", () => {
+  test('Home and New Chat put the Project in the heading and the Station below the composer', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.device = { hostName: 'Kontour' };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    expect(dock.tagName).toBe('SECTION');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    for (const root of [dock, screen.getByTestId('home')]) {
+      const heading = await within(root).findByRole('heading', {
+        name: /What would you like to do.*Station/,
+      });
+      expect(heading.contains(projectChip(root))).toBe(true);
+      const chips = within(formOf(root)).getByRole('group', {
+        name: 'Chat setup',
+      });
+      expect(
+        within(chips).queryByRole('button', { name: /^Project:/ }),
+      ).toBeNull();
+      expect(within(root).getByText('Runs on Kontour')).toBeTruthy();
+    }
+    expect(
+      within(dock).queryByRole('button', { name: 'Close new chat' }),
+    ).toBeNull();
+  });
+
+  test('the inline Project remains available while drafting', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    const dock = renderBoth().dock();
+    const heading = await within(dock).findByRole('heading', {
+      name: /What would you like to do.*Station/,
+    });
+    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
+      target: { value: 'Tidy the sidebar' },
+    });
+    expect(heading.contains(projectChip(dock))).toBe(true);
+    expect((projectChip(dock) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // Like the dialog it replaced, the draft takes a history entry, so a
+  // phone's Back dismisses it; leaving it returns focus to its opener.
+  test('Back and Escape dismiss the draft, and focus returns to the control that opened it', async () => {
+    const onClose = vi.fn();
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={vi.fn()}
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    // As main.tsx renders the app: StrictMode replays effects, which must
+    // not re-capture the draft's own text box as the place to return to.
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.keyDown(draft, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    await flushHistory();
+
+    opener.focus();
+    fireEvent.click(opener);
+    screen.getByRole('region', { name: 'New chat' });
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  // Out of view (a collapsed dock keeps it hidden) the draft gives up its Back
+  // entry without travelling back, so nothing in flight is cancelled, and a
+  // Back then does not discard it. Back in view, it takes an entry again.
+  test('a draft out of view holds no Back entry and releases it without travelling back', async () => {
+    const onClose = vi.fn();
+    // One mounted draft whose visibility the test flips, as the dock does.
+    let setInView: (inView: boolean) => void = () => undefined;
+    function Harness() {
+      const [historyActive, setHistoryActive] = useState(true);
+      setInView = setHistoryActive;
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <NewChatModal
+            projectIconBySlug={new Map()}
+            startSurface
+            agents={state.agents as AgentData[]}
+            projects={state.projects as ProjectMetadata[]}
+            onSelect={vi.fn()}
+            onClose={onClose}
+            historyActive={historyActive}
+          />
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    await flushHistory();
+    const back = vi.spyOn(window.history, 'back');
+    act(() => setInView(false));
+    await flushHistory();
+    expect(back).not.toHaveBeenCalled();
+    back.mockRestore();
+
+    act(() => window.history.back());
+    await flushHistory();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'New chat' })).toBeTruthy();
+
+    act(() => setInView(true));
+    await flushHistory();
+    act(() => window.history.back());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  // After Start the dock hands focus to the new chat's composer
+  // (`requestComposerFocus`); the draft must not pull it back to its opener.
+  test('a started draft does not return focus to the control that opened it', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={() => setOpen(false)}
+              onClose={() => setOpen(false)}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.change(
+      within(draft).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Go' } },
+    );
+    const start = within(draft).getByRole('button', { name: 'Start' });
+    await waitFor(() =>
+      expect((start as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    expect(document.activeElement).not.toBe(opener);
+  });
+
+  // The whole draft owns a dropped file: let go over the line (not the
+  // composer), it joins the draft's files instead of the browser opening it.
+  test('a file dropped on the draft outside the composer joins its files', async () => {
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const lead = await within(dock).findByRole('heading');
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    fireEvent.dragEnter(lead, { dataTransfer, relatedTarget: null });
+    const dropped = fireEvent.drop(lead, { dataTransfer });
+    // Handled: the browser's default (open the file, leave the app) is off.
+    expect(dropped).toBe(false);
+    const list = await within(dock).findByRole('list', {
+      name: 'Files for this chat',
+    });
+    expect(within(list).getByText('notes.txt')).toBeTruthy();
+  });
+
+  // A draft that takes no files (the fork's Agent list) still swallows the
+  // drop and says why; the next drag clears that, so it never goes stale.
+  test('a refused drop says why, and the next drag clears it', async () => {
+    render(
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+      >
+        <NewChatModal
+          projectIconBySlug={new Map()}
+          agents={state.agents as AgentData[]}
+          projects={state.projects as ProjectMetadata[]}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    const draft = screen.getByRole('region', { name: 'New Chat' });
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    expect(fireEvent.drop(draft, { dataTransfer })).toBe(false);
+    expect((await within(draft).findByRole('alert')).textContent).toBe(
+      'This draft cannot take files.',
+    );
+    fireEvent.dragEnter(draft, { dataTransfer, relatedTarget: null });
+    expect(
+      within(draft).queryByText('This draft cannot take files.'),
+    ).toBeNull();
+  });
+
+  test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
+    state.environments = [
+      {
+        profile: {
+          id: 'ssh-1',
+          environmentId: 'env-lab',
+          name: 'Lab box',
+          verifiedProjectPath: true,
+        },
+        state: { phase: 'connected' },
+      },
+    ];
+    const ui = renderBoth();
+    const dock = ui.dock();
+    // The device has not answered (undefined): no Station claim yet.
+    expect(
+      await within(dock).findByRole('heading', {
+        name: 'What would you like to do?',
+      }),
+    ).toBeTruthy();
+    expect(
+      await within(dock).findByRole('button', {
+        name: 'Runs on This Station. Choose where this work runs',
+      }),
+    ).toBeTruthy();
+  });
 });
 
 // #3366 follow-up: the composer draws a project with `ProjectIcon` — the

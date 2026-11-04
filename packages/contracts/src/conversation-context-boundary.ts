@@ -1,7 +1,85 @@
 /** Durable, Station-owned intent to replace a Conversation's next engine context. */
 export type ConversationContextBoundaryPolicy =
   | 'continue-from-history'
-  | 'empty-next-cold-start';
+  | 'empty-next-cold-start'
+  | 'summary-next-cold-start'
+  | 'task-state-next-cold-start';
+
+export interface ConversationContextBoundarySeed {
+  kind: 'semantic-summary' | 'task-state';
+  text: string;
+  digest: string;
+  sourceSessionId: string;
+  sourceEventId: string;
+  sourceRevision: string;
+  sourceCutoffs?: { sessionId: string; throughSequence: number }[];
+  sourceMessageCount?: number;
+  task?: { taskId: string; taskCreatedAt: string; projectId?: string };
+  taskStateRevision?: string;
+  taskBriefDigest?: string;
+  mandatoryContextDigest?: string;
+  learningContributions?: readonly import('./learning-review.js').LearningReviewRevisionRef[];
+  model?: string;
+  generationUsage:
+    | { state: 'unknown' }
+    | { state: 'observed'; inputTokens: number; outputTokens: number };
+  contextTokensBefore?: number;
+  contextWindowTokens?: number;
+}
+export function isSummaryContextBoundary(
+  policy: ConversationContextBoundaryPolicy,
+): boolean {
+  return (
+    policy === 'summary-next-cold-start' ||
+    policy === 'task-state-next-cold-start'
+  );
+}
+export interface ConversationCompactionView {
+  currentSessionId: string;
+  state: 'ready' | 'busy' | 'engine-owned' | 'unsupported' | 'unknown';
+  threshold: number;
+  policyRevision: number;
+  autoEnabled: boolean;
+  contextKind?: 'semantic-summary' | 'task-state';
+  confirmedContext?: {
+    sessionId: string;
+    turnId: string;
+    contextTokens: number;
+    contextWindowTokens: number;
+    modelId?: string;
+  };
+  reason?: string;
+  operation?: ConversationCompactionOperationView;
+}
+/** Public operation provenance; retained model context and internal Task briefs stay server-side. */
+export interface ConversationCompactionOperationView {
+  operationId: string;
+  state: string;
+  reason?: string;
+  nextEligibleAt: number;
+  model?: string;
+  generationUsage?: ConversationContextBoundarySeed['generationUsage'];
+  contextKind?: 'semantic-summary' | 'task-state';
+  generationAttempts?: readonly ContextSummaryGenerationAttempt[];
+  boundaryId?: string;
+  seed?: {
+    kind: ConversationContextBoundarySeed['kind'];
+    digest: string;
+    length: number;
+    sourceSessionId: string;
+    sourceEventId: string;
+    sourceRevision: string;
+    task?: ConversationContextBoundarySeed['task'];
+    taskStateRevision?: string;
+  };
+}
+/** Separate observations of summary work, never canonical provider billing receipts. */
+export interface ContextSummaryGenerationAttempt {
+  attempt: number;
+  model?: string;
+  usage: ConversationContextBoundarySeed['generationUsage'];
+  outcome: 'generated' | 'refused' | 'unknown';
+}
 
 export type ConversationContextBoundaryStatus =
   | 'reserved'
@@ -16,6 +94,8 @@ export interface ConversationContextBoundaryRequest {
   idempotencyKey: string;
   /** Prevent a stale tab from resetting a newer execution Session. */
   expectedCurrentSessionId: string;
+  /** Server-produced only; route callers must never supply a generated summary. */
+  seed?: ConversationContextBoundarySeed;
 }
 
 /** Browser-safe durable provenance; no provider cursor or transcript is exposed. */
@@ -37,12 +117,14 @@ export interface ConversationContextBoundaryProjection {
   omitted: readonly string[];
   preserved: readonly string[];
   retryable: boolean;
+  seed?: Omit<ConversationContextBoundarySeed, 'text'>;
 }
 
 export interface ConversationContextBoundaryProvenance {
   boundaryId: string;
   policy: ConversationContextBoundaryPolicy;
   priorTranscriptInjected: boolean;
+  seed?: Omit<ConversationContextBoundarySeed, 'text'>;
 }
 
 /**
@@ -60,6 +142,7 @@ export const CONTEXT_BOUNDARY_OMITTED = Object.freeze([
   'provider-native history',
   'tool state',
   'session approvals',
+  'attachments and raw tool results from earlier context',
 ] as const);
 export const CONTEXT_BOUNDARY_PRESERVED = Object.freeze([
   'canonical transcript',

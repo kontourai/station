@@ -1,0 +1,9 @@
+{
+  "revision": "197315ba7ee8cee1bd53fbef9f15b8add6d825fe",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed footer diagram, current behavior, D2 footer summary and D5 historical presence decision against ProjectSidebarFooter, UpdatesControl and SidebarAccountControl. Updated single-row utilities left and icon-only Updates/profile right; marked superseded presence placement as historical. Project layout, Board and notification behavior unchanged. 32 component tests pass; local browser verified dark/light, collapsed utilities and 390px drawer with 44px targets.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed historical workspace-map evidence and its pinned revision statements against changed footer source and tests. Retained original observations and screenshots as historical evidence, not current layout claims. Current footer replaces Live work and gear with icon-only Updates beside profile, preserving Schedule/Customize, account menu Settings and collapsed focus restoration. Existing tray coverage moved to standalone component suite. Current canonical descriptions updated in shell ownership, pane relationships and settings design. 32 focused tests pass and local browser verified current layout; no hosted, native or release claim.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarFooter.test.tsx","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx"]}
+  ]
+}

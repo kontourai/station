@@ -1,0 +1,7 @@
+{
+  "revision": "9a288f830f5d989db75315535e81946c6ec1c6cc",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Source delta (#4203 review): listSessionInventoryEvents no longer lists an unresolved tool.completed that a later completion of the same thread/call (same-turn rule) superseded, within the frozen high-water mark, matching the transcript's station#1569 H1 fold. Checked: the document states nothing about the inventory's tool-result listing or superseded completions. No prose change.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

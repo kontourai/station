@@ -290,11 +290,19 @@ export function createSqliteRevisionEvidencePersistence(
         return { outcome: 'corrupt' } as const;
       }
 
+      let priorBusyTimeout: number | undefined;
       try {
         if (!beforePersistConsumed && options.beforePersistOnce) {
           beforePersistConsumed = true;
           options.beforePersistOnce();
         }
+        priorBusyTimeout = (
+          database.prepare('PRAGMA busy_timeout').get() as { timeout: number }
+        ).timeout;
+        // A room worker can hold the write lock while awaiting main-thread
+        // authorization (#4204). Refuse contention immediately so that approval
+        // can run; the durable publication outbox remains available for retry.
+        database.exec('PRAGMA busy_timeout = 0');
         database.exec('BEGIN IMMEDIATE');
         const ledger = readLedgerSnapshot(database, bounds);
         if (ledger.outcome !== 'available') {
@@ -430,6 +438,13 @@ export function createSqliteRevisionEvidencePersistence(
           // The caller gets a typed unavailable outcome either way.
         }
         return { outcome: 'unavailable' } as const;
+      } finally {
+        if (priorBusyTimeout !== undefined)
+          try {
+            database.exec(`PRAGMA busy_timeout = ${priorBusyTimeout}`);
+          } catch {
+            // A reentrant close can retire the connection before restoration.
+          }
       }
     },
   });

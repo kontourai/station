@@ -1,0 +1,325 @@
+// @vitest-environment jsdom
+import type { DeviceAgentReveal } from '@kontourai/station-contracts/mobile-device';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
+import { afterEach, expect, test, vi } from 'vitest';
+
+const scope = vi.hoisted(() => ({
+  apiBase: 'http://station.test',
+  authorityKey: 'authority-1',
+  isCurrent: (): boolean => true,
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => scope,
+}));
+vi.mock('../../hooks/useActiveProject', () => ({
+  useActiveProject: () => ({
+    projectSlug: 'alpha',
+    projectName: 'Alpha',
+    workingDirectory: null,
+  }),
+}));
+
+import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import {
+  NavigationProvider,
+  useNavigation,
+} from '../../contexts/NavigationContext';
+import {
+  RegionModelProvider,
+  useRegionModel,
+} from '../../contexts/RegionModelContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
+import {
+  ANDROID_DEVICE,
+  authorizeScope,
+  readyInventory,
+  renderInQueryClient,
+  sessionFor,
+  stubDeviceFetch,
+} from '../../workspace-panes/__tests__/deviceWorkspacePaneHarness';
+import { DeviceWorkspacePane } from '../../workspace-panes/DeviceWorkspacePane';
+import { readDevicePaneState } from '../../workspace-panes/devicePaneStateStorage';
+import { AgentDeviceReveal } from '../AgentDeviceReveal';
+import { deviceFloatSourceKey } from '../floatSource';
+import {
+  dismissFloat,
+  getFloatingSource,
+  handOffFloat,
+  openFloat,
+  resetFloatStoreForTests,
+} from '../floatStore';
+
+let model: ReturnType<typeof useRegionModel> | undefined;
+function Workspace({ float = false }: { float?: boolean }) {
+  const regions = useRegionModel();
+  const navigation = useNavigation();
+  useEffect(() => {
+    navigation.setProject('alpha');
+  }, [navigation.setProject]);
+  model = regions;
+  return (
+    <>
+      <AgentDeviceReveal
+        projectSlug="alpha"
+        conversationId="conversation"
+        float={float}
+      />
+      {regions.regions.right.panes.includes('device') ? (
+        <DeviceWorkspacePane />
+      ) : null}
+    </>
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  scope.isCurrent = () => true;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  setClientCredentialResolver();
+  localStorage.clear();
+  resetFloatStoreForTests();
+});
+
+test('an agent reveal floats the host-qualified session without opening a pane', async () => {
+  authorizeScope();
+  const session = sessionFor(ANDROID_DEVICE);
+  const deviceFetch = stubDeviceFetch({
+    inventory: readyInventory([ANDROID_DEVICE]),
+    sessions: [session],
+    deviceLoopPreview: true,
+  });
+  void deviceFetch;
+  const fallback = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      String(input).includes('/agent-reveals?')
+        ? Response.json({
+            success: true,
+            data: {
+              reveals: [
+                { intentId: '33333333-2222-4333-8444-555555555555', session },
+              ],
+            },
+          })
+        : fallback(input, init),
+  );
+  renderInQueryClient(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <Workspace float />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() =>
+    expect(getFloatingSource('conversation')).toMatchObject({
+      kind: 'device',
+      hostId: session.hostId,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+    }),
+  );
+  expect(model?.regions.right.panes).not.toContain('device');
+});
+
+test('with the developer loop preview off an agent reveal opens the pane', async () => {
+  authorizeScope();
+  const session = sessionFor(ANDROID_DEVICE);
+  stubDeviceFetch({
+    inventory: readyInventory([ANDROID_DEVICE]),
+    sessions: [session],
+  });
+  const fallback = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/agent-reveals?'))
+        return Response.json({
+          success: true,
+          data: {
+            reveals: [
+              { intentId: '44444444-2222-4333-8444-555555555555', session },
+            ],
+          },
+        });
+      if (url.includes('/feature-previews'))
+        return Response.json({ success: true, data: [] });
+      return fallback(input, init);
+    },
+  );
+  renderInQueryClient(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <Workspace float />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() => expect(model?.regions.right.panes).toContain('device'));
+  expect(getFloatingSource('conversation')).toBeNull();
+});
+
+test.each([
+  ['another source', 'aaaaaaa1-2222-4333-8444-555555555555'],
+  ['dismissed device', 'aaaaaaa2-2222-4333-8444-555555555555'],
+  ['retained device', 'aaaaaaa3-2222-4333-8444-555555555555'],
+])(
+  'a reveal opens the pane when %s prevents floating',
+  async (condition, intentId) => {
+    authorizeScope();
+    const session = sessionFor(ANDROID_DEVICE);
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      sessions: [session],
+      deviceLoopPreview: true,
+    });
+    const source = {
+      kind: 'device' as const,
+      hostId: session.hostId,
+      platform: session.platform,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+      projectSlug: 'alpha',
+      name: session.name,
+    };
+    if (condition === 'another source')
+      openFloat('conversation', {
+        kind: 'browser',
+        browserSessionId: 'browser-other',
+        surfaceId: 'surface-other',
+      });
+    else if (condition === 'dismissed device')
+      dismissFloat('conversation', deviceFloatSourceKey(session));
+    else {
+      openFloat('conversation', { ...source, deviceId: 'emulator-5556' });
+      handOffFloat(
+        'conversation',
+        deviceFloatSourceKey({ ...session, deviceId: 'emulator-5556' }),
+        Date.now(),
+        true,
+      );
+    }
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        String(input).includes('/agent-reveals?')
+          ? Response.json({
+              success: true,
+              data: { reveals: [{ intentId, session }] },
+            })
+          : fallback(input, init),
+    );
+    renderInQueryClient(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Workspace float />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model?.regions.right.panes).toContain('device'));
+    expect(readDevicePaneState(localStorage, scope)?.deviceId).toBe(
+      session.deviceId,
+    );
+  },
+);
+
+test('an Agent request survives initial polling failure, opens the real pane once, and respects dismissal and stale authority', async () => {
+  localStorage.clear();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  deviceSettingsStore.reloadFromStorage();
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 1280,
+  });
+  authorizeScope();
+  const session = sessionFor(ANDROID_DEVICE);
+  const log = stubDeviceFetch({
+    inventory: readyInventory([ANDROID_DEVICE]),
+    sessions: [session],
+  });
+  const deviceFetch = globalThis.fetch;
+  let reveals: DeviceAgentReveal[] = [
+    { intentId: '11111111-2222-4333-8444-555555555555', session },
+  ];
+  let unavailable = true;
+  vi.stubGlobal(
+    'fetch',
+    async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      if (String(input).includes('/agent-reveals?'))
+        return unavailable
+          ? Response.json({ success: false }, { status: 503 })
+          : Response.json({ success: true, data: { reveals } });
+      return deviceFetch(input, init);
+    },
+  );
+  const { client } = renderInQueryClient(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <Workspace />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  const key = [
+    'device-agent-reveals',
+    scope.apiBase,
+    scope.authorityKey,
+    'alpha',
+    'conversation',
+  ];
+  await waitFor(() => expect(client.getQueryState(key)?.status).toBe('error'));
+  expect(model?.regions.right.panes).not.toContain('device');
+  unavailable = false;
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: key });
+  });
+  await screen.findByText('Connecting video…');
+  await waitFor(() => expect(log.streams).toHaveLength(1));
+  expect(log.streams[0]!.url).toContain(encodeURIComponent(session.surfaceId));
+  expect(readDevicePaneState(localStorage, scope)).toMatchObject({
+    hostId: ANDROID_DEVICE.hostId,
+    platform: ANDROID_DEVICE.platform,
+    deviceId: ANDROID_DEVICE.deviceId,
+  });
+  expect(
+    model?.regions.right.panes.filter((id) => id === 'device'),
+  ).toHaveLength(1);
+  const writes = log.requests.filter((request) => request.method === 'POST');
+  expect(writes).toEqual([]);
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: key });
+  });
+  expect(log.streams).toHaveLength(1);
+  act(() => {
+    model?.removePane('right', 'device');
+  });
+  expect(model?.regions.right.panes).not.toContain('device');
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: key });
+  });
+  expect(model?.regions.right.panes).not.toContain('device');
+  scope.isCurrent = () => false;
+  reveals = [{ intentId: '22222222-2222-4333-8444-555555555555', session }];
+  await act(async () => {
+    client.setQueryData(key, reveals);
+  });
+  expect(model?.regions.right.panes).not.toContain('device');
+  scope.isCurrent = () => true;
+});

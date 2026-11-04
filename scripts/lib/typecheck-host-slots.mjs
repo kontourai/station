@@ -51,6 +51,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -70,6 +71,23 @@ const SLOT_WAIT_ENV = 'STATION_TYPECHECK_SLOT_WAIT_MS';
  * otherwise wait on its own ancestor's slot; with N=1 that is a deadlock.
  */
 export const SLOT_HELD_ENV = 'STATION_TYPECHECK_SLOT_HELD';
+
+/**
+ * How a pool names itself in messages, and which variables mark a held slot
+ * and override it. `heavy-check-slots.mjs` reuses this protocol as a second
+ * pool with its own directory, count and descriptor.
+ *
+ * @typedef {{ tag: string, noun: string, heldEnv: string, countEnv: string, waitEnv: string, dirEnv: string }} SlotPool
+ */
+/** @type {SlotPool} */
+const TYPECHECK_POOL = Object.freeze({
+  tag: 'typecheck-slots',
+  noun: 'host typecheck slot',
+  heldEnv: SLOT_HELD_ENV,
+  countEnv: SLOT_COUNT_ENV,
+  waitEnv: SLOT_WAIT_ENV,
+  dirEnv: SLOT_DIR_ENV,
+});
 
 const GIB = 1024 ** 3;
 /**
@@ -161,6 +179,7 @@ export function prepareSlotDirectory(
   {
     platform = process.platform,
     uid = typeof process.getuid === 'function' ? process.getuid() : -1,
+    pool = TYPECHECK_POOL,
   } = {},
 ) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -168,11 +187,11 @@ export function prepareSlotDirectory(
   const stat = lstatSync(dir);
   if (!stat.isDirectory() || stat.isSymbolicLink())
     throw new Error(
-      `FAIL: typecheck slot directory ${dir} is not a real directory; remove it or set ${SLOT_DIR_ENV}.`,
+      `FAIL: ${pool.noun} directory ${dir} is not a real directory; remove it or set ${pool.dirEnv}.`,
     );
   if (stat.uid !== uid)
     throw new Error(
-      `FAIL: typecheck slot directory ${dir} is owned by uid ${stat.uid}, not ${uid}; remove it or set ${SLOT_DIR_ENV}.`,
+      `FAIL: ${pool.noun} directory ${dir} is owned by uid ${stat.uid}, not ${uid}; remove it or set ${pool.dirEnv}.`,
     );
   if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
 }
@@ -310,6 +329,32 @@ export function holderIsLive(
   if (!Number.isFinite(acquiredAt)) return true;
   return now - acquiredAt <= UNVERIFIED_HOLDER_STALE_MS;
 }
+
+/**
+ * The live holder of claim `nonce` on slot `index` in `dir`, or null: the
+ * record must still carry that nonce and its process must still be alive. A
+ * record that is momentarily unreadable (Windows contention) is read again a
+ * few times; one that stays unreadable counts as no claim, so the caller
+ * queues (and its bounded wait reports) rather than running outside the cap.
+ *
+ * @param {string} dir
+ * @param {number} index
+ * @param {string} nonce
+ * @param {Parameters<typeof holderIsLive>[1]} [liveness]
+ */
+export function liveSlotClaim(dir, index, nonce, liveness) {
+  let observed = readSlotRecord(slotPath(dir, index));
+  for (let retry = 0; observed.busy && retry < CLAIM_READ_RETRIES; retry += 1) {
+    Atomics.wait(CLAIM_READ_PAUSE, 0, 0, CLAIM_READ_PAUSE_MS);
+    observed = readSlotRecord(slotPath(dir, index));
+  }
+  if (observed.record?.nonce !== nonce) return null;
+  return holderIsLive(observed.record, liveness) ? observed.record : null;
+}
+
+const CLAIM_READ_RETRIES = 10;
+const CLAIM_READ_PAUSE_MS = 50;
+const CLAIM_READ_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 function writePrivateFile(path, text) {
   const fd = openSync(path, 'wx', 0o600);
@@ -460,7 +505,53 @@ function forLabel(label) {
 }
 
 /**
- * Wait (bounded) for a host-wide typecheck slot.
+ * Live slot holders, read without claiming or reclaiming anything: what a
+ * queued waiter reports while it is not yet its turn.
+ */
+function observeHolders(dir, slots, liveness) {
+  const holders = [];
+  for (let index = 0; index < slots; index += 1) {
+    const observed = readSlotRecord(slotPath(dir, index));
+    if (observed.record && !recordIsStale(observed, liveness))
+      holders.push(observed.record);
+  }
+  return holders;
+}
+
+/**
+ * FIFO admission (opt-in). Without it, waiters poll at random intervals and
+ * the fastest poller wins, so under sustained load one waiter can lose every
+ * round until its bounded wait fails. With it, each waiter publishes a ticket
+ * named for its arrival and only the earliest N live tickets may claim a slot.
+ * A ticket whose waiter died is removed by whoever reads it.
+ */
+function enqueue(dir, record, startedAt) {
+  const queueDir = join(dir, 'queue');
+  mkdirSync(queueDir, { recursive: true, mode: 0o700 });
+  const name = `${String(startedAt).padStart(15, '0')}-${record.nonce}.json`;
+  const path = join(queueDir, name);
+  writePrivateFile(path, JSON.stringify(record));
+  return { queueDir, name, path };
+}
+
+function waitersAhead(ticket, liveness) {
+  let ahead = 0;
+  for (const name of readdirSync(ticket.queueDir).sort()) {
+    if (name >= ticket.name) break;
+    const path = join(ticket.queueDir, name);
+    const observed = readSlotRecord(path);
+    if (observed.missing) continue;
+    if (!observed.busy && recordIsStale(observed, liveness)) {
+      unlinkQuietly(path);
+      continue;
+    }
+    ahead += 1;
+  }
+  return ahead;
+}
+
+/**
+ * Wait (bounded) for a host-wide slot in `pool` (typecheck by default).
  *
  * @param {{
  *   label?: string,
@@ -476,8 +567,10 @@ function forLabel(label) {
  *   now?: () => number,
  *   sleep?: (ms: number) => Promise<void>,
  *   log?: (message: string) => void,
+ *   pool?: SlotPool,
+ *   fifo?: boolean,
  * }} [options]
- * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, release: () => void }>}
+ * @returns {Promise<{ index: number, dir: string, slots: number, nonce?: string, reentrant: boolean, release: () => void }>}
  */
 export async function acquireTypecheckSlot({
   label = '',
@@ -493,11 +586,13 @@ export async function acquireTypecheckSlot({
   now = Date.now,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log = (message) => process.stderr.write(`${message}\n`),
+  pool = TYPECHECK_POOL,
+  fifo = false,
 } = {}) {
-  if (env[SLOT_HELD_ENV]) {
+  if (env[pool.heldEnv]) {
     return { index: -1, dir, slots, reentrant: true, release: () => {} };
   }
-  prepareSlotDirectory(dir);
+  prepareSlotDirectory(dir, { pool });
   const record = {
     pid,
     start: start === undefined ? ownBirthFingerprint({ pid }) : start,
@@ -508,39 +603,60 @@ export async function acquireTypecheckSlot({
   };
   const birthCache = new Map();
   const startedAt = now();
+  const ticket = fifo ? enqueue(dir, record, startedAt) : null;
   let lastLogAt = null;
-  for (;;) {
-    const liveness = {
-      now: now(),
-      pidAlive,
-      lookupBirth,
-      birthCache,
-      warn: log,
-    };
-    record.acquiredAt = liveness.now;
-    const { index, holders } = scanSlots(dir, slots, record, liveness);
-    const seconds = Math.round((now() - startedAt) / 1000);
-    if (index >= 0) {
-      if (lastLogAt !== null)
-        log(
-          `[typecheck-slots] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
+  try {
+    for (;;) {
+      const liveness = {
+        now: now(),
+        pidAlive,
+        lookupBirth,
+        birthCache,
+        warn: log,
+      };
+      record.acquiredAt = liveness.now;
+      const ahead = ticket ? waitersAhead(ticket, liveness) : 0;
+      // In arrival order, a waiter may claim only while fewer waiters are
+      // ahead of it than there are free slots: otherwise a later, faster
+      // poller could take a slot an earlier waiter is owed.
+      const observed = ticket ? observeHolders(dir, slots, liveness) : null;
+      const { index, holders } =
+        !observed || ahead < slots - observed.length
+          ? scanSlots(dir, slots, record, liveness)
+          : { index: -1, holders: observed };
+      const seconds = Math.round((now() - startedAt) / 1000);
+      const queued = ahead > 0 ? `; ${ahead} earlier waiter(s) queued` : '';
+      if (index >= 0) {
+        if (lastLogAt !== null)
+          log(
+            `[${pool.tag}] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
+          );
+        const release = releaser(slotPath(dir, index), record.nonce);
+        return {
+          index,
+          dir,
+          slots,
+          nonce: record.nonce,
+          reentrant: false,
+          release,
+        };
+      }
+      if (now() - startedAt >= waitMs) {
+        throw new Error(
+          `FAIL: waited ${seconds}s for a ${pool.noun}${forLabel(label)}; ${ahead > 0 ? `${holders.length}/${slots}` : `all ${slots} are`} held: ${describeHolders(holders)}${queued}. ` +
+            `Slots live in ${dir} (${pool.dirEnv}); raise ${pool.waitEnv} to wait longer, or ${pool.countEnv} if the host has capacity to spare.`,
         );
-      const release = releaser(slotPath(dir, index), record.nonce);
-      return { index, dir, slots, reentrant: false, release };
+      }
+      if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
+        lastLogAt = now();
+        log(
+          `[${pool.tag}] waiting for a ${pool.noun}${forLabel(label)}: ${holders.length}/${slots} held by ${describeHolders(holders)}${queued}. ` +
+            `Bounded by ${pool.countEnv}=${slots} across every worktree on this host.`,
+        );
+      }
+      await sleep(pollMs / 2 + Math.random() * pollMs);
     }
-    if (now() - startedAt >= waitMs) {
-      throw new Error(
-        `FAIL: waited ${seconds}s for a host typecheck slot${forLabel(label)}; all ${slots} are held: ${describeHolders(holders)}. ` +
-          `Slots live in ${dir} (${SLOT_DIR_ENV}); raise ${SLOT_WAIT_ENV} to wait longer, or ${SLOT_COUNT_ENV} if the host has memory to spare.`,
-      );
-    }
-    if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
-      lastLogAt = now();
-      log(
-        `[typecheck-slots] waiting for a host typecheck slot${forLabel(label)}: ${holders.length}/${slots} held (${describeHolders(holders)}). ` +
-          `Bounded by ${SLOT_COUNT_ENV}=${slots} across every worktree on this host.`,
-      );
-    }
-    await sleep(pollMs / 2 + Math.random() * pollMs);
+  } finally {
+    if (ticket) unlinkQuietly(ticket.path);
   }
 }

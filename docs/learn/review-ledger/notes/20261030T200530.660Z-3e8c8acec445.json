@@ -1,0 +1,7 @@
+{
+  "revision": "a5af2106e7fe038253c36fcd8df96c21bbf45f7c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed Plugin Command Effects requirements against runtime route composition and admission resolver: Project read authority and Task-to-Project matching replace existence checks; corrected the reference, including missing versus unavailable outcomes. Agent route change gates plugin-owned tool grant updates; bootstrap change supplies conversation knowledge owner authorization and does not alter this reference's conversation route description. Source inspection only; no new live-device journey.","inputs":["docs/reference/api.md","src-server/routes/agents/agents.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

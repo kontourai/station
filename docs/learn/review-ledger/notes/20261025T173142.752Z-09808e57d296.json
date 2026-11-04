@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Resource manifest change adds an unrelated scripts test; r1-outbox exclusive classification unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

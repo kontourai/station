@@ -1,0 +1,7 @@
+{
+  "revision": "c90a5ce3ad95b5aa1b770f1f088aa932b8ba816b",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ScheduleView.css hint rule now uses the canonical --k-text-sm and --k-text-muted tokens; the guide makes no styling claim and its Automations text is unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/views/ScheduleView.css"]}
+  ]
+}

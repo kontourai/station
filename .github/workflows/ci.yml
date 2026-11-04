@@ -50,6 +50,40 @@ jobs:
           AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
+  # Defer a same-repository pull request with a confirmed merge conflict
+  # before it spends the plan, shards and statics: it cannot merge, so that
+  # work is discarded. Only an explicit `admitted=false` output defers; GitHub
+  # still computing mergeability, an API failure, or this job failing to
+  # start leaves the output empty and admits the run
+  # (scripts/pr-source-admission.mjs). The workflow comes from the base
+  # branch and no candidate code runs here. A deferred run is re-run with
+  # "Re-run failed jobs" once the conflict is gone; the source policy reads
+  # the newest attempt, so that supersedes the deferred verdict.
+  pr-admission:
+    name: PR source admission
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - id: admit
+        name: Check current PR mergeability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-source-admission.mjs
+
   # #2709: `fast-checks` is the required check. The affected-test selection
   # outgrew one runner's fifteen-minute budget, so it is computed once here,
   # run as one to four planned slices in fast-checks-shard, and the fixed
@@ -59,10 +93,10 @@ jobs:
   # plan (scripts/fast-checks-shard.mjs, scripts/lib/fast-checks-shards.mjs).
   fast-checks-plan:
     name: fast-checks plan
-    needs: classify
+    needs: [classify, pr-admission]
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -94,7 +128,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -144,6 +178,13 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.mode.outputs.legacy == 'true' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.mode.outputs.legacy == 'true' }}
         timeout-minutes: 20
@@ -222,11 +263,12 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # Two repository-wide PR shard slots retain every planned matrix leg.
-      # PR parity XOR shard parity distributes one-shard and four-shard plans.
+      # Three bounded PR shard groups retain every planned matrix leg.
+      # Keep the two existing names so old and new runs share their slots;
+      # route odd-numbered shards of PRs ending in 0, 1 or 2 to the third.
       # Required integration and diagnostics use separate source identities.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
+        ${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
         github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
         endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
         github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
@@ -263,7 +305,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -331,6 +373,13 @@ jobs:
 
       # Same provisioning as fast-checks-statics: the selection can include
       # real-Chromium touch-target checks (station#3513).
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 20
@@ -384,10 +433,10 @@ jobs:
 
   fast-checks-statics:
     name: fast-checks statics
-    needs: classify
+    needs: [classify, pr-admission]
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -424,7 +473,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -453,7 +502,14 @@ jobs:
       # (not silently skip) without a browser, redding every affected PR.
       # `playwright install` is called directly so the exported path wins
       # over install:playwright's node_modules pin. Bounded + retried per
-      # #3517. Hosted runners are ephemeral, so this installs every job.
+      # #3517. A main-only Nightly warms the version-bound cache; installation
+      # still runs so a miss or incomplete cache cannot bypass provisioning.
+      - name: Restore trusted Chromium cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         timeout-minutes: 20
         run: |
@@ -791,7 +847,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -825,7 +881,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -893,7 +949,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -978,7 +1034,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

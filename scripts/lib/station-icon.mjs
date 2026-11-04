@@ -380,10 +380,9 @@ function markBox() {
   };
 }
 
-// The farthest corner of the tile and base layer lies about 424 units from
-// the centre of the artwork; at this scale that is 318, inside the 341-unit
-// radius (72 of 108dp) a circular launcher mask keeps.
-const ANDROID_SCALE = 0.75;
+// Android exposes the central 72 of a 108dp adaptive layer. Fill that
+// viewport with the map face; the launcher supplies the outer silhouette.
+const ANDROID_SCALE = (S * 72) / 108 / (2 * TILE.half * V.s);
 // The desktop master enlarges the artwork so the tile spans about two thirds
 // of the icon (it is 57% in the square master); its farthest corner, 424 x
 // 1.15 = 488 units out, stays inside the rounded body (629 units at 45deg).
@@ -397,13 +396,10 @@ const svg = (viewBox, inner) =>
  *   macos  - the artwork on the macOS icon grid: an 824 body inset 100 in the
  *            1024 canvas, continuous corner 185.4, a soft drop shadow; alpha
  *            outside the body. The desktop sets come from this.
- *   square - the full-bleed opaque square. iOS rejects alpha and Android and
- *            Windows launchers apply their own masks.
- *   android - the square with the tile scaled into the adaptive-icon safe
- *            zone. Launchers mask an adaptive foreground to its inner 72 of
- *            108dp and the Android 12 splash to a circle inside that, so the
- *            full-bleed square would lose the tile's edges and the channel
- *            background; here the whole tile stays inside the circle.
+ *   square - the uncropped opaque composition for Windows tiles and the PWA.
+ *   ios    - an opaque crop to the map face, filling the iOS launcher mask.
+ *   android - the map face fills the launcher's central 72 of 108dp. Masks
+ *            crop the tile corners and base; the river and compass stay central.
  *   desktop - the square with rounded corners and no drop shadow or grid
  *            inset, the artwork enlarged about its centre: Windows and Linux
  *            draw this at 16-32px in taskbars, title bars and the tray, where
@@ -415,6 +411,7 @@ export const ICON_TARGETS = Object.freeze([
   'macos',
   'desktop',
   'square',
+  'ios',
   'android',
   'mark',
 ]);
@@ -426,10 +423,21 @@ export function stationIconSvg(channel, target) {
     const { defs, art } = body(pal, id);
     return svg(`0 0 ${S} ${S}`, `<defs>${defs}</defs>${art}`);
   }
+  if (target === 'ios') {
+    const { defs, art } = body(pal, id);
+    const side = 2 * TILE.half * V.s;
+    return svg(
+      `${V.cx - side / 2} ${V.cy - side / 2} ${side} ${side}`,
+      `<defs>${defs}</defs>${art}`,
+    );
+  }
   if (target === 'android' || target === 'desktop') {
     const { defs, art } = body(pal, id, { backdrop: false });
     const box = markBox();
-    const [cx, cy] = [box.x + box.side / 2, box.y + box.side / 2];
+    const [cx, cy] =
+      target === 'android'
+        ? [V.cx, V.cy]
+        : [box.x + box.side / 2, box.y + box.side / 2];
     const scale = target === 'android' ? ANDROID_SCALE : DESKTOP_SCALE;
     const placed = `<rect width="${S}" height="${S}" fill="url(#bg-${id})"/><g transform="translate(${S / 2} ${S / 2}) scale(${scale}) translate(${fmt(-cx, 3)} ${fmt(-cy, 3)})">${art}</g>`;
     if (target === 'android')

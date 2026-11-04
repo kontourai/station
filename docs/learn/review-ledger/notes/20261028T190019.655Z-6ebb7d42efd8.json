@@ -1,0 +1,7 @@
+{
+  "revision": "6895629f64e98a9f910f73e7a9584e47eac88968",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Review round: added STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES (on/1/true/yes) checked against mcpSubregistryIntegrationProviders.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

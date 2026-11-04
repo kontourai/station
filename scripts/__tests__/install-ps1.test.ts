@@ -78,6 +78,7 @@ function stage(
     env: {
       PATH: process.env.PATH ?? '',
       HOME: join(f.dir, 'home'),
+      USERPROFILE: f.dir,
       STATION_ROOT: f.stationRoot,
       STATION_CHANNEL: 'nightly',
       STATION_INSTALL_STAGE_ONLY: '1',
@@ -124,7 +125,9 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
     );
     // Sealed: no write bit on the tree.
     expect(statSync(join(version, 'bin', 'station.mjs')).mode & 0o222).toBe(0);
-    expect(statSync(version).mode & 0o222).toBe(0);
+    // Windows chmod seals files, but does not change directory write bits.
+    if (process.platform !== 'win32')
+      expect(statSync(version).mode & 0o222).toBe(0);
     expect(
       readFileSync(
         join(f.installRoot, '.station-portable-install-root'),

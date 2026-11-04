@@ -37,6 +37,8 @@ const inputs = vi.hoisted(() => ({
   ),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // A host that has not advertised chat automations: the form's file run.
+  useScheduledConversationTargetCapability: () => ({ data: false }),
   useAgentsQuery: () => ({
     data: inputs.agents,
     isSuccess: true,
@@ -94,7 +96,7 @@ beforeEach(() => {
   inputs.refetch.mockImplementation(async () => ({
     data: { agents: inputs.agents },
   }));
-  navigationStore.navigate('/schedule', { dock: null, maximize: null });
+  navigationStore.navigate('/automations', { dock: null, maximize: null });
 });
 afterEach(() => {
   cleanup();
@@ -127,7 +129,7 @@ test('a late save callback from the old mounted form cannot close a newer draft'
     prefill: { name: 'old', prompt: 'old instructions' },
   });
   render(<SchedulerJobDialogHost />);
-  fireEvent.click(screen.getByRole('button', { name: 'Add Job' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
   expect(inputs.add).toHaveBeenCalledOnce();
   const oldSuccess = inputs.add.mock.calls[0]?.[1].onSuccess;
   act(() =>
@@ -142,7 +144,7 @@ test('a late save callback from the old mounted form cannot close a newer draft'
     'value',
     'new instructions',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Add Job' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
   act(() => inputs.add.mock.calls[1]?.[1].onSuccess());
   expect(screen.queryByRole('dialog')).toBeNull();
 });
@@ -181,7 +183,7 @@ test('editing broken A stays in repair while ready B exists, then restores A and
   inputs.reconciling = false;
   view.rerender(<SchedulerJobDialogHost />);
   await screen.findByRole('button', { name: 'Save Changes' });
-  expect(navigationStore.getSnapshot().pathname).toBe('/schedule');
+  expect(navigationStore.getSnapshot().pathname).toBe('/automations');
   expect(screen.getByLabelText('Instructions')).toHaveProperty(
     'value',
     'edited instructions',
@@ -219,10 +221,9 @@ test('a reconciling final read refreshes unchanged snapshots until a current cat
   expect(screen.getByRole('alert').textContent).toContain(
     'current agent setup',
   );
-  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
-    'disabled',
-    true,
-  );
+  expect(
+    screen.getByRole('button', { name: 'Create automation' }),
+  ).toHaveProperty('disabled', true);
   expect(screen.getByLabelText('Instructions')).toHaveProperty(
     'value',
     'retained instructions',
@@ -237,10 +238,9 @@ test('a reconciling final read refreshes unchanged snapshots until a current cat
     vi.advanceTimersByTime(1000);
   });
   expect(inputs.refetch).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
-    'disabled',
-    true,
-  );
+  expect(
+    screen.getByRole('button', { name: 'Create automation' }),
+  ).toHaveProperty('disabled', true);
   inputs.refetch.mockImplementationOnce(async () => {
     inputs.reconciling = false;
     inputs.readRevision++;
@@ -252,10 +252,9 @@ test('a reconciling final read refreshes unchanged snapshots until a current cat
   });
   expect(inputs.refetch).toHaveBeenCalledTimes(3);
   expect(screen.queryByRole('alert')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
-    'disabled',
-    false,
-  );
+  expect(
+    screen.getByRole('button', { name: 'Create automation' }),
+  ).toHaveProperty('disabled', false);
   await act(async () => {
     vi.advanceTimersByTime(60_000);
   });

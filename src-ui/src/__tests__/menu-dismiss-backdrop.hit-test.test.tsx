@@ -410,7 +410,7 @@ const SHAPES: readonly Shape[] = [
     viewport: DESKTOP,
     device: 'desktop',
     backdropLabel: 'Close profile menu',
-    // The account control sits in the sidebar footer beside Live work. On a
+    // The account control sits at the end of the sidebar footer. On a
     // phone that footer is inside the closed drawer, so the desktop rail is
     // where its trigger is chrome a press can land on.
     openerLabel: 'Profile and settings: ST',

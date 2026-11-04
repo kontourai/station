@@ -21,8 +21,10 @@ matters: work can exist before an engine is ready to execute it.
 
 The Task's shared plan and conversation keep revisions and discussion with
 that work. The historical capture below shows the earlier Brief tab;
-the document was saved through the real autosave path. In this example a person saved a document; the room history records
-revision evidence. This does not demonstrate an external Agent editing alongside
+the document was saved through the real autosave path. This historical capture
+also shows revision evidence from the earlier per-save policy. Current saves
+retain an unlinked candidate; a [revision reference](../design/revision-bound-evidence.md#freeze-and-retention-decision)
+requests an immutable receipt. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
 brief room to breathe. [#2844](https://github.com/kontourai/station/issues/2844)
 also tracks heading/focus and revision-label usability; this capture does not
@@ -77,6 +79,8 @@ and expands an engine's details. The sample engine still needs setup. It does
 not run a connection test or log in to an account. These Connections captures
 also predate the inset tab frame and the in-pane Add engine journey; use the
 Connections guide for current setup actions and layout.
+They also predate the optional Chat apps integration-status disclosure; they
+do not demonstrate its probes or write-back history.
 
 ![Open model settings and inspect an engine that needs setup.](media/connections-tour.webm)
 
@@ -88,9 +92,11 @@ owns runtime observations.
 
 ## Inspect an approval
 
-An attention item can point to an exact pending request. **Inspect request**
-opens its scope and available responses. **Request identity** exposes the
-underlying identifiers; opening this panel does not approve the action.
+An attention item can point to an exact pending request. An approval answers
+on its row: **Details** shows the request, and **Approve once** or **Deny**
+answers that exact version. A review request opens **Inspect request**,
+pictured below; **Request identity** exposes the underlying identifiers, and
+opening the panel does not approve the action.
 
 ![A request inspector with Deny and Approve once actions.](media/inspect-request.png)
 

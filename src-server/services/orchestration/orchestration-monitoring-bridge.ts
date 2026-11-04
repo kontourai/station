@@ -1,3 +1,4 @@
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -234,7 +235,12 @@ export class OrchestrationMonitoringBridge {
       reason: reason ?? 'error',
       outputChars:
         event.method === 'turn.completed'
-          ? event.outputText?.length
+          ? typeof event.outputText === 'string'
+            ? event.outputText.length
+            : // A spilled reply's reference keeps the full length.
+              isRuntimeEventContentRef(event.outputText)
+              ? event.outputText.length
+              : undefined
           : undefined,
       usage: context.usage,
       model: context.model,

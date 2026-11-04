@@ -125,13 +125,35 @@ export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
 export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
 
 /**
+ * Whether `root` holds a git checkout: a `.git` directory git can open (it
+ * has a `HEAD`), or a worktree's `.git` file pointing at one.
+ *
+ * Mere presence is not enough (#4380). An engine sandbox started in an
+ * archive root creates empty `.git` and `.agents` placeholders to protect
+ * them, and an empty `.git` directory must not turn a signed archive into a
+ * "source checkout" that `start` then tries to build without sources.
+ */
+function holdsGitCheckout(root: string): boolean {
+  const git = join(root, '.git');
+  try {
+    const info = lstatSync(git);
+    if (info.isFile()) return readFileSync(git, 'utf-8').startsWith('gitdir:');
+    return info.isDirectory() && existsSync(join(git, 'HEAD'));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The release provenance of a prebuilt archive root, or null for anything
- * else: marker, valid release provenance, and no checkout.
+ * else: marker, valid release provenance, and no git checkout. The checkout
+ * veto keeps a developer's repository that happens to carry a copied marker
+ * a source tree; a stray, empty `.git` does not veto (#4380).
  */
 export function readPrebuiltArchiveRelease(
   root: string,
 ): PackagedReleaseManifest | null {
-  if (existsSync(join(root, '.git'))) return null;
+  if (holdsGitCheckout(root)) return null;
   try {
     if (
       readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
@@ -149,7 +171,7 @@ export function readPrebuiltArchiveRelease(
   }
 }
 
-/** A prebuilt archive: marker, valid release provenance, and no checkout. */
+/** A prebuilt archive: marker, valid release provenance, and no git checkout. */
 export function isPrebuiltArchiveRoot(root: string): boolean {
   return readPrebuiltArchiveRelease(root) !== null;
 }
@@ -225,7 +247,7 @@ export const INSTALL_STATE_FILENAME = '.station-release-state.json';
 
 /**
  * The part of install.sh's install state (`.station-release-state.json`,
- * schema 3 or 4) an update reads: the ring it installs and, since schema 4,
+ * schema 3 or 4) an update reads: the ring it installs, its root and, since schema 4,
  * the signed public manifest it installs from (null for the authenticated
  * GitHub-release path, and for schema 3). Null when the file is missing or
  * is not a state install.sh writes; never a guess.
@@ -233,6 +255,11 @@ export const INSTALL_STATE_FILENAME = '.station-release-state.json';
 export interface ArchiveInstallState {
   releaseChannel: PackagedReleaseChannel;
   manifestUrl: string | null;
+  /**
+   * The STATION_ROOT the install's channel launcher exports to every command
+   * it runs; null when the state does not record one.
+   */
+  stationRoot: string | null;
 }
 
 export function readArchiveInstallState(
@@ -260,7 +287,14 @@ export function readArchiveInstallState(
       return null;
     manifestUrl = state.manifestUrl || null;
   }
-  return { releaseChannel: state.releaseChannel, manifestUrl };
+  return {
+    releaseChannel: state.releaseChannel,
+    manifestUrl,
+    stationRoot:
+      typeof state.stationRoot === 'string' && state.stationRoot
+        ? state.stationRoot
+        : null,
+  };
 }
 
 /**

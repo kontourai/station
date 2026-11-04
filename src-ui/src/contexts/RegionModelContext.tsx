@@ -17,6 +17,7 @@ import {
   DIALOG_HISTORY_KEY,
   registerDialogHistory,
 } from '../components/dialog-history';
+import { promoteClosedDevicePane } from '../float-over-chat/floatStore';
 import {
   availablePlacements,
   dockFoldsToOneRegion,
@@ -815,6 +816,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
     const next = updateRegion(regionsRef.current, id, patch);
     if (next === regionsRef.current) return;
+    if (
+      patch.visible === false &&
+      regionsRef.current[id].visible &&
+      regionsRef.current[id].occupant === 'device' &&
+      !next[id].visible
+    )
+      promoteClosedDevicePane();
     regionsRef.current = next;
     if (patch.visible === true) setLastShownRegion(id);
     setRegions(next);
@@ -1275,6 +1283,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         layerRegion?.visible &&
         layerRegion.occupant === surfaceId
       ) {
+        if (surfaceId === 'device') promoteClosedDevicePane();
         closePhoneLayerRef.current();
         return;
       }
@@ -1302,6 +1311,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         showSurface(surfaceId);
         return;
       }
+      const deviceRegion =
+        surfaceId === 'device'
+          ? occupiedRegion(regionsRef.current, surfaceId)
+          : undefined;
+      if (
+        deviceRegion &&
+        regionsRef.current[deviceRegion].visible &&
+        !toggled.arrangement[deviceRegion].visible
+      )
+        promoteClosedDevicePane();
       regionsRef.current = toggled.arrangement;
       if (toggled.shownRegion) setLastShownRegion(toggled.shownRegion);
       setRegions(toggled.arrangement);

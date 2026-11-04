@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the advisory paragraph: dynamic registration pins the first completed sign-in server. Checked against tool-server-oauth.ts. Other inputs: the advisory paragraph describes the first-completed-consent issuer pin; the provider pins the authorization server at the first completed consent, remembers scope choices, and applies the deployment metadata-document default.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

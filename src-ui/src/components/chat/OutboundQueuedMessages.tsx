@@ -66,7 +66,9 @@ interface OutboundQueuedMessagesProps {
    */
   onDiscarded?: (remaining: number) => void;
   onRetry: (clientTurnId: string) => Promise<void>;
-  onStartNewChat: (
+  /** Absent when this caller may not start a chat: the refused row then
+   * offers no "New chat". */
+  onStartNewChat?: (
     message: string,
     attachments: FileAttachment[] | undefined,
     clientTurnId: string,
@@ -95,8 +97,13 @@ export function OutboundQueuedMessages({
   onStartNewChat,
   onSendHeld,
 }: OutboundQueuedMessagesProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(
+    null,
+  );
+  const editingId = editing?.id;
+  const editValue = editing?.value ?? '';
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
   const [mergePreviewId, setMergePreviewId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,8 +115,7 @@ export function OutboundQueuedMessages({
   }, [editingId]);
 
   const cancelEdit = () => {
-    setEditingId(null);
-    setEditValue('');
+    setEditing(null);
   };
 
   const reorder = (clientTurnId: string, direction: 'up' | 'down') =>
@@ -124,18 +130,22 @@ export function OutboundQueuedMessages({
       );
 
   const saveEdit = async () => {
-    if (!editingId) return;
-    const content = editValue.trim();
+    if (!editing || saveInFlight.current) return;
+    const content = editing.value.trim();
     if (!content) return;
-    const clientTurnId = editingId;
-    cancelEdit();
+    saveInFlight.current = true;
+    setSavingId(editing.id);
     try {
       const { outboundDispatch } = await import('../../lib/outboundQueue');
-      await outboundDispatch.edit(clientTurnId, content);
+      await outboundDispatch.edit(editing.id, content);
+      setEditing((current) => (current === editing ? null : current));
     } catch (error) {
       onError(
         `Could not edit the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
+      saveInFlight.current = false;
+      setSavingId(null);
     }
   };
 
@@ -180,7 +190,14 @@ export function OutboundQueuedMessages({
                 aria-label="Edit queued message"
                 className="queued-message__edit-input"
                 value={editValue}
-                onChange={(event) => setEditValue(event.target.value)}
+                readOnly={savingId === editingId}
+                aria-busy={savingId === editingId}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setEditing((current) =>
+                    current ? { ...current, value } : current,
+                  );
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !isComposingKeyEvent(event)) {
                     event.preventDefault();
@@ -250,30 +267,32 @@ export function OutboundQueuedMessages({
                 {workspaceRefused ? (
                   <>
                     Refused{' '}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        // A failed discard leaves the row actionable on
-                        // purpose — the draft exists either way; surfacing
-                        // the error beats a silent duplicate-capable state.
-                        void Promise.resolve(
-                          onStartNewChat(
-                            turn.content,
-                            turn.attachments,
-                            turn.clientTurnId,
-                          ),
-                        ).catch((error: unknown) =>
-                          onError(
-                            error instanceof Error &&
-                              error.name === 'NewChatUnavailableError'
-                              ? error.message
-                              : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
-                          ),
-                        )
-                      }
-                    >
-                      New chat
-                    </button>
+                    {onStartNewChat ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          // A failed discard leaves the row actionable on
+                          // purpose — the draft exists either way; surfacing
+                          // the error beats a silent duplicate-capable state.
+                          void Promise.resolve(
+                            onStartNewChat(
+                              turn.content,
+                              turn.attachments,
+                              turn.clientTurnId,
+                            ),
+                          ).catch((error: unknown) =>
+                            onError(
+                              error instanceof Error &&
+                                error.name === 'NewChatUnavailableError'
+                                ? error.message
+                                : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
+                            ),
+                          )
+                        }
+                      >
+                        New chat
+                      </button>
+                    ) : null}
                     {threadAdvanced ? (
                       <span className="queued-message__advanced-context">
                         The conversation moved on — this may have been answered
@@ -364,8 +383,10 @@ export function OutboundQueuedMessages({
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingId(turn.clientTurnId);
-                      setEditValue(turn.content);
+                      setEditing({
+                        id: turn.clientTurnId,
+                        value: turn.content,
+                      });
                     }}
                     className="queued-message__btn"
                     title="Edit"

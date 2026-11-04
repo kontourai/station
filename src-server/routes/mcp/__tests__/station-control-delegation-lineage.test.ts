@@ -43,6 +43,10 @@ import {
 } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  keyedTurnRequest,
+  keyedTurnToolArguments,
+} from '../../../__test-utils__/turn-admission-fixture.js';
+import {
   loadOrCreateAgentRegistry,
   registerEngineConnection,
 } from '../../../domain/agent-registry.js';
@@ -68,6 +72,7 @@ import {
 import { AgentService } from '../../../services/agents/agent-service.js';
 import { isStationInternalRequest } from '../../../services/browser/browser-request-origin.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { RECEIVER_EXECUTION_REFUSAL_COPY } from '../../../services/projects/project-contribution-service.js';
 import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
@@ -261,7 +266,11 @@ const activityService = new Proxy(
 // The two dispatch effects: what the child session would be started with.
 // A saved Environment is forwarded exactly as the runtime composition does.
 const delegateTask = vi.fn(
-  async (input: { delegation?: unknown; delegationProvenance?: unknown }) =>
+  async (input: {
+    conversationId?: string;
+    delegation?: unknown;
+    delegationProvenance?: unknown;
+  }) =>
     namesSavedEnvironment(input)
       ? forwardDelegateTask(
           input as never,
@@ -279,7 +288,11 @@ const delegateTask = vi.fn(
         },
 );
 const executeForegroundMessage = vi.fn(
-  async (input: { delegation?: unknown; delegationProvenance?: unknown }) =>
+  async (input: {
+    conversationId?: string;
+    delegation?: unknown;
+    delegationProvenance?: unknown;
+  }) =>
     namesSavedEnvironment(input)
       ? forwardForegroundMessage(
           input as never,
@@ -288,8 +301,9 @@ const executeForegroundMessage = vi.fn(
           remoteStations,
         )
       : {
-          conversationId: 'conversation-new-child',
-          sessionId: 'session-new-child',
+          conversationId: input.conversationId,
+          sessionId: input.conversationId,
+          resolution: {},
           providerTurnId: 'turn-1',
           target: { kind: 'agent', id: 'writer' },
         },
@@ -390,12 +404,14 @@ beforeAll(async () => {
     // A slow peer: hold the answer past the route's bound.
     if (peerStallMs > 0)
       await new Promise((resolve) => setTimeout(resolve, peerStallMs));
+    const requestedConversation = peerReceived.at(-1)!.body.conversationId;
     return c.json({
       success: true,
       data: {
         taskId: 'task:peer',
         sessionId: 'task:peer',
-        conversationId: 'conversation-peer-child',
+        conversationId: requestedConversation ?? 'conversation-peer-child',
+        resolution: {},
         status: 'dispatched',
         resumable: true,
         providerTurnId: 'turn-peer',
@@ -431,11 +447,13 @@ beforeAll(async () => {
   mkdirSync(policiedDir, { recursive: true });
   writeFileSync(
     join(policiedDir, 'agent.json'),
-    JSON.stringify({
-      name: 'Policied',
-      prompt: 'Plan',
-      delegation: { maxDepth: 5 },
-    }),
+    JSON.stringify(
+      keyedTurnRequest({
+        name: 'Policied',
+        prompt: 'Plan',
+        delegation: { maxDepth: 5 },
+      }),
+    ),
   );
   agentService = new AgentService(
     configLoader,
@@ -481,6 +499,7 @@ beforeAll(async () => {
         getUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
         delegateTask,
         executeForegroundMessage,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(home),
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
         resolveRequestDelegation: createRequestDelegationResolver(sources),
@@ -548,7 +567,7 @@ async function callTool(
   await init.text();
   const response = await mcp(token, 2, 'tools/call', {
     name,
-    arguments: args,
+    arguments: keyedTurnToolArguments(name, args),
   });
   expect(response.status).toBe(200);
   const result = (await readJsonRpc(response)).result;
@@ -611,6 +630,7 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
       createChildDelegationContext({
         agentSlug: 'planner',
         conversationId: 'conversation-root',
+        sessionId: 'session-root',
         spec: SPECS.planner,
       }),
     );
@@ -733,11 +753,13 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       {
         method: 'POST',
         headers: internalHeaders(),
-        body: JSON.stringify({
-          ...body,
-          delegation,
-          delegationAttestation: attestDelegationContext(delegation),
-        }),
+        body: JSON.stringify(
+          keyedTurnRequest({
+            ...body,
+            delegation,
+            delegationAttestation: attestDelegationContext(delegation),
+          }),
+        ),
       },
     );
     expect(response.status).toBe(200);
@@ -768,7 +790,7 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
         {
           method: 'POST',
           headers: internalHeaders(),
-          body: JSON.stringify({ ...body, ...claim }),
+          body: JSON.stringify(keyedTurnRequest({ ...body, ...claim })),
         },
       );
       expect(response.status).toBe(200);
@@ -779,8 +801,11 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
 });
 
 describe('#2601 registry default Agents delegate under the default policy', () => {
-  const defaultPolicyChild = (agentSlug: string, conversationId: string) =>
-    createChildDelegationContext({ agentSlug, conversationId });
+  const defaultPolicyChild = (
+    agentSlug: string,
+    conversationId: string,
+    sessionId: string,
+  ) => createChildDelegationContext({ agentSlug, conversationId, sessionId });
 
   test.each([
     ['station', 'session-station', 'conversation-station'],
@@ -796,12 +821,12 @@ describe('#2601 registry default Agents delegate under the default policy', () =
       );
       expect(delegated.isError).toBe(false);
       expect(stampedDelegation(delegateTask)).toEqual(
-        defaultPolicyChild(agentSlug, conversationId),
+        defaultPolicyChild(agentSlug, conversationId, sessionId),
       );
       const sent = await callTool(sessionId, 'send_message', SEND_ARGS);
       expect(sent.isError).toBe(false);
       expect(stampedDelegation(executeForegroundMessage)).toEqual(
-        defaultPolicyChild(agentSlug, conversationId),
+        defaultPolicyChild(agentSlug, conversationId, sessionId),
       );
     },
   );
@@ -829,7 +854,7 @@ describe('#2601 registry default Agents delegate under the default policy', () =
     );
     expect(result.isError).toBe(false);
     expect(stampedDelegation(delegateTask)).toEqual(
-      defaultPolicyChild('codex', 'conversation-adopted'),
+      defaultPolicyChild('codex', 'conversation-adopted', 'session-adopted'),
     );
   });
 

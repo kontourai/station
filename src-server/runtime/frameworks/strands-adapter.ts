@@ -5,6 +5,7 @@ import {
   runtimeAgentKey,
 } from '../../services/agents/runtime-agent-identity.js';
 import { addAgentTools } from '../tools/agent-tool-view.js';
+
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -20,17 +21,28 @@ import { addAgentTools } from '../tools/agent-tool-view.js';
  *   modelMetadataEvent                                                        → (usage tracking)
  */
 
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   AfterInvocationEvent,
   type AgentResult,
   type McpClient,
-  type Message,
+  Message,
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
+import {
+  bindDurableAgent,
+  durableAgentDefinition,
+} from '../agents/durable-agent-invocation.js';
+import {
+  durableAgentMemory,
+  durableStationMemory,
+  noteDurableModelInput,
+} from '../agents/durable-agent-memory.js';
+import { durableAgentHooks } from '../agents/durable-agent-tools.js';
 import {
   currentUnattendedPrincipal,
   currentUnattendedRunId,
@@ -44,6 +56,7 @@ import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
 import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
+import { getBuiltinVendedToolIdentity } from '../tools/vended-tool-compat.js';
 import type {
   AgentBundle,
   AgentCreationConfig,
@@ -131,6 +144,10 @@ class StrandsAgentWrapper implements IAgent {
     },
     readonly instructions?: string | (() => string),
     private readonly toolView?: (tools: ITool[]) => IAgent,
+    private readonly modelContext?: {
+      modelId: string;
+      afterModelGeneration?: IAgentHooks['afterModelGeneration'];
+    },
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
@@ -375,7 +392,32 @@ class StrandsAgentWrapper implements IAgent {
 
         const _emittedStart = false;
         let emittedTextStart = false;
-        const stream = agent.stream(modelInput, invokeOptions);
+        let retainedInput = modelInput;
+        const lease = currentAgentTurn();
+        if (lease) {
+          const entry = await lease.entry('native-entry:strands', {
+            input: modelInput,
+            messages: agent.messages.map((message) => message.toJSON()),
+          });
+          if (
+            !entry ||
+            typeof entry !== 'object' ||
+            !('input' in entry) ||
+            typeof entry.input !== 'string' ||
+            !('messages' in entry) ||
+            !Array.isArray(entry.messages)
+          )
+            throw new Error('Durable Strands history is damaged');
+          retainedInput = entry.input;
+          noteDurableModelInput(lease, retainedInput);
+          agent.messages.splice(
+            0,
+            agent.messages.length,
+            ...entry.messages.map((message) => Message.fromJSON(message)),
+          );
+          bindStrandsNativeHistory(agent, agent.messages);
+        }
+        const stream = agent.stream(retainedInput, invokeOptions);
 
         self._lastStreamUsage = null;
 
@@ -396,6 +438,46 @@ class StrandsAgentWrapper implements IAgent {
           if (mapped) {
             // Accumulate usage from metadata events
             if (mapped.type === 'usage') {
+              const last = mapped as {
+                promptTokens?: number;
+                completionTokens?: number;
+              };
+              if (
+                self.modelContext?.afterModelGeneration &&
+                Number.isSafeInteger(last.promptTokens) &&
+                last.promptTokens! >= 0 &&
+                Number.isSafeInteger(last.completionTokens) &&
+                last.completionTokens! >= 0
+              ) {
+                const raw = (
+                  event as {
+                    event?: {
+                      usage?: {
+                        cacheReadInputTokens?: number;
+                        cacheWriteInputTokens?: number;
+                      };
+                    };
+                  }
+                ).event?.usage;
+                await self.modelContext.afterModelGeneration({
+                  invocation: resolveStrandsInvocationContext(
+                    invokeOptions.invocationState,
+                    self._invocationCtx,
+                  ),
+                  modelId: self.modelContext.modelId,
+                  modelIdentitySource: 'runtime-model',
+                  source: 'strands-metadata',
+                  inputTokenAccounting: 'provider-specific',
+                  inputTokens: last.promptTokens!,
+                  outputTokens: last.completionTokens!,
+                  ...(Number.isSafeInteger(raw?.cacheReadInputTokens)
+                    ? { cacheReadInputTokens: raw!.cacheReadInputTokens }
+                    : {}),
+                  ...(Number.isSafeInteger(raw?.cacheWriteInputTokens)
+                    ? { cacheWriteInputTokens: raw!.cacheWriteInputTokens }
+                    : {}),
+                });
+              }
               observedUsage = true;
               accUsage.promptTokens += (mapped as any).promptTokens || 0;
               accUsage.completionTokens +=
@@ -559,7 +641,7 @@ export class StrandsFramework {
         slug,
         slug,
         model,
-        opts.memoryAdapter as unknown as IMemory,
+        durableStationMemory(opts.memoryAdapter),
         invocationCtx,
         viewTools,
         {
@@ -585,16 +667,28 @@ export class StrandsFramework {
             addAgentTools(tools, additions),
           );
         },
+        {
+          modelId: resolvedModel,
+          afterModelGeneration: config.hooks?.afterModelGeneration,
+        },
       );
       if (history)
         bindStrandsNativeHistory(strandsAgent, strandsAgent.messages);
       wireStrandsAgentHooks({
         strandsAgent,
-        hooks: conformAgentHooks('strands', config.hooks),
+        hooks: conformAgentHooks('strands', durableAgentHooks(config.hooks)),
+        findToolReplay: (name) =>
+          viewTools.find((tool) => tool.name === name)?.replay ?? 'unsafe',
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
-        memoryAdapter: opts.memoryAdapter as unknown as IMemory,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
+        memoryAdapter: durableStationMemory(opts.memoryAdapter),
         logger: opts.logger,
         resolvedModel,
         getLastStreamUsage: () => wrapper._lastStreamUsage,
@@ -605,7 +699,18 @@ export class StrandsFramework {
             .find((provenance) => provenance !== undefined),
       });
 
-      return wrapper;
+      return !history
+        ? bindDurableAgent(wrapper, {
+            home: config.projectHomeDir,
+            memory: opts.memoryAdapter,
+            slug,
+            definition: durableAgentDefinition({
+              framework: 'strands',
+              spec,
+              model: resolvedModel,
+            }),
+          })
+        : wrapper;
     };
     const wrapper = makeWrapper();
 
@@ -670,6 +775,7 @@ export class StrandsFramework {
     maxSteps?: number;
     memoryAdapter?: StorageAdapter;
     hooks?: IAgentHooks;
+    durable?: { home: string; slug: string; definition: string };
   }): Promise<IAgent> {
     const resolved =
       typeof opts.instructions === 'function'
@@ -717,10 +823,18 @@ export class StrandsFramework {
       // owned by StrandsAgentWrapper below.
       wireStrandsToolGate({
         strandsAgent: agent,
-        hooks: conformAgentHooks('strands', opts.hooks),
+        hooks: conformAgentHooks('strands', durableAgentHooks(opts.hooks)),
+        findToolReplay: (name) =>
+          viewTools.find((tool) => tool.name === name)?.replay ?? 'unsafe',
         deniedToolCalls,
         invocationCtx,
         purposeEnabledToolNames,
+        findBuiltinToolIdentity: (name) => {
+          const candidates = viewTools.filter((tool) => tool.name === name);
+          return candidates.length === 1
+            ? getBuiltinVendedToolIdentity(candidates[0])
+            : undefined;
+        },
       });
       // archive#914: `createAgent` above passes the adapter into this slot "so
       // conversations persist"; passing null here gave temp agents no
@@ -730,7 +844,7 @@ export class StrandsFramework {
         opts.name,
         opts.name,
         opts.model,
-        (opts.memoryAdapter as unknown as IMemory) ?? null,
+        opts.memoryAdapter ? durableStationMemory(opts.memoryAdapter) : null,
         invocationCtx,
         viewTools,
         {
@@ -768,14 +882,19 @@ export class StrandsFramework {
             agent,
             agentMessages: agent.messages,
             invocation,
-            memoryAdapter: opts.memoryAdapter!,
+            memoryAdapter: durableAgentMemory(opts.memoryAdapter!),
             logger: createLogger({ name: 'strands-native-memory' }),
             resolvedModel:
               typeof opts.model?.modelId === 'string' ? opts.model.modelId : '',
           });
         });
       }
-      return wrapper;
+      return !history && opts.durable
+        ? bindDurableAgent(wrapper, {
+            ...opts.durable,
+            memory: opts.memoryAdapter,
+          })
+        : wrapper;
     };
     return makeWrapper();
   }

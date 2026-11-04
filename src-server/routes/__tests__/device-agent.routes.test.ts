@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { realpath, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, expect, test, vi } from 'vitest';
+import { ZipFile } from 'yazl';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
   mintStationControlMcpToken,
@@ -12,12 +16,14 @@ import {
   authorizeDeviceAgentCaller,
   mintDeviceAgentGrant,
 } from '../../services/devices/device-agent-authority.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import {
   DeviceToolsService,
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
+import type { DeviceInstallOutcome } from '../../services/devices/hosts/device-app-install.js';
 import {
   claimAgentControl,
   claimHumanControl,
@@ -31,7 +37,9 @@ import {
 } from '../../tools/station-control-shared.js';
 import { createDeviceAgentRoutes } from '../device-agent.js';
 import { createDeviceToolsRoutes } from '../device-tools.js';
+import { createMobileDeviceRoutes } from '../mobile-device.js';
 
+const makeTempDir = trackTempDirs();
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -52,14 +60,23 @@ function harness(
     | 'sdk-in-process'
     | 'url-token'
     | 'http-header-token' = 'sdk-in-process',
-  options: { operator?: boolean; idleEndMs?: number } = {},
+  options: {
+    operator?: boolean;
+    idleEndMs?: number;
+    remote?: boolean;
+    taskCapture?: 'unbound' | 'mismatch';
+    projectRoot?: string;
+    operatorDevice?: boolean;
+  } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
   const { token } = mintStationControlMcpToken(sessionId, channel);
   let shared = true;
   let active = true;
   let enabled = true;
+  let loopEnabled = true;
   let operator = options.operator === true;
+  let operatorDevice = options.operatorDevice === true;
   let principalId = 'admin';
   let conversationId = 'conversation';
   let callingSession = sessionId;
@@ -156,11 +173,142 @@ function harness(
     elements: [],
     truncated: false,
   }));
+  const remoteDevice = {
+    ...device,
+    hostId: 'ssh-0123456789ab',
+    name: 'Remote Test',
+  };
+  let remoteAvailable = options.remote === true;
+  const remoteHost = {
+    ...host,
+    inventory: vi.fn(
+      async (): Promise<MobileDeviceInventory> => ({
+        hostId: remoteDevice.hostId,
+        state: 'ready',
+        observedAt: new Date().toISOString(),
+        devices: [remoteDevice],
+      }),
+    ),
+    capture: vi.fn(async () => ({
+      ...(await host.capture()),
+      target: remoteDevice,
+      captureId: 'remote-capture',
+    })),
+  };
+  const remoteSessions = options.remote
+    ? new DeviceSessionService({
+        hostId: remoteDevice.hostId,
+        host: remoteHost,
+        endpoint: { onExit: () => () => {} },
+        surfaces,
+        access: {
+          isOperator: async () => true,
+          hasStanding: async () => true,
+          mayAccessDevice: async () => true,
+        },
+      })
+    : undefined;
+  const localTools = {
+    accessibility,
+    foreground: vi.fn(
+      async (_target: Parameters<DeviceToolsService['foreground']>[0]) => ({
+        readAt: new Date().toISOString(),
+        foregroundApp: { state: 'read' as const, value: null },
+      }),
+    ),
+    logs: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['logs']>[0],
+        appId: string,
+      ) => ({
+        ...target,
+        appId,
+        processId: '42',
+        output: 'local log',
+        truncated: false,
+        readAt: new Date().toISOString(),
+      }),
+    ),
+    appAction: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['appAction']>[0],
+        action: Parameters<DeviceToolsService['appAction']>[1],
+        options: Parameters<DeviceToolsService['appAction']>[2],
+      ) => {
+        await options?.beforeRun?.();
+        return {
+          ...target,
+          appId: action.appId,
+          action: action.type,
+          observed:
+            action.type === 'terminate'
+              ? ('not-running' as const)
+              : ('foreground' as const),
+          observedAt: new Date().toISOString(),
+        };
+      },
+    ),
+  };
+  const remoteTools = {
+    foreground: localTools.foreground,
+    appAction: vi.fn(localTools.appAction.getMockImplementation()!),
+    logs: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['logs']>[0],
+        appId: string,
+      ) => ({
+        ...target,
+        appId,
+        processId: '43',
+        output: 'remote log',
+        truncated: false,
+        readAt: new Date().toISOString(),
+      }),
+    ),
+    accessibility: vi.fn(async () => ({
+      ...(await accessibility()),
+      truncated: true,
+    })),
+  };
+  const artifacts = new DeviceArtifactStaging();
+  const installApp = vi.fn(
+    async (input: {
+      hostId: string;
+      platform: 'ios' | 'android';
+      digest: string;
+      beforeInstall: () => Promise<boolean>;
+      signal: AbortSignal;
+    }): Promise<DeviceInstallOutcome> => {
+      if (!(await input.beforeInstall()))
+        return { ok: false, code: 'interrupted', effect: 'none' };
+      return {
+        ok: true,
+        digest: input.digest,
+        metadata: {
+          platform: input.platform,
+          abi: 'universal',
+          appId: 'com.example.app',
+          version: '1',
+          build: '1',
+          revision: null,
+          urlSchemes: [],
+        },
+      };
+    },
+  );
   const automation = new DeviceAutomation({
+    artifacts,
+    installApp,
+    projectRoot: () => options.projectRoot,
     host,
     sessions,
     surfaces,
-    tools: { accessibility },
+    tools: localTools,
+    remoteHostIds: () => (remoteAvailable ? [remoteDevice.hostId] : []),
+    remoteHost: (hostId) =>
+      remoteAvailable && remoteSessions && hostId === remoteDevice.hostId
+        ? { host: remoteHost, sessions: remoteSessions, tools: remoteTools }
+        : undefined,
   });
   const access = {
     agentAccessEnabled: () => enabled,
@@ -199,6 +347,7 @@ function harness(
     resolveAndroidAvd: async () => 'Test',
   };
   const routes = createDeviceAgentRoutes({
+    deviceLoopEnabled: () => loopEnabled,
     ...access,
     isInternalRequest: () => true,
     resolveCaller: (request) => {
@@ -210,6 +359,49 @@ function harness(
         : resolveStationControlCallerFromToken(presented, record);
     },
     automation,
+    ...(options.taskCapture
+      ? {
+          taskCapture: () => ({
+            runtime: {
+              sessionTaskReviewAccess: async () =>
+                options.taskCapture === 'unbound'
+                  ? { kind: 'not-found' }
+                  : {
+                      kind: 'granted',
+                      write: { projectId: 'another-project' },
+                    },
+            } as never,
+            captures: {} as never,
+            recordings: {} as never,
+            localProjectIdFor: (id: string) => id,
+          }),
+        }
+      : {}),
+  });
+  const humanDevices = createMobileDeviceRoutes(host, {
+    isRequestPrincipalCurrent: () => active,
+    access: {
+      isOperator: async () => operator,
+      hasStanding: async () => active,
+      mayAccessDevice: async () => shared && active,
+    },
+    agentReveals: {
+      operatorDeviceMayView: () => operatorDevice && active,
+      projectAccess: {
+        resolveProject: (slug) =>
+          slug === 'alpha' ? { id: 'project' } : undefined,
+        authorizeProject: async (_request, _project, _purpose, options) =>
+          active
+            ? operatorDevice && options?.allowOperatorDeviceView
+              ? { kind: 'operator-device' }
+              : operator
+                ? { kind: 'operator' }
+                : { kind: 'project-admin', principalId }
+            : undefined,
+      },
+      list: (projectId, conversation, principal) =>
+        automation.revealRequests(projectId, conversation, principal),
+    },
   });
   const humanTools = createDeviceToolsRoutes({
     isRequestPrincipalCurrent: () => true,
@@ -269,11 +461,14 @@ function harness(
   disposals.push(async () => {
     revokeStationControlMcpToken(sessionId);
     for (const extra of extraTokens) revokeStationControlMcpToken(extra);
+    await artifacts.dispose();
     await sessions.dispose();
+    await remoteSessions?.dispose();
     await surfaces.dispose();
   });
   return {
     run,
+    humanDevices,
     raw: (operation: string, body: unknown) =>
       routes.request(`/${operation}`, {
         method: 'POST',
@@ -284,6 +479,9 @@ function harness(
         body: JSON.stringify(body),
       }),
     access,
+    automation,
+    artifacts,
+    installApp,
     device,
     humanAction: () =>
       humanTools.request(
@@ -317,11 +515,25 @@ function harness(
     packets,
     host,
     sessions,
+    remoteDevice,
+    remoteHost,
+    remoteSessions,
+    remoteTools,
+    localTools,
+    setLoopEnabled: (value: boolean) => {
+      loopEnabled = value;
+    },
+    removeRemote: () => {
+      remoteAvailable = false;
+    },
     surfaces,
     accessibility,
     revokeToken: () => revokeStationControlMcpToken(sessionId),
     revokeShare: () => {
       shared = false;
+    },
+    revokeOperatorDevice: () => {
+      operatorDevice = false;
     },
     revokeMember: () => {
       active = false;
@@ -334,6 +546,325 @@ function harness(
     },
   };
 }
+
+test('reveal requests are conversation scoped, deduplicated, optional and recheck human device admission', async () => {
+  const h = harness();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async (url = path) =>
+    (await (await h.humanDevices.request(url)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  expect((await read()).data.reveals).toEqual([]);
+  expect(
+    parsed(await h.run('device_open', { ...h.device, reveal: false })),
+  ).toMatchObject({ ok: true, revealRequested: false });
+  expect((await read()).data.reveals).toEqual([]);
+  await h.open();
+  const first = (await read()).data.reveals;
+  expect(first).toHaveLength(1);
+  await h.open();
+  expect((await read()).data.reveals).toEqual(first);
+  expect(
+    (await read('/agent-reveals?projectSlug=alpha&conversationId=other')).data
+      .reveals,
+  ).toEqual([]);
+  h.revokeShare();
+  expect((await read()).data.reveals).toEqual([]);
+  h.revokeMember();
+  expect((await h.humanDevices.request(path)).status).toBe(403);
+});
+
+test('an operator-owned device can read agent reveals without a Project device share, and loses that access when rebound', async () => {
+  const h = harness('sdk-in-process', { operator: true, operatorDevice: true });
+  await h.open();
+  h.revokeShare();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async () =>
+    (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  expect((await read()).data.reveals).toHaveLength(1);
+  h.revokeOperatorDevice();
+  expect((await read()).data.reveals).toEqual([]);
+});
+
+test('an authorized retry refreshes reveal admission after Agent credentials rotate', async () => {
+  const h = harness();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async () =>
+    (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  const sessionId = await h.open();
+  const first = (await read()).data.reveals;
+  expect(first).toHaveLength(1);
+  h.revokeToken();
+  expect((await read()).data.reveals).toEqual([]);
+  h.asAnotherAgent();
+  expect(await h.open()).toBe(sessionId);
+  expect((await read()).data.reveals).toEqual(first);
+});
+
+test('opening an existing device while a person drives preserves their lease', async () => {
+  const h = harness();
+  const id = await h.open();
+  await h.take(id);
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  const before = entry.lease.snapshot();
+  expect(await h.open()).toBe(id);
+  expect(entry.lease.snapshot()).toEqual(before);
+  expect(h.packets).toEqual([]);
+});
+
+test('app tools use the selected host and refuse a human-held lease', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const localId = await h.open();
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: 'local', observed: 'foreground' },
+  });
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const remoteId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_open_url', {
+        deviceSessionId: remoteId,
+        appId: 'com.example.app',
+        url: 'example://page',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: h.remoteDevice.hostId, observed: 'foreground' },
+  });
+  expect(h.remoteSessions!.actionHistory(remoteId)).toEqual([
+    expect.objectContaining({
+      action: 'open-url',
+      actor: 'agent',
+      outcome: 'success',
+    }),
+  ]);
+  expect(
+    JSON.stringify(h.remoteSessions!.actionHistory(remoteId)),
+  ).not.toContain('example://page');
+  expect(h.remoteTools.appAction).toHaveBeenCalledOnce();
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+  await h.take(localId);
+  expect(
+    parsed(
+      await h.run('device_terminate_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false });
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+});
+
+test('human takeover aborts an in-flight app action and cannot report success', async () => {
+  const h = harness();
+  const id = await h.open();
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let aborted = false;
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      started();
+      return await new Promise<never>((_resolve, reject) =>
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            reject(new Error('aborted'));
+          },
+          { once: true },
+        ),
+      );
+    },
+  );
+  const pending = h.run('device_launch_app', {
+    deviceSessionId: id,
+    appId: 'com.example.app',
+  });
+  await ready;
+  await h.take(id);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+  });
+  expect(aborted).toBe(true);
+});
+
+test('record-to-task validates its preview, bounds, binding and recorder availability', async () => {
+  const h = harness();
+  const body = { deviceSessionId: 'session', durationMs: 1000 };
+  h.setLoopEnabled(false);
+  expect(await (await h.raw('record-to-task', body)).json()).toMatchObject({
+    ok: false,
+    code: 'feature_preview_disabled',
+  });
+  h.setLoopEnabled(true);
+  for (const invalid of [
+    { ...body, durationMs: 0 },
+    { ...body, durationMs: 30001 },
+    { ...body, maxBytes: 0 },
+    { ...body, maxBytes: 16 * 1024 * 1024 + 1 },
+    { ...body, unexpected: true },
+  ])
+    expect(await (await h.raw('record-to-task', invalid)).json()).toMatchObject(
+      { ok: false, code: 'invalid-request' },
+    );
+  expect(await (await h.raw('record-to-task', body)).json()).toMatchObject({
+    ok: false,
+    code: 'recording-unavailable',
+  });
+  for (const taskCapture of ['unbound', 'mismatch'] as const) {
+    const other = harness('sdk-in-process', { taskCapture });
+    expect(
+      await (await other.raw('record-to-task', body)).json(),
+    ).toMatchObject({ ok: false, code: 'no_task_binding' });
+  }
+});
+
+test('device logs refuse an off preview and suppress output when it is disabled during sampling', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.setLoopEnabled(false);
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, code: 'feature_preview_disabled' });
+  expect(h.localTools.logs).not.toHaveBeenCalled();
+  h.setLoopEnabled(true);
+  h.localTools.logs.mockImplementationOnce(async (target, appId) => {
+    h.setLoopEnabled(false);
+    return {
+      ...target,
+      appId,
+      processId: '42',
+      output: 'private log',
+      truncated: false,
+      readAt: new Date().toISOString(),
+    };
+  });
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toEqual({ ok: false, code: 'interrupted' });
+});
+
+test('a Device recording source loses authority when a human takes control', async () => {
+  const h = harness();
+  const id = await h.open();
+  const decision = await authorizeDeviceAgentCaller(h.access);
+  if (!decision.ok) throw new Error('fixture authority unavailable');
+  await expect(
+    h.automation.recordToTask(
+      h.access,
+      decision.authority,
+      id,
+      () => true,
+      async (source) => {
+        expect(source.device).toMatchObject({
+          hostId: 'local',
+          deviceId: h.device.deviceId,
+          appId: null,
+          appObservedAt: null,
+        });
+        expect(await source.authorize()).toBe(true);
+        await h.take(id);
+        expect(await source.authorize()).toBe(false);
+        throw new Error('recording interrupted');
+      },
+    ),
+  ).rejects.toThrow('recording interrupted');
+});
+
+test('SSH tools retain host identity with colliding local device ids and fail closed after host removal', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const localId = await h.open();
+  const opened = parsed(await h.run('device_open', h.remoteDevice));
+  expect(opened).toMatchObject({
+    ok: true,
+    session: { hostId: h.remoteDevice.hostId, deviceId: h.device.deviceId },
+  });
+  const id = opened.session.sessionId;
+  expect(id).not.toBe(localId);
+  const listed = parsed(await h.run('device_list'));
+  expect(
+    listed.sessions.map((session: { hostId: string }) => session.hostId).sort(),
+  ).toEqual(['local', h.remoteDevice.hostId].sort());
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: true, tree: { truncated: true } });
+  expect(h.remoteTools.accessibility).toHaveBeenCalledOnce();
+  expect(
+    parsed(
+      await h.run('device_logs', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    logs: { hostId: h.remoteDevice.hostId, output: 'remote log' },
+  });
+  const capture = await h.run('device_screenshot', { deviceSessionId: id });
+  expect(parsed(capture)).toMatchObject({
+    ok: true,
+    capture: {
+      captureId: 'remote-capture',
+      target: { hostId: h.remoteDevice.hostId },
+    },
+  });
+  h.removeRemote();
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'not-authorized' });
+  expect(parsed(await h.run('device_open', h.remoteDevice))).toMatchObject({
+    ok: false,
+    code: 'host-unavailable',
+  });
+  expect(h.remoteTools.accessibility).toHaveBeenCalledOnce();
+  expect(h.sessions.get(localId)).toBeDefined();
+});
+
+test.each(['token', 'opt-in'] as const)(
+  'pending reveal is withdrawn when the originating Agent loses %s',
+  async (kind) => {
+    const h = harness();
+    await h.open();
+    const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+    const before = (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+    expect(before.data.reveals).toHaveLength(1);
+    if (kind === 'token') h.revokeToken();
+    else h.setEnabled(false);
+    const after = (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+    expect(after.data.reveals).toEqual([]);
+  },
+);
 
 test('bound tool input reaches the device socket, and human control refuses the next action', async () => {
   const h = harness();
@@ -588,22 +1119,33 @@ test('share revocation during capture refuses publication and releases control',
   ).toBeNull();
 });
 
-test('activity renews an unwatched session idle grace without keeping it forever', async () => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-  const h = harness('sdk-in-process', { idleEndMs: 100 });
-  const id = await h.open();
-  await vi.advanceTimersByTimeAsync(80);
-  expect(
-    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
-  ).toMatchObject({ ok: true });
-  await vi.advanceTimersByTimeAsync(40);
-  expect(
-    h.sessions.get(id),
-    'agent activity must renew idle grace',
-  ).toBeDefined();
-  await vi.advanceTimersByTimeAsync(61);
-  expect(h.sessions.get(id)).toBeUndefined();
-});
+test.each(['device_snapshot', 'device_open'] as const)(
+  '%s renews unwatched idle grace without keeping the session forever',
+  async (operation) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const h = harness('sdk-in-process', { idleEndMs: 100 });
+    const id = await h.open();
+    await vi.advanceTimersByTimeAsync(80);
+    expect(
+      parsed(
+        await h.run(
+          operation,
+          operation === 'device_open' ? h.device : { deviceSessionId: id },
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot().holder,
+    ).toBeNull();
+    await vi.advanceTimersByTimeAsync(40);
+    expect(
+      h.sessions.get(id),
+      'agent activity must renew idle grace',
+    ).toBeDefined();
+    await vi.advanceTimersByTimeAsync(61);
+    expect(h.sessions.get(id)).toBeUndefined();
+  },
+);
 
 test('invalid device ID is refused by the route before touching the host', async () => {
   const h = harness('sdk-in-process', { operator: true });
@@ -980,4 +1522,209 @@ test('failed input cancels held state without waiting for a parallel observation
     release();
     await capture;
   }
+});
+
+test('device_capture_to_task exposes Task-capture refusals as MCP errors', async () => {
+  const h = harness();
+  const id = await h.open();
+  const result = await h.run('device_capture_to_task', { deviceSessionId: id });
+  expect(result.isError).toBe(true);
+  expect(parsed(result)).toMatchObject({
+    ok: false,
+    code: 'capture-unavailable',
+  });
+  expect(h.host.capture).not.toHaveBeenCalled();
+});
+
+async function apkFixture(): Promise<Buffer> {
+  const archive = new ZipFile();
+  const chunks: Buffer[] = [];
+  const bytes = new Promise<Buffer>((resolve, reject) => {
+    archive.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    archive.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.outputStream.on('error', reject);
+  });
+  archive.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  archive.end();
+  return await bytes;
+}
+
+test('install tool binds staged artifacts to the Project and the selected device host', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const apk = await apkFixture();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const other = await h.artifacts.stageUpload(
+    'another-project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const deviceSessionId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: other.handle,
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.installApp).not.toHaveBeenCalled();
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: staged.handle,
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    digest: staged.digest,
+    metadata: { appId: 'com.example.app' },
+  });
+  expect(h.installApp).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: h.remoteDevice.hostId,
+      digest: staged.digest,
+    }),
+  );
+});
+
+test('human takeover cancels installation and reports an unknown effect', async () => {
+  const h = harness();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    await apkFixture(),
+    'android',
+    async () => true,
+  );
+  const deviceSessionId = await h.open();
+  let ready!: () => void;
+  const started = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  h.installApp.mockImplementationOnce(async (input) => {
+    expect(await input.beforeInstall()).toBe(true);
+    ready();
+    return await new Promise<never>((_resolve, reject) =>
+      input.signal.addEventListener(
+        'abort',
+        () => reject(new Error('cancelled')),
+        { once: true },
+      ),
+    );
+  });
+  const pending = h.run('device_install_app', {
+    deviceSessionId,
+    artifactHandle: staged.handle,
+  });
+  await started;
+  await h.take(deviceSessionId);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+    effect: 'unknown',
+  });
+});
+
+test.skipIf(process.platform === 'win32')(
+  'install tool stages only the bound Project workspace while holding the device lease',
+  async () => {
+    const root = await realpath(makeTempDir('station-device-agent-app-'));
+    await writeFile(join(root, 'sample.apk'), await apkFixture());
+    const h = harness('sdk-in-process', { projectRoot: root });
+    const deviceSessionId = await h.open();
+    const refused = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: '../sample.apk',
+      }),
+    );
+    expect(refused).toMatchObject({
+      ok: false,
+      code: 'invalid-source',
+      effect: 'none',
+    });
+    expect(h.installApp).not.toHaveBeenCalled();
+    const installed = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: 'sample.apk',
+      }),
+    );
+    expect(installed).toMatchObject({
+      ok: true,
+      source: 'workspace',
+      hostId: 'local',
+      metadata: { appId: 'com.example.app', revision: null },
+    });
+    expect(h.sessions.latestInstallation(deviceSessionId)).toMatchObject({
+      source: 'workspace',
+      digest: installed.digest,
+      metadata: { build: '1', revision: null },
+    });
+    await h.take(deviceSessionId);
+    expect(
+      parsed(
+        await h.run('device_install_app', {
+          deviceSessionId,
+          workspacePath: 'sample.apk',
+        }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(h.installApp).toHaveBeenCalledOnce();
+  },
+);
+
+test('agent history records unknown when authorization fails after app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      options?.onDispatch?.();
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'unknown' });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'unknown' }),
+  );
+});
+
+test('agent history records failed when authorization fails before app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'failed' }),
+  );
 });

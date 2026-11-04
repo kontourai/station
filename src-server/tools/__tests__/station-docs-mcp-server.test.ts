@@ -4,11 +4,12 @@ import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
 import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
-import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
-  STATION_DOCS_CONTENT_DIGEST,
-  STATION_DOCS_TOPICS,
-} from '../station-docs-content.js';
+  readStationDocsInputs,
+  stationDocsDigest,
+} from '../../../scripts/generate-station-docs.mjs';
+import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
+import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
   findStationDocsTopic,
@@ -62,6 +63,13 @@ function readSource(file: string): string {
 }
 
 describe('station-docs content', () => {
+  test('the automation topic warns that old scheduler logs can retain private details', () => {
+    const body = findStationDocsTopic('scheduled-jobs')?.body ?? '';
+    expect(body).toContain(
+      'Previously written server logs may still contain automation names and errors',
+    );
+    expect(body).toContain('The active UTC day is retained');
+  });
   test('every topic is complete and its id is a stable kebab-case key', () => {
     expect(STATION_DOCS_TOPICS.length).toBeGreaterThanOrEqual(8);
     for (const topic of STATION_DOCS_TOPICS) {
@@ -609,8 +617,16 @@ describe('station-docs MCP server', () => {
     expect(topic.topic.sourceAnchor).toBe('sessioncommandmodule');
     expect(topic.topic.body).toContain('indeterminate');
     expect(topic.topic.body).toContain('do not establish live state');
-    expect(topic.documentationDigest).toBe(STATION_DOCS_CONTENT_DIGEST);
+    // The digest is computed at runtime, not committed (a committed line
+    // conflicted on every docs change). It must still equal the generator's
+    // digest over the canonical sources and change when the content does.
     expect(topic.documentationDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(topic.documentationDigest).toBe(
+      stationDocsDigest(await readStationDocsInputs()),
+    );
+    expect(topic.documentationDigest).not.toBe(
+      stationDocsDigest(STATION_DOCS_TOPICS.slice(1)),
+    );
     expect(
       (await callTool('list_station_docs_topics', { parentId: 'missing' }))
         .topics,

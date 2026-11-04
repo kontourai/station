@@ -72,7 +72,7 @@ describe('splitToolCallRuns', () => {
     const parts = [
       { type: 'text', content: 'intro' } as ToolCallLike,
       toolCall({ toolCallId: 'a' }),
-      { type: 'reasoning', content: 'thinking' } as ToolCallLike,
+      { type: 'file', name: 'output.txt' } as ToolCallLike,
     ];
     const blocks = splitToolCallRuns(parts);
     expect(blocks[0]).toEqual({
@@ -132,6 +132,25 @@ describe('foldTurnWork', () => {
     expect(run.calls.map((c) => c.index)).toEqual([1, 3, 4]);
     expect(run.interludes?.map((n) => n.index)).toEqual([2]);
     expect(blocks[2]).toMatchObject({ part: { content: 'outcome' } });
+  });
+
+  test('folds reasoning with its calls while keeping the last narration visible', () => {
+    const parts = [
+      { type: 'reasoning', content: 'Inspect source' },
+      toolCall({ toolCallId: 'a' }),
+      text('Can you confirm?'),
+      { type: 'reasoning', content: 'Check the result' },
+      toolCall({ toolCallId: 'b' }),
+      { type: 'reasoning', content: 'Waiting for the answer' },
+    ];
+    const [run, lastWords] = foldTurnWork(parts);
+    if (run.type !== 'tool-call-run') throw new Error('expected a run');
+    expect(run.calls.map(({ index }) => index)).toEqual([1, 4]);
+    expect(run.interludes?.map(({ index }) => index)).toEqual([0, 3, 5]);
+    expect(lastWords).toMatchObject({
+      index: 2,
+      part: { content: 'Can you confirm?' },
+    });
   });
 
   test('a runtime error, a file and blank text inside the span stay visible after the run, in order', () => {

@@ -5,8 +5,8 @@ import {
   execFileSync,
   spawn,
 } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -344,6 +344,12 @@ export function buildVitestCommand(
   }
   return [
     ...command,
+    ...(group.name === 'process-exclusive'
+      ? [
+          '--reporter=default',
+          `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
+        ]
+      : []),
     ...files,
     ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
   ];
@@ -417,6 +423,8 @@ export function runWindowsSerializedCorpus({
     name:
       selected?.resultName ?? selected?.name ?? 'windows-serialized-fallback',
     status: result.status,
+    signal: result.signal ?? null,
+    outputTruncated: result.error?.code === 'ENOBUFS',
     passed: result.status === 0 && !error,
     ...(result.signal || result.error?.code === 'ETIMEDOUT'
       ? { cancelled: true }
@@ -442,6 +450,7 @@ function terminalFailure(name, reason, { cancelled = false } = {}) {
   return {
     name,
     status: null,
+    signal: null,
     passed: false,
     cancelled,
     error: String(reason),
@@ -487,6 +496,7 @@ export async function runVitestGroup(
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
       cwd: root,
+      env: { ...process.env, STATION_VITEST_CORPUS_GROUP: group.name },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -546,6 +556,8 @@ export async function runVitestGroup(
       return {
         name: resultName,
         status: null,
+        signal: null,
+        outputTruncated: captured.truncated,
         passed: false,
         cancelled: signalAborted,
         error: `${label} cancelled: ${completion.reason}`,
@@ -582,6 +594,8 @@ export async function runVitestGroup(
     return {
       name: resultName,
       status: result.status,
+      signal: result.signal ?? null,
+      outputTruncated: captured.truncated,
       passed: result.status === 0 && !error,
       error: error ? String(error.message ?? error) : null,
       stdout: captured.stdout.text,
@@ -597,7 +611,7 @@ export async function runVitestGroup(
   }
 }
 
-export function emitResult(result) {
+export function emitResult(result, { diagnosticDirectory } = {}) {
   // FAIL is a claim about the tests. A cancelled group made no such claim: it
   // was killed by the coordinator's deadline or a signal, so its suite never
   // reached a verdict and the captured bytes are a partial transcript rather
@@ -610,6 +624,13 @@ export function emitResult(result) {
   process.stdout.write(
     `[vitest-corpus] ${result.name}: ${state}; ${result.outputBytes ?? 0} byte(s) captured\n`,
   );
+  if (!cancelled) {
+    const totals = stripVTControlCharacters(result.stdout ?? '')
+      .split('\n')
+      .filter((line) => /^\s*(?:Test Files|Tests)\s/.test(line));
+    for (const line of totals)
+      process.stdout.write(`[vitest-corpus] ${result.name}: ${line.trim()}\n`);
+  }
   if (cancelled)
     process.stdout.write(
       `[vitest-corpus] ${result.name}: no test results were produced — the run did not complete, so the capture below is a partial transcript and names no failing test.\n`,
@@ -618,6 +639,9 @@ export function emitResult(result) {
     process.stdout.write(`[vitest-corpus] ${result.name}: ${result.skipped}\n`);
   if (!result.passed) {
     process.stderr.write(
+      `[vitest-corpus] ${result.name}: status=${result.status ?? 'null'}; signal=${result.signal ?? 'none'}\n`,
+    );
+    process.stderr.write(
       `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
     );
     const headings = stripVTControlCharacters(
@@ -625,7 +649,7 @@ export function emitResult(result) {
     )
       .split('\n')
       .filter((line) =>
-        /^\s*FAIL\s+\S+\.(?:test|spec)\.[cm]?[jt]sx?\s+>/.test(line),
+        /^\s*FAIL\s+\S+\.(?:test|spec)\.[cm]?[jt]sx?(?:\s+>|\s*$)/.test(line),
       );
     if (headings.length)
       process.stderr.write(
@@ -640,6 +664,38 @@ export function emitResult(result) {
     process.stderr.write(
       `[vitest-corpus] ${result.name} stderr tail:\n${tail(result.stderr ?? '') || '<empty>'}\n`,
     );
+    if (diagnosticDirectory) {
+      mkdirSync(diagnosticDirectory, { recursive: true });
+      const directory = mkdtempSync(
+        resolve(diagnosticDirectory, `${result.name}-`),
+      );
+      writeFileSync(resolve(directory, 'stdout.log'), result.stdout ?? '');
+      writeFileSync(resolve(directory, 'stderr.log'), result.stderr ?? '');
+      writeFileSync(
+        resolve(directory, 'receipt.json'),
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            invocationId: basename(directory),
+            group: result.name,
+            passed: false,
+            status: result.status ?? null,
+            signal: result.signal ?? null,
+            cancelled: result.cancelled === true,
+            outputTruncated: result.outputTruncated === true,
+            stdoutBytes: result.stdoutBytes ?? 0,
+            stderrBytes: result.stderrBytes ?? 0,
+            error: result.error ?? null,
+            cleanup: result.cleanup ?? null,
+          },
+          null,
+          2,
+        ),
+      );
+      process.stderr.write(
+        `[vitest-corpus] ${result.name} retained diagnostics: ${directory}\n`,
+      );
+    }
   }
 }
 
@@ -902,6 +958,13 @@ async function main() {
     const result = await runVitestCorpus({
       ...options,
       signal: controller.signal,
+      onResult: (group) =>
+        emitResult(group, {
+          diagnosticDirectory: resolve(
+            process.env.RUNNER_TEMP ?? '.kontourai/verification-output',
+            'vitest-corpus',
+          ),
+        }),
     });
     if (options.keepGoing) {
       const directory = resolve('.kontourai/vitest-corpus-audit');

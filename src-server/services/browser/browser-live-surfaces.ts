@@ -35,10 +35,13 @@ import type {
 } from '../live-surface/registry.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import { browserAgentGrantAllows } from './browser-agent-authority.js';
+import { browserColorSchemeParams } from './browser-color-scheme.js';
 import {
   BrowserConsoleLog,
   type BrowserConsoleSnapshot,
 } from './browser-console-log.js';
+import type { CdpTransport } from './browser-host.js';
+import { BrowserNetworkLog } from './browser-network-log.js';
 import {
   actorOwnsSessionProfile,
   type BrowserSessionActor,
@@ -64,6 +67,9 @@ interface Binding {
   generation: number;
   producer: ChromiumScreencastProducer;
   console: BrowserConsoleLog;
+  network?: BrowserNetworkLog;
+  networkCdp: CdpTransport;
+  networkSessionId: string;
   unregister: () => Promise<void>;
   offNavigated: () => void;
   offLease: () => void;
@@ -73,6 +79,7 @@ export interface BrowserLiveSurfacesOptions {
   sessions: Pick<
     BrowserSessionRegistry,
     | 'onSessionChange'
+    | 'getSession'
     | 'liveTarget'
     | 'listSessions'
     | 'recordDialog'
@@ -83,6 +90,8 @@ export interface BrowserLiveSurfacesOptions {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
   authorizeProject: BrowserProjectAuthorizer;
+  networkPreviewEnabled?: () => boolean;
+  experienceEnabled?: () => boolean;
   dispatchTimeoutMs?: number;
   /** How long a dialog held for a person waits before its automatic answer. */
   dialogHoldMs?: number;
@@ -110,13 +119,17 @@ export async function authorizeBrowserSurfaceAction(
     request,
     record.projectId,
     action === 'view' ? 'view' : 'drive',
+    { allowOperatorDeviceView: action === 'view' },
   );
   if (!actor) return false;
   // The live-surface layer's principal and the Project authority must be the
   // same person, or the lease would attribute one person's input to another.
   if (actor.kind === 'project-admin' && actor.principalId !== principal)
     return false;
-  return actorOwnsSessionProfile(record, actor);
+  return (
+    (actor.kind === 'operator-device' && action === 'view') ||
+    actorOwnsSessionProfile(record, actor)
+  );
 }
 
 /**
@@ -234,6 +247,28 @@ export class BrowserLiveSurfaces {
       : undefined;
   }
 
+  async networkFor(browserSessionId: string, after?: number, limit?: number) {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.options.networkPreviewEnabled?.()) return undefined;
+    const network = (binding.network ??= new BrowserNetworkLog(
+      binding.networkCdp,
+      binding.networkSessionId,
+      () => this.options.networkPreviewEnabled?.() === true,
+    ));
+    await network.enable();
+    if (
+      this.bindings.get(browserSessionId) !== binding ||
+      !this.options.networkPreviewEnabled?.()
+    )
+      return undefined;
+    return network.capturing
+      ? {
+          ...network.read(after, limit),
+          generation: binding.generation,
+        }
+      : undefined;
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     this.offChange();
@@ -264,9 +299,10 @@ export class BrowserLiveSurfaces {
     const generation = live.generation;
     let producer: ChromiumScreencastProducer;
     let consoleLog: BrowserConsoleLog | undefined;
+    let cdp: CdpTransport;
     let offNavigated: () => void;
     try {
-      const cdp = live.host.cdp();
+      cdp = live.host.cdp();
       producer = new ChromiumScreencastProducer({
         surfaceId,
         cdp,
@@ -387,14 +423,17 @@ export class BrowserLiveSurfaces {
       lease?.onChange((next) => {
         const holder = next.holder;
         if (holder?.kind === 'human') {
-          // Human control never inherits an Agent's target-local theme override.
+          // Human control restores the person's target-local preference rather than inheriting an Agent override.
           void live.host
             .cdp()
             .send(
               'Emulation.setEmulatedMedia',
-              {
-                features: [{ name: 'prefers-color-scheme', value: '' }],
-              },
+              browserColorSchemeParams(
+                this.options.experienceEnabled?.() === true
+                  ? (this.options.sessions.getSession(id)?.colorScheme ??
+                      'system')
+                  : 'system',
+              ),
               live.target.cdpSessionId,
             )
             .catch((error) =>
@@ -425,6 +464,8 @@ export class BrowserLiveSurfaces {
       generation,
       producer,
       console: consoleLog,
+      networkCdp: cdp,
+      networkSessionId: live.target.cdpSessionId,
       unregister,
       offNavigated,
       offLease,
@@ -436,6 +477,7 @@ export class BrowserLiveSurfaces {
     binding.offNavigated();
     binding.producer.dispose();
     binding.console.dispose();
+    binding.network?.dispose();
     try {
       await binding.unregister();
     } catch (error) {

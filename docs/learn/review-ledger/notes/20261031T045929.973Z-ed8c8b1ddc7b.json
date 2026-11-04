@@ -1,0 +1,7 @@
+{
+  "revision": "6a0091138b4120acc5b103f95708a031c0b0fa4e",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed mobile-chat-composer selector and non-modal keyboard-traversal changes against manifest ownership. Inbox replaces the title sheet; Home, Project and Personal Board spec ownership and fixture/live distinctions remain accurate. No claim that the full listed e2e inventory executed locally.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

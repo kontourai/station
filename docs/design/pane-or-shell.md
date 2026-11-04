@@ -88,7 +88,7 @@ Pane (work surface — target state; most are routes today and stay routable):
 | Registry | browse/install work surface |
 | Review queue | work surface |
 | Notifications | work surface (the bell is shell chrome; the page is a pane) |
-| Schedule | work surface |
+| Automations (formerly Schedule) | work surface |
 | Guidance (skills/commands) | work surface |
 | Coding / evidence / previews / task room / spatial board | panes today |
 

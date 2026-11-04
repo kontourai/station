@@ -11,7 +11,6 @@ import {
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import {
   clearUpdateNotice,
-  openUpdates,
   publishUpdateNotice,
 } from './updates/updatesEvents';
 
@@ -232,8 +231,9 @@ export function CoreUpdateLaunchCheck({
         id: 'launch-update',
         target: 'server',
         message: sourceMessage,
-        actionLabel: 'Review server update',
-        onAction: () => openUpdates('server'),
+        // The server section states this comparison itself, and the panel
+        // that would show it is where an "open Updates" action leads.
+        summaryOnly: true,
       });
     } else {
       clearUpdateNotice('launch-update');

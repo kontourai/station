@@ -40,6 +40,7 @@ import {
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { chooseSentTurnKey, rememberSentTurnKey } from './sent-turn-key';
 import { isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
@@ -60,11 +61,20 @@ export type ForegroundMessageInput = ForegroundMessageFields &
   ApprovalPickCarry & { skillExperience?: SkillExperienceStartInputV1 };
 
 interface ForegroundMessageFields {
+  /** Hold an eligible follow-up in the server inbox if the conversation is busy. */
+  whenBusy?: 'queue';
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * The person's personal per-engine approval default on a chat's first
+   * send: a hint the server applies below the Agent's default and the
+   * Project's layer, never a pick. A Station that predates it ignores it.
+   */
+  personalApprovalDefault?: 'ask' | 'auto' | 'never';
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
   };
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Byte-free current-host staging references; hydrated only at provider dispatch. */
@@ -84,6 +94,13 @@ export interface ForegroundMessageReceipt {
   providerTurnId: string;
   target: { kind: 'agent'; id: AgentId };
   resolution: ExecutionResolutionReceipt;
+  /**
+   * #4162: this send started `sessionId`, so `resolution.engine` is the engine
+   * that Session runs on. Absent when the turn went to an already-running
+   * Session (its engine may differ from the Agent's current binding) and from
+   * Stations that predate the field.
+   */
+  sessionStarted?: true;
   handoff?: ConversationHandoffReceipt;
   /**
    * #2436: what became of the approval pick the send carried. Absent when it
@@ -92,6 +109,11 @@ export interface ForegroundMessageReceipt {
    */
   approvalMode?: import('@kontourai/station-contracts/orchestration').SetApprovalModeResult;
 }
+
+/** Receipt from a foreground SDK call that chose and sent a turn key. */
+export type KeyedForegroundMessageReceipt = ForegroundMessageReceipt & {
+  readonly clientTurnId: string;
+};
 
 export interface ConversationHandoffReceipt {
   predecessorSessionId: string;
@@ -310,40 +332,48 @@ export async function sendExecutionMessageWithInventory(
   input: ForegroundMessageInput,
   readInventory: SkillExperienceInventoryReader,
   opts?: ClientRequestOptions,
-): Promise<ForegroundMessageReceipt> {
-  if (input.skillExperience) {
-    if (input.automaticBackground)
-      throw new Error(
-        'Visual skill starts require an explicit foreground send.',
-      );
-    if (!readSkillExperienceStartInput(input.skillExperience))
-      throw new Error('The selected visual skill input is unsupported.');
-    const inventory = await readInventory(apiBase, opts);
-    if (!skillExperiencesCanExecute(inventory))
-      throw new Error(
-        'This Station cannot execute visual skill starts. Your selection has not been sent.',
-      );
-    if (
-      !inventory.experiences.some((entry) =>
-        sameSkillExperienceIdentity(
-          entry.identity,
-          input.skillExperience!.identity,
-        ),
+): Promise<KeyedForegroundMessageReceipt> {
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    if (input.skillExperience) {
+      if (input.automaticBackground)
+        throw new Error(
+          'Visual skill starts require an explicit foreground send.',
+        );
+      if (!readSkillExperienceStartInput(input.skillExperience))
+        throw new Error('The selected visual skill input is unsupported.');
+      const inventory = await readInventory(apiBase, opts);
+      if (!skillExperiencesCanExecute(inventory))
+        throw new Error(
+          'This Station cannot execute visual skill starts. Your selection has not been sent.',
+        );
+      if (
+        !inventory.experiences.some((entry) =>
+          sameSkillExperienceIdentity(
+            entry.identity,
+            input.skillExperience!.identity,
+          ),
+        )
       )
-    )
-      throw new Error(
-        'The selected visual skill source changed or is unavailable. Review it before starting.',
-      );
+        throw new Error(
+          'The selected visual skill source changed or is unavailable. Review it before starting.',
+        );
+    }
+    const { automaticBackground, ...body } = input;
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
+      'POST',
+      opts,
+      { ...body, clientTurnId },
+    );
+    const result = (await readExecutionBody(
+      response,
+    )) as ExecutionErrorResponse;
+    return { ...readExecutionReceipt(response, result), clientTurnId };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
   }
-  const { automaticBackground, ...body } = input;
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
-    'POST',
-    opts,
-    body,
-  );
-  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
-  return readExecutionReceipt(response, result);
 }
 
 /**
@@ -382,9 +412,9 @@ export async function queueExecutionMessage(
   },
   opts?: ClientRequestOptions,
 ): Promise<QueuedFollowUpResult> {
-  const { automaticBackground: _background, ...body } = input;
+  const { automaticBackground, ...body } = input;
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat`,
+    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
     'POST',
     opts,
     { ...body, whenBusy: 'queue' },
@@ -415,7 +445,7 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -423,7 +453,7 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[] };
+    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
     error?: string;
     code?: string;
   };
@@ -433,7 +463,87 @@ export async function listConversationInbox(
       result,
       'The conversation inbox is unavailable.',
     );
+  if (
+    typeof result.data.currentHead === 'string' &&
+    result.data.currentHead.length > 0 &&
+    result.data.currentHead.length <= 4096
+  )
+    opts?.onHead?.(result.data.currentHead);
   return result.data.entries;
+}
+
+/** Read the current execution head before preparing a keyed steer. */
+export async function readConversationInboxHead(
+  apiBase: string,
+  conversationId: string,
+  opts?: ClientRequestOptions,
+): Promise<string> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const read = await getJson(url, opts);
+  const snapshot = (await readExecutionBody(read)) as {
+    success?: boolean;
+    data?: { currentHead?: unknown };
+    error?: string;
+    code?: string;
+  };
+  const head = snapshot.data?.currentHead;
+  if (
+    !read.ok ||
+    !snapshot.success ||
+    typeof head !== 'string' ||
+    !head ||
+    head.length > 4096
+  )
+    throw chatRefusal(
+      read,
+      snapshot,
+      'This Station cannot safely queue steering.',
+    );
+  return head;
+}
+
+/** Submit a steer against the original observed head. */
+export async function submitConversationSteer(
+  apiBase: string,
+  conversationId: string,
+  input: { key: string; message: string; expectedHead?: string },
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const head =
+    input.expectedHead ??
+    (await readConversationInboxHead(apiBase, conversationId, opts));
+  const response = await mutateJson(url, 'POST', opts, {
+    kind: 'steer',
+    key: input.key,
+    message: input.message,
+    expectedHead: head,
+  });
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: ConversationInboxEntry;
+    error?: string;
+    code?: string;
+  };
+  if (
+    response.status !== 202 ||
+    !result.success ||
+    result.data?.kind !== 'steer' ||
+    result.data.clientTurnId !== input.key ||
+    result.data.conversationId !== conversationId ||
+    result.data.message !== input.message ||
+    result.data.expectedHead !== head ||
+    ![
+      'queued',
+      'sending',
+      'sent',
+      'unconfirmed',
+      'refused',
+      'cancelled',
+    ].includes(result.data.state)
+  )
+    throw chatRefusal(response, result, 'Station could not accept this steer.');
+  return result.data;
 }
 
 /**
@@ -479,19 +589,27 @@ export async function continueExecutionMessage(
   conversationId: string,
   input: ContinueForegroundMessageInput,
   opts?: ClientRequestOptions,
-): Promise<ForegroundMessageReceipt> {
-  if ('skillExperience' in input && input.skillExperience !== undefined)
-    throw new Error(
-      'Visual skill starts use the canonical foreground chat route.',
+): Promise<KeyedForegroundMessageReceipt> {
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId);
+  try {
+    if ('skillExperience' in input && input.skillExperience !== undefined)
+      throw new Error(
+        'Visual skill starts use the canonical foreground chat route.',
+      );
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+      'POST',
+      opts,
+      { ...input, clientTurnId },
     );
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
-    'POST',
-    opts,
-    input,
-  );
-  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
-  return readExecutionReceipt(response, result);
+    const result = (await readExecutionBody(
+      response,
+    )) as ExecutionErrorResponse;
+    return { ...readExecutionReceipt(response, result), clientTurnId };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
 }
 
 /** Explicitly hand a durable conversation to another configured Agent/engine. */

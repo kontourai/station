@@ -1,10 +1,11 @@
+import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
 // @vitest-environment jsdom
 
 /**
  * archive#3312 — one inbox, two chromes. The row/group anatomy in
  * `ChatDockInboxRows.tsx` must render identically rich rows inside BOTH
  * hosts: the desktop dock panel (`ChatDockInboxPanel`) and the mobile
- * portaled sheet (`MobileTaskSwitcher`). This suite renders the same item
+ * portaled sheet (`MobileInboxPanel`). This suite renders the same item
  * through each host and asserts the shared anatomy — meta line, title, the
  * one status line, snooze + snooze-duration + close actions — instead of
  * trusting that two files that look alike stay alike.
@@ -12,10 +13,17 @@
 
 import type {
   OrchestrationSessionSummary,
-  TaskRecord,
+  TaskListRecord,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
@@ -24,7 +32,8 @@ import {
   InboxRow,
   inboxRowIconAgent,
 } from '../components/chat-dock/ChatDockInboxRows';
-import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
@@ -47,6 +56,20 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
     chatSessionId: 'shared',
     ...overrides,
   };
+}
+
+function WorkingChatCount({
+  items,
+  facts,
+}: {
+  items: HomeWorkItem[];
+  facts: ReturnType<typeof buildWorkFacts>;
+}) {
+  return (
+    <output aria-label="Working chats">
+      {useInboxWorkingCount(items, NOW, facts)}
+    </output>
+  );
 }
 
 function historicalItems(): HomeWorkItem[] {
@@ -100,11 +123,10 @@ function renderSheetHost(
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={[item]}
         activeChatSessionId={null}
-        visualViewportStyle={{}}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}
@@ -135,6 +157,89 @@ function expectSharedRowAnatomy(root: ParentNode) {
 }
 
 describe('shared inbox rows render in both hosts (station#3312)', () => {
+  it('retains the inbox search and list position while the conversation is shown', () => {
+    const props = {
+      tasks: [
+        workItem(),
+        workItem({
+          id: 'other',
+          title: 'Another conversation',
+          chatSessionId: 'other',
+        }),
+      ],
+      activeChatSessionId: null,
+      triggerRef: createRef<HTMLButtonElement>(),
+      onClose: vi.fn(),
+      onFocusChat: vi.fn(),
+      onOpenConversation: vi.fn(),
+      onOpenSession: vi.fn(),
+      now: NOW,
+    };
+    const mounted = render(<MobileInboxPanel {...props} open />);
+    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'Shared row' },
+    });
+    expect(screen.queryByText('Another conversation')).toBeNull();
+    const list = mounted.container.querySelector<HTMLElement>(
+      '.mobile-inbox__list',
+    )!;
+    list.scrollTop = 120;
+    mounted.rerender(<MobileInboxPanel {...props} open={false} />);
+    expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+    mounted.rerender(<MobileInboxPanel {...props} open />);
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
+      'Shared row',
+    );
+    expect(list.scrollTop).toBe(120);
+    expect(
+      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+    ).toBeTruthy();
+  });
+
+  it('keeps an unopened saved conversation visible and reports an open failure without leaving the inbox', async () => {
+    const onClose = vi.fn();
+    const onOpenFailed = vi.fn();
+    const onAcknowledgeConversation = vi.fn();
+    const onOpenConversation = vi
+      .fn()
+      .mockRejectedValue(new Error('Unavailable'));
+    render(
+      <MobileInboxPanel
+        open
+        tasks={[
+          workItem({
+            chatSessionId: undefined,
+            orchestrationThreadId: 'saved-thread',
+            conversationId: 'saved-conversation',
+            agentSlug: 'codex',
+          }),
+        ]}
+        openChatSessionIds={[]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={onClose}
+        onFocusChat={vi.fn()}
+        onOpenConversation={onOpenConversation}
+        onOpenSession={vi.fn()}
+        onOpenFailed={onOpenFailed}
+        onAcknowledgeConversation={onAcknowledgeConversation}
+        agentsLoaded
+        now={NOW}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+    );
+    await waitFor(() => expect(onOpenFailed).toHaveBeenCalledOnce());
+    expect(onOpenConversation.mock.calls[0]?.slice(0, 2)).toEqual([
+      'saved-conversation',
+      'codex',
+    ]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onAcknowledgeConversation).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+  });
   beforeEach(() => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
@@ -155,14 +260,13 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     });
     const facts = new Map([['child', { runRootId: 'parent' }]]);
     const view = (items: HomeWorkItem[]) => (
-      <MobileTaskSwitcher
+      <MobileInboxPanel
         open
         tasks={items}
         workFacts={facts}
         activeChatSessionId={null}
         openChatSessionIds={['parent', 'child']}
         triggerRef={createRef<HTMLButtonElement>()}
-        visualViewportStyle={{}}
         onClose={vi.fn()}
         onFocusChat={vi.fn()}
         onOpenConversation={vi.fn()}
@@ -214,7 +318,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         now={NOW}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+    );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
   });
@@ -256,7 +362,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
               />,
             )
           : render(
-              <MobileTaskSwitcher
+              <MobileInboxPanel
                 open
                 tasks={items}
                 activeChatSessionId={null}
@@ -266,7 +372,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
                 onOpenSession={vi.fn()}
                 onClose={vi.fn()}
                 triggerRef={createRef<HTMLButtonElement>()}
-                visualViewportStyle={{}}
                 now={NOW}
               />,
             );
@@ -295,70 +400,149 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     },
   );
 
-  it('keeps a Task-owned chat reachable under its Task and opens the Task destination', () => {
-    const tasks: TaskRecord[] = [
-      {
-        id: 'task-1',
-        projectId: 'alpha',
-        title: 'Ship release',
-        description: '',
-        createdBy: 'user',
-        priority: 'normal',
-        status: 'in_progress',
-        sessionId: 'linked-chat',
-        createdAt: '2026-08-18T11:00:00Z',
-        updatedAt: '2026-08-18T11:59:00Z',
-      },
+  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
+    const items = [
+      workItem({
+        id: 'alpha-chat',
+        title: 'Alpha project work',
+        projectSlug: 'alpha',
+        projectLabel: 'Alpha',
+        chatSessionId: 'alpha-chat',
+      }),
+      workItem({
+        id: 'loose-chat',
+        title: 'No project chat',
+        chatSessionId: 'loose-chat',
+      }),
     ];
-    const chat = workItem({
-      id: 'linked-chat',
-      chatSessionId: 'linked-chat',
-      title: 'Release conversation',
-      lifecycleLabel: 'Needs attention',
-    });
-    const items = buildHomeWorkItems({
-      chats: {},
-      sessions: [],
-      agents: [],
-      tasks,
-      chatItems: [chat],
-      retainTaskChildren: true,
-    });
-    const onFocusChat = vi.fn();
-    render(
+    const panel = () => (
       <ChatDockInboxPanel
         items={items}
-        workFacts={buildWorkFacts({ items, tasks })}
         activeChatSessionId={null}
-        openChatSessionIds={['linked-chat']}
-        onFocusChat={onFocusChat}
+        openChatSessionIds={['alpha-chat', 'loose-chat']}
+        onFocusChat={vi.fn()}
         onOpenConversation={vi.fn()}
         onOpenSession={vi.fn()}
         onCloseChat={vi.fn()}
         onOpenHistory={vi.fn()}
         now={NOW}
-      />,
+      />
     );
-    const lane = screen
-      .getByRole('heading', { name: 'Needs you' })
-      .closest('section')!;
-    expect(within(lane).getByText('Ship release')).toBeTruthy();
-    fireEvent.click(
-      within(lane).getByRole('button', {
-        name: 'Release conversation, Shared project',
-      }),
-    );
-    expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
-    fireEvent.click(
-      within(lane).getByRole('button', { name: 'Ship release, alpha' }),
-    );
-    expect(window.location.pathname).toBe('/tasks/task-1');
-    window.history.replaceState(null, '', '/');
+    try {
+      act(() => navigationStore.navigate('/projects/alpha'));
+      const mounted = render(panel());
+      const scope = () =>
+        screen.getByRole('combobox', {
+          name: 'Inbox scope',
+        }) as HTMLSelectElement;
+      // Unchosen, every open chat stays listed: the open conversation is
+      // never filtered out of its own Inbox.
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
+      expect(screen.getByText('Alpha project work')).toBeTruthy();
+      expect(screen.queryByText('No project chat')).toBeNull();
+      act(() => navigationStore.navigate('/'));
+      mounted.rerender(panel());
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      expect(screen.getByText('Alpha project work')).toBeTruthy();
+      // Back on a project page the chosen scope filters again; "All work"
+      // undoes it.
+      act(() => navigationStore.navigate('/projects/alpha'));
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
+      fireEvent.change(scope(), { target: { value: 'all' } });
+      expect(screen.getByText('No project chat')).toBeTruthy();
+    } finally {
+      act(() => navigationStore.navigate('/'));
+    }
   });
 
-  it.each(['desktop', 'mobile'] as const)(
-    '%s groups delegated work with its root and opens the child needing approval',
-    async (host) => {
+  it.each(['primary', 'room-request'] as const)(
+    '%s chat stays under its Task and the Task destination reveals its workspace',
+    (association) => {
+      const tasks: TaskListRecord[] = [
+        {
+          id: 'task-1',
+          projectId: 'alpha',
+          title: 'Ship release',
+          description: '',
+          createdBy: 'user',
+          priority: 'normal',
+          status: 'in_progress',
+          ...(association === 'primary'
+            ? { sessionId: 'linked-chat' }
+            : { workChatConversationIds: ['linked-conversation'] }),
+          createdAt: '2026-08-18T11:00:00Z',
+          updatedAt: '2026-08-18T11:59:00Z',
+        },
+      ];
+      const chat = workItem({
+        id: 'linked-chat',
+        conversationId: 'linked-conversation',
+        chatSessionId: 'linked-chat',
+        title: 'Release conversation',
+        lifecycleLabel: 'Needs attention',
+      });
+      const items = buildHomeWorkItems({
+        chats: {},
+        sessions: [],
+        agents: [],
+        tasks,
+        chatItems: [chat],
+        retainTaskChildren: true,
+      });
+      const onFocusChat = vi.fn();
+      render(
+        <ChatDockInboxPanel
+          items={items}
+          workFacts={buildWorkFacts({ items, tasks })}
+          activeChatSessionId={null}
+          openChatSessionIds={['linked-chat']}
+          onFocusChat={onFocusChat}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          onOpenHistory={vi.fn()}
+          now={NOW}
+        />,
+      );
+      const lane = screen.getByRole('region', { name: /^Needs you/ });
+      expect(within(lane).getByText('Ship release')).toBeTruthy();
+      fireEvent.click(
+        within(lane).getByRole('button', {
+          name: 'Release conversation, Shared project',
+        }),
+      );
+      expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
+      window.history.replaceState(
+        null,
+        '',
+        '/tasks/task-1?dock=open&chat=linked-chat&taskView=conversation',
+      );
+      fireEvent.click(
+        within(lane).getByRole('button', { name: 'Ship release, alpha' }),
+      );
+      expect(window.location.pathname).toBe('/tasks/task-1');
+      expect(new URL(window.location.href).searchParams.get('dock')).toBeNull();
+      expect(new URL(window.location.href).searchParams.get('chat')).toBeNull();
+      expect(new URL(window.location.href).searchParams.get('taskView')).toBe(
+        'overview',
+      );
+      window.history.replaceState(null, '', '/');
+    },
+  );
+
+  it.each([
+    ['desktop', 'none'],
+    ['mobile', 'none'],
+    ['desktop', 'child'],
+    ['mobile', 'child'],
+    ['desktop', 'ambiguous'],
+    ['mobile', 'ambiguous'],
+  ] as const)(
+    '%s groups delegated work with %s Task ownership and opens the child needing approval',
+    async (host, association) => {
       const sessions: OrchestrationSessionSummary[] = [
         {
           threadId: 'root',
@@ -388,7 +572,33 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             }
           : {}),
       }));
-      const items = buildHomeWorkItems({ chats: {}, sessions, agents: [] });
+      const tasks: TaskListRecord[] =
+        association === 'none'
+          ? []
+          : ['task-a', 'task-b'].map((id) => ({
+              id,
+              projectId: 'alpha',
+              title: id === 'task-a' ? 'Parent outcome' : 'Child outcome',
+              description: '',
+              createdBy: 'user',
+              priority: 'normal',
+              status: 'in_progress',
+              createdAt: '2026-08-18T11:00:00Z',
+              updatedAt: '2026-08-18T11:59:00Z',
+              workChatConversationIds:
+                id === 'task-a'
+                  ? association === 'ambiguous'
+                    ? ['root', 'child']
+                    : ['root']
+                  : ['child'],
+            }));
+      const items = buildHomeWorkItems({
+        chats: {},
+        sessions,
+        agents: [],
+        tasks,
+        retainTaskChildren: true,
+      });
       const onOpenSession = vi.fn();
       const common = {
         activeChatSessionId: null,
@@ -398,7 +608,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onOpenConversation: vi.fn(),
         onOpenSession,
         onCloseChat: vi.fn(),
-        workFacts: buildWorkFacts({ items, sessions }),
+        workFacts: buildWorkFacts({ items, sessions, tasks }),
       };
       if (host === 'desktop') {
         render(
@@ -410,23 +620,31 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         );
       } else {
         render(
-          <MobileTaskSwitcher
+          <MobileInboxPanel
             {...common}
             open
             tasks={items}
             triggerRef={createRef<HTMLButtonElement>()}
-            visualViewportStyle={{}}
             onClose={vi.fn()}
           />,
         );
       }
-      const needsYou = screen
-        .getByRole('heading', { name: /^Needs you/ })
-        .closest('section')!;
-      expect(within(needsYou).getByText('Release review')).toBeTruthy();
-      expect(
-        within(needsYou).getByText('1 subtask · 1 needs you'),
-      ).toBeTruthy();
+      const needsYou = screen.getByRole('region', { name: /^Needs you/ });
+      if (association === 'none') {
+        expect(within(needsYou).getByText('Release review')).toBeTruthy();
+        expect(
+          within(needsYou).getByText('1 subtask · 1 needs you'),
+        ).toBeTruthy();
+      } else if (association === 'child') {
+        expect(within(needsYou).getByText('Child outcome')).toBeTruthy();
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(
+          within(needsYou).getByText('1 work chat · 1 needs you'),
+        ).toBeTruthy();
+      } else {
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(within(needsYou).queryByText('Child outcome')).toBeNull();
+      }
       fireEvent.click(
         within(needsYou).getByRole('button', {
           name: 'Security review, No project',
@@ -462,19 +680,24 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
           0,
         );
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       } else {
         render(
-          <MobileTaskSwitcher
+          <MobileInboxPanel
             {...handlers}
             open
             tasks={history}
             triggerRef={createRef<HTMLButtonElement>()}
-            visualViewportStyle={{}}
             onClose={vi.fn()}
           />,
         );
       }
+      if (host === 'mobile')
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
       );
@@ -531,19 +754,24 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             onOpenHistory={vi.fn()}
           />,
         );
-        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       } else {
         render(
-          <MobileTaskSwitcher
+          <MobileInboxPanel
             {...handlers}
             open
             tasks={history}
             triggerRef={createRef<HTMLButtonElement>()}
-            visualViewportStyle={{}}
             onClose={vi.fn()}
           />,
         );
       }
+      if (host === 'mobile')
+        fireEvent.click(
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+        );
       const current = screen.getByRole('button', {
         name: 'Historical work 40, Shared project',
       });
@@ -571,7 +799,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
+    const dialog = screen.getByRole('region', { name: 'Inbox' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
@@ -582,9 +810,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
     expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
-    expect(
-      screen.getByRole('button', { name: 'Close task switcher' }),
-    ).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Inbox' })).not.toBeNull();
   });
 
   // Rendered through the shared row directly: a 3h-old terminal row lives in
@@ -636,7 +862,19 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
     expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
+    fireEvent.click(
+      within(snoozed).getByRole('button', { name: 'Snoozed · 1' }),
+    );
+    expect(
+      within(snoozed).getByRole('button', {
+        name: 'Shared row title, Shared project',
+      }),
+    ).toBeTruthy();
   });
 
   it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
@@ -848,7 +1086,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
+    const dialog = screen.getByRole('region', { name: 'Inbox' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });
@@ -902,43 +1140,114 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
     expect(icon?.textContent).toBe('RE');
   });
 
+  // #4266: a row draws the engine(s) that RAN it first, so the gates below
+  // are the agent fallback's (`inboxRowIconAgent`), reached only when no
+  // markable engine is on record.
   it('never stands an engine in for an agent the catalog does not resolve', () => {
     expect(
-      avatar(
-        [reviewer],
+      inboxRowIconAgent(
         rowFor({ agentSlug: 'gone', provider: 'codex' as never }),
+        [reviewer],
       ),
+    ).toBeNull();
+    expect(
+      avatar([reviewer], rowFor({ agentSlug: 'gone', provider: undefined })),
     ).toBeNull();
   });
 
-  it('an ACP-bound agent keeps its initials even beside a branded provider', () => {
+  it('an ACP-bound agent keeps its own identity even beside a branded provider', () => {
     const acpAgent = {
       slug: 'reviewer',
       name: 'Reviewer',
       execution: { agentConnectionId: 'kiro' },
       engineConnectionType: 'acp',
     };
-    const icon = avatar([acpAgent], rowFor({ provider: 'codex' as never }));
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'codex' as never }), [acpAgent]),
+    ).toBe(acpAgent);
   });
 
-  it('an agent reporting acp keeps its initials', () => {
-    const icon = avatar(
-      [{ ...reviewer, engineId: 'acp' }],
-      rowFor({ provider: 'codex' as never }),
-    );
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+  it('an agent reporting acp yields to its own identity, not initials of an engine', () => {
+    const resolved = inboxRowIconAgent(rowFor({ provider: 'codex' as never }), [
+      { ...reviewer, engineId: 'acp' },
+    ]);
+    expect(resolved?.engineId).toBeUndefined();
+    expect(resolved?.slug).toBe('reviewer');
   });
 
   it('an agent with no engine binding is not given the Station mark', () => {
+    const unbound = { slug: 'reviewer', name: 'Reviewer' };
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'station-agent' as never }), [
+        unbound,
+      ]),
+    ).toBe(unbound);
+  });
+
+  it('the Station agent on an engine with no mark draws Station’s own mark, not "ST"', () => {
+    // The owner's server: Station bound to an ACP OpenCode connection, so the
+    // catalog reports engineId `acp`. The row recorded no engine.
+    const station = {
+      slug: 'station',
+      name: 'Station',
+      engineId: 'acp',
+      engineConnectionType: 'acp',
+      execution: { agentConnectionId: 'opencode' },
+    };
     const icon = avatar(
-      [{ slug: 'reviewer', name: 'Reviewer' }],
-      rowFor({ provider: 'station-agent' as never }),
+      [station],
+      rowFor({
+        agentSlug: 'station',
+        agentLabel: 'Station',
+        provider: undefined,
+      }),
     );
-    expect(icon?.getAttribute('data-brand-key')).toBeNull();
-    expect(icon?.textContent).toBe('RE');
+    expect(icon?.getAttribute('data-brand-key')).toBe('station');
+    expect(icon?.textContent).not.toBe('ST');
+  });
+
+  it('draws every engine the thread ran on, in order, with +N past three', () => {
+    const { container } = renderPanelHost(
+      rowFor({
+        agentSlug: 'station',
+        agentLabel: 'Station',
+        provider: 'codex' as never,
+        executionProviders: ['claude', 'codex'] as never,
+      }),
+      vi.fn(),
+      [] as any,
+    );
+    const marks = [
+      ...container.querySelectorAll(
+        '[data-testid="identity-marks"] .brand-icon',
+      ),
+    ].map((mark) => mark.getAttribute('data-brand-key'));
+    expect(marks).toEqual(['claude', 'codex']);
+    expect(
+      container
+        .querySelector('[data-testid="identity-marks"]')
+        ?.getAttribute('title'),
+    ).toBe('Ran on Claude Code, Codex');
+    // The agent stays named in text beside the marks.
+    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
+      'Station',
+    );
+
+    const many = renderPanelHost(
+      rowFor({
+        executionProviders: ['claude', 'codex', 'opencode', 'kiro'] as never,
+      }),
+      vi.fn(),
+      [] as any,
+    );
+    expect(
+      many.container.querySelectorAll(
+        '[data-testid="identity-marks"] .brand-icon',
+      ),
+    ).toHaveLength(3);
+    expect(
+      many.container.querySelector('.identity-marks__more')?.textContent,
+    ).toBe('+1');
   });
 
   it('a recorded engine with no bundled mark adds nothing', () => {
@@ -954,3 +1263,79 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
     ).toBe(agents[0]);
   });
 });
+
+it.each([0, 1, 2])(
+  'an in-progress Task with %i running work chats counts actual chats and keeps one Task entry',
+  (count) => {
+    const task: TaskListRecord = {
+      id: 'outcome',
+      projectId: 'alpha',
+      title: 'One outcome',
+      description: '',
+      status: 'in_progress',
+      priority: 'normal',
+      createdBy: 'user',
+      createdAt: '2026-08-18T11:00:00Z',
+      updatedAt: '2026-08-18T11:59:00Z',
+      workChatConversationIds: Array.from(
+        { length: count },
+        (_, i) => `conversation-${i}`,
+      ),
+    };
+    const chats = Array.from({ length: count }, (_, i) =>
+      workItem({
+        id: `chat-${i}`,
+        chatSessionId: `chat-${i}`,
+        conversationId: `conversation-${i}`,
+        title: `Working chat ${i}`,
+        lifecycleLabel: 'Running',
+      }),
+    );
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks: [task],
+      chatItems: chats,
+      retainTaskChildren: true,
+    });
+    const facts = buildWorkFacts({ items, tasks: [task] });
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <WorkingChatCount items={items} facts={facts} />
+        <ChatDockInboxPanel
+          items={items}
+          workFacts={facts}
+          activeChatSessionId={null}
+          openChatSessionIds={[]}
+          onFocusChat={vi.fn()}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          onOpenHistory={vi.fn()}
+          now={NOW}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByRole('status', { name: 'Working chats' }).textContent,
+    ).toBe(String(count));
+    const lane = screen.getByRole('region', {
+      name: count ? /^Running/ : /^Idle/,
+    });
+    expect(
+      within(lane).getAllByRole('button', { name: 'One outcome, alpha' }),
+    ).toHaveLength(1);
+    expect(within(lane).getByText('Task · In progress')).toBeTruthy();
+    if (count)
+      expect(
+        within(lane).getByRole('button', {
+          name: `${count} work chat${count === 1 ? '' : 's'}`,
+        }),
+      ).toBeTruthy();
+  },
+);

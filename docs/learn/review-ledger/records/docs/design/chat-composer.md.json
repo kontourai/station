@@ -20,8 +20,6 @@
 
     "src-ui/src/lib/foregroundMessageDispatch.ts",
 
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
-
     "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
@@ -81,8 +79,6 @@
     "src-ui/src/components/chat/ComposerStopButton.tsx",
 
     "src-ui/src/components/NewChatAction.tsx",
-
-    "src-ui/src/components/chat-start/RecentChatList.tsx",
 
     "src-ui/src/components/modals/NewChatModal.tsx",
 
@@ -180,7 +176,115 @@
 
     "src-ui/src/components/chat/ConversationInboxMessages.tsx",
 
-    "tests/message-delivery-recovery.spec.ts"
+    "tests/message-delivery-recovery.spec.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+
+    "src-ui/src/__tests__/execution.test.ts",
+
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
+
+    "src-ui/src/components/chat-dock/interruptedTurnContinue.ts",
+
+    "src-ui/src/components/chat/message-bubble/visibleContent.ts",
+
+    "src-ui/src/components/chat-dock/DockStartComposer.tsx",
+
+    "src-ui/src/components/chat/ToolCallBatch.tsx",
+
+    "src-ui/src/__tests__/ToolCallBatch.test.tsx",
+
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts",
+
+    "src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx",
+
+    "src-ui/src/__tests__/SubagentTranscriptCard.interrupted.test.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnBrowser.tsx",
+
+    "src-ui/src/components/chat-dock/useConversationWorkState.ts",
+
+    "src-ui/src/components/chat-dock/inbox-dismissals.tsx",
+
+    "src-ui/src/__tests__/conversation-resolution.test.tsx",
+
+    "src-ui/src/__tests__/TranscriptTurnBrowser.test.tsx",
+
+    "src-ui/src/__tests__/transcript-turn-rail.browser.test.tsx",
+
+    "src-server/routes/chat/conversation-work-state.ts",
+
+    "src-ui/src/components/chat-dock/mobile-activity-groups.ts",
+
+    "src-ui/src/components/ComposerChoice.tsx",
+
+    "src-ui/src/components/ComposerChoice.css",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "src-ui/src/components/session/SessionModelPicker.css",
+
+    "src-ui/src/components/ModelRuntimeOptionFields.tsx",
+
+    "src-ui/src/__tests__/SessionModelPicker.test.tsx",
+
+    "src-ui/src/__tests__/NewChatModalEngineChips.test.tsx",
+
+    "src-ui/src/components/chat-start/__tests__/StartModelPicker.test.tsx",
+
+    "src-ui/src/__tests__/responsive-dialog-header.test.tsx",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-ui/src/hooks/useStartSelection.ts",
+
+    "src-ui/src/utils/modelCapabilities.ts",
+
+    "src-ui/src/__tests__/useChatInput.engineModelGate.test.tsx",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "src-server/routes/environments/__tests__/peer-chat-routes.test.ts",
+
+    "src-ui/src/components/chat-dock/PeerChatBody.tsx",
+
+    "src-ui/src/hooks/usePeerChatStart.ts",
+
+    "src-ui/src/lib/peer-chat.ts",
+
+    "src-ui/src/__tests__/PeerChatBody.test.tsx",
+
+    "src-ui/src/components/chat/ChatRequestContext.ts",
+
+    "src-ui/src/components/chat-start/ChatStart.css",
+
+    "src-ui/src/components/chat-start/StartComposer.css",
+
+    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockViewModel.ts",
+
+    "src-ui/src/components/chat-start/StartMenus.tsx",
+
+    "src-ui/src/hooks/useNewChatSelectionModel.ts",
+
+    "src-ui/src/__tests__/ConversationHandoffDialog.test.tsx",
+
+    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx"
   ],
 
   "checks": [

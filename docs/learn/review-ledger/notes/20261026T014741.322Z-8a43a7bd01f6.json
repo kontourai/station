@@ -1,0 +1,15 @@
+{
+  "revision": "258a7f3efa03706ef96617381d6e863a087fc578",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the Chat inventory entry claim against ChatDockHeader.tsx (desktop worded Inventory button, unchanged) and ChatDockMobileHeader.tsx / ChatDockMobileOverflowSheet.tsx: the phone bar no longer renders Inventory; the ⋯ sheet renders a 'Chat inventory' menuitem calling the same onOpenInventory with the ⋯ trigger. Updated the paragraph. Re-read the turn-navigation paragraph's 'phone header edge reserve holds only its two 44px controls': true again with Inventory out of the bar.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the Inventory control claim against ChatDockMobileHeader.tsx and ChatDockMobileOverflowSheet.tsx: desktop opens directly from the header; on a phone the entry is the Chat inventory row of the ⋯ sheet. Updated the paragraph; focus-return claim matches the trigger passed (the ⋯ button). Geometry of the one-row bar is asserted at 320 and 390 by tests/chat-inventory-drilldown-mobile.spec.ts.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked 'Inspect what a chat used' against ChatDockMobileOverflowSheet.tsx: on a phone the reader opens from ⋯ then Chat inventory; desktop keeps the worded Inventory button (ChatDockHeader.tsx). Updated the step.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked against the e2e-manifest addition of tests/chat-dock-open-helper.spec.ts (product bucket, static page, no instance). The matrix maps product surfaces to journeys; a shared-helper regression spec adds no surface row, so no prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Checked the chat-inventory-drilldown-mobile row against the spec: it sends at 390x844 with no desktop detour, asserts Start opened the phone dock itself, measures the one-row header (Chat actions and New chat) at 320 and 390, and opens Chat inventory from the ⋯ sheet. Updated the row; PR_BROWSER_SMOKE_CONTRACT membership is unchanged.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

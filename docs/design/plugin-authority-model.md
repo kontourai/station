@@ -3,7 +3,8 @@
 > **Reading status: historical August 2026 threat analysis and recommendations.**
 > The body preserves that assessment, including its then-open fixes. Current
 > [bundle loading](../../src-ui/src/core/PluginRegistry.ts) uses nonce-free
-> same-origin script URLs; the cross-origin inline path still receives a nonce.
+> same-origin script URLs or the bounded Desktop installed-asset protocol;
+> other cross-origin in-process bundles are refused (#3001).
 > [Lifecycle routes](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
 > now send managed updates through the installer and rebind legacy grants when
 > content changes. [Permission derivation](../../src-server/services/plugins/plugin-permissions.ts)
@@ -165,7 +166,16 @@ person in its loop, so it refuses and names the Plugins page instead of echoing
 a preview back into an install. And the update route still replaces code
 without re-deriving or re-prompting (point 3 below).
 
-**2. A CSP exists and hands its own key to the untrusted code.** The served
+**2. Historical loader nonce handoff (removed by #3001).** The following describes the
+pre-fix loader. The current loader uses same-origin script URLs and refuses
+other cross-origin bundles, with a bounded Desktop installed-asset protocol;
+plugins are not handed the shell nonce. In-process plugins still run in the
+shell realm, can read `.nonce` from the DOM, and can reach Tauri internals.
+That is the existing in-process authority model, not an isolation boundary.
+Desktop installed assets use the bounded host-authenticated protocol; Desktop
+draft previews remain unavailable.
+
+**Original finding:** The served
 HTML carries `default-src 'none'; script-src 'self' 'nonce-<per-response>'
 'wasm-unsafe-eval'`, with a fresh nonce per response, pinned by an E2E test;
 the desktop app carries an equivalent policy. Then:

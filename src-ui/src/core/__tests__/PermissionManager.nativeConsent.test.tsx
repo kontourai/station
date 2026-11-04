@@ -66,7 +66,13 @@ async function driveTrustedApproval(onResult: (granted: boolean) => void) {
     </PermissionManager>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
-  // The in-app modal (which only OPENS the request) appears first.
+  // The in-app modal (which only OPENS the request) appears first, and says
+  // plugin code cannot approve what it opens.
+  expect(
+    await screen.findByText(
+      /separate, host-owned review page; plugin code can’t approve them/,
+    ),
+  ).toBeTruthy();
   fireEvent.click(
     await screen.findByRole('button', { name: 'Review trusted access' }),
   );

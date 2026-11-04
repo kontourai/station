@@ -1,0 +1,7 @@
+{
+  "revision": "65cb0062bf40afee47fb9669b299f49ba1e0bbed",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked the bootstrap capability null guard and offline shell and queue callers; pending capability cannot become settled and queue admission is unchanged.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]}
+  ]
+}

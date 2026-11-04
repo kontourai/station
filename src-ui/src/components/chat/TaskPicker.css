@@ -28,8 +28,16 @@
   display: inline-block;
   margin-inline-start: 0.35rem;
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
+}
+/* The status line's retry action ("Message actions unavailable. Retry"): a
+   bare button is ~21px tall on the phone composer's failure path. The 44px
+   floor is a property of the pointer, not the width, so a touch pointer
+   gets it wherever this line renders. */
+.task-picker__status button {
+  min-width: 44px;
+  min-height: 44px;
 }
 .task-picker__dialog-body {
   display: grid;
@@ -39,7 +47,7 @@
   display: grid;
   gap: 0.4rem;
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 .task-picker__search {
@@ -92,11 +100,11 @@
 .task-picker__task-meta {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-picker__submission-error {
   margin: 0;
   color: var(--error-text);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   line-height: 1.45;
 }

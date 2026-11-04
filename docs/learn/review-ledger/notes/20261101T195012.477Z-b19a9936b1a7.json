@@ -1,0 +1,17 @@
+{
+  "revision": "d687af54c7f9d50a3bf7cbd4122b395b7c8d5a24",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Port band now lists server, voice (+2), consent (+3) and the UI port; checked against getInstanceServicePorts and validateLifecyclePorts in lifecycle.ts and a live isolated start where nothing bound the server port + 1.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"The phase evidence now names three supervisor-held ports and checks voice and consent on the new generation, matching supervised-core.real.test.ts after the terminal listener was removed.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The development guide's port band now lists server, voice (+2), consent (+3) and UI; nothing binds the server port + 1. This document makes no port-band claim, so it stays accurate.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"The development guide's port band now lists server, voice (+2), consent (+3) and UI; nothing binds the server port + 1. This document makes no port-band claim, so it stays accurate.","inputs":["docs/guides/testing.md","docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"The development guide's port band now lists server, voice (+2), consent (+3) and UI; nothing binds the server port + 1. This document makes no port-band claim, so it stays accurate.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The development guide's port band now lists server, voice (+2), consent (+3) and UI; nothing binds the server port + 1. This document makes no port-band claim, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

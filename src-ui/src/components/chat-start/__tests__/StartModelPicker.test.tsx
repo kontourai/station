@@ -103,11 +103,8 @@ describe('StartModelPicker', () => {
       />,
     );
     // An effort change is not a finished choice: the picker stays.
-    fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
-    fireEvent.change(
-      await screen.findByRole('combobox', { name: 'Thinking effort' }),
-      { target: { value: 'low' } },
-    );
+    await screen.findByRole('group', { name: 'Thinking effort' });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Low' }));
     expect(onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'low');
     expect(screen.queryByText('picker closed')).toBeNull();
 
@@ -147,8 +144,10 @@ test('the Station control remains inside the picker dismissal and focus boundary
   fireEvent.pointerDown(station);
   expect(onClose).not.toHaveBeenCalled();
   expect(
-    screen.getByRole('dialog', { name: 'Choose model' }).contains(station),
+    screen.getByRole('dialog', { name: 'Engine & model' }).contains(station),
   ).toBe(true);
+  // #4403: one dialog, named by its visible title, not a dialog in a dialog.
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
 });
 
 test('the Station-scoped reset never reads a bare "Use" when the default source is unknown', async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "292bb328da15806ce17991a164555e411ee3c2f2",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed terminal counts and diagnostic parser-error accounting against shard runner change; receipt semantics remain accurate, no broader completion claim.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

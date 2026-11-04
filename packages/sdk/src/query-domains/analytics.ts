@@ -1,5 +1,8 @@
+import type { FeedbackRatingRecord } from '@kontourai/station-contracts/feedback';
 import type { UsageInsights } from '@kontourai/station-contracts/insights';
 import { _getApiBase } from '../api';
+import { envelopeError } from '../client/api-error-message';
+import { readJsonBody } from '../client/http';
 
 export type {
   UsageRollupQuery,
@@ -22,6 +25,8 @@ const liveAnalyticsConfig = {
 } as const;
 
 export interface FeedbackRatingInput {
+  expectedSessionId?: string;
+  expectedTurnId?: string;
   agentSlug: string;
   conversationId: string;
   messageIndex: number;
@@ -38,7 +43,12 @@ export interface FeedbackRatingDeleteInput {
 export async function fetchUsageStats(): Promise<any> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(`${apiBase}/api/analytics/usage`);
-  if (!response.ok) throw new Error('Failed to fetch usage');
+  if (!response.ok)
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      `Usage unavailable (HTTP ${response.status})`,
+    );
   const result = await response.json();
   return result.data;
 }
@@ -159,7 +169,7 @@ export function useInsightsQuery(
   );
 }
 
-export async function fetchFeedbackRatings(): Promise<any[]> {
+export async function fetchFeedbackRatings(): Promise<FeedbackRatingRecord[]> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(`${apiBase}/api/feedback/ratings`);
   if (!response.ok) throw new Error('Failed to fetch ratings');
@@ -176,7 +186,11 @@ export async function saveFeedbackRating(
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    throw new Error('Failed to save feedback rating');
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      'Failed to save feedback rating',
+    );
   }
 }
 
@@ -217,7 +231,9 @@ export async function clearFeedbackAnalysis(): Promise<void> {
   }
 }
 
-export function useFeedbackRatingsQuery(config?: QueryConfig<any>) {
+export function useFeedbackRatingsQuery(
+  config?: QueryConfig<FeedbackRatingRecord[]>,
+) {
   return useApiQuery(
     ['feedback', 'ratings'],
     () => fetchFeedbackRatings(),

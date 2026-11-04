@@ -196,7 +196,7 @@ function inspectionHref(reference: StarterInspectionReference): string {
   // scoped to one Project and cannot show another's receipt.
   return reference.owner === 'independent-review'
     ? projectReviewLayoutHref(reference.projectSlug, { receipt: reference.id })
-    : `/schedule?run=${encodeURIComponent(reference.id)}`;
+    : `/automations?run=${encodeURIComponent(reference.id)}`;
 }
 
 function inspectionFailureReason(

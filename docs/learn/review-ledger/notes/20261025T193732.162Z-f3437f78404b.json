@@ -1,0 +1,7 @@
+{
+  "revision": "a76447f651f623a95c9f4545d4eb470796bff4f4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the round-three formatting repair only: Biome wraps two appendReviewEvent calls in task-review-store.test.ts and adds optional trailing commas. The TypeScript syntax tree, assertions, fixtures, production owners and module claims are unchanged. This is not new runtime, browser/device, provider or release evidence.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/task-review-store.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a330a996130c93784f712dfd0bdf6ad5973e41b0",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the linked feature-preview and module-map changes: this guide describes bounded agent work previews, which remain off by default; chat-host-images is a separate default-on preview. Child steering and host-image changes do not alter this guide. Source review only.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md","docs/user/settings.md"]}
+  ]
+}

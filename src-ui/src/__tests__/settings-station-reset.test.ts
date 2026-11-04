@@ -149,6 +149,14 @@ describe('buildStationResetPlan', () => {
       'serverUpdateDownloadPolicy',
       // Station host
       'terminalShell',
+      // #3994: terminal history retention. A reset clears each to its
+      // default: history on, <home>/terminal-journals (ended journals move
+      // back there), 30 days, 16 MiB per terminal and 1024 MiB in total.
+      'terminalHistoryEnabled',
+      'terminalHistoryDirectory',
+      'terminalHistoryMaxAgeDays',
+      'terminalHistoryMaxTerminalMiB',
+      'terminalHistoryMaxTotalMiB',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
       // #3386: conversations outside projects in Activity.
@@ -173,14 +181,20 @@ describe('buildStationResetPlan', () => {
       'defaultMaxTurns',
       'defaultMaxOutputTokens',
       'defaultWorkspaceIsolation',
+      // #4389: where chats without a project run (private folder or home).
+      'noProjectChatFolder',
       'workspaceCheckpoints',
+      'checkoutStaleAfterCommits',
+      'checkoutStaleAfterDays',
       // #3188: resume a usage-limit stop at the provider's reset.
       'usageLimitAutoResume',
+      'claudeArtifactsEnabled',
       'reviewGuidesEnabled',
       'reviewGuideModel',
       'reviewGuideInstructions',
       // Chat
       'defaultChatFontSize',
+      'titleModel',
       // Pairing: restore the Station's default-off LAN publication choice.
       'lanDiscoveryEnabled',
     ]);

@@ -122,12 +122,13 @@ New and recovered sessions both recheck authored tools against current Project
 permissions. Missing Agent definitions or unreadable Project policy refuse
 engine startup; the conversation stays recoverable after the cause is fixed.
 
-**Browser access** is a separate Agent capability. The current delivery path
-connects Claude Code to the Project's Station browser; other engines disclose
-that this delivery is unavailable. **Workflow files** holds the workflow editor.
-Browser access is independent of attaching MCP sources. See the
-[browser and computer capability proposal](../design/agent-interaction-capabilities.md)
-for the proposed cross-engine behavior; it is not implemented.
+**Browser access** is a separate Agent capability. Claude Code receives the
+Project's Station browser in process. Codex can use the same browser through
+the default-off **Codex browser and device tools** Feature Preview; ACP remains
+unavailable. The editor's engine status may not reflect that preview. **Workflow
+files** holds the workflow editor. Browser access is independent of attaching
+MCP sources. See the [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
+and the [broader capability proposal](../design/agent-interaction-capabilities.md).
 
 On Claude Code, an authentic built-in Station browser request can offer **Allow the Station browser for this session** beside the per-tool choice. It covers later plain calls from that same in-process server while the session record lives. An explicit Ask rule, an escalation, a question or a plan exit still requires its own decision. Station offers and honors this grant only after the engine reports exactly one `station-browser` server with SDK provenance; a matching name alone is insufficient. Stopping or restarting the session drops the grant.
 
@@ -164,9 +165,18 @@ External policy delivery follows the [engine policy contract](../conformance/too
 - `mcpMode` — `add` preserves harness integrations; `replace` supplies only the Agent's list. Omission retains legacy engine behavior
 - `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
-- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals, nor, on the Station engine, the default question before outbound tools after untrusted content ([connections](connections.md#tools-after-untrusted-content)). A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `askBeforeUse` — requires a person on Station and Claude, even after a session grant or guardian allow. Exact choices override wildcard defaults; Ask wins equally specific conflicts. Earlier refusals and guardian denies still apply. Without an approval channel the call is denied
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
+
+For a plugin-owned Agent, Station ignores plugin-declared
+`unattendedAutoApprove` and filters attended patterns made entirely of `*`.
+An operator in person, or a caller with `approval:full-access`, can change
+these grants through the Agent update route. Station records the choice outside
+the plugin-owned Agent directory, scoped to the owning plugin, so an update of
+that plugin does not replace it and another plugin does not inherit it. An
+explicit empty list records removal of a grant. Other approval and policy checks
+still apply.
 
 The picker writes approval keys as `mcp/<server>/<action>`, with
 `mcp/<server>/*` for future-tool Ask defaults. Legacy names remain readable;
@@ -222,6 +232,18 @@ load → MCP connect → ready → chat → reload
 3. **ready** — the agent is registered in `activeAgents` and available for requests
 4. **chat** — `POST /api/agents/:slug/chat` streams a response; the runtime creates an `InjectableStream` to interleave approval events with model output
 5. **reload** — `reloadAgents()` prepares the replacement connection set, publishes the new agents, and retires superseded connections without a full restart
+
+The **Crash-durable Station Agent** Feature Preview is off by default. When on,
+Station's VoltAgent and Strands adapters record text turns in the private
+`data/agent-runtime/steps.sqlite` journal through `@kontourai/agent-runtime`.
+Client disconnect transfers delivery and cleanup to the durable owner; explicit
+Stop records cancellation. Restart requires the original agent definition,
+current Session access and a proven-dead prior owner. A pending approval keeps
+its identity and absolute deadline and needs an explicit answer. New durable waits default to ten minutes. Operators can set `STATION_DURABLE_APPROVAL_TIMEOUT_MS` (1000–86400000 ms) for new waits; restarting or changing the setting preserves the deadline already recorded. Interrupted
+unsafe tools return an indeterminate result; only declared safe tools retry.
+A model request that might have been dispatched is never automatically resent.
+The preview refuses unsupported non-text inputs. External engines keep their
+existing lifecycle. See the [runtime contract](../../packages/agent-runtime/README.md).
 
 Read health through the Agent health endpoint. This guide does not promise a
 periodic `agent-health` event. The model-resolution owner is
@@ -365,10 +387,12 @@ waits on an approval request where it used to run on the guardian's allow.
 
 ### Unattended runs
 
-A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
-or a delegated child session that cannot grant approvals — never waits on an
-approval request. Station's engine either allows the call without asking or
-denies it.
+A run with nobody to confirm a tool call — a scheduled job without a target,
+`/invoke`, the CLI, or a delegated child session that cannot grant approvals —
+never waits on an approval request. Station's engine either allows the call
+without asking or denies it. An automation that runs in a conversation is not
+unattended in this sense: its turn uses the conversation's own approval mode,
+and a tool call that needs approval waits for the person there.
 
 Sessions started by an [inbound webhook](inbound-webhooks.md) or the
 [Discord gateway](discord-gateway.md) are also unattended: nobody can answer an
@@ -480,8 +504,9 @@ approval paths; these hooks do not establish external policy enforcement.
 
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
-| `beforeToolCall` | Before any tool executes | Checks auto-approve; triggers approval flow if needed |
-| `afterToolCall` | After a tool returns | Debug logging |
+| `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
+| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted |
+| `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
 | `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
 
 `afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog.

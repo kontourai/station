@@ -1,6 +1,7 @@
 import {
   DEVICE_PUSH_PAYLOAD_MAX_BYTES,
   type DeviceAccessibilityTree,
+  type DeviceAppAction,
   type DeviceLocationReadBack,
   type DevicePermission,
   type DevicePermissionDecision,
@@ -8,25 +9,37 @@ import {
   type DeviceToolAction,
   type DeviceToolsUnreadableReason,
 } from '@kontourai/station-contracts/device-tools';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
+  createContext,
   type KeyboardEvent,
   type ReactNode,
+  useContext,
   useEffect,
   useId,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../../components/Button';
+import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { CloseGlyph } from '../../components/icons/Glyph';
+import { ErrorState, SkeletonBlock } from '../../components/state';
+import { DeviceReproductionPicker } from './DeviceReproductionPicker';
 import {
   axRectOnShownFrame,
   type DeviceFrameRotation,
 } from './deviceAxGeometry';
 import {
   type DeviceToolsTarget,
+  describeDeviceInstallFailure,
+  describeDeviceLogsFailure,
   describeDeviceToolsFailure,
   useDeviceAccessibilityTree,
+  useDeviceActionHistory,
+  useDeviceAppAction,
+  useDeviceAppInstall,
+  useDeviceLogs,
   useDevicePermissions,
   useDeviceToolAction,
   useDeviceToolsSnapshot,
@@ -130,13 +143,25 @@ function locationLine(location: DeviceLocationReadBack): string {
   return UNREADABLE_COPY[location.reason];
 }
 
+/** Which part of the device tools the ⋯ menu opened. */
+export type DeviceToolsView = 'apps' | 'logs' | 'settings';
+
+const VIEW_TITLE: Record<DeviceToolsView, string> = {
+  apps: 'Apps',
+  logs: 'Logs',
+  settings: 'Device settings',
+};
+
+/** Device settings sections start folded; Apps and Logs show theirs open. */
+const SectionsCollapsed = createContext(false);
+
 export interface DeviceToolsDrawerProps {
+  view: DeviceToolsView;
   requestScope: ApiRequestScope;
   projectSlug: string | null;
+  sourceSessionId?: string;
   target: DeviceToolsTarget;
   deviceName: string;
-  /** The drawer's element id (the Tools toggle's `aria-controls`). */
-  id: string;
   /** `overlay` below 560px of container width, `docked` (288px) above. */
   layout: 'overlay' | 'docked';
   axOverlay: boolean;
@@ -147,12 +172,17 @@ export interface DeviceToolsDrawerProps {
 }
 
 /**
- * The drawer. Its tools run on the device's own host: this Station's
- * `xcrun`/`adb`, or an SSH device host's through that host's allowlisted
- * tool mode (#2442) — the server decides, and says why when it cannot.
+ * The drawer the Device ⋯ menu opens on one view. Its tools run on the
+ * device's own host: this Station's `xcrun`/`adb`, or an SSH device host's
+ * allowlisted tool mode (#2442); the server says why when it cannot.
  */
 export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
-  const { requestScope, projectSlug, target } = props;
+  const { requestScope, projectSlug, target, view } = props;
+  const previews = useFeaturePreviewsQuery(requestScope.apiBase);
+  const deviceLoopEnabled =
+    previews.data?.some(
+      (preview) => preview.id === 'device-developer-loop' && preview.enabled,
+    ) === true;
   const snapshot = useDeviceToolsSnapshot(requestScope, target, projectSlug);
   const action = useDeviceToolAction(requestScope, target, projectSlug);
   // Same cache entry the overlay polls; this observer never fetches.
@@ -166,16 +196,49 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
     null,
   );
   const [notice, setNotice] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = useDeviceActionHistory(
+    requestScope,
+    target,
+    projectSlug,
+    deviceLoopEnabled && historyOpen,
+  );
+  const [logAppId, setLogAppId] = useState('');
+  const [logFilter, setLogFilter] = useState('');
+  const [logLevel, setLogLevel] = useState('all');
+  const [logsPaused, setLogsPaused] = useState(true);
+  const targetKey = JSON.stringify([
+    target.hostId,
+    target.platform,
+    target.deviceId,
+  ]);
+  const [logsTarget, setLogsTarget] = useState(targetKey);
+  useEffect(() => {
+    setLogsTarget(targetKey);
+    setLogsPaused(true);
+  }, [targetKey]);
+  const logs = useDeviceLogs(
+    requestScope,
+    target,
+    projectSlug,
+    logAppId,
+    view === 'logs' &&
+      deviceLoopEnabled &&
+      !logsPaused &&
+      logsTarget === targetKey &&
+      APP_ID.test(logAppId),
+  );
   const headingId = useId();
   const drawerRef = useRef<HTMLElement>(null);
 
-  // Opening the drawer moves focus into it, so a keyboard user is where the
-  // new content is. ONLY on open: a docked↔overlay flip (a resize) must not
-  // pull focus away from whatever the person is doing. Closing returns focus
-  // to the Tools button (the pane owns that; see DeviceStage).
+  // Opening the drawer, or switching it to another view from the ⋯ menu,
+  // moves focus into it. A docked↔overlay flip (a resize) must not pull focus
+  // away. Closing returns focus to the ⋯ button (the pane owns that; see
+  // DeviceStage).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view is the change key.
   useEffect(() => {
     drawerRef.current?.focus();
-  }, []);
+  }, [view]);
 
   async function run(next: DeviceToolAction, done?: string) {
     setLastAction(next.type);
@@ -207,14 +270,13 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
       className={`device-tools device-tools--${props.layout}`}
       data-layout={props.layout}
       data-testid="device-tools-drawer"
-      id={props.id}
       onKeyDown={onKeyDown}
       ref={drawerRef}
       tabIndex={-1}
     >
       <div className="device-tools__header">
         <h3 className="device-tools__title" id={headingId}>
-          Tools
+          {VIEW_TITLE[view]}
         </h3>
         <Button
           aria-label="Refresh device values"
@@ -226,7 +288,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           Refresh
         </Button>
         <Button
-          aria-label="Close tools"
+          aria-label={`Close ${VIEW_TITLE[view].toLowerCase()}`}
           className="device-tools__close"
           onClick={props.onClose}
           size="sm"
@@ -257,126 +319,472 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </p>
         ) : null}
 
-        <Section title="App">
-          <Row label="Foreground app">
-            {data ? (
-              data.foregroundApp.state === 'read' ? (
-                <code className="device-tools__value">
-                  {data.foregroundApp.value?.appId ?? 'None'}
-                </code>
+        {view === 'apps' ? (
+          <Section>
+            <Row label="Foreground app">
+              {data ? (
+                data.foregroundApp.state === 'read' ? (
+                  <code className="device-tools__value">
+                    {data.foregroundApp.value?.appId ?? 'None'}
+                  </code>
+                ) : (
+                  <span className="device-tools__muted">
+                    {unreadableLine(data.foregroundApp)}
+                  </span>
+                )
               ) : (
-                <span className="device-tools__muted">
-                  {unreadableLine(data.foregroundApp)}
-                </span>
-              )
-            ) : (
-              <span className="device-tools__muted">—</span>
-            )}
-          </Row>
-        </Section>
-
-        {capabilities?.appearance ? (
-          <Section title="Appearance">
-            <p className="device-tools__line">
-              {data?.appearance.state === 'read'
-                ? `The device reports ${data.appearance.value} mode.`
-                : data
-                  ? unreadableLine(data.appearance)
-                  : null}
-            </p>
-            <fieldset
-              aria-label="Appearance"
-              className="device-tools__actions device-tools__fieldset"
-            >
-              {(['light', 'dark'] as const).map((mode) => (
-                <Button
-                  aria-pressed={
-                    data?.appearance.state === 'read' &&
-                    data.appearance.value === mode
-                  }
-                  disabled={busy && !pendingFor('set-appearance')}
-                  key={mode}
-                  onClick={() =>
-                    void run({ type: 'set-appearance', appearance: mode })
-                  }
-                  pending={pendingFor('set-appearance')}
-                  size="sm"
-                >
-                  {mode === 'light' ? 'Light' : 'Dark'}
-                </Button>
-              ))}
-            </fieldset>
+                <span className="device-tools__muted">—</span>
+              )}
+            </Row>
+            {deviceLoopEnabled ? (
+              <AppActions
+                key={JSON.stringify([
+                  targetKey,
+                  projectSlug,
+                  requestScope.apiBase,
+                  requestScope.authorityKey,
+                ])}
+                requestScope={requestScope}
+                target={target}
+                projectSlug={projectSlug}
+                sourceSessionId={props.sourceSessionId}
+              />
+            ) : null}
           </Section>
         ) : null}
 
-        {capabilities?.accessibility ? (
-          <AccessibilitySection
-            enabled={props.axOverlay}
-            onChange={props.onAxOverlayChange}
-            streamVisible={props.streamVisible}
-            tree={tree.data}
-            treeError={tree.error}
-          />
+        {view === 'logs' && deviceLoopEnabled ? (
+          <Section>
+            <label className="device-tools__field">
+              <span className="device-tools__label">App ID</span>
+              <input
+                value={logAppId}
+                onChange={(event) => setLogAppId(event.target.value)}
+              />
+            </label>
+            <label className="device-tools__field">
+              <span className="device-tools__label">Filter</span>
+              <input
+                value={logFilter}
+                onChange={(event) => setLogFilter(event.target.value)}
+              />
+            </label>
+            <label className="device-tools__field">
+              <span className="device-tools__label">Level</span>
+              <select
+                value={logLevel}
+                onChange={(event) => setLogLevel(event.target.value)}
+              >
+                <option value="all">All</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <Button
+              size="sm"
+              disabled={!APP_ID.test(logAppId)}
+              onClick={() => {
+                setLogsTarget(targetKey);
+                setLogsPaused(!logsPaused);
+              }}
+            >
+              {logsPaused ? 'Start logs' : 'Pause logs'}
+            </Button>
+            {logs.isFetching ? <p role="status">Reading logs…</p> : null}
+            {logs.isError ? (
+              <ErrorState
+                variant="compact"
+                title="Logs unavailable"
+                description={describeDeviceLogsFailure(logs.error)}
+                action={
+                  <Button size="sm" onClick={() => void logs.refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : null}
+            {logs.data && !logs.data.output ? (
+              <p className="device-tools__muted">
+                No log entries in this sample.
+              </p>
+            ) : null}
+            {logs.data ? (
+              <>
+                {logs.data.truncated ? (
+                  <p>Older log output was truncated.</p>
+                ) : null}
+                <pre className="device-tools__logs">
+                  {logs.data.output
+                    .split('\n')
+                    .filter(
+                      (line) =>
+                        line.toLowerCase().includes(logFilter.toLowerCase()) &&
+                        (logLevel === 'all' ||
+                          /\b(error|fault)\b|(?:^|\s)(?:E|Er|Fa)(?:\s|\/)/i.test(
+                            line,
+                          )),
+                    )
+                    .join('\n')}
+                </pre>
+              </>
+            ) : null}
+          </Section>
         ) : null}
 
-        {capabilities?.push ? (
-          <PushSection
-            busy={busy}
-            defaultAppId={
-              data?.foregroundApp.state === 'read'
-                ? (data.foregroundApp.value?.appId ?? '')
-                : ''
-            }
-            onSend={(appId, payload) =>
-              run(
-                { type: 'send-push', appId, payload },
-                `Sent to ${appId}. The simulator accepted it; whether the app shows it is up to the app.`,
-              )
-            }
-            pending={pendingFor('send-push')}
-          />
+        {view === 'apps' && deviceLoopEnabled ? (
+          <Section title="Action history">
+            <details
+              onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+            >
+              <summary>Session actions</summary>
+              {history.isLoading ? (
+                <SkeletonBlock count={1} label="Loading action history" />
+              ) : null}
+              {history.isError ? (
+                <ErrorState
+                  variant="compact"
+                  title="History unavailable"
+                  description="Open a device session and try again."
+                  action={
+                    <Button size="sm" onClick={() => void history.refetch()}>
+                      Retry
+                    </Button>
+                  }
+                />
+              ) : null}
+              {history.data?.length === 0 ? (
+                <p>Actions in this session will appear here.</p>
+              ) : null}
+              {history.data?.length ? (
+                <ol>
+                  {history.data.map((entry, index) => (
+                    <li key={`${entry.at}-${index}`}>
+                      {entry.action} · {entry.actor} · {entry.outcome}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+              {history.data ? (
+                <Button size="sm" onClick={() => void history.refetch()}>
+                  Refresh history
+                </Button>
+              ) : null}
+            </details>
+          </Section>
         ) : null}
 
-        {capabilities?.location ? (
-          <LocationSection
-            busy={busy}
-            canClear={capabilities.clearLocation}
-            location={data?.location}
-            onClear={() => run({ type: 'clear-location' })}
-            onSet={(latitude, longitude) =>
-              run({ type: 'set-location', latitude, longitude })
-            }
-            pending={pendingFor('set-location') || pendingFor('clear-location')}
-          />
+        {view === 'settings' &&
+        capabilities &&
+        !capabilities.appearance &&
+        !capabilities.accessibility &&
+        !capabilities.push &&
+        !capabilities.location &&
+        capabilities.permissions.length === 0 ? (
+          <p className="device-tools__muted">
+            This device offers no settings here.
+          </p>
         ) : null}
+        {view === 'settings' && capabilities ? (
+          <SectionsCollapsed.Provider value={true}>
+            {capabilities.appearance ? (
+              <Section title="Appearance">
+                <p className="device-tools__line">
+                  {data?.appearance.state === 'read'
+                    ? `The device reports ${data.appearance.value} mode.`
+                    : data
+                      ? unreadableLine(data.appearance)
+                      : null}
+                </p>
+                <fieldset
+                  aria-label="Appearance"
+                  className="device-tools__actions device-tools__fieldset"
+                >
+                  {(['light', 'dark'] as const).map((mode) => (
+                    <Button
+                      aria-pressed={
+                        data?.appearance.state === 'read' &&
+                        data.appearance.value === mode
+                      }
+                      disabled={busy && !pendingFor('set-appearance')}
+                      key={mode}
+                      onClick={() =>
+                        void run({ type: 'set-appearance', appearance: mode })
+                      }
+                      pending={pendingFor('set-appearance')}
+                      size="sm"
+                    >
+                      {mode === 'light' ? 'Light' : 'Dark'}
+                    </Button>
+                  ))}
+                </fieldset>
+              </Section>
+            ) : null}
 
-        {capabilities && capabilities.permissions.length > 0 ? (
-          <PermissionsSection
-            busy={busy}
-            decisions={capabilities.permissionDecisions}
-            onDecide={(appId, permission, decision) =>
-              run({ type: 'set-permission', appId, permission, decision })
-            }
-            pending={pendingFor('set-permission')}
-            permissions={capabilities.permissions}
-            projectSlug={projectSlug}
-            requestScope={requestScope}
-            target={target}
-          />
+            {capabilities.accessibility ? (
+              <AccessibilitySection
+                enabled={props.axOverlay}
+                onChange={props.onAxOverlayChange}
+                streamVisible={props.streamVisible}
+                tree={tree.data}
+                treeError={tree.error}
+              />
+            ) : null}
+
+            {capabilities.push ? (
+              <PushSection
+                busy={busy}
+                defaultAppId={
+                  data?.foregroundApp.state === 'read'
+                    ? (data.foregroundApp.value?.appId ?? '')
+                    : ''
+                }
+                onSend={(appId, payload) =>
+                  run(
+                    { type: 'send-push', appId, payload },
+                    `Sent to ${appId}. The simulator accepted it; whether the app shows it is up to the app.`,
+                  )
+                }
+                pending={pendingFor('send-push')}
+              />
+            ) : null}
+
+            {capabilities.location ? (
+              <LocationSection
+                busy={busy}
+                canClear={capabilities.clearLocation}
+                location={data?.location}
+                onClear={() => run({ type: 'clear-location' })}
+                onSet={(latitude, longitude) =>
+                  run({ type: 'set-location', latitude, longitude })
+                }
+                pending={
+                  pendingFor('set-location') || pendingFor('clear-location')
+                }
+              />
+            ) : null}
+
+            {capabilities.permissions.length > 0 ? (
+              <PermissionsSection
+                busy={busy}
+                decisions={capabilities.permissionDecisions}
+                onDecide={(appId, permission, decision) =>
+                  run({ type: 'set-permission', appId, permission, decision })
+                }
+                pending={pendingFor('set-permission')}
+                permissions={capabilities.permissions}
+                projectSlug={projectSlug}
+                requestScope={requestScope}
+                target={target}
+              />
+            ) : null}
+          </SectionsCollapsed.Provider>
         ) : null}
       </div>
     </aside>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function AppActions({
+  requestScope,
+  target,
+  projectSlug,
+  sourceSessionId,
+}: {
+  requestScope: ApiRequestScope;
+  target: DeviceToolsTarget;
+  projectSlug: string | null;
+  sourceSessionId?: string;
+}) {
+  const [pickingReproduction, setPickingReproduction] = useState(false);
+  const reproductionButton = useRef<HTMLButtonElement>(null);
+  const [appId, setAppId] = useState('');
+  const [url, setUrl] = useState('');
+  const [artifactPath, setArtifactPath] = useState('');
+  const [artifactFile, setArtifactFile] = useState<File | null>(null);
+  const install = useDeviceAppInstall(requestScope, target, projectSlug);
+  const [notice, setNotice] = useState<string | null>(null);
+  const action = useDeviceAppAction(requestScope, target, projectSlug);
+  const run = async (next: DeviceAppAction) => {
+    setNotice(null);
+    try {
+      const result = await action.mutateAsync(next);
+      setNotice(
+        result.observed === 'foreground'
+          ? 'App is in the foreground.'
+          : 'App is not running.',
+      );
+    } catch {
+      /* The error is shown below. */
+    }
+  };
+  const valid = APP_ID.test(appId) && appId.length <= 255;
+  return (
+    <>
+      <label className="device-tools__field">
+        <span className="device-tools__label">Project workspace app path</span>
+        <input
+          value={artifactPath}
+          onChange={(event) => setArtifactPath(event.target.value)}
+          placeholder={
+            target.platform === 'ios' ? 'build/Sample.app' : 'build/app.apk'
+          }
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!projectSlug || !artifactPath.trim() || install.isPending}
+          onClick={() =>
+            void install
+              .mutateAsync({ kind: 'workspace', path: artifactPath.trim() })
+              .catch(() => {})
+          }
+        >
+          Install from workspace
+        </Button>
+      </div>
+      <label className="device-tools__field">
+        <span className="device-tools__label">App file</span>
+        <input
+          type="file"
+          accept={target.platform === 'ios' ? '.zip' : '.apk'}
+          onChange={(event) => setArtifactFile(event.target.files?.[0] ?? null)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!projectSlug || !artifactFile || install.isPending}
+          onClick={() => {
+            if (artifactFile)
+              void install
+                .mutateAsync({ kind: 'upload', file: artifactFile })
+                .catch(() => {});
+          }}
+        >
+          Upload and install
+        </Button>
+      </div>
+      {install.isPending ? (
+        <SkeletonBlock count={1} label="Installing app" />
+      ) : null}
+      {install.isSuccess ? (
+        <p role="status">
+          Installed {install.data.appId} (build {install.data.build}).
+        </p>
+      ) : null}
+      {install.isError ? (
+        <ErrorState
+          variant="compact"
+          title="Install did not complete"
+          description={describeDeviceInstallFailure(install.error)}
+        />
+      ) : null}
+      <label className="device-tools__field">
+        <span className="device-tools__label">App to control</span>
+        <input
+          value={appId}
+          maxLength={255}
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setAppId(event.target.value)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          ref={reproductionButton}
+          disabled={!valid || !projectSlug || !sourceSessionId}
+          onClick={() => setPickingReproduction(true)}
+        >
+          Save reproduction to Task
+        </Button>
+      </div>
+      {pickingReproduction && projectSlug && sourceSessionId ? (
+        <DeviceReproductionPicker
+          scope={requestScope}
+          projectSlug={projectSlug}
+          sourceSessionId={sourceSessionId}
+          appId={appId}
+          returnFocusTarget={reproductionButton.current}
+          onClose={() => setPickingReproduction(false)}
+          onSaved={(title) => setNotice(`Reproduction saved to “${title}”.`)}
+        />
+      ) : null}
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!valid || action.isPending}
+          onClick={() => void run({ type: 'launch', appId })}
+        >
+          Launch
+        </Button>
+        <Button
+          size="sm"
+          disabled={!valid || action.isPending}
+          onClick={() => void run({ type: 'terminate', appId })}
+        >
+          Terminate
+        </Button>
+      </div>
+      <label className="device-tools__field">
+        <span className="device-tools__label">URL</span>
+        <input
+          value={url}
+          maxLength={500}
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setUrl(event.target.value)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!valid || !url || action.isPending}
+          onClick={() => void run({ type: 'open-url', appId, url })}
+        >
+          Open URL
+        </Button>
+      </div>
+      {action.isPending ? (
+        <SkeletonBlock count={1} label="Checking app state" />
+      ) : null}
+      {notice ? <p role="status">{notice}</p> : null}
+      {action.isError ? (
+        <ErrorState
+          variant="compact"
+          title="App action unavailable"
+          description={describeDeviceToolsFailure(action.error)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** A drawer section; untitled when it is the whole of its view (Apps, Logs). */
+function Section({ title, children }: { title?: string; children: ReactNode }) {
   const id = useId();
+  const collapsible = useContext(SectionsCollapsed);
+  const [expanded, setExpanded] = useState(!collapsible);
+  if (!title)
+    return <section className="device-tools__section">{children}</section>;
   return (
     <section aria-labelledby={id} className="device-tools__section">
-      <h4 className="device-tools__section-title" id={id}>
-        {title}
+      <h4 className="device-tools__section-title">
+        {collapsible ? (
+          <DisclosureToggle
+            id={id}
+            expanded={expanded}
+            onToggle={() => setExpanded((open) => !open)}
+          >
+            {title}
+          </DisclosureToggle>
+        ) : (
+          <span id={id}>{title}</span>
+        )}
       </h4>
-      {children}
+      {expanded ? children : null}
     </section>
   );
 }

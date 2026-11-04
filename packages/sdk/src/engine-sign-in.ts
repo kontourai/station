@@ -58,7 +58,13 @@ const attemptSchema = z
     state: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'timed-out']),
     startedAt: z.string(),
     terminal: z
-      .object({ projectSlug: z.string(), terminalId: z.string() })
+      .object({
+        projectSlug: z.string(),
+        terminalId: z.string(),
+        // Hosts with the terminal socket name the scope to attach under.
+        projectId: z.string().optional(),
+        bindingKey: z.string().optional(),
+      })
       .strict()
       .optional(),
     links: z.array(z.string().url()).optional(),

@@ -321,7 +321,7 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       await expect(reader).toBeVisible();
       await reader
         .getByRole('button', {
-          name: /^View details: Authored message, item 1 in Inputs$/,
+          name: /^Authored message (View|Hide) details$/,
         })
         .click();
       await expect(
@@ -348,7 +348,7 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
     });
     await reopenedReader
       .getByRole('button', {
-        name: /^View details: Authored message, item 1 in Inputs$/,
+        name: /^Authored message (View|Hide) details$/,
       })
       .click();
     await reopenedReader

@@ -408,6 +408,52 @@ describe('SessionEventReads session window sequence space', () => {
       }
     },
   );
+
+  test('a capped newest window tells both readers its turn start is detached', async () => {
+    const store = createStore();
+    const threadId = 'detached-window';
+    try {
+      seedRoot(store, threadId);
+      const fields = {
+        provider: 'claude' as const,
+        threadId,
+        turnId: 'turn',
+        createdAt: '2026-09-29T00:00:00.000Z',
+      };
+      store.appendEvent({
+        ...fields,
+        eventId: 'detached-start',
+        method: 'turn.started',
+        prompt: 'Question',
+      } as never);
+      for (let index = 0; index < 180; index++)
+        store.appendEvent({
+          ...fields,
+          eventId: `detached-${index}`,
+          method: 'content.text-delta',
+          itemId: 'answer',
+          delta: 'x',
+        } as never);
+      const reads = readsFor(store, threadId);
+      const options = {
+        authority: INTERNAL_SESSION_READ_SCOPE,
+        turnLimit: 10,
+        direction: 'newest' as const,
+      };
+      const session = await reads.readSessionEventWindow(threadId, options);
+      const conversation = await reads.readConversationEventWindow(
+        threadId,
+        options,
+      );
+      expect(session).not.toBeNull();
+      expect(conversation).not.toBeNull();
+      expect(session?.turnStartDetached).toBe(true);
+      expect(conversation?.turnStartDetached).toBe(true);
+      expect(session?.nextCursor).toBeDefined();
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe('SessionEventReads current-turn tool activity', () => {

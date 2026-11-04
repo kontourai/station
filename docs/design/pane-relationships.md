@@ -193,8 +193,9 @@ legacy return remains readable rather than losing its relation on the next read.
 
 Keep the current header styling. Existing icon-only Tools and Related buttons
 move to the far right. Left is reachable through advanced Layout/pane controls.
-The account menu moves beside Live work in the sidebar footer as a separate
-control, including collapsed and mobile access. Schedule, Customize and Settings
-remain. Live work remains discoverable with the mobile drawer closed. Counts
-describe paired-device participants, not people. Pressed states reflect the
-active owner's real state.
+The account menu sits at the right of the sidebar footer, immediately after the
+icon-only Updates button, including collapsed and mobile access. Schedule and
+Customize sit on the left; Settings remains reachable through the account menu
+and Customize. Live work no longer appears in the footer. Its mobile overflow
+entry remains available while the drawer is closed. Counts describe paired-device
+participants, not people. Pressed states reflect the active owner's real state.

@@ -1,0 +1,7 @@
+{
+  "revision": "d51815112d8deacc4bb7dd70cd181fdb26ba4db7",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Fix round: per-kind remedies and the non-recovery baseline route checked against REMEDIES and the child-process test in scripts/component-style-hygiene.mjs; ActionControl now counts as an action.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene.mjs"]}
+  ]
+}

@@ -12,7 +12,6 @@ import {
 import { serverIdentityMatchesView } from '../views/settings/coreUpdatePresentation';
 import {
   clearUpdateNotice,
-  openUpdates,
   publishUpdateNotice,
 } from './updates/updatesEvents';
 
@@ -76,13 +75,13 @@ function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
       clearUpdateNotice('server-older');
       return;
     }
+    // No action: the notice renders only inside Updates, beside the server's
+    // own Download or Restart control, so "open Updates" would lead nowhere.
     publishUpdateNotice({
       id: 'server-older',
       target: 'server',
       message,
       detail,
-      actionLabel: 'Review server update',
-      onAction: () => openUpdates('server'),
     });
     return () => clearUpdateNotice('server-older');
   }, [message, detail]);

@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"Runtime test change is comment-only: dropped the removed sidebar presence tray copy, kept the TTL-expiry assertion and its literal pin. No history claim depends on the tray. No prose change.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"]}
+  ]
+}

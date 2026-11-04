@@ -522,6 +522,11 @@ export const connectionRecoveryOutcomes = meter.createCounter(
   },
 );
 
+export const recoveryAdmissionRefused = meter.createCounter(
+  'station.recovery.admission_refused',
+  { description: 'Automatic recovery refusals by bounded readiness reason' },
+);
+
 /**
  * Credential-profile application lifecycle. Attributes are deliberately
  * bounded: source, capability, outcome, scope, and reason only.
@@ -865,6 +870,31 @@ export const attachmentBlobBytesReclaimed = meter.createCounter(
   },
 );
 
+/**
+ * Runtime event content stored out of line by EventStore
+ * (docs/design/event-content-spill.md), by method and provider.
+ */
+export const eventContentBytesSpilled = meter.createCounter(
+  'station.orchestration.event_content_bytes_spilled',
+  {
+    description:
+      'Bytes of large runtime event values stored out of line, in place of which the event keeps a reference',
+    unit: 'By',
+  },
+);
+export const eventContentValuesSpilled = meter.createCounter(
+  'station.orchestration.event_content_values_spilled',
+  {
+    description: 'Distinct runtime event values stored out of line',
+  },
+);
+export const eventContentOrphansSwept = meter.createCounter(
+  'station.orchestration.event_content_orphans_swept',
+  {
+    description:
+      'Out-of-line event content rows removed at open because their thread has no events',
+  },
+);
 export const attachmentBytesStripped = meter.createCounter(
   'station.chat.attachment_bytes_stripped',
   {
@@ -878,7 +908,7 @@ export const attachmentBlobRequests = meter.createCounter(
   'station.chat.attachment_blob_requests',
   {
     description:
-      'GET /api/attachments requests by outcome (served/not_found/rejected)',
+      'GET /api/attachments requests by outcome (served/not_modified/not_found/rejected)',
   },
 );
 
@@ -2584,3 +2614,11 @@ export function registerObservableGauges(callbacks: {
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }
+
+export const outsideAgentMcpOutcomes = meter.createCounter(
+  'station.outside_agent.mcp.outcomes',
+  {
+    description:
+      'Outside-agent MCP admission outcomes; no credentials or arguments',
+  },
+);

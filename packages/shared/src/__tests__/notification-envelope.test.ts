@@ -533,6 +533,49 @@ describe('parseNotificationEnvelopeForWrite', () => {
     );
   });
 
+  test('accepts a principal write with a person and project', () => {
+    const envelope = producerEnvelope();
+    envelope.audience = {
+      kind: 'principal',
+      principalId: 'human:fixture:alice',
+      projectId: 'project-1',
+    };
+    expect(parseNotificationEnvelopeForWrite(envelope)).toEqual(envelope);
+    expect(parseNotificationEnvelope(envelope)).toEqual(envelope);
+  });
+
+  test('refuses a principal write whose agent and audience name different projects', () => {
+    const envelope = producerEnvelope();
+    envelope.audience = {
+      kind: 'principal',
+      principalId: 'human:fixture:alice',
+      projectId: 'other-project',
+    };
+    expect(parseNotificationEnvelopeForWrite(envelope)).toBeUndefined();
+  });
+
+  test.each([
+    { kind: 'principal', projectId: 'project-1' },
+    { kind: 'principal', principalId: 'human:fixture:alice' },
+    { kind: 'principal', principalId: '', projectId: 'project-1' },
+    { kind: 'principal', principalId: 'not-a-person', projectId: 'project-1' },
+    { kind: 'principal', principalId: 'human:fixture:alice', projectId: '' },
+    {
+      kind: 'principal',
+      principalId: 'human:fixture:alice',
+      projectId: ' project-1',
+    },
+    {
+      kind: 'principal',
+      principalId: 'human:fixture:alice',
+      projectId: 'project\u0000bad',
+    },
+  ])('refuses an incomplete or malformed principal audience %#', (audience) => {
+    const envelope = producerEnvelope();
+    envelope.audience = audience;
+    expect(parseNotificationEnvelopeForWrite(envelope)).toBeUndefined();
+  });
+
   test.each<[string, (e: Record<string, any>) => void]>([
     ['an unknown top-level key', (e) => Object.assign(e, { extra: 1 })],
     ['an unknown source key', (e) => Object.assign(e.source, { model: 'x' })],
@@ -552,7 +595,7 @@ describe('parseNotificationEnvelopeForWrite', () => {
       (e) => Object.assign(e, { audience: { kind: 'team' } }),
     ],
     [
-      'a principal audience (no resolver yet)',
+      'a principal audience with no project',
       (e) =>
         Object.assign(e, { audience: { kind: 'principal', principalId: 'p' } }),
     ],

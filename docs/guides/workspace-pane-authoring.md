@@ -86,7 +86,9 @@ export const reviewIssuesPane: WorkspacePaneDescriptor = {
 `standard-data` is the portable read-only alternative. It renders only its
 declared projection and exact contribution snapshot; it never mounts plugin
 code, an iframe, or a tool bridge. It is selected only when its contribution
-matches the placed occurrence exactly.
+matches the placed occurrence exactly. A required Home override is the exception:
+when its plugin renderer fails, the [required-slot default](plugins.md#required-home-and-inboxchat-slots)
+renders instead of the standard-data alternative.
 
 The current [standard-data view](../../src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx)
 displays the projection label and descriptor metadata as read-only information.
@@ -145,6 +147,13 @@ presentation hint, not a placement order, a region admission or a grant. A
 role a host does not know is dropped when it reads the descriptor, which then
 behaves as a destination. The [Related Reports example](../../examples/related-reports/README.md)
 declares both.
+
+The same capability opens a terminal. A plugin names the closed built-in
+terminal target, a binding and either an existing session or a new shell,
+and Station shows it with the Tools as the person viewing, read-only without
+their `terminal:operate`. See
+[Opening a terminal](../reference/sdk.md#opening-a-terminal) and the
+[Related Terminal example](../../examples/related-terminal/README.md).
 
 ## Renderer and policy boundaries
 

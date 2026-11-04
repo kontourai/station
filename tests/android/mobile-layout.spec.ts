@@ -12,10 +12,11 @@ import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
  * way is a real, uncovered touch target.
  *
  * #2221 removed the phone-only Settings gear from `.app-toolbar`: on a phone
- * the header's `Toggle menu` opens the sidebar drawer, whose footer owns
- * Settings (`ProjectSidebarFooter`). Both taps are asserted rather than only
- * the destination, so a regression that shrinks either control below the
- * touch floor, or lets an overlay (a backdrop, say) sit on top
+ * the header's `Toggle menu` opens the sidebar drawer, whose footer carries
+ * the account control, and its menu's `Open settings` row reaches Settings
+ * (`ProjectSidebarFooter`, `SidebarAccountControl`). Every tap is asserted
+ * rather than only the destination, so a regression that shrinks a control
+ * below the touch floor, or lets an overlay (a backdrop, say) sit on top
  * of it, fails here instead of reaching Settings by some other route.
  */
 async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
@@ -26,12 +27,18 @@ async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
   await expectUncoveredTouchTarget(toggle);
   await toggle.click();
 
-  const settings = page
+  const account = page
     .locator('#mobile-navigation')
-    .getByRole('button', { name: 'Settings', exact: true });
-  await expect(settings).toBeVisible({ timeout: 10_000 });
+    .getByRole('button', { name: /^Profile and settings:/ });
+  await expect(account).toBeVisible({ timeout: 10_000 });
   // The drawer slides in; poll the hit test until the transition settles
   // rather than measuring a mid-animation frame.
+  await expect.poll(() => isTopmostAtCenter(account)).toBe(true);
+  await expectUncoveredTouchTarget(account);
+  await account.click();
+
+  const settings = page.getByRole('menuitem', { name: 'Open settings' });
+  await expect(settings).toBeVisible({ timeout: 10_000 });
   await expect.poll(() => isTopmostAtCenter(settings)).toBe(true);
   await expectUncoveredTouchTarget(settings);
   await settings.click();

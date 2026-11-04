@@ -1,0 +1,7 @@
+{
+  "revision": "e4ad012f60f48b824812089c9eea480201b26bcb",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Edited for review round 3 of #4279: two enforcement layers stated exactly (shared writer + pre-copy plugin check + CLI import check; and the issuer/resource-bound grant that no writer, restore or reused id can bypass), and the Authorization server (recommended) field shown for every remote integration. Checked against config-loader-storage.ts, secret-binding-administration.ts, OAuthClientSection.tsx and the round-3 tests. Other inputs: the connections guide describes the two enforcement layers exactly and the always-visible Authorization server field; the shared credential store adds upsertMany, a single-write multi-key upsert; the provider decides its client once per consent, swaps a re-registered client with its tokens atomically on success, records requested scopes, and passes issuer/resource to the secret resolver.","inputs":["docs/guides/connections.md","packages/shared/src/tool-server-credential-store.ts","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

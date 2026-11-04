@@ -1,0 +1,7 @@
+{
+  "revision": "7d0f3fecfb68bdf08c7e5b1b460fb76863b18f64",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md changed only the memory-continuation route paragraph (legacy codex-turn-orphaned memory kills are continuable); terminal.md makes no claim about it.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "0c1993c3ac6ae7ff3d4ba2d04c3b486dab2db3c2",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Updated staged-flow button names (Download server update, Restart server), older-server notice (one line, no action; header shows server version) and Details folding; source disclosure now inside Details for non-built-in servers. Gating, confirmation and follower claims re-traced in CoreUpdateCheck/ServerUpdateStageApply: unchanged.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

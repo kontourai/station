@@ -302,8 +302,15 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
   let offset = 0;
   const seenCalls = new Set<string | undefined>();
   for (const block of blocks) {
-    if (block.type === 'tool-call-run')
+    if (block.type === 'tool-call-run') {
       for (const call of block.calls) seenCalls.add(call.part.toolCallId);
+      // #4266: narration a settled turn folded into this run was counted in
+      // the spawn's text offset, so it is counted here too; otherwise the
+      // offset lands that many characters into the text after the run.
+      for (const { part } of block.interludes ?? [])
+        if (part.type === 'text' && typeof part.content === 'string')
+          offset += part.content.length;
+    }
     if (
       block.type !== 'content-part' ||
       block.part.type !== 'text' ||

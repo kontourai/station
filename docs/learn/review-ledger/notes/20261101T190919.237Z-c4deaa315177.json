@@ -1,0 +1,7 @@
+{
+  "revision": "8965d81fddc18f7b0ba133631d729e56db7cfe3d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Refs #3569 correction to the preceding generated-output review: the current generator reports 130 shipped topics (the preceding note incorrectly said 101). Inspected the same SessionLifecycleModule content/digest delta; stable topic IDs and all previously stated authority and execution limits remain unchanged.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

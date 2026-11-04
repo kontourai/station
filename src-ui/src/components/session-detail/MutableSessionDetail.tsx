@@ -43,10 +43,12 @@ import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
+import { OwnedWorkCleanup } from './OwnedWorkCleanup';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
+import { SessionReplyComposer } from './SessionReplyComposer';
 import { SessionTranscript } from './SessionTranscript';
 import {
   isPeerDelegationRecord,
@@ -145,7 +147,6 @@ export function MutableSessionDetail({
     acknowledgeFailurePending,
     acknowledgeFailureError,
     copySessionId,
-    canSend,
     linkedFlowRun,
     builderRun,
     workflowEntries,
@@ -493,6 +494,12 @@ export function MutableSessionDetail({
           }
         />
 
+        <OwnedWorkCleanup
+          session={session}
+          apiBase={apiBase}
+          onRemoved={onTaskChanged}
+        />
+
         <SessionDetailAttention
           checkFailed={attentionCheckFailed}
           errorMessage={attentionErrorMessage}
@@ -669,49 +676,28 @@ export function MutableSessionDetail({
       </div>
 
       {!hideGenericCompose && !isPeerRecord && (
-        <>
-          <div className="sessions-detail__compose">
-            <textarea
-              className="sessions-detail__input"
-              placeholder={
-                isDelegated
-                  ? 'Add a follow-up for this task…'
-                  : `Reply to ${agentLabel}…`
-              }
-              aria-label={
-                isDelegated
-                  ? 'Continue delegated task'
-                  : 'Send input to session'
-              }
-              aria-describedby={
-                isStreaming ? 'session-compose-turn-note' : undefined
-              }
-              value={input}
-              disabled={isStreaming}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <Button
-              variant="primary"
-              disabled={!canSend}
-              onClick={() => sendTurn.mutate({ text: input })}
-            >
-              {sendTurnPending ? 'Sending…' : 'Send'}
-            </Button>
-          </div>
-          {/* Honest limit: there is no mid-turn steering here, and this
-              composer is disabled while a turn runs. Said only then. */}
-          {isStreaming && (
-            <p id="session-compose-turn-note" className="sessions-detail__note">
-              You can reply when the current turn finishes.
-            </p>
-          )}
-        </>
+        <SessionReplyComposer
+          input={input}
+          onInputChange={setInput}
+          onSend={() => sendTurn.mutate({ text: input })}
+          busy={isStreaming}
+          pending={sendTurnPending}
+          disabled={sessionUnanswerable}
+          label={
+            isDelegated ? 'Continue delegated task' : 'Send input to session'
+          }
+          placeholder={
+            isDelegated
+              ? 'Add a follow-up for this task…'
+              : `Reply to ${agentLabel}…`
+          }
+        />
       )}
 
       <ConfirmModal
         isOpen={confirmStop}
         title="Stop this task?"
-        message="Station interrupts the turn that is running now. The session stays open, so you can send it another message afterward."
+        message="Stops the running turn. The session stays open."
         confirmLabel="Stop task"
         cancelLabel="Keep running"
         variant="danger"

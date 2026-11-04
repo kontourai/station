@@ -301,16 +301,18 @@ vi.mock('../../../providers/connection-factories.js', () => ({
   createVectorDbProvider: vi.fn(() => null),
 }));
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { ModelCatalogHttpError } from '../../../providers/registries/catalog-http.js';
 import { credentialProfileApplication } from '../../../telemetry/metrics.js';
+import { createCredentialRecoveryModule } from '../../orchestration/credential-recovery-module.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import {
   type ConnectionSmokeRunner,
@@ -787,6 +789,7 @@ describe('ConnectionService — model connection check evidence (RT-06)', () => 
 });
 
 describe('ConnectionService', () => {
+  const makeRecoveryTempDir = trackTempDirs();
   test('binds a public registry connection id to its runtime adapter for quota reads', async () => {
     const readQuotaSnapshot = vi.fn(async (_input: unknown) => ({
       kind: 'snapshot' as const,
@@ -3202,6 +3205,31 @@ describe('ConnectionService', () => {
         timeoutMs: 20_000,
       }),
     );
+    // #4380: the smoke never runs in the server's own directory, which for
+    // an installed archive is the read-only version directory an engine
+    // sandbox would litter with `.git`/`.agents` placeholders. It runs in a
+    // private probe workspace under the Station home.
+    const smokeCwd = runner.mock.calls[0][0].cwd as string;
+    // Compare resolved paths by their tail: on Windows the runner's temp
+    // root can surface as an 8.3 short name on one side and the long name on
+    // the other, so a `relative()` between them climbs out with `..`.
+    const resolvedSmokeCwd = realpathSync.native(smokeCwd);
+    expect(resolvedSmokeCwd).not.toBe(realpathSync.native(process.cwd()));
+    const fromServerCwd = relative(
+      realpathSync.native(process.cwd()),
+      resolvedSmokeCwd,
+    );
+    // Not inside the server's directory (a cross-drive path is absolute).
+    expect(fromServerCwd.startsWith('..') || isAbsolute(fromServerCwd)).toBe(
+      true,
+    );
+    expect(resolvedSmokeCwd.split(/[\\/]/).slice(-4)).toEqual([
+      'runtime',
+      'acp-workspaces',
+      'probe',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    ]);
+    expect(statSync(smokeCwd).isDirectory()).toBe(true);
     expect(evidence).toMatchObject({
       level: 'smoke-passed',
       smoke: { status: 'passed', model: 'gpt-5.4', turnLimit: 1 },
@@ -3868,6 +3896,135 @@ describe('ConnectionService', () => {
     expect(staged.attempt).not.toHaveProperty('connectionId');
     expect(typeof staged.attempt.commit).toBe('function');
     expect(typeof staged.attempt.rollback).toBe('function');
+  });
+
+  test('#2823: real connection staging waits for an unresolved application on any connection', async () => {
+    const directory = makeRecoveryTempDir('credential-admission-');
+    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    try {
+      const protocol = store.createCredentialApplicationFactory();
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        protocol,
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+      getAppConfig().agentConnections.muse = structuredClone(
+        getAppConfig().agentConnections.codex,
+      );
+      vi.mocked(service.getConnection).mockImplementation(
+        async (id) =>
+          ({
+            id,
+            kind: 'agent',
+            type: id,
+            enabled: true,
+            capabilities: ['agent-runtime'],
+            config: { provider: id },
+          }) as any,
+      );
+      const adapter = service.createCredentialProfileRecoveryAdapter(
+        (provider) => provider,
+      );
+      if (
+        !adapter.inspectStartup ||
+        !adapter.settleStartup ||
+        !adapter.acknowledgeStartup
+      )
+        throw new Error('missing startup adapter');
+      const ledger = store.createRecoveryLedger({
+        credentialStartup: {
+          inspect: adapter.inspectStartup,
+          settle: adapter.settleStartup,
+          acknowledge: adapter.acknowledgeStartup,
+        },
+      });
+      const at = '2026-08-13T00:00:00.000Z';
+      const arm = (provider: string, fingerprint: string) =>
+        ledger.arm({
+          fingerprint,
+          threadId: fingerprint,
+          provider,
+          sourceEventId: `${fingerprint}-event`,
+          sourceTurnId: 'turn',
+          failureKind: 'capacity',
+          scope: 'account',
+          decision: 'retry-now',
+          dueAt: at,
+          maxAttempts: 1,
+          outcome: 'armed',
+          createdAt: at,
+          updatedAt: at,
+        });
+      const old = arm('codex', 'old');
+      const oldClaim = ledger.claim({
+        fingerprint: old.fingerprint,
+        kind: 'profile',
+        now: at,
+      });
+      if (oldClaim.kind !== 'owner') throw new Error('missing recovery claim');
+      const credential = oldClaim.attempt.prepareCredential(at);
+      if (credential.kind !== 'owner')
+        throw new Error('missing credential claim');
+      const application = protocol.start({
+        recoveryFingerprint: credential.attemptId,
+        connectionId: 'codex',
+        candidateProfileRef: 'canary-profile-ref',
+        previousProfileRef: 'profile-a',
+        now: at,
+      });
+      if (application.kind !== 'owner') throw new Error('missing application');
+      expect(application.claim.staged(at)).toEqual({ kind: 'applied' });
+      expect(application.claim.settle('indeterminate', at)).toEqual({
+        kind: 'applied',
+      });
+      expect(oldClaim.attempt.indeterminate(at)).toEqual({ kind: 'applied' });
+      const same = arm('codex', 'same');
+      const other = arm('muse', 'other');
+      const stage = vi.spyOn(
+        service,
+        'stageAutomaticCredentialProfileApplication',
+      );
+      const module = createCredentialRecoveryModule({
+        ledger,
+        adapter,
+        dispatchAdapter: {
+          dispatch: async () => ({ kind: 'accepted', turnId: 'recovered' }),
+        },
+        restoreSession: async () => undefined,
+        now: () => new Date(at),
+      });
+      const recover = (intent: typeof same) =>
+        module.recover({
+          intent,
+          replay: {
+            threadId: intent.threadId,
+            input: 'input',
+            recoveryCorrelationId: 'id',
+            signal: new AbortController().signal,
+          },
+        });
+      await expect(recover(same)).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'reconciliation-indeterminate',
+      });
+      await expect(recover(other)).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'reconciliation-indeterminate',
+      });
+      expect(stage).not.toHaveBeenCalled();
+      expect(application.claim.settle('rolled-back', at)).toEqual({
+        kind: 'applied',
+      });
+      await expect(recover(same)).resolves.toEqual({
+        kind: 'restarted',
+        turnId: 'recovered',
+      });
+      expect(stage).toHaveBeenCalledOnce();
+      service.dispose();
+    } finally {
+      store.close();
+    }
   });
 
   test('startup imports legacy credential evidence before routes can overwrite config', async () => {

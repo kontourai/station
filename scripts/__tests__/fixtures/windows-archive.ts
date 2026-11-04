@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import { crc32 } from '../../../packages/shared/src/installer/zip.js';
+import { spawnSyncBounded } from '../../lib/bounded-capture.mjs';
 import { signEnvelope } from './release-manifest-v2.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -115,6 +116,7 @@ export type WindowsArchive = {
  * would report a Task Scheduler task.
  */
 const FIXTURE_STATION_CLI = `import { appendFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 const args = process.argv.slice(2);
 const version = JSON.parse(
   readFileSync(new URL('../.station-release.json', import.meta.url), 'utf8'),
@@ -139,7 +141,7 @@ if (args[0] === 'start' && process.env.STATION_TEST_CLI_LINGER_MS) {
   spawn(
     process.execPath,
     ['-e', \`setTimeout(() => {}, \${Number(process.env.STATION_TEST_CLI_LINGER_MS)})\`],
-    { detached: true, stdio: 'inherit', windowsHide: true },
+    { cwd: tmpdir(), detached: true, stdio: 'inherit', windowsHide: true },
   ).unref();
 }
 if (args[0] === 'service' && args[1] === 'status' && process.env.STATION_TEST_SERVICE_UNIT)
@@ -149,13 +151,61 @@ if (args[0] === 'service' && args[1] === 'status' && process.env.STATION_TEST_SE
 process.exit(process.env.STATION_TEST_CLI_FAIL === \`\${args[0]}@\${version}\` ? 1 : 0);
 `;
 
+let windowsNodeWrapper: Buffer | undefined;
+
+/** Compile once per test worker, using the Windows compiler already used by native fixture tests. */
+function nativeNodeWrapper(fixtureDir: string): Buffer {
+  if (windowsNodeWrapper) return windowsNodeWrapper;
+  const dir = join(fixtureDir, 'node-wrapper');
+  mkdirSync(dir, { recursive: true });
+  const source = join(dir, 'wrapper.cs');
+  const exe = join(dir, 'wrapper.exe');
+  // Preserve the original Windows command line, including its quoting, when forwarding.
+  writeFileSync(
+    source,
+    `using System;
+using System.Diagnostics;
+class Wrapper {
+static int Main() {
+  string line = Environment.CommandLine;
+  int end = line[0] == '"' ? line.IndexOf('"', 1) + 1 : line.IndexOf(' ');
+  string args = end < 0 ? "" : line.Substring(end).TrimStart();
+  var start = new ProcessStartInfo(${JSON.stringify(process.execPath)}, args);
+  start.UseShellExecute = false;
+  using (var child = Process.Start(start)) { child.WaitForExit(); return child.ExitCode; }
+}
+}`,
+  );
+  const compiler = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'Microsoft.NET',
+    'Framework64',
+    'v4.0.30319',
+    'csc.exe',
+  );
+  const result = spawnSyncBounded(
+    compiler,
+    ['/nologo', `/out:${exe}`, source],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000,
+    },
+  );
+  if (result.error || result.status !== 0)
+    throw new Error(
+      `Native node fixture compilation failed: ${result.error?.message || result.stderr || result.stdout}`,
+    );
+  windowsNodeWrapper = readFileSync(exe);
+  return windowsNodeWrapper;
+}
+
 /**
  * A prebuilt Windows server archive in the layout
  * scripts/lib/portable-server-archive.mjs writes (one `station/` root with the
  * marker, the provenance, the real bin/station.mjs, install.ps1 and
- * runtime/node.exe), minus the megabytes. runtime/node.exe is a Unix-mode
- * shell wrapper around the Node.js running the test, so the core's
- * `--version` self-check runs for real on a POSIX host.
+ * runtime/node.exe). A native Windows launcher or POSIX shell wrapper forwards
+ * to the test's Node.js, so the core's `--version` self-check runs for real.
  */
 export function buildWindowsArchive(
   dir: string,
@@ -216,7 +266,10 @@ export function buildWindowsArchive(
     { name: 'station/runtime/' },
     {
       name: 'station/runtime/node.exe',
-      data: `#!/bin/sh\nexec '${process.execPath}' "$@"\n`,
+      data:
+        process.platform === 'win32'
+          ? nativeNodeWrapper(dir)
+          : `#!/bin/sh\nexec '${process.execPath}' "$@"\n`,
       unixMode: 0o100755,
     },
     {

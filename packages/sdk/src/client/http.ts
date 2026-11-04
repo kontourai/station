@@ -1269,15 +1269,50 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
+  return getJsonWithResolvedCredential(
+    url,
+    requestOptions,
+    await resolveRequestCredential(requestOptions),
+  );
+}
+
+/** Bind a request and its response reports to the same captured credential owner. */
+export async function getJsonWithResolvedCredential(
+  url: string,
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
+  return sendWithResolvedCredential(url, 'GET', opts, configured);
+}
+
+/**
+ * A bodiless POST bound to the same captured credential owner, through the
+ * host transport when it owns the bearer. For a mint whose response is a
+ * capability for that owner (a terminal socket ticket).
+ */
+export async function postWithResolvedCredential(
+  url: string,
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
+  return sendWithResolvedCredential(url, 'POST', opts, configured);
+}
+
+async function sendWithResolvedCredential(
+  url: string,
+  method: 'GET' | 'POST',
+  opts: ClientRequestOptions | undefined,
+  configured: ClientCredential | undefined,
+): Promise<Response> {
+  const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
   if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
     throw new Error('Invalid response byte limit');
   const init: RequestInit = {
-    method: 'GET',
+    method,
     ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
   };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
-  const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
   const headers = withClientOriginHeaders(
     resolveRequestHeaders(url, configured, requestOptions),
@@ -1358,6 +1393,26 @@ export async function mutateJson(
   opts?: ClientRequestOptions,
   body?: unknown,
 ): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'json');
+}
+
+/** Send a binary body with the same captured authority and response guards as JSON mutations. */
+export async function mutateBinary(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: Blob,
+): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'binary');
+}
+
+async function mutateBody(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: unknown,
+  kind: 'json' | 'binary',
+): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
   if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
@@ -1366,7 +1421,14 @@ export async function mutateJson(
   const baseHeaders =
     hasBody || requestOptions?.headers
       ? {
-          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+          ...(hasBody
+            ? {
+                'Content-Type':
+                  kind === 'json'
+                    ? 'application/json'
+                    : 'application/octet-stream',
+              }
+            : {}),
           ...(requestOptions?.headers || {}),
         }
       : undefined;
@@ -1389,7 +1451,7 @@ export async function mutateJson(
     init.headers = headers;
   }
   if (hasBody) {
-    init.body = JSON.stringify(body);
+    init.body = kind === 'json' ? JSON.stringify(body) : (body as Blob);
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
   const request =

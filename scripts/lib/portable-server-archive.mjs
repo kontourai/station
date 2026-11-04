@@ -30,6 +30,7 @@ import {
   stageDesktopServerRuntime,
 } from './desktop-server-runtime.mjs';
 import { STATION_SERVER_EXTERNALS } from './server-build-config.mjs';
+import { stageWindowsBirthHelper } from './windows-birth-helper.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORTABLE_NODE_RUNTIME_CONFIG = join(
@@ -410,7 +411,9 @@ function treeFootprint(root) {
  *   install.ps1             Windows archives only: the Windows installer
  *                           (#2675 slice W), carried for the same reason
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
- *   runtime/                the pinned, digest-verified official Node.js
+ *   runtime/                the pinned, digest-verified official Node.js;
+ *                           on Windows also the precompiled process-birth
+ *                           helper and its SHA-256 (#2805)
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
  *   dist-server/            the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
@@ -429,6 +432,7 @@ async function stagePortableServerTree({
   nodeDistributionBytes,
   release,
   includeTelemetryCompanion,
+  companionQualificationReceipt,
 }) {
   const uiIndex = join(projectRoot, 'dist-ui', 'index.html');
   if (!existsSync(uiIndex)) {
@@ -469,7 +473,10 @@ async function stagePortableServerTree({
   stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
   if (includeTelemetryCompanion) {
     const output = join(stageRoot, '.companion-package');
-    const candidate = await packageTelemetryCompanion(output, { projectRoot });
+    const candidate = await packageTelemetryCompanion(output, {
+      projectRoot,
+      qualificationReceiptPath: companionQualificationReceipt,
+    });
     const manifest = await verifyTelemetryCompanion(candidate.directory);
     if (manifest.source !== release.sha)
       throw new Error(
@@ -479,6 +486,8 @@ async function stagePortableServerTree({
     rmSync(output, { recursive: true });
   }
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
+  if (target.platform === 'win32')
+    stageWindowsBirthHelper(join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive
   // carries the installer: packaged `station upgrade` re-runs it, so the
@@ -571,6 +580,22 @@ export function assertBuildSourceIsCheckout({ sha, git }) {
   }
 }
 
+/**
+ * @param {{
+ *   projectRoot?: string,
+ *   outputDir?: string,
+ *   platform?: NodeJS.Platform,
+ *   arch?: NodeJS.Architecture,
+ *   tag: string,
+ *   sha: string,
+ *   createdAt?: string,
+ *   nodeDistribution?: string,
+ *   keepStage?: boolean,
+ *   expectedRing?: string,
+ *   includeTelemetryCompanion?: boolean,
+ *   companionQualificationReceipt?: string,
+ * }} options
+ */
 export async function buildPortableServerArchive({
   projectRoot = REPO_ROOT,
   outputDir = resolve(projectRoot, 'dist-portable-server'),
@@ -583,7 +608,10 @@ export async function buildPortableServerArchive({
   keepStage = false,
   expectedRing,
   includeTelemetryCompanion = false,
+  companionQualificationReceipt,
 }) {
+  if (companionQualificationReceipt && !includeTelemetryCompanion)
+    throw new Error('Companion qualification requires the companion payload');
   const target = resolvePortableServerTarget(
     platform,
     arch,
@@ -624,6 +652,7 @@ export async function buildPortableServerArchive({
       nodeDistributionBytes: distributionBytes,
       release,
       includeTelemetryCompanion,
+      companionQualificationReceipt,
     });
     const archivePath = createPortableArchive({
       stageParent,

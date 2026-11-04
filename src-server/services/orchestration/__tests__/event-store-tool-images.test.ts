@@ -452,28 +452,31 @@ describe('EventStore ingress for tool-returned images', () => {
 
   test('an event the ingress refuses after charging its image holds no budget', () => {
     // The raw form is measured without the data URL's bytes; the persisted
-    // form carries the longer blob reference instead. Size the output so the
+    // form carries the longer blob reference instead. Size a field outside
+    // the spill allowlist (tool output would be stored out of line) so the
     // raw form fits the ingress ceiling and the persisted form does not.
     const base = screenshotResult('thread-a') as Extract<
       CanonicalRuntimeEvent,
       { method: 'tool.completed' }
     >;
-    const rawBytes = (output: string) =>
+    const rawBytes = (adapterNote: string) =>
       Buffer.byteLength(
         JSON.stringify({
           ...base,
-          output,
+          adapterNote,
           attachments: [{ ...base.attachments![0], dataUrl: '' }],
         }),
       ) - 2;
-    const output = 'x'.repeat(
+    const adapterNote = 'x'.repeat(
       MAX_EVENT_STORE_INGRESS_BYTES - 10 - rawBytes(''),
     );
-    expect(rawBytes(output)).toBeLessThanOrEqual(MAX_EVENT_STORE_INGRESS_BYTES);
-
-    expect(() => store.projectLiveEvent({ ...base, output })).toThrow(
-      'ingress ceiling',
+    expect(rawBytes(adapterNote)).toBeLessThanOrEqual(
+      MAX_EVENT_STORE_INGRESS_BYTES,
     );
+
+    expect(() =>
+      store.projectLiveEvent({ ...base, adapterNote } as CanonicalRuntimeEvent),
+    ).toThrow('ingress ceiling');
     expect(chargedBytes('thread-a')).toBe(0);
   });
 

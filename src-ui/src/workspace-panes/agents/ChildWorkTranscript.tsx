@@ -5,6 +5,8 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
+import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { SkeletonBlock } from '../../components/state';
 import './ChildWorkTranscript.css';
 
@@ -36,10 +38,19 @@ function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
           <span className="child-work-transcript__label">
             {entry.role === 'user' ? 'Prompt' : 'Subagent'}
           </span>
-          <p className="child-work-transcript__text">
-            {entry.text}
-            {cut}
-          </p>
+          {entry.role === 'assistant' ? (
+            // #4266: a subagent writes Markdown, as the card's summary of
+            // the same reply renders it. Any engine's child, the same way.
+            <div className="child-work-transcript__markdown">
+              <LazyMarkdown>{entry.text}</LazyMarkdown>
+              {cut}
+            </div>
+          ) : (
+            <p className="child-work-transcript__text">
+              {entry.text}
+              {cut}
+            </p>
+          )}
         </li>
       );
     case 'tool-call':
@@ -111,7 +122,11 @@ export function ChildWorkTranscript({
    */
   revision: string;
 }) {
-  const transcript = useChildWorkTranscriptQuery({ threadId, childId });
+  const target = useChatRequestTarget();
+  const transcript = useChildWorkTranscriptQuery(
+    { threadId, childId, requestScope: target?.requestScope },
+    target?.apiBase,
+  );
   const { refetch } = transcript;
   const seenRevision = useRef(revision);
   const pendingRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,6 +182,7 @@ export function ChildWorkTranscript({
       {transcript.hasNextPage && (
         <Button
           size="sm"
+          className="tap-target"
           pending={transcript.isFetchingNextPage}
           onClick={() => void transcript.fetchNextPage()}
         >
@@ -176,6 +192,7 @@ export function ChildWorkTranscript({
       {running && !transcript.isPending && (
         <Button
           size="sm"
+          className="tap-target"
           pending={transcript.isRefetching}
           onClick={() => void refetch()}
         >

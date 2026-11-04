@@ -2,10 +2,12 @@ import {
   inspectAttentionRequest,
   resolveOrchestrationRequest,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   ChatHttpError,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
+import { bumpContentRefresh } from './contentRefresh';
 
 class ApprovalDeliveryUnconfirmedError extends Error {
   readonly code = 'approval_delivery_unconfirmed';
@@ -25,6 +27,55 @@ interface ApprovalAnswerState {
   sessionGrantScope?: 'server';
   error?: Error;
 }
+/**
+ * docs/design/event-content-spill.md: the digest an approval surface
+ * computed after loading every reference of a request whose content was
+ * stored out of line, by (thread, request event). An allow decision for
+ * such a request carries it; the server refuses one without it, so a
+ * surface that never loaded the content cannot allow it.
+ */
+const viewedContentDigests = new Map<string, string>();
+const contentKey = (threadId: string, requestEventId: string) =>
+  JSON.stringify([threadId, requestEventId]);
+export function recordViewedContentDigest(
+  threadId: string,
+  requestEventId: string,
+  digest: string,
+) {
+  if (viewedContentDigests.size >= 256)
+    viewedContentDigests.delete(viewedContentDigests.keys().next().value!);
+  viewedContentDigests.set(contentKey(threadId, requestEventId), digest);
+}
+function viewedContentDigestFor(request: {
+  threadId: string;
+  requestEventId?: string;
+  decision: 'accept' | 'acceptForSession' | 'decline';
+}): string | undefined {
+  if (request.decision === 'decline' || !request.requestEventId)
+    return undefined;
+  return viewedContentDigests.get(
+    contentKey(request.threadId, request.requestEventId),
+  );
+}
+
+// See `contentRefresh.ts`: the 409 marker the card and the toast read.
+export {
+  contentRefreshVersion,
+  subscribeContentRefresh,
+} from './contentRefresh';
+/** Test seam: what a 409 `request_content_not_loaded` triggers. */
+export function requestContentRefreshForTest(
+  threadId: string,
+  requestEventId: string,
+) {
+  requestContentRefresh(threadId, requestEventId);
+}
+
+function requestContentRefresh(threadId: string, requestEventId: string) {
+  viewedContentDigests.delete(contentKey(threadId, requestEventId));
+  bumpContentRefresh(threadId, requestEventId);
+}
+
 const answerListeners = new Set<() => void>();
 export function subscribeApprovalAnswers(listener: () => void) {
   answerListeners.add(listener);
@@ -72,10 +123,16 @@ export function forgetApprovalAnswer(threadId: string, requestId: string) {
 
 export async function inspectApprovalAnswer(
   apiBase: string,
-  reference: { threadId: string; requestId: string; requestEventId: string },
+  reference: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+    requestScope?: ApiRequestScope;
+  },
 ): Promise<'pending' | 'already-settled'> {
   const inspection = await inspectAttentionRequest(apiBase, reference, {
     timeoutMs: 5_000,
+    ...(reference.requestScope ? { requestScope: reference.requestScope } : {}),
   });
   const key = answerKey(apiBase, reference);
   if (inspection.state === 'resolved') {
@@ -122,6 +179,7 @@ export function answerOrchestrationRequest(
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
     sessionGrantScope?: 'server';
+    requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
   const key = answerKey(apiBase, request);
@@ -207,11 +265,15 @@ async function sendAnswer(
     decision: 'accept' | 'acceptForSession' | 'decline';
     /** With `acceptForSession`: widen the grant to the Station browser server. */
     sessionGrantScope?: 'server';
+    requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
+  const viewedContentDigest = viewedContentDigestFor(request);
   try {
     await resolveOrchestrationRequest({
       apiBase,
+      ...(request.requestScope ? { requestScope: request.requestScope } : {}),
+      ...(viewedContentDigest ? { viewedContentDigest } : {}),
       threadId: request.threadId,
       requestId: request.requestId,
       // #2316: answer only the exact prompt the user saw.
@@ -226,6 +288,20 @@ async function sendAnswer(
     });
     return 'answered';
   } catch (error) {
+    // The server's binding holds content this card has not loaded (a bound
+    // call that arrived later, or one this surface cannot see): reload it
+    // and let the person allow again. The decision itself was refused.
+    if (
+      request.requestEventId &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'request_content_not_loaded'
+    ) {
+      requestContentRefresh(request.threadId, request.requestEventId);
+      throw new Error(
+        'Station is loading more of this request. Review it, then allow it again.',
+      );
+    }
     let inspected: 'pending' | 'already-settled' | undefined;
     if (request.requestEventId) {
       try {
@@ -233,6 +309,7 @@ async function sendAnswer(
           threadId: request.threadId,
           requestId: request.requestId,
           requestEventId: request.requestEventId,
+          requestScope: request.requestScope,
         });
       } catch {
         /* Observation failure cannot settle or replay the decision. */

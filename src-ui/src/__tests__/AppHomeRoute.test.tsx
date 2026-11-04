@@ -21,8 +21,14 @@ import {
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import { useServerEventsListener } from '../hooks/useServerEventsListener';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+
+const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
+vi.mock('../hooks/ServerEventsMount', () => ({
+  ServerEventsMount: serverEventsMount,
+}));
 
 vi.mock('../components/chat/TaskShapingComposer', () => ({
   TaskShapingHost: () => null,
@@ -50,6 +56,9 @@ interface QueryState<T> {
    */
   isPending?: boolean;
   isError?: boolean;
+  error?: unknown;
+  errorUpdatedAt?: number;
+  fetchStatus?: 'fetching' | 'paused' | 'idle';
 }
 
 interface ProjectFixture {
@@ -162,6 +171,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   // is navigation, so an empty notification list keeps it silent.
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: [] }),
+  // The deferred overlays' troubleshooting host (#4470) reads these at module
+  // load; a name missing here fails that lazy chunk into a second alert.
+  useEngineConnectionsQuery: () => ({ data: [] }),
+  usePrepareTroubleshootMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 // The SDK mock above covers the ROOT BARREL only. Query domains that ship as
 // dedicated subpath exports (to keep them out of the entry bundle's hoisted
@@ -367,8 +383,10 @@ vi.mock('../workspace-panes/RegionPaneHost', async () => {
     },
   };
 });
+// The palette is a child of the lazily loaded deferred overlays, so its
+// marker shows that chunk rendered rather than failing into its boundary.
 vi.mock('../components/CommandPalette', () => ({
-  CommandPalette: () => null,
+  CommandPalette: () => <div data-testid="deferred-overlays-mounted" />,
 }));
 // #928 C2a: the Activity shell is what `main` renders when Activity occupies
 // it. Stubbed: its content (the sessions surface) is not this route's
@@ -389,6 +407,13 @@ vi.mock('../components/ShortcutsCheatsheet', () => ({
   ShortcutsCheatsheet: () => null,
 }));
 vi.mock('../components/voice/VoicePill', () => ({ VoicePill: () => null }));
+// App renders inside `ActiveChatsProvider` in `main.tsx`, not here. The
+// deferred overlays' troubleshooting host (#4470) launches chats through
+// `useLaunchChat`, which needs that provider, so it is stubbed.
+vi.mock('../hooks/useActiveChatSessions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useActiveChatSessions')>()),
+  useLaunchChat: () => vi.fn(),
+}));
 // Both hooks, because EnginesStep calls `useAgentsLoaded` and this route
 // renders it. Spreading the real module instead would pull the real
 // AgentsContext, which reaches the SDK and needs a second, larger mock —
@@ -396,6 +421,7 @@ vi.mock('../components/voice/VoicePill', () => ({ VoicePill: () => null }));
 // the standing hazard: the next export added here fails in a file whose
 // author never opened this one (archive#3112).
 vi.mock('../contexts/AgentsContext', () => ({
+  useAgent: () => null,
   useAgents: () => [],
   useAgentsLoaded: () => true,
   useAgentsSettled: () => true,
@@ -490,7 +516,9 @@ vi.mock('../hooks/useFeatureSettings', async (importOriginal) => {
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: vi.fn(),
 }));
-vi.mock('../hooks/useServerEvents', () => ({ useServerEvents: vi.fn() }));
+vi.mock('../hooks/useServerEventsListener', () => ({
+  useServerEventsListener: vi.fn(),
+}));
 vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
   useQueryCacheReconnectSync: vi.fn(),
 }));
@@ -534,6 +562,31 @@ describe('App home route resolution', () => {
     authenticatedFetch.mockReset();
     exercisePushLifecycle = false;
     unsubscribePushNotifications.mockClear();
+  });
+
+  test('starts the app-wide event subscription after its startup boundary loads', async () => {
+    vi.mocked(useServerEventsListener).mockClear();
+    serverEventsMount.mockClear();
+    render(<App />);
+    await waitFor(() => expect(serverEventsMount).toHaveBeenCalled());
+    expect(useServerEventsListener).toHaveBeenCalled();
+    expect(
+      vi.mocked(useServerEventsListener).mock.invocationCallOrder[0],
+    ).toBeLessThan(serverEventsMount.mock.invocationCallOrder[0]!);
+  });
+
+  test('retries a failed event transport load from the app boundary', async () => {
+    serverEventsMount.mockClear();
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chunk unavailable'))
+      .mockResolvedValue({ default: serverEventsMount });
+    render(<App loadServerEvents={load} />);
+    await screen.findByText('Unable to load this part of Station.');
+    expect(serverEventsMount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(serverEventsMount).toHaveBeenCalled());
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
   test('resetting device defaults stops browser push while Home owns the route without prompting for permission', async () => {
@@ -642,19 +695,15 @@ describe('App home route resolution', () => {
           target: 'server',
           message:
             'Server checkout is 3 commits behind its configured upstream.',
-          actionLabel: 'Review server update',
+          // The Updates server section states the comparison itself.
+          summaryOnly: true,
         }),
       ),
     );
-    const sequence = request!.sequence;
-    act(() =>
-      notices.find((notice) => notice.id === 'launch-update')!.onAction?.(),
-    );
-    expect(request!).toMatchObject({
-      target: 'server',
-      sequence: sequence + 1,
-      pending: true,
-    });
+    expect(
+      notices.find((notice) => notice.id === 'launch-update')!.onAction,
+    ).toBeUndefined();
+    expect(request!.pending).toBe(false);
   });
 
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {
@@ -1077,6 +1126,18 @@ describe('App home route resolution', () => {
     expect(registerRegionSurfaceHost).toHaveBeenCalled();
   });
 
+  test('the deferred overlays chunk renders on Home without a load error', async () => {
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+
+    // Waiting for the chunk makes this independent of how fast the dynamic
+    // import settles: an overlay that reads a hook the mocks above lack
+    // fails the whole chunk into its boundary, and the marker never renders.
+    await screen.findByTestId('deferred-overlays-mounted');
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+
   /**
    * #928 C2a: `/` renders the `main` region's occupant, and with the default
    * arrangement (Home in `main`) that is the Home route. What these prove is
@@ -1367,7 +1428,7 @@ describe('App home route resolution', () => {
   // the registration on Schedule must be disabled, while Settings — which
   // really is a full-page overlay of Home — keeps it.
   test.each([
-    ['/schedule', false],
+    ['/automations', false],
     ['/agents', false],
     ['/settings', true],
   ])(
@@ -1459,6 +1520,57 @@ describe('App home route resolution', () => {
       // regions), with Chat still the centre's, never the dock's.
       expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
       expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    });
+
+    /**
+     * The on-device loop: a failed layout read mounted the dock, the dock's
+     * new observer re-ran the errored query, the query went pending, and the
+     * dock unmounted, about once a second for as long as the read failed.
+     * Re-checking a failure must leave the dock host where it is.
+     */
+    test('re-checking a failed layout read keeps the dock host mounted', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      const outage = new TypeError('Failed to fetch');
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: outage,
+        errorUpdatedAt: 1,
+        fetchStatus: 'idle',
+      };
+      hooks.regionModel = openBottom();
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+
+      // What TanStack reports once that re-check starts.
+      hooks.layout = {
+        data: undefined,
+        isLoading: true,
+        isPending: true,
+        isError: false,
+        error: null,
+        errorUpdatedAt: 1,
+        fetchStatus: 'fetching',
+      };
+      await act(async () => rerender(<App />));
+
+      // ...and fails again: the half of the cycle that remounted the dock.
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: new TypeError('Failed to fetch'),
+        errorUpdatedAt: 2,
+        fetchStatus: 'idle',
+      };
+      await act(async () => rerender(<App />));
+
+      // An unmount and remount would register the host a second time.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
     });
 
     test('a plugin layout typed coding keeps Chat in the dock', async () => {
@@ -1608,7 +1720,7 @@ describe('App navigation is urgent, so a slow route reveals its placeholder', ()
 
     // The real path: App listens for popstate and calls setCurrentView itself.
     await act(async () => {
-      window.history.pushState({}, '', '/schedule');
+      window.history.pushState({}, '', '/automations');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 

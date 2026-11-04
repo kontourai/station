@@ -1,0 +1,7 @@
+{
+  "revision": "7cf87e14b2cfd43eb97d9ba0fdacb86a6d95dc58",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"ConnectStationDialog identification-refusal line reworded to 'Station didn't send an access request.' (same fact); doc's claim that no access request is sent on identification failure still holds; no prose change.","inputs":["docs/reference/connect.md","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

@@ -38,9 +38,37 @@ The current `resolveLayoutChatPlacement` returns `center` for the built-in
 Coding layout on every device, including phones and bottom-only tablets.
 The workbench owns Chat and suspends the ambient Chat surface; crossing 768px
 does not transfer Chat between those two owners. The wide presentation is
-selected by the 1280px viewport query, independent of pointer type. Below it,
+selected by the 1280px viewport query outside the shared mobile predicate.
+Short coarse-pointer viewports retain the single-tool mobile presentation. Below it,
 tools are drill-ins; at or above it, the existing side/lower panels apply.
 This source contract does not renew browser or native geometry qualification.
+
+## Mobile tool navigation (2026-10-27)
+
+On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
+with a compact header: Inbox on Chat, Chat when a tool is open, and the current
+tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+It lists Chat and the host's pane instances in the layout's declared order,
+including added panes, changed-file counts, the Browser launcher when available,
+and Add tool when the host can open its catalog. Choosing a pane uses the same
+canonical navigation and unsaved-change handling as the desktop rail. Dismissal
+does not select anything. Existing pane mounting and session ownership remain
+with the host; the picker does not recreate terminal sessions or chat drafts.
+Desktop and tablet rail behavior and the 1280px side/lower panel fold are retained.
+
+Tool-specific controls belong inside their tool, separate from this picker.
+[ToolControls](../../src-ui/src/components/ToolControls.tsx) supplies a sticky,
+floating surface within the tool's scroll boundary. File preview's Go to line
+form uses it only while requested; terminal accessory keys retain their existing
+keyboard-adjacent row. The shared surface does not add tool actions or server
+operations. This is a responsive presentation of existing capabilities rather
+than a new preview capability.
+
+Mounted browser evidence is in
+[coding-mobile-tools.browser.test.tsx](../../src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx);
+it covers phone tool selection, full-width content, draft preservation, dismissal,
+and desktop resizing in both themes. Its Chat and tool occupants are fixtures;
+it does not establish live terminal, provider, or native-shell behavior.
 
 ## The two layers
 
@@ -310,7 +338,7 @@ map; anything not listed is a label.
 | `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct, for `main`'s frame title), `RegionShells` via `regionModel.surfaces` (a dock region mounts a host only for a registered occupant), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
 | `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat, Activity, Agents and Device ignore the context, Device because a device list is the Station host's fact rather than a Project's — #1969), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); the empty region's chooser (`RegionEmptyChooser`, #2154) lists registry surfaces and enables a row only where the entry's `instance(context)` is non-null — no prefix family is a registry key, so an instance-keyed pane is never a row (`regionSurfaceOfDescriptor` is read by the inventory pin alone since the dock catalog was retired); `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to what a dock can bind (`{ project, source, workspace }`, stated in that pin; see below). Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
 | `RegisteredSurface.exposure` (#2047) | absent (`shell`) or `catalog` | `useRegionSurfaceMenu` (`surfaceList`: a catalog-only surface has no chord and no unplaced Show row; a placed one keeps its folded Show/Hide row, which reads `region.panes`) — a region's chooser (#2154) is a catalog-only surface's only offer, and since #2155 the toolbar offers nothing at all; `?surface=<id>` is a command and reveals either kind |
-| `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049; #2157 adds `board:` and `layout:`; #90 D9 adds `browser-preview:`, a Browser pane attached to one session; #3964 adds `plugin-pane:`, a plugin's related pane; Activity quick review adds `activity-review:`) | an id PREFIX (`pr:`, `file-preview:`, `browser-preview:`, `board:`, `layout:`, `plugin-pane:`, `activity-review:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract). `activity-review:` names the shared docked-only `pane:builtin:activity-review` descriptor. Its nonce-keyed canonical instance has no Project binding; the reader owns separately validated saved target state and its Station fence. `plugin-pane:` carries none (`null`): which plugin descriptor an occurrence shows is its own per-occurrence record, admitted against the Project's catalog where it renders (`RegionPluginPane`) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark; `RegionEmptyChooser` (#2154) lists `model.surfaces`, which holds none of them, so no route to the chooser — a region's "+", its empty body, or a hold on its toolbar toggle (#2155) — can offer them. `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts` (which also holds each family's renderer source, `INSTANCE_SURFACE_SOURCE_FILES`, kept out of the entry chunk because only that test reads it); `docked-capability-derivation.test.ts` pins each non-null `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
+| `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049; #2157 adds `board:` and `layout:`; #90 D9 adds `browser-preview:`, a Browser pane attached to one session; #3964 adds `plugin-pane:`, a plugin's related pane; Activity quick review adds `activity-review:`; the plugin terminal target adds `terminal-pane:`, one terminal session) | an id PREFIX (`pr:`, `file-preview:`, `browser-preview:`, `board:`, `layout:`, `plugin-pane:`, `activity-review:`, `terminal-pane:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract). `activity-review:` names the shared docked-only `pane:builtin:activity-review` descriptor. Its nonce-keyed canonical instance has no Project binding; the reader owns separately validated saved target state and its Station fence. `plugin-pane:` carries none (`null`): which plugin descriptor an occurrence shows is its own per-occurrence record, admitted against the Project's catalog where it renders (`RegionPluginPane`). `terminal-pane:` names `pane:builtin:workspace-terminal`, bound to the Project of the session its stored record names ([terminal design](terminal.md#plugins)) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark; `RegionEmptyChooser` (#2154) lists `model.surfaces`, which holds none of them, so no route to the chooser — a region's "+", its empty body, or a hold on its toolbar toggle (#2155) — can offer them. `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts` (which also holds each family's renderer source, `INSTANCE_SURFACE_SOURCE_FILES`, kept out of the entry chunk because only that test reads it); `docked-capability-derivation.test.ts` pins each non-null `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
 | `MarkdownLinkContext` (#2049) | the conversation a rendered message belongs to: its project slug and id, the dock project, project roots and session directory/thread, and the `setLayout` fallback for a project file | `ChatMarkdownAnchor`, `MarkdownImage`, `MarkdownParagraph` and `WorkspaceFileReply` (inside `MarkdownRenderer`'s lazy chunk) use the conversation binding for navigation and Project-authorized inline visuals. The absence of a provider is the default: a document view, a shared answer and a system event have no conversation, so their anchors stay plain anchors. Provided by `ChatDock` alone |
 | `RegionState.panes` (surface ids, tab order; #2046 2a) | surface ids | `occupiedRegion`, `occupiedDockRegion`, `chatRegion`, `firstFreeDockRegion`, `foldedDockRegion` (a surface behind another's tab is still IN its region; a region with no panes is free), `placeSurface` (joins a dock region's panes, replaces `main`'s, removes the surface from the region it leaves), `removeRegionPane` (a closed tab: the surface leaves and is placed nowhere), `moveRegionPanes` (the region bar's placement: every pane, in order, moves), `dockMirrorDiff` (a region holding Chat, selected or not, is Chat's region; Chat leaving every region reads as the dock closing), the record writer (one pane → `surface`, two or more → `pane-host`), `RegionPaneHost` (the document is DERIVED from it; a mount reconciles a persisted document that lacks a pane), the tab strip (`RegionChromeBar`, #2046 2b: one tab per pane in this order; a reorder writes it back), `DockShell` and `useDockShellChrome` (a region whose panes include Chat is Chat's shell — `#chat-dock`, the "Dock" landmark, the `dock.maximize` registration, the persisted snap key and the project binding's cleanup — whichever tab it shows; D3), `DockShellChrome.regionPanes` (Chat's mobile overflow sheet lists the region's other panes from it), and `useRegionSurfaceMenu` (a segment for a region the surface already holds is a select, and claims no displacement; the folded menu's rows are per region, in this order) |
 | `RegionState.occupant` (the SELECTED pane, a member of `panes` or null) | surface ids | every pre-2a reader keeps its meaning for a one-pane region: `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId` and `canMaximize` name the pane the region SHOWS, so the region bar's visibility control reads "Hide Activity" while Activity's tab is selected; a non-Chat region's landmark takes the same title — and an EMPTY region, having no pane to be named after, names itself: "Right region", with `canMaximize` false, #2153), `RegionShells` (a host mounts for a registered selected pane, or — #2153 — for a VISIBLE region with no pane at all), `MainRegionSurface`, `ProjectSidebar`, `useRegionSurfaceMenu` (a surface is SEEN only when its region is visible and it is the selected pane; the picker reads Hidden otherwise, and the folded menu's row for the selected pane is the region's Hide), `toggleSurface` (only the selected pane's toggle hides its region; a pane behind selects), `revealSurface`/`showSurface` (select the pane's tab), `selectRegionPane`/the provider's `selectPane` (what a tab click writes), the record's `selected`, the tab strip (the pressed tab), the `dock` host (the one pane it mounts, as the strip's `tabpanel`), and `RegionPaneHost`, which makes the controller's active pane follow it (`focusExisting`) |
@@ -859,6 +887,8 @@ cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
+That position counts the narration a settled phone turn folds into its tool
+batch, so the card follows the batch instead of splitting the prose after it.
 A steer binds the card to the assistant row containing its spawn, with text
 offsets local to that row; the live whole-turn shell retains its turn-wide
 offset. If the spawn segment has no content row at the spawn event, the projection
@@ -1285,7 +1315,8 @@ terminal belongs under the conversation that is driving it), Files stays on
 the left (`coding:file-browser`), and everything else that is not Home
 defaults to the right: Activity, Agents, Device, Diff, and the
 instance-keyed families (`pr:`, `file-preview:`, `browser-preview:`, `board:`,
-`layout:` and, since #3964, `plugin-pane:`). Home's only placement is
+`layout:` and, since #3964, `plugin-pane:`). A plugin-opened terminal
+(`terminal-pane:`) defaults to the bottom, with the Coding terminal. Home's only placement is
 `main`. The table is pinned in `region-model.test.ts`, so a later change to
 any entry is an argued edit rather than a drift.
 
@@ -1678,7 +1709,7 @@ into from it.
 - **The chords stay out of text.** A shortcut handler may return `false` to
   decline its key (`KeyboardShortcutsContext`), which is then neither
   prevented nor consumed. The stack's chords decline only inside an editor
-  that owns those keys itself (CodeMirror, xterm, a contenteditable editor),
+  that owns those keys itself (CodeMirror, the terminal, a contenteditable editor),
   and when there is nothing to go back or forward to in the layout, so the
   browser keeps its own Back. In a plain input, textarea or the composer they
   are the stack's Back and Forward (off macOS, Alt+← there would otherwise be
@@ -1747,6 +1778,11 @@ per conversation.** Below the fold nothing above changes.
   drill-in from below it, a reload on one) opens it below and clears the
   side. It is mounted on first open and hidden (collapsed to no height,
   inert) after, and unmounted below the fold where the pane host owns it.
+  While a shown dock region holds this Project's `coding:terminal`, the lower
+  panel is not drawn (below the fold the drill-in offers **Move here**);
+  opening it from the rail takes the Terminal out of the dock, hiding a
+  region that leaves empty, as a placement does
+  ([useDockedCodingTerminal](../../src-ui/src/app-shell/useDockedCodingTerminal.ts)).
 - **Panel memory is a generic device setting** (`layoutPanels`,
   [device-settings.ts](../../packages/contracts/src/device-settings.ts);
   record logic in [layout-panels-record.ts](../../src-ui/src/lib/layout-panels-record.ts),
@@ -1846,7 +1882,7 @@ per conversation.** Below the fold nothing above changes.
   lower panel. Either way the Terminal remounts: its tabs and their
   server-side processes carry across (the tab list is the pane's own
   session storage and the socket reconnects within the server's grace
-  window), while xterm's local scrollback and selection do not.
+  window), while the terminal view's local scrollback and selection do not.
 - **Geometry stays out of Chat.** The centre's Chat is memoised on its own
   props (the bar's slot elements, whether it is on screen, two stable
   setters); a separator drag writes the room's custom properties directly
@@ -1909,7 +1945,7 @@ per conversation.** Below the fold nothing above changes.
   same 32px close. The Terminal: with the shell the only kind of terminal
   (no agent connections), an open empty panel opens a shell and "+" opens
   another, no picker; its chrome — tabs, "+", the empty state, the picker
-  — is on the app's tokens and face in both themes, and the xterm viewport
+  — is on the app's tokens and face in both themes, and the terminal view
   keeps monospace and takes the terminal palette for the mode
   (`--terminal-*`: dark ground in dark, a light terminal in light). The bar's New
   chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A
@@ -1920,7 +1956,10 @@ per conversation.** Below the fold nothing above changes.
   (`hostActions`); a pane with an overflow of its own merges them and says
   so (`takeHostActions`), and the head draws its own ⋯ only for a pane that
   has none; the head's × hides the panel, "Remove pane" takes the pane out of
-  the workspace. Escape acts only from inside the side or lower panel (or on
+  the workspace. With Device developer loop enabled, closing the Device stage
+  or tab or hiding its visible region requests a float when a chat host is
+  available; device access and session checks still apply. Escape acts only
+  from inside the side or lower panel (or on
   its rail item); elsewhere it is consumed and nothing moves. A session
   arriving with a remembered tool keeps its fold through the arrival rather
   than unfolding and folding again. The rail scrolls when a workspace holds
@@ -1941,28 +1980,71 @@ measured width at fold time deciding the unfold.
 
 ## What the dock header holds (2026-10-20)
 
+### Mobile inbox entry (2026-10-30)
+
+On a phone, Chat opens at its Inbox unless navigation names a conversation.
+The Inbox is the dock's reading surface, not a modal over the current chat.
+Its explicit header icon switches between the Inbox and the retained reader;
+the chat title identifies the conversation rather than opening a second list.
+Selecting a chat, an imported session, or New chat reveals that destination.
+A failed open keeps the Inbox visible and reports the failure. Durable Tasks
+still open their task details through canonical navigation.
+Selecting a Task reveals its Overview and closes the covering chat/dock view;
+retained work chats remain available. The Inbox groups authorized primary,
+independent Task-room and explicitly linked work chats under their Task.
+Direct Task association takes precedence over delegated-chat grouping; a chat
+associated with multiple Tasks remains separate. A Task's recorded
+`in_progress` status does not establish a running engine. The working count
+counts distinct running chats, including folded children, and excludes Task rows.
+Pending opens cannot replace a later selection or New chat draft. Cross-project
+routing occurs only after the reader's focus guard accepts the destination.
+
+The Inbox and reader stay mounted while switching between them, preserving
+list position, the search, and unsent composer text. Collapse and reopen retain
+the selected view. A new conversation URL reveals its reader. A covered reader
+does not count as viewed and cannot take composer focus. A hidden New chat
+draft releases its Back-history entry until it is shown again.
+
+The Inbox uses the shared work rows, status ladder, scope filter and section
+preferences. Saved work remains listed even when it has no open local tab.
+Project artwork and engine marks identify rows; titles wrap to two lines,
+status remains explicit, and real recency timestamps stay separate. Search is
+local to the loaded, scoped work list. Task review, Activity, snooze, dismissal
+and recovery keep their existing owners. The mobile bar owns New chat.
+
+The implementation owners are `ChatDock.tsx`, `useChatDockOverlays.ts`,
+`ChatDockMobileHeader.tsx` and `MobileInboxPanel.tsx`.
+The mounted pane journey is covered in
+`ChatWorkspacePaneComposerDraft.test.tsx`; shared rows, retained search, and
+open failures are covered in `ChatDockInboxSharedRows.test.tsx`.
+
 **The bar names the chat on screen and carries the dock's primary verbs;
 everything else is one menu away.** The owner's report was that the bar was
 crowded and that nothing said what belonged in it. The rule:
 
 | In the bar | Where it went instead |
 | --- | --- |
-| Identity, one line: title, then agent and engine, muted. When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
-| Inbox toggle, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
-| New, as a split button whose second half is the destination project (`ChatDockProjectContext`); switching rebinds only (#4524). | "New chats / <project>" badge, "This chat: <project>", branch badge: the destination joined New; the chat's own project and branch are the session context card's. |
+| Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
+| Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
+| Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
-| The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |
+| The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
 | The "This chat" chip, only while the card is folded away. | — |
-| — | Context meter: the composer's meta row, beside the model it measures. |
+| — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
 
 A control earns a place in the bar when it is about the chat on screen or is
 the dock's primary verb, and it is used often enough that a menu would cost
 more than its width. Anything else is a row of the More menu. Chords keep
 working wherever their control lives. The phone's bar is
-`ChatDockMobileHeader` and is unchanged by this (product law
-`station.mobile-context.primary-actions`). A region host decides per pane:
+`ChatDockMobileHeader`; its current Inbox entry is described above. Conversation
+switching stays direct, while the start composer owns Project selection. An
+active conversation does not offer a future-project switcher. A region host decides per pane:
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
 buttons, so their bars are unchanged.
+
+A collapsed side region is a 36px strip holding only the region's own
+controls. The chat's identity and the "This chat" chip are rows the strip
+cannot fit, so they return with the open bar (#4401).
 
 ## The session context card beside Chat (2026-10-19)
 
@@ -2016,9 +2098,8 @@ server read beyond the pull request links Chat details already reads.
   1211px with the inbox open (920px without); a side dock folds it.
 - **One copy of each fact.** The dock header carries no branch badge and no
   "This chat: <project>" lead-in (2026-10-20): the card, or the chip's
-  popover, is where the chat's project, directory and branch live, and the
-  header's project control is New's destination, which says it is not this
-  chat's. While the card shows, the More trigger's running-count badge
+  popover, is where the chat's project, directory and branch live. The start
+  composer owns Project selection. While the card shows, the More trigger's running-count badge
   stands down. "Shows" is the card's own report that it has mounted, not the
   width answer alone: while its lazy chunk loads, or if it fails to load, the
   trigger keeps the count. The card's props are memoised on the
@@ -2033,9 +2114,11 @@ server read beyond the pull request links Chat details already reads.
   Chat actions sheet instead, and closing it returns focus to ⋯. The actions
   sheet's bare branch line went with it: the sheet's Branch row is labelled.
 - **A folder Station made is named, not printed.** A chat whose engine runs in
-  a workspace Station created for it (an ACP engine started without a project
-  or connection directory) reports `cwdManagedWorkspace` on its session
-  summary; the server decides with `isManagedAcpWorkspace`. The Workspace row
+  a workspace Station created for it (an ACP engine without a project or
+  connection directory, an unbound confined Codex session, or since #4389 any
+  chat with no project, in its scratch folder) reports `cwdManagedWorkspace`
+  on its session summary; the server decides with `isStationChatFolder`
+  (`isManagedEngineWorkspace` or `isNoProjectChatScratch`). The Workspace row
   then reads "Chat workspace", with the hash path as its tooltip. The UI never
   matches the path itself.
 - **It fades; its column does not animate.** The card and its chip enter and

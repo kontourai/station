@@ -42,7 +42,13 @@ vi.mock('../../../components/home/HomeStartComposer', () => ({
 vi.mock('../../../hooks/useProjectIcons', () => ({
   useProjectIcons: () => new Map(),
 }));
+// The coordinator card owns its own tests (`Coordinator.test.tsx`); here it
+// is the pinned entry whose place Home decides.
+vi.mock('../../../components/home/HomeCoordinatorCard', () => ({
+  HomeCoordinatorCard: () => <section aria-label="Coordinator pin" />,
+}));
 
+import { OVERVIEW_PRODUCT_NAME } from '../../../lib/productNames';
 import { HomeSurface } from '../HomeSurface';
 
 // The surface name the Activity rename retired (archive#3280), in the
@@ -166,7 +172,7 @@ describe('HomeSurface composition', () => {
   test('an empty Station keeps its accessible page heading and starter cards', () => {
     renderHome({ workItems: [] });
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Home' }),
+      screen.getByRole('heading', { level: 1, name: OVERVIEW_PRODUCT_NAME }),
     ).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
     expect(screen.queryByText('Skip to recent work')).toBeNull();
@@ -660,5 +666,21 @@ describe('HomeSurface: agent icons', () => {
     expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
       0,
     );
+  });
+});
+
+describe('HomeSurface coordinator pin (#3628)', () => {
+  beforeEach(() => localStorage.clear());
+
+  test.each([
+    ['an empty Station', []],
+    ['a page with work', [item('a', 'Wire the verbs', 'Station', 2)]],
+  ])('%s shows the coordinator after the work actions', (_, workItems) => {
+    renderHome({ workItems });
+    const actions = screen.getByRole('region', { name: 'Work actions' });
+    const pin = screen.getByRole('region', { name: 'Coordinator pin' });
+    expect(
+      actions.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

@@ -890,7 +890,7 @@ describe('DelegationLauncher', () => {
       {
         environmentId: 'env-peer-b',
         apiBase: 'https://box-b.example.test',
-        scope: 'orchestration:read',
+        scope: 'orchestration:read orchestration:operate',
         label: null,
         createdAt: 1,
         updatedAt: 1,
@@ -911,6 +911,41 @@ describe('DelegationLauncher', () => {
         name: 'https://box-b.example.test — Paired Station',
       }),
     ).toBeTruthy();
+  });
+
+  test('a paired Station whose credential cannot operate is not a destination', () => {
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        initialEnvironmentId="env-peer-b"
+        initialPrompt="Run on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    const option = screen.getByRole('option', {
+      name: 'box-b — Paired Station (can\u2019t start work)',
+    }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'credential can\u2019t start work there',
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Delegate' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   test('a peer sharing an SSH environmentId is listed once, as its SSH entry', () => {
@@ -1542,7 +1577,7 @@ describe('DelegationLauncher', () => {
       target: { value: 'env-peer-b' },
     });
     expect(
-      screen.getByText(/changed on this Station since its placement/),
+      screen.getByText(/changed since its placement details loaded/),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
@@ -1590,7 +1625,7 @@ describe('DelegationLauncher', () => {
       target: { value: 'env-peer-b' },
     });
     expect(
-      screen.getByText(/changed on this Station since its placement/),
+      screen.getByText(/changed since its placement details loaded/),
     ).toBeTruthy();
     // The identity read resolves FRESH data whose association names the
     // recreated incarnation: the mismatch clears and placement works, with
@@ -1619,7 +1654,7 @@ describe('DelegationLauncher', () => {
       />,
     );
     expect(
-      screen.queryByText(/changed on this Station since its placement/),
+      screen.queryByText(/changed since its placement details loaded/),
     ).toBeNull();
     const delegate = screen.getByRole('button', { name: 'Delegate' });
     expect(delegate).toHaveProperty('disabled', false);
@@ -1659,7 +1694,9 @@ describe('DelegationLauncher', () => {
     fireEvent.change(screen.getByLabelText('Station'), {
       target: { value: 'env-peer-b' },
     });
-    expect(screen.getByText(/portable identity before placing/)).toBeTruthy();
+    expect(
+      screen.getByText(/Checking this Project’s portable identity/),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
       true,

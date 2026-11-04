@@ -1,0 +1,7 @@
+{
+  "revision": "9d1dd13a71b2ff1a0876d906037aa53ce8297c25",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Dependent of docs/reference/connect.md, which gained a forgetConnection line in the useConnections listing. Searched the glossary for forget/remove and useConnections vocabulary: no entry names either, so no term changes.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

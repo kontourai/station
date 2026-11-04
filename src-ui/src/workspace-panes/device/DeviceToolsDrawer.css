@@ -66,12 +66,27 @@
   gap: var(--space-2, 8px);
 }
 
+.device-tools__logs {
+  max-height: 16rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .device-tools__section-title {
   font-size: 0.75rem;
   letter-spacing: 0.02em;
   margin: 0;
   opacity: 0.75;
   text-transform: uppercase;
+}
+
+/* Device settings folds each section behind its title: the whole title row
+   is the toggle, at the drawer's 44px tap floor. */
+.device-tools__section-title .disclosure-toggle {
+  min-height: 44px;
+  width: 100%;
 }
 
 .device-tools__row {

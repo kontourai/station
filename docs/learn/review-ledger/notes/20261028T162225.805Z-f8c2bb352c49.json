@@ -1,0 +1,7 @@
+{
+  "revision": "a3de8a526e9839cf35da5de66fae609d70b46423",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the provider type correction adding start to the existing Pick of RegionChromeSlots. This matches the already reviewed runtime slot forwarding and RegionPaneHost caller; no runtime or placement behavior changes and the placement explanation remains accurate. Two focused header/provider test files passed (55 tests). Hosted CI owns full typechecking.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/RegionChromeBar.tsx"]}
+  ]
+}

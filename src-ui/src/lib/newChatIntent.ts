@@ -1,3 +1,7 @@
+import {
+  type ApprovalMode,
+  isApprovalMode,
+} from '@kontourai/station-contracts/provider';
 import { isRecord } from '../utils/isRecord';
 import type { NewChatModelChoice } from '../utils/modelCapabilities';
 
@@ -13,6 +17,8 @@ export interface NewChatStartSelection {
   context: string;
   agentSlug?: string;
   model?: NewChatModelChoice;
+  /** The Permissions chip's pick, queued on the chat that starts. */
+  approvalMode?: ApprovalMode;
 }
 
 /** The setup routes an Agent row can repair through (`AgentFixRoute`). */
@@ -65,6 +71,25 @@ export interface NewChatIntent {
 }
 
 /**
+ * Whether a request carries anything of its own (a prompt, files, choices, a
+ * hand-off, a Task, a listener for how it ends). A bare request is "show me
+ * New chat", which an open draft already answers without being replaced.
+ */
+export function newChatIntentCarriesPayload(intent?: NewChatIntent): boolean {
+  if (!intent) return false;
+  return Boolean(
+    intent.taskShaping ||
+      intent.startWithDefault ||
+      intent.initialPrompt ||
+      intent.initialFiles?.length ||
+      intent.selection ||
+      intent.selectionInvalid ||
+      intent.handoff ||
+      intent.onClosed,
+  );
+}
+
+/**
  * Dispatch a new-chat intent and report whether a dock took it. Docks call
  * `preventDefault()` on an intent they accept; with no dock listening (no
  * region holds the Chat pane) or only a project-scoped dock, nobody does,
@@ -107,8 +132,10 @@ function optionalString(value: unknown): string | undefined | null {
 /** A malformed selection is refused whole, never partly applied. */
 function readSelection(value: unknown): NewChatStartSelection | undefined {
   if (!isRecord(value)) return undefined;
-  const { context, agentSlug, model } = value;
+  const { context, agentSlug, model, approvalMode } = value;
   if (typeof context !== 'string' || !context) return undefined;
+  if (approvalMode !== undefined && !isApprovalMode(approvalMode))
+    return undefined;
   const slug = optionalString(agentSlug);
   if (slug === null) return undefined;
   let choice: NewChatModelChoice | undefined;
@@ -147,6 +174,7 @@ function readSelection(value: unknown): NewChatStartSelection | undefined {
     context,
     ...(slug ? { agentSlug: slug } : {}),
     ...(choice ? { model: choice } : {}),
+    ...(approvalMode !== undefined ? { approvalMode } : {}),
   };
 }
 

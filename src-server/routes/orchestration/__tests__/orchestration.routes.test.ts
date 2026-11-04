@@ -1,5 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
+import { CreateRequestCapacityError } from '../../../services/orchestration/create-request-claims.js';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
 // 3KB rows synchronously). Under full-corpus worker contention the default
@@ -12,7 +14,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import { inspectSteerInput, steerTurn } from '@kontourai/station-sdk/client';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
@@ -28,7 +33,10 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
-import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterModelCatalog,
+} from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -55,6 +63,7 @@ import {
   OrchestrationCommandDispatchError,
   OrchestrationService,
 } from '../../../services/orchestration/orchestration-service.js';
+import { OrchestrationStreamPresence } from '../../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectWorktreeDirectoryError } from '../../../services/projects/project-service.js';
 import {
   AnswerShareService,
@@ -68,10 +77,96 @@ import {
 } from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
+import { createEventStreamProducer } from '../events.js';
 import {
   createOrchestrationRoutes,
   resolveStreamResumePlan,
 } from '../orchestration.js';
+
+test.each([
+  ['/chat', {}],
+  ['/chat/background', {}],
+  [
+    '/chat/delegated',
+    {
+      delegation: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+      },
+    },
+  ],
+  ['/chat/conversation-a/continue', {}],
+])('refuses a keyless send at %s before dispatch', async (route, extra) => {
+  const execute = vi.fn().mockResolvedValue({
+    conversationId: 'conversation-a',
+    sessionId: 'session-a',
+    providerTurnId: 'turn-a',
+  });
+  const app = createOrchestrationRoutes(
+    {} as never,
+    {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'owner',
+      executeForegroundMessage: execute,
+      continueForegroundMessage: execute,
+      resolveRequestDelegation: async () => ({
+        context: 'delegation' in extra ? extra.delegation : undefined,
+        provenance: 'runtime-attested',
+      }),
+    } as never,
+  );
+  const response = await app.request(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'hello',
+      target: { environment: { kind: 'current' }, agent: 'station' },
+      ...extra,
+    }),
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({
+    code: 'client_turn_key_required',
+  });
+  expect(execute).not.toHaveBeenCalled();
+});
+
+test.each(['/chat', '/delegations'])(
+  '%s maps create storage refusal to HTTP 429 before invoking a sender',
+  async (path) => {
+    const refusal = async () => {
+      throw new CreateRequestCapacityError('records');
+    };
+    const app = createOrchestrationRoutes({} as never, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'operator',
+      executeForegroundMessage: refusal,
+      delegateTask: refusal,
+    });
+    const response = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clientTurnId: 'capacity-key',
+        ...(path === '/chat'
+          ? { conversationId: 'existing', message: 'hello' }
+          : { prompt: 'hello' }),
+        target: { environment: { kind: 'current' }, agent: 'station' },
+      }),
+    });
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'create_request_capacity',
+      retryable: true,
+      limit: 'records',
+    });
+  },
+);
 
 describe('direct Basis response revocation fence', () => {
   test('withholds every pre-await Basis field when authority is revoked during assessment I/O', async () => {
@@ -546,6 +641,16 @@ describe('Orchestration Routes', () => {
       turnId: z.string().optional(),
     });
     const engineSteer = vi.fn();
+    expect(
+      legacySteerSchema.safeParse({
+        type: 'steerChildWork',
+        threadId: 'parent',
+        childId: 'child',
+        turnId: 'turn',
+        input: 'redirect',
+        clientInputId: 'key',
+      }).success,
+    ).toBe(false);
     const legacy = new Hono();
     legacy.post('/api/orchestration/commands', async (c) => {
       const parsed = legacySteerSchema.safeParse(await c.req.json());
@@ -584,11 +689,12 @@ describe('Orchestration Routes', () => {
       expect(engineSteer).not.toHaveBeenCalled();
       await expect(
         steerTurn(input.apiBase, { ...input, clientInputId: '' }),
+      ).rejects.toThrow('clientInputId must be');
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(
+        steerTurn(input.apiBase, { ...input, clientInputId: undefined }),
       ).rejects.toThrow('Validation failed');
       expect(engineSteer).not.toHaveBeenCalled();
-      await steerTurn(input.apiBase, { ...input, clientInputId: undefined });
-      expect(engineSteer).toHaveBeenCalledTimes(1);
-      expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
     } finally {
       fetchSpy.mockRestore();
     }
@@ -600,6 +706,12 @@ describe('Orchestration Routes', () => {
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class SteerAdapter extends GateTestAdapter {
+      override readonly metadata: ProviderAdapterMetadata = {
+        displayName: 'Scripted native steer',
+        description: 'Receipted live steer fixture',
+        capabilities: ['agent-runtime'],
+        durability: STEERING_ENGINE_DURABILITY,
+      };
       private loaded = false;
       readonly steerTurn = vi.fn(async () => {});
       async startSession(input: ProviderSessionStartInput) {
@@ -654,6 +766,7 @@ describe('Orchestration Routes', () => {
       prompt: 'initial',
     });
     let loseReceipt = true;
+    let lostResponse: unknown;
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
@@ -663,10 +776,7 @@ describe('Orchestration Routes', () => {
         );
         expect(response.status).toBe(200);
         if (loseReceipt) {
-          expect(await response.clone().json()).toMatchObject({
-            success: true,
-            data: { outcome: 'steered', threadId, turnId: 'live' },
-          });
+          lostResponse = await response.clone().json();
           loseReceipt = false;
           throw new TypeError('HTTP acknowledgement lost');
         }
@@ -683,6 +793,10 @@ describe('Orchestration Routes', () => {
       await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
         'HTTP acknowledgement lost',
       );
+      expect(lostResponse).toMatchObject({
+        success: true,
+        data: { outcome: 'steered', threadId, turnId: 'live' },
+      });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       eventStore.appendEvent({
         eventId: 'steer-http-complete',
@@ -732,10 +846,35 @@ describe('Orchestration Routes', () => {
       });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       expect(await steerTurn(input.apiBase, input)).toEqual({
+        clientInputId: input.clientInputId,
         outcome: 'steered',
         threadId,
         turnId: 'live',
       });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      const conflict = await app.request('/api/orchestration/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'steerTurn',
+          threadId,
+          turnId: 'live',
+          clientInputId: input.clientInputId,
+          input: 'different input',
+        }),
+      });
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      const unkeyed = await app.request('/api/orchestration/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'steerTurn', threadId, input: 'keyless' }),
+      });
+      expect(unkeyed.status).toBe(400);
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
     } finally {
       fetchSpy.mockRestore();
@@ -764,6 +903,7 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn',
           message: 'hello',
           target: { environment: { kind: 'current' }, agent: 'codex' },
         }),
@@ -845,6 +985,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
@@ -855,12 +996,246 @@ describe('Orchestration Routes', () => {
     expect(dispatchWithReceipt).toHaveBeenCalledWith(
       {
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
       },
       expect.objectContaining({ userId: ROUTE_TEST_USER_ID }),
     );
+  });
+
+  test('child steer command requires a current authorized parent and all target fields', async () => {
+    let current = true;
+    const dispatchWithReceipt = vi.fn().mockResolvedValue({
+      receipt: {
+        commandId: 'c',
+        threadId: 'parent',
+        commandType: 'steerChildWork',
+        status: 'accepted',
+        createdAt: '2026-08-14T00:00:00.000Z',
+      },
+      result: {
+        outcome: 'steered',
+        threadId: 'parent',
+        childId: 'child',
+        turnId: 'turn',
+      },
+    });
+    const service = {
+      dispatchWithReceipt,
+      canUserReadSession: vi.fn(() => true),
+      canUserMutateSession: vi.fn(() => true),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => current,
+    });
+    const command = {
+      type: 'steerChildWork',
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    const send = (body: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await send({ ...command, childId: undefined })).status).toBe(400);
+    service.canUserReadSession.mockReturnValue(false);
+    expect((await send(command)).status).toBe(404);
+    service.canUserReadSession.mockReturnValue(true);
+    current = false;
+    expect((await send(command)).status).toBe(404);
+    current = true;
+    service.canUserMutateSession.mockReturnValue(false);
+    expect((await send(command)).status).toBe(404);
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+    service.canUserMutateSession.mockReturnValue(true);
+    expect((await send(command)).status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+      command,
+      expect.objectContaining({
+        requestCurrent: expect.any(Function),
+        userId: ROUTE_TEST_USER_ID,
+      }),
+    );
+  });
+
+  test('child steer command reaches the real service and durable receipt over HTTP', async () => {
+    const directory = makeTempDir('child-steer-http-');
+    const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    steerFixtureStores.push(eventStore);
+    const eventBus = new EventBus();
+    class ChildAdapter extends GateTestAdapter {
+      private loaded = false;
+      readonly steerChildWork = vi.fn(
+        async (_threadId: string, _childId: string, turnId: string) => ({
+          outcome: 'steered' as const,
+          turnId,
+        }),
+      );
+      async startSession(input: ProviderSessionStartInput) {
+        const session = await super.startSession(input);
+        this.loaded = true;
+        return session;
+      }
+      async hasSession() {
+        return this.loaded;
+      }
+    }
+    const adapter = new ChildAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'child-http-parent';
+    const now = new Date().toISOString();
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { provider: 'claude', threadId, cwd: directory },
+      },
+      { userId: ROUTE_TEST_USER_ID },
+    );
+    eventStore.appendEvent({
+      eventId: 'child-http-session',
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      method: 'session.started',
+      createdAt: now,
+      metadata: { userId: ROUTE_TEST_USER_ID, agentSlug: 'claude' },
+    });
+    eventStore.appendEvent({
+      eventId: 'child-http-turn',
+      provider: 'claude',
+      threadId,
+      turnId: 'parent-turn',
+      method: 'turn.started',
+      createdAt: now,
+      prompt: 'initial',
+    });
+    eventStore.appendEvent({
+      eventId: 'child-http-work',
+      provider: 'claude',
+      threadId,
+      createdAt: now,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'child',
+          status: 'running',
+          transcript: {
+            kind: 'claude-subagent',
+            sessionId: '00000000-0000-4000-8000-000000000001',
+            agentId: 'child',
+          },
+        },
+      },
+    });
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      resolvePrincipal: () => ({
+        id: ROUTE_TEST_USER_ID,
+        kind: 'human',
+        display: 'Test user',
+      }),
+      isRequestPrincipalCurrent: () => true,
+    });
+    const command = {
+      type: 'steerChildWork',
+      threadId,
+      childId: 'child',
+      turnId: 'child-turn',
+      input: 'redirect',
+      clientInputId: 'key',
+    };
+    const send = (body: unknown) =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const foreign = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'another-user',
+      isRequestPrincipalCurrent: () => true,
+    });
+    expect(
+      (
+        await foreign.request('/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...command, clientInputId: 'foreign-key' }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(adapter.steerChildWork).not.toHaveBeenCalled();
+    expect(
+      await (
+        await send({
+          ...command,
+          principal: { id: 'forged', kind: 'human', display: 'Forged' },
+        })
+      ).json(),
+    ).toMatchObject({
+      success: true,
+      data: { outcome: 'steered', childId: 'child', turnId: 'child-turn' },
+    });
+    expect(await (await send(command)).json()).toMatchObject({
+      success: true,
+      data: { outcome: 'steered' },
+    });
+    expect(
+      await (await send({ ...command, childId: 'other' })).json(),
+    ).toMatchObject({ success: false, code: 'client_turn_input_conflict' });
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(1);
+    expect(adapter.steerChildWork).toHaveBeenCalledWith(
+      threadId,
+      'child',
+      'child-turn',
+      'redirect',
+    );
+    const read = (childId: string) =>
+      app.request(`/sessions/${threadId}/child-work/${childId}/instructions`);
+    expect(await (await read('child')).json()).toMatchObject({
+      success: true,
+      data: {
+        entries: [
+          {
+            childId: 'child',
+            turnId: 'child-turn',
+            clientInputId: 'key',
+            text: 'redirect',
+            delivery: 'delivered',
+            principal: { id: ROUTE_TEST_USER_ID, kind: 'human' },
+          },
+        ],
+      },
+    });
+    expect((await read('other')).status).toBe(404);
+    expect(
+      (
+        await foreign.request(
+          `/sessions/${threadId}/child-work/child/instructions`,
+        )
+      ).status,
+    ).toBe(404);
   });
 
   // The service's third dispatch argument carries internal bypasses
@@ -915,6 +1290,7 @@ describe('Orchestration Routes', () => {
 
     const steer = await post({
       type: 'steerTurn',
+      clientInputId: 'fixture-steer-key',
       threadId: 'thread-live',
       input: 'change direction',
       turnId: 'turn-live',
@@ -926,6 +1302,7 @@ describe('Orchestration Routes', () => {
     expect(rest).toEqual([]);
     expect(command).toEqual({
       type: 'steerTurn',
+      clientInputId: 'fixture-steer-key',
       threadId: 'thread-live',
       input: 'change direction',
       turnId: 'turn-live',
@@ -1012,6 +1389,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
@@ -1304,6 +1682,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:fixture',
+        clientTurnId: 'fixture-turn',
         message: 'Resume safely',
         target: {
           environment: { kind: 'current' },
@@ -1354,6 +1734,7 @@ describe('Orchestration Routes', () => {
       },
     );
     const input = {
+      clientTurnId: 'fixture-turn',
       message: 'My answer',
       conversationId: 'conversation-a',
       target: { environment: { kind: 'current' }, agent: 'agent-a' },
@@ -1406,6 +1787,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
         message: 'Continue this legacy alias thread',
         conversationId: 'conversation:legacy-codex',
         target: { environment: { kind: 'current' }, agent: 'codex' },
@@ -1456,6 +1838,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:fixture',
+        clientTurnId: 'fixture-turn',
         message: 'Start safely',
         target: { environment: { kind: 'current' }, agent: 'claude' },
       }),
@@ -1505,6 +1889,8 @@ describe('Orchestration Routes', () => {
       resolveRequestDelegation,
     });
     const common = {
+      conversationId: 'conversation-fixed-intent',
+      clientTurnId: 'fixture-turn',
       message: 'Run later',
       target: { environment: { kind: 'current' }, agent: 'claude' },
     };
@@ -1592,6 +1978,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:1',
+        clientTurnId: 'fixture-turn',
         message: 'Send into a stalled mount',
         target: {
           environment: { kind: 'current' },
@@ -1617,6 +2005,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:1',
+          clientTurnId: 'fixture-turn',
           message: 'Send',
           target: {
             environment: { kind: 'current' },
@@ -1726,6 +2116,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:1',
         message: 'Inspect the target',
         target: {
           environment: { kind: 'saved', id: 'env-remote' },
@@ -1746,6 +2137,7 @@ describe('Orchestration Routes', () => {
       }),
     );
     expect(executeForegroundMessage).toHaveBeenCalledWith({
+      conversationId: 'conversation:1',
       message: 'Inspect the target',
       target: {
         environment: { kind: 'saved', id: 'env-remote' },
@@ -1764,6 +2156,8 @@ describe('Orchestration Routes', () => {
         actor: { kind: 'unknown' },
         reported: { version: 1, surface: 'unknown', build: null },
       },
+      // No agent marker, delegation or replay: the person's own chat.
+      personChatStart: true,
     });
   });
 
@@ -1847,6 +2241,7 @@ describe('Orchestration Routes', () => {
           getProject: vi.fn(),
           getProviderAdapter: (provider) =>
             service.getProviderAdapter(provider),
+          readInitialConversationContext: async () => undefined,
           readSessionBinding: async () => null,
           startSession: async (_access, startInput) => {
             const started = await service.sessionCommands.execute(
@@ -1892,6 +2287,8 @@ describe('Orchestration Routes', () => {
           'X-Station-Client-Origin': '1;web;2026.8.23',
         },
         body: JSON.stringify({
+          conversationId: 'conversation:route-origin',
+          clientTurnId: 'fixture-turn',
           message: 'Persist the early turn event',
           target: { environment: { kind: 'current' }, agent: 'station' },
         }),
@@ -2023,6 +2420,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:empty',
+          clientTurnId: 'fixture-turn',
           message: 'Do not accept without correlation',
           ...(path === '/chat'
             ? { target: { environment: { kind: 'current' }, agent: 'codex' } }
@@ -2058,7 +2457,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3Atyped/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Do not retry typed continuation' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Do not retry typed continuation',
+      }),
     });
 
     expect(res.status).toBe(409);
@@ -2095,6 +2497,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:fixture',
+          clientTurnId: 'fixture-turn',
           message: 'Observe this possible effect',
           ...(path === '/chat'
             ? { target: { environment: { kind: 'current' }, agent: 'codex' } }
@@ -2150,7 +2554,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3Atyped/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Observe rather than retry' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Observe rather than retry',
+      }),
     });
 
     expect(res.status).toBe(409);
@@ -2191,6 +2598,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:default-environment',
+          clientTurnId: 'fixture-turn',
           message: 'Resolve the environment',
           target: {
             ...(environment ? { environment } : {}),
@@ -2239,6 +2648,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:explicit-environment',
+        clientTurnId: 'fixture-turn',
         message: 'Use this Station explicitly',
         target: {
           environment: { kind: 'current' },
@@ -2282,6 +2693,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:image',
+        clientTurnId: 'fixture-turn',
         message: '',
         attachments: [attachment],
         target: {
@@ -2324,6 +2737,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:corr-1',
+          clientTurnId: 'fixture-turn',
           message: 'Inspect the target',
           target: {
             environment: { kind: 'saved', id: 'env-remote' },
@@ -2384,6 +2799,7 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn',
           message: 'Inspect the target',
           conversationId: 'conversation:stale-from-request',
           target: {
@@ -2489,7 +2905,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3A1/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Continue safely' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Continue safely',
+      }),
     });
 
     expect(res.status).toBe(200);
@@ -2520,6 +2939,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
         message: 'Switch models for this turn',
         model: { override: 'gpt-5.6-terra' },
       }),
@@ -2586,6 +3006,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'current' },
@@ -2620,6 +3041,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'saved', id: 'env-remote' },
@@ -2640,6 +3062,10 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', resumable: true },
     });
     expect(delegateTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
+      createRequestIntent: expect.objectContaining({
+        clientTurnId: 'fixture-delegation-key',
+      }),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2688,6 +3114,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'current' },
@@ -2700,6 +3127,10 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(delegateTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
+      createRequestIntent: expect.objectContaining({
+        clientTurnId: 'fixture-delegation-key',
+      }),
       clientOrigin: {
         version: 1,
         actor: { kind: 'operator' },
@@ -2737,6 +3168,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         message: 'Keep going',
         modelOptions: { thinking: true },
       }),
@@ -2744,6 +3176,7 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
       inboundDeviceKind: undefined,
       isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
@@ -3037,6 +3470,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         message: 'Keep going',
         model: 'gpt-5.6-sol',
         userId: 'spoofed-user',
@@ -3049,6 +3483,7 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', status: 'dispatched' },
     });
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
       inboundDeviceKind: undefined,
       isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
@@ -3080,7 +3515,10 @@ describe('Orchestration Routes', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Keep going' }),
+        body: JSON.stringify({
+          clientTurnId: 'fixture-delegation-key',
+          message: 'Keep going',
+        }),
       },
     );
     expect(unavailableRes.status).toBe(503);
@@ -3097,7 +3535,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/delegations/task:1/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Keep going' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
+        message: 'Keep going',
+      }),
     });
     expect(res.status).toBe(400);
     expect(await readJson(res)).toMatchObject({
@@ -4912,43 +5353,34 @@ describe('Orchestration Routes', () => {
   });
 
   test('terminal process routes expose summaries, detail, and cleanup', async () => {
-    const terminalService = {
-      listProcessSummaries: vi.fn().mockReturnValue([
-        {
-          kind: 'terminal',
-          sessionId: 'project:t1',
-          projectSlug: 'project',
-          terminalId: 't1',
-          cwd: '/tmp/project',
-          status: 'running',
-          pid: 12345,
-          exitCode: null,
-          hasRunningSubprocess: true,
-          cols: 80,
-          rows: 24,
-        },
-      ]),
-      readProcess: vi.fn().mockImplementation((id: string) =>
-        id === 'project:t1'
-          ? {
-              process: {
-                kind: 'terminal',
-                sessionId: 'project:t1',
-                projectSlug: 'project',
-                terminalId: 't1',
-                cwd: '/tmp/project',
-                status: 'running',
-                pid: 12345,
-                exitCode: null,
-                hasRunningSubprocess: true,
-                cols: 80,
-                rows: 24,
-              },
-              history: 'npm run dev\n',
-            }
-          : null,
-      ),
-      close: vi.fn().mockResolvedValue(undefined),
+    const summary = {
+      kind: 'terminal',
+      sessionId: '6f1c2a40-0000-4000-8000-000000000001',
+      projectSlug: 'project',
+      terminalId: '6f1c2a40-0000-4000-8000-000000000001',
+      cwd: '/tmp/project',
+      status: 'running',
+      pid: 12345,
+      exitCode: null,
+      hasRunningSubprocess: true,
+      cols: 80,
+      rows: 24,
+    } as const;
+    const id = summary.sessionId;
+    const scopedTerminals = {
+      list: vi.fn().mockResolvedValue([summary]),
+      read: vi
+        .fn()
+        .mockImplementation(async (_request: Request, terminalId: string) =>
+          terminalId === id
+            ? { process: summary, history: 'npm run dev\n' }
+            : null,
+        ),
+      close: vi
+        .fn()
+        .mockImplementation(
+          async (_request: Request, terminalId: string) => terminalId === id,
+        ),
     };
     const service = {
       listProviders: vi.fn(),
@@ -4962,54 +5394,72 @@ describe('Orchestration Routes', () => {
       getUserId: () => ROUTE_TEST_USER_ID,
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
-      terminalService,
+      scopedTerminals,
     });
 
     const listRes = await app.request('/processes/terminals');
     expect(await readJson(listRes)).toEqual({
       success: true,
       data: [
-        expect.objectContaining({
-          sessionId: 'project:t1',
-          hasRunningSubprocess: true,
-        }),
+        expect.objectContaining({ sessionId: id, hasRunningSubprocess: true }),
       ],
     });
 
-    const detailRes = await app.request('/processes/terminals/project:t1');
+    const detailRes = await app.request(`/processes/terminals/${id}`);
     expect(await readJson(detailRes)).toEqual({
       success: true,
       data: expect.objectContaining({
-        process: expect.objectContaining({ sessionId: 'project:t1' }),
+        process: expect.objectContaining({ sessionId: id }),
         history: 'npm run dev\n',
       }),
     });
+    expect((await app.request('/processes/terminals/project:t1')).status).toBe(
+      404,
+    );
 
-    const closeRes = await app.request('/processes/terminals/project:t1', {
+    const closeRes = await app.request(`/processes/terminals/${id}`, {
       method: 'DELETE',
     });
     expect(await readJson(closeRes)).toEqual({
       success: true,
-      data: { sessionId: 'project:t1' },
+      data: { sessionId: id },
     });
-    expect(terminalService.close).toHaveBeenCalledWith('project:t1');
+    expect(scopedTerminals.close).toHaveBeenCalledWith(expect.any(Request), id);
+    const unknownClose = await app.request('/processes/terminals/project:t1', {
+      method: 'DELETE',
+    });
+    expect(unknownClose.status).toBe(404);
   });
 
-  test('hosted terminal routes are uniformly unavailable before TerminalService reads or closes', async () => {
+  test('terminal process routes answer 503 when no terminal sessions are composed', async () => {
+    const app = createOrchestrationRoutes({} as any, {
+      getUserId: () => ROUTE_TEST_USER_ID,
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+    });
+    const [list, detail, close] = await Promise.all([
+      app.request('/processes/terminals'),
+      app.request('/processes/terminals/project:t1'),
+      app.request('/processes/terminals/project:t1', { method: 'DELETE' }),
+    ]);
+    expect([list.status, detail.status, close.status]).toEqual([503, 503, 503]);
+  });
+
+  test('hosted terminal routes are uniformly unavailable before any terminal read or close', async () => {
     const registry = parseHostedTenantRegistry({
       schemaVersion: 1,
       tenants: [{ id: 'tenant-alpha', authority: 'alpha.station.test' }],
     });
-    const terminalService = {
-      listProcessSummaries: vi.fn(),
-      readProcess: vi.fn(),
+    const scopedTerminals = {
+      list: vi.fn(),
+      read: vi.fn(),
       close: vi.fn(),
     };
     const app = createOrchestrationRoutes({} as any, {
       getUserId: () => ROUTE_TEST_USER_ID,
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
-      terminalService,
+      scopedTerminals,
       hostedTenantRegistry: registry,
     });
 
@@ -5022,9 +5472,9 @@ describe('Orchestration Routes', () => {
     expect(list.status).toBe(404);
     expect(detail.status).toBe(404);
     expect(close.status).toBe(404);
-    expect(terminalService.listProcessSummaries).not.toHaveBeenCalled();
-    expect(terminalService.readProcess).not.toHaveBeenCalled();
-    expect(terminalService.close).not.toHaveBeenCalled();
+    expect(scopedTerminals.list).not.toHaveBeenCalled();
+    expect(scopedTerminals.read).not.toHaveBeenCalled();
+    expect(scopedTerminals.close).not.toHaveBeenCalled();
   });
 
   test('GET /events streams the initial snapshot and subsequent canonical events', async () => {
@@ -6383,6 +6833,123 @@ describe('Orchestration Routes', () => {
         delta: eventId,
       });
     }
+
+    test('shared stream keeps authorization, replay cursor and both lifetimes independent', async () => {
+      persistEvent('seen', 'thread-1', 1);
+      persistEvent('missed', 'thread-1', 2);
+      const bus = new EventBus();
+      const unsubscribe = vi.fn();
+      const subscribe = bus.subscribe.bind(bus);
+      vi.spyOn(bus, 'subscribe').mockImplementation((listener) => {
+        const stop = subscribe(listener);
+        let stopped = false;
+        return () => {
+          if (stopped) return;
+          stopped = true;
+          unsubscribe();
+          stop();
+        };
+      });
+      const presence = new OrchestrationStreamPresence();
+      const release = vi.fn();
+      const generalEventProducer = createEventStreamProducer({
+        eventBus: bus,
+        readAuthorityForRequest: () => {
+          throw new Error('orchestration authority must be passed explicitly');
+        },
+        getACPStatus: () => ({ connected: false, connections: [] }),
+        logger: { debug: vi.fn() },
+        connectClientSession: () => ({ touch: vi.fn(), release }),
+        canReadPluginDraftEvent: (data, c) =>
+          (data as { project: string }).project === c.req.header('x-project'),
+      });
+      const app = createOrchestrationRoutes(
+        makeResumeTestService(eventStore) as any,
+        {
+          getUserId: () => ROUTE_TEST_USER_ID,
+          eventBus: bus,
+          logger: { debug: vi.fn() },
+          presence,
+          generalEventProducer,
+        },
+      );
+      const response = await app.request('/events?includeGeneral=1', {
+        headers: { 'Last-Event-ID': '1', 'x-project': 'allowed' },
+      });
+      expect(response.headers.get('X-Station-General-Stream')).toBe('1');
+      expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(true);
+      bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        project: 'denied',
+        marker: 'secret-project',
+      });
+      bus.emit(SERVER_EVENTS.INTERNAL_STOP_REDISPATCH_FAILED, {
+        marker: 'secret-family',
+      } as never);
+      bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        project: 'allowed',
+        marker: 'visible',
+      });
+      const payload = await readStreamUntil(
+        response.body!,
+        (text) =>
+          text.includes('visible') && text.includes('orchestration:caughtUp'),
+      );
+      expect(payload).not.toContain('secret-project');
+      expect(payload).not.toContain('secret-family');
+      expect(payload).toMatch(
+        /event: orchestration:event\ndata: .*missed.*\nid: 2/,
+      );
+      expect(payload.indexOf('missed')).toBeLessThan(
+        payload.indexOf('orchestration:caughtUp'),
+      );
+      expect(payload).not.toContain('orchestration:snapshot');
+      const frames = payload.split('\n\n');
+      const generalFrames = frames.filter((frame) =>
+        frame.includes('event: station:general'),
+      );
+      expect(generalFrames.some((frame) => frame.includes('visible'))).toBe(
+        true,
+      );
+      for (const frame of generalFrames) expect(frame).not.toMatch(/^id:/m);
+      // Model EventSource's last-event-id update from actual wire fields.
+      let cursor = '1';
+      for (const frame of frames) {
+        const id = frame.match(/^id: (.*)$/m);
+        if (id) cursor = id[1];
+      }
+      expect(cursor).toBe('2');
+      await vi.waitFor(() => {
+        expect(unsubscribe).toHaveBeenCalledTimes(2);
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+      });
+
+      const controller = new AbortController();
+      const snapshot = await app.request('/events?includeGeneral=1', {
+        signal: controller.signal,
+      });
+      const reader = snapshot.body!.getReader();
+      const decoder = new TextDecoder();
+      let snapshotPayload = '';
+      while (!snapshotPayload.includes('orchestration:caughtUp')) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        snapshotPayload += decoder.decode(chunk.value, { stream: true });
+      }
+      controller.abort();
+      expect(snapshotPayload.indexOf('orchestration:snapshot')).toBeLessThan(
+        snapshotPayload.indexOf('orchestration:caughtUp'),
+      );
+      expect(snapshotPayload).toMatch(
+        /event: orchestration:snapshot\ndata: .*\nid: 2/,
+      );
+      await vi.waitFor(() => {
+        expect(unsubscribe).toHaveBeenCalledTimes(4);
+        expect(release).toHaveBeenCalledTimes(2);
+        expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+      });
+      await reader.cancel();
+    });
 
     test('a below-threshold oversized replay switches to a bounded snapshot frame', async () => {
       for (let index = 1; index <= 401; index += 1) {

@@ -110,10 +110,26 @@ export function nearestDockSnap(
   pixels: number,
   metrics: SnapMetrics,
 ): DockSnap {
-  let best: DockSnap = DOCK_SNAP_ORDER[0];
+  return nearestSnap(
+    DOCK_SNAP_ORDER.map((snap) => [snap, dockSnapPixels(snap, metrics)]),
+    pixels,
+  );
+}
+
+/**
+ * The snap state whose height is nearest `pixels`. Ties go to the earliest
+ * candidate, so the caller states its tie preference by order: the dock lists
+ * smallest first, the phone sheet (`sheetSnap.ts`) largest first. One
+ * implementation, so the two gestures cannot drift on what "nearest" means.
+ */
+export function nearestSnap<Snap extends string>(
+  candidates: readonly (readonly [Snap, number])[],
+  pixels: number,
+): Snap {
+  let [best] = candidates[0];
   let bestDist = Number.POSITIVE_INFINITY;
-  for (const snap of DOCK_SNAP_ORDER) {
-    const dist = Math.abs(dockSnapPixels(snap, metrics) - pixels);
+  for (const [snap, height] of candidates) {
+    const dist = Math.abs(height - pixels);
     if (dist < bestDist) {
       bestDist = dist;
       best = snap;

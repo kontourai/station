@@ -36,6 +36,7 @@ export {
   envelopeReasons,
 } from './api-error-message';
 export * from './attachment-staging';
+export * from './automations';
 export * from './board';
 export { ChatHttpError } from './chatHttpError';
 export { setClientOriginResolver } from './client-origin.js';
@@ -67,6 +68,7 @@ export {
   getClientRequestTimeout,
   getJson,
   isApiRequestScope,
+  mutateBinary,
   notifyCredentialChanged,
   StationCredentialConflictError,
   StationHttpError,
@@ -81,6 +83,18 @@ export {
 export * from './integrations';
 export * from './knowledge';
 export * from './learning-source';
+export type {
+  LocalTranscriptionResult,
+  LocalTranscriptSegment,
+  MediaToolComponent,
+  MediaToolDownload,
+  MediaToolsStatus,
+} from './media-tools';
+export {
+  downloadMediaTools,
+  getMediaToolsStatus,
+  transcribeAudio,
+} from './media-tools';
 export * from './orchestration';
 export * from './peer-enrollments';
 export * from './personal-boards';
@@ -97,9 +111,12 @@ export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
+export * from './runtime-event-content';
 export * from './scheduler';
 export * from './send-execution-message';
+export { sentTurnKey } from './sent-turn-key';
 export * from './session-outputs';
+export * from './session-reads';
 export * from './skill-experiences';
 export * from './skills';
 export * from './task-basis';
@@ -113,8 +130,14 @@ export {
 } from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';
+export * from './terminal-output-session';
+export * from './terminal-runs';
+export * from './terminal-session-store';
+export * from './troubleshoot';
 export * from './unified-search';
 export * from './usage-export';
+export * from './walkthroughs';
+export * from './work-claims';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

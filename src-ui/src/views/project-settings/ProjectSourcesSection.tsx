@@ -2,10 +2,12 @@ import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { LearningReviewPanel } from '../learning-review/LearningReviewPanel';
 import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
 import { ProjectOperatorSetup } from './ProjectOperatorSetup';
 import { ProjectRepositoryAttachment } from './ProjectRepositoryAttachment';
 import { ProjectS3Sources } from './ProjectS3Sources';
+import { ProjectWorkingConfiguration } from './ProjectWorkingConfiguration';
 import { ProjectWorkspaceSelection } from './ProjectWorkspaceSelection';
 import { ResourcesSection } from './ResourcesSection';
 import './ProjectSourcesSection.css';
@@ -80,6 +82,13 @@ export function ProjectSourcesSection({
             />
           )}
           {projectId && (
+            <LearningReviewPanel
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
+          {projectId && (
             <details className="project-sources__group">
               <summary>Where Agent work starts</summary>
               <ProjectWorkspaceSelection
@@ -88,6 +97,11 @@ export function ProjectSourcesSection({
                 authority={authority}
               />
               <ProjectOperatorSetup
+                slug={slug}
+                projectId={projectId}
+                authority={authority}
+              />
+              <ProjectWorkingConfiguration
                 slug={slug}
                 projectId={projectId}
                 authority={authority}

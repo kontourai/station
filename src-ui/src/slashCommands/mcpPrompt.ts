@@ -1,4 +1,7 @@
-import type { AgentMcpPrompt } from '@kontourai/station-contracts/mcp-prompts';
+import type {
+  AgentMcpPrompt,
+  AgentMcpPromptOrigin,
+} from '@kontourai/station-contracts/mcp-prompts';
 import { runAgentMcpPrompt } from '@kontourai/station-sdk';
 import { assignSkillVariableArgs } from '../utils/skill-commands';
 
@@ -13,7 +16,9 @@ export async function runMcpPromptCommand(
   agentSlug: string,
   prompt: AgentMcpPrompt,
   args: string[],
-): Promise<{ text: string } | { refusal: string }> {
+): Promise<
+  { text: string; mcpPromptOrigin: AgentMcpPromptOrigin } | { refusal: string }
+> {
   const assignment = assignSkillVariableArgs(
     prompt.arguments.map((argument) => ({ name: argument.name })),
     args,
@@ -41,7 +46,19 @@ export async function runMcpPromptCommand(
       name: prompt.name,
       arguments: provided,
     });
-    return { text: run.text };
+    if (run.turnOriginSupported !== true || !run.originReceipt)
+      return {
+        refusal:
+          'This Station cannot safely carry MCP prompt origin into a turn. Update Station before sending this prompt.',
+      };
+    return {
+      text: run.text,
+      mcpPromptOrigin: {
+        serverId: run.serverId,
+        name: run.name,
+        receipt: run.originReceipt,
+      },
+    };
   } catch (error) {
     return {
       refusal: `Could not run /${prompt.command}: ${error instanceof Error ? error.message : 'unknown error'}`,

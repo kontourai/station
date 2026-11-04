@@ -1,0 +1,7 @@
+{
+  "revision": "2941002b008737f9cc79062b8b6fe1848e6b8cba",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Round 2 inputs: plugin-install-transaction.ts (receipt pass over copied integration definitions), config-loader(-storage).ts (receipts applied under the integration mutation lock), contracts tool.ts (withUntrustedContentChange helper). Grepped this document: its receipt mentions concern other receipts (scheduler, telemetry, review, permission decisions) and no claim depends on integration receipts or the copy path.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

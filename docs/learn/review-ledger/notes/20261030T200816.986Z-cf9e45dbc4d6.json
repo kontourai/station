@@ -1,0 +1,17 @@
+{
+  "revision": "a5af2106e7fe038253c36fcd8df96c21bbf45f7c",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Compared the artifact reader, permission and transport limits with runtime bootstrap delta: the new owner check belongs to conversation knowledge, not Builder artifact reading. No live plugin, browser, or artifact-tree comparison run.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Compared the workspace, plugin lifecycle and remote transport limitations with the bootstrap delta: it wires conversation file-memory read authority, not Fieldwork facade or plugin lifecycle. No provider-backed or browser journey run.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked status_panel resource registration and example setup against the route delta: plugin command Project/Task requirement admission is separate from MCP-UI resource resolution and frame rendering. No live MCP host run.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the four saved autoApprove metadata entries and no unattended grant in agent.json against the bootstrap delta: the delta wires conversation knowledge read ownership and does not alter this non-plugin Agent example. No model or delegated execution run.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked server fetch still uses /orchestration/sessions against the documented /api prefix and missing auth caveat; plugin command Project/Task admission delta does not repair this reader. No live Station journey run.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Compared Project review-session storage, trust projection and transport caveats with bootstrap delta: conversation knowledge owner authorization does not change this plugin persistence flow. No live Survey review or provider run.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"SystemSection delta is the core-app-updates row label only; desktop app updates and the Connected Station server card stay separate rows. Updater/CSP/build claims unaffected; prose accurate.","inputs":["docs/guides/desktop-build.md","src-ui/src/views/settings/SystemSection.tsx"]}
+  ]
+}

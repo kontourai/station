@@ -242,9 +242,23 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "packages/cli/src/commands/mcp-clients.ts",
+
+    "packages/cli/src/__tests__/mcp-clients.test.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/cli/src/passive-cli.ts",
 
-    "packages/cli/src/distribution-info.ts"
+    "packages/cli/src/distribution-info.ts",
+
+    "packages/cli/src/commands/walkthrough.ts",
+
+    "packages/sdk/src/client/automations.ts",
+
+    "src-server/routes/operations/automations.ts",
+
+    "packages/sdk/src/client/delegations.ts"
   ],
 
   "checks": [

@@ -83,11 +83,6 @@
     },
     {
       "path": "src-ui/src/index.css",
-      "selector": ".attachment-menu__thumbnail",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
-      "path": "src-ui/src/index.css",
       "selector": ".chat-dock__context-actions button:hover, .chat-dock__context-actions button:focus-visible, .chat-dock__context-actions button.is-active",
       "reason": "Custom context-action state remains visible for keyboard focus."
     },
@@ -220,11 +215,6 @@
       "path": "src-ui/src/index.css",
       "selector": ".responsive-surface-panel:focus",
       "reason": "Deliberate: the dialog panel is a non-interactive container that takes programmatic focus (tabindex -1) so the dialog is announced first; under keyboard use every engine draws its default ring around the whole panel. The first Tab lands on a control with the global floor's ring. A dialog with no controls is left without visible focus. Pinned by tests/pdf-canvas-preview.spec.ts keyboard-open case."
-    },
-    {
-      "path": "src-ui/src/components/modals/TaskChatStart.css",
-      "selector": ".task-chat-start .start-composer__box .start-composer__input:focus-visible",
-      "reason": "The containing Task shaping composer draws the token-based focus-within outline for keyboard and pointer focus. Suppress only the duplicate inner textarea outline; the outer visible ring remains in both themes."
     }
   ]
 }

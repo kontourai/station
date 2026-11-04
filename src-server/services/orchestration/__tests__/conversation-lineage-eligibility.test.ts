@@ -5,6 +5,7 @@ import {
   ConversationLineage,
   canResolveConversationContinuation,
 } from '../conversation-lineage.js';
+import type { EventStore } from '../event-store.js';
 
 function detail(
   overrides: Partial<OrchestrationSessionDetail['session']> = {},
@@ -28,10 +29,47 @@ function detail(
   };
 }
 
-function lineageFor(current: OrchestrationSessionDetail) {
+// Eligibility fixtures have empty source history; reservation still uses the
+// production pin builder and returns its pin without inventing delivery proof.
+function emptyStartContextStore(): Pick<
+  EventStore,
+  | 'conversationStartContext'
+  | 'conversationContextBoundaryForSuccessor'
+  | 'conversationForSession'
+  | 'readSessionInventoryHighWater'
+  | 'reserveConversationStartContext'
+  | 'isCoordinatorToolsRestart'
+> {
+  return {
+    conversationStartContext: () => undefined,
+    conversationContextBoundaryForSuccessor: () => undefined,
+    conversationForSession: (sessionId) => ({
+      conversationId: 'conversation-policy',
+      sessionId,
+      ordinal: 1,
+      createdAt: '2026-08-29T00:00:00.000Z',
+    }),
+    readSessionInventoryHighWater: () => 0,
+    reserveConversationStartContext: (_sessionId, pin) => pin,
+    isCoordinatorToolsRestart: () => false,
+  };
+}
+
+function lineageFor(
+  current: OrchestrationSessionDetail,
+  needsToolsSuccessor = false,
+) {
   const reserveNextConversationSession = vi.fn();
+  reserveNextConversationSession.mockImplementation(
+    ({ proposedSessionId }) => ({
+      outcome: 'reserved',
+      lineage: { sessionId: proposedSessionId },
+    }),
+  );
   const lineage = new ConversationLineage({
     eventStore: {
+      conversationHandoffForSession: () => undefined,
+      ...emptyStartContextStore(),
       conversationSessions: () => [
         {
           conversationId: 'conversation-policy',
@@ -41,10 +79,13 @@ function lineageFor(current: OrchestrationSessionDetail) {
         },
       ],
       reserveNextConversationSession,
+      isCoordinatorToolsRestart: () => needsToolsSuccessor,
     } as any,
     logger: { warn: vi.fn() },
+    needsCoordinatorToolsSuccessor: () => needsToolsSuccessor,
     readSession: async () => current,
     readSessionMessages: () => [],
+    readSessionSeedMessages: () => [],
     listSessionReadModel: async () => [],
     canReadSession: () => true,
   });
@@ -72,6 +113,29 @@ const stoppedUnloadedPatch = (
 });
 
 describe('#749 shared continuation control eligibility', () => {
+  test('a running coordinator that needs a tools successor reserves a continuation', async () => {
+    const current = detail({ provider: 'codex' });
+    const { lineage, reserveNextConversationSession } = lineageFor(
+      current,
+      true,
+    );
+    expect(
+      await lineage.nextTurnStartsSession(
+        'conversation-policy',
+        current,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).toBe(true);
+    const result = await lineage.resolveConversationContinuation(
+      'conversation-policy',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'codex' },
+    );
+    expect(result.startRequired).toBe(true);
+    expect(result.coordinatorToolsRestart).toBe(true);
+    expect(result.sessionId).not.toBe('conversation-policy');
+    expect(reserveNextConversationSession).toHaveBeenCalledOnce();
+  });
   test.each([
     ['read-only', { controlMode: 'read-only-attached' as const }],
     ['pending review', { pendingReview: true }],
@@ -242,10 +306,70 @@ describe('#749 shared continuation control eligibility', () => {
     });
     expect(reserveNextConversationSession).not.toHaveBeenCalled();
   });
-  describe('a model change on a session that cannot take it per turn', () => {
-    function restartLineage(current: OrchestrationSessionDetail) {
+  // The chat composer's engine chip names the engine this conversation runs
+  // on. An Agent repointed to another connection does not move an open
+  // conversation: the next turn stays on the current Session's engine. Only a
+  // Session whose engine binding ended starts a successor, and that successor
+  // starts on the requested (the Agent's current) engine.
+  describe('an Agent repointed to another engine', () => {
+    const repointed = { provider: 'acp' as const, connectionId: 'opencode' };
+
+    test('keeps an open Codex session for the next turn', async () => {
+      const current = detail({ provider: 'codex', status: 'ready' });
+      const { lineage, reserveNextConversationSession } = lineageFor(current);
+      // A working reservation, so a regression that reserves a successor
+      // fails on the assertions below rather than on a missing mock.
+      reserveNextConversationSession.mockReturnValue({
+        outcome: 'created',
+        lineage: { sessionId: 'new-child' },
+      });
+      await expect(
+        lineage.resolveConversationContinuation(
+          'conversation-policy',
+          INTERNAL_SESSION_READ_SCOPE,
+          repointed,
+        ),
+      ).resolves.toEqual({
+        sessionId: 'conversation-policy',
+        startRequired: false,
+      });
+      expect(reserveNextConversationSession).not.toHaveBeenCalled();
+    });
+
+    test('starts a successor on the new engine once the Codex binding ended', async () => {
+      const current = detail({ provider: 'codex', status: 'dead' });
+      const { lineage, reserveNextConversationSession } = lineageFor(current);
+      reserveNextConversationSession.mockReturnValue({
+        outcome: 'created',
+        lineage: { sessionId: 'new-child' },
+      });
+      const resolved = await lineage.resolveConversationContinuation(
+        'conversation-policy',
+        INTERNAL_SESSION_READ_SCOPE,
+        repointed,
+      );
+      expect(resolved).toMatchObject({
+        sessionId: 'new-child',
+        startRequired: true,
+      });
+      // Cross-engine: no native cursor or model is carried, only history.
+      expect(resolved).not.toHaveProperty('resumeCursor');
+      expect(resolved).not.toHaveProperty('resumeModel');
+    });
+
+    // The one exception for an open Session: a model override the requested
+    // engine cannot take per turn starts a successor, and that successor
+    // starts on the requested engine (docs/design/chat-composer.md §3.1).
+    test('a per-turn model override the requested engine cannot apply starts a successor', async () => {
+      const current = detail({
+        provider: 'codex',
+        status: 'ready',
+        model: 'gpt-6.1-sol',
+      });
       const lineage = new ConversationLineage({
         eventStore: {
+          conversationHandoffForSession: () => undefined,
+          ...emptyStartContextStore(),
           conversationSessions: () => [
             {
               conversationId: 'conversation-policy',
@@ -262,6 +386,44 @@ describe('#749 shared continuation control eligibility', () => {
         logger: { warn: vi.fn() },
         readSession: async () => current,
         readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
+        listSessionReadModel: async () => [],
+        canReadSession: () => true,
+        perTurnModelOverride: (provider) => provider !== 'acp',
+      });
+      await expect(
+        lineage.resolveConversationContinuation(
+          'conversation-policy',
+          INTERNAL_SESSION_READ_SCOPE,
+          { ...repointed, modelOverride: 'other-model' },
+        ),
+      ).resolves.toMatchObject({ sessionId: 'new-child', startRequired: true });
+    });
+  });
+
+  describe('a model change on a session that cannot take it per turn', () => {
+    function restartLineage(current: OrchestrationSessionDetail) {
+      const lineage = new ConversationLineage({
+        eventStore: {
+          conversationHandoffForSession: () => undefined,
+          ...emptyStartContextStore(),
+          conversationSessions: () => [
+            {
+              conversationId: 'conversation-policy',
+              sessionId: 'conversation-policy',
+              ordinal: 0,
+              createdAt: '2026-08-29T00:00:00.000Z',
+            },
+          ],
+          reserveNextConversationSession: () => ({
+            outcome: 'created',
+            lineage: { sessionId: 'new-child' },
+          }),
+        } as any,
+        logger: { warn: vi.fn() },
+        readSession: async () => current,
+        readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
         listSessionReadModel: async () => [],
         canReadSession: () => true,
         perTurnModelOverride: () => false,

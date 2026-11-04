@@ -96,7 +96,7 @@
   display: block;
   margin-top: 0;
   color: var(--k-brand);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   text-transform: capitalize;
 }
 
@@ -161,7 +161,7 @@
   gap: 4px;
   margin: var(--k-space-6) var(--k-space-2) var(--k-space-2);
   padding: 0;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -295,7 +295,7 @@
 
 .sidebar__project-btn--active {
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
-  color: var(--k-action);
+  color: var(--k-text);
 }
 
 .sidebar__project-row .sidebar__project-btn--active {
@@ -353,7 +353,7 @@
   right: 2px;
   min-width: 1rem;
   padding: 0 0.25rem;
-  font-size: 0.65rem;
+  font-size: var(--k-text-xs);
   line-height: 1rem;
 }
 
@@ -575,7 +575,7 @@
 
 .sidebar__views-message {
   margin: var(--k-space-2) var(--k-space-3);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 
@@ -636,7 +636,7 @@
 /* Panel destination rows. #2059 (D3): these sit INSIDE the scrolling body,
    directly under Home, rather than forming a bordered band pinned below the
    projects — the band existed to hold eleven configuration destinations that
-   now live behind the gear. `.sidebar__nav-btn` shares
+   now live behind the footer's Customize chooser. `.sidebar__nav-btn` shares
    `.sidebar__project-btn`'s box metrics, so no padding of its own is what
    keeps Activity aligned with Home. */
 .sidebar__nav {
@@ -773,7 +773,7 @@
 }
 .sidebar__recent-task small {
   /* Metadata size, matching the status line's session count. */
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 .sidebar--collapsed .sidebar__recent-task {

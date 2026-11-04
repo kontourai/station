@@ -98,7 +98,8 @@ export class ProviderVoiceSessionAdapter
     let cause: unknown;
 
     try {
-      this.stt.stopListening();
+      if (this.stt.cancelListening) this.stt.cancelListening();
+      else this.stt.stopListening();
     } catch (error) {
       cause = error;
     }
@@ -156,6 +157,7 @@ export class ProviderVoiceSessionAdapter
     }
     if (this.tts.speaking) return this.publish('speaking');
     if (this.stt.state === 'listening') return this.publish('listening');
+    if (this.stt.state === 'transcribing') return this.publish('transcribing');
     return this.publish('connected-idle');
   }
 
@@ -214,7 +216,8 @@ export class ProviderVoiceSessionAdapter
 
   private cleanupAfterFailedStart(): void {
     try {
-      this.stt.stopListening();
+      if (this.stt.cancelListening) this.stt.cancelListening();
+      else this.stt.stopListening();
     } catch {}
     try {
       this.tts.cancel();

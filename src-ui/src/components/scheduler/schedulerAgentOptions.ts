@@ -23,7 +23,16 @@ import { type AgentRunnability, agentRunnability } from '../agent-runnability';
  *    is the only thing that tells a person what to fix.
  */
 export const SCHEDULER_ENGINE_AGENT_NOTE =
-  "Scheduled jobs run on Station's own engine, so Agents bound to an external engine are not listed.";
+  "File-output runs use Station's own engine, so Agents bound to an external engine are not listed.";
+
+/**
+ * Both questions change for an automation that runs in a chat (`anyEngine`):
+ * its turn goes through the conversation's inbox to whatever engine the
+ * Agent is bound to, so every Agent is eligible and only readiness applies.
+ * The UI asks for it only when the host advertises
+ * `scheduledConversationTarget`; an older host still runs Station-engine only.
+ */
+export type SchedulerAgentEligibility = { anyEngine?: boolean };
 
 /**
  * Spoken on the one row that names an ineligible Agent: an edited job's own.
@@ -64,11 +73,12 @@ type SchedulerAgentOptions = {
 
 export function schedulerAgentOptions(
   agents: readonly AgentData[],
+  { anyEngine = false }: SchedulerAgentEligibility = {},
 ): SchedulerAgentOptions {
   const eligible: AgentData[] = [];
   const excludedEngineAgents: AgentData[] = [];
   for (const agent of agents) {
-    if (isSchedulerEligibleAgent(agent)) eligible.push(agent);
+    if (anyEngine || isSchedulerEligibleAgent(agent)) eligible.push(agent);
     else excludedEngineAgents.push(agent);
   }
   const defaultAgent = eligible.find(
@@ -90,12 +100,13 @@ export function schedulerAgentOptions(
 export function schedulerAgentRunnability(
   agents: readonly AgentData[],
   slug: string,
+  { anyEngine = false }: SchedulerAgentEligibility = {},
 ): AgentRunnability {
   const agent = agents.find((candidate) => candidate.slug === slug);
   if (!agent) {
     return { runnable: false, reason: schedulerMissingAgentReason(slug) };
   }
-  if (!isSchedulerEligibleAgent(agent)) {
+  if (!anyEngine && !isSchedulerEligibleAgent(agent)) {
     return { runnable: false, reason: SCHEDULER_ENGINE_AGENT_REASON };
   }
   return agentRunnability(agent);

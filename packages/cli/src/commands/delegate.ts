@@ -22,6 +22,7 @@ import type { StagedAttachmentReference } from '@kontourai/station-contracts/att
  *   station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>]
  *     [--interval=<seconds>] [--json]
  *   station delegate targets [--on=<environment>] [--project=<slug> | --project-path=<path>] [--json]
+ *   station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
  *
  * `--on=<environment>` is accepted on task supervision sub-verbs and
  * create/targets; `attempt` instead requires the executing receiver directly.
@@ -37,7 +38,7 @@ import type { StagedAttachmentReference } from '@kontourai/station-contracts/att
  * see `client/delegations.ts`'s module docblock.
  *
  * Dispatch: the sub-verb names (`attempt`, `status`, `events`, `continue`,
- * `respond`, `interrupt`, `targets`, `wait`) are only treated as an action
+ * `respond`, `interrupt`, `targets`, `wait`, `list`) are only treated as an action
  * word when `--agent` is not present. `create` is the only verb
  * that takes a target flag, so a bare `station delegate --agent=<slug>
  * status ...` prompt (whose text happens to start with a reserved word) is
@@ -73,6 +74,7 @@ import {
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
+  type DelegatedTaskInventory,
   type DelegatedTaskReason,
   type DelegatedTaskRequestResponseHandle,
   type DelegatedTaskSnapshot,
@@ -83,10 +85,12 @@ import {
   discoverDelegationOptions,
   type ForegroundMessageReceipt,
   interruptDelegatedTask,
+  listDelegatedTasks,
   lookupDelegationAttempt,
   observeDelegatedTask,
   observeDelegatedTaskEvents,
   respondToDelegatedTaskRequest,
+  sentTurnKey,
 } from '@kontourai/station-sdk/client';
 import { listPendingForThread } from './approvals.js';
 import {
@@ -157,7 +161,11 @@ function buildDelegateRespondCommand(
   )} <accept|acceptForSession|decline|cancel>`;
 }
 
-const RESERVED_ACTIONS = new Set([
+/**
+ * The supervision and discovery sub-verbs. A `--session` follow-up that
+ * starts with one is refused as ambiguous; see {@link RESERVED_ACTIONS}.
+ */
+const SUPERVISION_ACTIONS = new Set([
   'attempt',
   'status',
   'events',
@@ -167,6 +175,13 @@ const RESERVED_ACTIONS = new Set([
   'targets',
   'wait',
 ]);
+
+/**
+ * Every word read as a sub-verb without `--agent`. `list` is not refused
+ * after `--session`: it was never ambiguous there, and "list the files" is an
+ * ordinary follow-up.
+ */
+const RESERVED_ACTIONS = new Set([...SUPERVISION_ACTIONS, 'list']);
 
 function delegateContinuationCommand(conversationId: string): string {
   return `station delegate --session=${shellQuote(conversationId)} "<message>"`;
@@ -214,6 +229,8 @@ function formatDelegateSummary(kind: string, data: unknown): string {
       return formatInterruptSummary(data as DelegatedTaskInterruptResult);
     case 'targets':
       return formatTargetsSummary(data as DelegationOptions);
+    case 'list':
+      return formatListSummary(data as DelegatedTaskInventory);
     default:
       return JSON.stringify(data, null, 2);
   }
@@ -565,6 +582,23 @@ function formatInterruptSummary(result: DelegatedTaskInterruptResult): string {
   return `Interrupt requested for task ${result.taskId} (status: ${result.status})`;
 }
 
+function formatListSummary(inventory: DelegatedTaskInventory): string {
+  const lines = [
+    `Delegated tasks on ${inventory.environment.name} (${inventory.environment.kind})`,
+  ];
+  if (inventory.tasks.length === 0) lines.push('  (none)');
+  for (const task of inventory.tasks) {
+    const project = task.projectSlug ? ` in ${task.projectSlug}` : '';
+    lines.push(
+      `  ${task.taskId} — ${task.status} — ${displayTargetKind(task.target.kind)} '${task.target.id}'${project}`,
+    );
+  }
+  // The server bounds the inventory; say so rather than imply it is whole.
+  if (inventory.truncated)
+    lines.push('More tasks exist than shown; raise --limit (at most 100).');
+  return lines.join('\n');
+}
+
 function formatTargetsSummary(options: DelegationOptions): string {
   const lines = [
     `Targets on ${options.environment.name} (${options.environment.kind})`,
@@ -595,15 +629,35 @@ function formatTargetsSummary(options: DelegationOptions): string {
 function handleDelegateFailure(
   error: unknown,
   resolvedApiBase: ResolvedApiBase | undefined,
+  options?: {
+    jsonMode: boolean;
+    clientTurnId?: string;
+    conversationId?: string;
+  },
 ): never {
   const message = error instanceof Error ? error.message : String(error);
   const transportMessage = explainRequestFailure(error, resolvedApiBase);
-  console.error(
-    'Error:',
+  const outward =
     transportMessage ??
-      explainFullAccessRefusal(error, resolvedApiBase) ??
-      message,
-  );
+    explainFullAccessRefusal(error, resolvedApiBase) ??
+    message;
+  const clientTurnId = sentTurnKey(error) ?? options?.clientTurnId;
+  if (options?.jsonMode && clientTurnId)
+    console.error(
+      JSON.stringify({
+        success: false,
+        error: outward,
+        clientTurnId,
+        ...(options.conversationId
+          ? { conversationId: options.conversationId }
+          : {}),
+      }),
+    );
+  else {
+    console.error('Error:', outward);
+    if (clientTurnId)
+      console.error('Request key:', JSON.stringify(clientTurnId));
+  }
   process.exit(transportMessage ? 2 : 3);
 }
 
@@ -788,6 +842,9 @@ async function runDelegateCreate(
   parsed: ParsedCoreArgs,
   jsonMode: boolean,
 ): Promise<void> {
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200)
+    throw new Error('--client-turn-id must be at most 200 characters.');
   const agent = optionalValueFlag(parsed, 'agent');
   if (!agent) {
     throw new Error('An Agent selector is required.');
@@ -831,6 +888,7 @@ async function runDelegateCreate(
       : undefined;
     data = await delegateTask(apiBase, {
       prompt,
+      ...(clientTurnId ? { clientTurnId } : {}),
       ...(attachmentRefs ? { attachmentRefs } : {}),
       target: {
         environment,
@@ -866,7 +924,10 @@ async function runDelegateCreate(
     // probe below from ever running with an unassigned `data` — relying on
     // `process.exit`'s real-world termination alone is fragile whenever a
     // caller (e.g. a test) mocks `process.exit` as a no-op.
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId,
+    });
   }
 
   // station#979 review r1 HIGH fix: the dispatch above already succeeded
@@ -950,6 +1011,9 @@ async function runDelegateContinuation(
     deprecatedAlias?: boolean;
   },
 ): Promise<void> {
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200)
+    throw new Error('--client-turn-id must be at most 200 characters.');
   const message = await loadTextInput(parsed, options.messageIndex);
   const environment = executionEnvironment(parsed);
   const environmentId =
@@ -979,6 +1043,7 @@ async function runDelegateContinuation(
       {
         environment,
         message,
+        ...(clientTurnId ? { clientTurnId } : {}),
         ...(model || modelOptions
           ? {
               model: {
@@ -1001,13 +1066,18 @@ async function runDelegateContinuation(
   try {
     data = await continueDelegatedTask(apiBase, options.conversationId, {
       message,
+      ...(clientTurnId ? { clientTurnId } : {}),
       ...(environmentId ? { environmentId } : {}),
       ...(model ? { model } : {}),
       ...(modelOptions ? { modelOptions } : {}),
     });
   } catch (error) {
     // Same guard as `runDelegateCreate` above.
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId,
+      conversationId: options.conversationId,
+    });
   }
 
   // station#979 review r1 HIGH fix: same best-effort probe as create above —
@@ -1046,7 +1116,11 @@ async function runConversationContinuation(
   try {
     receipt = await continueExecutionMessage(apiBase, conversationId, input);
   } catch (error) {
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId: input.clientTurnId,
+      conversationId,
+    });
   }
   const data = {
     ...receipt,
@@ -1194,6 +1268,43 @@ async function runDelegateTargets(
   }
 }
 
+/** The bounds `list_delegated_tasks` and the listing route accept. */
+const LIST_MAX_LIMIT = 100;
+
+/**
+ * `station delegate list`: the person's own delegated tasks on one
+ * Environment, over the same route and fetcher as Station Control's
+ * `list_delegated_tasks` (`GET /api/orchestration/delegations`).
+ */
+async function runDelegateList(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  jsonMode: boolean,
+): Promise<void> {
+  const environment = executionEnvironment(parsed);
+  const environmentId =
+    environment.kind === 'saved' ? environment.id : undefined;
+  const rawLimit = optionalValueFlag(parsed, 'limit');
+  let limit: number | undefined;
+  if (rawLimit !== undefined) {
+    limit = Number(rawLimit);
+    // A bound is a refusal, never a silent clamp.
+    if (!Number.isInteger(limit) || limit < 1 || limit > LIST_MAX_LIMIT)
+      throw new Error(
+        `--limit must be a whole number from 1 to ${LIST_MAX_LIMIT}.`,
+      );
+  }
+  try {
+    const data = await listDelegatedTasks(apiBase, {
+      ...(environmentId ? { environmentId } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    printDelegateResult('list', data, jsonMode);
+  } catch (error) {
+    handleDelegateFailure(error, getResolvedApiBase());
+  }
+}
+
 /**
  * #2264 — `station delegate wait` command seam. The observation loop,
  * outcome classification, and duration/flag validation live in
@@ -1298,7 +1409,10 @@ export async function runDelegateCommand(
         'Use --agent to start a new delegation or --session to continue a conversation, not both.',
       );
     }
-    if (parsed.positionals[0] && RESERVED_ACTIONS.has(parsed.positionals[0])) {
+    if (
+      parsed.positionals[0] &&
+      SUPERVISION_ACTIONS.has(parsed.positionals[0])
+    ) {
       throw new Error(
         '--session continues a conversation with a message; status, events, respond, and interrupt operate on the current Session/task by their positional id.',
       );
@@ -1347,6 +1461,8 @@ export async function runDelegateCommand(
       return runDelegateInterrupt(apiBase, parsed, jsonMode);
     case 'targets':
       return runDelegateTargets(apiBase, parsed, jsonMode);
+    case 'list':
+      return runDelegateList(apiBase, parsed, jsonMode);
     case 'wait':
       return runDelegateWait(apiBase, parsed, jsonMode);
     default:

@@ -1,0 +1,35 @@
+{
+  "revision": "8d08ff9af8bd7c724777b7cc58549a557db3edff",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"gate:for delta: still the pre-edit routing command; it now also prints gallery screens for UI paths. No root-instruction claim changed.","inputs":["AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta only (gallery product assertions section). No operations vocabulary or relationship changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts delta records hit-target/overflow/axe findings after each shot; reduced-motion screens and their motion-contract assertions are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"gate:for delta adds gallery screen routing for .tsx/.css; the ChangePlan consumption and hygiene guidance described here are unchanged.","inputs":["docs/guides/code-hygiene.md","scripts/gate-for.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Added one sentence: gate:for names gallery screens and capture commands for UI source, linked to the testing guide section. Checked against scripts/gate-for.mjs and scripts/lib/gallery-screen-coverage.mjs output.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"e2e-manifest delta is the screenshot spec rationale only (bucket and tier unchanged). Screenshot bucket description remains accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Added Gallery product assertions: audits, touch-only 44px rule with the measured desktop count, overflow rule, axe, judge modes, shrink-only growth job, gate:for routing. Corrected the advisory-only Gallery sentence; checked live main ruleset has no Gallery required check. Traced gallery-pr-check.yml, screenshots.spec.ts, gallery-ui-audit.ts, gallery-ui-findings.mjs.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts delta adds per-screen audits; the telemetry desktop/390px scenes listed here are unchanged and still defined.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"e2e-manifest delta changes only the screenshot spec rationale; browser smoke lanes and artifact retention are unaffected.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"vitest-resource-manifest delta classifies two new scripts tests as process-heavy; no agent-runtime context changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"New child-process tests are classified in vitest-resource-manifest.mjs as required; testing.md delta is the gallery section. Scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"gate:for delta concerns src-ui/pane UI paths; desktop routing unchanged.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta is the gallery assertions section; server scope guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta adds gallery assertions and gate:for screen routing for UI paths; existing 44px-mobile and both-themes guidance remains consistent.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta is the gallery assertions section; fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

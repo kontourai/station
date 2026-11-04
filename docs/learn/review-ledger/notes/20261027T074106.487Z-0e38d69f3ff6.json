@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/guides/repository-layout.md","note":"Claim search (transcript seeds, continuation, handoff/catch-up, readSessionMessages, viewedContentDigest, out-of-line content, delegation results) found no claim in this document about what changed in this round (seed-only resolving reader, explicit digest max, SSR snapshot getter, delegation test stub). Its dependency is through the orchestration hub files. No prose change.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

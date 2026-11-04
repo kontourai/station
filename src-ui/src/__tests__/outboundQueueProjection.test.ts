@@ -253,6 +253,22 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
       title: 'Chat',
     });
     activeChatsStore.updateChat('session-b', {
+      status: 'queued',
+      ephemeralMessages: [
+        {
+          id: 'retry',
+          role: 'system',
+          content: 'Queued to retry automatically',
+          timestamp: 1,
+          queuedRetry: true,
+        },
+        {
+          id: 'interrupted',
+          role: 'system',
+          content: 'Turn interrupted',
+          timestamp: 1,
+        },
+      ],
       localSendKeys: ['gone', 'went'],
       messages: [
         {
@@ -287,5 +303,9 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     expect(chat?.messages?.map((message) => message.id)).toEqual(['h', 'went']);
     expect(chat?.deliveryChecks?.went).toBe('started');
     expect(chat?.localSendKeys).toEqual([]);
+    expect(chat?.ephemeralMessages?.map((message) => message.id)).toEqual([
+      'interrupted',
+    ]);
+    expect(chat?.status).toBe('idle');
   });
 });

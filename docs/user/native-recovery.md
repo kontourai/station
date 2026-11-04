@@ -62,7 +62,7 @@ any action from you (unless Station was launched in the background, or you
 closed the window while waiting), and the macOS cover and its buttons
 disappear. While that window is still waiting to open there is no time limit
 on the service starting, including on a first launch, when Station creates
-this computer's local connection only after the service is running. If the service fails instead,
+this computer's local connection only after the service is running. If the Desktop-owned backend fails instead,
 waiting does not help: the **Restart** and **Quit** choices above still appear
 when the 30 seconds pass, and Restart starts it again and lets Station finish
 opening. If Station's window is already open (for example after you reload it,
@@ -97,6 +97,11 @@ collect the bounded diagnostics below. A data-home schema error containing
 `STATION_HOME_RESET_REQUIRED` is deliberately fail-closed: restart attempts do
 not repair it. Follow the exact `station home reset` conditions only after you
 have a backup and have selected the intended home.
+
+A [managed policy](https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md) error containing
+`STATION_MANAGED_POLICY_INVALID` is also fail-closed. Your organization's
+policy on this computer cannot be used, so the app reports the failure without
+restarting. Only an administrator can fix or remove the policy.
 
 Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app

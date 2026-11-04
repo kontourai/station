@@ -1,0 +1,7 @@
+{
+  "revision": "d78b225f5394a5bc98efff510bd5c8eeff17f1b7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Searched this document for claims about the changed behavior Changed sources: start now restarts an instance whose core server is dead instead of reporting it running (#4002), and a failed start names the connect error, the logged cause and the log path (#4382). No remaining claim here contradicts them.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

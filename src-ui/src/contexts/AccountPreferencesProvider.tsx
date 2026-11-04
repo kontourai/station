@@ -26,6 +26,7 @@ import { StartupScreen } from '../components/StartupScreen';
 import { applyAccentColor } from '../lib/accent-contrast';
 import { applyAccountPreferencePatch } from '../lib/account-preference-values';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { applyThemeMode, subscribeSystemThemeMode } from '../lib/theme-mode';
 import { AccountPreferencesContext } from './AccountPreferencesContext';
 import { useApiBase, useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
@@ -86,6 +87,9 @@ export function AccountPreferencesProvider({
   const mutation = useMutation({
     mutationKey: queryKey,
     scope: { id: JSON.stringify(queryKey) },
+    // Preferences are designed to wait for the connection (see
+    // `waitingForConnection`), unlike the app's fail-fast mutation default.
+    networkMode: 'online',
     mutationFn: (write: PendingWrite) => {
       if (!write.scope.isCurrent()) throw new Error('Account access changed.');
       return patchAccountPreferences(
@@ -238,7 +242,7 @@ export function AccountPreferencesProvider({
     let failureShown = false;
     const apply = () => {
       const settings = deviceSettingsStore.getSnapshot();
-      document.documentElement.setAttribute('data-theme', settings.theme);
+      applyThemeMode(document.documentElement, settings.theme);
       applyAccentColor(document.documentElement, settings.accentColor);
       if (deviceSettingsStore.isPersistenceFailed() && !failureShown) {
         toastStore.show(
@@ -253,7 +257,12 @@ export function AccountPreferencesProvider({
       failureShown = deviceSettingsStore.isPersistenceFailed();
     };
     apply();
-    return deviceSettingsStore.subscribe(apply);
+    const stopSystem = subscribeSystemThemeMode(apply);
+    const stopSettings = deviceSettingsStore.subscribe(apply);
+    return () => {
+      stopSystem();
+      stopSettings();
+    };
   }, []);
   if (
     eligible &&

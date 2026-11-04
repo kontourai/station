@@ -286,6 +286,11 @@ scheduler.subscribe(send)                 // SSE subscription; returns unsubscri
 
 **Schedule format:** A job carries either a bare `cron` string (5-field UTC, back-compat) or an `@kontourai/ephemeris` `Schedule` (`{kind:'cron',expr,timezone?}` | `{kind:'at',timeMs,deleteAfterRun?}` | `{kind:'every',everyMs}`). Evaluation — including DST-aware timezone projection, catch-up after host-down, and one-shot self-disable — is delegated to ephemeris's pure schedule core.
 
+**Conversation targets:** a job with a `target` runs through the optional
+`conversationRuns` option (`ScheduledConversationRuns`) instead of the
+scheduled-turn adapter; runtime composition supplies it only where a thread
+inbox exists.
+
 **When to use:** Runtime composition uses `BuiltinScheduler` through
 `SchedulerService`. HTTP, the React-free SDK, CLI, and station-control MCP use
 the same `SCHEDULER_OPERATOR_SURFACE` contract. The public manual-run success payload retains

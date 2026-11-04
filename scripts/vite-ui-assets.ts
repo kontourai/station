@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import type { Plugin } from 'vite';
@@ -62,13 +62,58 @@ export function sharedShikiGrammars(): Plugin {
   };
 }
 
+/** Brotli and gzip copies worth serving for `bytes`, smallest wins on the wire. */
+function compressedSidecars(bytes: Buffer): Array<readonly [string, Buffer]> {
+  if (bytes.length < 1024) return [];
+  return (
+    [
+      [
+        'br',
+        brotliCompressSync(bytes, {
+          params: { [constants.BROTLI_PARAM_QUALITY]: 9 },
+        }),
+      ],
+      ['gz', gzipSync(bytes, { level: 9 })],
+    ] as const
+  ).filter(([, compressed]) => compressed.length < bytes.length);
+}
+
+/**
+ * Directories Vite copies verbatim from `public/`, outside the bundle the
+ * `generateBundle` pass sees. Theme stylesheets are loaded at startup when
+ * one is selected, so they get the same sidecars as bundled CSS.
+ */
+const PUBLIC_PRECOMPRESSED_DIRECTORIES = ['color-themes'];
+
 export function uiAssetDelivery({ precompress = true } = {}): Plugin {
   let base = '/';
+  let outDir = '';
   return {
     name: 'station-ui-asset-delivery',
     apply: 'build',
     configResolved(config) {
       base = config.base;
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    writeBundle() {
+      if (!precompress) return;
+      for (const directory of PUBLIC_PRECOMPRESSED_DIRECTORIES) {
+        const root = path.join(outDir, directory);
+        let names: string[];
+        try {
+          names = readdirSync(root);
+        } catch {
+          continue;
+        }
+        for (const name of names) {
+          if (!name.endsWith('.css')) continue;
+          const file = path.join(root, name);
+          for (const [extension, compressed] of compressedSidecars(
+            readFileSync(file),
+          ))
+            writeFileSync(`${file}.${extension}`, compressed);
+        }
+      }
     },
     transformIndexHtml: {
       order: 'post',
@@ -106,23 +151,12 @@ export function uiAssetDelivery({ precompress = true } = {}): Plugin {
           const bytes = Buffer.from(
             output.type === 'chunk' ? output.code : output.source,
           );
-          if (bytes.length < 1024) continue;
-          for (const [extension, compressed] of [
-            [
-              'br',
-              brotliCompressSync(bytes, {
-                params: { [constants.BROTLI_PARAM_QUALITY]: 9 },
-              }),
-            ],
-            ['gz', gzipSync(bytes, { level: 9 })],
-          ] as const) {
-            if (compressed.length < bytes.length)
-              this.emitFile({
-                type: 'asset',
-                fileName: `${output.fileName}.${extension}`,
-                source: compressed,
-              });
-          }
+          for (const [extension, compressed] of compressedSidecars(bytes))
+            this.emitFile({
+              type: 'asset',
+              fileName: `${output.fileName}.${extension}`,
+              source: compressed,
+            });
         }
       },
     },

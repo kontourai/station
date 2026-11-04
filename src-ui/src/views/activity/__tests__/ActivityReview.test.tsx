@@ -40,6 +40,7 @@ import { SessionsView } from '../../SessionsView';
 
 const network = vi.hoisted(() => ({ read: vi.fn() }));
 let sessions: OrchestrationSessionSummary[] = [];
+let sessionsLoading = false;
 let responseStatus = 200;
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -47,9 +48,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useAgentsQuery: () => ({ data: [], isLoading: false }),
   useProjectsQuery: () => ({ data: [], isSuccess: true }),
   useProjectIdentityQuery: () => ({ isSuccess: false, isError: false }),
+  // A cold load (a reload of `/` with Activity restored in `main`, #4379)
+  // has no inventory yet: the query hands back `undefined`, not an array.
   useOrchestrationSessionsQuery: () => ({
-    data: sessions,
-    isLoading: false,
+    data: sessionsLoading ? undefined : sessions,
+    isLoading: sessionsLoading,
     refetch: vi.fn(),
   }),
   usePullRequestContextQuery: () => ({ data: { available: false } }),
@@ -197,6 +200,7 @@ beforeEach(() => {
     session('b', 'Review beta', 'one', 3),
     session('c', 'Review gamma', 'one', 4),
   ];
+  sessionsLoading = false;
   responseStatus = 200;
   network.read.mockReset();
   network.read.mockImplementation(async (url: string) => {
@@ -218,6 +222,29 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+test('Activity in main renders without an update loop while its inventory is still loading (#4379)', async () => {
+  sessionsLoading = true;
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    // A per-render re-publish of the (empty) review source throws React's
+    // "Maximum update depth exceeded" out of this mount.
+    const view = await mount();
+    expect(model.regions.main.occupant).toBe('activity');
+    sessionsLoading = false;
+    view.refresh();
+    expect(
+      await within(list()).findByRole('button', { name: 'Review alpha' }),
+    ).toBeTruthy();
+    expect(
+      errors.mock.calls.some((call) =>
+        String(call[0]).includes('Maximum update depth'),
+      ),
+    ).toBe(false);
+  } finally {
+    errors.mockRestore();
+  }
 });
 
 test('review and siblings preserve the main selection, search, visible ordering and scroll; Open keeps and reopening focuses', async () => {

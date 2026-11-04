@@ -1,0 +1,7 @@
+{
+  "revision": "f440ac1fced255be3a4c448ae6fcee18b2eff9cf",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked the four script aliases against package.json and run-veritas-readiness.mjs: the wrapper invokes the same readiness arguments and adds Git shell discovery on Windows. The documented CLI exit semantics and evidence locations remain applicable; no independent readiness verdict is claimed.","inputs":[".veritas/README.md","package.json#/scripts/veritas:coverage","package.json#/scripts/veritas:readiness","package.json#/scripts/veritas:readiness:diff","package.json#/scripts/veritas:shadow"]}
+  ]
+}

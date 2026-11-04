@@ -13,6 +13,7 @@
  * always-visible touch actions at a phone viewport.
  */
 
+import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -34,17 +35,25 @@ import {
 } from '../../../../../tests/helpers/css-cascade-fixture';
 import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { writeSnooze } from '../../../utils/activity-snooze-store';
-import type { HomeWorkItem } from '../../../views/home/home-view-model';
-import type { WorkFactsById } from '../../../views/home/work-facts';
+import {
+  buildHomeWorkItems,
+  type HomeWorkItem,
+} from '../../../views/home/home-view-model';
+import {
+  buildWorkFacts,
+  type WorkFactsById,
+} from '../../../views/home/work-facts';
+import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
-import { MobileTaskSwitcher } from '../../chat-dock/MobileTaskSwitcher';
+import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
   '../../../index.css',
   '../../chat/chat.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
   '../../icons/ProjectIcon.css',
@@ -128,13 +137,14 @@ function seed() {
 function panelMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
+  work = { items: ITEMS, facts: FACTS },
 ): string {
   seed();
   const { container, unmount } = render(
     <ChatDockInboxPanel
       projectAccentBySlug={accents}
       projectIconBySlug={icons}
-      items={ITEMS}
+      items={work.items}
       activeChatSessionId={null}
       openChatSessionIds={ITEMS.map((entry) => entry.id)}
       onFocusChat={vi.fn()}
@@ -143,7 +153,7 @@ function panelMarkup(
       onCloseChat={vi.fn()}
       onOpenHistory={vi.fn()}
       now={NOW}
-      workFacts={FACTS}
+      workFacts={work.facts}
     />,
   );
   // Expand the two collapsed sections the way a user does, so the slim
@@ -161,16 +171,16 @@ function panelMarkup(
 function sheetMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
+  work = { items: ITEMS, facts: FACTS },
 ): string {
   seed();
   const { unmount } = render(
-    <MobileTaskSwitcher
+    <MobileInboxPanel
       projectAccentBySlug={accents}
       projectIconBySlug={icons}
       open
-      tasks={ITEMS}
+      tasks={work.items}
       activeChatSessionId={null}
-      visualViewportStyle={{}}
       triggerRef={createRef<HTMLButtonElement>()}
       onClose={vi.fn()}
       onFocusChat={vi.fn()}
@@ -178,9 +188,14 @@ function sheetMarkup(
       onOpenSession={vi.fn()}
       onCloseChat={vi.fn()}
       now={NOW}
-      workFacts={FACTS}
+      workFacts={work.facts}
     />,
   );
+  for (const name of [/^Snoozed/, /^Earlier/]) {
+    const toggle = screen.getByRole('button', { name });
+    if (toggle.getAttribute('aria-expanded') === 'false')
+      fireEvent.click(toggle);
+  }
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -218,6 +233,146 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('a Task family keeps its work-chat disclosure readable without horizontal overflow', async () => {
+    const tasks = [
+      {
+        id: 'task-release',
+        projectId: 'station',
+        title: 'Release the reviewed update',
+        description: '',
+        createdBy: 'user',
+        priority: 'normal' as const,
+        status: 'in_progress' as const,
+        createdAt: '2026-09-30T10:00:00Z',
+        updatedAt: '2026-09-30T10:01:00Z',
+        workChatConversationIds: ['release-chat'],
+      },
+    ];
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks,
+      chatItems: [
+        item({
+          id: 'release-chat',
+          conversationId: 'release-chat',
+          title: 'Review the release',
+          lifecycleLabel: 'Running',
+        }),
+      ],
+      retainTaskChildren: true,
+    });
+    const work = { items, facts: buildWorkFacts({ items, tasks }) };
+    const artifacts = resolve(REPO_ROOT, '.surface/task-chat-review');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440]) {
+      const markup =
+        width === 390
+          ? sheetMarkup(undefined, undefined, work)
+          : panelMarkup(undefined, undefined, work);
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const disclosure = pg.getByRole('button', { name: /work chat/ });
+          expect(await disclosure.count()).toBe(1);
+          const box = await disclosure.boundingBox();
+          expect(box!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(
+            await pg
+              .getByText('Release the reviewed update', { exact: true })
+              .count(),
+          ).toBe(1);
+          expect(
+            await pg.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+          ).toBe(false);
+          await pg.screenshot({
+            path: resolve(artifacts, `task-family-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+    }
+  });
+
+  test('subagent titles and incomplete results remain readable beside their status and elapsed time', async () => {
+    const { container } = render(
+      <SubagentTranscriptCard
+        child={{
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: 'parent',
+            childId: 'review',
+            status: 'completed',
+            title:
+              'Complete all scoped transport documentation reviews and remaining acceptance captures',
+            startedAt: '2026-10-30T10:00:00Z',
+            endedAt: '2026-10-30T10:06:37Z',
+            result: {
+              summary:
+                'Partial review committed; 75 documents and 8 captures remain.',
+            },
+          },
+          provider: 'codex',
+          toolAnchor: true,
+        }}
+      />,
+    );
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector('[data-brand-key="codex"] svg'),
+      ).not.toBeNull(),
+    );
+    const artifacts = resolve(REPO_ROOT, '.surface/mobile-inbox-review');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440]) {
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 500 } });
+        try {
+          await pg.setContent(
+            `<html data-theme="${theme}"><style>${css}\n${resolveCssImports(resolve(import.meta.dirname, '../../chat/SubagentTranscriptCard.css'))}</style><body><div style="max-width:560px;padding:16px">${container.innerHTML}</div></body></html>`,
+          );
+          const card = pg.locator('.subagent-card');
+          const title = await card
+            .locator('.subagent-card__title')
+            .boundingBox();
+          const status = await card
+            .locator('.subagent-card__status')
+            .boundingBox();
+          const time = await card
+            .locator('.subagent-card__elapsed')
+            .boundingBox();
+          expect(title && status && time).toBeTruthy();
+          expect(status!.y).toBeGreaterThanOrEqual(title!.y + title!.height);
+          expect(time!.x).toBeGreaterThanOrEqual(title!.x + title!.width);
+          expect(
+            await card.locator('.subagent-card__preview').textContent(),
+          ).toContain('75 documents');
+          expect(
+            await card.locator('.subagent-card__elapsed').textContent(),
+          ).toBe('6:37');
+          expect(
+            await pg.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+          ).toBe(false);
+          await pg.screenshot({
+            path: resolve(artifacts, `subagents-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+    }
+  });
 
   test('hovering a row changes neither its height nor where its text sits', async () => {
     const markup = panelMarkup();
@@ -272,7 +427,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project swatch changes no row's height, in the panel or the phone sheet", async () => {
+  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
     const accents = new Map([['station', 'var(--event-tool-call)']]);
     const cases = [
       {
@@ -291,7 +446,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
       expect(plain, label).not.toContain('inbox-row__project-accent');
-      expect(painted, label).toContain('inbox-row__project-accent');
+      if (label === 'panel')
+        expect(painted).toContain('inbox-row__project-accent');
+      else expect(painted).not.toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
         const measure = async (markup: string) => {
@@ -305,12 +462,27 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        // The swatch is drawn, not just present in the markup.
-        const swatch = await pg
-          .locator('.inbox-row__project-accent')
-          .first()
-          .boundingBox();
-        expect(swatch?.width, `${label} swatch drawn`).toBeGreaterThan(0);
+        if (label === 'panel') {
+          const swatch = await pg
+            .locator('.inbox-row__project-accent')
+            .first()
+            .boundingBox();
+          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
+        } else {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(1);
+          const mark = await line.locator('svg').boundingBox();
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(mark!.width).toBeGreaterThan(0);
+          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(
+              mark!.y -
+                (await pg.locator('.inbox-row__title').first().boundingBox())!
+                  .y,
+            ),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -363,8 +535,25 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .locator('.inbox-row__project-accent.project-icon--icon')
           .first()
           .boundingBox();
-        expect(icon?.width, `${label} icon width`).toBe(12);
-        expect(icon?.height, `${label} icon height`).toBe(12);
+        expect(icon?.width, `${label} icon width`).toBe(
+          label === 'sheet' ? 24 : 12,
+        );
+        expect(icon?.height, `${label} icon height`).toBe(
+          label === 'sheet' ? 24 : 12,
+        );
+        if (label === 'sheet') {
+          const line = pg.locator('.inbox-row__project-context').first();
+          expect(await line.locator('svg').count()).toBe(0);
+          const name = await line.locator('.inbox-row__project').boundingBox();
+          expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
+          expect(
+            Math.abs(
+              icon!.y -
+                (await pg.locator('.inbox-row__title').first().boundingBox())!
+                  .y,
+            ),
+          ).toBeLessThanOrEqual(2);
+        }
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
         await pg.close();
@@ -638,9 +827,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       try {
         await pg.setContent(page(markup));
         await settle(pg);
-        const rows = pg.locator(
-          '.mobile-task-switcher__list .inbox-row--touch',
-        );
+        const rows = pg.locator('.mobile-inbox__list .inbox-row--touch');
         expect(await rows.count()).toBe(ITEMS.length);
         for (let index = 0; index < ITEMS.length; index += 1) {
           const row = rows.nth(index);
@@ -740,7 +927,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             measured.title.width,
             `${measured.key} readable title width`,
           ).toBeGreaterThanOrEqual(minimumTitleWidth);
-          expect(measured.title.fontSize).toBe(18);
+          expect(measured.title.fontSize).toBe(14);
           expect(measured.title.height).toBeLessThanOrEqual(
             measured.title.lineHeight * 2 + 1,
           );
@@ -767,6 +954,73 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       }
     },
   );
+
+  // #4266: on a phone the second line read [mark] … "No project" from the
+  // middle of the row, and the engine's name was a 1px clipped label.
+  test('a phone row names its engine in words and keeps the project beside it', async () => {
+    seed();
+    const { unmount } = render(
+      <MobileInboxPanel
+        open
+        tasks={[
+          item({
+            id: 'codex-row',
+            provider: 'codex',
+            agentLabel: 'Codex',
+            projectLabel: 'No project',
+            projectSlug: undefined,
+          }),
+        ]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        now={NOW}
+      />,
+    );
+    const markup = document.body.innerHTML;
+    unmount();
+    expect(markup, 'fixture draws an engine mark').toContain('identity-marks');
+    const pg = await browser.newPage({
+      viewport: { width: 412, height: 915 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      await pg.setContent(page(markup));
+      await settle(pg);
+      const line = await pg
+        .locator('.mobile-inbox__list .inbox-row--touch')
+        .first()
+        .evaluate((row) => {
+          const box = (selector: string) => {
+            const rect = row.querySelector(selector)!.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+          };
+          return {
+            row: box('.inbox-row__open'),
+            marks: box('.identity-marks'),
+            engine: box('.inbox-row__meta-text'),
+            engineText: row.querySelector('.inbox-row__meta-text')!.textContent,
+            project: box('.inbox-row__project'),
+          };
+        });
+      expect(line.engineText).toBe('Codex');
+      expect(line.engine.width).toBeGreaterThan(20);
+      expect(line.engine.left).toBeGreaterThanOrEqual(line.marks.right);
+      expect(line.project.left).toBeGreaterThanOrEqual(line.engine.right);
+      // Beside the engine, not from the row's midpoint.
+      expect(line.project.left - line.engine.right).toBeLessThan(40);
+      expect(line.project.left).toBeLessThan(
+        line.row.left + line.row.width / 2,
+      );
+    } finally {
+      await pg.close();
+    }
+  });
 
   test('the actions a touch row keeps in its Details sheet are 44px targets on a phone', async () => {
     seed();

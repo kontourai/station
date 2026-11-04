@@ -1,0 +1,7 @@
+{
+  "revision": "e8f37c25832cea6cbad23af1c35bbc2a87662aa4",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDockBody passes modelResetOffered to the composer; no configuration key or default changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

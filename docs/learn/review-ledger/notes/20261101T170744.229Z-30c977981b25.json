@@ -1,0 +1,7 @@
+{
+  "revision": "7a2b4de76dcf0bb8ab56daeefb37d0ac6003a604",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Only ci-fast-checks-job-graph.test.ts changed, to pin the third PR shard slot that #4365 already added to ci.yml; no claim here about slot counts.","inputs":["docs/guides/code-quality.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

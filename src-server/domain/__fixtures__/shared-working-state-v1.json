@@ -1,0 +1,237 @@
+{
+  "sourceHead": "03728690b3e",
+  "insert": {
+    "schemaVersion": 1,
+    "operationId": "625c15be-f08d-48c6-a9e3-021648e0a339:insert",
+    "documentId": "document-1",
+    "replicaId": "room:legacy-device",
+    "actor": {
+      "actorId": "legacy-person",
+      "kind": "human"
+    },
+    "parents": [],
+    "authorizationEpoch": 0,
+    "kind": "insert",
+    "after": null,
+    "text": "A😀old brief"
+  },
+  "delete": {
+    "schemaVersion": 1,
+    "operationId": "06f282b5-3b61-4fc3-a154-396a5c36d2bb:delete",
+    "documentId": "document-1",
+    "replicaId": "room:legacy-device",
+    "actor": {
+      "actorId": "legacy-person",
+      "kind": "human"
+    },
+    "parents": [],
+    "authorizationEpoch": 0,
+    "kind": "delete",
+    "after": null,
+    "text": "A😀old brief",
+    "target": [
+      "625c15be-f08d-48c6-a9e3-021648e0a339:insert:2",
+      "625c15be-f08d-48c6-a9e3-021648e0a339:insert:3",
+      "625c15be-f08d-48c6-a9e3-021648e0a339:insert:4"
+    ]
+  },
+  "snapshot": {
+    "schemaVersion": 1,
+    "scope": {
+      "projectId": "project-1",
+      "taskId": "task-1",
+      "documentId": "document-1"
+    },
+    "checkpointRevision": "swsr-v1:77f223c6bf1d542993b82b0e6468e0233984257013028ce2a04795c60945b407",
+    "revision": "swsr-v1:77f223c6bf1d542993b82b0e6468e0233984257013028ce2a04795c60945b407",
+    "atoms": [
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:0",
+        "after": null,
+        "value": "A",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:1",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:0",
+        "value": "😀",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:10",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:9",
+        "value": "f",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:2",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:1",
+        "value": "o",
+        "deleted": true
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:3",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:2",
+        "value": "l",
+        "deleted": true
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:4",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:3",
+        "value": "d",
+        "deleted": true
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:5",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:4",
+        "value": " ",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:6",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:5",
+        "value": "b",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:7",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:6",
+        "value": "r",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:8",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:7",
+        "value": "i",
+        "deleted": false
+      },
+      {
+        "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:9",
+        "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:8",
+        "value": "e",
+        "deleted": false
+      }
+    ],
+    "knownOperations": [
+      {
+        "operationId": "06f282b5-3b61-4fc3-a154-396a5c36d2bb:delete",
+        "digest": "d13ed530b984c906bfcc262821437a6b08b99208b11a27ea47bca7e5328bb15d"
+      },
+      {
+        "operationId": "625c15be-f08d-48c6-a9e3-021648e0a339:insert",
+        "digest": "b4fcccf9deb3cec98f71fe9991717d802ba9bc2d021a3c9747d3e3da73a5205d"
+      }
+    ],
+    "deferred": []
+  },
+  "receipt": {
+    "schemaVersion": 1,
+    "revisionId": "revision-evidence-v1:1e95b1e4d4c68be37b60628996694caa00393a23590c8c6309de28edf380139a",
+    "sharedRevision": "swsr-v1:77f223c6bf1d542993b82b0e6468e0233984257013028ce2a04795c60945b407",
+    "scope": {
+      "projectId": "project-1",
+      "taskId": "task-1",
+      "documentId": "document-1"
+    },
+    "text": "A😀 brief",
+    "snapshot": {
+      "schemaVersion": 1,
+      "scope": {
+        "projectId": "project-1",
+        "taskId": "task-1",
+        "documentId": "document-1"
+      },
+      "checkpointRevision": "swsr-v1:77f223c6bf1d542993b82b0e6468e0233984257013028ce2a04795c60945b407",
+      "revision": "swsr-v1:77f223c6bf1d542993b82b0e6468e0233984257013028ce2a04795c60945b407",
+      "atoms": [
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:0",
+          "after": null,
+          "value": "A",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:1",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:0",
+          "value": "😀",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:10",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:9",
+          "value": "f",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:2",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:1",
+          "value": "o",
+          "deleted": true
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:3",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:2",
+          "value": "l",
+          "deleted": true
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:4",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:3",
+          "value": "d",
+          "deleted": true
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:5",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:4",
+          "value": " ",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:6",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:5",
+          "value": "b",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:7",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:6",
+          "value": "r",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:8",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:7",
+          "value": "i",
+          "deleted": false
+        },
+        {
+          "id": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:9",
+          "after": "625c15be-f08d-48c6-a9e3-021648e0a339:insert:8",
+          "value": "e",
+          "deleted": false
+        }
+      ],
+      "knownOperations": [
+        {
+          "operationId": "06f282b5-3b61-4fc3-a154-396a5c36d2bb:delete",
+          "digest": "d13ed530b984c906bfcc262821437a6b08b99208b11a27ea47bca7e5328bb15d"
+        },
+        {
+          "operationId": "625c15be-f08d-48c6-a9e3-021648e0a339:insert",
+          "digest": "b4fcccf9deb3cec98f71fe9991717d802ba9bc2d021a3c9747d3e3da73a5205d"
+        }
+      ],
+      "deferred": []
+    },
+    "actor": {
+      "actorId": "legacy-person",
+      "kind": "human"
+    },
+    "parents": [],
+    "correlation": {
+      "projectId": "project-1",
+      "taskId": "task-1"
+    },
+    "attributionAttestation": "legacy-fixture:1e95b1e4d4c68be37b60628996694caa00393a23590c8c6309de28edf380139a"
+  }
+}

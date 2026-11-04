@@ -1,0 +1,7 @@
+{
+  "revision": "aae48666b17e7d8afae1d04f4de73ae227e97045",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix round for #4266: checked the child-work endedBy claim against codex-adapter-transport stopSession (a requested stop now passes no endedBy) and claude-adapter engineDied (only on an observed process exit), and reworded it; the memory-exhaustion paragraph's stored-failure Continue claim against useActiveChatTranscript's recreated marker and translateProjectedRuntimeError; the station-runtime and ensureOrchestrationEventStream edits (explicit titleModel, inventory re-read on turn end) touch no claim here.","inputs":["docs/reference/contracts.md","packages/contracts/src/child-work.ts","src-server/runtime/bootstrap/station-runtime.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

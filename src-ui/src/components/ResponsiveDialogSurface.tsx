@@ -22,6 +22,10 @@ import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
+import {
+  useResponsiveSheetGesture,
+  useSheetGesturesPreview,
+} from './useResponsiveSheetGesture';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
@@ -116,6 +120,12 @@ export interface ResponsiveDialogSurfaceProps {
    * the un-anchored fallback (edge-docked, scrim-less on desktop).
    */
   anchorRef?: RefObject<HTMLElement | null>;
+  /**
+   * The shared phone-sheet drag handle (Sheet gestures device preview). On by
+   * default; `false` for a consumer that owns its own grab gesture, so the
+   * sheet never carries two.
+   */
+  sheetGesture?: boolean;
 }
 
 interface ResponsiveSurfaceActionsProps {
@@ -131,6 +141,8 @@ interface ResponsiveDialogHeaderProps {
   /** Passed straight through to `ResponsiveDialogCloseButton`'s `label`. */
   closeLabel: string;
   onClose: () => void;
+  /** Id for the title, so the dialog around it can be named by it. */
+  titleId?: string;
 }
 
 /**
@@ -152,11 +164,12 @@ export function ResponsiveDialogHeader({
   subtitle,
   closeLabel,
   onClose,
+  titleId,
 }: ResponsiveDialogHeaderProps) {
   return (
     <div className="responsive-dialog-header">
       <div>
-        <strong>{title}</strong>
+        <strong id={titleId}>{title}</strong>
         {subtitle && <span>{subtitle}</span>}
       </div>
       <ResponsiveDialogCloseButton label={closeLabel} onClick={onClose} />
@@ -237,7 +250,9 @@ export function ResponsiveDialogSurface({
   layer,
   historyMode = 'entry',
   anchorRef,
+  sheetGesture = true,
 }: ResponsiveDialogSurfaceProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   // What this surface is to anything floating inside it — see overlay-layer.
   // Linked to the overlay this one was opened from, which a body portal hides
@@ -257,6 +272,24 @@ export function ResponsiveDialogSurface({
   const isMobile = useIsMobile();
 
   onCloseRef.current = onClose;
+
+  // Drag the sheet up to expand it, down to close it (Sheet gestures device
+  // preview). Only a dismissible, ordinary dialog on a phone: an alertdialog
+  // asks for a decision a stray swipe must not make for the user. A consumer
+  // with its own grab gesture opts out.
+  const sheetGestures = useSheetGesturesPreview();
+  const sheetHandle = useResponsiveSheetGesture({
+    enabled:
+      sheetGesture &&
+      sheetGestures &&
+      isMobile &&
+      open &&
+      dismissible &&
+      role === 'dialog',
+    overlayRef,
+    panelRef,
+    onDismiss: () => onCloseRef.current(),
+  });
 
   useEffect(() => {
     if (
@@ -443,6 +476,7 @@ export function ResponsiveDialogSurface({
   // component tree, and no listener in the dock is bound to a dock ELEMENT.
   return createPortal(
     <div
+      ref={overlayRef}
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
       style={{
         ...visualViewport.style,
@@ -499,13 +533,30 @@ export function ResponsiveDialogSurface({
       }}
     >
       <OverlayLayerContext.Provider value={overlayLayer}>
-        {role === 'alertdialog' ? (
+        {/* A closed surface stays mounted to keep its state, but it is not
+            a dialog: no role, no modal claim, and nothing in it reachable
+            (#4403 — the closed Coding tool sheet still read as one). */}
+        {!open ? (
+          <div
+            ref={panelRef}
+            className={panelProps.className}
+            style={panelStyle}
+            inert
+          >
+            {children}
+          </div>
+        ) : role === 'alertdialog' ? (
           <div {...panelProps} role="alertdialog">
             {children}
           </div>
         ) : (
           <div {...panelProps} role="dialog">
             {children}
+          </div>
+        )}
+        {sheetHandle.showHandle && (
+          <div {...sheetHandle.handleProps}>
+            <span className="responsive-sheet-handle__grip" />
           </div>
         )}
       </OverlayLayerContext.Provider>

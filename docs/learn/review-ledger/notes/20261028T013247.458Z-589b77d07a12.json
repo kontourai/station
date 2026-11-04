@@ -1,0 +1,9 @@
+{
+  "revision": "a109d0258ec39f6b90bcb6964c66497e9d0b3b13",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"chat-host-images review: monitoring runtime-event producers and the EventStore contrast make no persistedForm claim; OTel shutdown is unrelated to the capture close. Re-reviewed after the final round: muse-adapter.ts keeps a session temp folder on its record only when the start recorded it, and passes it to an injected serve spawnHost as an optional third argument. Engine behaviour this document describes is unchanged.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"chat-host-images review: added the chat-host-images subpath row (preview ID, refusal vocabulary, path map, pure helpers; content.host-images is Station-emitted and excluded from ProviderRuntimeEvent); the generic runtime-events row stays accurate. Re-reviewed after the final round: muse-adapter.ts keeps a session temp folder on its record only when the start recorded it, and passes it to an injected serve spawnHost as an optional third argument. Engine behaviour this document describes is unchanged.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-adapter.ts"]}
+  ]
+}

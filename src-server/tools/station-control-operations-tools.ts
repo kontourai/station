@@ -15,14 +15,12 @@ import {
   fetchAchievements,
   fetchUsage,
   getJobLogs,
-  getProject,
   getReviewReceipt,
   getReviewRequestStatus,
   getSchedulerStats,
   getSchedulerStatus,
   listJobs,
   listProjectLayouts,
-  listProjects,
   listReviewReceipts,
   listSchedulerProviders,
   migratePreIndexKnowledge,
@@ -30,7 +28,6 @@ import {
   rebuildKnowledgeIndex,
   runIndependentReview,
   runJob,
-  searchKnowledgeIndex,
   updateJob,
 } from '@kontourai/station-sdk/client';
 import {
@@ -58,6 +55,8 @@ import {
   respondToDelegatedTaskRequest,
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
+import { registerProjectReadTools } from './station-control-project-read-tools.js';
+import { knowledgeSearchToolResult } from './station-knowledge-tools.js';
 
 export const MONITORING_ENGINE_FILTER_VALUES = [
   'station',
@@ -132,6 +131,19 @@ const schedulerScheduleSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/**
+ * Where an automation's runs land. An agent may name only its own
+ * conversation (`automation-target-stays-in-own-conversation`).
+ */
+const automationTargetSchema = z
+  .object({
+    kind: z.literal('conversation'),
+    conversationId: z.string().min(1),
+  })
+  .describe(
+    'Run each time as a turn in this conversation (your own), on its engine, instead of as a Station-engine file run',
+  );
+
 const schedulerJobUpdateSchema = {
   cron: z.string().min(1).optional(),
   schedule: schedulerScheduleSchema.optional(),
@@ -142,6 +154,7 @@ const schedulerJobUpdateSchema = {
   trustAllTools: z.boolean().optional(),
   retryCount: z.number().int().min(0).max(10).optional(),
   retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+  target: automationTargetSchema.optional(),
 };
 
 const delegationContextSchema = z.object({
@@ -262,7 +275,10 @@ async function connectSshEnvironmentWithPolling(id: string): Promise<unknown> {
   }
 }
 
-export function registerOperationsTools(server: StationControlToolRegistry) {
+export function registerOperationsTools(
+  server: Pick<StationControlToolRegistry, 'tool' | 'toolWithSchema'>,
+  projectReads?: Parameters<typeof registerProjectReadTools>[1],
+) {
   server.tool(
     REVIEW_EVIDENCE_OPERATOR_SURFACE.run.mcp,
     'Run independent read-only reviewers over one exact Git range; findings are evidence input, never a verdict',
@@ -369,6 +385,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       trustAllTools: z.boolean().optional(),
       retryCount: z.number().int().min(0).max(10).optional(),
       retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+      target: automationTargetSchema.optional(),
     },
     async (params) => {
       if (params.cron !== undefined && params.schedule !== undefined) {
@@ -534,7 +551,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
+    "Read Station's server logs to debug runtime behavior; filter by level, time or substring. Agent calls require an explicit operator grant for this verified bound session. Logs can contain private conversation content; rendering follows the caller's locality.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])
@@ -670,25 +687,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     async ({ path }) => jsonToolResult(await navigateTo(path)),
   );
 
-  server.tool('list_projects', 'List all projects', {}, async () =>
-    jsonToolResult(
-      await toOperationsEnvelope(
-        listProjects(controlApiBase(), controlRequestOptions()),
-      ),
-    ),
-  );
-
-  server.tool(
-    'get_project',
-    'Get project details',
-    { slug: z.string() },
-    async ({ slug }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          getProject(controlApiBase(), slug, controlRequestOptions()),
-        ),
-      ),
-  );
+  registerProjectReadTools(server, projectReads);
 
   server.tool(
     'list_project_layouts',
@@ -733,6 +732,13 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         ),
       model: z.string().min(1).optional().describe('Optional model override'),
       message: z.string().describe('Message content'),
+      clientTurnId: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          'Stable key for this message; reuse it with identical input on retry.',
+        ),
       conversationId: z
         .string()
         .optional()
@@ -752,6 +758,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       projectPath,
       model,
       message,
+      clientTurnId,
       conversationId,
       navigate: shouldNavigate,
       _delegation,
@@ -782,6 +789,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         const result = await executeExecutionTargetMessage({
           target,
           message,
+          clientTurnId,
           ...(conversationId ? { conversationId } : {}),
           // #2601: a claim only. Station's route derives the child context
           // from the verified caller, or keeps this one only when Station's own
@@ -936,6 +944,13 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     'Delegate a resumable task to an Agent in the current or a verified SSH environment. A task that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start Sessions only in its own Project (or, from the global space, only there).',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
+      clientTurnId: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          'Stable key for this message; reuse it with identical input on retry.',
+        ),
       environmentId: z
         .string()
         .min(1)
@@ -1008,6 +1023,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         };
         const task = await delegateTask({
           prompt: input.prompt,
+          clientTurnId: input.clientTurnId,
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
@@ -1078,6 +1094,13 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     {
       taskId: z.string().min(1).describe('Delegated task ID'),
       message: z.string().trim().min(1).describe('Follow-up instruction'),
+      clientTurnId: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          'Stable key for this message; reuse it with identical input on retry.',
+        ),
       environmentId: z
         .string()
         .min(1)
@@ -1244,7 +1267,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'search_knowledge',
-    'Semantic search over the knowledge index, optionally scoped to specific store roots — results are re-resolved records (title/excerpt/category), never raw index hits; fails with the NO_EMBEDDER error when no embedding connection is configured',
+    'Search re-resolved Knowledge records and report index health. Stale roots or excerpts need reindexing; index:null means unreported health. Fails when no embedding connection is configured.',
     {
       query: z.string().min(1).describe('Natural-language search query'),
       rootIds: z
@@ -1260,16 +1283,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .optional()
         .describe('Maximum number of results (server default when omitted)'),
     },
-    async ({ query, rootIds, topK }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          searchKnowledgeIndex(
-            controlApiBase(),
-            { query, rootIds, topK },
-            controlRequestOptions(),
-          ),
-        ),
-      ),
+    ({ query, rootIds, topK }) =>
+      knowledgeSearchToolResult(controlApiBase(), { query, rootIds, topK }),
   );
 
   server.tool(

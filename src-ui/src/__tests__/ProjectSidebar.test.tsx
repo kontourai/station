@@ -219,7 +219,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
-import { RecentChatList } from '../components/chat-start/RecentChatList';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -235,14 +234,11 @@ import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 // unmount/remount loop around that crash took the Open chats section with
 // it. Mounting the real provider keeps the status row in the tree instead
 // of stubbing the hook out from under every other consumer.
-// #2066's presence tray reads `useLiveActivityQuery`, so the real footer needs
-// a QueryClient the way it already needs KeyboardShortcutsProvider. Without
-// one the tray throws, the Boards LazyBoundary catches it, and the panel
-// renders its error alert where the section belongs — which is how main went
-// red: #2084 added the tray and #2095 added the test that mounts the real
-// sidebar, each green alone. Retries are off so a failing fetch settles in one
-// tick instead of holding the test open; the tray's own suites are where its
-// error and capability states are asserted.
+// The real sidebar reads queries, so it needs a QueryClient the way it already
+// needs KeyboardShortcutsProvider. Without one a query hook throws, a
+// LazyBoundary catches it, and the panel renders its error alert where the
+// section belongs (#2084/#2095). Retries are off so a failing fetch settles in
+// one tick instead of holding the test open.
 function renderSidebar(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -368,20 +364,30 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     ).toContain('Acme Station');
   });
 
-  test('keeps conversations and composer drafts out of the workspace map', () => {
-    resetState();
-    chats['session-draft'] = { title: 'Conversation in the dock' };
-    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
-    renderSidebar(<ProjectSidebar />);
-    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
-    expect(screen.queryByText('Open chats')).toBeNull();
-    expect(screen.queryByText('Drafts')).toBeNull();
-    expect(screen.queryByText('Conversation in the dock')).toBeNull();
-    expect(chatDraftsStore.getSnapshot()['session-draft']?.text).toBe(
-      'Remember migration',
-    );
-    act(() => chatDraftsStore.clear('session-draft'));
-  });
+  test.each([false, true])(
+    'keeps conversations and composer drafts out of the workspace map (phone %s)',
+    async (phone) => {
+      resetState();
+      presentation.isMobile = phone;
+      chats['session-draft'] = { title: 'Conversation in the dock' };
+      act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+      const view = renderSidebar(<ProjectSidebar />);
+      if (phone)
+        act(() => window.dispatchEvent(new CustomEvent('toggle-sidebar')));
+      await screen.findByText('Personal Boards');
+      expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
+      expect(screen.queryByText('Recent chats')).toBeNull();
+      expect(screen.queryByText('Open chats')).toBeNull();
+      expect(screen.queryByText('Drafts')).toBeNull();
+      expect(screen.queryByText('Conversation in the dock')).toBeNull();
+      expect(chatDraftsStore.getSnapshot()['session-draft']?.text).toBe(
+        'Remember migration',
+      );
+      act(() => chatDraftsStore.clear('session-draft'));
+      view.unmount();
+      presentation.isMobile = false;
+    },
+  );
 });
 
 describe('ProjectSidebar Boards section mounts (#2062)', () => {
@@ -867,81 +873,16 @@ describe('a project wears the same colour everywhere', () => {
     };
     const dockColour = rowColour(<DockInbox items={[betaWork]} />);
     const homeColour = rowColour(<Home items={[betaWork]} />);
-    const recentColour = rowColour(
-      <RecentChatList
-        items={[betaWork]}
-        context="beta"
-        agents={[]}
-        onOpen={vi.fn()}
-        onViewAll={vi.fn()}
-      />,
-    );
 
     expect({
       switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
-      recent: recentColour,
     }).toEqual({
       switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
-      recent: sidebarColour,
     });
-  });
-
-  test("New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
-    resetState();
-    projects.push({
-      id: 'p-beta',
-      slug: 'beta',
-      name: 'Beta',
-      icon: '🧭',
-    } as (typeof projects)[number]);
-    const local: HomeWorkItem = {
-      id: 'beta-local',
-      kind: 'chat',
-      kindLabel: 'Direct chat',
-      title: 'Local beta work',
-      projectLabel: 'Beta',
-      projectSlug: 'beta',
-      agentLabel: 'Codex',
-      modelLabel: 'GPT-5',
-      updatedAt: Date.now() - 60_000,
-      lifecycleLabel: 'Ready',
-      chatSessionId: 'beta-local',
-    };
-    // The same slug on a peer Station names that Station's project.
-    const remote: HomeWorkItem = {
-      ...local,
-      id: 'beta-remote',
-      title: 'Remote beta work',
-      chatSessionId: 'beta-remote',
-      environmentId: 'peer-1',
-      environmentLabel: 'Peer Station',
-    };
-    const marks = (ui: ReactElement) => {
-      const view = renderSidebar(ui);
-      const rows = [
-        ...view.container.querySelectorAll('[data-testid="inbox-row"]'),
-      ].map((row) => {
-        const mark = row.querySelector('.inbox-row__project-accent');
-        return mark ? (mark.textContent ?? '') : null;
-      });
-      view.unmount();
-      return rows;
-    };
-    expect(
-      marks(
-        <RecentChatList
-          items={[local, remote]}
-          context="beta"
-          agents={[]}
-          onOpen={vi.fn()}
-          onViewAll={vi.fn()}
-        />,
-      ),
-    ).toEqual(['🧭', null]);
   });
 });
 
