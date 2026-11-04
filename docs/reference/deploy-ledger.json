@@ -1,5 +1,46 @@
 [
   {
+    "timestampUtc": "2026-11-04T09:33:14Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2499",
+    "sha": "d6ec144b4550a6d129da1bd95b24b615517d8385",
+    "artifactBuiltAt": "2026-11-04T08:30:21.490Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41796352097",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41796352097)"
+    ],
+    "changelog": {
+      "previousSha": "98703439f7606e50dabe7ccf91ce052eb5ce1571",
+      "groups": {
+        "feat": [
+          "[#4499](https://github.com/kontourai/station/pull/4499) feat(terminal): script runner, agent terminal tools, and Add to chat",
+          "[#4493](https://github.com/kontourai/station/pull/4493) feat(terminal): accessibility, shortcuts, replay on reattach, and docs truth pass",
+          "[#4477](https://github.com/kontourai/station/pull/4477) feat(troubleshoot): troubleshoot with an agent on the Station Assistant"
+        ],
+        "fix": [
+          "[#4531](https://github.com/kontourai/station/pull/4531) fix(connections): preserve tool account sign-in retries",
+          "[#4528](https://github.com/kontourai/station/pull/4528) fix(chat): retain queued edits when durable saves fail",
+          "[#4529](https://github.com/kontourai/station/pull/4529) fix(knowledge): bind meeting capture results to submitted drafts",
+          "[#4527](https://github.com/kontourai/station/pull/4527) fix(registry): recover failed catalog reads",
+          "[#4525](https://github.com/kontourai/station/pull/4525) fix(sharing): recover temporary Task publication reads",
+          "[#4505](https://github.com/kontourai/station/pull/4505) fix(orchestration): observe enqueued Session start announcements",
+          "[#4503](https://github.com/kontourai/station/pull/4503) fix(runtime): preserve queued supervisor IPC requests",
+          "[#4502](https://github.com/kontourai/station/pull/4502) fix(orchestration): reclaim dead unmarked create claims and keep retention clock-safe",
+          "[#4467](https://github.com/kontourai/station/pull/4467) fix(runtime): compact replay storage and await Session-start commits"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-04T09:33:11Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2499",
