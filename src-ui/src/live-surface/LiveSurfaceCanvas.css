@@ -77,6 +77,16 @@
   outline-offset: 2px;
 }
 
+/*
+ * The zoom layer fills the stage; pinch zoom is a transform on it, so the
+ * canvas's client rect (what pointer mapping reads) follows the zoom.
+ */
+.live-surface__zoom {
+  inset: 0;
+  position: absolute;
+  transform-origin: 0 0;
+}
+
 .live-surface__canvas {
   display: block;
   height: 100%;
@@ -128,8 +138,11 @@
  * exactly rather than letterboxed inside its own element.
  */
 .live-surface__stage--fit {
-  align-items: center;
   background: #000;
+}
+
+.live-surface__stage--fit > .live-surface__zoom {
+  align-items: center;
   display: flex;
   justify-content: center;
 }
@@ -194,4 +207,129 @@
     transform: scale(2);
     opacity: 0;
   }
+}
+
+/* Viewer chrome (the float's pill, the immersive bar): one compact row that
+   wraps only when it must. */
+.live-surface-controls {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+  padding: 4px;
+}
+
+.live-surface-controls__status {
+  color: var(--text-secondary);
+  flex: 0 1 auto;
+  font-size: 0.75rem;
+  margin: 0 var(--space-1, 4px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface-controls__status[data-tone="agent"] {
+  color: var(--warning-text, var(--text-primary));
+}
+
+.live-surface-controls__action {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.live-surface-controls__icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* Reset zoom, and a pane's Full screen: small, over the picture's corners. */
+.live-surface__zoom-reset,
+.live-surface__fullscreen {
+  background: rgb(0 0 0 / 0.55);
+  border-radius: var(--radius-sm, 6px);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  z-index: 2;
+}
+
+.live-surface__zoom-reset {
+  left: var(--space-2, 8px);
+  top: var(--space-2, 8px);
+}
+
+.live-surface__fullscreen {
+  bottom: var(--space-2, 8px);
+  right: var(--space-2, 8px);
+}
+
+/* On a fine pointer the pane's Full screen waits for hover or focus. */
+@media (hover: hover) and (pointer: fine) {
+  .live-surface__fullscreen {
+    opacity: 0;
+  }
+
+  .live-surface__stage:hover .live-surface__fullscreen,
+  .live-surface__fullscreen:focus-visible {
+    opacity: 1;
+  }
+}
+
+/*
+ * Immersive: the surface over the whole viewport, inside the safe area. Just
+ * under the dialog layer, so a confirmation raised meanwhile still shows.
+ */
+.live-surface[data-immersive] {
+  background: #000;
+  box-sizing: border-box;
+  gap: 0;
+  height: auto;
+  inset: 0;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  position: fixed;
+  z-index: calc(var(--layer-dialog) - 1);
+}
+
+.live-surface[data-immersive] .live-surface__stage {
+  background: #000;
+  border-radius: 0;
+}
+
+.live-surface__immersive-bar {
+  display: flex;
+  justify-content: center;
+  left: calc(env(safe-area-inset-left, 0px) + var(--space-2, 8px));
+  pointer-events: none;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--space-2, 8px));
+  top: calc(env(safe-area-inset-top, 0px) + var(--space-2, 8px));
+  z-index: 3;
+}
+
+.live-surface__immersive-bar > .live-surface-controls {
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+/* With the bar hidden: one quiet handle to bring it back. */
+.live-surface__immersive-reveal {
+  background: rgb(0 0 0 / 0.45);
+  border-radius: var(--radius-sm, 6px);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--space-2, 8px));
+  top: calc(env(safe-area-inset-top, 0px) + var(--space-2, 8px));
+  z-index: 3;
 }

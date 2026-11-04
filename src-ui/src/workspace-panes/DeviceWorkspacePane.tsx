@@ -1086,6 +1086,7 @@ function DeviceStage({
         aspect: DEVICE_PLACEHOLDER_ASPECT[platform],
         cornerRadius: (box) => deviceCornerRadius(platform, box),
       }}
+      fullScreenButton
       key={session.surfaceId}
       {...(projectSlug ? { projectSlug } : {})}
       label={`${session.name} (${osLabel(session)})`}

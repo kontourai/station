@@ -36,7 +36,7 @@ vi.mock('../../contexts/useOpenInRegion', () => ({
   useOpenBrowserSessionInRegion: () => () => {},
   describeOpenInRegionRefusal: (reason: string) => reason,
 }));
-// An agent holds control, so the pill carries all four of its controls
+// An agent holds control, so the pill carries every one of its controls
 // (Take control only renders when the person can claim).
 vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
   LiveSurfaceCanvas: (props: { onControlState?: (state: unknown) => void }) => {
@@ -46,6 +46,8 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
         status: 'live',
         tone: 'agent',
         claimControl: async () => {},
+        immersive: false,
+        enterImmersive: () => {},
       });
     }, [onControlState]);
     return <div data-testid="float-canvas" />;
@@ -204,7 +206,9 @@ test.each([
       expect(names).toEqual([
         'Move floating browser. Arrow keys move it; Shift and an arrow key resize it.',
         'Take control',
+        'Full screen',
         'Open in right panel',
+        'Minimize floating browser',
         'Close floating browser',
       ]);
       const measure = async (state: string) => {

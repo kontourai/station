@@ -24,7 +24,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -54,6 +54,7 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
     hostControls?: boolean;
     inputRequiresLease?: boolean;
     onControlState?: (state: unknown) => void;
+    overlay?: ReactNode;
   }) => {
     const { onControlState } = props;
     useEffect(() => {
@@ -69,7 +70,10 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
         data-surface={props.surfaceId}
         data-host-controls={String(Boolean(props.hostControls))}
         data-input-requires-lease={String(Boolean(props.inputRequiresLease))}
-      />
+      >
+        {/* As the real canvas does: the host's overlay over the stage. */}
+        {props.overlay}
+      </div>
     );
   },
 }));
@@ -601,7 +605,7 @@ function drivenAgo(agoMs: number, skewMs = 0): BrowserSessionView {
 function pillText() {
   return screen
     .getByRole('toolbar', { name: 'Floating browser' })
-    .querySelector('.float-over-chat__controller')?.textContent;
+    .querySelector('.live-surface-controls__status')?.textContent;
 }
 
 describe('who is driving, when no one holds the lease (owner decision, D9)', () => {

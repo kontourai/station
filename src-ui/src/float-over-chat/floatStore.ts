@@ -25,7 +25,14 @@ export interface FloatPlacement {
   readonly position: FloatPosition | null;
   /** Height always follows the source's aspect ratio. */
   readonly width: number | null;
+  /**
+   * Minimized to a tab on this edge of the chat (the player is put away,
+   * its live view closed, until the tab is tapped). Absent: shown.
+   */
+  readonly tucked?: FloatTuckSide;
 }
+
+export type FloatTuckSide = 'left' | 'right';
 
 const DEFAULT_PLACEMENT: FloatPlacement = { position: null, width: null };
 
@@ -67,6 +74,9 @@ function parsePlacement(value: unknown): FloatPlacement {
         ? { x: position.x, y: position.y }
         : null,
     width: finite(record.width) && record.width > 0 ? record.width : null,
+    ...(record.tucked === 'left' || record.tucked === 'right'
+      ? { tucked: record.tucked }
+      : {}),
   };
 }
 
@@ -122,7 +132,8 @@ export function setFloatPlacement(
   if (
     current.width !== next.width ||
     current.position?.x !== next.position?.x ||
-    current.position?.y !== next.position?.y
+    current.position?.y !== next.position?.y ||
+    current.tucked !== next.tucked
   ) {
     placement = next;
     emit();
