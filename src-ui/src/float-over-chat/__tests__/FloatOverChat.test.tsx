@@ -1348,6 +1348,16 @@ describe('on a touch screen (pointerType touch)', () => {
     fireEvent.pointerUp(picture, touch(1, 600, 300));
     fireEvent.pointerUp(picture, touch(2, 800, 100));
     expect(frameOf()).toEqual(start);
+    // The driver's own press: the live view takes it (as the real canvas
+    // does while this person holds control), so it drives the page, not
+    // the player.
+    picture.addEventListener('pointerdown', (event) => {
+      if ((event as PointerEvent).pointerId === 3) event.preventDefault();
+    });
+    fireEvent.pointerDown(picture, touch(3, 700, 100));
+    fireEvent.pointerMove(picture, touch(3, 600, 300));
+    fireEvent.pointerUp(picture, touch(3, 600, 300));
+    expect(frameOf()).toEqual(start);
   });
 
   test('Minimize tucks it into a tab on the nearer side: the live view closes, the tab survives a reload and brings the player back', async () => {
