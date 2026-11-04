@@ -149,7 +149,7 @@ export function requestedRuleMode(
  * validation to refuse, so a rule carrying both fields fails closed rather
  * than one silently winning.
  */
-export function migrateLegacyRuleModes(parsed: unknown): unknown {
+function migrateLegacyRuleModes(parsed: unknown): unknown {
   if (!isRecord(parsed) || !Array.isArray(parsed.rules)) return parsed;
   return {
     ...parsed,
