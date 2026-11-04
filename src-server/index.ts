@@ -52,6 +52,13 @@ import {
   parkUnderSupervisor,
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
+import {
+  assertManagedAdoptedListenersLoopback,
+  assertNoManagedRelayConnector,
+  assertNoManagedTailscaleServeExposure,
+  managedTailscaleCommand,
+  resolveManagedListenHost,
+} from './security/managed-network-exposure.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -212,9 +219,7 @@ async function main() {
   // Loaded after the schema gate and the log sink so the refusal reaches
   // the durable log; neither depends on the policy.
   let managedPolicy: LoadedManagedPolicy | null;
-  try {
-    managedPolicy = loadInstalledManagedPolicy();
-  } catch (error) {
+  const refuseStartup: (error: unknown) => never = (error) => {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
     // One line that starts with the marker: the desktop sidecar matches it
@@ -227,7 +232,12 @@ async function main() {
       flushLogSink,
       buildProvenanceSnapshot,
     );
-    process.exit(1);
+    return process.exit(1);
+  };
+  try {
+    managedPolicy = loadInstalledManagedPolicy();
+  } catch (error) {
+    refuseStartup(error);
   }
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
@@ -237,7 +247,21 @@ async function main() {
     });
   }
 
-  const configuredHost = process.env.STATION_HOST || undefined;
+  // #4519: without `remote` in the policy's `limits.clients`, bind loopback
+  // (and refuse a non-loopback STATION_HOST) before anything listens.
+  let configuredHost: string | undefined;
+  try {
+    configuredHost = resolveManagedListenHost(
+      managedPolicy,
+      process.env.STATION_HOST || undefined,
+    );
+    assertManagedAdoptedListenersLoopback(
+      managedPolicy,
+      supervisorLink?.adoptedAddresses() ?? [],
+    );
+  } catch (error) {
+    refuseStartup(error);
+  }
   const host = configuredHost || '0.0.0.0';
   const displayHost = host.includes(':') ? `[${host}]` : host;
 
@@ -246,6 +270,33 @@ async function main() {
   // binds them, then report the resolved base back to a supervising parent.
   if (port === AUTO_ALLOCATE_PORT) {
     port = await allocateFreePortBlock(host);
+  }
+
+  try {
+    // #4519: a relay connector and a Tailscale Serve route are both ways in
+    // from off this machine. The Serve check covers every listener port
+    // and the UI proxy's.
+    assertNoManagedRelayConnector(
+      managedPolicy,
+      Boolean(process.env.STATION_BROKER_CONFIG_FILE),
+    );
+    const uiPort = Number.parseInt(process.env.STATION_UI_PORT ?? '', 10);
+    const consentPort = Number.parseInt(
+      process.env.STATION_CONSENT_PORT ?? '',
+      10,
+    );
+    await assertNoManagedTailscaleServeExposure(
+      managedPolicy,
+      [
+        port,
+        port + 2,
+        Number.isInteger(consentPort) ? consentPort : port + 3,
+        ...(Number.isInteger(uiPort) && uiPort > 0 ? [uiPort] : []),
+      ],
+      managedTailscaleCommand(managedPolicy),
+    );
+  } catch (error) {
+    refuseStartup(error);
   }
 
   const connector = loadSelfHostedBrokerConnectorConfig({

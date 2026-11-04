@@ -7,6 +7,8 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4515
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4516
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4519
 ---
 
 # Managed policy
@@ -69,9 +71,9 @@ looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
 Version 1 reserves `settings` (managed defaults and locks, #4517) and `limits`
-(#4518–#4522). This build accepts `settings` and `limits` only as empty
-objects. Any setting entry or limit key gets a "not supported by this version
-of Station" error. If Station accepted a key before it enforced that key, the
+(#4518–#4522). This build accepts `settings` only as an empty object, and
+`limits` with only `clients` (#4519). Any setting entry or other limit key
+gets a "not supported by this version of Station" error. If Station accepted a key before it enforced that key, the
 administrator would see the machine as managed while nothing was managed. Each
 enforcement slice adds its key to the parser in the same change that enforces
 it.
@@ -171,6 +173,97 @@ policy. The unit tests in `packages/shared/src/__tests__/managed-policy.test.ts`
 cover each branch. The startup tests in
 `src-server/__tests__/managed-policy-startup.process.test.ts` use the override
 to run the real server entrypoint.
+
+## Network exposure
+
+`limits.clients` (#4519) lists the client kinds that may reach the machine's
+servers: `desktop`, `local-browser` and `remote`. The
+[guide](../guides/managed-policy.md#network-exposure) covers what
+administrators see. These are the decisions behind it.
+
+**Only `remote` can be left out.** The two local kinds are both loopback HTTP
+clients holding a home-possession credential, minted by the desktop's
+local-grant or by a `station open` link. Telling them apart reliably needs
+its own design, so a list without `desktop` or `local-browser` is refused
+("can only leave out `remote`") instead of being accepted and not enforced.
+A status read from a server skips that rule, so an older client can read a
+newer server's list.
+
+**Two layers: the network and the credential.** Under the limit the
+entrypoint binds loopback (`127.0.0.1` when `STATION_HOST` is unset, and a
+non-loopback `STATION_HOST` refuses startup), and so do the voice and consent
+listeners, which receive the same host. Loopback alone is not enough:
+Tailscale Serve, the relay connector and other tunnels all reach Station from
+this machine. So `DevicePairingService` also runs with `localClientsOnly`:
+
+- an offer is created only when its caller exchanges it with home possession
+  (the local-grant and the same-machine launcher mint), and every exchange
+  without that stamp is refused, so `POST /api/pairing/offers`, access
+  requests, pairing-code requests and relay enrollment cannot mint;
+- a device credential resolves only when it was minted with home possession.
+  Ordinary devices, delegations, relay aliases and personal access tokens
+  stop authenticating. They are compared all the same, so the lookup's timing
+  does not reveal which devices are signed out;
+- personal access tokens are not minted, and web and native push skip
+  signed-out devices.
+
+The operator credential is unchanged: it is read from the home, not paired.
+Native device-proof admission is not composed under the limit, and a
+telemetry producer allowed to send from off the machine is held to it.
+Refusals carry `managed-policy-remote-clients`, which maps to
+`permission_denied`.
+
+**Signed out, not revoked.** Station never writes policy into user state, so
+removing the policy restores the devices. They stay listed so an operator can
+still revoke them.
+
+**Startup refusals, not runtime switches.** The relay connector
+(`STATION_BROKER_CONFIG_FILE`) is an opt-in to remote clients, so it refuses
+startup instead of being silently dropped. So does a supervisor-held listener
+bound to a non-loopback address: a later supervised generation serves on the
+sockets it inherits, not the host it is configured with. Every refusal uses
+the `STATION_MANAGED_POLICY_INVALID` marker: a restart cannot fix it, so the
+desktop sidecar must not retry it.
+
+**Tailscale Serve: refuse, do not turn routes off.** At startup Station reads
+`tailscale status --json` and then `tailscale serve status --json`, and checks
+the server, voice, consent and UI ports. It refuses to start while a route
+targets one of them, naming the port and `tailscale serve reset`. Station
+does not edit another program's configuration. Turning routes off would also
+remove the user's other routes when a route's target is ambiguous, and the
+administrator sees exactly what was found. A target that names a host counts
+as a match, since the name can resolve to this server.
+
+"Nothing forwards" is proven only by: no Tailscale executable, a non-zero
+exit that says the daemon is not running, a backend state of `Stopped`,
+`NoState`, `NeedsLogin` or `NeedsMachineAuth`, or a Serve configuration whose
+every target is another port. A timeout, any other error, output that is not
+JSON, an unknown backend state, or a Serve section this build does not know
+is unverifiable, and Station refuses to start. The check runs once at
+startup. A route added later is not detected, but the credential layer still
+refuses to pair or admit anything through it.
+
+**The CLI checks the installed policy too.** `station environment offer
+--tailscale` refuses before it runs `tailscale serve`, and an installed
+policy it cannot load refuses as well. `station start` defaults its UI proxy
+and server to `127.0.0.1` and refuses another `--host`; an unloadable policy
+is left to the server, which reports it.
+
+**No separate relay switch.** The issue asked whether `limits.relay: false`
+is needed. Station's relay only lets remote devices in: relay enrollment
+creates a device credential through the same pairing service, and relay
+management needs the connector. Without `remote` it is already off, and with
+`remote` there is no relay-only threat that `clients` cannot express. A
+separate switch would be a second name for part of the same decision, so
+there is none. If a later release offers a relay-only remote path, that is
+the place to add one.
+
+**Out of scope.** Port forwarding with other tools (`ssh -L`/`-R`, reverse
+proxies, tunnel services) connects from loopback and reads as local. A tunnel
+is not detected; the credential layer still refuses earlier devices and new
+pairing through it. Outbound integrations that relay other people's messages
+into turns, such as the Discord gateway, are not client connections and are
+not governed by this limit.
 
 ## Status of later slices
 

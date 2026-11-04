@@ -314,6 +314,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4519: boots the source Station under a local-only managed policy with a
+  // stand-in Tailscale CLI in a private temp dir; private homes.
+  'src-server/__tests__/managed-remote-clients.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.

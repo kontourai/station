@@ -16,6 +16,11 @@ vi.mock('../hooks/useFeatureSettings', () => ({
   }),
 }));
 
+// #4519: tested in PairingSection.test; it needs a query client.
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsRefusal: () => undefined,
+}));
+
 // #3557: tested on its own (PeopleSection.test); it needs a query client.
 vi.mock('../views/settings/OwnAccessTokensPanel', () => ({
   OwnAccessTokensPanel: () => null,

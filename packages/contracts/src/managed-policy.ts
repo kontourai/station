@@ -33,11 +33,13 @@ export interface ManagedPolicySettingEntry {
 }
 
 /**
- * Limits sit outside settings. No limit key is enforced by this build, so the
- * accepted shape is empty; each enforcement slice adds its key here and to
- * {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
+ * Limits sit outside settings. Each enforcement slice adds its key here and
+ * to {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
  */
-export type ManagedPolicyLimits = Record<string, never>;
+export interface ManagedPolicyLimits {
+  /** #4519: the client kinds that may reach this machine's servers. */
+  clients?: ManagedPolicyClientKind[];
+}
 
 export interface ManagedPolicyDocument {
   schemaVersion: typeof MANAGED_POLICY_SCHEMA_VERSION;
@@ -50,8 +52,10 @@ export interface ManagedPolicyDocument {
   limits?: ManagedPolicyLimits;
 }
 
-/** Limit keys this build enforces. Empty until the first limit slice lands. */
-export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
+/** Limit keys this build enforces. */
+export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  'clients',
+];
 
 /**
  * Limit keys the managed-policy plan reserves for later releases. A reserved
@@ -60,7 +64,6 @@ export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
  */
 export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'maxApprovalMode',
-  'clients',
   'engines',
   'telemetry',
   'webhookAutomations',
@@ -205,7 +208,7 @@ export function duplicateJsonMemberPath(text: string): string | null {
     }
     // A value ended: close finished containers, then move to the next entry.
     for (;;) {
-      const frame = stack.at(-1);
+      const frame = stack[stack.length - 1];
       skipSpace();
       if (!frame) {
         if (i !== text.length) fail();
@@ -314,6 +317,7 @@ export function parseManagedPolicyDocument(
       () => 'managed settings are not supported by this version of Station',
     ),
     ...reservedMapProblems('limits', limits, limitProblem),
+    ...clientsLimitProblems(limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -323,7 +327,8 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined) document.limits = {};
+  if (limits !== undefined)
+    document.limits = { ...acceptedClientsLimit(limits) };
   return { ok: true, document };
 }
 
@@ -391,7 +396,7 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: {},
+    limits: { ...acceptedClientsLimit(document.limits) },
   };
 }
 
@@ -445,7 +450,8 @@ export function parseManagedPolicyStatus(
     (summary.supportUrl !== null && typeof summary.supportUrl !== 'string') ||
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
-    !isRecord(summary.limits)
+    !isRecord(summary.limits) ||
+    clientsValueProblem(ownValue(summary.limits, 'clients'), false) !== null
   ) {
     return null;
   }
@@ -457,7 +463,7 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: {},
+      limits: { ...acceptedClientsLimit(summary.limits) },
     },
   };
 }
@@ -480,4 +486,115 @@ export function managedPolicyDenial(
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
   return `${summary.organization}'s policy manages ${subject}.${help}`;
+}
+
+/**
+ * #4519: how a client reaches the server. `desktop` is the desktop app's own
+ * server, `local-browser` a browser on this machine, and `remote` anything
+ * off the machine: paired phones and computers, the relay, LAN discovery and
+ * Tailscale Serve.
+ */
+export type ManagedPolicyClientKind = 'desktop' | 'local-browser' | 'remote';
+
+export const MANAGED_POLICY_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+  'remote',
+];
+
+/**
+ * The kinds every accepted `limits.clients` must keep. This build enforces
+ * only the absence of `remote`; it cannot keep the desktop app or a local
+ * browser out, so a list without one of them is refused rather than accepted
+ * and ignored.
+ */
+const REQUIRED_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+];
+
+/**
+ * `record[key]` only when it is the record's own member. Not `Object.hasOwn`:
+ * the SDK, which imports this module, compiles against a library without it.
+ */
+function ownValue(record: Record<string, unknown>, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
+}
+
+/**
+ * Why `value` is not an accepted `limits.clients`, or null. A status read
+ * from a server skips the required-kinds rule (`forDocument: false`): a newer
+ * server may enforce lists this build refuses in a policy.
+ */
+function clientsValueProblem(
+  value: unknown,
+  forDocument = true,
+): string | null {
+  if (value === undefined) return null;
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (kind) =>
+        typeof kind === 'string' &&
+        (MANAGED_POLICY_CLIENT_KINDS as readonly string[]).includes(kind),
+    )
+  )
+    return 'must be a list of "desktop", "local-browser" and "remote"';
+  if (new Set(value).size !== value.length)
+    return 'must not list a client kind twice';
+  if (!forDocument) return null;
+  const missing = REQUIRED_CLIENT_KINDS.filter((kind) => !value.includes(kind));
+  return missing.length > 0
+    ? `must include ${missing.map((kind) => `"${kind}"`).join(' and ')}; this version of Station can only leave out "remote"`
+    : null;
+}
+
+/** #4519: problems with `limits.clients`, when `limits` is an object. */
+function clientsLimitProblems(limits: unknown): ManagedPolicyProblem[] {
+  if (!isRecord(limits)) return [];
+  const message = clientsValueProblem(ownValue(limits, 'clients'));
+  return message ? [{ path: 'limits.clients', message }] : [];
+}
+
+/** `{ clients }` from an already-validated limits object, else `{}`. */
+function acceptedClientsLimit(limits: unknown): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  const clients = ownValue(limits, 'clients');
+  return Array.isArray(clients)
+    ? {
+        clients: MANAGED_POLICY_CLIENT_KINDS.filter((kind) =>
+          clients.includes(kind),
+        ),
+      }
+    : {};
+}
+
+/**
+ * #4519: whether clients off this machine may reach the server. True without
+ * a policy, without `limits.clients`, or when it lists `remote`.
+ */
+export function managedPolicyAllowsRemoteClients(
+  summary: Pick<ManagedPolicySummary, 'limits'> | null | undefined,
+): boolean {
+  const clients = summary?.limits.clients;
+  return clients === undefined || clients.includes('remote');
+}
+
+/**
+ * #4519: the refusal code for remote access the managed policy forbids: a
+ * pairing offer, a relay invitation, LAN discovery, or a credential of a
+ * device paired before the policy. Clients key on it to show the managed
+ * message instead of offering a retry.
+ */
+export const MANAGED_POLICY_REMOTE_CLIENTS_CODE =
+  'managed-policy-remote-clients' as const;
+
+/** The sentence every surface uses to refuse remote access under the limit. */
+export function managedRemoteClientsDenial(
+  summary: ManagedPolicySummary,
+): string {
+  return managedPolicyDenial(
+    summary,
+    'remote access: only this computer can connect to Station',
+  );
 }

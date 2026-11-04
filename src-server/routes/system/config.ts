@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_REMOTE_CLIENTS_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
@@ -939,6 +940,14 @@ export function createConfigRoutes(
             authorizeContributionMutation?.(c.req.raw) !== true
           )
             throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
+          // #4519: checked after the operator gate, so only the operator
+          // learns what the policy says.
+          if (
+            accepted.lanDiscoveryEnabled === true &&
+            current.lanDiscoveryEnabled !== true &&
+            lanDiscoveryFor(configLoader).managedPolicyRefusal() !== undefined
+          )
+            throw new Error(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -1058,6 +1067,22 @@ export function createConfigRoutes(
             success: false,
             error:
               'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
+      }
+      const managedRefusal =
+        lanDiscoveryFor(configLoader).managedPolicyRefusal();
+      if (
+        error instanceof Error &&
+        error.message === MANAGED_POLICY_REMOTE_CLIENTS_CODE &&
+        managedRefusal !== undefined
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: managedRefusal,
+            code: MANAGED_POLICY_REMOTE_CLIENTS_CODE,
           },
           403,
         );

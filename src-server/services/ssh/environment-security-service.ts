@@ -142,6 +142,11 @@ interface EnvironmentSecurityServiceOptions {
    * registry itself; defaults to `process.env`.
    */
   environment?: NodeJS.ProcessEnv;
+  /**
+   * #4519: the managed policy allows no remote clients; see
+   * `DevicePairingService`'s `localClientsOnly`.
+   */
+  localClientsOnly?: boolean;
 }
 
 interface EnvironmentSecurityLockRecord {
@@ -221,6 +226,7 @@ export class EnvironmentSecurityService {
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
   readonly #hosted: boolean;
+  readonly #localClientsOnly: boolean;
   #devicePairingService?: DevicePairingService;
   readonly #groups: StationGroupsService;
 
@@ -239,6 +245,7 @@ export class EnvironmentSecurityService {
       options.environment ?? process.env,
     );
     this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
+    this.#localClientsOnly = options.localClientsOnly === true;
   }
 
   /**
@@ -323,6 +330,7 @@ export class EnvironmentSecurityService {
       now: this.#now,
       capScope: this.#capScope,
       ownerDeviceStanding: !this.#hosted,
+      localClientsOnly: this.#localClientsOnly,
     });
     await this.#seedGroups(this.#devicePairingService);
     return record;
@@ -359,6 +367,7 @@ export class EnvironmentSecurityService {
         now: this.#now,
         capScope: this.#capScope,
         ownerDeviceStanding: !this.#hosted,
+        localClientsOnly: this.#localClientsOnly,
       });
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.

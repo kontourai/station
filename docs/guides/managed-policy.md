@@ -8,16 +8,19 @@ if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. Settings, limits, configuration profiles and Group Policy
-arrive in later releases (#4517–#4524). This guide grows with them.
+precedence rules. Settings, the remaining limits, configuration profiles and
+Group Policy arrive in later releases (#4517–#4524). This guide grows with
+them.
 
 ## What this release supports
 
 The current release supports the policy document, the file source, the
 fail-closed startup check, `station policy check` and `station policy show`,
-and a value-free summary that clients can read. It does **not** yet enforce
-any setting or limit. A policy that contains a setting entry or a limit key is
-refused with "not supported by this version of Station". Station never accepts
+a value-free summary that clients can read, and one limit:
+[network exposure](#network-exposure) (`limits.clients`). It does **not** yet
+enforce any setting or any other limit. A policy that contains a setting entry
+or another limit key is refused with "not supported by this version of
+Station". Station never accepts
 a key it does not yet enforce, so a machine never looks managed when it is not.
 
 A valid policy today names the organization and an optional support link:
@@ -36,7 +39,8 @@ A valid policy today names the organization and an optional support link:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Must be empty (`{}`) in this release. |
-| `limits` | no | Must be empty (`{}`) in this release. |
+| `limits` | no | May hold only `clients` in this release. |
+| `limits.clients` | no | A list of `"desktop"`, `"local-browser"` and `"remote"`. See [Network exposure](#network-exposure). |
 
 Station refuses any other key, at any level. An unknown key may be a
 restriction from a newer release, and Station will not run while it cannot
@@ -150,6 +154,73 @@ Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 `{ "state": "none" }`, or the source, the fingerprint and a summary: the
 organization, the support link, the locked setting paths and the effective
 limits. It never returns a setting value.
+
+## Network exposure
+
+`limits.clients` lists how clients may reach Station on the machine:
+
+- `desktop`: the desktop app.
+- `local-browser`: a browser on the same machine, signed in with a
+  `station open` link.
+- `remote`: anything off the machine, such as paired phones and computers,
+  the relay, nearby (LAN) discovery and Tailscale Serve.
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "limits": { "clients": ["desktop", "local-browser"] }
+}
+```
+
+`remote` is the kind you can leave out. This release cannot keep the desktop
+app or a local browser out, so a list without `desktop` or `local-browser` is
+refused. A policy without `limits.clients`, or with `remote` in it, leaves
+network access as it is.
+
+Without `remote`:
+
+- **Station listens only on this computer.** With `STATION_HOST` unset, it
+  binds `127.0.0.1`. With `STATION_HOST` set to anything other than a
+  loopback address or `localhost`, Station does not start. `station start`
+  defaults to `127.0.0.1` and refuses another `--host`. The desktop app
+  already binds `127.0.0.1`.
+- **Nothing new can pair.** Pairing codes, access requests, relay setup and
+  invitations, personal access tokens and Tailscale Serve setup
+  (`station environment offer --tailscale`) are refused. Nearby discovery
+  stays off and cannot be turned on. Settings disables **Pair device** and
+  shows the policy's message.
+- **Devices paired earlier are signed out.** Their credentials, relay links
+  and personal access tokens stop working, and they get no notifications.
+  They are not revoked: they stay under Paired devices, where you can revoke
+  them, and they work again if the policy is removed.
+- **Station refuses to start while it could be reached from elsewhere.** It
+  does not start when the relay connector is configured
+  (`STATION_BROKER_CONFIG_FILE`), or when a supervisor still holds a listener
+  bound to another address (quit Station completely and start it again).
+
+At startup Station also asks Tailscale whether Tailscale Serve forwards to any
+of its ports (the server, voice, consent and UI ports). It does not start while
+a route does, and the error names the port and the command that turns routes
+off (`tailscale serve status` lists them, `tailscale serve reset` turns all
+of them off). A route that names a host, such as `localhost`, counts, since
+the name can lead to this server. Station does not change Tailscale's
+configuration itself.
+
+Station starts when Tailscale is not installed, is not running, or is signed
+out, because nothing forwards then. If Tailscale is installed but does not
+answer, or answers in a way Station cannot read, Station does not start until
+Tailscale is set up, stopped or removed. Station checks only at startup: a
+route added later, or one Tailscale restores when it starts again, is not
+seen until the next start. Devices still cannot pair or sign in through such a
+route.
+
+The limit does not cover port forwarding with other tools, such as `ssh -L`
+or `ssh -R`, a reverse proxy or a tunnel service. They connect to Station from
+this computer, so Station sees them as local. Devices paired earlier stay
+signed out and nothing new can pair through them, but a person who has this
+computer's sign-in link or desktop credentials could still use them. Control
+those tools separately.
 
 ## What a managed policy does not do
 

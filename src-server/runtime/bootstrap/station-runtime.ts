@@ -117,6 +117,10 @@ import {
   resolveBuiltinAgentEngineBinding,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  managedPolicyAllowsRemoteClients,
+  managedRemoteClientsDenial,
+} from '@kontourai/station-contracts/managed-policy';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -1559,6 +1563,11 @@ export class StationRuntime {
       this.eventLogPath = `${projectHomeDir}/monitoring`;
       this.environmentSecurityService = new EnvironmentSecurityService({
         homeDir: projectHomeDir,
+        // #4519: without `remote` in `limits.clients`, only this machine's
+        // home-possession credentials are issued or accepted.
+        localClientsOnly: !managedPolicyAllowsRemoteClients(
+          this.managedPolicy?.summary,
+        ),
       });
 
       const agentPluginLoader = new AgentPluginLoader({
@@ -1591,6 +1600,14 @@ export class StationRuntime {
             composition,
           ),
       });
+      // #4519: nearby discovery advertises Station to the network.
+      if (
+        this.managedPolicy &&
+        !managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+      )
+        lanDiscoveryFor(this.configLoader).refuseByManagedPolicy(
+          managedRemoteClientsDenial(this.managedPolicy.summary),
+        );
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
       // fresh on every `loadIntegration` — never read from, and never

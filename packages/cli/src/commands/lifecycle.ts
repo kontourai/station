@@ -40,7 +40,10 @@ import {
   relative,
   resolve,
 } from 'node:path';
-import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
+import {
+  MANAGED_POLICY_INVALID_MARKER,
+  managedRemoteClientsDenial,
+} from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
@@ -141,6 +144,7 @@ import {
   type PackagedRuntimeChannel,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
+import { installedRemoteClientsLimit } from './managed-remote-clients.js';
 import {
   captureStableProcessFingerprint,
   createAppShortcut,
@@ -4776,9 +4780,23 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   }
   // Watch mode serves the UI from Vite, which Station documents as
   // loopback-only (development.md), so it defaults to and requires loopback.
+  // #4519: under a managed policy without `remote` clients, the server
+  // refuses a non-loopback host, so default to loopback and say why here.
+  // An unloadable policy is left to the server, which reports it.
+  let remoteLimit: ReturnType<typeof installedRemoteClientsLimit> = null;
+  try {
+    remoteLimit = installedRemoteClientsLimit();
+  } catch {
+    remoteLimit = null;
+  }
   const host = normalizeLifecycleHost(
-    opts.host ?? (watch ? '127.0.0.1' : undefined),
+    opts.host ?? (watch || remoteLimit ? '127.0.0.1' : undefined),
   );
+  if (remoteLimit && !isLoopbackHost(host)) {
+    throw new Error(
+      `${managedRemoteClientsDenial(remoteLimit)} Station listens only on this computer; --host=${host} is not supported.`,
+    );
+  }
   if (watch && !isLoopbackHost(host)) {
     throw new Error(
       `--watch serves the Vite dev server, which is loopback-only; --host=${host} is not supported.`,

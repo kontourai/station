@@ -48,6 +48,7 @@ import {
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import { MANAGED_POLICY_REMOTE_CLIENTS_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
 import {
   isPersonalTokenScope,
@@ -505,6 +506,15 @@ interface DevicePairingServiceOptions {
    * ever holds owner standing.
    */
   ownerDeviceStanding?: boolean;
+  /**
+   * #4519: the managed policy leaves `remote` out of `limits.clients`. Only
+   * credentials minted with home possession (the desktop app and a browser
+   * on this machine) are issued or accepted. Offers for anything else are
+   * refused, and devices, relay aliases and personal access tokens issued
+   * earlier stop resolving. Nothing is revoked or deleted, so removing the
+   * limit restores them.
+   */
+  localClientsOnly?: boolean;
 }
 
 export class DevicePairingError extends Error {
@@ -534,7 +544,9 @@ export class DevicePairingError extends Error {
       // archive#3816: the device's scope changed under a caller who was
       // editing it. Its whole-scope replacement is refused rather than
       // silently reverting someone else's decision.
-      | 'scope_changed',
+      | 'scope_changed'
+      // #4519: the managed policy allows no remote clients.
+      | typeof MANAGED_POLICY_REMOTE_CLIENTS_CODE,
   ) {
     super(
       code === 'identity_credential_quota_reached' ||
@@ -1217,6 +1229,7 @@ export class DevicePairingService {
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
   readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
   readonly #ownerDeviceStanding: boolean;
+  readonly #localClientsOnly: boolean;
   /** #3557: personal access tokens, resolved as headless devices. */
   readonly #tokens: PersonalTokenStore;
   /**
@@ -1239,6 +1252,7 @@ export class DevicePairingService {
   constructor(options: DevicePairingServiceOptions) {
     this.#capScope = options.capScope ?? ((device) => device.scope);
     this.#ownerDeviceStanding = options.ownerDeviceStanding === true;
+    this.#localClientsOnly = options.localClientsOnly === true;
     this.#tokens = new PersonalTokenStore({
       securityDir: join(options.homeDir, 'security'),
       ...(options.now ? { now: options.now } : {}),
@@ -1309,7 +1323,15 @@ export class DevicePairingService {
     scope?: string;
     kind?: PairedDeviceKind;
     approval?: 'on-create' | 'on-request';
+    /**
+     * #4519: the caller exchanges this offer itself with home possession
+     * (the local-grant and launcher mints). Only such an offer is created
+     * under `localClientsOnly`; `#exchange` holds the caller to it.
+     */
+    homePossession?: true;
   }): DevicePairingOffer {
+    if (this.#localClientsOnly && input.homePossession !== true)
+      throw new DevicePairingError(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
     let endpoint: URL;
     try {
       endpoint = new URL(input.endpoint);
@@ -1865,6 +1887,9 @@ export class DevicePairingService {
     input: DevicePairingExchangeInput,
     relayReservation?: RelayEnrollmentDeviceReservation,
   ): DevicePairingExchangeResult {
+    // #4519: no credential leaves this machine under the limit.
+    if (this.#localClientsOnly && input.locality !== 'home-possession')
+      throw new DevicePairingError(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
     const offer = this.#offers.get(input.offerId);
     if (!offer) {
       // #2228: the joiner polls a saved request, so an offer that is not in
@@ -2948,7 +2973,8 @@ export class DevicePairingService {
       if (
         device.revokedAt === null &&
         device.pendingEnrollmentId === undefined &&
-        device.pushSubscription !== null
+        device.pushSubscription !== null &&
+        !this.#signedOutByPolicy(device)
       ) {
         results.push({
           deviceId: device.id,
@@ -3194,7 +3220,14 @@ export class DevicePairingService {
     }>;
     unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }>;
   } {
-    const active = this.#activeDeviceIds();
+    // #4519: signed-out devices are left out of delivery, not of
+    // `#activeDeviceIds`, which decides what registrations are deleted.
+    const active = new Set(
+      [...this.#activeDeviceIds()].filter((id) => {
+        const device = this.#registry.devices.find((item) => item.id === id);
+        return device !== undefined && !this.#signedOutByPolicy(device);
+      }),
+    );
     const unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }> =
       [];
     const byDevice = new Map<string, NativePushRegistration>();
@@ -3378,6 +3411,9 @@ export class DevicePairingService {
 
   /** #3557: the active token for `candidate`, touching its last use. */
   #resolveToken(candidate: string): StoredPersonalToken | undefined {
+    // #4519: a personal access token is a bearer credential for use from
+    // anywhere; the server cannot tell this machine's use from another's.
+    if (this.#localClientsOnly) return undefined;
     const token = this.#tokens.find(candidate);
     if (!token) return undefined;
     if (!this.#accountStandingCurrent(token.binding, token.createdAt))
@@ -3423,6 +3459,8 @@ export class DevicePairingService {
     },
     assertCurrent?: () => void,
   ): Promise<MintedPersonalAccessToken> {
+    if (this.#localClientsOnly)
+      throw new DevicePairingError(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
     const name = input.name.trim();
     const now = this.#now();
     // #3586: a token tied to an account is checked against the account's
@@ -3688,6 +3726,16 @@ export class DevicePairingService {
     return match;
   }
 
+  /**
+   * #4519: under `localClientsOnly`, every device whose credential was not
+   * minted with home possession: phones and computers paired earlier, relay
+   * devices and delegations. They stay listed (an operator can still revoke
+   * them) but cannot authenticate, and get no push delivery.
+   */
+  #signedOutByPolicy(device: StoredDevice): boolean {
+    return this.#localClientsOnly && device.locality !== 'home-possession';
+  }
+
   #isPendingRelayDevice(device: StoredDevice): boolean {
     return (
       (device as StoredDevice & { pendingEnrollmentId?: unknown })
@@ -3703,13 +3751,16 @@ export class DevicePairingService {
     const now = this.#now();
     let match: CredentialMatch | undefined;
     for (const device of registry.devices) {
+      // #4519: compared all the same, so the lookup's timing does not say
+      // which devices the limit signed out.
+      const signedOut = this.#signedOutByPolicy(device);
       const parentMatches = timingSafeEqual(
         candidateHash,
         Buffer.from(device.credentialHash, 'base64url'),
       );
       const parentActive =
         device.revokedAt === null && !this.#isPendingRelayDevice(device);
-      if (parentMatches && parentActive) match = { device };
+      if (parentMatches && parentActive && !signedOut) match = { device };
       for (const alias of device.credentialAliases ?? []) {
         const aliasMatches = timingSafeEqual(
           candidateHash,
@@ -3718,6 +3769,8 @@ export class DevicePairingService {
         if (
           aliasMatches &&
           parentActive &&
+          // Relay aliases never carry home possession.
+          !this.#localClientsOnly &&
           alias.revokedAt === null &&
           alias.expiresAt > now &&
           isPairingScopeSubset(alias.scope, device.scope)

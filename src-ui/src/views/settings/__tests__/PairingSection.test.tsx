@@ -15,6 +15,12 @@ vi.mock('../LanDiscoveryControl', () => ({
   LanDiscoveryControl: () => <div data-testid="lan-discovery" />,
 }));
 
+// #4519: the connected Station's managed refusal, set per test.
+let managedRefusal: string | undefined;
+vi.mock('../../../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsRefusal: () => managedRefusal,
+}));
+
 vi.mock('../OwnAccessTokensPanel', () => ({
   OwnAccessTokensPanel: () => <div data-testid="own-access-tokens" />,
 }));
@@ -25,6 +31,7 @@ describe('Settings device pairing', () => {
   beforeEach(() => {
     consumePendingConnectionsModal();
     nativePhone = false;
+    managedRefusal = undefined;
   });
 
   test('opens the canonical invitation flow instead of advertising a bare address QR', () => {
@@ -62,5 +69,32 @@ describe('Settings device pairing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect phone' }));
     expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-device' });
     expect(screen.queryByRole('button', { name: '+ Pair device' })).toBeNull();
+  });
+
+  test('#4519: a managed policy without remote clients disables pairing, hides nearby discovery and says why', () => {
+    managedRefusal =
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+    render(<PairingSection />);
+    const action = screen.getByRole('button', { name: '+ Pair device' });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(action);
+    expect(consumePendingConnectionsModal()).toBeNull();
+    expect(screen.queryByTestId('lan-discovery')).toBeNull();
+    const note = screen.getByText(managedRefusal);
+    expect(action.getAttribute('aria-describedby')).toBe(note.id);
+  });
+
+  test('#4519: a phone joining another Station is not affected by that Station’s own policy read', () => {
+    nativePhone = true;
+    managedRefusal = 'ignored';
+    render(<PairingSection />);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Connect phone',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(screen.queryByText('ignored')).toBeNull();
   });
 });
