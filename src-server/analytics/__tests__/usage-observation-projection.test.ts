@@ -1142,3 +1142,90 @@ test('a cumulative decrease leaves earlier dates unallocated and counts only lat
     vi.useRealTimers();
   }
 });
+
+test('daily cumulative throughput excludes outside jumps on each Station resume and reattach', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-01T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('resumed-codex', 'codex');
+    f.turn('resumed-codex', 'codex', 'station-day-one', day1, {
+      promptTokens: 100_000,
+    });
+    vi.setSystemTime('2026-08-02T12:00:00Z');
+    f.start('resumed-codex', 'codex', day2, 'model-a', {}, true);
+    f.turn('resumed-codex', 'codex', 'first-after-terminal', day2, {
+      promptTokens: 5_150_000,
+    });
+    f.turn('resumed-codex', 'codex', 'station-day-two', day2, {
+      promptTokens: 5_200_000,
+    });
+    f.start('resumed-codex', 'codex', day2);
+    f.turn('resumed-codex', 'codex', 'first-after-reattach', day2, {
+      promptTokens: 9_200_000,
+      completionTokens: 40_000,
+    });
+    f.turn('resumed-codex', 'codex', 'station-after-reattach', day2, {
+      promptTokens: 9_220_000,
+      completionTokens: 45_000,
+    });
+    const inputFor = (day: string) =>
+      f.reads
+        .listDailyUsage(day, f.authority)
+        .reduce((total, row) => total + (row.inputTokens ?? 0), 0);
+    expect(inputFor('2026-08-01')).toBe(100_000);
+    expect(inputFor('2026-08-02')).toBe(70_000);
+    expect(
+      f.reads
+        .listDailyUsage('2026-08-02', f.authority)
+        .reduce((total, row) => total + (row.outputTokens ?? 0), 0),
+    ).toBe(5_000);
+    // A non-daily caller still receives canonical lifetime accounting.
+    expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
+      9_220_000,
+    );
+  } finally {
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('first observed native resume baselines cumulative components while per-turn engines keep their first turn', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('initial-resume', 'codex', day2, 'model-a', {
+      nativeResumeIdentity: 'matched',
+    });
+    f.turn('initial-resume', 'codex', 'inherited', day2, {
+      promptTokens: 42_000_000,
+      cacheReadTokens: 20_000_000,
+    });
+    f.turn('initial-resume', 'codex', 'after-inherited', day2, {
+      promptTokens: 42_050_000,
+      cacheReadTokens: 20_020_000,
+    });
+    f.start('per-turn', 'claude', day2, 'model-a', {}, true);
+    f.turn('per-turn', 'claude', 'claude-first', day2, { promptTokens: 1_000 });
+    const daily = f.reads.listDailyUsage('2026-08-02', f.authority);
+    expect(
+      daily
+        .filter((row) => row.provider === 'codex')
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(50_000);
+    expect(
+      daily
+        .filter((row) => row.provider === 'codex')
+        .reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0),
+    ).toBe(20_000);
+    expect(
+      daily
+        .filter((row) => row.provider === 'claude')
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(1_000);
+  } finally {
+    f.store.close();
+    vi.useRealTimers();
+  }
+});

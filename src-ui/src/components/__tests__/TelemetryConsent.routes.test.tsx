@@ -288,10 +288,13 @@ test.each(['off', 'lite', 'full'] as const)(
       });
       expect(anonymous).toHaveProperty('checked', true);
       expect(anonymous.getAttribute('aria-describedby')).toBeTruthy();
-      expect(
-        document.getElementById(anonymous.getAttribute('aria-describedby')!)
-          ?.textContent,
-      ).toContain('conversations run in Station');
+      const description = document.getElementById(
+        anonymous.getAttribute('aria-describedby')!,
+      )?.textContent;
+      expect(description).toContain('Daily counts');
+      expect(description).toContain(
+        'coarse tokens per engine from conversations run in Station',
+      );
       fireEvent.click(
         screen.getByRole('radio', { name: SHARING_LABELS[tier] }),
       );

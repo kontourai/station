@@ -15,6 +15,7 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
@@ -1360,16 +1361,17 @@ test('runtime telemetry construction carries daily accounting through to the emi
     devicePairing: { listDevices: () => [] },
   };
   let sourceRevision = 1;
+  const readDailyUsage = vi.fn((day: string, _scope: unknown) => [
+    {
+      sourceEventId: 'runtime-turn',
+      provider: 'claude',
+      messages: 0,
+      inputTokens: day === '2026-10-12' ? 10_000 * sourceRevision : 0,
+    },
+  ]);
   runtime.orchestrationService = {
     setUsageTelemetry() {},
-    listDailyUsage: (day: string) => [
-      {
-        sourceEventId: 'runtime-turn',
-        provider: 'claude',
-        messages: 0,
-        inputTokens: day === '2026-10-12' ? 10_000 * sourceRevision : 0,
-      },
-    ],
+    listDailyUsage: readDailyUsage,
   };
   runtime.eventBus = new EventBus();
   try {
@@ -1387,6 +1389,10 @@ test('runtime telemetry construction carries daily accounting through to the emi
     sourceRevision = 2;
     vi.setSystemTime('2026-10-13T12:00:00Z');
     await runtime.usageTelemetry.flushDaily();
+    expect(readDailyUsage).toHaveBeenCalledWith(
+      '2026-10-12',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toMatchObject({
       engine_tokens_today: [{ engine: 'claude', bucket: '10k-100k' }],

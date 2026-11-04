@@ -1338,7 +1338,7 @@ test('daily throughput adds declared disjoint cache components once and leaves c
         sourceEventId: 'claude-turn',
         provider: 'claude',
         messages: 0,
-        cacheReadTokens: 20_000,
+        cacheReadTokens: 60_000,
       },
       {
         sourceEventId: 'claude-turn',
@@ -1356,9 +1356,9 @@ test('daily throughput adds declared disjoint cache components once and leaves c
         sourceEventId: 'codex-turn',
         provider: 'codex',
         messages: 0,
-        inputTokens: 20_200,
+        inputTokens: 60_200,
         outputTokens: 100,
-        cacheReadTokens: 20_000,
+        cacheReadTokens: 60_000,
       },
     ],
   );
@@ -1394,7 +1394,7 @@ test('a failed usage read still sends the daily ping without a throughput field'
 test('reads usage outside the daily-state mutation lock', async () => {
   const sink = await receiver();
   const home = makeTempDir('daily-read-lock-');
-  let heldDuringRead: boolean | undefined;
+  const heldDuringReads: boolean[] = [];
   const { live } = await service(
     sink.endpoint,
     {},
@@ -1403,8 +1403,8 @@ test('reads usage outside the daily-state mutation lock', async () => {
     undefined,
     undefined,
     () => {
-      heldDuringRead = existsSync(
-        join(home, 'config', 'telemetry-daily.json.mutation'),
+      heldDuringReads.push(
+        existsSync(join(home, 'config', 'telemetry-daily.json.mutation')),
       );
       return [
         {
@@ -1419,7 +1419,8 @@ test('reads usage outside the daily-state mutation lock', async () => {
   await live.stationStarted();
   vi.setSystemTime('2026-10-13T10:00:00Z');
   await live.flushDaily();
-  expect(heldDuringRead).toBe(false);
+  expect(heldDuringReads.length).toBeGreaterThan(0);
+  expect(heldDuringReads).not.toContain(true);
   expect(daily(sink.payloads)[0].engine_tokens_today).toEqual([
     { engine: 'claude', bucket: '1-10k' },
   ]);
