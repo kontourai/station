@@ -1085,3 +1085,41 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
     vi.useRealTimers();
   }
 });
+
+test('daily Lite usage excludes followed Claude, Codex and OpenCode histories while retaining Station-run sessions', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  const service = new OrchestrationService({
+    eventStore: f.store,
+    eventBus: new EventBus(),
+    adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+    logger: { debug() {}, warn() {} },
+  });
+  try {
+    for (const provider of ['claude', 'codex', 'opencode'] as const) {
+      const thread = `followed-${provider}`;
+      f.start(thread, provider, day1);
+      f.store.upsertSession({
+        ...f.store.readSessionByThread(thread)!,
+        controlMode: 'read-only-attached',
+      });
+      f.turn(thread, provider, 'imported-history', day1, {
+        promptTokens: provider === 'codex' ? 42_000_000 : 500_000,
+      });
+    }
+    f.start('station-run', 'claude', day1);
+    f.turn('station-run', 'claude', 'owned-turn', day1, { promptTokens: 123 });
+    const usage = service.listDailyUsage(
+      '2026-08-02',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(usage.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0)).toBe(
+      123,
+    );
+  } finally {
+    await service.shutdown();
+    f.store.close();
+    vi.useRealTimers();
+  }
+});

@@ -15,7 +15,10 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
-import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+} from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -1322,4 +1325,78 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         diagnosticFailure.message += `\nAfter cleanup: ${JSON.stringify(checkpoint())}`;
     }
   });
+});
+
+test('runtime telemetry construction carries daily accounting through to the emitted Lite ping', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-10-12T12:00:00Z');
+  vi.stubEnv('DO_NOT_TRACK', '0');
+  const home = makeTempDir('runtime-daily-accounting-');
+  const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
+  const config = {
+    defaultModel: '',
+    invokeModel: '',
+    structureModel: '',
+    productTelemetryEndpoint: 'https://receiver.test/lite',
+    telemetryTier: { operator: 'lite', kontour: 'off' },
+  } satisfies AppConfig;
+  const payloads: unknown[] = [];
+  vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {
+    payloads.push(JSON.parse(String(init.body)));
+    return new Response('{}');
+  });
+  const runtime = configurationRuntime(
+    loader,
+    { debug() {}, info() {}, warn() {}, error() {} },
+    config,
+  );
+  runtime.buildProvenanceSnapshot = null;
+  runtime.orchestrationEventStore = {
+    createPackageMcpAdmissionJournal: () => ({
+      selectedInstallations: () => ({ state: 'observed', installations: [] }),
+    }),
+  };
+  runtime.environmentSecurityService = {
+    devicePairing: { listDevices: () => [] },
+  };
+  let sourceRevision = 1;
+  runtime.orchestrationService = {
+    setUsageTelemetry() {},
+    listDailyUsage: (day: string) => [
+      {
+        sourceEventId: 'runtime-turn',
+        provider: 'claude',
+        messages: 0,
+        inputTokens: day === '2026-10-12' ? 10_000 * sourceRevision : 0,
+      },
+    ],
+  };
+  runtime.eventBus = new EventBus();
+  try {
+    await loader.loadAppConfig();
+    await loader.updateAppConfig(config);
+    await runtime.initializeUsageTelemetry();
+    await runtime.usageTelemetry.recordLiteNotice(
+      'operator',
+      LITE_TELEMETRY_INVENTORY_REVISION,
+    );
+    await runtime.usageTelemetry.track('engine_turn', {
+      engine: 'claude',
+      outcome: 'completed',
+    });
+    sourceRevision = 2;
+    vi.setSystemTime('2026-10-13T12:00:00Z');
+    await runtime.usageTelemetry.flushDaily();
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      engine_tokens_today: [{ engine: 'claude', bucket: '10k-100k' }],
+    });
+  } finally {
+    await runtime.usageTelemetry?.shutdown();
+    loader.dispose();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  }
 });

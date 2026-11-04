@@ -243,3 +243,15 @@ describe('privacy inventory', () => {
     );
   });
 });
+
+test('privacy disclosure scopes throughput to Station conversations and states the cumulative-reset undercount', () => {
+  const policy = renderPrivacyPolicy();
+  expect(policy).toContain('conversations run in Station');
+  expect(policy).toContain('outside CLI use is excluded');
+});
+
+test('privacy disclosure retains the conservative dated-usage limit on cumulative resets', () => {
+  expect(renderPrivacyPolicy()).toContain(
+    'Cumulative resets or corrections can undercount daily tokens',
+  );
+});

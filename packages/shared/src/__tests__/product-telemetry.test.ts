@@ -3,6 +3,7 @@ import {
   FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   hasCurrentLiteTelemetryNotice,
   LITE_TELEMETRY_INVENTORY_REVISION,
+  liteTelemetryNoticeText,
   monthlyTelemetryId,
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
@@ -471,4 +472,9 @@ test('feedback skip is a local dismissal and cannot be submitted', () => {
     action: 'tier-lowered',
     reason: 'privacy',
   });
+});
+
+test('Lite notice scopes throughput to conversations run in Station and excludes outside CLI use', () => {
+  expect(liteTelemetryNoticeText()).toContain('conversations run in Station');
+  expect(liteTelemetryNoticeText()).toContain('outside CLI use is excluded');
 });
