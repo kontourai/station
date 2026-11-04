@@ -11,6 +11,7 @@
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -60,7 +61,7 @@ const ADMIN_ACCESS = {
 
 type Call = { method: string; path: string; body: unknown };
 
-function stub(routes: Record<string, () => Response>) {
+function stub(routes: Record<string, () => Response | Promise<Response>>) {
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
@@ -340,9 +341,24 @@ describe('Browser shared local servers (D7, operator only)', () => {
   });
 
   test.each(['shared servers', 'server discovery'] as const)(
-    'a failed %s read can be retried without leaving Settings',
+    'a failed %s read keeps Retry focused while pending and recovers in Settings',
     async (read) => {
       let failing = true;
+      let finishRetry!: (response: Response) => void;
+      const pendingRetry = new Promise<Response>((resolve) => {
+        finishRetry = resolve;
+      });
+      let retryResponse: Response | Promise<Response> = pendingRetry;
+      const sharedTargets = [
+        {
+          id: 'lt_00000000-0000-4000-8000-000000000001',
+          host: '127.0.0.1',
+          port: 3001,
+          label: 'api',
+          addedBy: 'operator',
+          addedAt: '2026-09-22T12:00:00.000Z',
+        },
+      ];
       const failure = () =>
         new Response(JSON.stringify({ success: false, code: 'internal' }), {
           status: 500,
@@ -352,21 +368,16 @@ describe('Browser shared local servers (D7, operator only)', () => {
         'GET /api/browser/projects/alpha/settings': () =>
           ok({ browserEvaluate: false }),
         'GET /api/browser/projects/alpha/local-targets': () =>
-          read === 'shared servers' && failing
-            ? failure()
-            : ok([
-                {
-                  id: 'lt_00000000-0000-4000-8000-000000000001',
-                  host: '127.0.0.1',
-                  port: 3001,
-                  label: 'api',
-                  addedBy: 'operator',
-                  addedAt: '2026-09-22T12:00:00.000Z',
-                },
-              ]),
+          read === 'shared servers'
+            ? failing
+              ? failure()
+              : retryResponse
+            : ok(sharedTargets),
         'GET /api/browser/projects/alpha/local-target-suggestions': () =>
-          read === 'server discovery' && failing
-            ? failure()
+          read === 'server discovery'
+            ? failing
+              ? failure()
+              : retryResponse
             : ok({ state: 'ok', suggestions: [suggestion] }),
       });
       mount();
@@ -386,7 +397,46 @@ describe('Browser shared local servers (D7, operator only)', () => {
         ),
       ).toBeTruthy();
       const retry = within(error).getByRole('button', { name: 'Try again' });
+      retry.focus();
       failing = false;
+      fireEvent.click(retry);
+      const retryPath = `/api/browser/projects/alpha/${
+        read === 'shared servers' ? 'local-targets' : 'local-target-suggestions'
+      }`;
+      const retryReads = () =>
+        calls.filter((call) => call.path === retryPath).length;
+      await waitFor(() => expect(retryReads()).toBe(2));
+      try {
+        expect(retry.isConnected).toBe(true);
+        expect(document.activeElement).toBe(retry);
+        expect(retry.getAttribute('aria-busy')).toBe('true');
+        expect(retry).toHaveProperty('disabled', false);
+        await act(async () => fireEvent.click(retry));
+        expect(retryReads()).toBe(2);
+      } finally {
+        await act(async () =>
+          finishRetry(
+            new Response(
+              JSON.stringify({ success: false, code: 'access-denied' }),
+              { status: 403 },
+            ),
+          ),
+        );
+      }
+      expect(
+        await within(error).findByText(
+          'You do not have access to this browser session.',
+        ),
+      ).toBeTruthy();
+      expect(retry.isConnected).toBe(true);
+      expect(document.activeElement).toBe(retry);
+      expect(retry.getAttribute('aria-busy')).toBe('false');
+      expect(retry.getAttribute('aria-disabled')).toBe('false');
+      retryResponse = ok(
+        read === 'shared servers'
+          ? sharedTargets
+          : { state: 'ok', suggestions: [suggestion] },
+      );
       fireEvent.click(retry);
       expect(
         await screen.findByRole('button', {
@@ -399,6 +449,7 @@ describe('Browser shared local servers (D7, operator only)', () => {
       expect(screen.queryByRole('alert')).toBeNull();
       expect(screen.getByLabelText('Project')).toBeTruthy();
       expect(calls.every((call) => call.method === 'GET')).toBe(true);
+      expect(retryReads()).toBe(3);
       if (read === 'shared servers') {
         expect(
           calls.some((call) => call.path.endsWith('/local-target-suggestions')),
