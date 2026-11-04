@@ -1,6 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants as fsConstants,
+  mkdirSync,
+  openSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
@@ -263,13 +271,21 @@ describe('symbolic links', () => {
 });
 
 describe('special files', () => {
-  test.skipIf(!posix)('a FIFO is refused without blocking on open', () => {
+  test.skipIf(!posix)('a FIFO is refused as not a regular file', () => {
     const path = join(dir(), 'policy.json');
     execFileSync('mkfifo', [path]);
-    // A blocking open would never return here: no writer ever opens it.
-    expect(invalid(() => readManagedPolicyFile(path)).reason).toBe(
-      'it is not a regular file',
-    );
+    // Hold a write end open so that, if the non-blocking open regressed,
+    // this in-process read would fail the assertion instead of hanging the
+    // worker. The non-blocking open itself is proven by the CLI and server
+    // child-process tests, which have no writer.
+    const writer = openSync(path, fsConstants.O_RDWR | fsConstants.O_NONBLOCK);
+    try {
+      expect(invalid(() => readManagedPolicyFile(path)).reason).toBe(
+        'it is not a regular file',
+      );
+    } finally {
+      closeSync(writer);
+    }
   });
 });
 
