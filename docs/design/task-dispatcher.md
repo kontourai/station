@@ -71,47 +71,95 @@ does: the Project's choice, then this Station's default, then `shared`
 Project's Session runs in the Project's working directory, in the shared
 checkout, and records `{ mode: 'shared' }`, as before.
 
-For `worktree`, each Task has one worktree of its own, recorded on the Task
-as `TaskRecord.taskWorktree` (owner `{ kind: 'task', taskId }`). Its path and
-branch are derived from the Task (`station/task/task-<id>-<digest>` unless the
-policy names a branch prefix), so every Session of the Task (a re-dispatch, a
-retry, a lead wake or `/chat` follow-up) runs in the same checkout. The
+For `worktree`, each Task has one worktree of its own. Its path and branch are
+derived from the Task (`station/task/task-<id>-<digest>` unless the policy
+names a branch prefix), so every Session of the Task (a re-dispatch, a retry,
+a lead wake or `/chat` follow-up) runs in the same checkout. The
 remote-sessions Adapter's `prepare` provisions it after resolving the Agent:
 inside the dispatch deadline, before the reservation, any claim or any
-provider effect. A Task that already records a worktree reuses it once git
-confirms it is still registered on its branch; a registered worktree at the
-Task's derived path and branch that the Task does not record yet is adopted;
-otherwise one is created from a clean Project checkout. A provisioning failure
-is a `failed` dispatch and nothing starts. The start moves to the worktree
-path and records it as `worktree` with `{ mode: 'worktree' }` isolation; the
-session service admits that directory through the process-local execution
-workspace binding, verified against git and the owning Task. The Task's
-`workspaceBinding` stays the Project checkout it was created against, so the
-Task view's availability is unchanged.
+provider effect. A provisioning failure is a `failed` dispatch and nothing
+starts. Creating a worktree requires a clean Project checkout: a Project
+whose checkout has uncommitted changes refuses worktree dispatch until they
+are committed or removed (the same rule foreground worktree chats follow).
 
-Custody: provisioning and recording run in one per-Task queue, and creation
-runs one at a time per repository, so concurrent dispatches of one Task share
-one checkout and dispatches of different Tasks never refuse each other. The
-record is written when provisioning finishes, not when the dispatch stops
-waiting: a dispatch that times out or is aborted during provisioning returns
-`aborted`, and the checkout that finishes later is still the Task's, reused by
-its next dispatch. If the Task finished or was removed in the meantime, the
-late checkout is finalized at once. A Station that stops between `worktree
-add` and the record leaves a checkout at the Task's derived path, which the
-next dispatch adopts.
+Provisioning is idempotent per Task:
 
-A Session exit never finalizes a Task-owned worktree. Moving the Task to
-`done` (by status change or close-on-merge) finalizes it per
-`cleanupOnCompletion` (default: remove the worktree and its branch, then
-forget the record). Moving it to `canceled` takes the failure branch:
-`preserveOnFailure` (default true) keeps the worktree, its branch and the
-record. Finalization is best effort after the transition; a failure is logged
-and the record kept. It does not wait for a still-running Session.
+- a recorded worktree that still exists is reused once git confirms it is
+  registered on its branch;
+- a recorded worktree that is gone (removed by hand, or left behind when the
+  repository moved) is provisioned again: git's records of vanished
+  checkouts are pruned and the Task's own branch is checked out at its
+  derived path, so its committed work comes back;
+- a registered worktree at the Task's derived path and branch that is not
+  recorded yet is adopted;
+- otherwise one is created.
+
+The start moves to the worktree path and records it as `worktree` with
+`{ mode: 'worktree' }` isolation; the session service admits that directory
+through the process-local execution workspace binding, verified against git
+and the owning Task. A follow-up after that capability is gone (a Station
+restart) admits the worktree only when the conversation's server-written room
+execution binding names the same Task.
+
+**Record.** The worktree is recorded in its own home-root file,
+`task-worktrees.json` (Station home state, backed up and rolled back with the
+task store), keyed by Task id and bound to the Task's `createdAt`. It is not a
+field of the Task record: the task store refuses unknown fields, so an older
+Station would otherwise fail to read every Task after a downgrade. An entry
+that does not validate, including one whose owner names another Task, is
+ignored on its own. The Task's `workspaceBinding` stays the Project checkout
+it was created against.
+
+**The Task's working directory.** Readers that compare or read a Task's files
+use one helper, `taskWorkingDirectory`: the Task's worktree when it has one,
+else the Project working directory. Keeping a Session's declared output or
+pull request compares the Session's directory with it, so a worktree Task can
+keep its pull request and close on merge. Browser capture and Task output
+snapshots read from it. The opened Task shows the worktree in its existing
+"Task worktree" and branch rows, and as `taskWorktree`.
+
+**Custody.** In one Station process, provisioning and recording run in a
+per-Task queue, so concurrent dispatches of one Task share one checkout, and
+Task worktree creation runs one at a time per repository, so dispatches of
+different Tasks do not refuse each other on git's shared state. Foreground
+worktree chats provision through a separate, unqueued service, and another
+Station process on the same home is not serialized with this one; both rely
+on git refusing a second checkout of the same branch or path. The record is
+written when provisioning finishes, not when the dispatch stops waiting: a
+dispatch that times out or is aborted during provisioning returns `aborted`,
+and the checkout that finishes later is still the Task's, reused by its next
+dispatch. If the Task finished or was removed in the meantime, the late
+checkout is finalized at once. A Station that stops between `worktree add` and
+the record leaves a checkout at the Task's derived path, which the next
+dispatch adopts. Every git command (and repository open) the provisioning
+service runs has a deadline, five minutes by default, after which it is
+stopped and refused, so one hung command cannot hold either queue.
+
+**Finishing.** A Session exit never finalizes a Task-owned worktree. Moving the
+Task to `done` (by status change, a board or repair action, or close-on-merge)
+or `canceled` finalizes it after the transition; the status answer never
+waits on git. `canceled` takes the failure branch, so `preserveOnFailure`
+(default true) keeps it. Otherwise, with `cleanupOnCompletion` (default
+true), the worktree and its branch are removed only when nothing would be
+lost:
+
+- no Session in the worktree has a running turn;
+- the checkout has no uncommitted or untracked change;
+- the branch has no commit that no remote-tracking ref or other local branch
+  reaches. A squash merge leaves the branch's own commits off the base, so
+  "merged" is not the test; being pushed is.
+
+When any of these fails the worktree and branch are kept and the reason is
+recorded and shown on the opened Task (`taskWorktree.kept`: `policy`,
+`uncommitted`, `unpushed`, `session-running`, or `failed`). A
+`session-running` deferral is retried when a turn or Session ends; nothing
+else re-runs a kept finalization. A recorded worktree that is already gone is
+forgotten and its branch left alone.
 
 Not covered: a setup command for a new checkout
 ([#3759](https://github.com/kontourai/station/issues/3759)) would run in
-`prepare` after provisioning and before the start; none runs today. Custody is
-in-process; another Station process on the same home relies on git refusing a
-second checkout of the same branch and on adoption. Task dispatch is local, so
-the [remote execution-preparation](remote-execution-preparation.md) refusal
-for worktree-isolated receivers is unchanged.
+`prepare` after provisioning and before the start; none runs today. The
+running-turn check covers turns in this Station process; work done in the
+worktree outside Station is seen only through git status. Task dispatch is
+local, so the [remote execution-preparation](remote-execution-preparation.md)
+refusal for worktree-isolated receivers is unchanged.
