@@ -23,7 +23,7 @@ it. Station's engine uses a Model connection. External engines such as Claude
 Code, Codex, Muse, and compatible custom CLIs own their agent loop. ACP is a
 transport to some external engines, not another Agent category.
 
-The reserved Agent named **Station** is a role, identified by `station`. Its
+The reserved Agent named **Station Assistant** is a role, identified by `station`. Its
 engine is a separate choice. Do not infer its engine from its name or confuse
 it with the broader phrase “an agent using Station's engine.” Default Agents
 are persisted registry records. An unavailable engine does not erase its
