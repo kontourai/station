@@ -16,7 +16,9 @@ import {
 import { INSIGHTS_HTML, INSIGHTS_JS } from './insights-page.ts';
 import { callReceiver, type ReceiverNamespace } from './receiver.ts';
 
-// The Durable Object class must be exported from the Worker's main module.
+// The Durable Object class must be exported from the Worker's main module;
+// Cloudflare's runtime, named by wrangler.jsonc, is its only importer.
+// fallow-ignore-next-line unused-export
 export { LiteReceiver } from './receiver.ts';
 
 /** A Workers rate-limit binding. */

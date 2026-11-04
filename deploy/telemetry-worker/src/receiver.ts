@@ -62,7 +62,7 @@ export interface ReceiverLimits {
   retentionDays: number;
 }
 
-export const DEFAULT_LIMITS: ReceiverLimits = {
+const DEFAULT_LIMITS: ReceiverLimits = {
   maxRows: 1_000_000,
   maxBytes: 1_073_741_824,
   retentionDays: 90,
