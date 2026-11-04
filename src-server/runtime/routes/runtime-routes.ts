@@ -801,10 +801,7 @@ import type { OrchestrationService } from '../../services/orchestration/orchestr
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
-import {
-  CONTINUE_UNATTENDED_AFTER_RESTART_PREVIEW_ID,
-  RestartContinuation,
-} from '../../services/orchestration/restart-continuation.js';
+import { RestartContinuation } from '../../services/orchestration/restart-continuation.js';
 import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
@@ -7036,7 +7033,7 @@ export function configureRuntimeRoutes(
   if (threadInbox && context.orchestrationEventStore) {
     // Offered only where it can run: hosted Stations have no inbox.
     const restartContinuationPreview = context.featurePreviews.bind({
-      id: CONTINUE_UNATTENDED_AFTER_RESTART_PREVIEW_ID,
+      id: 'continue-unattended-after-restart',
       label: 'Continue unattended work after restart',
       description:
         'After a restart, continue Task and delegated work it cut off, once, with a note to check what already happened.',

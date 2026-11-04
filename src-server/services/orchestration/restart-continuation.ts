@@ -46,9 +46,6 @@ import type {
   ThreadInboxSubmission,
 } from './thread-inbox.js';
 
-export const CONTINUE_UNATTENDED_AFTER_RESTART_PREVIEW_ID =
-  'continue-unattended-after-restart';
-
 /** Origins this path continues. */
 const CONTINUED_ORIGINS: ReadonlySet<TurnDispatchOrigin> = new Set([
   'task-dispatch',
