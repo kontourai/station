@@ -2588,11 +2588,12 @@ export function createOrchestrationRoutes(
     return c.json(
       {
         success: false,
-        // #4512: a held Continue key is Station's own continuation of that
-        // interrupted turn; resending under a new key would continue it twice.
+        // #4512: a held Continue key means that interrupted turn is already
+        // being continued (by Station after a restart, or another member);
+        // resending under a new key would continue it twice.
         error:
           turnInterruptedContinueBoundaryId(clientTurnId) !== undefined
-            ? 'Station is already continuing this interrupted turn.'
+            ? 'This interrupted turn is already being continued.'
             : "This message key belongs to someone else's queued message. Send under a new key.",
         code: 'inbox_key_held',
       },

@@ -1670,7 +1670,7 @@ describe('restart continuation and the person’s Continue (#4512)', () => {
     ]);
   });
 
-  test("another member's tap on the held Continue key is refused, saying Station is on it", async () => {
+  test("another member's tap on the held Continue key is refused: it is already being continued", async () => {
     const { world } = await queuedContinuation();
     const other = await world.as(READER, () =>
       world.send(
@@ -1681,7 +1681,7 @@ describe('restart continuation and the person’s Continue (#4512)', () => {
     expect(other.status, await other.clone().text()).toBe(409);
     expect(await other.json()).toMatchObject({
       code: 'inbox_key_held',
-      error: 'Station is already continuing this interrupted turn.',
+      error: 'This interrupted turn is already being continued.',
     });
   });
 });
