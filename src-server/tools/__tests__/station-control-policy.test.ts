@@ -811,12 +811,14 @@ describe('station-control authority table: declare_pull_request and Task close-o
     });
     // It writes a durable session record, so it keeps the mutating approval:
     // visual reply tools, notify_user, task_summary_update and task_record
-    // (#4003) have their own bounded-write policies.
+    // (#4003) have their own bounded-write policies, and so does terminal_run
+    // (#3994), which runs nothing until a person approves that one run.
     expect(
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
     ).toEqual([
+      'terminal_run',
       'task_summary_update',
       'task_record',
       'task_thread_reply',

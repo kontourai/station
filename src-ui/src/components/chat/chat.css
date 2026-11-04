@@ -2862,6 +2862,23 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.source-quote-draft__label {
+  margin: 0 0 4px;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-quote-draft__output {
+  margin: 0;
+  max-height: 70px;
+  overflow: auto;
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .app-toolbar__station-switcher {
   position: fixed;
