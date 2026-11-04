@@ -18,7 +18,6 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -55,15 +54,26 @@ function hostNpmPackage(): string {
   return dirname(dirname(npm.prefixArgs[0]));
 }
 
-function distribution(root: string) {
+/**
+ * `real` copies this host's Node executable and npm: a copy, never a link,
+ * so the staged runtime cannot resolve back to the host's own npm.
+ * Otherwise the binary is a placeholder and npm lacks its CLI.
+ */
+function distribution(root: string, real = true) {
   const directory = 'node-fixture';
   const top = join(root, 'input', directory);
   const binary = windows ? 'node.exe' : join('bin', 'node');
   const npm = windows ? 'node_modules/npm' : 'lib/node_modules/npm';
   mkdirSync(dirname(join(top, binary)), { recursive: true });
-  copyFileSync(process.execPath, join(top, binary));
   writeFileSync(join(top, 'LICENSE'), 'Node fixture license');
-  cpSync(hostNpmPackage(), join(top, npm), { recursive: true });
+  if (real) {
+    copyFileSync(process.execPath, join(top, binary));
+    cpSync(hostNpmPackage(), join(top, npm), { recursive: true });
+  } else {
+    writeFileSync(join(top, binary), 'placeholder executable');
+    mkdirSync(join(top, npm, 'bin'), { recursive: true });
+    writeFileSync(join(top, npm, 'package.json'), '{"name":"npm"}');
+  }
   const file = `${directory}.${windows ? 'zip' : 'tar.gz'}`;
   const archive = join(root, file);
   execFileSync(
@@ -172,9 +182,9 @@ describe('portable archive Node runtime', () => {
     });
     await toolchain.install('expo-device-hub', { consent: true }).completion;
 
-    expect(toolchain.state('expo-device-hub', true)).toMatchObject({
-      state: 'installed',
-    });
+    // Compared whole so a failed install prints its reason and detail.
+    const state = toolchain.state('expo-device-hub', true);
+    expect(state.state === 'failed' ? state : state.state).toBe('installed');
     const entry = toolchain.installedEntry('expo-device-hub');
     expect(entry && readFileSync(entry, 'utf8')).toBe('// fixture hub\n');
     expect(served.requests).toContain(
@@ -184,29 +194,9 @@ describe('portable archive Node runtime', () => {
 
   it('refuses a distribution whose npm package has no CLI', () => {
     const root = realpathSync(makeTempDir('portable-node-no-npm-'));
-    const { target } = distribution(root);
-    const npm = join(
-      root,
-      'input',
-      target.node.directory,
-      ...(windows ? [] : ['lib']),
-      'node_modules',
-      'npm',
-    );
-    rmSync(join(npm, 'bin', 'npm-cli.js'));
-    const archive = join(root, 'stripped', target.node.file);
-    mkdirSync(dirname(archive));
-    execFileSync(
-      archiveTool(),
-      ['-acf', archive, '-C', join(root, 'input'), target.node.directory],
-      { windowsHide: true },
-    );
+    const { target, bytes } = distribution(root, false);
     expect(() =>
-      stagePortableNodeRuntime(
-        target,
-        readFileSync(archive),
-        join(root, 'out'),
-      ),
+      stagePortableNodeRuntime(target, bytes, join(root, 'out')),
     ).toThrow(/does not contain (lib\/)?node_modules\/npm/);
   });
 });
