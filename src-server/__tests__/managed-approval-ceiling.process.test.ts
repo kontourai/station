@@ -226,5 +226,7 @@ describe('#4518: the managed approval ceiling at real server startup', () => {
     expect(markerLine).toContain(
       'settings.defaultApprovalMode.value: "never" is broader than limits.maxApprovalMode ("auto")',
     );
+    // Settings parse since #4517: the cross-check is the only problem.
+    expect(markerLine).not.toContain('not supported');
   }, 300_000);
 });

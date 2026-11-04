@@ -30,9 +30,16 @@ import {
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
+import {
+  installedManagedAppSettings,
+  ManagedSettingLockedError,
+  managedSettingRefusalBody,
+  overlayManagedAppSettings,
+  withoutLockedNoOps,
+} from '../../domain/managed-settings.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
@@ -105,6 +112,15 @@ import {
  * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
  * is returned only as its value-free `envInvalid` marker.
  */
+/**
+ * #4517: the one refusal for a write to a setting the managed policy locks.
+ * 403, because the caller is not allowed to make this change on this
+ * machine; `key` names the setting so a client can mark the right control.
+ */
+function managedSettingRefusal(c: Context, error: ManagedSettingLockedError) {
+  return c.json(managedSettingRefusalBody(error), 403);
+}
+
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -350,6 +366,8 @@ export function createConfigRoutes(
         operationId: result.receipt.operationId,
       });
     } catch (error) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
       logger.error('Failed to update log-level setting', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
@@ -395,7 +413,11 @@ export function createConfigRoutes(
           );
         }
       }
-      const config = await configLoader.loadAppConfig();
+      // Provenance tells a stored decision from a managed one, so it reads
+      // the stored config; the body is what every reader sees (#4517).
+      const stored = await configLoader.loadStoredAppConfig();
+      const managed = installedManagedAppSettings();
+      const config = overlayManagedAppSettings(stored, managed);
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
@@ -430,8 +452,9 @@ export function createConfigRoutes(
             ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),
         },
-        provenance: buildAppConfigProvenance(config, {
+        provenance: buildAppConfigProvenance(stored, {
           injected,
+          managed,
           ...(project
             ? { projectOverrides: readProjectOverrides(project) }
             : {}),
@@ -466,7 +489,19 @@ export function createConfigRoutes(
     };
     try {
       configOps.add(1, { op: 'update_app' });
-      const body = getBody(c);
+      // #4517: a locked setting is the managed policy's. A value equal to
+      // the locked one is dropped (the effective value already is that, and
+      // storing it would write a policy value into the user's file); any
+      // other value is refused before every other rule, so a locked key gets
+      // the same answer whichever setting it is.
+      const managedCheck = withoutLockedNoOps(
+        getBody(c) as Record<string, unknown>,
+      );
+      if (managedCheck.refused) {
+        logRefusal('managed_setting_locked');
+        return managedSettingRefusal(c, managedCheck.refused);
+      }
+      const body = managedCheck.updates;
       if (
         Object.hasOwn(body as object, 'telemetryFeedbackReason') &&
         requestMayBeAnAgent(c.req.raw)
@@ -1042,6 +1077,10 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof ManagedSettingLockedError) {
+        logRefusal('managed_setting_locked');
+        return managedSettingRefusal(c, error);
+      }
       if (
         error instanceof Error &&
         error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
@@ -1138,6 +1177,8 @@ export function createConfigRoutes(
       eventBus?.emit(SERVER_EVENTS.CONFIG_CHANGED, { source: 'config' });
       return c.json({ success: true, data: firstRun });
     } catch (error: unknown) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
       logger.error('Failed to record the first-run decision', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

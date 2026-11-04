@@ -58,6 +58,11 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
+  ManagedSettingLockedError,
+  managedSettingRefusalBody,
+  projectUpdatesWithoutLockedFields,
+} from '../../domain/managed-settings.js';
+import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -418,7 +423,9 @@ const logger = createLogger({ name: 'projects-routes' });
 function projectMutationStatus(
   error: unknown,
   fallback: 400 | 404 = 400,
-): 400 | 404 | 409 | 503 {
+): 400 | 403 | 404 | 409 | 503 {
+  // #4517: the managed policy locks a setting this write overrides.
+  if (error instanceof ManagedSettingLockedError) return 403;
   if (error instanceof FileStorageConflictError) return 409;
   if (error instanceof FileStorageNotFoundError) return 404;
   if (error instanceof FileStorageUnavailableError) return 503;
@@ -1191,8 +1198,18 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      if (body.defaultApprovalMode === 'never' && !mayRaiseFullAccessDefault(c))
+      if (
+        body.defaultApprovalMode === 'never' &&
+        !mayRaiseFullAccessDefault(c)
+      ) {
+        // A lock on the approval default (#4517) outranks the ceiling and
+        // grant refusals (#4518), as on update, where the service checks
+        // locks first: no value is accepted, so the ceiling's "the broadest
+        // allowed is …" would point at a value that is refused too. Throws
+        // `ManagedSettingLockedError` when the field is locked.
+        projectUpdatesWithoutLockedFields(body);
         return fullAccessDefaultRefusal(c);
+      }
       if (body.starterLayoutId !== undefined && !body.creationRequestId)
         return c.json(
           {
@@ -1289,6 +1306,10 @@ export function createProjectRoutes(
           409,
         );
       }
+      // #4517: the policy's own sentence, code and key, as `/config/app`
+      // sends them; `projectMutationMessage` would redact the support link.
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
@@ -1498,6 +1519,8 @@ export function createProjectRoutes(
     } catch (error: unknown) {
       if (error instanceof ProjectFullAccessDefaultRefusal)
         return fullAccessDefaultRefusal(c);
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),

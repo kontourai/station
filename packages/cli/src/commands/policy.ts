@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from 'node:path';
 import {
+  MANAGED_SETTING_NARROWER_SCOPES,
   type ManagedPolicyDigest,
   type ManagedPolicyDocument,
   type ManagedPolicyProblem,
@@ -7,18 +8,23 @@ import {
   type ManagedPolicyStatus,
   type ManagedPolicySummary,
   managedApprovalModeName,
+  managedSettingsSchemaError,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   decodeManagedPolicy,
-  loadInstalledManagedPolicy,
   ManagedPolicyInvalidError,
   managedPolicyDigest,
   managedPolicyFilePath,
   readManagedPolicyFile,
   SYSTEM_MANAGED_POLICY_OWNERSHIP,
 } from '@kontourai/station-shared/managed-policy';
+import {
+  loadInstalledManagedPolicyChecked,
+  validateAppConfigOffline,
+} from './app-config-schema.js';
 import {
   configureApiCredential,
   parseCoreArgs,
@@ -45,15 +51,49 @@ function describeLimits(limits: ManagedPolicySummary['limits']): string[] {
   return lines.length === 0 ? ['  Limits: none'] : ['  Limits:', ...lines];
 }
 
+const SETTING_VALUE_DISPLAY_MAX_CHARS = 80;
+
+function displaySettingValue(value: unknown): string {
+  const text = JSON.stringify(value);
+  return text.length > SETTING_VALUE_DISPLAY_MAX_CHARS
+    ? `${text.slice(0, SETTING_VALUE_DISPLAY_MAX_CHARS)}… (${text.length} characters)`
+    : text;
+}
+
+/** One line per managed setting saying what it does (#4517). */
+function describeSettings(document: ManagedPolicyDocument): string[] {
+  const entries = Object.entries(document.settings ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  if (entries.length === 0) return ['  Managed settings: none'];
+  const lines = [`  Managed settings: ${entries.length}`];
+  for (const [key, entry] of entries) {
+    const definition = APP_SETTINGS_REGISTRY.find(
+      (candidate) => candidate.key === key,
+    );
+    const label = definition ? ` (${definition.label})` : '';
+    lines.push(
+      entry.locked
+        ? `    ${key}${label}: locked to ${displaySettingValue(entry.value)}; the Station value and project overrides cannot be changed`
+        : `    ${key}${label}: defaults to ${displaySettingValue(entry.value)} where nothing closer is set; users can change it`,
+    );
+    // What the lock does not cover: narrower values that still decide.
+    const narrower = Object.hasOwn(MANAGED_SETTING_NARROWER_SCOPES, key)
+      ? MANAGED_SETTING_NARROWER_SCOPES[key]
+      : undefined;
+    if (entry.locked && narrower) lines.push(`      Not covered: ${narrower}`);
+  }
+  return lines;
+}
+
 function describeEffect(
   document: ManagedPolicyDocument,
   summary: ManagedPolicySummary,
 ): string[] {
-  const settings = Object.keys(document.settings ?? {}).length;
   return [
     `  Organization: ${summary.organization} (users see "Managed by ${summary.organization}")`,
     `  Support link: ${summary.supportUrl ?? 'none'}`,
-    `  Managed settings: ${settings === 0 ? 'none' : settings}`,
+    ...describeSettings(document),
     ...describeLimits(summary.limits),
   ];
 }
@@ -68,8 +108,8 @@ interface CheckReport {
 }
 
 /**
- * `station policy check <file>`: offline. Runs the decoder the server runs at
- * startup. At the system policy path it also applies the server's ownership
+ * `station policy check <file>`: offline. Runs the decoder and the managed
+ * settings schema check the server runs at startup. At the system policy path it also applies the server's ownership
  * rule; elsewhere it cannot, so a file checked before installation must still
  * be installed as root (see the managed policy guide).
  */
@@ -87,6 +127,17 @@ function runCheck(file: string, json: boolean): void {
     if (!raw)
       throw new ManagedPolicyInvalidError(path, 'no file exists at this path');
     document = decodeManagedPolicy(path, raw);
+    // #4517: the settings schema check server startup runs before it
+    // listens (`assertManagedSettingsValid`), with the same schema and rules.
+    const schemaProblem = managedSettingsSchemaError(
+      document.settings,
+      validateAppConfigOffline,
+    );
+    if (schemaProblem)
+      throw new ManagedPolicyInvalidError(
+        path,
+        `a managed setting does not match the settings schema (${schemaProblem})`,
+      );
     report = {
       valid: true,
       path,
@@ -190,7 +241,7 @@ async function readRunning(args: string[]): Promise<RunningState> {
 
 function readInstalled(): InstalledState {
   try {
-    const loaded = loadInstalledManagedPolicy();
+    const loaded = loadInstalledManagedPolicyChecked();
     if (!loaded) return { state: 'none', path: managedPolicyFilePath() };
     return {
       state: 'installed',

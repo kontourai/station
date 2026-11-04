@@ -8,6 +8,8 @@ evidence:
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4516
   - kind: issue
+    ref: https://github.com/kontourai/station/issues/4517
+  - kind: issue
     ref: https://github.com/kontourai/station/issues/4518
 ---
 
@@ -28,7 +30,7 @@ enforcement. A policy on one machine does not govern a server on another.
 
 Precedence for a setting, highest first: managed lock > project > Station >
 environment > managed default > built-in default. A managed default sits below
-the user's own choices; a lock sits above all of them. Station never writes
+the user's own choices; a lock sits above the project and Station values. Station never writes
 policy values into user configuration, so removing the policy restores the
 user's values.
 
@@ -70,13 +72,13 @@ may be a restriction from a newer release. Ignoring it would leave the machine
 looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
-Version 1 reserves `settings` (managed defaults and locks, #4517) and `limits`
-(#4518–#4522). This build accepts `settings` only as an empty object, and
-`limits` with only `maxApprovalMode` (#4518). Any setting entry or other
-limit key gets a "not supported by this version of Station" error. If Station accepted a key before it enforced that key, the
+Version 1 reserves `limits` (#4518–#4522). This build accepts `limits` with
+only `maxApprovalMode` (#4518). Any other limit key gets a "not supported by
+this version of Station" error. If Station accepted a key before it enforced that key, the
 administrator would see the machine as managed while nothing was managed. Each
 enforcement slice adds its key to the parser in the same change that enforces
-it.
+it. `settings` entries are enforced since #4517; see
+[Managed settings](#managed-settings).
 
 ## Sources
 
@@ -174,6 +176,105 @@ cover each branch. The startup tests in
 `src-server/__tests__/managed-policy-startup.process.test.ts` use the override
 to run the real server entrypoint.
 
+## Managed settings
+
+`settings` maps a setting key to `{ "value": …, "locked": true | false }`. A
+lock fixes the value; a default (`locked: false`) applies where nothing closer
+chose one, and users can change it (#4517).
+
+**What can be managed.** A key is a registered Station setting
+(`APP_SETTINGS_REGISTRY`), managed as a whole. Registry keys are top-level
+fields, so a dotted path names a field inside one and is refused: a composite
+setting's fields are validated and resolved together, and locking one field
+would leave the rest to whoever writes next. The parser also refuses an unknown
+key, a `secret` setting (every user on the machine can read the policy), an
+internal or runtime-derived field (not a choice a person makes), and an
+environment variable name (it names the setting that reads the variable
+instead). It also refuses the telemetry settings (`telemetryTier`, the product
+and OpenTelemetry endpoints and key references): the OpenTelemetry bootstrap
+reads `config/app.json` itself before the policy loads, and the tier resolves
+against environment variables, Do Not Track and operator policy outside the
+settings registry, so a managed value there would be reported without being
+in effect. Telemetry is managed through `limits` (#4521). Each value is
+checked with the registry's own sanitizer, the one a settings write runs. `null` is accepted only for a setting that stores `null`
+as a value, and a blank string is refused because Station reads it as unset.
+The parser cannot see a composite's structure, so the server checks every
+managed value against the settings file schema before it listens and refuses to
+start, with the policy marker, when one does not match. `station policy check`
+runs the same check (`managedSettingsSchemaError`, the same schema file bundled
+into the CLI, the same AJV options and the same `appConfigSemanticError`
+rules), so a policy it accepts is one startup accepts. The offline CLI readers
+and writers load the installed policy through the same check.
+
+**Device settings are out of scope.** Device settings live on each client, in
+the browser or app that sets them, and the server that loads the policy never
+sees or serves them. The server could not enforce a lock on one, so a device
+setting key is refused with a message that says so.
+
+**Precedence is applied once, where readers get the config.** Most server code
+reads raw `AppConfig`, so `ConfigLoader` applies the managed values where it
+hands one out, and `observeAppConfigFile` applies them for the plugin and
+registry-trust observers. A lock replaces whatever is stored. A default fills a
+key only when there is no Station decision (a value equal to a loader-written
+seed is not one) and no environment value the setting's consumer accepts: the
+registry's declared variable, or one the consumer reads itself
+(`STATION_LOG_LEVEL` for `logLevel`; `SHELL`, or `COMSPEC` on Windows, for
+`terminalShell`). A lock outranks those variables in the consumer too: the
+logger holds the locked level, which beats `STATION_LOG_LEVEL` and is applied
+to loggers created before the policy loaded.
+`resolveEffectiveAppSetting` and `GET /config/app` provenance apply the same
+rule and report `managed` only where the managed value is what readers get.
+Provenance never carries the value; it names the organization and support link
+so a row can explain itself.
+
+**Policy values are never written.** The mutation path reads the stored file
+raw, merges only what the caller changed, and refuses any change to a locked
+key's stored value. A write of exactly the locked value is dropped as a no-op
+rather than stored. Removing the policy and restarting therefore restores the
+user's own values.
+
+**Every write path refuses the same way.** The refusal is one sentence,
+"<Organization>'s policy manages this setting.", followed by the support link.
+`PUT /config/app` refuses with `403` and `code: managed_setting_locked` before
+any other rule; the station-control `update_config` agent tool goes through that
+route. `ConfigLoader.mutateAppConfig` and `saveAppConfig` refuse too, which
+covers the log-level and first-run routes and every internal writer. The CLI
+commands that write `config/app.json` directly (`config set --offline`,
+`registry <url>`, `import`) load the installed policy themselves and refuse; an
+installed policy they cannot load refuses the offline write.
+
+**A lock outranks a project override.** A lock hides every project field
+that would decide the setting past it (`MANAGED_SETTING_PROJECT_FIELDS`): the
+model, provider and `last-used` model selection for `defaultModel` or
+`defaultLLMProvider`, since New Chat fills a model from a provider alone; the
+approval default and its `last-used` selection for `defaultApprovalMode`; and
+the workspace isolation mode. Readers do not see those fields
+(`FileStorageAdapter.getProject`, the project list, the workspace-isolation
+reads that use the stored revision, and the responses of project create and
+update). A write that sets one to a value is refused. A write that sends it as
+unset (`null` or `''`), or resends the stored value, is dropped, so a project
+form that saw the field hidden can still save other changes. The stored record
+keeps the field, so it returns when the policy is removed.
+
+**A lock does not cover narrower scopes.** This is a decided product scope,
+not a gap to close in the settings layer. A lock fixes the Station-level value
+and the project overrides. Values set on an Agent, a connection, a
+conversation or a person's own account, which Station's resolvers apply before
+the Station value, still apply. For `defaultApprovalMode`, a mode a person
+picks for a conversation, an Agent's own default and a person's per-engine
+default still apply; the hard approval bound is `limits.maxApprovalMode`
+(#4518). For `region`, an Agent's region and then a model connection's region
+still win. `MANAGED_SETTING_NARROWER_SCOPES` in
+`@kontourai/station-contracts/managed-policy` lists every setting with such a
+value, traced to the resolver that applies it. `station policy check` prints
+that sentence under each locked setting, and the administrator guide lists the
+same table. Bounding those values is the job of `limits`, not of a setting
+lock.
+
+Project refusals carry the same 403 body as `/config/app` (`code`, `key`, and
+the organization's sentence with its support link), composed from the loaded
+policy rather than from the caught message, which the project route redacts.
+
 ## Approval-mode ceiling
 
 `limits.maxApprovalMode` (#4518) caps the broadest approval posture any run
@@ -257,8 +358,18 @@ than an option each must pass.
 
 **A managed default above the ceiling is refused at load.** The parser
 reads `settings.defaultApprovalMode.value` from the raw document and refuses a
-concrete value broader than `maxApprovalMode`, whatever the settings parser
-accepts. So the check holds before and after #4517 enables managed settings.
+concrete value broader than `maxApprovalMode`, locked or not, whatever the
+settings parser accepts. A valid managed setting raises no other problem, so
+that refusal is the one the administrator sees.
+
+**A lock and the ceiling bound different things.** A lock on
+`defaultApprovalMode` fixes the Station default and hides the project
+override; the values it does not cover (see
+[Managed settings](#managed-settings)) are lowered to the ceiling where they
+apply. A project write that sets the approval default while it is locked is
+refused as locked (`managed_setting_locked`) even when the value is also
+above the ceiling: the lock accepts no value, so the ceiling's "the broadest
+allowed is …" would name a value that is refused too.
 
 ### Gates
 
@@ -317,6 +428,6 @@ and engines still enforce their own approvals.
 
 ## Status of later slices
 
-Settings, the remaining limits, the macOS profile, the Windows registry, and
-`station policy templates` are tracked by #4517 and #4519–#4524. Until each
-one lands, its keys are refused, as described above.
+The remaining limits, the macOS profile, the Windows registry, and
+`station policy templates` are tracked by #4519–#4524. Until each one lands,
+its keys are refused, as described above.
