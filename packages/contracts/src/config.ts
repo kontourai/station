@@ -566,6 +566,12 @@ export function isSeededAppConfigValue(
   return sameJsonValue(value, APP_CONFIG_SEED[key]);
 }
 
+/** SDK consumers compile contracts for ES2020, which lacks `Object.hasOwn`. */
+function hasOwnKey(value: object, key: string): boolean {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers target ES2020, which lacks Object.hasOwn.
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 /**
  * Structural JSON equality: object key order is ignored (a hand-edited or
  * re-serialized `app.json` may reorder keys), array order is not.
@@ -590,8 +596,7 @@ function sameJsonValue(a: unknown, b: unknown): boolean {
     aKeys.length === bKeys.length &&
     aKeys.every(
       (k) =>
-        Object.hasOwn(b, k) &&
-        sameJsonValue(Reflect.get(a, k), Reflect.get(b, k)),
+        hasOwnKey(b, k) && sameJsonValue(Reflect.get(a, k), Reflect.get(b, k)),
     )
   );
 }

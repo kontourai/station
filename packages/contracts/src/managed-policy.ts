@@ -440,7 +440,7 @@ function managedSettingPathProblem(
       return 'secret settings cannot be managed; every user on the machine can read the policy';
     if (definition.userFacing === false)
       return 'this is an internal field, not a setting a policy can manage';
-    if (Object.hasOwn(MANAGED_POLICY_UNMANAGEABLE_SETTINGS, path))
+    if (hasOwnKey(MANAGED_POLICY_UNMANAGEABLE_SETTINGS, path))
       return MANAGED_POLICY_UNMANAGEABLE_SETTINGS[path] as string;
     return null;
   }
@@ -538,7 +538,7 @@ export function managedSettingsProblems(
         message:
           'must be true (a fixed value) or false (a default users can change)',
       });
-    if (!Object.hasOwn(entry, 'value')) {
+    if (!hasOwnKey(entry, 'value')) {
       problems.push({ path: `${path}.value`, message: 'is required' });
       continue;
     }
@@ -788,4 +788,10 @@ export function managedPolicyDenial(
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
   return `${summary.organization}'s policy manages ${subject}.${help}`;
+}
+
+/** SDK consumers compile contracts for ES2020, which lacks `Object.hasOwn`. */
+function hasOwnKey(value: object, key: string): boolean {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers target ES2020, which lacks Object.hasOwn.
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
