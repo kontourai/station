@@ -977,7 +977,8 @@ default to the historical four-token grant rather than Standard:
   ("full device access") and keep the request as asked unless narrowed. The
   operator credential, a current local-grant credential, the host-issued
   browser session or a Device with current owner-device standing may keep
-  the two Device-use scopes. An `access:approve` credential without that
+  the two Device-use scopes. An operator passkey session may also approve
+  them through its exact per-action review. An `access:approve` credential without that
   standing cannot keep them merely through its approval grant; neither can
   the unauthenticated floor. The operator accepting a
   reflexive approval of full device access is the accepted residual: the
