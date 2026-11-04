@@ -6,10 +6,7 @@ import {
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
-import {
-  ResponsiveDialogCloseButton,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
+import { Dialog } from '../Dialog';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 
 function peopleFromDevices(devices: readonly PairedDevice[]) {
@@ -106,18 +103,11 @@ export function StationPeoplePanel() {
         </ul>
       )}
       {selected && scope && !query.error && (
-        <ResponsiveDialogSurface
-          layer="dialog"
+        <Dialog
+          title={`${selected.name} paired profile`}
+          closeLabel="Close paired profile"
           onClose={() => setSelectedKey(null)}
-          ariaLabel={`${selected.name} paired profile`}
-          overlayClassName="profile-person-overlay"
-          panelClassName="profile-person-dialog"
         >
-          <ResponsiveDialogCloseButton
-            onClick={() => setSelectedKey(null)}
-            label="Close paired profile"
-          />
-          <h2>{selected.name}</h2>
           <p>
             Approved devices on this Station. Personal usage statistics are not
             shared here.
@@ -134,7 +124,7 @@ export function StationPeoplePanel() {
               </li>
             ))}
           </ul>
-        </ResponsiveDialogSurface>
+        </Dialog>
       )}
     </section>
   );

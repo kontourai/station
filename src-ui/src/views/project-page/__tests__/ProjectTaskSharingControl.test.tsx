@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -89,7 +91,7 @@ describe('ProjectTaskSharingControl', () => {
   });
 
   test('does not expose management when the operator-only read is denied', async () => {
-    getPublication.mockRejectedValue(new Error('not found'));
+    getPublication.mockRejectedValue(new StationHttpError(404, 'not found'));
     render(
       <ProjectTaskSharingControl
         slug="example"
@@ -103,7 +105,7 @@ describe('ProjectTaskSharingControl', () => {
   });
 
   test('the room Share control stays disabled with a reason when sharing is off', async () => {
-    getPublication.mockRejectedValue(new Error('not found'));
+    getPublication.mockRejectedValue(new StationHttpError(404, 'not found'));
     render(
       <ProjectTaskSharingControl
         slug="example"
@@ -126,6 +128,47 @@ describe('ProjectTaskSharingControl', () => {
     expect(screen.queryByText('Not shared with Project viewers')).toBeNull();
     expect(share).not.toHaveBeenCalled();
   });
+
+  test.each([false, true])(
+    'recovers a temporary sharing read failure (compact=%s)',
+    async (compact) => {
+      getPublication
+        .mockRejectedValueOnce(
+          new StationHttpError(503, 'Shared Task unavailable'),
+        )
+        .mockResolvedValue(unshared);
+      render(
+        <ProjectTaskSharingControl
+          slug="example"
+          projectId="project-1"
+          task={task}
+          compact={compact}
+        />,
+        { wrapper: wrapper() },
+      );
+      if (compact)
+        fireEvent.click(
+          await screen.findByText('Sharing unavailable', {
+            selector: 'summary',
+          }),
+        );
+      expect(
+        await screen.findByText('Unable to check Task sharing'),
+      ).toBeTruthy();
+      expect(screen.queryByText('Sharing is off for this Station')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Share Task' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      if (compact)
+        fireEvent.click(
+          await screen.findByText('Share', { selector: 'summary' }),
+        );
+      expect(
+        await screen.findByRole('button', { name: 'Share Task' }),
+      ).toBeTruthy();
+      expect(getPublication).toHaveBeenCalledTimes(2);
+      expect(share).not.toHaveBeenCalled();
+    },
+  );
 
   test('missing request authority cannot read or mutate through an ambient target', () => {
     authorityState.current = undefined;

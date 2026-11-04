@@ -6,8 +6,10 @@ interface EventWaiter<T> {
   generation: number;
 }
 
-export interface AsyncEventStreamOptions {
+export interface AsyncEventStreamOptions<T = unknown> {
   signal?: AbortSignal;
+  /** Synchronous notification of accepted pushes; does not acknowledge consumption or persistence. */
+  onEnqueue?: (value: T) => void;
 }
 
 /**
@@ -21,6 +23,7 @@ export const ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY = 4096;
 export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private readonly items: T[] = [];
   private readonly waiters: EventWaiter<T>[] = [];
+  private readonly enqueueObservers = new Set<(value: T) => void>();
   private closed = false;
   private failure: Error | null = null;
   private generation = 0;
@@ -37,6 +40,7 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
     const waiter = this.waiters.shift();
     if (waiter) {
       this.settle(waiter, { value, done: false });
+      for (const observe of this.enqueueObservers) observe(value);
       return true;
     }
     if (this.items.length >= this.maxItems) {
@@ -50,6 +54,7 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
       return false;
     }
     this.items.push(value);
+    for (const observe of this.enqueueObservers) observe(value);
     return true;
   }
 
@@ -68,9 +73,9 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
     }
   }
 
-  iterable(options: AsyncEventStreamOptions = {}): AsyncIterable<T> {
+  iterable(options: AsyncEventStreamOptions<T> = {}): AsyncIterable<T> {
     return {
-      [Symbol.asyncIterator]: () => this.createIterator(options.signal),
+      [Symbol.asyncIterator]: () => this.createIterator(options),
     };
   }
 
@@ -78,13 +83,18 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
     return this.createIterator();
   }
 
-  private createIterator(signal?: AbortSignal): AsyncIterator<T> {
+  private createIterator({
+    signal,
+    onEnqueue,
+  }: AsyncEventStreamOptions<T> = {}): AsyncIterator<T> {
     let closed = signal?.aborted ?? false;
     let pending: EventWaiter<T> | undefined;
     const generation = this.generation;
 
     const close = (): IteratorResult<T> => {
       closed = true;
+      if (onEnqueue) this.enqueueObservers.delete(onEnqueue);
+      signal?.removeEventListener('abort', close);
       if (pending) {
         const waiter = pending;
         pending = undefined;
@@ -94,11 +104,16 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
       return { value: undefined as never, done: true };
     };
 
+    if (!closed && onEnqueue) {
+      this.enqueueObservers.add(onEnqueue);
+      signal?.addEventListener('abort', close, { once: true });
+    }
+
     return {
       next: () => {
         if (closed || signal?.aborted) return Promise.resolve(close());
         if (generation !== this.generation) {
-          closed = true;
+          close();
           return Promise.reject(
             this.lastOverflowError ??
               new Error('Async event queue consumer was superseded.'),
@@ -108,7 +123,10 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
           const queued = this.items.shift()!;
           return Promise.resolve({ value: queued, done: false });
         }
-        if (this.failure) return Promise.reject(this.failure);
+        if (this.failure) {
+          close();
+          return Promise.reject(this.failure);
+        }
         if (this.closed) return Promise.resolve(close());
         if (pending) {
           return Promise.reject(

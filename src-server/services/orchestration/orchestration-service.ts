@@ -7562,7 +7562,7 @@ export class OrchestrationService {
   ): Promise<void> {
     const pending = this.startedSessionCommits.get(session.threadId);
     if (!pending) return;
-    // Built-ins enqueue before returning; allow their queue consumer to observe the start.
+    // Preserve consume-time observation for adapters without enqueue notifications.
     await scheduler.yield();
     if (signal?.aborted || !this.isAdapterCurrent(adapter))
       throw new SessionStartIndeterminateError();
@@ -12977,6 +12977,23 @@ export class OrchestrationService {
     };
   }
 
+  private observeStartedSessionEvent(
+    adapter: ProviderAdapterShape,
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (event.method !== 'session.started' || !this.isAdapterCurrent(adapter))
+      return;
+    const pending = this.startedSessionCommits.get(event.threadId);
+    if (
+      pending?.adapter === adapter &&
+      event.eventId !== pending.previousEventId
+    ) {
+      // Announcement is a producer fact; a busy consumer must not turn it into a deferred start.
+      pending.eventId ??= event.eventId;
+      pending.observedAt ??= performance.now();
+    }
+  }
+
   private async consumeAdapterEvents(
     adapter: ProviderAdapterShape,
     controller: AbortController,
@@ -12990,6 +13007,7 @@ export class OrchestrationService {
       for await (let event of splitOversizedDeltas(
         adapter.streamEvents({
           signal: controller.signal,
+          onEnqueue: (event) => this.observeStartedSessionEvent(adapter, event),
         }),
       )) {
         // #4480: whatever happens to a start or exit event from here (a skip,
@@ -13006,16 +13024,7 @@ export class OrchestrationService {
             : undefined;
         try {
           if (!this.isAdapterCurrent(adapter)) continue;
-          if (event.method === 'session.started') {
-            const pending = this.startedSessionCommits.get(event.threadId);
-            if (
-              pending?.adapter === adapter &&
-              event.eventId !== pending.previousEventId
-            ) {
-              pending.eventId = event.eventId;
-              pending.observedAt ??= performance.now();
-            }
-          }
+          this.observeStartedSessionEvent(adapter, event);
           if (event.method === ('content.host-images' as string)) {
             // Station derives this from files it read itself; an engine's
             // version would map paths to images Station never admitted.
