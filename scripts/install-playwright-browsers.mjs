@@ -284,6 +284,27 @@ function defaultSleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function playwrightInstallInvocation(browsers, command) {
+  if (command !== undefined || process.platform !== 'win32')
+    return {
+      command: command ?? 'npx',
+      args: ['--no', 'playwright', 'install', ...browsers],
+    };
+  // npx.cmd cannot be spawned without a shell. Use the installed bin entry.
+  const manifestPath = fileURLToPath(
+    import.meta.resolve('playwright/package.json'),
+  );
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  return {
+    command: process.execPath,
+    args: [
+      resolve(dirname(manifestPath), manifest.bin.playwright),
+      'install',
+      ...browsers,
+    ],
+  };
+}
+
 /**
  * @param {{
  *   browsers?: string[],
@@ -323,26 +344,14 @@ export async function runPlaywrightInstallWithRetry({
     log(`::error::${validated.message}`);
     return { ok: false, attempts: 0, classification: 'refused', exitCode: 1 };
   }
-  let installerCommand = command ?? 'npx';
-  let launcherArgs = ['--no', 'playwright'];
-  if (command === undefined && process.platform === 'win32') {
-    // npx.cmd cannot be spawned without a shell. Use the installed bin entry.
-    const manifestPath = fileURLToPath(
-      import.meta.resolve('playwright/package.json'),
-    );
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    installerCommand = process.execPath;
-    launcherArgs = [resolve(dirname(manifestPath), manifest.bin.playwright)];
-  }
-  const args = [...launcherArgs, 'install', ...validated.browsers];
+  const invocation = playwrightInstallInvocation(validated.browsers, command);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     log(
       `::notice::Playwright install attempt ${attempt}/${maxAttempts}: ${validated.browsers.join(', ')}.`,
     );
     const result = await execute({
-      command: installerCommand,
-      args,
+      ...invocation,
       env,
       attemptTimeoutMs,
       terminationGraceMs,
