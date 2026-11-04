@@ -152,8 +152,9 @@ lost:
 When any of these fails the worktree and branch are kept and the reason is
 recorded and shown on the opened Task (`taskWorktree.kept`: `policy`,
 `uncommitted`, `unpushed`, `session-running`, or `failed`). A
-`session-running` deferral is retried when a turn or Session ends; nothing
-else re-runs a kept finalization. A recorded worktree that is already gone is
+`session-running` deferral is retried when a turn or Session ends, and once
+when Station starts (the deferral is recorded with the worktree, so a restart
+does not lose it); nothing else re-runs a kept finalization. A recorded worktree that is already gone is
 forgotten and its branch left alone.
 
 Not covered: a setup command for a new checkout

@@ -1733,6 +1733,8 @@ export class TaskGraphService {
   private readonly isWorkspaceBusy?: (path: string) => boolean;
   /** Tasks whose worktree finalization waits for a running turn to end. */
   private readonly deferredTaskWorktrees = new Set<string>();
+  /** Whether deferrals recorded by an earlier process were read back yet. */
+  private deferredTaskWorktreesLoaded = false;
 
   constructor(projectHomeDir: string, deps: TaskGraphServiceDeps = {}) {
     this.worktreeProvisioning =
@@ -5017,6 +5019,21 @@ export class TaskGraphService {
    * Session ends; a no-op while nothing is deferred.
    */
   async retryDeferredTaskWorktreeFinalizations(): Promise<void> {
+    // A deferral is recorded on the Task's worktree entry, so one made
+    // before a restart is picked up by the first retry after it (the
+    // runtime retries once at startup, then on every turn or Session end).
+    if (!this.deferredTaskWorktreesLoaded) {
+      this.deferredTaskWorktreesLoaded = true;
+      for (const { taskId, entry } of this.taskWorktrees.list()) {
+        const task = this.readStore().tasks.find((item) => item.id === taskId);
+        if (
+          entry.kept?.reason === 'session-running' &&
+          task?.createdAt === entry.taskCreatedAt &&
+          isTerminalTaskStatus(task.status)
+        )
+          this.deferredTaskWorktrees.add(taskId);
+      }
+    }
     if (this.deferredTaskWorktrees.size === 0) return;
     for (const taskId of [...this.deferredTaskWorktrees])
       await this.finalizeTaskWorktree(taskId);

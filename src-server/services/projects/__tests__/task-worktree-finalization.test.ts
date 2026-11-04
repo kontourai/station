@@ -153,6 +153,28 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
   });
 });
 
+describe('a deferred finalization survives a restart (#4507)', () => {
+  test('the first retry after a restart finishes a finalization deferred before it', async () => {
+    const f = await fixture({ busy: () => true });
+    await f.graph.updateTaskStatus(f.taskId, 'done');
+    await vi.waitFor(async () =>
+      expect(await keptReason(f.graph, f.taskId)).toBe('session-running'),
+    );
+
+    // Station restarts: a new service over the same home, no turn running.
+    const restarted = new TaskGraphService(f.home, {
+      resolveProjectWorkspace: () => f.workspace,
+      isWorkspaceBusy: () => false,
+    });
+    await restarted.retryDeferredTaskWorktreeFinalizations();
+
+    await vi.waitFor(() =>
+      expect(restarted.readTaskWorktree(f.taskId)).toBeUndefined(),
+    );
+    expect(existsSync(f.worktree.path)).toBe(false);
+  });
+});
+
 describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
   test('finishing it forgets the record and leaves its branch', async () => {
     const f = await fixture();

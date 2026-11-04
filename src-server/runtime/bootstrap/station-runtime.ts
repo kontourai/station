@@ -2049,6 +2049,15 @@ export class StationRuntime {
       // which it is at this point in the constructor. See
       // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
       // for the accepted residual gap this sweep does not close.
+      // #4507: finish Task worktree finalizations a previous process
+      // deferred while a turn ran; no turn of that process runs now.
+      void this.taskGraphService
+        .retryDeferredTaskWorktreeFinalizations()
+        .catch((error) => {
+          this.logger.warn('Deferred Task worktree finalization failed', {
+            error: errorMessage(error),
+          });
+        });
       void this.taskGraphService
         .reconcileStaleAssignmentClaims()
         .then((result) => {
