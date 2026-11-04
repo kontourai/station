@@ -80,6 +80,7 @@ import {
   BrowserConsoleDrawer,
   useBrowserConsole,
 } from './BrowserConsoleDrawer';
+import { BrowserImmersiveNav } from './BrowserImmersiveNav';
 import { BrowserNetworkDrawer } from './BrowserNetworkDrawer';
 import { BrowserPageDialog } from './BrowserPageDialog';
 import {
@@ -107,6 +108,7 @@ import {
   BrowserApiError,
   type BrowserFetch,
   type BrowserPaneApi,
+  browserFailureHelpUrl,
   browserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
@@ -716,6 +718,18 @@ function BrowserNewSession({
       {open.isError ? (
         <p className="browser-pane__notice" role="alert">
           {describeBrowserFailure(open.error, address)}
+          {browserFailureHelpUrl(open.error) ? (
+            <>
+              {' '}
+              <a
+                href={browserFailureHelpUrl(open.error)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                How to fix
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       <BrowserSessionList
@@ -1501,6 +1515,42 @@ function BrowserSessionPane({
         readOnly={!canDrive}
         agentActionsEnabled={experienceEnabled}
         onControlState={setControl}
+        fullScreenButton
+        renderImmersiveActions={() => (
+          <BrowserImmersiveNav
+            host={hostOf(record.url)}
+            disabled={!canDriveLive || history.isPending}
+            onAction={(action) => history.mutate(action)}
+          />
+        )}
+        // Drawn by the live view, so it stays over the page in full screen.
+        overlay={
+          canDriveLive && pendingDialog ? (
+            // Over the live view: the page is waiting on this answer.
+            <div className="browser-pane__dialog-layer">
+              <BrowserPageDialog
+                key={pendingDialog.dialogId}
+                dialog={pendingDialog}
+                pageHost={hostOf(record?.url ?? '')}
+                pending={answerDialog.isPending}
+                error={
+                  answerDialog.isError
+                    ? describeBrowserFailure(answerDialog.error)
+                    : null
+                }
+                onAnswer={(answer) =>
+                  answerDialog.mutate({
+                    dialogId: pendingDialog.dialogId,
+                    ...answer,
+                  })
+                }
+                {...(control?.tone === 'you'
+                  ? { onKeepAlive: () => void control.keepControlAlive() }
+                  : {})}
+              />
+            </div>
+          ) : null
+        }
       />
     );
   }
@@ -1888,31 +1938,6 @@ function BrowserSessionPane({
             {coarsePointer ? 'Tap' : 'Click'} anywhere to take over from the
             agent
           </span>
-        ) : null}
-        {canDriveLive && pendingDialog ? (
-          // Over the live view: the page is waiting on this answer.
-          <div className="browser-pane__dialog-layer">
-            <BrowserPageDialog
-              key={pendingDialog.dialogId}
-              dialog={pendingDialog}
-              pageHost={hostOf(record?.url ?? '')}
-              pending={answerDialog.isPending}
-              error={
-                answerDialog.isError
-                  ? describeBrowserFailure(answerDialog.error)
-                  : null
-              }
-              onAnswer={(answer) =>
-                answerDialog.mutate({
-                  dialogId: pendingDialog.dialogId,
-                  ...answer,
-                })
-              }
-              {...(control?.tone === 'you'
-                ? { onKeepAlive: () => void control.keepControlAlive() }
-                : {})}
-            />
-          </div>
         ) : null}
         {notice ||
         shot ||

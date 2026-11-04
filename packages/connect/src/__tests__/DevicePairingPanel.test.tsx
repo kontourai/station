@@ -206,10 +206,11 @@ describe('device pairing panels', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain('peer Station');
-    expect(
-      screen.getByRole('button', { name: 'Request access' }),
-    ).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    expect(screen.getByRole('button', { name: 'Connect' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     expect(transport).not.toHaveBeenCalled();
   });
 
@@ -288,7 +289,7 @@ describe('device pairing panels', () => {
     expect(screen.getByText(/Expires:/)).toBeTruthy();
     expect(screen.queryByLabelText('Pairing client channel')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       'https://station.example.ts.net/.well-known/station/v1/pairing/request',
@@ -2481,7 +2482,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(
       // station#3849: the shared map distinguishes the code wait from the
@@ -2537,7 +2538,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce(), {
       timeout: 2_000,
@@ -2573,7 +2574,7 @@ describe('device pairing panels', () => {
         onCancel={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     return (await screen.findByRole('alert')).textContent ?? '';
   }
 
@@ -2607,7 +2608,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     const message = (await screen.findByRole('alert')).textContent ?? '';
     expect(message).toContain('expired');
@@ -2631,7 +2632,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect((await screen.findByRole('alert')).textContent).toBe(
       'The server address is not valid.',
@@ -2648,7 +2649,7 @@ describe('device pairing panels', () => {
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
-    const request = screen.getByRole('button', { name: 'Request access' });
+    const request = screen.getByRole('button', { name: 'Connect' });
     expect(request.hasAttribute('disabled')).toBe(true);
     fireEvent.click(
       screen.getByRole('checkbox', {
@@ -2708,7 +2709,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce(), {
       timeout: 2_000,
@@ -3879,4 +3880,85 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
     expect(created).toEqual([]);
     expect(screen.queryByTestId('pairing-qr')).toBeNull();
   });
+});
+
+test('a pairing code connects, and an approval wait stays in place while the caller owns completion', async () => {
+  const now = Date.now();
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    response({
+      requestId: 'request-owned',
+      offerId: 'offer-owned',
+      deviceName: 'Pixel',
+      scope: 'station:interactive',
+      createdAt: now,
+      status: 'pending',
+    }),
+  );
+  const order: string[] = [];
+  const onApprovalPending = vi.fn((pending: PendingPairingExchange) => ({
+    ...pending,
+    targetConnectionId: 'saved-kontour',
+    targetConnectionLabel: 'Kontour',
+  }));
+  const onApprovalCancelled = vi.fn((pending: PendingPairingExchange) => {
+    order.push('cancelled');
+    // The owner hears first, while the stored request still exists.
+    expect(
+      loadPendingExchange(pending.endpoint, pending.requestKind)?.requestId,
+    ).toBe('request-owned');
+  });
+  const onCancel = vi.fn(() => order.push('closed'));
+  try {
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={onCancel}
+        onApprovalPending={onApprovalPending}
+        onApprovalCancelled={onApprovalCancelled}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Station server address'), {
+      target: { value: 'https://station.example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
+    // A code is the invitation; only an address-only request asks for access.
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    // In place, naming the Station the caller resolved, with its countdown.
+    expect(
+      await screen.findByText(
+        'Waiting for the code to be approved on Kontour…',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/^Expires in [45]m \d\ds$/)).toBeTruthy();
+    expect(onApprovalPending).toHaveBeenCalledOnce();
+
+    // The caller owns the exchange: this panel never races it for the proof.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/pairing/exchange'),
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop waiting' }));
+    expect(order).toEqual(['cancelled', 'closed']);
+    expect(onApprovalCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-owned',
+        targetConnectionId: 'saved-kontour',
+      }),
+    );
+    expect(
+      loadPendingExchange('https://station.example.test', 'code'),
+    ).toBeNull();
+  } finally {
+    fetchMock.mockRestore();
+    globalThis.localStorage.clear();
+  }
 });

@@ -24,13 +24,14 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   autoFloat: undefined as boolean | undefined,
   tone: 'agent' as 'you' | 'agent' | 'other' | 'none',
   claim: vi.fn(async () => {}),
+  enterImmersive: vi.fn(),
   opener: vi.fn(),
   openerAvailable: true,
 }));
@@ -54,6 +55,7 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
     hostControls?: boolean;
     inputRequiresLease?: boolean;
     onControlState?: (state: unknown) => void;
+    overlay?: ReactNode;
   }) => {
     const { onControlState } = props;
     useEffect(() => {
@@ -61,6 +63,8 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
         status: 'live',
         tone: h.tone,
         claimControl: h.claim,
+        immersive: false,
+        enterImmersive: h.enterImmersive,
       });
     }, [onControlState]);
     return (
@@ -69,11 +73,15 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
         data-surface={props.surfaceId}
         data-host-controls={String(Boolean(props.hostControls))}
         data-input-requires-lease={String(Boolean(props.inputRequiresLease))}
-      />
+      >
+        {/* As the real canvas does: the host's overlay over the stage. */}
+        {props.overlay}
+      </div>
     );
   },
 }));
 
+import { CONTROLS_AUTO_HIDE_MS } from '../../live-surface/LiveSurfaceViewerControls';
 import FloatOverChat from '../FloatOverChat';
 import {
   FLOAT_NARROW_WIDTH,
@@ -297,6 +305,7 @@ beforeEach(() => {
   h.autoFloat = undefined;
   h.tone = 'agent';
   h.claim.mockClear();
+  h.enterImmersive.mockClear();
   h.opener.mockReset();
   h.openerAvailable = true;
 });
@@ -601,7 +610,7 @@ function drivenAgo(agoMs: number, skewMs = 0): BrowserSessionView {
 function pillText() {
   return screen
     .getByRole('toolbar', { name: 'Floating browser' })
-    .querySelector('.float-over-chat__controller')?.textContent;
+    .querySelector('.live-surface-controls__status')?.textContent;
 }
 
 describe('who is driving, when no one holds the lease (owner decision, D9)', () => {
@@ -1214,5 +1223,189 @@ describe('which sessions float here, and how the list is read', () => {
     expect(floatReadDelay(new TypeError('fetch failed'), 1, false)).toBe(5_000);
     expect(floatReadDelay(null, 0, 5_000)).toBe(5_000);
     expect(floatReadDelay(null, 0, false)).toBe(false);
+  });
+});
+
+describe('on a touch screen (pointerType touch)', () => {
+  const touch = (pointerId: number, clientX: number, clientY: number) => ({
+    pointerId,
+    pointerType: 'touch',
+    button: 0,
+    clientX,
+    clientY,
+  });
+
+  function frameOf() {
+    const section = player() as HTMLElement;
+    return {
+      x: Number.parseFloat(section.style.left),
+      y: Number.parseFloat(section.style.top),
+      width: Number.parseFloat(section.style.width),
+      height: Number.parseFloat(section.style.height),
+    };
+  }
+
+  function stored() {
+    return JSON.parse(
+      window.localStorage.getItem('station:float-over-chat:frame:v1') ?? 'null',
+    );
+  }
+
+  function pill() {
+    return screen.queryByRole('toolbar', { name: 'Floating browser' });
+  }
+
+  /** A finger down on the picture, dragged, and lifted. */
+  function drag(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const picture = screen.getByTestId('float-canvas');
+    fireEvent.pointerDown(picture, touch(1, from.x, from.y));
+    fireEvent.pointerMove(picture, touch(1, from.x + 4, from.y));
+    fireEvent.pointerMove(picture, touch(1, to.x, to.y));
+    fireEvent.pointerUp(picture, touch(1, to.x, to.y));
+  }
+
+  function coarsePointer() {
+    vi.stubGlobal(
+      'matchMedia',
+      (query: string) =>
+        ({
+          matches: query === '(pointer: coarse)',
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
+    );
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  test('one finger anywhere on the picture drags the player, and the place is kept for this device', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    const start = frameOf();
+    drag({ x: 700, y: 100 }, { x: 600, y: 300 });
+    expect(frameOf()).toEqual({ ...start, x: start.x - 100, y: start.y + 200 });
+    expect(stored().position).toEqual({ x: start.x - 100, y: start.y + 200 });
+    // A drag is not a tap: the controls stay put away.
+    expect(pill()).toBeNull();
+  });
+
+  test('a tap on the picture shows the controls, and they hide again on their own', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    vi.useFakeTimers();
+    const start = frameOf();
+    const picture = screen.getByTestId('float-canvas');
+    fireEvent.pointerDown(picture, touch(1, 700, 100));
+    fireEvent.pointerUp(picture, touch(1, 700, 100));
+    expect(pill()).not.toBeNull();
+    expect(frameOf()).toEqual(start);
+    act(() => {
+      vi.advanceTimersByTime(CONTROLS_AUTO_HIDE_MS + 10);
+    });
+    expect(pill()).toBeNull();
+  });
+
+  test('a touch’s enter/leave around a tap neither opens nor closes the pill; the 44px corner dot does', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    const chrome = document.querySelector(
+      '.float-over-chat__chrome',
+    ) as HTMLElement;
+    fireEvent.pointerEnter(chrome, { pointerType: 'touch' });
+    expect(pill()).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Floating browser controls/ }),
+    );
+    fireEvent.pointerLeave(chrome, { pointerType: 'touch' });
+    expect(pill()).not.toBeNull();
+    // A mouse still opens it on hover.
+    fireEvent.pointerLeave(chrome, { pointerType: 'mouse' });
+    expect(pill()).toBeNull();
+    fireEvent.pointerEnter(chrome, { pointerType: 'mouse' });
+    expect(pill()).not.toBeNull();
+  });
+
+  test('a press the live view takes (a pinch, or the driver’s own input) never moves the player', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    const start = frameOf();
+    const picture = screen.getByTestId('float-canvas');
+    // As the real canvas does: it claims the second finger of a pinch.
+    picture.addEventListener('pointerdown', (event) => {
+      if ((event as PointerEvent).pointerId === 2) event.preventDefault();
+    });
+    fireEvent.pointerDown(picture, touch(1, 700, 100));
+    fireEvent.pointerDown(picture, touch(2, 760, 100));
+    fireEvent.pointerMove(picture, touch(1, 600, 300));
+    fireEvent.pointerUp(picture, touch(1, 600, 300));
+    fireEvent.pointerUp(picture, touch(2, 800, 100));
+    expect(frameOf()).toEqual(start);
+    // The driver's own press: the live view takes it (as the real canvas
+    // does while this person holds control), so it drives the page, not
+    // the player.
+    picture.addEventListener('pointerdown', (event) => {
+      if ((event as PointerEvent).pointerId === 3) event.preventDefault();
+    });
+    fireEvent.pointerDown(picture, touch(3, 700, 100));
+    fireEvent.pointerMove(picture, touch(3, 600, 300));
+    fireEvent.pointerUp(picture, touch(3, 600, 300));
+    expect(frameOf()).toEqual(start);
+  });
+
+  test('Minimize tucks it into a tab on the nearer side: the live view closes, the tab survives a reload and brings the player back', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    const start = frameOf();
+    openPill();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Minimize floating browser' }),
+    );
+    expect(screen.queryByTestId('float-canvas')).toBeNull();
+    expect(player()?.getAttribute('data-tucked')).toBe('right');
+    expect(stored().tucked).toBe('right');
+    cleanup();
+    resetFloatStoreForTests();
+    renderFloat(area);
+    const tab = await screen.findByRole('button', {
+      name: 'Show floating browser',
+    });
+    expect(screen.queryByTestId('float-canvas')).toBeNull();
+    fireEvent.click(tab);
+    await screen.findByTestId('float-canvas');
+    expect(frameOf()).toEqual(start);
+    expect(stored().tucked).toBeUndefined();
+  });
+
+  test('a drag carried past a side tucks it there', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    // The player (568..888 of a 900 chat) carried 250 right: its centre
+    // would sit past the edge.
+    drag({ x: 700, y: 100 }, { x: 950, y: 100 });
+    expect(player()?.getAttribute('data-tucked')).toBe('right');
+    expect(screen.queryByTestId('float-canvas')).toBeNull();
+  });
+
+  test('on a touch screen the pill offers Full screen in place of Open in right panel', async () => {
+    coarsePointer();
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    openPill();
+    expect(
+      screen.queryByRole('button', { name: 'Open in right panel' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
+    expect(h.enterImmersive).toHaveBeenCalledTimes(1);
   });
 });

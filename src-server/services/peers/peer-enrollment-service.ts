@@ -70,11 +70,17 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function receiverRefusal(status: number, value: unknown): string {
+function receiverRefusal(
+  status: number,
+  value: unknown,
+  origin: string,
+): string {
   const error = record(value) ? value.error : undefined;
   const code = record(error) ? error.code : error;
+  // The request presents the receiver's own address as Origin, so the
+  // receiver refused its own published address: name it and both remedies.
   if (status === 403 && code === 'origin_forbidden')
-    return 'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request';
+    return `Receiver does not trust its own address ${origin}; on the receiver, add ${origin} to ALLOWED_ORIGINS (or --allowed-origin) and restart, or update it to a Station that trusts its own Tailscale Serve address (Funnel off, nothing else served there), then start a new peer request`;
   if (status === 429 && code === 'rate_limited')
     return 'Receiver is limiting pairing requests; wait before starting a new peer request';
   if (status === 426 && code === CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE)
@@ -487,7 +493,7 @@ export class PeerEnrollmentService {
         return this.#finish(
           state,
           'failed',
-          receiverRefusal(requested.status, value),
+          receiverRefusal(requested.status, value, origin),
         );
       state.offerId = value.offerId;
       state.proof = value.proof;

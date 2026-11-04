@@ -165,6 +165,13 @@ export interface UseLiveSurfaceResult {
   /** Stop asking for H.264 for this target and reconnect for images. */
   declineH264: () => void;
   sendInput: (events: LiveSurfaceInput[]) => void;
+  /**
+   * Input that did not reach the surface (`input-failed`, or `host-busy`
+   * where nothing was sent) and can be sent again with `retryInput`.
+   */
+  retryableInput: boolean;
+  /** Send the input that did not reach the surface again, in order. */
+  retryInput: () => void;
   claimControl: () => Promise<void>;
   /**
    * Give control up explicitly (a hand-back): the server records the
@@ -606,11 +613,20 @@ export function useLiveSurface(
   /** Pressed when control changed hands; the server released them already. */
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
+  /** Input the host did not deliver, kept for `retryInput`. */
+  const undeliveredRef = useRef<LiveSurfaceInput[]>([]);
+  const [retryableInput, setRetryableInput] = useState(false);
+  const keepUndelivered = useCallback((events: LiveSurfaceInput[]) => {
+    undeliveredRef.current = events;
+    setRetryableInput(events.length > 0);
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
   useLayoutEffect(() => {
     targetGenerationRef.current += 1;
     queueRef.current = [];
     inFlightRef.current = false;
+    undeliveredRef.current = [];
+    setRetryableInput(false);
     pressedRef.current.clear();
     orphanedRef.current.clear();
     epochRef.current = 0;
@@ -681,7 +697,9 @@ export function useLiveSurface(
       } | null;
       if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
-        // Not sent, and not replayed later onto a view that may have moved on.
+        // Not sent, and not replayed later onto a view that may have moved
+        // on: kept only for the person to send again.
+        keepUndelivered([...batch, ...queueRef.current]);
         queueRef.current = [];
         showHostBusy();
         return;
@@ -692,6 +710,7 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
       if (result?.ok) {
+        keepUndelivered([]);
         setInputNotice(null);
       } else if (
         result &&
@@ -699,18 +718,27 @@ export function useLiveSurface(
         (result.code === 'stale-epoch' || result.code === 'stale-fence')
       ) {
         queueRef.current = [];
+        keepUndelivered([]);
         for (const id of pressedRef.current) orphanedRef.current.add(id);
         pressedRef.current.clear();
         setInputNotice('control-changed');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
+        keepUndelivered([]);
         setInputNotice('page-dialog');
       } else {
+        // The host delivered the first `accepted` events; the rest of the
+        // batch, and what queued behind it, did not reach the surface.
+        keepUndelivered([
+          ...batch.slice(result?.accepted ?? 0),
+          ...queueRef.current,
+        ]);
         queueRef.current = [];
         setInputNotice('input-failed');
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
+      keepUndelivered([...batch, ...queueRef.current]);
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
@@ -718,7 +746,7 @@ export function useLiveSurface(
         inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease, showHostBusy]);
+  }, [adoptLease, showHostBusy, keepUndelivered]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {
@@ -752,6 +780,19 @@ export function useLiveSurface(
     },
     [flush],
   );
+
+  const retryInput = useCallback(() => {
+    const events = undeliveredRef.current;
+    keepUndelivered([]);
+    if (events.length === 0) return;
+    setInputNotice(null);
+    // Ahead of anything typed since: it was meant to arrive first.
+    queueRef.current = [...events, ...queueRef.current];
+    if (!flushScheduledRef.current) {
+      flushScheduledRef.current = true;
+      queueMicrotask(() => void flush());
+    }
+  }, [flush, keepUndelivered]);
 
   const claimControl = useCallback(async () => {
     const generation = targetGenerationRef.current;
@@ -858,6 +899,8 @@ export function useLiveSurface(
     activeCodec,
     declineH264,
     sendInput,
+    retryableInput,
+    retryInput,
     claimControl,
     releaseControl,
     keepControlAlive,

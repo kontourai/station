@@ -24,6 +24,13 @@
   z-index: 10;
 }
 
+/* Full screen from the float: the live view is laid over the viewport from
+   inside this overlay, so the overlay rises with it (where the Fullscreen
+   API is refused, nothing else lifts it over the shell). */
+.float-over-chat[data-immersive] {
+  z-index: calc(var(--layer-dialog) - 1);
+}
+
 .float-over-chat__player {
   background: var(--bg-secondary);
   border-radius: var(--radius-md, 12px);
@@ -32,6 +39,50 @@
     0 12px 32px rgb(0 0 0 / 0.35);
   pointer-events: auto;
   position: absolute;
+  /* A press on the picture moves the player (the live view takes it only
+     while this person drives); the page never scrolls under it. */
+  touch-action: none;
+}
+
+/* Carried past a side: released here, it tucks into a tab. */
+.float-over-chat__player[data-tuck-hint] {
+  opacity: 0.6;
+}
+
+/* Minimized: a tab flush with one side of the chat, at the player's
+   height. A 44px target; tapping it brings the player back. */
+.float-over-chat__player--tucked {
+  background: transparent;
+  box-shadow: none;
+}
+
+.float-over-chat__tab {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  height: 64px;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+}
+
+.float-over-chat__player--tucked[data-tucked="right"] .float-over-chat__tab {
+  border-radius: var(--k-radius-md) 0 0 var(--k-radius-md);
+  border-right: 0;
+}
+
+.float-over-chat__player--tucked[data-tucked="left"] .float-over-chat__tab {
+  border-left: 0;
+  border-radius: 0 var(--k-radius-md) var(--k-radius-md) 0;
+}
+
+.float-over-chat__tab:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .float-over-chat__surface {
@@ -51,14 +102,21 @@
   border-radius: 0;
 }
 
+/* The pane's codec diagnostic has no room in a player (and a tap's sticky
+   hover would show it over the chat). */
+.float-over-chat__surface .live-surface__codec {
+  display: none;
+}
+
 .float-over-chat__chrome {
   position: absolute;
-  right: 8px;
-  top: 8px;
+  right: 0;
+  top: 0;
   z-index: 2;
 }
 
-/* The collapsed chrome: a dot. The button is a 24px target around it. */
+/* The collapsed chrome: a dot in the corner. The button is a 44px target
+   around it (a finger must be able to hit it). */
 .float-over-chat__dot {
   align-items: center;
   background: transparent;
@@ -66,10 +124,10 @@
   border-radius: 50%;
   cursor: pointer;
   display: flex;
-  height: 24px;
+  height: 44px;
   justify-content: center;
   padding: 0;
-  width: 24px;
+  width: 44px;
 }
 
 .float-over-chat__dot:focus-visible {
@@ -95,23 +153,13 @@
   background: var(--accent-primary);
 }
 
+/* The pill is the shared viewer chrome (`.live-surface-controls`), placed
+   in the player's corner. Its look lives with that component. */
 .float-over-chat__pill {
-  align-items: center;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 12px);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
-  padding: 4px;
   position: absolute;
-  right: 0;
-  top: 0;
+  right: 4px;
+  top: 4px;
   width: max-content;
-  /* Never wider than the smallest player (240) less its inset. */
-  max-width: 224px;
 }
 
 .float-over-chat__handle {
@@ -135,20 +183,8 @@
 }
 
 .float-over-chat__handle:focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--k-focus);
   outline-offset: -2px;
-}
-
-.float-over-chat__controller {
-  color: var(--text-secondary);
-  flex: 1 1 auto;
-  font-size: 0.8125rem;
-  margin: 0;
-  min-width: 0;
-}
-
-.float-over-chat__controller[data-tone="agent"] {
-  color: var(--warning-text, var(--text-primary));
 }
 
 .float-over-chat__action {

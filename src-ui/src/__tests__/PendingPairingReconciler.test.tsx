@@ -79,7 +79,6 @@ function renderReconciler(
   const view = render(
     <PendingPairingReconciler
       pending={pending()}
-      enabled
       {...callbacks}
       {...overrides}
     />,

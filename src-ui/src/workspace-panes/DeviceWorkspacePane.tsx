@@ -1,7 +1,4 @@
-import type {
-  LiveSurfaceDeviceButton,
-  LiveSurfaceOrientation,
-} from '@kontourai/station-contracts/live-surface';
+import type { LiveSurfaceDeviceButton } from '@kontourai/station-contracts/live-surface';
 import type {
   DeviceHostSummary,
   MobileDevicePlatform,
@@ -69,6 +66,10 @@ import {
 import { DeviceSetupSlot } from './DeviceSetupSlot';
 import { DeviceFoldControls } from './device/DeviceFoldControls';
 import { type DeviceFoldState, useDeviceFold } from './device/DeviceFoldView';
+import {
+  DeviceImmersiveActions,
+  NEXT_ORIENTATION,
+} from './device/DeviceImmersiveActions';
 import type { DeviceToolsView } from './device/DeviceToolsDrawer';
 import {
   type DevicePaneSelection,
@@ -229,15 +230,6 @@ const DEVICE_SELECTION_RETRY_MS = 1_000;
 
 /** How long a Start may take before the pane says it did not finish. */
 const DEVICE_START_LIMIT_MS = 5 * 60_000;
-
-/** The iOS Rotate button turns a quarter clockwise from where it is now. */
-const NEXT_ORIENTATION: Record<LiveSurfaceOrientation, LiveSurfaceOrientation> =
-  {
-    portrait: 'landscape-left',
-    'landscape-left': 'portrait-upside-down',
-    'portrait-upside-down': 'landscape-right',
-    'landscape-right': 'portrait',
-  };
 
 /** Platform hints for an empty group: what to install or create. */
 const EMPTY_GROUP: Record<
@@ -1089,6 +1081,18 @@ function DeviceStage({
         aspect: DEVICE_PLACEHOLDER_ASPECT[platform],
         cornerRadius: (box) => deviceCornerRadius(platform, box),
       }}
+      fullScreenButton
+      onProducerStatus={foldState.reportStatus}
+      renderImmersiveActions={(api) => (
+        <>
+          <DeviceImmersiveActions api={api} platform={platform} />
+          <DeviceFoldControls
+            {...foldState.controls}
+            inputReady={api.inputReady}
+            sendInput={api.sendInput}
+          />
+        </>
+      )}
       key={session.surfaceId}
       {...(projectSlug ? { projectSlug } : {})}
       label={`${session.name} (${osLabel(session)})`}
@@ -1359,9 +1363,6 @@ function DeviceToolbar({
   const { surface, inputReady, sendInput } = api;
   const live = surface.status === 'live';
   useEffect(() => onStreamLive(live), [live, onStreamLive]);
-  const reportedFold = surface.producerStatus.fold;
-  const reportFold = foldState.report;
-  useEffect(() => reportFold(reportedFold), [reportedFold, reportFold]);
   const press = (button: LiveSurfaceDeviceButton) =>
     sendInput([{ kind: 'device-button', button }]);
   const orientation = surface.producerStatus.orientation ?? 'portrait';

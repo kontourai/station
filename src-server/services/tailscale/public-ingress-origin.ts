@@ -132,6 +132,113 @@ function loopbackProxyPort(handler: unknown): number | undefined {
   return Number.isInteger(port) && port > 0 && port < 65_536 ? port : undefined;
 }
 
+interface ServeOriginCandidate {
+  readonly origin: string;
+  /**
+   * True only when the daemon would serve nothing but this Station at the
+   * origin: every handler proxies to one of `localPorts`, Funnel is off for
+   * the authority, no raw TCP forward replaces the web listener, and no
+   * foreground `serve` session overrides it.
+   */
+  readonly ownedByStation: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Every `host:port` a foreground session configures or exposes through Funnel. */
+function foregroundOrFunnelAuthorities(
+  config: Record<string, unknown>,
+): Set<string> {
+  const authorities = new Set<string>();
+  const funnel = config.AllowFunnel;
+  if (isRecord(funnel)) {
+    for (const [authority, allowed] of Object.entries(funnel)) {
+      if (allowed === true) authorities.add(authority.toLowerCase());
+    }
+  }
+  const foreground = config.Foreground;
+  if (isRecord(foreground)) {
+    for (const session of Object.values(foreground)) {
+      if (!isRecord(session)) continue;
+      if (isRecord(session.Web)) {
+        for (const authority of Object.keys(session.Web)) {
+          authorities.add(authority.toLowerCase());
+        }
+      }
+      for (const authority of foregroundOrFunnelAuthorities(session)) {
+        authorities.add(authority);
+      }
+    }
+  }
+  return authorities;
+}
+
+/** Root-handler candidates on this node's MagicDNS authority, in canonical order. */
+function serveOriginCandidates(
+  serveJson: string,
+  magicDnsHost: string,
+  localPorts: readonly number[],
+): readonly ServeOriginCandidate[] | undefined {
+  let serve: unknown;
+  try {
+    serve = JSON.parse(serveJson);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(serve)) return undefined;
+  const web = serve.Web;
+  if (!isRecord(web)) return undefined;
+  const wanted = new Set(localPorts);
+  const unowned = foregroundOrFunnelAuthorities(serve);
+  const tcp = isRecord(serve.TCP) ? serve.TCP : {};
+  const candidates: ServeOriginCandidate[] = [];
+  for (const [authority, listener] of Object.entries(web)) {
+    // Keys are `host:port`; IPv6 literals never appear here because a serve
+    // listener is published on the node's own MagicDNS authority.
+    const separator = authority.lastIndexOf(':');
+    if (separator <= 0) continue;
+    const host = authority.slice(0, separator).toLowerCase();
+    const servePort = Number(authority.slice(separator + 1));
+    if (host !== magicDnsHost) continue;
+    if (!Number.isInteger(servePort) || servePort <= 0 || servePort > 65_535) {
+      continue;
+    }
+    if (!isRecord(listener)) continue;
+    const handlers = listener.Handlers;
+    if (!isRecord(handlers)) continue;
+    const port = loopbackProxyPort(handlers['/']);
+    if (port === undefined || !wanted.has(port)) continue;
+    const tcpListener = tcp[String(servePort)];
+    const ownedByStation =
+      !unowned.has(`${host}:${servePort}`) &&
+      !(isRecord(tcpListener) && 'TCPForward' in tcpListener) &&
+      Object.values(handlers).every((handler) => {
+        const target = loopbackProxyPort(handler);
+        return target !== undefined && wanted.has(target);
+      });
+    candidates.push({
+      origin:
+        servePort === 443 ? `https://${host}` : `https://${host}:${servePort}`,
+      ownedByStation,
+    });
+  }
+  if (candidates.length === 0) return undefined;
+  // Deterministic when several listeners reach the same Station: prefer the
+  // default HTTPS port, then the lowest, so the endpoint a device is handed
+  // does not depend on object key order.
+  candidates.sort(({ origin: left }, { origin: right }) => {
+    const leftPort = Number(new URL(left).port || '443');
+    const rightPort = Number(new URL(right).port || '443');
+    if (leftPort === rightPort) return left.localeCompare(right);
+    if (leftPort === 443) return -1;
+    if (rightPort === 443) return 1;
+    return leftPort - rightPort;
+  });
+  return candidates;
+}
+
 /**
  * The daemon-validated public HTTPS origins that serve one of `localPorts`,
  * ordered deterministically, or `undefined`.
@@ -147,59 +254,25 @@ export function parseServePublicOrigins(
   magicDnsHost: string,
   localPorts: readonly number[],
 ): readonly string[] | undefined {
-  let serve: unknown;
-  try {
-    serve = JSON.parse(serveJson);
-  } catch {
-    return undefined;
-  }
-  if (!serve || typeof serve !== 'object' || Array.isArray(serve)) {
-    return undefined;
-  }
-  const web = (serve as { Web?: unknown }).Web;
-  if (!web || typeof web !== 'object' || Array.isArray(web)) return undefined;
-  const wanted = new Set(localPorts);
-  const candidates: string[] = [];
-  for (const [authority, listener] of Object.entries(
-    web as Record<string, unknown>,
-  )) {
-    // Keys are `host:port`; IPv6 literals never appear here because a serve
-    // listener is published on the node's own MagicDNS authority.
-    const separator = authority.lastIndexOf(':');
-    if (separator <= 0) continue;
-    const host = authority.slice(0, separator).toLowerCase();
-    const servePort = Number(authority.slice(separator + 1));
-    if (host !== magicDnsHost) continue;
-    if (!Number.isInteger(servePort) || servePort <= 0 || servePort > 65_535) {
-      continue;
-    }
-    if (!listener || typeof listener !== 'object' || Array.isArray(listener)) {
-      continue;
-    }
-    const handlers = (listener as { Handlers?: unknown }).Handlers;
-    if (!handlers || typeof handlers !== 'object' || Array.isArray(handlers)) {
-      continue;
-    }
-    const root = (handlers as Record<string, unknown>)['/'];
-    const port = loopbackProxyPort(root);
-    if (port === undefined || !wanted.has(port)) continue;
-    candidates.push(
-      servePort === 443 ? `https://${host}` : `https://${host}:${servePort}`,
-    );
-  }
-  if (candidates.length === 0) return undefined;
-  // Deterministic when several listeners reach the same Station: prefer the
-  // default HTTPS port, then the lowest, so the endpoint a device is handed
-  // does not depend on object key order.
-  candidates.sort((left, right) => {
-    const leftPort = Number(new URL(left).port || '443');
-    const rightPort = Number(new URL(right).port || '443');
-    if (leftPort === rightPort) return left.localeCompare(right);
-    if (leftPort === 443) return -1;
-    if (rightPort === 443) return 1;
-    return leftPort - rightPort;
-  });
-  return candidates;
+  return serveOriginCandidates(serveJson, magicDnsHost, localPorts)?.map(
+    (candidate) => candidate.origin,
+  );
+}
+
+/**
+ * The subset of {@link parseServePublicOrigins} this Station may treat as its
+ * own browser origin: a page or caller presenting it can only have come from
+ * this Station, because the daemon serves nothing else there and does not
+ * expose it through Funnel. Returns `[]` when none qualifies.
+ */
+export function parseServeOwnedOrigins(
+  serveJson: string,
+  magicDnsHost: string,
+  localPorts: readonly number[],
+): readonly string[] {
+  return (serveOriginCandidates(serveJson, magicDnsHost, localPorts) ?? [])
+    .filter((candidate) => candidate.ownedByStation)
+    .map((candidate) => candidate.origin);
 }
 
 interface PublicIngressOriginResolver {
@@ -218,11 +291,19 @@ interface PublicIngressOriginResolver {
    * when Tailscale is absent or offline. Never throws.
    */
   magicDnsHost(): Promise<string | undefined>;
+  /**
+   * True when `origin` is exactly one of this Station's owned Serve origins
+   * ({@link parseServeOwnedOrigins}). Anything that is not a canonical
+   * `https://*.ts.net` origin is refused without consulting the daemon, so a
+   * stream of foreign Origins cannot make this spawn processes. Never throws.
+   */
+  isOwnedOrigin(origin: string): Promise<boolean>;
 }
 
 interface IngressLookup {
   readonly host?: string;
   readonly origins?: readonly string[];
+  readonly ownedOrigins?: readonly string[];
 }
 
 /**
@@ -258,6 +339,11 @@ export function createPublicIngressOriginResolver(input: {
       return {
         host,
         origins: parseServePublicOrigins(serve.stdout, host, input.localPorts),
+        ownedOrigins: parseServeOwnedOrigins(
+          serve.stdout,
+          host,
+          input.localPorts,
+        ),
       };
     } catch {
       return {};
@@ -282,6 +368,22 @@ export function createPublicIngressOriginResolver(input: {
     },
     async magicDnsHost() {
       return (await read()).host;
+    },
+    async isOwnedOrigin(origin) {
+      let parsed: URL;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        return false;
+      }
+      if (
+        parsed.protocol !== 'https:' ||
+        parsed.origin !== origin ||
+        !parsed.hostname.endsWith('.ts.net')
+      ) {
+        return false;
+      }
+      return (await read()).ownedOrigins?.includes(origin) === true;
     },
   };
 }

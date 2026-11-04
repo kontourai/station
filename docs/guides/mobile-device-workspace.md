@@ -13,9 +13,9 @@ Limits, refusal codes, the single-frame API and evidence live in the
 1. Use a personal Station. Hosted Stations do not offer devices.
 2. On the device host, install Xcode with a simulator runtime (iOS) or the
    Android SDK with an emulator image (Android).
-3. Install Node.js 24 or later with npm, on the PATH Station starts with.
-4. Open **Device** and follow setup to turn on Station's device helper.
-   Restart Station if you change its PATH.
+3. Open **Device** and follow setup to turn on Station's device helper.
+   Station installs it with its own bundled Node.js and npm, so a current
+   Station needs no separate Node.js installation.
 
 To use another machine as a device host, add it under **Settings →
 Advanced → Device hosts**. See
@@ -29,6 +29,10 @@ Advanced → Device hosts**. See
 2. Choose the host and device, then start it or open its live session.
 3. Tap or type on the screen. While you hold control, Agents cannot send
    input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
+4. Pinch to zoom the view. The corner **Full screen** button fits the device
+   screen to yours; tap **⋯** there for Exit, control, the keyboard and the
+   device buttons. See
+   [viewing a live surface](../reference/browser-and-devices.md#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
 
 Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**,
 **Apps**, **Device settings**, **Recents** (Android), **Float over chat** and

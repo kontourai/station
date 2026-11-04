@@ -59,6 +59,42 @@ page should stop running. If its browser exits, or Station restarts, retained
 sessions become `needs-reopen`; they are not silently declared live. Reopening
 uses a new browser generation and invalidates the old live-surface reference.
 
+### Viewing a live surface: zoom, full screen and the chat floater
+
+Every live surface (a Browser session or a device) uses one viewer,
+[`LiveSurfaceCanvas`](../../src-ui/src/live-surface/LiveSurfaceCanvas.tsx),
+in the Browser pane, the Device pane and the chat floater.
+
+- **Zoom** changes this view only; the page or device never receives it.
+  (The Browser pane's **⋯ › Zoom** is different: it zooms the page itself.)
+  Pinch with two fingers, or pinch a trackpad (Ctrl+wheel, or Safari's gesture
+  events). Move two fingers to pan. A double tap while zoomed returns to fit.
+  While you only watch, a double tap zooms in 2× at the tap and a mouse drag
+  pans. The percentage badge resets to fit. Taps map to the page pixel shown
+  under the finger at any zoom.
+- **Presses on touch** go out when the finger lifts, moves 8 px, or stays down
+  for 150 ms. A second finger before then cancels the press, so a pinch never
+  clicks the page.
+- **Full screen** (the pane's corner button, or the floater's controls) lays
+  the same viewer over the whole screen, inside the safe area. It uses the
+  Fullscreen API where the platform grants it and a full-viewport layer where
+  it does not. The stream is not restarted. Touch input drives the surface
+  directly. The controls show on entry, hide after 4 s, and come back from the
+  ⋯ handle, a tap while you only watch, or mouse movement. They offer Exit,
+  Take or Release control, the keyboard while you drive, and the surface's own
+  actions: Back, Forward and Reload for a browser, and Home, Back and Recents
+  (Android) or Rotate (iOS) for a device. Escape, Exit or the platform
+  leaving full screen returns to where you were.
+- **The chat floater** moves when you drag the picture with one finger or the
+  mouse. While you drive, the picture takes the press and the Move handle
+  moves the floater. A tap, the corner dot, or a mouse hover shows the
+  controls; they hide after 4 s. **Minimize**, or dragging the floater's
+  centre past a side, tucks it into a tab on that side and closes its live
+  view. The tab brings it back. Position, width and the tuck are kept for this
+  device. On a touch screen, Full screen replaces **Open in right panel**. A
+  narrow chat's notice and a page dialog's **Open in pane** still open the
+  panel.
+
 ### Profiles and network reach
 
 The [session registry](../../src-server/services/browser/browser-session-registry.ts)
@@ -440,7 +476,10 @@ check below found no control under 44px.
 On narrow screens, editing the address hides its navigation buttons until
 editing ends, leaving room for the URL. Back and forward occupy space on a fine
 pointer only while the toolbar is hovered or focused. Touch takeover hints say
-**Tap**. The console scrolls within its share of the pane; it does not force the
+**Tap**. Input the host did not deliver is named over the top of the page with
+**Retry**, which sends again only what did not arrive; later input that gets
+through clears it. A second finger's lift, or a lift after control changed
+hands, is not a failure. The console scrolls within its share of the pane; it does not force the
 live page beneath the dock. On the standalone Browser route, the page frame
 passes its available height through to both views. The actions menu fits between
 the current toolbar/banner stack and the dock, with its own scroll when needed.
@@ -526,14 +565,21 @@ chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
 for Android. This inventory is for simulators/emulators; do not infer physical
 phone support from it.
 
-Device tools additionally need a user-installed Node.js 24 or later with npm
-on the device host. Station resolves the first executable `node` from the user's
-PATH, follows version-manager shims to that installation, and runs its own npm
-CLI and the device hub with that absolute Node path. A later PATH entry cannot
-supply npm for a different installation. The user's PATH is preserved exactly.
-The desktop's private Node still runs Station's bundled services.
+Device tools need Node.js 24 or later with npm on the device host. Station
+first tries the first executable `node` on Station's PATH, following
+version-manager shims to that installation, and uses only the npm inside that
+installation; a later PATH entry cannot supply it. When that Node is missing,
+too old or has no npm, Station uses the Node.js it is running on. A prebuilt
+archive's `runtime/` carries the pinned distribution's own npm
+([archive staging](../../scripts/lib/portable-server-archive.mjs)), so an
+archive install needs no other Node.js or npm, as a service or a foreground
+`station start`. npm and the device hub run with the same absolute Node path.
+The user's PATH is preserved exactly. The desktop's private Node still runs
+Station's bundled services and is never used for device tools.
 
-If Node/npm is missing or Node is too old, setup explains the prerequisite.
+If neither offers a usable Node with npm (an archive built before its runtime
+carried npm, or the desktop app without a Node on PATH), setup asks to update
+Station first, then to install Node.js with npm.
 An installed helper stays blocked until **Check again** succeeds; it does not
 enter a crash/restart loop. Restart Station after changing its inherited PATH.
 An independently configured helper keeps its own prerequisites and lifecycle.
@@ -587,6 +633,10 @@ rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
 metered or data-saving connection it asks for at most 5 frames per second at
 quality 50 and 960 pixels on each side. See the
 [stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
+
+Zoom, full screen and the floater work for a device as they do for a browser;
+see [viewing a live surface](#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
+In full screen a device screen is fitted at its own aspect and orientation.
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares

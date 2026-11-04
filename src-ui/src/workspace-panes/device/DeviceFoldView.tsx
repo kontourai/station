@@ -26,16 +26,17 @@ import './DeviceFold.css';
 /**
  * A foldable device's lit display drawn bent at its hinge (#1970 foldables).
  *
- * INTEGRATION POINT for any host of the shared live-surface viewer (the
- * Device pane today; the immersive/fullscreen viewer and the float-over-chat
- * when they host a device): `useDeviceFold` turns the surface's reported
- * `fold` into a `projection` for `LiveSurfaceCanvas` plus the state
- * `DeviceFoldControls` needs. A host:
+ * INTEGRATION POINT for every host of the shared live-surface viewer that
+ * shows a device (the Device pane, its full-screen view, the float over
+ * chat): `useDeviceFold` turns the surface's reported `fold` into a
+ * `projection` for `LiveSurfaceCanvas` plus the state `DeviceFoldControls`
+ * needs. A host:
  *   1. calls `useDeviceFold()` once;
- *   2. reports the stream's fold: `fold.report(api.surface.producerStatus.fold)`
- *      from its `renderHeader` (or wherever it reads producer status);
+ *   2. passes `fold.reportStatus` as the canvas `onProducerStatus` (it keeps
+ *      reporting in full screen, where `renderHeader` is not mounted);
  *   3. passes `fold.projection` as the canvas `projection` (fit mode);
- *   4. renders `<DeviceFoldControls {...fold.controls} />` in its controls.
+ *   4. renders `<DeviceFoldControls {...fold.controls} />` in its controls,
+ *      including the full-screen bar's `renderImmersiveActions`.
  */
 
 export interface DeviceFoldState {
@@ -43,6 +44,8 @@ export interface DeviceFoldState {
   fold: LiveSurfaceFold | undefined;
   /** Report the stream's current fold state (idempotent). */
   report: (fold: LiveSurfaceFold | undefined) => void;
+  /** `report` for a canvas's `onProducerStatus`. */
+  reportStatus: (status: { fold?: LiveSurfaceFold }) => void;
   /** Undefined unless the device folds, so a flat phone is untouched. */
   projection: LiveSurfaceProjection | undefined;
   /** Props for `DeviceFoldControls` (add `sendInput` and `inputReady`). */
@@ -89,6 +92,10 @@ export function useDeviceFold(): DeviceFoldState {
     },
     [reportedAngle, reportedPosture],
   );
+  const reportStatus = useCallback(
+    (status: { fold?: LiveSurfaceFold }) => report(status.fold),
+    [report],
+  );
   const projection = useMemo<LiveSurfaceProjection | undefined>(() => {
     if (!fold) return undefined;
     return {
@@ -118,6 +125,7 @@ export function useDeviceFold(): DeviceFoldState {
   return {
     fold,
     report,
+    reportStatus,
     projection,
     controls: { fold, previewAngle, onPreviewAngle },
   };

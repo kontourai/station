@@ -727,6 +727,17 @@ Station's native host captures and holds it outside the WebView.
 Expired, denied, cancelled, altered, replayed, and unconfirmed offers are
 rejected.
 
+With a code or scanned invitation, the dialog's action is **Connect**; only an
+address-only request reads **Request access**. When the code still needs
+approval, the dialog stays open on a waiting view that names the Station,
+counts down to the request's expiry and offers **Stop waiting**. The
+application shell owns the exchange from that point
+(`src-ui/src/components/PendingPairingReconciler.tsx`): it keeps polling with
+the existing backoff while **Manage Stations** is open, the dialog is closed,
+or the saved Station is renamed, and stops only on approval, decline, expiry,
+or **Stop waiting**. On approval the device connects without further action
+and the waiting dialog closes.
+
 Use the paired-device inventory in the same host panel to revoke one device.
 Revocation makes the credential fail subsequent authenticated HTTP, SSE and
 remote WebSocket admission without rotating the operator credential or revoking

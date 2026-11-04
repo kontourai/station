@@ -5462,8 +5462,11 @@ buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
-rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
-already in flight.
+rather than `dispatch-failed`. Any other producer error is logged (surface,
+input kind and type, bounded cause; never key or text) and reaches the viewer
+as `dispatch-failed`, which the canvas shows over the surface with a Retry
+that re-sends only the events the result says were not delivered. It cannot
+cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
@@ -5517,9 +5520,16 @@ reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
 request), and after three failures with no picture between them switches the
 viewer to images.
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
-float-over-chat, and shows the codec it draws. A host may pass it a
-`projection` that draws the frame and maps points back to it; the Device pane
-uses one to draw a foldable's display bent at its hinge. When the origin, surface ID or
+float-over-chat, and shows the codec it draws. It owns the one viewer for
+every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
+whose client rect the pointer mapping already reads), touch presses held back
+until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
+element over the viewport, with the Fullscreen API where it is granted). The
+shared chrome is `LiveSurfaceViewerControls.tsx`. A surface kind extends the
+full-screen bar only through `renderImmersiveActions(api)`, for example
+`BrowserImmersiveNav` or `DeviceImmersiveActions`. A host may also pass a `projection` that
+draws the frame and maps points back to it; the Device pane, its full-screen
+view and its float use one to draw a foldable's display bent at its hinge. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
 credential generation.
@@ -5559,10 +5569,11 @@ for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
 process ownership remain with the toolchain/host services. Managed device tools
-resolve a user-installed Node.js 24 or later and its matching npm through
-[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+resolve Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts):
+the first Node on PATH, else the archive Node running Station.
 Missing prerequisites block device setup with guidance; the desktop's private
-Node continues to run bundled Station services. There is no peer Station device
+Node runs bundled Station services and is never selected. There is no peer Station device
 transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current

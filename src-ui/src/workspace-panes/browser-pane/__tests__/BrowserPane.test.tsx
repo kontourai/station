@@ -64,6 +64,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
     onControlState?: (
       state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
     ) => void;
+    overlay?: import('react').ReactNode;
   }) => {
     useEffect(() => {
       canvasState.report = props.onControlState;
@@ -75,6 +76,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
         data-read-only={props.readOnly}
       >
         {props.label}
+        {props.overlay}
       </div>
     );
   },
@@ -1625,6 +1627,41 @@ describe('BrowserPane wave 2 fix round', () => {
       url: 'example.com',
     });
   });
+
+  test.each([
+    [
+      'browser-sandbox-unavailable',
+      'This Station’s Linux host blocks the browser sandbox. Its operator must allow it. How to fix',
+      'https://github.com/kontourai/station/blob/main/docs/guides/browser-workspace.md#no-usable-sandbox-on-linux',
+    ],
+    [
+      'browser-host-failed',
+      'The browser could not start, or stopped unexpectedly.',
+      undefined,
+    ],
+  ])(
+    'a browser that cannot start on Open says why (%s)',
+    async (code, text, href) => {
+      renderPane(
+        {
+          'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+          'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+          'POST /api/browser/sessions': refuse(503, code),
+        },
+        { kind: 'new' },
+      );
+      const address = await screen.findByLabelText('Address');
+      fireEvent.change(address, { target: { value: 'https://google.com' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBe(text);
+      expect(
+        within(alert)
+          .queryByRole('link', { name: 'How to fix' })
+          ?.getAttribute('href'),
+      ).toBe(href);
+    },
+  );
 });
 
 describe('BrowserPane delta-review nits', () => {

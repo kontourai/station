@@ -14,11 +14,18 @@ import {
   useId,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../components/Button';
-import { CloseGlyph, MenuGlyph, MonitorGlyph } from '../components/icons/Glyph';
+import {
+  ArrowLeftGlyph,
+  ArrowRightGlyph,
+  CloseGlyph,
+  glyph,
+  SidebarGlyph,
+} from '../components/icons/Glyph';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -33,16 +40,30 @@ import {
   type OpenPaneRefusal,
   useOpenBrowserSessionInRegion,
 } from '../contexts/useOpenInRegion';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useFeatureSettings } from '../hooks/useFeatureSettings';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
 } from '../live-surface/LiveSurfaceCanvas';
+import {
+  CONTROLS_AUTO_HIDE_MS,
+  isKeyboardFocus,
+  LiveSurfaceViewerControls,
+  useAutoHide,
+} from '../live-surface/LiveSurfaceViewerControls';
+import {
+  BrowserImmersiveNav,
+  type BrowserNavAction,
+} from '../workspace-panes/browser-pane/BrowserImmersiveNav';
 import { BrowserPageDialog } from '../workspace-panes/browser-pane/BrowserPageDialog';
 import {
   browserPaneApi,
   describeBrowserFailure,
 } from '../workspace-panes/browser-pane/browserPaneApi';
+import { DeviceFoldControls } from '../workspace-panes/device/DeviceFoldControls';
+import { useDeviceFold } from '../workspace-panes/device/DeviceFoldView';
+import { DeviceImmersiveActions } from '../workspace-panes/device/DeviceImmersiveActions';
 import {
   DEVICE_PLACEHOLDER_ASPECT,
   deviceCornerRadius,
@@ -58,6 +79,7 @@ import {
   type FloatObstacles,
   type FloatResizeDirection,
   type FloatSize,
+  floatTuckSide,
   isFloatArrowKey,
   nudgeFloatFrame,
   resizeFloatFrame,
@@ -73,6 +95,7 @@ import {
   closeFloat,
   dismissFloat,
   type FloatNotice as FloatNoticeState,
+  type FloatTuckSide,
   getFloatGeneration,
   getFloatingSource,
   getFloatNotice,
@@ -857,7 +880,13 @@ function SourceFloat({
       </div>
     );
   return (
-    <div className="float-over-chat" style={overlay}>
+    <div
+      className="float-over-chat"
+      style={overlay}
+      // Full screen from the float: the overlay rises with it, so a
+      // platform without the Fullscreen API still shows it over the shell.
+      data-immersive={control?.immersive ? '' : undefined}
+    >
       <FloatPlayer
         layout={layout}
         sourceKey={sourceKey}
@@ -939,6 +968,18 @@ function BrowserFloat({
         queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
       }),
   });
+  const navigate = useMutation({
+    mutationFn: (action: BrowserNavAction) =>
+      browserPaneApi(apiBase, transport).history(
+        session.browserSessionId,
+        action,
+        session.generation,
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
+      }),
+  });
   const { projectId, browserSessionId } = session;
   const openInPanel = useMemo(() => {
     if (!openBrowser) return null;
@@ -969,9 +1010,6 @@ function BrowserFloat({
       agentInput={agentInputOf(session, receivedAt)}
       openInPanel={openInPanel}
       renderSurface={(onControlState) => (
-        // A dialog the page holds for the person driving from here is
-        // answered here too: otherwise the float is a page that refuses
-        // every click for no visible reason (#90).
         <div className="float-over-chat__browser">
           <LiveSurfaceCanvas
             apiBase={apiBase}
@@ -982,30 +1020,48 @@ function BrowserFloat({
             inputRequiresLease
             agentActionsEnabled={agentActionsEnabled}
             onControlState={reportControl(onControlState)}
-          />
-          {pendingDialog ? (
-            <div className="float-over-chat__dialog-layer float-over-chat__dialog-layer--compact">
-              <BrowserPageDialog
-                compact
-                key={pendingDialog.dialogId}
-                dialog={pendingDialog}
-                pageHost={host}
-                pending={answer.isPending}
-                error={
-                  answer.isError ? describeBrowserFailure(answer.error) : null
-                }
-                onAnswer={(reply) =>
-                  answer.mutate({ dialogId: pendingDialog.dialogId, ...reply })
-                }
-                {...(openInPanel
-                  ? { onOpenInPane: () => void openInPanel() }
-                  : {})}
-                {...(control?.tone === 'you'
-                  ? { onKeepAlive: () => void control.keepControlAlive() }
-                  : {})}
+            renderImmersiveActions={() => (
+              <BrowserImmersiveNav
+                host={host}
+                disabled={control?.tone !== 'you' || navigate.isPending}
+                onAction={(action) => navigate.mutate(action)}
               />
-            </div>
-          ) : null}
+            )}
+            // A dialog the page holds for the person driving from here is
+            // answered here too: otherwise the float is a page that refuses
+            // every click for no visible reason (#90). Drawn by the live
+            // view, so it stays over the page in full screen as well.
+            overlay={
+              pendingDialog ? (
+                <div className="float-over-chat__dialog-layer float-over-chat__dialog-layer--compact">
+                  <BrowserPageDialog
+                    compact
+                    key={pendingDialog.dialogId}
+                    dialog={pendingDialog}
+                    pageHost={host}
+                    pending={answer.isPending}
+                    error={
+                      answer.isError
+                        ? describeBrowserFailure(answer.error)
+                        : null
+                    }
+                    onAnswer={(reply) =>
+                      answer.mutate({
+                        dialogId: pendingDialog.dialogId,
+                        ...reply,
+                      })
+                    }
+                    {...(openInPanel
+                      ? { onOpenInPane: () => void openInPanel() }
+                      : {})}
+                    {...(control?.tone === 'you'
+                      ? { onKeepAlive: () => void control.keepControlAlive() }
+                      : {})}
+                  />
+                </div>
+              ) : null
+            }
+          />
         </div>
       )}
     />
@@ -1071,6 +1127,7 @@ function DeviceFloat({
   };
   const name = session?.name ?? source.name;
   const { projectSlug } = source;
+  const fold = useDeviceFold();
   return (
     <SourceFloat
       anchor={anchor}
@@ -1104,6 +1161,18 @@ function DeviceFloat({
             inputRequiresLease
             onControlState={onControlState}
             onFrameSize={setFrameSize}
+            {...(fold.projection ? { projection: fold.projection } : {})}
+            onProducerStatus={fold.reportStatus}
+            renderImmersiveActions={(api) => (
+              <>
+                <DeviceImmersiveActions api={api} platform={platform} />
+                <DeviceFoldControls
+                  {...fold.controls}
+                  inputReady={api.inputReady}
+                  sendInput={api.sendInput}
+                />
+              </>
+            )}
           />
         )
       }
@@ -1224,6 +1293,22 @@ function NarrowFloatNotice({
   );
 }
 
+/** A press on the player's picture moves it once it travels this far (CSS px). */
+const FLOAT_DRAG_SLOP_PX = 8;
+
+const MoveGlyph = /* @__PURE__ */ glyph(
+  'M8 1.5v13M1.5 8h13M6 3.5l2-2 2 2M6 12.5l2 2 2-2M3.5 6l-2 2 2 2M12.5 6l2 2-2 2',
+);
+const MinimizeGlyph = /* @__PURE__ */ glyph('M3.5 12.5h9');
+
+/** What a press on the picture is, until it moves (a drag) or lifts (a tap). */
+interface BodyPress {
+  pointerId: number;
+  x: number;
+  y: number;
+  moving: boolean;
+}
+
 function FloatPlayer({
   layout,
   sourceKey,
@@ -1253,6 +1338,10 @@ function FloatPlayer({
   children: ReactNode;
 }) {
   useFloatStoreVersion();
+  // On a finger, Full screen is the way to see more; docking into a panel
+  // is a desk's action (the pane's tools beside the chat), so it is offered
+  // only to a fine pointer.
+  const coarsePointer = useCoarsePointer();
   const placement = getFloatPlacement();
   const { container, obstacles } = layout;
   const frame = resolveFloatFrame({
@@ -1263,16 +1352,39 @@ function FloatPlayer({
     obstacles,
   });
   const gestureRef = useRef<Gesture | null>(null);
+  const bodyRef = useRef<BodyPress | null>(null);
   const pillId = useId();
   const dotRef = useRef<HTMLButtonElement>(null);
   const [pillOpen, setPillOpen] = useState(false);
   /** Escape closed the pill: focus returning to the dot must not reopen it. */
   const suppressRef = useRef(false);
+  /** What keeps the pill up past its auto-hide: a mouse over it, keyboard focus in it. */
+  const [hovered, setHovered] = useState(false);
+  const [keyboardFocus, setKeyboardFocus] = useState(false);
+  const [pillTouched, touchPill] = useReducer((n: number) => n + 1, 0);
+  /** A move that would tuck the player if released here. */
+  const [tuckHint, setTuckHint] = useState<FloatTuckSide | null>(null);
   // Who is driving, derived with the narrow notice's own rule: the live
   // lease, or an agent that drove within the recent window.
   const tone = useRecentDriver(control?.tone ?? null, agentInput);
   const canClaim =
     control !== null && control.status === 'live' && tone !== 'you';
+  const immersive = control?.immersive === true;
+
+  const openPill = () => {
+    setPillOpen(true);
+    touchPill();
+  };
+  useAutoHide(
+    pillOpen && !hovered && !keyboardFocus,
+    () => setPillOpen(false),
+    CONTROLS_AUTO_HIDE_MS,
+    pillTouched,
+  );
+  // Full screen takes over: the pill has nothing to do until it ends.
+  useEffect(() => {
+    if (immersive) setPillOpen(false);
+  }, [immersive]);
 
   const beginGesture = (
     event: ReactPointerEvent<HTMLElement>,
@@ -1299,6 +1411,7 @@ function FloatPlayer({
       y: event.clientY - gesture.pointerY,
     };
     if (gesture.direction === null) {
+      setTuckHint(floatTuckSide(gesture.frame, delta.x, container));
       setFloatPlacement(
         {
           width: placement.width, // a move keeps the width the user CHOSE, not a tight chat's
@@ -1328,11 +1441,97 @@ function FloatPlayer({
   };
 
   const endGesture = (event: ReactPointerEvent<HTMLElement>) => {
-    if (gestureRef.current?.pointerId !== event.pointerId) return;
+    const gesture = gestureRef.current;
+    if (gesture?.pointerId !== event.pointerId) return;
     gestureRef.current = null;
+    setTuckHint(null);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
+    // Carried past a side: put away into a tab there.
+    const side =
+      gesture.direction === null
+        ? floatTuckSide(
+            gesture.frame,
+            event.clientX - gesture.pointerX,
+            container,
+          )
+        : null;
+    const settled = getFloatPlacement();
     // Written for this device once the gesture settles, not per move.
+    setFloatPlacement(side ? { ...settled, tucked: side } : settled, {
+      persist: true,
+    });
+  };
+
+  /**
+   * A press anywhere on the picture that the live view did not take (it
+   * takes presses only while this person drives it, and every pinch): a
+   * drag once it moves, a tap that shows the controls if it lifts first.
+   */
+  const onBodyPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (immersive) return;
+    if (bodyRef.current) {
+      // A second finger: a pinch on the picture, never a move.
+      abandonBodyPress(event);
+      return;
+    }
+    if (event.defaultPrevented || event.button !== 0) return;
+    const target = event.target as Element | null;
+    if (
+      target?.closest(
+        '.float-over-chat__chrome, .float-over-chat__resize, .float-over-chat__dialog-layer, button, a, input, select, textarea',
+      )
+    )
+      return;
+    bodyRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      moving: false,
+    };
+  };
+
+  const onBodyPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const body = bodyRef.current;
+    if (!body || body.pointerId !== event.pointerId) return;
+    if (!body.moving) {
+      const travel = Math.hypot(event.clientX - body.x, event.clientY - body.y);
+      if (travel < FLOAT_DRAG_SLOP_PX) return;
+      body.moving = true;
+      gestureRef.current = {
+        pointerId: event.pointerId,
+        pointerX: body.x,
+        pointerY: body.y,
+        frame,
+        direction: null,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+    moveGesture(event);
+  };
+
+  const onBodyPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    const body = bodyRef.current;
+    if (!body || body.pointerId !== event.pointerId) return;
+    bodyRef.current = null;
+    if (body.moving) {
+      endGesture(event);
+      return;
+    }
+    // A tap: show the controls (or put them away again).
+    if (pillOpen) setPillOpen(false);
+    else openPill();
+  };
+
+  const abandonBodyPress = (event: ReactPointerEvent<HTMLElement>) => {
+    const body = bodyRef.current;
+    bodyRef.current = null;
+    if (!body?.moving) return;
+    const gesture = gestureRef.current;
+    gestureRef.current = null;
+    setTuckHint(null);
+    if (gesture && event.currentTarget.hasPointerCapture?.(gesture.pointerId))
+      event.currentTarget.releasePointerCapture(gesture.pointerId);
     setFloatPlacement(getFloatPlacement(), { persist: true });
   };
 
@@ -1364,138 +1563,216 @@ function FloatPlayer({
     dotRef.current?.focus();
   };
 
+  /** Minimize: into a tab on the nearer side, live view closed. */
+  const tuck = () => {
+    const side: FloatTuckSide =
+      frame.x + frame.width / 2 < container.width / 2 ? 'left' : 'right';
+    setPillOpen(false);
+    setFloatPlacement(
+      { ...getFloatPlacement(), tucked: side },
+      { persist: true },
+    );
+  };
+  const untuck = () => {
+    const { tucked: _shown, ...rest } = getFloatPlacement();
+    setFloatPlacement(rest, { persist: true });
+  };
+
   const status = control ? DRIVER_TEXT[tone] : 'Connecting…';
+
+  if (placement.tucked) {
+    const side = placement.tucked;
+    return (
+      <section
+        className="float-over-chat__player float-over-chat__player--tucked"
+        aria-label={label}
+        data-float-source={sourceKey}
+        data-tucked={side}
+        style={{ top: frame.y, [side]: 0 }}
+      >
+        <button
+          type="button"
+          className="float-over-chat__tab"
+          aria-label={`Show floating ${noun}`}
+          title={`Show floating ${noun}`}
+          onClick={untuck}
+        >
+          {side === 'right' ? <ArrowLeftGlyph /> : <ArrowRightGlyph />}
+        </button>
+      </section>
+    );
+  }
+
   return (
+    // The press-to-move is a pointer convenience; the Move button (arrow
+    // keys) is its keyboard equivalent.
     <section
       className="float-over-chat__player"
       aria-label={label}
       data-float-source={sourceKey}
       data-tone={tone}
+      data-tuck-hint={tuckHint ?? undefined}
       style={{
         left: frame.x,
         top: frame.y,
         width: frame.width,
         height: frame.height,
       }}
+      onPointerDown={onBodyPointerDown}
+      onPointerMove={onBodyPointerMove}
+      onPointerUp={onBodyPointerUp}
+      onPointerCancel={abandonBodyPress}
     >
       <div className="float-over-chat__surface">{children}</div>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: the chrome only routes hover and Escape to its own buttons, which carry the semantics. */}
-      <div
-        className="float-over-chat__chrome"
-        onPointerEnter={() => setPillOpen(true)}
-        onPointerLeave={(event) => {
-          if (!event.currentTarget.contains(document.activeElement))
-            setPillOpen(false);
-        }}
-        onFocus={() => {
-          if (!suppressRef.current) setPillOpen(true);
-        }}
-        onBlur={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-          suppressRef.current = false;
-          setPillOpen(false);
-        }}
-        onKeyDown={onChromeKeyDown}
-      >
-        {/* Who is in control, announced whether or not the pill is open:
-              the region is always mounted, so a change is never missed. */}
-        <p className="sr-only" aria-live="polite">
-          {status}
-        </p>
-        <button
-          ref={dotRef}
-          type="button"
-          className="float-over-chat__dot"
-          data-tone={tone}
-          aria-label={`Floating ${noun} controls. ${status}.`}
-          aria-expanded={pillOpen}
-          aria-controls={pillOpen ? pillId : undefined}
-          onClick={() => {
-            suppressRef.current = false;
-            // Idempotent: focus already opened the pill, so the Enter or Space
-            // that follows (a click) must not close it. Escape and leaving do.
-            setPillOpen(true);
+      {immersive ? null : (
+        // biome-ignore lint/a11y/noStaticElementInteractions: the chrome only routes hover and Escape to its own buttons, which carry the semantics.
+        <div
+          className="float-over-chat__chrome"
+          onPointerEnter={(event) => {
+            // A mouse hover opens the pill; a touch has no hover (its
+            // enter/leave pair arrives around every tap).
+            if (event.pointerType !== 'mouse') return;
+            setHovered(true);
+            openPill();
           }}
+          onPointerLeave={(event) => {
+            if (event.pointerType !== 'mouse') return;
+            setHovered(false);
+            if (!event.currentTarget.contains(document.activeElement))
+              setPillOpen(false);
+          }}
+          onPointerDown={touchPill}
+          onFocus={(event) => {
+            if (isKeyboardFocus(event.target)) setKeyboardFocus(true);
+            if (!suppressRef.current) openPill();
+          }}
+          onBlur={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node))
+              return;
+            suppressRef.current = false;
+            setKeyboardFocus(false);
+            setPillOpen(false);
+          }}
+          onKeyDown={onChromeKeyDown}
         >
-          <span className="float-over-chat__dot-mark" aria-hidden="true" />
-        </button>
-        {pillOpen ? (
-          <div
-            id={pillId}
-            className="float-over-chat__pill"
-            role="toolbar"
-            aria-label={`Floating ${noun}`}
+          {/* Who is in control, announced whether or not the pill is open:
+                the region is always mounted, so a change is never missed. */}
+          <p className="sr-only" aria-live="polite">
+            {status}
+          </p>
+          <button
+            ref={dotRef}
+            type="button"
+            className="float-over-chat__dot"
+            data-tone={tone}
+            aria-label={`Floating ${noun} controls. ${status}.`}
+            aria-expanded={pillOpen}
+            aria-controls={pillOpen ? pillId : undefined}
+            title="Controls"
+            onClick={() => {
+              suppressRef.current = false;
+              // Idempotent: focus already opened the pill, so the Enter or Space
+              // that follows (a click) must not close it. Escape and leaving do.
+              openPill();
+            }}
           >
-            <button
-              type="button"
-              className="float-over-chat__handle"
-              aria-label={`Move floating ${noun}. Arrow keys move it; Shift and an arrow key resize it.`}
-              title="Drag to move"
-              onPointerDown={(event) => beginGesture(event, null)}
+            <span className="float-over-chat__dot-mark" aria-hidden="true" />
+          </button>
+          {pillOpen ? (
+            <LiveSurfaceViewerControls
+              id={pillId}
+              className="float-over-chat__pill"
+              // One row where it can: it may reach left past the player
+              // over the chat (it is brief, and hides itself) rather than
+              // wrap onto the picture.
+              style={{
+                maxWidth: Math.max(0, frame.x + frame.width - FLOAT_EDGE_GAP),
+              }}
+              actionClassName="float-over-chat__action"
+              label={`Floating ${noun}`}
+              status={status}
+              tone={tone}
+              onClaim={canClaim ? () => void control?.claimControl() : null}
+              onToggleImmersive={control ? control.enterImmersive : null}
+              leading={
+                <button
+                  type="button"
+                  className="float-over-chat__handle"
+                  aria-label={`Move floating ${noun}. Arrow keys move it; Shift and an arrow key resize it.`}
+                  title="Drag to move (or drag the picture)"
+                  onPointerDown={(event) => beginGesture(event, null)}
+                  onPointerMove={moveGesture}
+                  onPointerUp={endGesture}
+                  onPointerCancel={endGesture}
+                  onKeyDown={onHandleKeyDown}
+                >
+                  <MoveGlyph />
+                </button>
+              }
+              trailing={
+                <>
+                  {coarsePointer ? null : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="float-over-chat__action float-over-chat__icon"
+                      aria-label="Open in right panel"
+                      title={
+                        canOpen
+                          ? 'Open in right panel'
+                          : 'No panel can open here'
+                      }
+                      disabled={!canOpen}
+                      onClick={onOpen}
+                    >
+                      <SidebarGlyph />
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="float-over-chat__action float-over-chat__icon"
+                    aria-label={`Minimize floating ${noun}`}
+                    title="Minimize to the edge"
+                    onClick={tuck}
+                  >
+                    <MinimizeGlyph />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="float-over-chat__action float-over-chat__icon"
+                    aria-label={`Close floating ${noun}`}
+                    title="Close"
+                    onClick={onClose}
+                  >
+                    <CloseGlyph />
+                  </Button>
+                  {notice ? (
+                    <p className="float-over-chat__notice" role="status">
+                      {notice}
+                    </p>
+                  ) : null}
+                </>
+              }
+            />
+          ) : null}
+        </div>
+      )}
+      {immersive
+        ? null
+        : RESIZE_ZONES.map((direction) => (
+            <div
+              key={direction}
+              role="presentation"
+              className={`float-over-chat__resize float-over-chat__resize--${direction}`}
+              data-float-resize={direction}
+              onPointerDown={(event) => beginGesture(event, direction)}
               onPointerMove={moveGesture}
               onPointerUp={endGesture}
               onPointerCancel={endGesture}
-              onKeyDown={onHandleKeyDown}
-            >
-              <MenuGlyph />
-            </button>
-            <p
-              className="float-over-chat__controller"
-              data-tone={tone}
-              aria-hidden="true"
-            >
-              {status}
-            </p>
-            {canClaim ? (
-              <Button
-                size="sm"
-                className="float-over-chat__action"
-                onClick={() => void control?.claimControl()}
-              >
-                Take control
-              </Button>
-            ) : null}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="float-over-chat__action float-over-chat__icon"
-              aria-label="Open in right panel"
-              title={canOpen ? 'Open in right panel' : 'No panel can open here'}
-              disabled={!canOpen}
-              onClick={onOpen}
-            >
-              <MonitorGlyph />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="float-over-chat__action float-over-chat__icon"
-              aria-label={`Close floating ${noun}`}
-              title="Close"
-              onClick={onClose}
-            >
-              <CloseGlyph />
-            </Button>
-            {notice ? (
-              <p className="float-over-chat__notice" role="status">
-                {notice}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      {RESIZE_ZONES.map((direction) => (
-        <div
-          key={direction}
-          role="presentation"
-          className={`float-over-chat__resize float-over-chat__resize--${direction}`}
-          data-float-resize={direction}
-          onPointerDown={(event) => beginGesture(event, direction)}
-          onPointerMove={moveGesture}
-          onPointerUp={endGesture}
-          onPointerCancel={endGesture}
-        />
-      ))}
+            />
+          ))}
     </section>
   );
 }

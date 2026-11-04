@@ -141,6 +141,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Spawns short-lived fake-Chromium shell scripts through the production
+  // launcher (owned process group, CDP pipe); each exits immediately.
+  'src-server/routes/__tests__/browser-launch-failure.routes.test.ts',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
   'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
@@ -774,6 +777,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // Builds fixture archives with the host tar executable; bounded, private output.
   'scripts/__tests__/portable-server-archive.test.ts',
+  // Stages a fixture Node distribution (this host's node and npm) with the
+  // host tar, then runs that npm's `ci` against a loopback registry.
+  'scripts/__tests__/portable-node-device-install.process.test.ts',
   // Runs copied user Node executables and shell-free npm/hub entry fixtures.
   'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
