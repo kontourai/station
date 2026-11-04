@@ -1,3 +1,7 @@
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+} from '@kontourai/station-contracts/environment-security';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EnvironmentSecurityService } from '../environment-security-service.js';
@@ -39,6 +43,7 @@ async function pairedService() {
   const operator = await service.initialize();
   const offer = service.devicePairing.createOffer({
     endpoint: 'https://station.example.test',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
   });
   const request = service.devicePairing.requestPairing({
     offerId: offer.offerId,
@@ -65,7 +70,7 @@ test('one credential-route assessment resolves authorization and scope under one
   expect(service.assessCredentialRoute(device.credential, route)).toMatchObject(
     {
       operator: false,
-      grantedScope: expect.any(String),
+      grantedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
     },
   );
   expect(observations.acquisitions).toBe(1);
@@ -79,12 +84,20 @@ test('assessments preserve operator and device authority, observe revocation bet
     service.assessCredentialRoute(operator.credential, route),
   ).toMatchObject({
     operator: true,
+    grantedScope: DEFAULT_GRANT_PAIRING_SCOPE,
   });
   expect(
     service.assessCredentialRoute(device.credential, activity),
   ).toMatchObject({
     operator: false,
+    grantedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
   });
+  expect(
+    service.assessCredentialRoute(device.credential, {
+      method: 'POST',
+      path: '/api/environments/peers',
+    }),
+  ).toBeUndefined();
   expect(service.identifyDevice(device.credential)).toEqual(before);
   expect(
     service.assessCredentialRoute('unknown-credential', route),
