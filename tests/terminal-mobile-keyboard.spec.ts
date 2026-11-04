@@ -208,15 +208,16 @@ test.describe('Coding terminal on a phone keyboard', () => {
       })
       .toBe(true);
     await page.getByRole('button', { name: 'New terminal', exact: true }).tap();
-    await page
-      .getByRole('dialog', { name: 'New terminal' })
-      .getByRole('button', { name: /Shell/ })
-      .tap();
     const tabs = page.getByRole('tablist', { name: 'Terminal tabs' });
-    await expect(tabs.getByRole('tab', { name: 'Shell 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    // A Project with package scripts offers them beside Shell; this one has
+    // none, so New terminal opens a shell. Either way the next tab is Shell 2.
+    const pickShell = page
+      .getByRole('dialog', { name: 'New terminal' })
+      .getByRole('button', { name: /Shell/ });
+    const secondTab = tabs.getByRole('tab', { name: 'Shell 2' });
+    await expect(pickShell.or(secondTab)).toBeVisible();
+    if (await pickShell.isVisible()) await pickShell.tap();
+    await expect(secondTab).toHaveAttribute('aria-selected', 'true');
     await expect(
       page
         .getByRole('tabpanel', { name: 'Shell 2' })
