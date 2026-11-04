@@ -119,6 +119,17 @@ salted hash of IP. Never persist IPs or user agents, including proxy/access logs
 error reporting, backups, and derived raw request records. Rotate and discard
 the salt and rate-limit state daily.
 
+Owner decision (2026-11-04): a source identifies a **product**, not a channel.
+It lists the channels it admits, and the ping's own channel selects among them,
+so one baked-in URL (`/v1/lite/station` for Kontour) serves every release ring.
+The publisher still comes only from the source mapping. Kontour's hosted
+receiver is a Cloudflare Worker that keeps the open day's salt in Durable Object
+storage so an evicted object does not re-key networks mid-day. Discarding a
+closed day's salt and contributor hashes removes them from live storage only:
+the platform's point-in-time recovery can restore the object for 30 days, and
+restoring it is forbidden by policy. See the
+[Worker receiver](../../deploy/telemetry-worker/README.md#state-and-lifecycle).
+
 Owner decision (2026-10-17): Kontour's analytics view is **exact and operator-only**.
 `/v1/operator/lite/daily` and `/weekly` require the private `sto_` key and expose
 exact per-publisher marginals from `lite_marginals`. Daily contributor counts are

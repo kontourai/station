@@ -41,7 +41,8 @@ preconditions and verification limits. Existing v1 qualification is unchanged
 and does not establish managed suppression qualification.
 
 The companion receiver additionally accepts identifier-free `station_daily`
-Lite pings through public publisher/channel source IDs. Its owner view is exact:
+Lite pings through public source IDs, each mapped to a publisher and the
+channels it admits. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily
 distinct-network counts (weekly contributor-days; not cross-day unique people).
 The same Lite URL accepts strict fixed-enum feedback bound to the source's

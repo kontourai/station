@@ -445,8 +445,8 @@ separate acceptance work.
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
 `parseStationDailyPing`. It requires no installation credential. Unknown fields,
 unknown nested fields, excessive or duplicate array entries, unlisted registry
-IDs or catalog-policy versions, invalid enum/count values, and a channel different from the
-source's configured channel are refused with 400. Bodies, including streaming
+IDs or catalog-policy versions, invalid enum/count values, and a channel the
+source does not list are refused with 400. Bodies, including streaming
 bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
 202 response is always `{ "accepted": true }`, including a retained
 source/event UUID replay with identical content. A changed payload under the
@@ -495,9 +495,9 @@ a secret embedded in a binary. Example operator-authenticated request body for
 
 ```json
 {
-  "id": "kontour-stable-v1",
+  "id": "station",
   "publisher": "kontour",
-  "channel": "stable",
+  "channels": ["nightly", "preview", "stable"],
   "registryIds": [],
   "releaseVersions": ["1.2.3"],
   "versionPolicy": "semver"
@@ -506,6 +506,12 @@ a secret embedded in a binary. Example operator-authenticated request body for
 
 The original five fields are required; `versionPolicy` is optional and defaults
 to `catalog`. Migration 8 preserves this default for existing sources.
+`channels` lists the channels the source admits (each a contract channel or
+`unknown`, at least one, no repeats). The ping's own `channel` selects among
+them, so one source and one baked-in URL serve every release ring; the
+publisher still comes only from the source mapping. Migration 10 replaced the
+earlier single `channel` with this list and kept each existing source as a
+one-element list.
 `catalog` accepts only listed `releaseVersions` plus `custom`. `semver` accepts
 any valid SemVer up to 64 characters plus `custom`, using the sender's shared
 validator, including prerelease/build metadata. Use it for official senders whose
@@ -523,9 +529,9 @@ hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Under the default `catalog` policy, empty catalogs admit only contract
 sentinels (`custom` version,
-`none`/`custom`/`unknown` distribution, no public plugins). Sources may select
-channel `unknown` for a sender without channel metadata; channel equality still
-applies. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
+`none`/`custom`/`unknown` distribution, no public plugins). A source may list
+channel `unknown` for a sender without channel metadata; a ping must still carry
+a listed channel. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
 a new source and revoke the old one with
 `DELETE /v1/operator/lite/sources/:source`; existing IDs cannot be repurposed.
 Only enabled sources ingest. The trusted mapping, never the request body,
@@ -545,7 +551,9 @@ contributor key. IPv4-mapped IPv6 aliases use the same IPv4 key. The least
 recently used entry is evicted at capacity, so new clients remain admissible;
 eviction can reset an old client's attempt budget, but never changes its daily
 contributor hash. Keys use HMAC-SHA256 with a random process-only salt, replaced
-on the next UTC-day request. The salt is never stored. Raw IPs and user agents
+on the next UTC-day request. This receiver never stores the salt. (The
+[Worker receiver](../../deploy/telemetry-worker/README.md#state-and-lifecycle)
+stores it for the open day; its README states what erasure covers.) Raw IPs and user agents
 never enter SQL, logs, errors, marginals or receipts. By default forwarded-IP
 headers are ignored: without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, **all
 clients behind cloudflared share the connector's key**. NAT also merges contributors.
@@ -732,8 +740,12 @@ and `nextCursor`. Follow `?cursor=<nextCursor>` until null. Cursors are bounded,
 HMAC-authenticated keyset positions scoped to the publisher, not filters.
 Unknown/duplicate query parameters, malformed or forged cursors return 400.
 Unverified cursors cannot occupy or evict a cached public page. There is no 10,000-row published cap. The dashboard
-follows every page and charts each published week's total plus
-per-dimension bars for the latest week. It uses text nodes,
+follows every page. It charts each week's `first_active_this_week=true`
+estimate and per-dimension bars for the latest week. It never adds cells
+together: each is clipped at zero, so a sum of empty cells would read as about
++140 network-days apiece. It names a top harness or platform only when the
+value exceeds the 95% noise bound (`ln 20 / epsilonPerCount`, about 839) and
+leads its runner-up by that bound. It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
 
 ### Finalization, migration and retention

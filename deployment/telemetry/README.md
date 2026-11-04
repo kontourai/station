@@ -279,7 +279,7 @@ That source-key provisioning applies to the **opt-in full event stream**.
 The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
 instead accepts strict `station_daily` and fixed-enum `TelemetryFeedback` bodies
 through a public source ID
-mapped by the operator to one publisher/channel. It never needs an installation
+mapped by the operator to one publisher and its allowed channels. It never needs an installation
 secret. Publisher read keys are separate `stq_` credentials provisioned through
 the operator boundary. Do not route lite traffic through the authenticated
 full-tier endpoint or treat a public source ID as authenticating a binary.
@@ -598,7 +598,7 @@ for trusted-proxy socket peers, including valid operator/publisher/Full
 credentials; only the listed POST/GET methods pass. Non-proxy peers retain
 private-route access. Trust configuration refuses broad ranges (/0, IPv4 wider
 than /24, IPv6 wider than /64), non-canonical host bits and whitespace at startup.
-A source with channel `unknown` admits a sender without channel metadata.
+A source that lists channel `unknown` admits a sender without channel metadata.
 Provision official sources with `"versionPolicy": "semver"` to accept real
 build versions without pre-populating `releaseVersions`; the default `catalog`
 policy accepts only listed versions plus `custom`. Both policies accept `custom`.

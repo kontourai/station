@@ -81,13 +81,29 @@ from running one process. Each request runs its SQL inside one
   IPv4 address or the IPv6 /48. The address is never stored, logged or echoed.
 - **Daily salt.** A random salt for the current UTC day is stored in object
   storage (`lite_salts`), so an evicted and reconstructed object keys a
-  network the same way all day. The day's first arrival deletes every other
-  day's salt, and the alarm deletes closed days' salts even without traffic.
-  Once a salt is gone, nobody, including the operator, can recompute a
-  contributor key.
+  network the same way all day. Keeping it in memory instead would re-key
+  networks after every eviction and inflate contributor counts. The day's
+  first arrival deletes every other day's salt, and the alarm deletes closed
+  days' salts even without traffic.
+- **What erasure covers.** After a day closes, its salt and contributor hashes
+  are erased from live storage: no route, export or operator can read or
+  recompute them. They are not erased from the platform's storage history.
+  Durable Object point-in-time recovery can restore the whole object, SQL
+  data included, to any moment in the past 30 days, which would bring back a
+  deleted salt and the hashes erased since. Restoring this object is
+  forbidden by policy (see the restore warning below), so that history is
+  reachable only by deliberately breaking the policy, by someone with access
+  to the Cloudflare account, and only for those 30 days.
+- **Closed days stay closed.** A day closes once a later day has begun or
+  maintenance has passed it. An arrival for a closed day (the clock stepped
+  back) is refused with 503 `storage_busy`, as the Node receiver refuses a
+  day mismatch, and no second salt is created for it.
 - **Finalization and erasure.** An alarm runs once per UTC hour. For each closed
   publisher/day it computes exact marginals and erases that day's contributor
-  hashes and contribution arrays in one transaction. It then clears feedback
+  hashes and contribution arrays in one transaction. Finalization happens once
+  per publisher/day: a pending row that appears for a finalized day has its
+  key erased but never changes the day's marginals, and the pass records
+  `day_already_finalized`. It then clears feedback
   hashes for closed days. A failed publisher/day is skipped, retried on the
   next pass and recorded as a content-free code in the exact view's
   `finalizationDiagnostics`.
@@ -111,7 +127,9 @@ Differences from the Node receiver:
   process memory.
 - There is no restore fence. **Never restore this object with Durable Object
   point-in-time recovery.** It would roll back publication markers, and a week
-  published twice under the same noise seeds exposes the exact difference.
+  published twice under the same noise seeds exposes the exact difference. It
+  would also bring back erased salts and contributor hashes (see *What erasure
+  covers*).
 - Public aggregate pages are cached in Cloudflare's cache for at most 60
   seconds and never past UTC midnight.
 
@@ -166,22 +184,25 @@ domain and its DNS record. The configuration serves only the custom domain;
 As planned for the push gateway, the domain will later be adopted by
 infrastructure-as-code and removed from `wrangler.jsonc`.
 
-Provision one source per release channel. Each source accepts pings of its own
-channel only:
+Provision one source for Station. It lists every release ring's channel;
+each ping carries its own channel, and a channel the source does not list is
+refused with 400. The publisher comes only from this mapping:
 
 ```sh
-for channel in nightly preview stable; do
-  curl -s -X POST https://telemetry.kontourai.io/v1/operator/lite/sources \
-    -H "Authorization: Bearer $OPERATOR_KEY" -H 'content-type: application/json' \
-    -d "{\"id\":\"kontour-$channel-v1\",\"publisher\":\"kontour\",\"channel\":\"$channel\",\"registryIds\":[],\"releaseVersions\":[],\"versionPolicy\":\"semver\"}"
-done
+curl -s -X POST https://telemetry.kontourai.io/v1/operator/lite/sources \
+  -H "Authorization: Bearer $OPERATOR_KEY" -H 'content-type: application/json' \
+  -d '{"id":"station","publisher":"kontour","channels":["nightly","preview","stable"],"registryIds":[],"releaseVersions":[],"versionPolicy":"semver"}'
 curl -s -H "Authorization: Bearer $OPERATOR_KEY" https://telemetry.kontourai.io/v1/operator/storage
 ```
 
+A source's catalogs and channels cannot be edited. To change them, provision a
+new source ID and revoke the old one with
+`DELETE /v1/operator/lite/sources/<source>`.
+
 An empty `releaseVersions` with `semver` admits every valid version but
 publishes no public version cells. To publish version estimates, list the
-public release versions, which are frozen per published week. Senders post to
-`https://telemetry.kontourai.io/v1/lite/<source>`, the URL baked into official
+public release versions, which are frozen per published week. Every ring's
+senders post to `https://telemetry.kontourai.io/v1/lite/station`, the one URL baked into official
 builds through `STATION_AUTHOR_TELEMETRY_ENDPOINT` (see
 [author telemetry in official builds](../../docs/guides/release-rings.md#author-telemetry-in-official-builds)).
 Setting that variable is a separate owner-gated activation.
@@ -202,8 +223,11 @@ Setting that variable is a separate owner-gated activation.
 
   Counts are pings, about one per active installation per day. They are not
   unique people.
-- `https://telemetry.kontourai.io/public/` charts the last four published weeks.
-  Values are network-days with privacy noise.
+- `https://telemetry.kontourai.io/public/` charts the last four published weeks:
+  weekly active networks and per-dimension bars, each bar its own noisy
+  estimate. It never adds cells together, and it names a top harness or
+  platform only when that value clears the noise. Values are network-days with
+  privacy noise, not people.
 
 Both pages load only same-origin script under a `script-src 'self'` policy and
 write data through `textContent`.

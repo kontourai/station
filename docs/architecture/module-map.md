@@ -6144,7 +6144,8 @@ reads do not expose private source incident detail or establish delivery coverag
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
-IDs mapped to publisher/channel pairs, without installation credentials.
+IDs mapped to a publisher and its allowed channels, without installation
+credentials. The ping's channel must be one the source lists.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
 deduplicates raw pings and records bounded contribution arrays and dimension
 jobs. Closed-day finalization uses grouped SQL in separately committed dimension
@@ -6188,8 +6189,11 @@ driven by `STATION_DAILY_FIELDS`, daily network keys, source parsing,
 publication cells, cursors and response shapes. It is shared with the
 [Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md), whose
 [SQLite Durable Object](../../deploy/telemetry-worker/src/receiver.ts) stores
-the daily salt durably, erases closed days' salts and contributor keys from an
-hourly alarm, and adds an exact per-day insights view for its owner dashboard.
+the open day's salt, erases closed days' salts and contributor keys from live
+storage (Durable Object point-in-time recovery can still restore them for 30
+days; restoring is forbidden by policy), refuses arrivals for closed days,
+finalizes each day once, and adds an exact per-day insights view for its owner
+dashboard.
 Each receiver keeps only its storage adapter. The Worker implements the Lite
 and public routes, not the Full-tier, private-usage or publisher routes.
 
