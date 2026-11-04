@@ -65,17 +65,18 @@ label change.
 ### Capture provenance depends on mutable UI state
 
 [Meeting Notes capture](../../examples/meeting-notes/src/CaptureModal.tsx)
-stores a raw record ID in component state after saving. Compile combines that
-ID with the current textarea without rereading the stored source. Editing the
-textarea clears the ID, but a delayed earlier save response can set it again;
-an external source edit or deletion is also outside this UI sequence.
+retains the submitted root, text and raw record ID for each request. Editing
+or changing roots clears the saved IDs, and late responses cannot restore them
+or label the changed draft. Pending compilation can still finish writing its
+originally submitted note. Mounted-caller regressions cover delayed save and
+compile responses, plus rejected-upload recovery; they do not prove live
+Agent output or external source integrity.
 
-The compiled record can therefore name a source without proving it represents
-the text sent to the extraction Agent. Review whether the record owner should
-supply an exact source snapshot/revision for compilation and publication, with
-late UI responses tied to the same selection. A source link alone is not an
-identical-input provenance guarantee. The documentation now names this limit;
-the save/compile behavior has not been changed in this pass.
+The compile call still does not re-read or lock the stored source. External
+source edits or deletion remain outside the UI guarantee. Review whether the
+record owner should supply an exact source snapshot/revision for compilation
+and publication. A source link alone is not an identical-input provenance
+guarantee.
 
 Tracked in [#2729: capture source identity](https://github.com/kontourai/station/issues/2729),
 with delayed-response, root-change, and source-edit acceptance cases.
