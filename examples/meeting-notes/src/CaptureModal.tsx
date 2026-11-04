@@ -211,7 +211,13 @@ export function CaptureModal(_props: LayoutComponentProps) {
     setNotice(null);
     try {
       const text = await file.text();
-      if (revision === draftRevision.current) replaceTranscript(text);
+      if (revision === draftRevision.current) {
+        replaceTranscript(text);
+        setNotice({
+          kind: 'info',
+          text: `Loaded “${file.name}”. Review the transcript before saving.`,
+        });
+      }
     } catch (error) {
       if (revision !== draftRevision.current) return;
       setNotice({
