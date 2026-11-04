@@ -7,15 +7,20 @@
  */
 import { execFileSync } from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
+  readlinkSync,
   realpathSync,
+  rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { requireLiveRepository } from '../git-read-repository.js';
 import {
   type GitCommandRunner,
   SpawnGitCommandRunner,
@@ -167,5 +172,63 @@ describe('Task worktree removal races (#4507)', () => {
     expect(existsSync(marker)).toBe(false);
     expect(outcome).toMatchObject({ outcome: 'kept', reason: 'unsafe-config' });
     expect(existsSync(metadata.path)).toBe(true);
+  });
+
+  // Where links need privilege (Windows), the judged copy holds a COPY of
+  // `packed-refs`; deleting a packed branch through it would rewrite only
+  // the copy. Simulated here by replacing the copy's link with a copy.
+  test('a packed Task branch is really deleted even when the judged copy copies packed-refs', async () => {
+    const { repo, metadata } = await taskWorktree();
+    git(repo, 'pack-refs', '--all');
+    const copiedPackedRefs = async (
+      folder: string,
+      root: string,
+      options: { newWorktree?: true },
+    ) => {
+      const opened = await requireLiveRepository(folder, root, options);
+      const packed = join(opened.env.GIT_COMMON_DIR, 'packed-refs');
+      if (existsSync(packed) && lstatSync(packed).isSymbolicLink()) {
+        const target = readlinkSync(packed);
+        rmSync(packed);
+        copyFileSync(target, packed);
+      }
+      return opened;
+    };
+    const service = new WorktreeProvisioningService(
+      new SpawnGitCommandRunner(),
+      copiedPackedRefs,
+    );
+
+    const outcome = await service.finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(outcome).toEqual({ outcome: 'removed' });
+    expect(git(repo, 'branch', '--list', metadata.branch).trim()).toBe('');
+  });
+
+  test('a branch still present after its deletion is reported kept, never removed', async () => {
+    const { repo, metadata } = await taskWorktree();
+    const real = new SpawnGitCommandRunner();
+    // update-ref says it deleted the branch, and did not.
+    const lying: GitCommandRunner = {
+      run: (args, options) =>
+        args.includes('update-ref')
+          ? Promise.resolve({ stdout: '', stderr: '', code: 0 })
+          : real.run(args, options),
+    };
+
+    const outcome = await new WorktreeProvisioningService(
+      lying,
+    ).finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'failed' });
+    expect(git(repo, 'branch', '--list', metadata.branch).trim()).not.toBe('');
   });
 });

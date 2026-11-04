@@ -76,7 +76,8 @@ export type TaskWorktreeFinalization =
         | 'uncommitted'
         | 'unpushed'
         | 'session-running'
-        | 'unsafe-config';
+        | 'unsafe-config'
+        | 'failed';
       detail?: string;
     };
 
@@ -935,16 +936,39 @@ export class WorktreeProvisioningService {
         );
       }
       // Deleted only if the branch still points at the tip that was
-      // checked: a commit made since moves it, and git refuses.
+      // checked: a commit made since moves it, and git refuses. Run against
+      // the repository's real git directory, never the judged copy: where
+      // links need privilege the copy's `packed-refs` is a copy, and a
+      // deletion there would rewrite only the copy while the branch lived
+      // on. `update-ref` runs no filters; the only program it can start is
+      // the `reference-transaction` hook, so hooks point at a folder that
+      // does not exist (a command-line `-c` outranks every config file).
+      const real = [
+        '--git-dir',
+        repository.commonDir,
+        '-c',
+        `core.hooksPath=${join(repository.commonDir, 'station-no-hooks', 'none')}`,
+      ];
       const deleted = await this.git.run(
-        [...repo, 'update-ref', '-d', branchRef, tip],
-        { allowCodes: [0, 1, 128], env },
+        [...real, 'update-ref', '-d', branchRef, tip],
+        { allowCodes: [0, 1, 128] },
       );
       if (deleted.code !== 0)
         return {
           outcome: 'kept',
           reason: 'unpushed',
           detail: `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`,
+        };
+      // Never report a branch removed that still exists.
+      const remaining = await this.git.run(
+        [...real, 'rev-parse', '--verify', '--quiet', branchRef],
+        { allowCodes: [0, 1] },
+      );
+      if (remaining.code === 0)
+        return {
+          outcome: 'kept',
+          reason: 'failed',
+          detail: `The worktree was removed, but branch ${metadata.branch} is still present.`,
         };
     } finally {
       await worktree.dispose();

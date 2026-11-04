@@ -44,8 +44,12 @@
  * linked too for a `worktree add`. Before the copy is removed, the creation
  * owner validates the new registration and canonicalizes its `.git` pointer:
  * older Git versions can name the temporary copy's linked worktrees path. The copy's `packed-refs`
- * is a link, which a rewrite would replace in the copy alone, so no
- * operation that repacks or deletes refs runs this way.
+ * is a link (a copy where links need privilege), which a rewrite would
+ * replace in the copy alone, so no operation that repacks or deletes refs
+ * runs this way. Task worktree finalization (#4507) deletes its branch with
+ * `update-ref` against the repository's real git directory instead, with
+ * hooks pointed at a folder that does not exist, and then checks the ref is
+ * gone.
  *
  * WHAT A SWAP CAN STILL DO. `objects` and `refs` are links to PATHS, and
  * git opens them when it runs. A member can swap `.git`, or a folder above
