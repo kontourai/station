@@ -395,7 +395,7 @@ describe('a hung git command holds nothing up (#4507)', () => {
 
     const answered = await within(
       graph.updateTaskStatus(task.id, 'done'),
-      3_000,
+      FINALIZED.timeout,
     );
 
     expect(answered).toMatchObject({
