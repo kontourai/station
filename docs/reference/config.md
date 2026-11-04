@@ -126,7 +126,10 @@ accounting. No destination is configured by default.
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
 
-`DO_NOT_TRACK` except empty/`0` forces every product publisher Off, including saved
+A [managed policy](../guides/managed-policy.md#capability-switches) with
+`limits.telemetry: false` forces every publisher Off and disables OTel export,
+ahead of saved choices, environment and DNT. `DO_NOT_TRACK` except empty/`0`
+forces every product publisher Off, including saved
 choices. Legacy `STATION_PRODUCT_TELEMETRY_ENABLED` and `STATION_TELEMETRY_ENABLED`
 remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`

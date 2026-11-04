@@ -78,7 +78,7 @@ force a capability on. Leave a key out to leave that capability to each user.
 | `limits.registries.allowedUrls` | Plugins and skills come only from marketplaces at these `http` or `https` URLs, plus Station's bundled catalog. Every other marketplace, a local folder included, reads as disabled and cannot be added, enabled, refreshed or installed from. URLs compare as parsed addresses, so `https://example.com/r` does not allow `https://example.com/r.evil`. An empty list allows only the bundled catalog. At most 64 URLs. |
 | `limits.registries.unsignedPackages` | A plugin from a registry must carry a signature from a key the machine's own `registryTrust` already trusts. The policy adds no keys: without a trust profile for the registry, the install is refused. Skills cannot be signed, so no skill comes from a marketplace other than the bundled catalog. |
 | `limits.registries.defaultSkillRegistries` | Station's built-in skill registries are not registered, as if `disableDefaultSkillRegistries` were set. |
-| `limits.registries.acpRegistryInstalls` | Engines cannot be added from the public ACP agent registry. Station's own engine entries are unaffected. |
+| `limits.registries.acpRegistryInstalls` | Engines cannot be added from the public ACP registry. Station's own engine entries are unaffected. |
 
 What the switches do not cover:
 

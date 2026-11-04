@@ -1219,7 +1219,7 @@ in its Tempo data source. No manual import is needed.
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, no OTel SDK initializes; local monitoring remains available. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, or under a [managed policy](managed-policy.md#capability-switches) with `limits.telemetry: false`, no OTel SDK initializes; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
 | `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
 | `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |

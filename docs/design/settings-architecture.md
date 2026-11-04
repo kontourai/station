@@ -279,6 +279,12 @@ Clients can already read the value-free summary at
 `GET /api/settings/managed-policy` (organization, support link, locked setting
 paths), which the "Managed by" presentation will use.
 
+The capability switches in `limits` (#4521) are enforced outside the setting
+scopes: `limits.telemetry: false` overrides every usage-sharing choice and the
+OTel collector settings, and `limits.registries` narrows `registryTrust` and
+the default skill registries without changing what is stored. See
+[capability switches](../guides/managed-policy.md#capability-switches).
+
 ## 3. Target model: five scopes
 
 Every setting is declared with exactly one scope. The scope determines storage,

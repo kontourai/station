@@ -913,6 +913,11 @@ run, and any settings it recommends. Station does not apply those settings:
 the registry is not Station's own catalogue, and an environment variable can
 change what a program runs.
 
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.acpRegistryInstalls: false`, connecting an engine from
+the public registry is refused with the policy's message. Station's own engines
+are unaffected.
+
 **Review** opens the confirm step, which shows the exact command line (an
 argument with a space, or an empty one, is shown in quotes),
 publisher and version before anything is saved. Adding a registry engine is
