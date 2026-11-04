@@ -1532,22 +1532,43 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       ).toBe(false);
     });
 
-    test('Unsnooze cannot send another request while its first response is pending', async () => {
+    test('Unsnooze serializes requests while only the active row reports pending', async () => {
+      attention.items.push({
+        id: 'session-failed:c',
+        kind: 'session-failed',
+        title: 'Another snoozed failure',
+        createdAt: stamp,
+        updatedAt: stamp,
+        openHref: '/?surface=activity&session=c',
+        source: { threadId: 'c' },
+        snoozedUntil: later,
+      });
       let respond!: (response: Response) => void;
       const response = new Promise<Response>((resolve) => {
         respond = resolve;
       });
-      const request = vi.fn(() => response);
+      const request = vi.fn(
+        (_input: RequestInfo | URL, _init?: RequestInit) => response,
+      );
       vi.stubGlobal('fetch', request);
       renderPage();
-      const button = screen.getByRole('button', { name: 'Unsnooze' });
+      const buttons = screen.getAllByRole('button', { name: 'Unsnooze' });
+      expect(buttons).toHaveLength(2);
+      const [button, otherButton] = buttons;
 
       fireEvent.click(button);
       await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
       try {
         await waitFor(() => expect(button.hasAttribute('disabled')).toBe(true));
+        expect(button.textContent).toBe('Unsnoozing…');
+        expect(otherButton.textContent).toBe('Unsnooze');
+        expect(otherButton.hasAttribute('disabled')).toBe(true);
         fireEvent.click(button);
+        fireEvent.click(otherButton);
         expect(request).toHaveBeenCalledTimes(1);
+        expect(String(request.mock.calls[0]?.[0])).toBe(
+          'http://station.test/api/attention/session-failed%3Ab/snooze',
+        );
       } finally {
         await act(async () => {
           respond(Response.json({ success: true }));

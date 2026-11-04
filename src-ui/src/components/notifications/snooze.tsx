@@ -137,6 +137,9 @@ export function useInboxSnooze() {
           ),
       }),
     unsnoozePending: unsnoozeAttention.isPending,
+    unsnoozingItemId: unsnoozeAttention.isPending
+      ? unsnoozeAttention.variables
+      : undefined,
     notification: (notification: Notification, until: Date) =>
       snoozeStored.mutate(
         { id: notification.id, until: until.toISOString() },
