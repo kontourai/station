@@ -339,6 +339,74 @@ describe('Browser shared local servers (D7, operator only)', () => {
     );
   });
 
+  test.each(['shared servers', 'server discovery'] as const)(
+    'a failed %s read can be retried without leaving Settings',
+    async (read) => {
+      let failing = true;
+      const failure = () =>
+        new Response(JSON.stringify({ success: false, code: 'internal' }), {
+          status: 500,
+        });
+      const calls = stub({
+        'GET /api/browser/projects/alpha/access': () => ok(OPERATOR_ACCESS),
+        'GET /api/browser/projects/alpha/settings': () =>
+          ok({ browserEvaluate: false }),
+        'GET /api/browser/projects/alpha/local-targets': () =>
+          read === 'shared servers' && failing
+            ? failure()
+            : ok([
+                {
+                  id: 'lt_00000000-0000-4000-8000-000000000001',
+                  host: '127.0.0.1',
+                  port: 3001,
+                  label: 'api',
+                  addedBy: 'operator',
+                  addedAt: '2026-09-22T12:00:00.000Z',
+                },
+              ]),
+        'GET /api/browser/projects/alpha/local-target-suggestions': () =>
+          read === 'server discovery' && failing
+            ? failure()
+            : ok({ state: 'ok', suggestions: [suggestion] }),
+      });
+      mount();
+      const find = await screen.findByRole('button', {
+        name: 'Find local servers',
+      });
+      expect(
+        calls.some((call) => call.path.endsWith('/local-target-suggestions')),
+      ).toBe(false);
+      if (read === 'server discovery') fireEvent.click(find);
+      const error = await screen.findByRole('alert');
+      expect(
+        within(error).getByText(
+          read === 'shared servers'
+            ? 'Shared local servers could not be read'
+            : 'Local servers could not be listed',
+        ),
+      ).toBeTruthy();
+      const retry = within(error).getByRole('button', { name: 'Try again' });
+      failing = false;
+      fireEvent.click(retry);
+      expect(
+        await screen.findByRole('button', {
+          name:
+            read === 'shared servers'
+              ? 'Stop sharing api'
+              : "Share vite :5173 with this Project's admins",
+        }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.getByLabelText('Project')).toBeTruthy();
+      expect(calls.every((call) => call.method === 'GET')).toBe(true);
+      if (read === 'shared servers') {
+        expect(
+          calls.some((call) => call.path.endsWith('/local-target-suggestions')),
+        ).toBe(false);
+      }
+    },
+  );
+
   test('a Project admin never sees the local servers control', async () => {
     const calls = stub({
       'GET /api/browser/projects/alpha/access': () => ok(ADMIN_ACCESS),

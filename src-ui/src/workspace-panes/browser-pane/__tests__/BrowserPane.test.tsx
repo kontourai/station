@@ -1604,6 +1604,85 @@ describe('BrowserPane wave 2 fix round', () => {
     expect(within(full).getAllByRole('listitem')).toHaveLength(12);
   });
 
+  test('a failed full-history read can be retried without closing Sessions', async () => {
+    let failing = true;
+    const entries = [1, 2].map((seq) => ({
+      seq,
+      at: '2026-09-22T12:00:00.000Z',
+      kind: 'navigated',
+      actor: { kind: 'operator' as const },
+      url: `https://example.com/${seq}`,
+    }));
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      'GET /api/browser/sessions?projectSlug=alpha': ok([
+        sessionView({
+          browserSessionId: OTHER,
+          history: {
+            entries: entries.slice(-1),
+            total: 2,
+            omittedFromSummary: 1,
+          },
+        }),
+      ]),
+      [`GET /api/browser/sessions/${OTHER}`]: () =>
+        failing
+          ? refuse(500, 'internal')()
+          : ok(
+              sessionView({
+                browserSessionId: OTHER,
+                history: { entries, total: 2 },
+              }),
+            )(),
+    });
+    await chooseFromMenu('Sessions');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Show all 2 kept entries' }),
+    );
+    const error = await screen.findByRole('alert');
+    expect(
+      within(error).getByText('The full history could not be read'),
+    ).toBeTruthy();
+    const retry = within(error).getByRole('button', { name: 'Try again' });
+    failing = false;
+    fireEvent.click(retry);
+    const history = await screen.findByRole('list', {
+      name: 'Full history of https://example.com/',
+    });
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByText('The full history could not be read')).toBeNull();
+    expect(
+      calls.filter((call) => call.path === `/api/browser/sessions/${OTHER}`),
+    ).toHaveLength(2);
+  });
+
+  test('a failed session list can be retried from the open pane', async () => {
+    let failing = true;
+    renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': () =>
+          failing ? refuse(500, 'internal')() : ok([sessionView()])(),
+      },
+      { kind: 'new' },
+    );
+    const error = await screen.findByRole('alert');
+    expect(
+      within(error).getByText('Browser sessions could not be listed'),
+    ).toBeTruthy();
+    const retry = within(error).getByRole('button', { name: 'Try again' });
+    failing = false;
+    fireEvent.click(retry);
+    expect(
+      await screen.findByRole('button', { name: 'Open https://example.com/' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Browser sessions could not be listed'),
+    ).toBeNull();
+    expect(screen.getByLabelText('Address')).toBeTruthy();
+  });
+
   test('a pane opened from the Add-pane grid asks for a page, then attaches (D3)', async () => {
     const { onAttach, calls } = renderPane(
       {

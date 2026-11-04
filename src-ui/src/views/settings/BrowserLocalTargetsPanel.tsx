@@ -78,6 +78,11 @@ export function BrowserLocalTargetsPanel({
         <ErrorState
           title="Shared local servers could not be read"
           description={describeBrowserFailure(targets.error)}
+          action={
+            <Button size="sm" onClick={() => void targets.refetch()}>
+              Try again
+            </Button>
+          }
         />
       ) : targets.data.length === 0 ? (
         <Empty variant="compact" label="Nothing shared yet" />
@@ -113,6 +118,11 @@ export function BrowserLocalTargetsPanel({
         <ErrorState
           title="Local servers could not be listed"
           description={describeBrowserFailure(suggestions.error)}
+          action={
+            <Button size="sm" onClick={() => void suggestions.refetch()}>
+              Try again
+            </Button>
+          }
         />
       ) : suggestions.data.state === 'unavailable' ? (
         <Empty

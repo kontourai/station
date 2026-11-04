@@ -161,6 +161,11 @@ function FullHistory({
       <ErrorState
         title="The full history could not be read"
         description={describeBrowserFailure(full.error)}
+        action={
+          <Button size="sm" onClick={() => void full.refetch()}>
+            Try again
+          </Button>
+        }
       />
     );
   // `total` counts every action, including repeats folded into one entry,
@@ -232,6 +237,11 @@ export function BrowserSessionList({
         <ErrorState
           title="Browser sessions could not be listed"
           description={describeBrowserFailure(sessions.error)}
+          action={
+            <Button size="sm" onClick={() => void sessions.refetch()}>
+              Try again
+            </Button>
+          }
         />
       ) : sessions.data.length === 0 ? (
         <Empty
