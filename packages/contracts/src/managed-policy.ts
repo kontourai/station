@@ -96,6 +96,60 @@ function describeKey(parent: string, key: string): string {
     : `${parent}[${JSON.stringify(key)}]`;
 }
 
+function unknownKeyProblems(
+  record: Record<string, unknown>,
+): ManagedPolicyProblem[] {
+  return Reflect.ownKeys(record)
+    .filter(
+      (key) =>
+        typeof key !== 'string' ||
+        !(DOCUMENT_KEYS as readonly string[]).includes(key),
+    )
+    .map((key) => ({
+      path: describeKey('', String(key)),
+      message:
+        'unknown key; this version of Station refuses keys it cannot enforce',
+    }));
+}
+
+function schemaVersionProblem(version: unknown): string | null {
+  if (version === undefined) return 'is required';
+  if (version === MANAGED_POLICY_SCHEMA_VERSION) return null;
+  return typeof version === 'number' &&
+    Number.isInteger(version) &&
+    version > MANAGED_POLICY_SCHEMA_VERSION
+    ? `${version} is newer than this version of Station supports (${MANAGED_POLICY_SCHEMA_VERSION}); upgrade Station`
+    : `must be ${MANAGED_POLICY_SCHEMA_VERSION}`;
+}
+
+function organizationProblem(organization: unknown): string | null {
+  if (organization === undefined) return 'is required';
+  return boundaryText(organization, ORGANIZATION_MAX_CHARS)
+    ? null
+    : `must be a non-empty single line of at most ${ORGANIZATION_MAX_CHARS} characters without leading or trailing spaces`;
+}
+
+/** Every entry of a reserved map, each with the message `entryMessage` gives. */
+function reservedMapProblems(
+  name: 'settings' | 'limits',
+  value: unknown,
+  entryMessage: (key: string) => string | null,
+): ManagedPolicyProblem[] {
+  if (value === undefined) return [];
+  if (!isRecord(value)) return [{ path: name, message: 'must be an object' }];
+  return Reflect.ownKeys(value).flatMap((key) => {
+    const message = entryMessage(String(key));
+    return message ? [{ path: describeKey(name, String(key)), message }] : [];
+  });
+}
+
+function limitProblem(name: string): string | null {
+  if (MANAGED_POLICY_ENFORCED_LIMIT_KEYS.includes(name)) return null;
+  return MANAGED_POLICY_RESERVED_LIMIT_KEYS.includes(name)
+    ? 'this limit is not supported by this version of Station'
+    : 'unknown limit; this version of Station refuses keys it cannot enforce';
+}
+
 /**
  * Parse an already-decoded JSON value as a v1 policy document. Every problem
  * is reported, not only the first, so `station policy check` can list them.
@@ -103,90 +157,32 @@ function describeKey(parent: string, key: string): string {
 export function parseManagedPolicyDocument(
   value: unknown,
 ): ManagedPolicyParseResult {
-  const problems: ManagedPolicyProblem[] = [];
   if (!isRecord(value)) {
     return {
       ok: false,
       problems: [{ path: '', message: 'the policy must be a JSON object' }],
     };
   }
-
-  for (const key of Reflect.ownKeys(value)) {
-    if (
-      typeof key !== 'string' ||
-      !(DOCUMENT_KEYS as readonly string[]).includes(key)
-    ) {
-      problems.push({
-        path: describeKey('', String(key)),
-        message:
-          'unknown key; this version of Station refuses keys it cannot enforce',
-      });
-    }
-  }
-
-  const version = value.schemaVersion;
-  if (version === undefined) {
-    problems.push({ path: 'schemaVersion', message: 'is required' });
-  } else if (version !== MANAGED_POLICY_SCHEMA_VERSION) {
-    problems.push({
-      path: 'schemaVersion',
-      message:
-        typeof version === 'number' &&
-        Number.isInteger(version) &&
-        version > MANAGED_POLICY_SCHEMA_VERSION
-          ? `${version} is newer than this version of Station supports (${MANAGED_POLICY_SCHEMA_VERSION}); upgrade Station`
-          : `must be ${MANAGED_POLICY_SCHEMA_VERSION}`,
-    });
-  }
-
-  const organization = value.organization;
-  if (organization === undefined) {
-    problems.push({ path: 'organization', message: 'is required' });
-  } else if (!boundaryText(organization, ORGANIZATION_MAX_CHARS)) {
-    problems.push({
-      path: 'organization',
-      message: `must be a non-empty single line of at most ${ORGANIZATION_MAX_CHARS} characters without leading or trailing spaces`,
-    });
-  }
-
-  const supportUrl = value.supportUrl;
-  if (supportUrl !== undefined) {
-    const problem = supportUrlProblem(supportUrl);
-    if (problem) problems.push({ path: 'supportUrl', message: problem });
-  }
-
-  const settings = value.settings;
-  if (settings !== undefined) {
-    if (!isRecord(settings)) {
-      problems.push({ path: 'settings', message: 'must be an object' });
-    } else {
-      for (const key of Reflect.ownKeys(settings)) {
-        problems.push({
-          path: describeKey('settings', String(key)),
-          message:
-            'managed settings are not supported by this version of Station',
-        });
-      }
-    }
-  }
-
-  const limits = value.limits;
-  if (limits !== undefined) {
-    if (!isRecord(limits)) {
-      problems.push({ path: 'limits', message: 'must be an object' });
-    } else {
-      for (const key of Reflect.ownKeys(limits)) {
-        const name = String(key);
-        if (MANAGED_POLICY_ENFORCED_LIMIT_KEYS.includes(name)) continue;
-        problems.push({
-          path: describeKey('limits', name),
-          message: MANAGED_POLICY_RESERVED_LIMIT_KEYS.includes(name)
-            ? 'this limit is not supported by this version of Station'
-            : 'unknown limit; this version of Station refuses keys it cannot enforce',
-        });
-      }
-    }
-  }
+  const { organization, supportUrl, settings, limits } = value;
+  const problems: ManagedPolicyProblem[] = unknownKeyProblems(value);
+  const fieldProblems: Array<[string, string | null]> = [
+    ['schemaVersion', schemaVersionProblem(value.schemaVersion)],
+    ['organization', organizationProblem(organization)],
+    [
+      'supportUrl',
+      supportUrl === undefined ? null : supportUrlProblem(supportUrl),
+    ],
+  ];
+  for (const [path, message] of fieldProblems)
+    if (message) problems.push({ path, message });
+  problems.push(
+    ...reservedMapProblems(
+      'settings',
+      settings,
+      () => 'managed settings are not supported by this version of Station',
+    ),
+    ...reservedMapProblems('limits', limits, limitProblem),
+  );
 
   if (problems.length > 0) return { ok: false, problems };
   const document: ManagedPolicyDocument = {
