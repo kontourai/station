@@ -17,6 +17,7 @@ import type {
 } from '../../live-surface/LiveSurfaceCanvas';
 import {
   type FoldPresentation,
+  foldFitScale,
   foldPerspective,
   foldPresentation,
   unprojectFoldPoint,
@@ -150,7 +151,7 @@ function halfTransform(
 
 /** A half turned away from the light reads darker, which sells the bend. */
 function halfShade(turn: number): number {
-  return 1 - Math.min(0.45, Math.abs(turn) / 200);
+  return 1 - Math.min(0.3, Math.abs(turn) / 300);
 }
 
 export function DeviceFoldView({
@@ -222,32 +223,45 @@ export function DeviceFoldView({
       data-crease={crease ?? 'none'}
       data-testid="device-fold-view"
       ref={containerRef}
-      style={flat ? undefined : { perspective: `${foldPerspective(box)}px` }}
     >
-      {flat ? (
-        <canvas
-          className="device-fold__half device-fold__half--whole"
-          ref={(element) => {
-            halvesRef.current[0] = element;
-          }}
-        />
-      ) : (
-        ([0, 1] as const).map((half) => (
+      <div
+        className="device-fold__bend"
+        style={
+          flat
+            ? undefined
+            : {
+                perspective: `${foldPerspective(box)}px`,
+                transform: `scale(${foldFitScale(box, presentation)})`,
+              }
+        }
+      >
+        {flat ? (
           <canvas
-            className={`device-fold__half device-fold__half--${half === 0 ? 'first' : 'second'}`}
-            data-turn={presentation.turns[half]}
-            key={half}
+            className="device-fold__half device-fold__half--whole"
             ref={(element) => {
-              halvesRef.current[half] = element;
-            }}
-            style={{
-              ...halfTransform(presentation, half),
-              filter: `brightness(${halfShade(presentation.turns[half])})`,
+              halvesRef.current[0] = element;
             }}
           />
-        ))
-      )}
-      {flat ? null : <div aria-hidden="true" className="device-fold__crease" />}
+        ) : (
+          ([0, 1] as const).map((half) => (
+            <canvas
+              className={`device-fold__half device-fold__half--${half === 0 ? 'first' : 'second'}`}
+              data-turn={presentation.turns[half]}
+              key={half}
+              ref={(element) => {
+                halvesRef.current[half] = element;
+              }}
+              style={{
+                ...halfTransform(presentation, half),
+                filter: `brightness(${halfShade(presentation.turns[half])})`,
+              }}
+            />
+          ))
+        )}
+        {flat ? null : (
+          <div aria-hidden="true" className="device-fold__crease" />
+        )}
+      </div>
     </div>
   );
 }

@@ -6,8 +6,17 @@
 
 .device-fold {
   height: 100%;
-  perspective-origin: 50% 50%;
   position: relative;
+  width: 100%;
+}
+
+/* The bent drawing, shrunk about its centre to stay inside the box. */
+.device-fold__bend {
+  height: 100%;
+  inset: 0;
+  perspective-origin: 50% 50%;
+  position: absolute;
+  transform-origin: 50% 50%;
   transform-style: preserve-3d;
   width: 100%;
 }

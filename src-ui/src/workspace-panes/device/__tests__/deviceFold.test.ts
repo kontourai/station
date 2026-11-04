@@ -90,6 +90,34 @@ describe('unprojectFoldPoint inverts the drawing', () => {
     }
   });
 
+  test.each([
+    ['book', { ...FOLD }, WIDE, BOX],
+    [
+      'laptop',
+      { ...FOLD, posture: 'laptop' as const },
+      TALL,
+      { width: 384, height: 440 },
+    ],
+    ['nearly shut', { ...FOLD, posture: null, hingeAngle: 20 }, WIDE, BOX],
+  ])(
+    'the whole %s drawing stays inside its box (full screen fills it)',
+    (_name, fold, shown, box) => {
+      const presentation = foldPresentation(fold, shown);
+      for (const corner of [
+        { x: 0, y: 0 },
+        { x: box.width, y: 0 },
+        { x: 0, y: box.height },
+        { x: box.width, y: box.height },
+      ]) {
+        const drawn = projectFoldPoint(corner, box, presentation);
+        expect(drawn.x).toBeGreaterThanOrEqual(-1e-9);
+        expect(drawn.y).toBeGreaterThanOrEqual(-1e-9);
+        expect(drawn.x).toBeLessThanOrEqual(box.width + 1e-9);
+        expect(drawn.y).toBeLessThanOrEqual(box.height + 1e-9);
+      }
+    },
+  );
+
   test('a point beyond the drawn halves is not on the display', () => {
     const presentation = foldPresentation(FOLD, WIDE);
     expect(

@@ -91,6 +91,28 @@ export function foldPerspective(box: { width: number; height: number }) {
 const RADIANS = Math.PI / 180;
 
 /**
+ * How much the bent drawing is shrunk about its centre so all of it stays
+ * inside the box: a half turned toward the viewer is drawn larger at its
+ * outer edge, which would spill past a box the display fills (full screen).
+ */
+export function foldFitScale(
+  box: { width: number; height: number },
+  presentation: FoldPresentation,
+): number {
+  if (!presentation.crease) return 1;
+  const halfLength =
+    (presentation.crease === 'vertical' ? box.width : box.height) / 2;
+  const p = foldPerspective(box);
+  let largest = 1;
+  for (const degrees of presentation.turns) {
+    const turn = degrees * RADIANS;
+    const depth = p / (p - halfLength * Math.sin(turn));
+    largest = Math.max(largest, depth, Math.cos(turn) * depth);
+  }
+  return 1 / largest;
+}
+
+/**
  * Where a point of the FLAT box (box pixels from its top-left) is drawn.
  * Used to check the inverse; the browser does the drawing.
  */
@@ -110,8 +132,9 @@ export function projectFoldPoint(
   const p = foldPerspective(box);
   const u = Math.abs(along);
   const depth = p / (p - u * Math.sin(turn));
-  const drawnAlong = side * u * Math.cos(turn) * depth;
-  const drawnAcross = across * depth;
+  const fit = foldFitScale(box, presentation);
+  const drawnAlong = side * u * Math.cos(turn) * depth * fit;
+  const drawnAcross = across * depth * fit;
   return vertical
     ? { x: cx + drawnAlong, y: cy + drawnAcross }
     : { x: cx + drawnAcross, y: cy + drawnAlong };
@@ -137,8 +160,10 @@ export function unprojectFoldPoint(
   const vertical = presentation.crease === 'vertical';
   const cx = box.width / 2;
   const cy = box.height / 2;
-  const along = vertical ? point.x - cx : point.y - cy;
-  const across = vertical ? point.y - cy : point.x - cx;
+  // Undo the fit shrink first; the rest inverts the bend itself.
+  const fit = foldFitScale(box, presentation);
+  const along = (vertical ? point.x - cx : point.y - cy) / fit;
+  const across = (vertical ? point.y - cy : point.x - cx) / fit;
   const halfLength = vertical ? cx : cy;
   const halfCross = vertical ? cy : cx;
   const side = along < 0 ? -1 : 1;
