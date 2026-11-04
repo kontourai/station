@@ -21,4 +21,16 @@ The owner approved the following behavior in [#4508](https://github.com/kontoura
 4. **Ended Tasks.** Resuming done or canceled Tasks is out of scope. Their observations are recorded and visible without changing Task status. Resume is tracked separately in [#4554](https://github.com/kontourai/station/issues/4554).
 5. **Followed PRs.** Follow the primary work item and PRs a person kept on the Task under the existing keep rule. A Session declaration alone does not start following a PR.
 
+## Implementation status
+
+The first slice ([#4556](https://github.com/kontourai/station/pull/4556))
+implements decisions 1, 3, 4 and 5 for recording and showing: polling behind
+the `task-tracker-follow-ups` preview, durable per-Task observations, and the
+Task brief's "Tracker follow-ups" section. Decision 2's waking of the lead
+Session is not implemented; it is the next slice. Two choices the decision
+left open: an ended Task's end time is its `updatedAt`, since a Task record
+keeps no end time, and hosted mode does not offer the preview, since hosted
+tenants have no host `gh` login of their own. See
+[Tracker follow-ups](../design/tracker-backed-tasks.md#tracker-follow-ups).
+
 Two-way status sync remains outside Station's scope under [work-plane Decision 4](../design/work-plane-composition.md#decisions-owner-ratified-2026-07-20). This decision does not authorize arbitrary GitHub mentions to start work or interrupt an active turn.

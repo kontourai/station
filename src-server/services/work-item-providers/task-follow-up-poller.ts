@@ -244,7 +244,7 @@ export function composeTaskFollowUpPoller(
   // Hosted tenants have no host gh login of their own to read with.
   if (hosted) return undefined;
   const preview = featurePreviews.bind({
-    id: TASK_FOLLOW_UP_PREVIEW_ID,
+    id: 'task-tracker-follow-ups',
     label: 'Task tracker follow-ups',
     description:
       'Every few minutes, read new comments, reviews and check results on the GitHub items of tracker-backed Tasks, and show them in the Task brief. Uses the host gh login and GitHub API requests.',

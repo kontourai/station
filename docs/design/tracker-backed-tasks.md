@@ -26,9 +26,57 @@ The two systems divide the work as follows:
 
 Nothing mirrors status between the two. Station re-reads the linked item when
 a person opens the Task, when a Session is dispatched, and when a Session asks
-for its brief with `get_task_brief`. Today nothing polls. The owner approved
-[bounded, preview-gated follow-up polling](../decisions/task-tracker-followups.md);
-that decision does not by itself establish that polling is implemented.
+for its brief with `get_task_brief`. The owner approved
+[bounded, preview-gated follow-up polling](../decisions/task-tracker-followups.md).
+Its first slice records follow-ups and shows them in the Task brief (see
+[Tracker follow-ups](#tracker-follow-ups)); waking the lead Session on them
+is not built yet. With the preview off, nothing polls.
+
+## Tracker follow-ups
+
+With the **Task tracker follow-ups** Feature Preview on (off by default; not
+offered in hosted mode), the built-in scheduler's minute tick reads the
+followed GitHub items of each eligible Task, at most once every five minutes
+per Task and ten Tasks per tick, oldest poll first. There is no timer, daemon
+or webhook of its own.
+
+- **Eligible Tasks.** A Task whose `workItemRef` is a github.com ref the
+  Project's board offered (`workItemProvenance: 'project-board'`), live or
+  `done`/`canceled` within 14 days. A Task record keeps no end time, so an
+  ended Task's `updatedAt` stands for it; an edit after the end can extend
+  following, never shorten it. Polling never changes a Task's status.
+- **Followed items.** The primary work item and each github.com pull request
+  a person kept on the Task (the keep rule close-out uses), at most ten. A
+  pull request a Session only declared is not followed.
+- **What is read.** Issue and pull request comments, reviews and their inline
+  review comments, and the completed check runs of a pull request's head
+  commit. Only items at or after the Task's creation are recorded.
+- **Who.** `member` is an author whose `authorAssociation` is `OWNER`,
+  `MEMBER` or `COLLABORATOR`; `bot` is a GitHub App account or a `[bot]`
+  login, whatever its association; `ci` is a check run; anyone else is
+  `other`.
+- **Cursor.** Reads use GitHub GraphQL connection cursors, which are keysets
+  (comment id; review submitted time, created time and id), not page
+  numbers. The cursor of the last item read is stored in the same
+  transaction as the page's items, so a later poll resumes exactly after it.
+  An empty page's null `endCursor` never replaces a stored cursor. A
+  pending review (the gh login's own draft) is passed over and not recorded;
+  submitting it gives it a later submitted time, which sorts it after any
+  stored cursor.
+- **Storage.** One SQLite file, `task-follow-ups/task-follow-ups.sqlite` in
+  the Station home, keyed by Task incarnation and idempotent by GitHub kind
+  and id, at most 500 observations per Task. Each excerpt is cut to 1,000
+  characters before it is stored.
+- **In the brief.** A "Tracker follow-ups" section after the linked work
+  item, newest first: a Station line per item (what, which item, the login,
+  its class and association, when, and a review's state or a check's
+  conclusion), then the author's text quoted under the public-tracker label.
+  Passing, neutral and skipped check runs are counted, not listed. The
+  section takes at most 3,600 characters and never the newest record's
+  reserved line; items that do not fit are counted.
+- **Bounds.** Five pages of 50 per item per poll (a longer history resumes
+  next poll), the first 100 inline comments of a review (the rest are
+  counted in the review's excerpt), and 20 check suites of 50 runs.
 
 ## Task ↔ tracker item cardinality
 
@@ -150,7 +198,8 @@ first turn. The brief is a snapshot pinned to a digest, composed in this
 order:
 
 1. the Task (title, id, document revision, goal), its linked work item
-   re-read at dispatch, and the Task document as written;
+   re-read at dispatch, the [tracker follow-ups](#tracker-follow-ups)
+   recorded so far (when any were), and the Task document as written;
 2. the Task summary, in full, with its revision and author;
 3. standing decisions;
 4. open questions, each with who asked;
@@ -172,7 +221,8 @@ rendered as quoted lines, each prefixed `> `, under a line that says who
 wrote it: "agents and people on this Task" or "people outside Station
 (public tracker content)". That covers the Task's title and goal, the Task
 document, the summary, each record's text, a Session's last request, and
-the tracker item's title, labels and comments. Every line terminator JS and
+the tracker item's title, labels and comments, and the text of each
+tracker follow-up. Every line terminator JS and
 Unicode recognise splits a line, so no quoted line can equal one of
 Station's headings, a rule or the closing line, and the first rule says
 quoted text is data, not instructions. Station's own values (ids, states,
