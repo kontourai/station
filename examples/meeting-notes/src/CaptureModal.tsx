@@ -10,7 +10,7 @@ import * as StationSDK from '@kontourai/station-sdk';
 import { useApiBase } from '@kontourai/station-sdk';
 import { createKnowledgeRecord } from '@kontourai/station-sdk/client';
 import { useMutation } from '@tanstack/react-query';
-import { type ChangeEvent, useCallback, useState } from 'react';
+import { type ChangeEvent, useCallback, useRef, useState } from 'react';
 import {
   buildCompiledRecordInput,
   buildRawRecordInput,
@@ -42,6 +42,16 @@ const LIVE_CAPTURE_SUPPORTED = typeof useSTTHook === 'function';
 interface Notice {
   kind: 'info' | 'error' | 'success';
   text: string;
+}
+
+interface CaptureRequest {
+  rootId: string;
+  transcript: string;
+  revision: number;
+}
+
+interface CompileRequest extends CaptureRequest {
+  rawRecordId: string;
 }
 
 /**
@@ -118,20 +128,19 @@ export function CaptureModal(_props: LayoutComponentProps) {
   const [rawRecordId, setRawRecordId] = useState<string | null>(null);
   const [compiledRecordId, setCompiledRecordId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const draftRevision = useRef(0);
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!rootId) throw new Error('Select a knowledge root first.');
-      const text = transcript.trim();
-      if (!text) throw new Error('Paste or capture a transcript first.');
+    mutationFn: async (request: CaptureRequest) => {
       const record = await createKnowledgeRecord(
         apiBase,
-        rootId,
-        buildRawRecordInput(text),
+        request.rootId,
+        buildRawRecordInput(request.transcript),
       );
       return record.id;
     },
-    onSuccess: (id) => {
+    onSuccess: (id, request) => {
+      if (request.revision !== draftRevision.current) return;
       setRawRecordId(id);
       setCompiledRecordId(null);
       setNotice({
@@ -139,7 +148,8 @@ export function CaptureModal(_props: LayoutComponentProps) {
         text: `Saved raw transcript record ${id}.`,
       });
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, request) => {
+      if (request.revision !== draftRevision.current) return;
       setNotice({
         kind: 'error',
         text: `Could not save transcript: ${error instanceof Error ? error.message : String(error)}`,
@@ -148,28 +158,25 @@ export function CaptureModal(_props: LayoutComponentProps) {
   });
 
   const compileMutation = useMutation({
-    mutationFn: async () => {
-      if (!rootId) throw new Error('Select a knowledge root first.');
-      if (!rawRecordId)
-        throw new Error('Save the transcript before compiling.');
-      const text = transcript.trim();
-      if (!text) throw new Error('Paste or capture a transcript first.');
-      const result = await invokeCompileAgent(text);
+    mutationFn: async (request: CompileRequest) => {
+      const result = await invokeCompileAgent(request.transcript);
       const record = await createKnowledgeRecord(
         apiBase,
-        rootId,
-        buildCompiledRecordInput(rawRecordId, result),
+        request.rootId,
+        buildCompiledRecordInput(request.rawRecordId, result),
       );
       return record.id;
     },
-    onSuccess: (id) => {
+    onSuccess: (id, request) => {
+      if (request.revision !== draftRevision.current) return;
       setCompiledRecordId(id);
       setNotice({
         kind: 'success',
-        text: `Compiled note ${id}, linked to raw transcript ${rawRecordId}.`,
+        text: `Compiled note ${id}, linked to raw transcript ${request.rawRecordId}.`,
       });
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, request) => {
+      if (request.revision !== draftRevision.current) return;
       setNotice({
         kind: 'error',
         text: `Could not compile transcript: ${error instanceof Error ? error.message : String(error)}`,
@@ -178,20 +185,38 @@ export function CaptureModal(_props: LayoutComponentProps) {
   });
 
   const handleRootChange = useCallback((newRootId: string) => {
+    draftRevision.current += 1;
     setRootId(newRootId);
     setRawRecordId(null);
     setCompiledRecordId(null);
     setNotice(null);
   }, []);
 
-  const handleTranscriptChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
-      setTranscript(event.target.value);
-      setRawRecordId(null);
-      setCompiledRecordId(null);
-    },
-    [],
-  );
+  const replaceTranscript = useCallback((text: string) => {
+    draftRevision.current += 1;
+    setTranscript(text);
+    setRawRecordId(null);
+    setCompiledRecordId(null);
+    setNotice(null);
+  }, []);
+
+  const uploadTranscript = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    const revision = ++draftRevision.current;
+    setNotice(null);
+    try {
+      const text = await file.text();
+      if (revision === draftRevision.current) replaceTranscript(text);
+    } catch (error) {
+      if (revision !== draftRevision.current) return;
+      setNotice({
+        kind: 'error',
+        text: `Could not read transcript: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
 
   if (!apiBase) {
     return (
@@ -211,9 +236,7 @@ export function CaptureModal(_props: LayoutComponentProps) {
       {LIVE_CAPTURE_SUPPORTED && (
         <LiveCaptureSection
           onCapture={(text) => {
-            setTranscript((prev) => (prev ? `${prev}\n\n${text}` : text));
-            setRawRecordId(null);
-            setCompiledRecordId(null);
+            replaceTranscript(transcript ? `${transcript}\n\n${text}` : text);
           }}
         />
       )}
@@ -227,23 +250,16 @@ export function CaptureModal(_props: LayoutComponentProps) {
           rows={12}
           placeholder="Paste a meeting transcript, or upload one below…"
           value={transcript}
-          onChange={handleTranscriptChange}
+          onChange={(event) => replaceTranscript(event.target.value)}
         />
       </label>
       <input
         type="file"
         accept=".txt,text/plain"
+        aria-label="Upload transcript"
         data-testid="mn-transcript-upload"
         className="mn-file-input"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          file.text().then((text) => {
-            setTranscript(text);
-            setRawRecordId(null);
-            setCompiledRecordId(null);
-          });
-        }}
+        onChange={uploadTranscript}
       />
 
       <div className="mn-actions">
@@ -252,7 +268,14 @@ export function CaptureModal(_props: LayoutComponentProps) {
           className="button button--secondary"
           data-testid="mn-save-transcript"
           disabled={!rootId || !transcript.trim() || saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
+          onClick={() => {
+            if (rootId)
+              saveMutation.mutate({
+                rootId,
+                transcript: transcript.trim(),
+                revision: draftRevision.current,
+              });
+          }}
         >
           {saveMutation.isPending ? 'Saving…' : 'Save transcript'}
         </button>
@@ -261,7 +284,15 @@ export function CaptureModal(_props: LayoutComponentProps) {
           className="button button--primary"
           data-testid="mn-compile"
           disabled={!rawRecordId || compileMutation.isPending}
-          onClick={() => compileMutation.mutate()}
+          onClick={() => {
+            if (rootId && rawRecordId)
+              compileMutation.mutate({
+                rootId,
+                rawRecordId,
+                transcript: transcript.trim(),
+                revision: draftRevision.current,
+              });
+          }}
         >
           {compileMutation.isPending ? 'Compiling…' : 'Compile'}
         </button>
