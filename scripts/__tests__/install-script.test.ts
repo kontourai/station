@@ -1,4 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  type ChildProcess,
+  execFileSync,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { createHash, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   chmodSync,
@@ -3089,5 +3094,134 @@ describe('installs from a managed mirror (#4522)', {
     expect(existsSync(join(elsewhere.harness.installRoot, 'current'))).toBe(
       false,
     );
+  });
+  /**
+   * The mirror over http on two loopback ports: `/m/` (the mirror) and `/n/`
+   * both serve the mirror tree, and each path in `redirects` answers 302 to
+   * `/n/<same path>` on the mirror's port (`same`) or the other port
+   * (`other`). A separate process, because the installer runs under
+   * spawnSync, which blocks this one.
+   */
+  const servers: ChildProcess[] = [];
+  afterEach(() => {
+    for (const server of servers.splice(0)) server.kill();
+  });
+  async function serveMirror(
+    root: string,
+    redirects: Record<string, 'same' | 'other'>,
+  ): Promise<{ mirrorUrl: string; manifestUrl: string }> {
+    const script = join(tempDir('station-mirror-server-'), 'server.cjs');
+    writeFileSync(
+      script,
+      `const http = require('node:http'), fs = require('node:fs'), path = require('node:path');
+const [root, redirectsJson] = process.argv.slice(2);
+const redirects = JSON.parse(redirectsJson);
+const ports = {};
+const handler = (req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  const rest = url.pathname.replace(/^\\/(m|n)\\//, '');
+  if (url.pathname.startsWith('/m/') && redirects[rest]) {
+    const port = redirects[rest] === 'same' ? ports.a : ports.b;
+    res.writeHead(302, { location: 'http://127.0.0.1:' + port + '/n/' + rest });
+    return res.end();
+  }
+  const file = path.join(root, rest);
+  if (!/^\\/(m|n)\\//.test(url.pathname) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'content-length': fs.statSync(file).size });
+  fs.createReadStream(file).pipe(res);
+};
+const a = http.createServer(handler).listen(0, '127.0.0.1', () => {
+  ports.a = a.address().port;
+  const b = http.createServer(handler).listen(0, '127.0.0.1', () => {
+    ports.b = b.address().port;
+    process.stdout.write(JSON.stringify(ports) + '\\n');
+  });
+});
+`,
+    );
+    const server = spawn(
+      process.execPath,
+      [script, root, JSON.stringify(redirects)],
+      { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+    );
+    servers.push(server);
+    const ports = await new Promise<{ a: number }>((resolvePorts, reject) => {
+      let out = '';
+      server.stdout?.on('data', (chunk) => {
+        out += chunk;
+        if (out.includes('\n')) resolvePorts(JSON.parse(out));
+      });
+      server.once('exit', () => reject(new Error('mirror server exited')));
+    });
+    const mirrorUrl = `http://127.0.0.1:${ports.a}/m/`;
+    return {
+      mirrorUrl,
+      manifestUrl: `${mirrorUrl}portable-stable/station-portable-stable-manifest.json`,
+    };
+  }
+
+  it('follows a redirect only within the mirror’s origin, for the manifest and the archive', async () => {
+    const MANIFEST_PATH =
+      'portable-stable/station-portable-stable-manifest.json';
+    const archiveName = (root: string) =>
+      readdirSync(join(root, 'mirror', 'v1.2.3'))[0] as string;
+
+    // Same origin: both hops are followed and the release installs.
+    const followed = mirrorFixture('station-mirror-redirect-same-');
+    const sameServer = await serveMirror(
+      join(followed.harness.root, 'mirror'),
+      {
+        [MANIFEST_PATH]: 'same',
+        [`v1.2.3/${archiveName(followed.harness.root)}`]: 'same',
+      },
+    );
+    const installed = runArchiveInstaller(
+      followed.harness,
+      followed.manifest,
+      [],
+      {
+        STATION_INSTALL_MIRROR_URL: sameServer.mirrorUrl,
+        STATION_INSTALL_PUBLIC_MANIFEST_URL: sameServer.manifestUrl,
+      },
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(
+      existsSync(
+        join(
+          realpathSync(followed.harness.installRoot),
+          'versions',
+          '1.2.3',
+          '.station-install-complete',
+        ),
+      ),
+    ).toBe(true);
+
+    // Another port on the same host is another origin: refused, for the
+    // archive and for the manifest, and nothing is installed.
+    for (const escaping of ['archive', 'manifest'] as const) {
+      const fixture = mirrorFixture(`station-mirror-redirect-${escaping}-`);
+      const server = await serveMirror(join(fixture.harness.root, 'mirror'), {
+        [escaping === 'manifest'
+          ? MANIFEST_PATH
+          : `v1.2.3/${archiveName(fixture.harness.root)}`]: 'other',
+      });
+      const refused = runArchiveInstaller(
+        fixture.harness,
+        fixture.manifest,
+        [],
+        {
+          STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: server.manifestUrl,
+        },
+      );
+      expect(refused.status, escaping).not.toBe(0);
+      expect(refused.stderr).toContain(
+        "a download redirected outside the managed policy's mirror",
+      );
+      expect(refused.stderr).not.toContain(server.mirrorUrl);
+      expect(existsSync(join(fixture.harness.installRoot, 'current'))).toBe(
+        false,
+      );
+    }
   });
 });

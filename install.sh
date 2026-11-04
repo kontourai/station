@@ -406,6 +406,50 @@ if [ -n "$mirror_url" ]; then
 fi
 
 
+# Downloads <url> to <destination>, at most <max bytes> when one is given.
+# Without a mirror curl follows redirects itself, as GitHub's release assets
+# need. Under a mirror (#4522) curl follows none: each hop is read here and
+# followed only while it stays on the mirror's origin (scheme, host and
+# port), so a mirror cannot hand a download to another server. Neither URL
+# is printed, since a mirror URL may carry a path token.
+MIRROR_MAX_REDIRECTS=5
+fetch_release_file() {
+  fr_destination=$1
+  fr_max=$2
+  fr_url=$3
+  if [ -z "$mirror_url" ]; then
+    if [ -n "$fr_max" ]; then
+      curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$fr_max" -o "$fr_destination" -- "$fr_url"
+    else
+      curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$fr_destination" -- "$fr_url"
+    fi
+    return
+  fi
+  fr_hops=0
+  while :; do
+    if [ -n "$fr_max" ]; then
+      fr_meta="$(curl -fsS --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$fr_max" -o "$fr_destination" -w '%{http_code} %{redirect_url}' -- "$fr_url")" || return
+    else
+      fr_meta="$(curl -fsS --retry 3 --retry-connrefused --connect-timeout 10 -o "$fr_destination" -w '%{http_code} %{redirect_url}' -- "$fr_url")" || return
+    fi
+    case "${fr_meta%% *}" in
+      3??) ;;
+      *) return 0 ;;
+    esac
+    fr_next=${fr_meta#* }
+    [ -n "$fr_next" ] || fail 'a download from the mirror redirected without a location'
+    [ "$fr_hops" -lt "$MIRROR_MAX_REDIRECTS" ] || \
+      fail "a download from the mirror redirected more than $MIRROR_MAX_REDIRECTS times"
+    node -e '
+      const mirror = new URL(process.argv[1]), next = new URL(process.argv[2]);
+      process.exit(mirror.origin !== "null" && next.origin === mirror.origin ? 0 : 1);
+    ' "$mirror_url" "$fr_next" || \
+      fail "a download redirected outside the managed policy's mirror; STATION_INSTALL_MIRROR_URL allows redirects only within the mirror's own origin"
+    fr_url=$fr_next
+    fr_hops=$((fr_hops + 1))
+  done
+}
+
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{ print $1 }'
@@ -1389,7 +1433,7 @@ if [ -n "$public_manifest_url" ]; then
   # A signed manifest is a few kilobytes. curl 8.4.0 and newer stop at
   # 1 MiB; older curl, and some builds for file:// URLs, enforce the cap only
   # on a declared Content-Length, so the size is also checked after the fact.
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || {
+  fetch_release_file "$manifest_file" 1048576 "$public_manifest_url" || {
     download_status=$?
     [ "$download_status" != 63 ] || fail 'the public ecosystem manifest is larger than 1 MiB'
     fail 'could not download public ecosystem manifest'
@@ -1574,14 +1618,14 @@ if [ -n "$public_manifest_url" ]; then
     # older curl (Ubuntu 22.04's 7.81, Debian 12's 7.88) only refuses a
     # response whose Content-Length exceeds it, so a chunked response is
     # unbounded there. The size and sha256 checks below refuse it either way.
-    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$archive_size" -o "$archive" -- "$asset_url" || {
+    fetch_release_file "$archive" "$archive_size" "$asset_url" || {
       download_status=$?
       [ "$download_status" != 63 ] || \
         fail "$archive_name is larger than the $archive_size bytes the signed manifest says"
       fail "could not download $archive_name"
     }
   else
-    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$archive" -- "$asset_url" || fail "could not download $archive_name"
+    fetch_release_file "$archive" '' "$asset_url" || fail "could not download $archive_name"
   fi
   if [ "$release_kind" = archive ]; then
     downloaded_size="$(wc -c <"$archive" | tr -d ' ')"
