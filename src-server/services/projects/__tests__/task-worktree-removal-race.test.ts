@@ -175,9 +175,12 @@ describe('Task worktree removal races (#4507)', () => {
   });
 
   // Where links need privilege (Windows), the judged copy holds a COPY of
-  // `packed-refs`; deleting a packed branch through it would rewrite only
-  // the copy. Simulated here by replacing the copy's link with a copy.
-  test('a packed Task branch is really deleted even when the judged copy copies packed-refs', async () => {
+  // `packed-refs`. Finalization deletes the branch against the real git
+  // directory, so a packed branch is deleted for real with the copy in
+  // place (simulated by replacing the copy's link with a copy). Not a
+  // revert detector on every git: macOS git 2.54 also rewrote the real
+  // packed-refs through the copy; the next test pins the after-check.
+  test('a packed Task branch is deleted for real with a copied packed-refs in the judged copy', async () => {
     const { repo, metadata } = await taskWorktree();
     git(repo, 'pack-refs', '--all');
     const copiedPackedRefs = async (
