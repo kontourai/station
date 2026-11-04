@@ -122,7 +122,9 @@ replies, continue chats, and review work. Start on your computer:
    **Pair phone**. Station opens straight to a pairing code on a reachable
    HTTPS address, and lists any other HTTPS addresses to switch to.
    **Settings → Pairing → Pair device** opens the same screen. Any of your own
-   paired devices with full access can do this, not only the computer.
+   paired devices with full access can do this, not only the computer. If
+   your organization's policy allows only this computer to connect, these
+   are turned off and say so.
 3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
    invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
