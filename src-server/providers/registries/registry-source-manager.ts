@@ -63,7 +63,7 @@ type Snapshot = { data: RegistryItem[]; revision: string; checkedAt: string };
  * `unsignedPackages: false` so is every other skill catalog, because a skill
  * has no signature to verify.
  */
-export function managedRegistrySourceDenial(
+function managedRegistrySourceDenial(
   source: Pick<RegistrySource, 'kind' | 'origin' | 'location'>,
 ): string | undefined {
   const bundled = source.origin === 'station';
