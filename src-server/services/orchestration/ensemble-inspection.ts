@@ -332,19 +332,6 @@ export class EnsembleInspectionService {
               receipt: `resolution:${member.id}`,
             },
           };
-          add({
-            id: `isolation:${member.id}`,
-            memberId: member.id,
-            category: 'workspace',
-            label: 'Workspace isolation',
-            value:
-              resolved.workspace?.kind === 'directory'
-                ? 'shared; explicit directory binding, no worktree requested'
-                : `${resolved.workspace?.kind === 'project' ? resolved.workspace.workspaceIsolation.mode : 'unknown'}; Project > Station > shared default precedence. Origin is not separately witnessed.`,
-            origin: 'unknown',
-            state: 'unknown',
-            owner: workspace.owner,
-          });
           const spec = resolved.preparationDefinitions?.agent;
           const projectSlug =
             resolved.workspace?.kind === 'project'
@@ -358,6 +345,41 @@ export class EnsembleInspectionService {
               projects.set(projectSlug, project);
             }
           }
+          const directory = resolved.workspace?.kind === 'directory';
+          const projectMode = project?.defaultWorkspaceIsolation;
+          const knownIsolationOrigin = directory || project !== undefined;
+          add({
+            id: `isolation:${member.id}`,
+            memberId: member.id,
+            category: 'workspace',
+            label: 'Workspace isolation',
+            value: directory
+              ? 'shared; explicit directory configuration. Runtime provisioning and filesystem isolation unverified.'
+              : `${resolved.workspace?.kind === 'project' ? resolved.workspace.workspaceIsolation.mode : 'unknown'}; ${projectMode ? 'authored Project configuration' : project ? 'resolved Station/shared default configuration' : 'configuration origin unavailable'}. Runtime provisioning and filesystem isolation unverified.`,
+            origin:
+              directory || projectMode
+                ? 'authored'
+                : project
+                  ? 'default'
+                  : 'unknown',
+            state: knownIsolationOrigin ? 'configured' : 'unknown',
+            owner: {
+              ...(directory
+                ? { label: 'Group workspace draft' }
+                : projectMode
+                  ? {
+                      label: 'Project settings',
+                      href: `/projects/${encodeURIComponent(projectSlug ?? '')}/edit`,
+                    }
+                  : project
+                    ? {
+                        label: 'Station workspace settings',
+                        href: '/settings?view=agent-runs&highlight=default-workspace-isolation',
+                      }
+                    : workspace.owner),
+              receipt: `resolution:${member.id}`,
+            },
+          });
           const roots =
             knowledgeRoots?.roots.filter(
               (root) =>

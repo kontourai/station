@@ -7,6 +7,34 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** The Ensemble inspector now derives workspace-isolation
+provenance from the resolved receiver and the same fenced Project observation:
+explicit directory configuration and Project settings are authored; an absent
+Project setting uses the resolved Station/shared default; unavailable Project
+observations retain unknown origin. Every fact links its existing resolution
+receipt and the relevant settings, while runtime provisioning and filesystem
+isolation stay unverified. No new schema, engine probe, secret read or effect
+authorization is introduced. Twenty-seven route/inspection tests pass, including
+Project, directory, Station default, built-in shared fallback and missing
+observation controls. Earlier invalid fixture requests are excluded from
+regression evidence; the corrected pre-fix controls fail at their fact assertions.
+The source-only review found no P0–P2 issue before an unreachable override branch
+was removed and the two fallback controls were added. Final mutation/type/readiness
+qualification remains pending at this checkpoint.
+
+Flow scanner PR [#1599](https://github.com/kontourai/flow-agents/pull/1599)
+merged as `a531ad5e82f92f4f485da4c5ad8d4e52ecea3e7d`; release PR
+[#1588](https://github.com/kontourai/flow-agents/pull/1588) merged as
+`7015ec655aaeeeb7ae9a7e890d2010586ab7da64`. Registry publication has not yet
+been verified and Station still consumes 9.11.0. The pending 9.12 update also
+adds Ferry/Thread and upgrades Survey/Surface, so scanner source review alone
+cannot authorize dependency adoption: published artifact/provenance and actual
+Survey/trust consumers still require qualification. The complete schedule/output
+binding topology, full group/folded acceptance, finalizer/runtime gaps and final
+combined PR remain open. Both production qualification guards remain false.
+
+### Historical delivery checkpoint at `55a082a75efb`
+
 **NOT_READY.** The controlled CLI/two-viewer journey now passes at exact
 `688c143d3d9e8de747507d0d8846075e174737be`. The real registered CLI creates one
 held synthetic-provider turn, the server projects running work with Directory

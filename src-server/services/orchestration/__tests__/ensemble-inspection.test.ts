@@ -35,7 +35,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function fixture() {
+async function fixture({ observeProject = true } = {}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = await realpath(temp('ensemble-inspection-'));
   const home = join(root, 'home');
@@ -195,7 +195,7 @@ async function fixture() {
     security,
     inventory,
     readIntegration,
-    readProject,
+    ...(observeProject ? { readProject } : {}),
     observeKnowledgeRoots: () => storage.observeKnowledgeStoreRoots(),
   });
   const app = new Hono();
@@ -303,7 +303,7 @@ test('the authorized HTTP caller projects real Agent/Project owners without prob
   expect(body.data.facts).toContainEqual(
     expect.objectContaining({
       id: 'isolation:lead',
-      origin: 'unknown',
+      origin: 'authored',
       value: expect.stringContaining('shared'),
     }),
   );
@@ -343,6 +343,109 @@ test('the authorized HTTP caller projects real Agent/Project owners without prob
   for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
   expect(f.readIntegration).toHaveBeenCalledTimes(1);
 });
+
+test.each([
+  [
+    'project-setting',
+    'project',
+    'shared',
+    'authored',
+    'configured',
+    'Project settings',
+  ],
+  [
+    'directory',
+    'directory',
+    'shared',
+    'authored',
+    'configured',
+    'Group workspace draft',
+  ],
+  [
+    'inherited',
+    'project',
+    'worktree',
+    'default',
+    'configured',
+    'Station workspace settings',
+  ],
+  [
+    'builtin-shared',
+    'project',
+    'shared',
+    'default',
+    'configured',
+    'Station workspace settings',
+  ],
+  [
+    'unobserved-project',
+    'project',
+    'shared',
+    'unknown',
+    'unknown',
+    'Project settings',
+  ],
+] as const)(
+  'isolation provenance follows the actual resolved %s binding without probing',
+  async (mode, kind, isolationMode, origin, state, owner) => {
+    const f = await fixture({ observeProject: mode !== 'unobserved-project' });
+    if (mode === 'inherited' || mode === 'builtin-shared') {
+      const revision = f.storage.projectRevision('project');
+      const { defaultWorkspaceIsolation: _removed, ...project } =
+        revision.value;
+      await revision.replace(project);
+    }
+    if (mode === 'builtin-shared') {
+      const config = await f.loader.loadAppConfig();
+      await f.loader.saveAppConfig({
+        ...config,
+        defaultWorkspaceIsolation: undefined,
+      });
+    }
+    const input =
+      mode !== 'directory'
+        ? f.input
+        : {
+            ...f.input,
+            bindings: {},
+            groupBindings: {
+              lead: {
+                target: {
+                  agent: 'reviewer',
+                  expectedEngine: { kind: 'connection', connectionId: 'codex' },
+                  workspace: { kind: 'directory' as const, cwd: f.root },
+                },
+                needs: [],
+              },
+            },
+          };
+    const response = await f.request(input);
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as { data: EnsembleInspection };
+    expect(data.resolutions[0].receipt.workspace).toMatchObject(
+      kind === 'directory'
+        ? { kind: 'directory', cwd: f.root }
+        : { kind: 'project', workspaceIsolation: { mode: isolationMode } },
+    );
+    expect(data.facts).toContainEqual(
+      expect.objectContaining({
+        id: 'isolation:lead',
+        origin,
+        state,
+        value: expect.stringContaining(isolationMode),
+        owner: expect.objectContaining({
+          label: owner,
+          receipt: 'resolution:lead',
+        }),
+      }),
+    );
+    expect(
+      data.facts.find((fact) => fact.id === 'isolation:lead')?.value,
+    ).toContain('unverified');
+    expect(JSON.stringify(data)).not.toMatch(/SECRET_/);
+    for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+  },
+);
 
 test('unbound members retain all categories as missing or unavailable, not empty successful inventories', async () => {
   const f = await fixture();
