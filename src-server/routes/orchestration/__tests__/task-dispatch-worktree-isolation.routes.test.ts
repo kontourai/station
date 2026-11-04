@@ -46,6 +46,7 @@ import { TaskGraphService } from '../../../services/projects/task-graph-service.
 import { WorktreeProvisioningService } from '../../../services/projects/worktree-provisioning-service.js';
 import {
   assertTaskDispatchAgentExists,
+  continueExecutionTargetMessage,
   resolveTaskDispatchAgentStart,
 } from '../../../tools/station-control-delegation.js';
 import { createTaskRoutes } from '../tasks.js';
@@ -336,7 +337,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       await next();
     });
     app.route('/', routes);
-    return { app, graph, claude, dispatcher };
+    return { app, graph, claude, dispatcher, service };
   }
 
   async function createTask(app: Hono, title: string): Promise<string> {
@@ -490,6 +491,42 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     );
     expect(existsSync(join(firstCwd, 'progress.txt'))).toBe(true);
     expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
+  });
+
+  // `/chat/:id/continue` and the lead wake both enter here. With the
+  // Session gone, the continuation starts a new one, which may run in the
+  // Task's worktree only because the room binding names that Task.
+  test('a follow-up to a stopped Task Session starts again in the Task worktree', async () => {
+    installCurrentStation(workspace, 'worktree');
+    const { app, graph, claude, service } = compose();
+    const taskId = await createTask(app, 'Follow-up Task');
+    const sessionId = await dispatch(app, taskId);
+    const worktree = graph.readTaskWorktree(taskId)!;
+    await service.dispatch({ type: 'stopSession', threadId: sessionId });
+
+    await continueExecutionTargetMessage(
+      {
+        conversationId: sessionId,
+        message: 'Carry on',
+        userId: OWNER,
+        readAuthority: sessionReadAuthorityFromRequest(
+          OWNER,
+          undefined,
+          undefined,
+        ),
+      },
+      service,
+    );
+
+    expect(claude.startSession).toHaveBeenCalledTimes(2);
+    const restarted = claude.startSession.mock.calls[1]![0];
+    expect(restarted.cwd).toBe(worktree.path);
+    expect(restarted.metadata).toMatchObject({
+      worktree: expect.objectContaining({
+        path: worktree.path,
+        owner: { kind: 'task', taskId },
+      }),
+    });
   });
 
   test('a shared Project dispatches in its shared checkout, unchanged', async () => {

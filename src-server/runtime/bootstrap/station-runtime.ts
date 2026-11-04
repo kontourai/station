@@ -123,7 +123,6 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
-import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
@@ -231,7 +230,7 @@ import { composeTaskDispatcher } from '../../services/projects/task-dispatch-com
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
-  assertWorktreeMetadataSessionBinding,
+  sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
@@ -2016,7 +2015,7 @@ export class StationRuntime {
                 occurredAt: detail.session.updatedAt,
               });
             }
-            const metadata = worktreeMetadataFromEvents(
+            const metadata = sessionExitWorktreeMetadata(
               detail.events,
               sessionId,
             );
@@ -6278,50 +6277,4 @@ export class StationRuntime {
       // Diagnostics are observer-only and cannot change runtime lifecycle.
     }
   }
-}
-
-function worktreeMetadataFromEvents(
-  events: unknown[],
-  sessionId: string,
-): WorktreeSessionMetadata | undefined {
-  for (const event of events) {
-    if (!event || typeof event !== 'object') continue;
-    const sessionStart = event as {
-      method?: unknown;
-      sessionId?: unknown;
-      metadata?: unknown;
-    };
-    if (
-      sessionStart.method !== 'session.started' ||
-      sessionStart.sessionId !== sessionId
-    ) {
-      continue;
-    }
-    const metadata = sessionStart.metadata;
-    if (!metadata || typeof metadata !== 'object') continue;
-    const worktree = (metadata as Record<string, unknown>).worktree;
-    if (!worktree || typeof worktree !== 'object') continue;
-    const candidate = worktree as Partial<WorktreeSessionMetadata>;
-    // #4507: a Task-owned worktree outlives its Sessions; the Task's own
-    // terminal transition finalizes it, so a Session exit leaves it alone.
-    if (candidate.owner !== undefined) return undefined;
-    if (
-      candidate.mode === 'worktree' &&
-      typeof candidate.repoPath === 'string' &&
-      typeof candidate.path === 'string' &&
-      typeof candidate.branch === 'string' &&
-      typeof candidate.baseRef === 'string' &&
-      (candidate.cleanupPolicy === 'cleanup' ||
-        candidate.cleanupPolicy === 'preserve') &&
-      typeof candidate.preserveOnFailure === 'boolean' &&
-      typeof candidate.createdAt === 'string'
-    ) {
-      assertWorktreeMetadataSessionBinding(
-        candidate as WorktreeSessionMetadata,
-        sessionId,
-      );
-      return candidate as WorktreeSessionMetadata;
-    }
-  }
-  return undefined;
 }

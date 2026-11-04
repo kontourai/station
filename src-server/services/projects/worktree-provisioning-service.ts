@@ -245,6 +245,56 @@ function assertWorktreeNameBinding(
   }
 }
 
+/**
+ * The worktree a Session's exit finalizes: the one its own `session.started`
+ * record names and that Session owns. #4507: a Task-owned worktree outlives
+ * its Sessions and is finalized when the Task finishes, so none is returned
+ * for it.
+ */
+export function sessionExitWorktreeMetadata(
+  events: unknown[],
+  sessionId: string,
+): WorktreeSessionMetadata | undefined {
+  for (const event of events) {
+    if (!event || typeof event !== 'object') continue;
+    const sessionStart = event as {
+      method?: unknown;
+      sessionId?: unknown;
+      metadata?: unknown;
+    };
+    if (
+      sessionStart.method !== 'session.started' ||
+      sessionStart.sessionId !== sessionId
+    ) {
+      continue;
+    }
+    const metadata = sessionStart.metadata;
+    if (!metadata || typeof metadata !== 'object') continue;
+    const worktree = (metadata as Record<string, unknown>).worktree;
+    if (!worktree || typeof worktree !== 'object') continue;
+    const candidate = worktree as Partial<WorktreeSessionMetadata>;
+    if (candidate.owner !== undefined) return undefined;
+    if (
+      candidate.mode === 'worktree' &&
+      typeof candidate.repoPath === 'string' &&
+      typeof candidate.path === 'string' &&
+      typeof candidate.branch === 'string' &&
+      typeof candidate.baseRef === 'string' &&
+      (candidate.cleanupPolicy === 'cleanup' ||
+        candidate.cleanupPolicy === 'preserve') &&
+      typeof candidate.preserveOnFailure === 'boolean' &&
+      typeof candidate.createdAt === 'string'
+    ) {
+      assertWorktreeMetadataSessionBinding(
+        candidate as WorktreeSessionMetadata,
+        sessionId,
+      );
+      return candidate as WorktreeSessionMetadata;
+    }
+  }
+  return undefined;
+}
+
 /** Preserve on any non-clean exit even if lifecycle projection says canceled. */
 export function terminalWorktreeStateForExit(input: {
   lifecycleState: unknown;
