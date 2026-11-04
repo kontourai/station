@@ -238,6 +238,10 @@ test('cold-connect recovery keeps the failed account section mounted while its r
     expect(screen.getByRole('alert').textContent).toContain(
       'Couldn’t load your account preferences.',
     );
+    const retry = screen.getByRole('button', { name: 'Loading preferences…' });
+    expect(retry.getAttribute('aria-busy')).toBe('true');
+    expect(retry).toHaveProperty('disabled', true);
+    fireEvent.click(retry);
     expect(
       screen.getByLabelText('New Codex chats approval mode'),
     ).toHaveProperty('disabled', true);

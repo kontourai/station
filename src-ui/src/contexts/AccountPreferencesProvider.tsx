@@ -283,6 +283,7 @@ export function AccountPreferencesProvider({
               ? 'account'
               : 'loading',
         saving: pending.size > 0,
+        retrying: eligible && query.fetchStatus !== 'idle',
         waitingForConnection:
           pending.size > 0 && mutation.isPaused && !onlineManager.isOnline(),
         error: mutation.isError,

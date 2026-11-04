@@ -178,7 +178,11 @@ export function AccountPreferencesSection() {
                 : 'Couldn’t confirm the save.'
           }
           action={
-            <Button onClick={account.retry}>
+            <Button
+              onClick={account.retry}
+              pending={account.retrying}
+              pendingLabel="Loading preferences…"
+            >
               {account.status === 'error'
                 ? 'Retry loading preferences'
                 : 'Reload saved preferences'}
