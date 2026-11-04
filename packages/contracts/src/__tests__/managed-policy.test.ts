@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   canonicalManagedPolicyJson,
   duplicateJsonMemberPath,
+  MANAGED_POLICY_ENFORCED_LIMIT_KEYS,
   MANAGED_POLICY_INVALID_MARKER,
   MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
   MANAGED_POLICY_REMOTE_CLIENTS_CODE,
@@ -426,5 +427,73 @@ describe('limits.clients (#4519)', () => {
     expect(MANAGED_POLICY_REMOTE_CLIENTS_CODE).toBe(
       'managed-policy-remote-clients',
     );
+  });
+});
+
+/**
+ * Every managed-policy slice adds a limit key. This test sets every limit
+ * key this build enforces at once and checks each survives the parsed
+ * document, the summary and the status decode, so a merge that keeps only
+ * one slice's reconstruction fails here. A slice that adds a key adds its
+ * valid sample to `LIMIT_SAMPLES`; the first assertion makes that required.
+ */
+describe('every enforced limit together (cross-slice round trip)', () => {
+  const LIMIT_SAMPLES: Record<string, unknown> = {
+    clients: ['desktop', 'local-browser'],
+  };
+
+  function roundTrip(limits: Record<string, unknown>) {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits,
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    const summary = summarizeManagedPolicy(parsed.document);
+    const status = parseManagedPolicyStatus(
+      JSON.parse(
+        JSON.stringify({
+          state: 'loaded',
+          source: { kind: 'file', location: '/etc/station/policy.json' },
+          digest: `sha256:${'a'.repeat(64)}`,
+          summary,
+        }),
+      ),
+    );
+    if (status?.state !== 'loaded') throw new Error('status did not decode');
+    return {
+      document: parsed.document.limits,
+      summary: summary.limits,
+      status: status.summary.limits,
+    };
+  }
+
+  test('a sample exists for every enforced limit key', () => {
+    expect(Object.keys(LIMIT_SAMPLES).sort()).toEqual(
+      [...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort(),
+    );
+  });
+
+  test('each limit survives the document, the summary and the status decode', () => {
+    const result = roundTrip(LIMIT_SAMPLES);
+    for (const [stage, limits] of Object.entries(result))
+      expect(limits, stage).toEqual(LIMIT_SAMPLES);
+  });
+
+  test('a limit this module does not normalize is kept by all three reconstructions', () => {
+    // Stands in for a sibling slice's key: enforced, but unknown here.
+    const keys = MANAGED_POLICY_ENFORCED_LIMIT_KEYS as string[];
+    keys.push('siblingLimit');
+    try {
+      const limits = {
+        ...LIMIT_SAMPLES,
+        siblingLimit: { level: 'on-request' },
+      };
+      const result = roundTrip(limits);
+      for (const [stage, value] of Object.entries(result))
+        expect(value, stage).toEqual(limits);
+    } finally {
+      keys.pop();
+    }
   });
 });

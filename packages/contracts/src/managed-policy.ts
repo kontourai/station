@@ -327,8 +327,7 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined)
-    document.limits = { ...acceptedClientsLimit(limits) };
+  if (limits !== undefined) document.limits = acceptedLimits(limits);
   return { ok: true, document };
 }
 
@@ -396,7 +395,7 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: { ...acceptedClientsLimit(document.limits) },
+    limits: acceptedLimits(document.limits),
   };
 }
 
@@ -463,7 +462,7 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: { ...acceptedClientsLimit(summary.limits) },
+      limits: acceptedLimits(summary.limits),
     },
   };
 }
@@ -554,6 +553,23 @@ function clientsLimitProblems(limits: unknown): ManagedPolicyProblem[] {
   if (!isRecord(limits)) return [];
   const message = clientsValueProblem(ownValue(limits, 'clients'));
   return message ? [{ path: 'limits.clients', message }] : [];
+}
+
+/**
+ * Every enforced limit in an already-validated limits object, each as
+ * parsed (a JSON copy), then each one this module normalizes. The parsed
+ * document, the summary and the status decode all build `limits` here, so
+ * a limit another slice adds to `MANAGED_POLICY_ENFORCED_LIMIT_KEYS` is kept
+ * even where only one slice's normalization survives a merge.
+ */
+function acceptedLimits(limits: unknown): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  const kept: Record<string, unknown> = {};
+  for (const key of MANAGED_POLICY_ENFORCED_LIMIT_KEYS) {
+    const value = ownValue(limits, key);
+    if (value !== undefined) kept[key] = JSON.parse(JSON.stringify(value));
+  }
+  return { ...(kept as ManagedPolicyLimits), ...acceptedClientsLimit(limits) };
 }
 
 /** `{ clients }` from an already-validated limits object, else `{}`. */
