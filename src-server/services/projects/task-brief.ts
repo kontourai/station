@@ -398,6 +398,7 @@ const FOLLOW_UP_KIND_WORDS: Record<TaskFollowUpObservation['kind'], string> = {
   review_comment: 'Review comment',
   check_run: 'Check run',
 };
+const NOT_FOLLOWED_LINE_MAX = 600;
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?$/;
 const UPPER_WORD = /^[A-Z_]{1,32}$/;
 
@@ -442,12 +443,27 @@ function renderFollowUps(
 ): string[] {
   if (
     !view ||
-    (!view.items.length && !view.passingChecks && !view.lastPolledAt)
+    (!view.items.length &&
+      !view.passingChecks &&
+      !view.notFollowed.length &&
+      !view.lastPolledAt)
   )
     return [];
   const head = [
     '## Tracker follow-ups (newest first)',
     `Recorded from the Task's followed GitHub items${view.lastPolledAt ? `; last read ${stamp(view.lastPolledAt)}` : ''}. Classes: member (owner, member or collaborator), bot (GitHub App or [bot] login), other (anyone else), ci (check run).`,
+    // A kept pull request's repository came from a Session's declaration;
+    // one outside the board-checked item's repository is never read.
+    ...(view.notFollowed.length
+      ? [
+          `Kept pull requests not followed: different repository from the Task's work item, so Station does not read them (${count(view.notFollowed.length, 'pull request', 'pull requests')}).`,
+          BY_TASK,
+          quotedLine(
+            view.notFollowed.map((entry) => entry.itemRef).join(', '),
+            NOT_FOLLOWED_LINE_MAX,
+          ),
+        ]
+      : []),
     BY_TRACKER,
   ];
   const entries = view.items.map((item) => followUpEntry(item).join('\n'));

@@ -75,6 +75,13 @@ const SCHEMA = [
     cursor TEXT NOT NULL,
     PRIMARY KEY (task_id, task_created_at, item_ref, stream)
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS follow_up_not_followed (
+    task_id TEXT NOT NULL,
+    task_created_at TEXT NOT NULL,
+    item_ref TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    PRIMARY KEY (task_id, task_created_at, item_ref)
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS follow_up_polls (
     task_id TEXT NOT NULL,
     task_created_at TEXT NOT NULL,
@@ -156,9 +163,17 @@ function fromRow(row: ObservationRow): TaskFollowUpObservation {
   };
 }
 
+/** A kept pull request the poller refused to follow, and why. */
+export interface TaskFollowUpNotFollowed {
+  itemRef: string;
+  reason: 'different-repository';
+}
+
 /** What the brief shows: newest first, passing checks only counted. */
 export interface TaskFollowUpBriefView {
   items: TaskFollowUpObservation[];
+  /** Kept pull requests the last poll did not follow. */
+  notFollowed: TaskFollowUpNotFollowed[];
   /** Observations the view did not list (past `limit`), passing checks aside. */
   more: number;
   passingChecks: number;
@@ -276,6 +291,43 @@ export class TaskFollowUpStore {
       .run(task.taskId, task.taskCreatedAt, polledAt, outcome);
   }
 
+  /** Replace the Task's not-followed list with what this poll decided. */
+  replaceNotFollowed(
+    task: TaskIncarnation,
+    entries: readonly TaskFollowUpNotFollowed[],
+  ): void {
+    const insert = this.db.prepare(
+      'INSERT OR REPLACE INTO follow_up_not_followed (task_id, task_created_at, item_ref, reason) VALUES (?, ?, ?, ?)',
+    );
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare(
+          'DELETE FROM follow_up_not_followed WHERE task_id = ? AND task_created_at = ?',
+        )
+        .run(task.taskId, task.taskCreatedAt);
+      for (const entry of entries)
+        insert.run(task.taskId, task.taskCreatedAt, entry.itemRef, entry.reason);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  private notFollowed(task: TaskIncarnation): TaskFollowUpNotFollowed[] {
+    return this.db
+      .prepare(
+        'SELECT item_ref, reason FROM follow_up_not_followed WHERE task_id = ? AND task_created_at = ? ORDER BY item_ref',
+      )
+      .all(task.taskId, task.taskCreatedAt)
+      .flatMap((row) =>
+        typeof row.item_ref === 'string' && row.reason === 'different-repository'
+          ? [{ itemRef: row.item_ref, reason: 'different-repository' as const }]
+          : [],
+      );
+  }
+
   lastPolledAt(task: TaskIncarnation): string | undefined {
     const row = this.db
       .prepare(
@@ -325,6 +377,7 @@ export class TaskFollowUpStore {
     const lastPolledAt = this.lastPolledAt(task);
     return {
       items,
+      notFollowed: this.notFollowed(task),
       more: Math.max(0, total - items.length),
       passingChecks,
       ...(lastPolledAt ? { lastPolledAt } : {}),

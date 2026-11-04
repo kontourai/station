@@ -46,8 +46,12 @@ or webhook of its own.
   ended Task's `updatedAt` stands for it; an edit after the end can extend
   following, never shorten it. Polling never changes a Task's status.
 - **Followed items.** The primary work item and each github.com pull request
-  a person kept on the Task (the keep rule close-out uses), at most ten. A
-  pull request a Session only declared is not followed.
+  a person kept on the Task (the keep rule close-out uses) in the same
+  repository as the primary item, at most ten. A pull request a Session only
+  declared is not followed. A kept pull request in another repository is not
+  read, because its repository came from a Session's declaration and only the
+  primary item's repository was checked against the board; the brief lists it
+  as not followed (different repository).
 - **What is read.** Issue and pull request comments, reviews and their inline
   review comments, and the completed check runs of a pull request's head
   commit. Only items at or after the Task's creation are recorded.

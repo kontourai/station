@@ -390,6 +390,70 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     expect(store.list(incarnation)).toHaveLength(before + 1);
   });
 
+  test('a kept pull request in another repository is not read; the brief says it is not followed', async () => {
+    const task = await trackerTask();
+    // A Session declared it; a person kept it. Its repository is not the
+    // board-checked item's, so the host gh login must never read it.
+    await graph.keepDeclaredPullRequest(
+      {
+        taskId: task.id,
+        operationId: 'op-keep-elsewhere',
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'Elsewhere', name: 'Secrets' },
+        ref: '9',
+        nativeId: 'PR_kwDOElsewhere9',
+        provenance: {
+          sessionId: 'session-2',
+          turnId: 'turn-2',
+          toolCallId: 'call-2',
+          declarationId: 'declaration-2',
+          eventId: `event-elsewhere-${task.id}`,
+        },
+      },
+      { expectedProjectId: 'project-alpha', isAuthorized: () => true },
+    );
+    // Same repository, other spelling: followed (canonical, case-insensitive).
+    await graph.keepDeclaredPullRequest(
+      {
+        taskId: task.id,
+        operationId: 'op-keep-same-repo',
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'ACME', name: 'Widgets' },
+        ref: '14805',
+        nativeId: 'PR_kwDOAcmeWidgets14805',
+        provenance: {
+          sessionId: 'session-3',
+          turnId: 'turn-3',
+          toolCallId: 'call-3',
+          declarationId: 'declaration-3',
+          eventId: `event-same-${task.id}`,
+        },
+      },
+      { expectedProjectId: 'project-alpha', isAuthorized: () => true },
+    );
+    await enable();
+    answerFirstPoll();
+    answer(ghDir, { number: 14805 }, issuePage2);
+    answer(ghDir, { number: 9 }, prPage1);
+
+    const summary = await poll();
+    expect(summary.tasks[0]).toMatchObject({ items: 3 });
+    const numbers = calls(ghDir).map((call) => call.number);
+    expect(numbers).toContain('14805');
+    expect(numbers).not.toContain('9');
+
+    const text = await brief(graph.readTask(task.id)!);
+    expect(text).toContain(
+      [
+        "Kept pull requests not followed: different repository from the Task's work item, so Station does not read them (1 pull request).",
+        'Quoted, written by agents and people on this Task:',
+        '> github:elsewhere/secrets#9',
+      ].join('\n'),
+    );
+  });
+
   test('a pending review does not move the cursor; once submitted it is recorded on the next poll', async () => {
     const task = await trackerTask();
     await enable();

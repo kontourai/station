@@ -18,7 +18,13 @@
  *
  * Which items: the primary work item, then each github.com pull request a
  * person kept on the Task (`listKeptDeclaredPullRequests`, the existing keep
- * rule). A Session declaring a pull request does not make it followed.
+ * rule) in the SAME repository as the primary item. A Session declaring a
+ * pull request does not make it followed. A kept pull request's owner,
+ * repository and number come from a Session's declaration, which an agent
+ * (or text it read) can steer; only the primary item's repository was
+ * checked against the Project's board. So a kept pull request in another
+ * repository is not read with the host's gh login: it is recorded as not
+ * followed (`different-repository`) and the brief says so.
  *
  * Observe-and-record only: this slice wakes no Session (delivery is PR2).
  * Only items that happened at or after the Task's creation are recorded,
@@ -46,6 +52,7 @@ import type {
   GitHubFollowUpReader,
 } from './github-follow-up-reader.js';
 import type {
+  TaskFollowUpNotFollowed,
   TaskFollowUpStore,
   TaskIncarnation,
 } from './task-follow-up-store.js';
@@ -98,10 +105,13 @@ function isTaskFollowable(task: TaskRecord, now: number): boolean {
 function followedItems(
   task: TaskRecord,
   kept: readonly TaskKeptDeclaredPullRequest[],
-): string[] {
-  const refs = [canonicalGitHubWorkItemRef(task.workItemRef!)!];
+): { refs: string[]; notFollowed: TaskFollowUpNotFollowed[] } {
+  const primary = canonicalGitHubWorkItemRef(task.workItemRef!)!;
+  // Canonical refs are lowercase, so this compares case-insensitively.
+  const board = parseGitHubWorkItemRef(primary)!;
+  const refs = [primary];
+  const notFollowed: TaskFollowUpNotFollowed[] = [];
   for (const keep of kept) {
-    if (refs.length > MAX_KEPT_PULL_REQUESTS) break;
     if (keep.provider !== 'github' || keep.host.toLowerCase() !== 'github.com')
       continue;
     if (!/^[1-9]\d{0,9}$/.test(keep.ref)) continue;
@@ -112,9 +122,17 @@ function followedItems(
         number: Number(keep.ref),
       }),
     );
-    if (ref && !refs.includes(ref)) refs.push(ref);
+    if (!ref || refs.includes(ref)) continue;
+    const identity = parseGitHubWorkItemRef(ref)!;
+    if (identity.owner !== board.owner || identity.repo !== board.repo) {
+      if (!notFollowed.some((entry) => entry.itemRef === ref))
+        notFollowed.push({ itemRef: ref, reason: 'different-repository' });
+      continue;
+    }
+    if (refs.length > MAX_KEPT_PULL_REQUESTS) continue;
+    refs.push(ref);
   }
-  return refs;
+  return { refs, notFollowed };
 }
 
 export class TaskFollowUpPoller {
@@ -145,10 +163,11 @@ export class TaskFollowUpPoller {
     const summary: TaskFollowUpPollSummary = { outcome: 'polled', tasks: [] };
     for (const { task, incarnation } of due) {
       if (input.signal.aborted) return { ...summary, outcome: 'stopped' };
-      const items = followedItems(
+      const { refs: items, notFollowed } = followedItems(
         task,
         this.options.tasks.listKeptDeclaredPullRequests(task.id),
       );
+      store.replaceNotFollowed(incarnation, notFollowed);
       let recorded = 0;
       const failures: string[] = [];
       for (const itemRef of items) {
