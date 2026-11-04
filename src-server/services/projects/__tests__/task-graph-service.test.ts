@@ -1648,6 +1648,7 @@ describe('TaskGraphService', () => {
       undefined,
       // Room binding is independent of the optional Builder sidecar.
       {
+        resourceAdmissionIntent: 'queued_background',
         roomExecutionBinding: { projectId: task.projectId, taskId: task.id },
         conversationIdentity: {
           conversationId: `task-${task.id}-1`,
@@ -1832,6 +1833,7 @@ describe('TaskGraphService', () => {
         // Review M1: the Builder run behind this slug is driven by
         // flow-agents, so the attach must read it, never write it.
         {
+          resourceAdmissionIntent: 'queued_background',
           workflowSidecarAttachMode: 'read-only-join',
           roomExecutionBinding: {
             projectId: 'project-alpha',
