@@ -27,6 +27,11 @@ import {
 import type { PluginRegistryCatalogSnapshot } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  managedCapabilityDenial,
+  managedRegistryLimits,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   copyPluginTree,
@@ -51,6 +56,10 @@ import type {
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
+import {
+  fetchRegistryResource,
+  type RegistryHopPolicy,
+} from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
   readRegistryInstallAliases,
@@ -332,6 +341,20 @@ function isGitSource(source: string): boolean {
  */
 const MANIFEST_FETCH_TIMEOUT_MS = 20_000;
 
+/**
+ * #4521: a manifest redirect under `limits.registries.allowedUrls`. A hop to
+ * the same origin (scheme, host and port) is followed: that origin already
+ * serves the allowed URL and could serve the same bytes there directly. A hop
+ * to another origin must itself be a listed URL, checked before it is
+ * requested.
+ */
+const managedManifestHop: RegistryHopPolicy = (from, to) => {
+  if (managedRegistryLimits()?.allowedUrls === undefined) return undefined;
+  if (to.origin === from.origin) return undefined;
+  if (registryLocationAllowedByManagedPolicy(to.href)) return undefined;
+  return managedCapabilityDenial('redirects to registries it does not list');
+};
+
 export class JsonManifestRegistryProvider
   implements
     IAgentRegistryProvider,
@@ -397,10 +420,14 @@ export class JsonManifestRegistryProvider
         );
       manifest = JSON.parse(bounded.raw) as Manifest;
     } else {
-      const response = await fetch(this.manifestUrl, {
-        signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
-        ...(fresh ? { cache: 'no-store' as const } : {}),
-      });
+      const response = await fetchRegistryResource(
+        this.manifestUrl,
+        {
+          signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
+          ...(fresh ? { cache: 'no-store' as const } : {}),
+        },
+        managedManifestHop,
+      );
       if (!response.ok) {
         throw new Error(
           `Failed to fetch manifest: ${response.status} ${response.statusText}`,
@@ -979,7 +1006,9 @@ export class JsonManifestRegistryProvider
             `Integration source protocol ${base.protocol} cannot be read`,
           );
         }
-        const response = await fetch(new URL('integration.json', base));
+        const response = await fetchRegistryResource(
+          new URL('integration.json', base),
+        );
         if (!response.ok) return null;
         raw = await response.text();
       }
