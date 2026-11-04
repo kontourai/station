@@ -494,7 +494,7 @@ describe('useSendMessage: durable before the request', () => {
 
   it('a Station refusal lets the row go: the composer holds the text, never both', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
-      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+      new ChatHttpError(400, 'Refused'),
     );
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
@@ -1345,7 +1345,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
         attachments: [],
         attachmentStages: [],
       });
-      throw new ChatHttpError({ status: 400, message: 'Refused' } as never);
+      throw new ChatHttpError(400, 'Refused');
     });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
@@ -1371,7 +1371,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
   it('a refusal puts nothing in an empty composer', async () => {
     activeChatsStore.updateChat(chat, { input: '', attachments: [] });
     sendExecutionMessageMock.mockRejectedValueOnce(
-      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+      new ChatHttpError(400, 'Refused'),
     );
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
@@ -1444,7 +1444,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
   it('a refused outbox replay of a Continue puts nothing in an empty composer', async () => {
     activeChatsStore.updateChat(chat, { input: '' });
     sendExecutionMessageMock.mockRejectedValueOnce(
-      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+      new ChatHttpError(400, 'Refused'),
     );
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     // A replay's refusal goes back to the flush that owns the row.
@@ -1458,7 +1458,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
 
   it('a Retry of a refused Continue keeps the composer out', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
-      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+      new ChatHttpError(400, 'Refused'),
     );
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {

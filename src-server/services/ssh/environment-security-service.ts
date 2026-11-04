@@ -72,6 +72,7 @@ export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/enviro
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
+import { isPeerChatMutation } from '../../routes/environments/peer-chat-policy.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
@@ -85,9 +86,6 @@ const REVISION_EVIDENCE_KEY_PREFIX = 'revision-evidence-';
 const LOCK_RETRY_MS = 10;
 const LOCK_TIMEOUT_MS = 5_000;
 const STALE_LOCK_AGE_MS = 2_000;
-/** The paired-Station chat bridge's write leaves: a foreground send, or Stop and a request answer. */
-const PEER_CHAT_WRITE_LEAF =
-  /^\/api\/environments\/peers\/[^/]+\/chat-api\/api\/orchestration\/(?:chat|commands)$/;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const UUID_PATTERN =
@@ -668,8 +666,7 @@ export class EnvironmentSecurityService {
       // The owner's own devices may send foreground chat through the bridge
       // (D14); peer-credential administration stays operator-only.
       !(
-        request.method.toUpperCase() === 'POST' &&
-        PEER_CHAT_WRITE_LEAF.test(request.path) &&
+        isPeerChatMutation(request.method, request.path) &&
         this.credentialHasOwnerStanding(candidate)
       )
     ) {
@@ -793,7 +790,9 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService;
   }
 
-  async getPublicHandshake(): Promise<PublicStationHandshake> {
+  async getPublicHandshake(
+    peerChatEnabled = false,
+  ): Promise<PublicStationHandshake> {
     const { environmentId } = await this.initialize();
     return {
       schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -813,7 +812,10 @@ export class EnvironmentSecurityService {
       // Additive (archive#1095): same guarantee as `compatibility` above.
       // station-capability-flags.ts is the single source of truth — add a
       // flag there, not here. It withdraws flags this deployment can't serve.
-      capabilities: resolveStationCapabilityFlags({ hosted: this.#hosted }),
+      capabilities: resolveStationCapabilityFlags({
+        hosted: this.#hosted,
+        peerChatEnabled,
+      }),
     };
   }
 

@@ -23,6 +23,7 @@ import {
   type ForegroundMessageIndeterminate,
   type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
+import { parsePeerChatTargetRefusal } from '@kontourai/station-contracts/peer-chat';
 import type {
   SkillExperienceInventoryV1,
   SkillExperienceStartInputV1,
@@ -41,7 +42,7 @@ import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
 import { chooseSentTurnKey, rememberSentTurnKey } from './sent-turn-key';
-import { isStationAnswer } from './station-envelope';
+import { hasStationEnvelopeMarker, isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the
@@ -194,15 +195,52 @@ type ExecutionErrorResponse = {
   session?: unknown;
 };
 
+function snapshotExecutionOptions(
+  opts: ClientRequestOptions | undefined,
+): ClientRequestOptions | undefined {
+  return opts
+    ? {
+        ...opts,
+        ...(opts.requestScope
+          ? { requestScope: { ...opts.requestScope } }
+          : {}),
+        ...(opts.headers ? { headers: { ...opts.headers } } : {}),
+      }
+    : undefined;
+}
+
 /** A refused execution request, marked with whether Station answered it. */
 function chatRefusal(
   response: Response,
   body: unknown,
   fallback: string,
+  binding?: {
+    apiBase: string;
+    mutationKey?: string;
+    opts?: ClientRequestOptions;
+  },
 ): ChatHttpError {
+  const relay =
+    binding &&
+    /\/api\/environments\/peers\/([^/]+)\/chat-api$/.exec(binding.apiBase);
+  const observation =
+    relay &&
+    binding?.opts?.requestScope &&
+    response.status === 424 &&
+    hasStationEnvelopeMarker(response)
+      ? parsePeerChatTargetRefusal(body, {
+          environmentId: decodeURIComponent(relay[1]!),
+          mutationKey: binding.mutationKey,
+        })
+      : null;
+  const stationEnvelope = relay
+    ? !!observation ||
+      (hasStationEnvelopeMarker(response) &&
+        [401, 403].includes(response.status))
+    : isStationAnswer(response, body);
   return new ChatHttpError(
     envelopeError(response, body, fallback),
-    isStationAnswer(response, body),
+    stationEnvelope,
   );
 }
 
@@ -262,6 +300,11 @@ function indeterminateDetail(
 function readExecutionReceipt(
   response: Response,
   result: ExecutionErrorResponse,
+  binding?: {
+    apiBase: string;
+    mutationKey?: string;
+    opts?: ClientRequestOptions;
+  },
 ): ForegroundMessageReceipt {
   if (!response.ok || !result.success || !result.data) {
     const detail = indeterminateDetail(result);
@@ -287,7 +330,7 @@ function readExecutionReceipt(
       throw providerTurnIdentityUnavailable(failure.message);
     }
     const failed = `Execution API error: ${response.status}`;
-    throw chatRefusal(response, result, failed);
+    throw chatRefusal(response, result, failed, binding);
   }
   if (
     response.status === 202 &&
@@ -333,6 +376,7 @@ export async function sendExecutionMessageWithInventory(
   readInventory: SkillExperienceInventoryReader,
   opts?: ClientRequestOptions,
 ): Promise<KeyedForegroundMessageReceipt> {
+  opts = snapshotExecutionOptions(opts);
   const clientTurnId = chooseSentTurnKey(input.clientTurnId);
   try {
     if (input.skillExperience) {
@@ -369,7 +413,14 @@ export async function sendExecutionMessageWithInventory(
     const result = (await readExecutionBody(
       response,
     )) as ExecutionErrorResponse;
-    return { ...readExecutionReceipt(response, result), clientTurnId };
+    return {
+      ...readExecutionReceipt(response, result, {
+        apiBase,
+        mutationKey: clientTurnId,
+        opts,
+      }),
+      clientTurnId,
+    };
   } catch (error) {
     rememberSentTurnKey(error, clientTurnId);
     throw error;
@@ -412,6 +463,8 @@ export async function queueExecutionMessage(
   },
   opts?: ClientRequestOptions,
 ): Promise<QueuedFollowUpResult> {
+  opts = snapshotExecutionOptions(opts);
+  input = { ...input };
   const { automaticBackground, ...body } = input;
   const response = await mutateJson(
     `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
@@ -433,7 +486,11 @@ export async function queueExecutionMessage(
     return queued as ConversationInboxQueuedReceipt;
   return {
     outcome: 'started',
-    receipt: readExecutionReceipt(response, result),
+    receipt: readExecutionReceipt(response, result, {
+      apiBase,
+      mutationKey: input.clientTurnId,
+      opts,
+    }),
   };
 }
 
@@ -462,6 +519,7 @@ export async function listConversationInbox(
       response,
       result,
       'The conversation inbox is unavailable.',
+      { apiBase, opts },
     );
   if (
     typeof result.data.currentHead === 'string' &&
@@ -498,6 +556,7 @@ export async function readConversationInboxHead(
       read,
       snapshot,
       'This Station cannot safely queue steering.',
+      { apiBase, opts },
     );
   return head;
 }
@@ -509,6 +568,8 @@ export async function submitConversationSteer(
   input: { key: string; message: string; expectedHead?: string },
   opts?: ClientRequestOptions,
 ): Promise<ConversationInboxEntry> {
+  opts = snapshotExecutionOptions(opts);
+  input = { ...input };
   const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
   const head =
     input.expectedHead ??
@@ -542,7 +603,12 @@ export async function submitConversationSteer(
       'cancelled',
     ].includes(result.data.state)
   )
-    throw chatRefusal(response, result, 'Station could not accept this steer.');
+    throw chatRefusal(
+      response,
+      result,
+      'Station could not accept this steer.',
+      { apiBase, mutationKey: input.key, opts },
+    );
   return result.data;
 }
 
@@ -574,6 +640,7 @@ export async function cancelConversationInboxEntry(
       response,
       result,
       'The queued message could not be removed.',
+      { apiBase, opts },
     );
   return result.data.entry;
 }
@@ -590,6 +657,7 @@ export async function continueExecutionMessage(
   input: ContinueForegroundMessageInput,
   opts?: ClientRequestOptions,
 ): Promise<KeyedForegroundMessageReceipt> {
+  opts = snapshotExecutionOptions(opts);
   const clientTurnId = chooseSentTurnKey(input.clientTurnId);
   try {
     if ('skillExperience' in input && input.skillExperience !== undefined)
@@ -605,7 +673,14 @@ export async function continueExecutionMessage(
     const result = (await readExecutionBody(
       response,
     )) as ExecutionErrorResponse;
-    return { ...readExecutionReceipt(response, result), clientTurnId };
+    return {
+      ...readExecutionReceipt(response, result, {
+        apiBase,
+        mutationKey: clientTurnId,
+        opts,
+      }),
+      clientTurnId,
+    };
   } catch (error) {
     rememberSentTurnKey(error, clientTurnId);
     throw error;
@@ -666,6 +741,7 @@ export async function getConversationHandoffStatus(
       response,
       result,
       'Conversation handoff status is unavailable.',
+      { apiBase, opts },
     );
   }
   return result.data;
@@ -704,7 +780,10 @@ export async function getTurnDelivery(
     code?: string;
   };
   if (!response.ok || !result.success || !result.data) {
-    throw chatRefusal(response, result, 'Message delivery is unavailable.');
+    throw chatRefusal(response, result, 'Message delivery is unavailable.', {
+      apiBase,
+      opts,
+    });
   }
   return result.data;
 }
@@ -733,6 +812,7 @@ export async function reserveConversationContextBoundary(
       response,
       result,
       'Conversation context boundary is unavailable.',
+      { apiBase, opts },
     );
   return result.data;
 }
@@ -758,6 +838,7 @@ export async function getConversationContextBoundaryStatus(
       response,
       result,
       'Conversation context boundary is unavailable.',
+      { apiBase, opts },
     );
   return result.data;
 }
@@ -784,6 +865,7 @@ export async function cancelConversationContextBoundary(
       response,
       result,
       'Conversation context boundary cannot be cancelled.',
+      { apiBase, opts },
     );
   return result.data;
 }

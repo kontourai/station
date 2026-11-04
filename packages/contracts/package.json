@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./peer-chat": "./src/peer-chat.ts",
     "./managed-policy": "./src/managed-policy.ts",
     "./isolated-repair": "./src/isolated-repair.ts",
     "./qualification-repair-policy": {

@@ -3057,7 +3057,23 @@ export function configureRuntimeRoutes(
   // These are the only unauthenticated HTTP routes. Register them before the
   // fail-closed middleware so a future business mount cannot accidentally
   // inherit public access from a broad path prefix.
-  configureRuntimePublicRoutes(context.app, context.environmentSecurityService);
+  const peerChatPreview = hostedTenantRegistry
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'paired-station-chats',
+        label: 'Paired Station chats',
+        description:
+          'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
+      });
+  configureRuntimePublicRoutes(
+    context.app,
+    context.environmentSecurityService,
+    () =>
+      peerChatPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
+  );
   // Shared between the public local-grant route below and the authenticated
   // `/api/pairing/**` host routes so a same-user self-authorization and an
   // operator-approved pairing land in the same log, at the same volume
@@ -7428,6 +7444,8 @@ export function configureRuntimeRoutes(
         resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
           context.environmentSecurityService.identifyDevice(credential),
         ),
+      receiverEnvironmentId: () =>
+        context.environmentSecurityService.devicePairing.environmentId(),
       // #485 receiver request-claim slice: the verified delegation-kind
       // grant (kind `delegation` + `orchestration:operate` + live id match)
       // — the ONLY identity a receiver claim or attempt lookup is keyed
@@ -10342,14 +10360,10 @@ export function configureRuntimeRoutes(
       peers: peerCredentialStore,
       remote: remoteStations,
       current: isRequestPrincipalCurrent,
-      preview: hostedTenantRegistry
-        ? undefined
-        : context.featurePreviews.bind({
-            id: 'paired-station-chats',
-            label: 'Paired Station chats',
-            description:
-              'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
-          }),
+      owner: isBoundRuntimeOwner,
+      preview: peerChatPreview,
+      previewGeneration: () =>
+        context.featurePreviews.generation('paired-station-chats'),
     }),
   );
   // station#1423: the operator's own answer-share management family. The base
@@ -12335,9 +12349,12 @@ export function configureRuntimePublicRoutes(
     EnvironmentSecurityService,
     'getPublicHandshake' | 'createPublicProof'
   >,
+  peerChatEnabled: () => boolean = () => false,
 ): void {
   app.get(PUBLIC_STATION_HANDSHAKE_PATH, async (c) => {
-    const handshake = await environmentSecurityService.getPublicHandshake();
+    const handshake = await environmentSecurityService.getPublicHandshake(
+      peerChatEnabled(),
+    );
     // Recorded from the served document rather than from the constants, so the
     // metric can never claim a contract the response did not actually carry.
     if (handshake.compatibility) {

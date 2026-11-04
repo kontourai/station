@@ -314,7 +314,7 @@ function stationAnswered(error: unknown): boolean {
   return (
     typeof status === 'number' &&
     Number.isFinite(status) &&
-    stationEnvelope !== false
+    stationEnvelope === true
   );
 }
 

@@ -1091,7 +1091,7 @@ function requireForegroundBody(
 // #3568: only POST /chat (and its /background sibling, which never queues)
 // takes `whenBusy`. An older Station strips the unknown key and refuses a busy
 // send as it always did, so the client keeps holding the message.
-const foregroundMessageSchema = foregroundMessageObjectSchema
+export const foregroundMessageSchema = foregroundMessageObjectSchema
   .extend({ whenBusy: z.literal('queue').optional() })
   .superRefine(requireForegroundBody);
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
@@ -1130,6 +1130,33 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
     ),
   })
   .superRefine(requireForegroundBody);
+
+export const conversationInboxBodySchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('steer'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('follow-up'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('display'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096).optional(),
+    })
+    .strict(),
+]);
 
 export const conversationHandoffSchema = foregroundMessageObjectSchema
   .extend({
@@ -2036,6 +2063,7 @@ export function createOrchestrationRoutes(
     resolveInboundDeviceKind?: (
       c: PrincipalResolutionContext,
     ) => 'device' | 'delegation' | undefined;
+    receiverEnvironmentId?: () => string;
     /**
      * #485 receiver request-claim slice: resolves the VERIFIED
      * delegation-kind device grant (kind `delegation` +
@@ -2348,6 +2376,27 @@ export function createOrchestrationRoutes(
       tenant: tenantExecutionContextForRequest(c.req.raw),
       ownerKey: JSON.stringify([userId, tenant?.tenantId ?? null]),
     };
+  };
+  const delegationConversationIsLocal = async (
+    c: PrincipalResolutionContext,
+    conversationId: string,
+  ) => {
+    if (deps.resolveInboundDeviceKind?.(c) !== 'delegation') return true;
+    const receiverId = deps.receiverEnvironmentId?.();
+    if (!receiverId || deps.hostedTenantRegistry) return false;
+    const detail = await orchestrationService.readCurrentConversationSession(
+      conversationId,
+      readAuthorityFor(c),
+    );
+    const started = detail
+      ? [...detail.events]
+          .reverse()
+          .find((event) => event.method === 'session.started')
+      : undefined;
+    return (
+      started?.metadata?.environmentId === receiverId &&
+      deps.isRequestPrincipalCurrent?.(c.req.raw) === true
+    );
   };
   /**
    * One in-flight peer-delegation reconciliation per caller.
@@ -2831,6 +2880,14 @@ export function createOrchestrationRoutes(
         withCanonicalCwd(target, scoped.canonicalCwd),
         projectDefault,
       );
+      if (
+        deps.resolveInboundDeviceKind?.(c) === 'delegation' &&
+        resolvedTarget.environment.kind !== 'current'
+      )
+        return c.json(
+          { success: false, error: 'Receiver-local conversation required' },
+          403,
+        );
       if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
         return c.json(
           {
@@ -3581,28 +3638,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/inbox',
-    validate(
-      z.discriminatedUnion('kind', [
-        z.object({
-          kind: z.literal('steer'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096),
-        }),
-        z.object({
-          kind: z.literal('follow-up'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096).optional(),
-        }),
-        z.object({
-          kind: z.literal('display'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096).optional(),
-        }),
-      ]),
-    ),
+    validate(conversationInboxBodySchema),
     async (c) => {
       const conversationId = param(c, 'conversationId');
       const inbox = deps.threadInbox;
@@ -3618,6 +3654,11 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       const body = getBody(c);
       const actor = resolveDispatchActor(deps, c);
+      if (!(await delegationConversationIsLocal(c, conversationId)))
+        return c.json(
+          { success: false, error: 'Receiver-local conversation required' },
+          403,
+        );
       const input = {
         conversationId,
         clientTurnId: body.key,
@@ -3931,6 +3972,18 @@ export function createOrchestrationRoutes(
               error: 'A client turn key is required.',
             },
             400,
+          );
+        if (
+          deps.resolveInboundDeviceKind?.(c) === 'delegation' &&
+          (body.environment?.kind !== 'current' ||
+            !(await delegationConversationIsLocal(
+              c,
+              param(c, 'conversationId'),
+            )))
+        )
+          return c.json(
+            { success: false, error: 'Receiver-local conversation required' },
+            403,
           );
         // #2377 slice C3b: an agent continues without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
@@ -7190,6 +7243,7 @@ export function createOrchestrationRoutes(
       // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
+      let receiverCurrencyTimer: ReturnType<typeof setInterval> | undefined;
       let stopActivityFlush: (() => void) | undefined;
       let clearPending: (() => void) | undefined;
       // General frames use a separate event name and no id, so Last-Event-ID
@@ -7228,6 +7282,8 @@ export function createOrchestrationRoutes(
             // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
+            if (receiverCurrencyTimer !== undefined)
+              clearInterval(receiverCurrencyTimer);
             stopActivityFlush?.();
             clearPending?.();
             unsub?.();
@@ -7244,6 +7300,21 @@ export function createOrchestrationRoutes(
         // snapshot slower than the deadline would reconnect forever. Each
         // frame is a single write, so a ping cannot land inside another frame.
         stopKeepAlive = sseKeepalive(stream);
+        if (deps.resolveInboundDeviceKind?.(c) === 'delegation') {
+          receiverCurrencyTimer = setInterval(() => {
+            let current = false;
+            try {
+              current = deps.isRequestPrincipalCurrent?.(c.req.raw) === true;
+            } catch {
+              /* Unreadable authority ends the lease. */
+            }
+            if (!current) {
+              closeReason ??= 'authorization-expired';
+              stream.abort();
+            }
+          }, 250);
+          receiverCurrencyTimer.unref();
+        }
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
         // emitted concurrently. Nothing buffered here is written until after
@@ -7730,6 +7801,8 @@ export function createOrchestrationRoutes(
           stream.abort();
         }
         stopKeepAlive?.();
+        if (receiverCurrencyTimer !== undefined)
+          clearInterval(receiverCurrencyTimer);
         stopActivityFlush?.();
         clearPending?.();
         unsub?.();

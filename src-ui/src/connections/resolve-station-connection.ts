@@ -1,9 +1,17 @@
 import type { SavedConnection } from '@kontourai/station-connect';
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
+import { parsePublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
+import { parsePeerChatConnection } from '@kontourai/station-contracts/peer-chat';
+import { hasCapability } from '@kontourai/station-sdk';
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
   type ApiRequestScope,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  getJson,
   StationRequestAuthorityError,
 } from '@kontourai/station-sdk/client';
 import { buildAuthorityNamespace } from '../lib/authorityNamespace';
@@ -58,8 +66,6 @@ export async function resolveStationConnection(
     options.environmentId ??
     source.observation.environmentId;
   if (!source.isCurrent()) throw new StationRequestAuthorityError();
-  if (binding?.affinity.kind === 'peer')
-    throw new StationConnectionUnavailableError('protocol-unavailable');
   if (
     binding?.affinity.kind === 'host' &&
     environmentId !== source.observation.environmentId
@@ -104,6 +110,7 @@ export async function resolveStationConnection(
         (affinity?.kind !== 'device' || profile.id === affinity.connectionId),
     );
     for (const profile of candidates) {
+      if (affinity?.kind === 'peer') break;
       const authority = await captureStationConnectionAuthority(
         profile.id,
         () => source.isCurrent() && registry.isCurrent(),
@@ -165,6 +172,124 @@ export async function resolveStationConnection(
       } catch {
         authority.release();
       }
+    }
+    if (!affinity || affinity.kind === 'peer') {
+      if (!source.isCurrent() || !registry.isCurrent())
+        throw new StationRequestAuthorityError();
+      if (source.mutationAllowed === false)
+        throw new StationConnectionUnavailableError('protocol-unavailable');
+      const opts = {
+        requestScope: source.requestScope,
+        timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+      };
+      const handshakeReply = await getJson(
+        `${source.requestScope.apiBase}/.well-known/station/v1`,
+        opts,
+      );
+      const handshake = handshakeReply.ok
+        ? parsePublicStationHandshake(await handshakeReply.json())
+        : null;
+      if (!hasCapability(handshake, 'peerChatTunnelV1'))
+        throw new StationConnectionUnavailableError('protocol-unavailable');
+      const prefix = `${source.requestScope.apiBase}/api/environments/peers/${encodeURIComponent(environmentId)}`;
+      const reply = await getJson(`${prefix}/chat-connection`, opts);
+      const envelope: unknown = await reply.json();
+      const descriptor =
+        reply.ok &&
+        reply.headers.get(STATION_ENVELOPE_HEADER) ===
+          STATION_ENVELOPE_HEADER_VALUE &&
+        envelope &&
+        typeof envelope === 'object' &&
+        'data' in envelope
+          ? parsePeerChatConnection(envelope.data)
+          : null;
+      if (
+        !source.isCurrent() ||
+        !descriptor ||
+        descriptor.environmentId !== environmentId ||
+        (affinity?.kind === 'peer' &&
+          (affinity.sourceEnvironmentId !== source.observation.environmentId ||
+            affinity.sourceConnectionId !== source.connectionId ||
+            affinity.principalNamespace !== descriptor.principalNamespace))
+      )
+        throw new StationConnectionUnavailableError('authority-unavailable');
+      const ceiling = conversationCapabilitiesFromAuthority(
+        source.observation,
+        { remote: true, mutationAllowed: true },
+      );
+      const capabilities = { ...ceiling };
+      const reads = new Set([
+        'historyRead',
+        'liveEvents',
+        'contentRead',
+        'attachmentRead',
+        'deliveryLookup',
+        'approvalInspect',
+        'checkpointRead',
+      ]);
+      const unsupported = new Set([
+        'folderSelect',
+        'fullAccess',
+        'approvalTrustTool',
+        'approvalTrustServer',
+        'fork',
+        'childInstruction',
+        'sharedHistoryRead',
+        'uiBlockActions',
+      ]);
+      for (const name of Object.keys(
+        capabilities,
+      ) as (keyof typeof capabilities)[]) {
+        if (
+          unsupported.has(name) ||
+          (!descriptor.ceiling.localConversation &&
+            ['continue', 'queue'].includes(name))
+        )
+          capabilities[name] = {
+            state: 'denied',
+            reason: unsupported.has(name)
+              ? 'direct-connection-required'
+              : 'protocol-unavailable',
+          };
+        else if (
+          reads.has(name)
+            ? !descriptor.ceiling.read
+            : !descriptor.ceiling.operate
+        )
+          capabilities[name] = {
+            state: 'denied',
+            reason: 'permission-required',
+          };
+      }
+      return {
+        environmentId,
+        stationName: descriptor.stationName,
+        stationKey: stationConnectionKey(
+          source.authorityNamespace,
+          environmentId,
+        ),
+        routeKind: 'relay',
+        targetApiBase: `${prefix}/chat-api`,
+        requestScope: source.requestScope,
+        authorityNamespace: JSON.stringify([
+          source.authorityNamespace,
+          descriptor.principalNamespace,
+        ]),
+        binding: {
+          version: 1,
+          environmentId,
+          stationName: descriptor.stationName,
+          affinity: {
+            kind: 'peer',
+            sourceEnvironmentId: source.observation.environmentId,
+            sourceConnectionId: source.connectionId,
+            principalNamespace: descriptor.principalNamespace,
+          },
+        },
+        capabilities,
+        isCurrent: source.isCurrent,
+        dispose: () => {},
+      } satisfies PreparedStationConnection;
     }
     throw new StationConnectionUnavailableError('profile-unavailable');
   });

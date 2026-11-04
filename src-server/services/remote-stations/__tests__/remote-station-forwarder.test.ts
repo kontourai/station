@@ -2,17 +2,140 @@ import { mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../peers/peer-credential-store.js';
 import {
   createRemoteStationForwarder,
   fetchRemoteStation,
+  fetchRemoteStationBytes,
   isRemoteStationTarget,
   REMOTE_STATION_REQUEST_TIMEOUT_MS,
   RemoteStationTimeoutError,
   remoteStationRequestTimeoutMs,
+  streamRemoteStation,
 } from '../remote-station-forwarder.js';
+
+describe('live peer responses', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test('is incremental, backpressured and guarded at each publication', async () => {
+    let current = true;
+    let upstream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const cancelled = vi.fn();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            start(controller) {
+              upstream = controller;
+            },
+            cancel: cancelled,
+          },
+          { highWaterMark: 0 },
+        ),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const response = await streamRemoteStation(
+      'https://peer.test/events',
+      {},
+      100,
+      () => current,
+    );
+    const reader = response.body!.getReader();
+    upstream!.enqueue(new Uint8Array([0, 255, 10]));
+    expect((await reader.read()).value).toEqual(new Uint8Array([0, 255, 10]));
+    const waiting = reader.read();
+    current = false;
+    upstream!.enqueue(new Uint8Array([42]));
+    await expect(waiting).rejects.toThrow('authority ended');
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]![1]).toMatchObject({
+      redirect: 'error',
+      credentials: 'omit',
+    });
+    expect(fetcher.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+  });
+
+  test('headers-only deadline does not time out a live body; idle revocation still terminates it', async () => {
+    vi.useFakeTimers();
+    let current = true;
+    const cancelled = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(new ReadableStream({ cancel: cancelled })),
+        ),
+    );
+    const response = await streamRemoteStation(
+      'https://peer.test/events',
+      {},
+      100,
+      () => current,
+    );
+    const reader = response.body!.getReader();
+    await vi.advanceTimersByTimeAsync(101);
+    current = false;
+    const outcome = reader.read();
+    const refused = expect(outcome).rejects.toThrow('authority ended');
+    await vi.advanceTimersByTimeAsync(250);
+    await refused;
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  test('client cancellation aborts upstream and releases the idle timer', async () => {
+    vi.useFakeTimers();
+    const cancelled = vi.fn();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(new ReadableStream({ cancel: cancelled })),
+      );
+    vi.stubGlobal('fetch', fetcher);
+    const response = await streamRemoteStation(
+      'https://peer.test/events',
+      {},
+      100,
+      () => true,
+    );
+    await response.body!.cancel();
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('media preserves arbitrary bytes and refuses overflow', async () => {
+    const bytes = new Uint8Array([0, 128, 255, 13, 10]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => new Response(bytes)),
+    );
+    const response = await fetchRemoteStationBytes(
+      'https://peer.test/attachment',
+      {},
+      1000,
+      () => true,
+      bytes.length,
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    await expect(
+      fetchRemoteStationBytes(
+        'https://peer.test/attachment',
+        {},
+        1000,
+        () => true,
+        bytes.length - 1,
+      ),
+    ).rejects.toThrow('byte limit');
+  });
+});
 
 const ENV = 'environment-remote-b';
 // Synthetic bearer assembled from parts so no credential-shaped literal is

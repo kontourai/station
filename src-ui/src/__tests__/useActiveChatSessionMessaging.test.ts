@@ -67,6 +67,7 @@ const getProjectChatDefaultsMock = vi.hoisted(() =>
 );
 
 class CodedOrchestrationError extends Error {
+  readonly stationEnvelope = true;
   constructor(
     readonly status: number,
     readonly serverMessage: string,

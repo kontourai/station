@@ -1581,12 +1581,22 @@ export async function mutateBinary(
   return mutateBody(url, method, opts, body, 'binary');
 }
 
+/** Text uploads retain scoped credential selection and transport/currentness guards. */
+export async function mutateText(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: string,
+): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'text');
+}
+
 async function mutateBody(
   url: string,
   method: string,
   opts: ClientRequestOptions | undefined,
   body: unknown,
-  kind: 'json' | 'binary',
+  kind: 'json' | 'binary' | 'text',
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
@@ -1601,7 +1611,9 @@ async function mutateBody(
                 'Content-Type':
                   kind === 'json'
                     ? 'application/json'
-                    : 'application/octet-stream',
+                    : kind === 'text'
+                      ? 'text/plain;charset=utf-8'
+                      : 'application/octet-stream',
               }
             : {}),
           ...(requestOptions?.headers || {}),
@@ -1626,7 +1638,12 @@ async function mutateBody(
     init.headers = headers;
   }
   if (hasBody) {
-    init.body = kind === 'json' ? JSON.stringify(body) : (body as Blob);
+    init.body =
+      kind === 'json'
+        ? JSON.stringify(body)
+        : kind === 'text'
+          ? (body as string)
+          : (body as Blob);
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
   const request =

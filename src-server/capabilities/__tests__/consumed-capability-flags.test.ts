@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -9,6 +11,7 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
+import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -25,6 +28,7 @@ import {
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
   resolveStationCapabilityFlags,
@@ -46,6 +50,7 @@ type Deployment = { hosted: boolean };
 function orchestrationRoutes(
   { hosted }: Deployment,
   service: Record<string, unknown>,
+  deps: Record<string, unknown> = {},
 ) {
   return createOrchestrationRoutes(
     service as never,
@@ -54,6 +59,7 @@ function orchestrationRoutes(
       logger: { debug: vi.fn() },
       getUserId: () => 'owner',
       isRequestPrincipalCurrent: () => true,
+      ...deps,
       ...(hosted
         ? { hostedTenantRegistry: parseHostedTenantRegistry(REGISTRY) }
         : {}),
@@ -72,6 +78,95 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  peerChatTunnelV1: async ({ hosted }) => {
+    const peer = {
+      environmentId: 'receiver',
+      apiBase: 'https://receiver.test',
+      credential: 'peer-credential-for-test',
+      scope: 'orchestration:read orchestration:operate',
+      label: 'Receiver',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const peers = { get: () => peer };
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        Response.json(
+          String(input).endsWith('/api/auth/authority')
+            ? {
+                schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+                environmentId: 'receiver',
+                principal: {
+                  kind: 'human',
+                  id: humanPrincipal('fixture', 'peer', 'Peer').id,
+                },
+                grant: {
+                  kind: 'device',
+                  deviceId: 'peer',
+                  grantedScopes: [
+                    'orchestration:read',
+                    'orchestration:operate',
+                  ],
+                },
+              }
+            : {
+                environmentId: 'receiver',
+                capabilities: { delegationLocalConversationV1: true },
+              },
+        ),
+      );
+    try {
+      const app = createPeerChatRoutes({
+        peers,
+        remote: createRemoteStationForwarder({
+          peers,
+          ssh: { list: () => [], connect: vi.fn() },
+        }),
+        current: () => true,
+        owner: () => true,
+        preview: hosted
+          ? undefined
+          : { select: (branches) => branches.enabled() },
+      });
+      return (await app.request('/receiver/chat-connection')).status === 200;
+    } finally {
+      fetch.mockRestore();
+    }
+  },
+  delegationLocalConversationV1: async (deployment) => {
+    let submitted = false;
+    const app = orchestrationRoutes(
+      deployment,
+      {
+        hasReadableSession: async () => true,
+        readCurrentConversationSession: async () => ({
+          events: [
+            {
+              method: 'session.started',
+              metadata: { environmentId: 'receiver' },
+            },
+          ],
+        }),
+      },
+      {
+        resolveInboundDeviceKind: () => 'delegation',
+        receiverEnvironmentId: () => 'receiver',
+        threadInbox: {
+          submit: () => {
+            submitted = true;
+            return { outcome: 'queued', entry: {} };
+          },
+        },
+      },
+    );
+    await app.request('/conversations/one/inbox', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'follow-up', key: 'one', message: 'Hello' }),
+    });
+    return submitted;
+  },
   childWorkSteering: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
       childWorkTranscripts: { ownsChild: () => true },
@@ -338,9 +433,10 @@ const CONSUMED_FLAGS: Record<
   // seed wherever the runtime mounts it with a troubleshoot service.
   troubleshootPrepare: async () => {
     const stationRoot = makeTempDir('troubleshoot-flag-');
+    const logFailure = vi.fn();
     const routes = createDiagnosticsRoutes(
       {} as never,
-      { error: vi.fn() } as never,
+      { error: logFailure } as never,
       {} as never,
       {
         troubleshoot: new TroubleshootService(stationRoot, {
@@ -360,6 +456,11 @@ const CONSUMED_FLAGS: Record<
       headers: { 'content-type': 'application/json' },
       body: '{}',
     });
+    if (!response.ok)
+      throw new Error(
+        `Troubleshoot capability probe failed: ${response.status}: ${logFailure.mock.calls.flatMap((call) => call.flatMap((value) => (value && typeof value === 'object' && 'error' in value && value.error instanceof Error ? [value.error.message] : []))).join('; ')}`,
+        { cause: logFailure.mock.calls },
+      );
     return response.status === 200;
   },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
@@ -415,7 +516,7 @@ async function advertisedFlags({ hosted }: Deployment) {
       : {},
   });
   const app = new Hono();
-  configureRuntimePublicRoutes(app as never, security);
+  configureRuntimePublicRoutes(app as never, security, () => true);
   const handshake = (await (
     await app.request('/.well-known/station/v1')
   ).json()) as { capabilities?: Record<string, boolean> };
@@ -432,6 +533,8 @@ describe('consumed capability flags match what their routes serve', () => {
   // together (withdrawing a flag everywhere, or serving hosted reads without
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
+    peerChatTunnelV1: { personal: true, hosted: false },
+    delegationLocalConversationV1: { personal: true, hosted: false },
     childWorkSteering: { personal: true, hosted: true },
     privateOperationalOutcomes: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },

@@ -6,6 +6,8 @@
  * may not export.
  */
 export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
+  'peerChatTunnelV1',
+  'delegationLocalConversationV1',
   'childWorkSteering',
   'connectionRoutes',
   'coordinatorSession',

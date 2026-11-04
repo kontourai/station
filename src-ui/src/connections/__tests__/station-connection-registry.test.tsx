@@ -5,6 +5,11 @@ import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
+import { PUBLIC_HANDSHAKE_SCHEMA_VERSION } from '@kontourai/station-contracts/environment-security';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { getJson } from '@kontourai/station-sdk/client';
@@ -231,7 +236,9 @@ describe('Station connection registry', () => {
 
   it('rejects a saved label/endpoint without verified identity and never falls back from a peer affinity to host', async () => {
     const { source, registry } = setup();
-    const fetch = vi.fn<typeof globalThis.fetch>();
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(async () => Response.json({}));
     vi.stubGlobal('fetch', fetch);
     const binding: ChatStationBindingV1 = {
       version: 1,
@@ -254,8 +261,70 @@ describe('Station connection registry', () => {
         profiles: [],
         environmentId: 'target',
       }),
-    ).rejects.toMatchObject({ reason: 'profile-unavailable' });
-    expect(fetch).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ reason: 'protocol-unavailable' });
+    expect(
+      fetch.mock.calls.every(([url]) =>
+        String(url).endsWith('/.well-known/station/v1'),
+      ),
+    ).toBe(true);
+    registry.retire();
+  });
+
+  it('resolves a negotiated relay with source credential scope and descriptor ceilings, retaining principal lineage', async () => {
+    const { source, registry } = setup();
+    let lineage = 'receiver-principal-one';
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      if (String(url).endsWith('/.well-known/station/v1'))
+        return Response.json({
+          schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
+          environmentId: 'host',
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+          transports: { http: 1, sse: 1, websocket: 1 },
+          compatibility: {
+            serverVersion: '0.1.11',
+            protocolVersion: 4,
+            minClientProtocol: 1,
+          },
+          capabilities: { peerChatTunnelV1: true },
+        });
+      return Response.json(
+        {
+          success: true,
+          data: {
+            version: 1,
+            environmentId: 'receiver',
+            stationName: 'Receiver',
+            principalNamespace: lineage,
+            receiver: { delegationLocalConversationV1: true },
+            ceiling: { read: true, operate: true, localConversation: true },
+          },
+        },
+        {
+          headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const lease = await resolveStationConnection({
+      source,
+      registry,
+      profiles: [],
+      environmentId: 'receiver',
+    });
+    expect(lease.connection.routeKind).toBe('relay');
+    expect(lease.connection.requestScope).toEqual(source.requestScope);
+    expect(lease.connection.targetApiBase).toBe(
+      `${source.requestScope.apiBase}/api/environments/peers/receiver/chat-api`,
+    );
+    expect(lease.connection.capabilities.liveEvents.state).toBe('allowed');
+    expect(lease.connection.capabilities.folderSelect.state).toBe('denied');
+    expect(lease.connection.capabilities.fullAccess.state).toBe('denied');
+    const binding = lease.connection.binding;
+    lease.release();
+    lineage = 'receiver-principal-two';
+    await expect(
+      resolveStationConnection({ source, registry, profiles: [], binding }),
+    ).rejects.toMatchObject({ reason: 'authority-unavailable' });
     registry.retire();
   });
 
