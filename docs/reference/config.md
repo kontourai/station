@@ -41,7 +41,9 @@ The [settings registry](../../packages/contracts/src/settings-registry.ts)
 defines accepted settings, defaults, visibility, and validation used by Settings
 and `station config set`. The [file loader](../../src-server/domain/config-loader-app.ts)
 also validates and migrates `app.json`. Prefer those interfaces to editing a
-running home's file. This page covers the main settings; the registry includes
+running home's file. A machine's [managed policy](../guides/managed-policy.md#settings)
+can fix or default settings: Station applies those values for every reader,
+never writes them to `app.json`, and refuses a change to a locked setting. This page covers the main settings; the registry includes
 additional first-run, workspace, approval, contribution, and preview settings.
 
 ### core fields
