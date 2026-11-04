@@ -92,6 +92,47 @@ describe('runtime resource diagnostics', () => {
     });
   });
 
+  test('aborted and expired waiters cannot acquire a later lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = createRuntimeResourcePostureController();
+      const held = controller.reserveEngineStart();
+      const abort = new AbortController();
+      const cancelled = admitEngineStartForIntent(
+        controller,
+        undefined,
+        'interactive_user',
+        {
+          binding: 'cancelled',
+          signal: abort.signal,
+        },
+      );
+      const expired = admitEngineStartForIntent(
+        controller,
+        undefined,
+        'interactive_user',
+        {
+          binding: 'expired',
+        },
+      );
+      const cancelledResult = expect(cancelled).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      const expiredResult = expect(expired).rejects.toThrow(
+        ConcurrentEngineStartCapacityError,
+      );
+      abort.abort();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await cancelledResult;
+      await expiredResult;
+      held.release();
+      const next = controller.reserveEngineStart();
+      next.release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('production server modules never import verification scripts', () => {
     const serverRoot = join(process.cwd(), 'src-server');
     const violations: string[] = [];

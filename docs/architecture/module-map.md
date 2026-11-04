@@ -4469,11 +4469,14 @@ sample; recent readers reuse it. The sampler computes busy time from two
 `os.cpus()` snapshots separated by its configured interval.
 
 `reserveEngineStart()` is a different capability: one in-memory lease per
-controller instance. It does not sample CPU. `admitEngineStartForIntent` retains
-server-derived intent labels but does not use them or CPU posture to prioritize
-work. Other Station runtimes have their own controllers; this is not the
-verification coordinator's host-wide scheduler. A competing cold start can
-receive `resource_engine_start_capacity` until the existing lease settles.
+controller instance. It does not sample CPU. An interactive start waits FIFO
+for the lease, for at most 60 seconds and up to 32 waiting starts; cancellation
+removes it from the queue. Other starts are refused immediately with
+`resource_engine_start_capacity` while the lease is held, including while it is
+handed to a waiting person. Recovery currently uses this background behavior:
+its shared respawn seam does not distinguish a person from automated callers.
+Other Station runtimes have their own controllers; this is not the verification
+coordinator's host-wide scheduler.
 
 **Composition and limits.** [Runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 creates the controller and supplies it to orchestration and the diagnostic route.
