@@ -4615,7 +4615,10 @@ browser generation to `ChromiumScreencastProducer` and its profile authorizer.
 simulator/emulator sessions and device-share authorization. Device video and
 input have separate liveness: iOS uses MJPEG; Android uses server-side H.264
 decoding or a labelled PNG-poll fallback. A successful Device dispatch means
-the hub socket accepted bytes, not that the application applied them. The
+the hub socket accepted bytes, not that the application applied them; an iOS
+`fold` input is the exception, settled by the helper's correlated reply. A
+foldable reports its hinge, stand and lit display as producer `fold` status,
+and iOS video follows the lit display's own panel stream. The
 shared live-surface Agent grant path is wired for Browser tools; the Device
 surface authorizer currently requires a human request.
 
@@ -4624,7 +4627,9 @@ separate input/lease requests. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
 coalesces input through one in-flight POST. `LiveSurfaceCanvas.tsx` is used by
-the Browser pane, Device pane and float-over-chat. Shown-source tracking avoids
+the Browser pane, Device pane and float-over-chat. A host may pass it a
+`projection` that draws the frame and maps points back to it; the Device pane
+uses one to draw a foldable's display bent at its hinge. Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The input-slot requirement in
 [ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
