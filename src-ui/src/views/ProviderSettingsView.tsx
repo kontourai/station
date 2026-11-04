@@ -294,14 +294,16 @@ export function ProviderSettingsView({
   });
 
   const deleteMutation = useDeleteModelConnectionMutation({
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      if (id !== selectedProviderId) return;
       dirtyFields.current.clear();
       setShowDeleteModal(false);
       setForm(null);
       setIsNew(false);
       setDeleteCompleted(true);
     },
-    onError: (err: Error) => {
+    onError: (err: Error, id) => {
+      if (id !== selectedProviderId) return;
       setShowDeleteModal(false);
       setError(err.message);
     },
