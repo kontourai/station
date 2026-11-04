@@ -1,0 +1,13 @@
+{
+  "revision": "c3283c31ff24867ceadeb01b4100dd03d4712c18",
+
+  "notes": [
+    {"path":"docs/design/pane-or-shell.md","note":"Scoped Home palette review at 7a569f1812: adding metadata for the existing Home destination preserves the documented shell-owned navigation/palette boundary and pane placement. No feature extraction or composition change; dated implementation claims are not recertified. Existing prose remains accurate.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Scoped Home palette review: corrected the current paragraph that said Home had no palette entry. Home retains regionSurface home and its main-page placement; the restored palette entry uses existing showSurfacePage rather than raw route or contextual reveal. Real isolated browser at 7a569f1812: keyboard Enter from Settings committed / and showed Home; Escape restored Settings search focus after its scheduled restore, and navigation focus landed on surviving content-view. Opened 390/1440 light/dark renders; narrow rows retain inherited 33px targets, so no touch accessibility or physical-device qualification claimed. No arrangement/persistence/native or unrelated historical placement claim recertified.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Scoped Home palette review at 7a569f1812: Home remains the existing overview surface and shell destination; metadata adds its palette entry without changing region/surface/pane/layout terminology or semantic owners. No glossary prose change needed. No unrelated work-status/coordinator definitions recertified.","inputs":["docs/glossary.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Scoped Home palette review at 7a569f1812: this restores discoverability of an existing always-shipped Home destination, with no new provider, runtime capability, effect or preview flag. Existing registry preview filtering and direct-route policy are unchanged. Guide remains accurate; no off/on/runtime preview qualification claimed.","inputs":["docs/guides/feature-previews.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}
