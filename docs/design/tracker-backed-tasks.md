@@ -26,7 +26,9 @@ The two systems divide the work as follows:
 
 Nothing mirrors status between the two. Station re-reads the linked item when
 a person opens the Task, when a Session is dispatched, and when a Session asks
-for its brief with `get_task_brief`. Nothing polls.
+for its brief with `get_task_brief`. Today nothing polls. The owner approved
+[bounded, preview-gated follow-up polling](../decisions/task-tracker-followups.md);
+that decision does not by itself establish that polling is implemented.
 
 ## Task ↔ tracker item cardinality
 
@@ -486,4 +488,6 @@ lands separately, so that a red result points to one owner.
   ([work-plane Decision 4](work-plane-composition.md#decisions-owner-ratified-2026-07-20);
   kontourai/flow-agents#1508).
 - A separate Epic entity, or copying issue hierarchy into Station.
-- Polling, webhooks, or standing jobs for freshness.
+- Webhooks or new standing daemons for freshness. The owner approved the
+  bounded, preview-gated polling exception in the
+  [follow-up decision](../decisions/task-tracker-followups.md).
