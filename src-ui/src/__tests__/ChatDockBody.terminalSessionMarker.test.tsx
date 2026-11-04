@@ -498,8 +498,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
           } as any,
           {
             role: 'user',
-            content:
-              `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Engine exited with code 1 using token ${FAKE_GITHUB_TOKEN}`,
+            content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Engine exited with code 1 using token ${FAKE_GITHUB_TOKEN}`,
             timestamp: 2,
             turnId: 'turn-failed-1',
           } as any,
