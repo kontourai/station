@@ -186,17 +186,43 @@ from the loaded policy before the runtime is built, and refuses with one
 sentence (`managedPolicyDenial`) and the error code
 `managed-policy-capability-disabled` (`permission_denied`).
 
+**Limits are rebuilt from every slice.** The parsed document, the client
+summary and the status decode each rebuild `limits` by merging every entry in
+`MANAGED_POLICY_LIMIT_SLICES`, rather than from one slice's own fields. A
+later slice adds itself to that list, and a round-trip test that sets every
+enforced key fails when a key is missing from any of the three, so merging two
+slices cannot silently drop a restriction.
+
 **Telemetry is off at the publisher, not at the setting.** The usage resolver
 (`resolveTelemetryConfiguration`) gives every publisher tier `off` with reason
 `managed`, which outranks the saved choice, the environment and Do Not Track.
 Like Do Not Track, it forbids the tier-lowered feedback that a user's own
 "off" still allows. The connection checks and any `PUT /config/app` that
 raises a sharing choice are refused; a choice that keeps or lowers is saved,
-because it changes nothing that is sent. The OpenTelemetry bootstrap runs when
+because it changes nothing that is sent. The product delivery status carries
+the same sentence, so clients disable the connection check rather than send a
+request that will be refused. The OpenTelemetry bootstrap runs when
 `telemetry.ts` is imported, before `main()`, so it reads the policy itself.
 Both read one memoized load (`managed-policy-boot.ts`), so the bootstrap and
 the startup check cannot see different policies. When that load fails, the
 bootstrap registers nothing and `main()` refuses to start.
+
+**The embedded agent framework's own export is off too.** VoltAgent reads
+`VOLTAGENT_PUBLIC_KEY` and `VOLTAGENT_SECRET_KEY` itself and, once it has a
+client, its default observability exports traces and logs to the vendor's
+service. Under the limit, Station registers VoltAgent observability that keeps
+the local trace store and live stream but has no remote processor
+(`voltagent-observability.ts`). It does this before the first agent is
+created, because an agent with no global observability builds the
+remote-exporting default for itself.
+
+**What the switch does not cover.** The Kontour Console bridge (session and run
+events to an operator-configured hub or workspace files), private usage
+storage (a person's usage pages in the operator's own companion, after that
+person's custody is set up), and the telemetry of engine programs Station runs
+keep their own settings. The first two go only where an operator sends them;
+an engine program follows its own configuration. The administrator guide says
+so.
 
 **Managed telemetry settings stay refused.** #4517 refuses `telemetryTier`,
 the telemetry endpoints and their key references in `settings`. Their readers
@@ -218,9 +244,23 @@ nothing for the switch to stop there yet.
 
 - `allowedUrls` is checked where every marketplace is listed
   (`RegistrySourceManager`), so a refused source reads as disabled to every
-  reader (catalog, refresh, install) and cannot be added or enabled. The
-  name-based plugin resolver, which reads registry providers directly, applies
-  the same check.
+  reader (catalog, refresh, install) and cannot be added or enabled. Every
+  other reader of the registered plugin registries (update checks, dependency
+  resolution, previews, lifecycle lookups) gets them through
+  `getPluginRegistryProviders()`, which leaves refused ones out. The
+  name-based resolver sees them only to say why nothing matched.
+- Tool-server (MCP) catalogs follow the same list: the configured MCP
+  subregistry outside it reports the policy sentence and is never fetched, and
+  a registry manifest's `tools` outside it are not listed or installed.
+  Station's bundled curation is always allowed.
+- Every entry must be `https`. A registry read over http can be altered in
+  transit, so a policy cannot vouch for one; the parser refuses it at load.
+- A manifest read follows redirects itself (`registry-fetch.ts`) and checks
+  each hop before requesting it. It never goes from https to http, with or
+  without a policy. Under `allowedUrls` a hop to the same origin is followed,
+  because that origin already serves the listed URL and could serve the same
+  bytes there, and a hop to any other origin must itself be listed. A check
+  on the final URL alone would come after the unlisted host was contacted.
 - Locations compare as normalized URLs (`github:o/r` reads as
   `https://github.com/o/r`), never as substrings.
 - Station's bundled catalog ships with the install and is always allowed. A
@@ -229,8 +269,18 @@ nothing for the switch to stop there yet.
 - `unsignedPackages: false` requires a signer from the host's own
   `registryTrust` on every registry plugin install. The policy adds no key, so
   without a trust profile for the registry there is no signer and the install
-  is refused. A skill cannot carry a signature, so every skill marketplace but
-  the bundled one is refused.
+  is refused. When the registry's claim carries no signature, the refusal
+  comes before any package bytes are fetched. A signed claim is verified after
+  the fetch, because the signature covers the package bytes. The refusal is
+  the managed `403` (`managed-policy-capability-disabled`, reason
+  `managed-signature-required`), like every other managed refusal, rather than
+  the `409` of a host trust refusal.
+- A skill cannot carry a signature, so every skill marketplace but the bundled
+  one is refused. A tool-server definition cannot either, so under
+  `unsignedPackages: false` no tool server comes from a catalog but Station's
+  bundled curation. Refusing them was chosen over documenting the limit as
+  plugins-and-skills only: an unsigned definition names an endpoint the
+  organization has not vouched for.
 - `defaultSkillRegistries: false` skips the built-in skill registries at
   startup, alongside `disableDefaultSkillRegistries`.
 - `acpRegistryInstalls: false` refuses `POST /acp/registry/:id/install` for

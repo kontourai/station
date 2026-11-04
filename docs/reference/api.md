@@ -2357,7 +2357,10 @@ returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
 Unsupported versions and unavailable state must not be replaced with healthy
-defaults or cached success.
+defaults or cached success. Under a managed policy with `limits.telemetry:
+false`, `product.managedDenial` and `otel.managedDenial` carry the policy
+sentence, so a client can disable both connection checks; older servers omit
+them.
 
 `POST /api/usage-telemetry/connection-checks/product` and
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.

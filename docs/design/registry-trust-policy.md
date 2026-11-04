@@ -62,10 +62,13 @@ the policy identity and its applied epoch.
 ## Acquisition and consent
 
 A [managed policy](../guides/managed-policy.md#capability-switches) can narrow
-acquisition further with `limits.registries`: a registry URL allow list
-(applied in `RegistrySourceManager` and the name-based plugin resolver), a
-signer requirement that turns every registry install into one that needs a key
-from this applied policy (`managed-signature-required`), and switches for the
+acquisition further with `limits.registries`. It sets an https-only registry
+URL allow list, applied in `RegistrySourceManager`, in every reader of the
+registered plugin registries and in the tool-server catalogs, and checked at
+each manifest redirect hop. It can require a signer, which turns every
+registry install into one that needs a key from this applied policy
+(`managed-signature-required`, answered as the managed `403`); an unsigned
+claim is refused before the package is fetched. It also has switches for the
 default skill registries and ACP registry installs. It adds no trust anchor.
 
 `JsonManifestRegistryProvider.resolvePackage()` obtains source and untrusted

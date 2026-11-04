@@ -73,10 +73,10 @@ force a capability on. Leave a key out to leave that capability to each user.
 
 | Key | What `false` (or the list) does |
 | --- | --- |
-| `limits.telemetry` | No usage data and no OpenTelemetry export, whatever `telemetryTier`, `telemetryEnabled`, the telemetry endpoints, the environment variables or Do Not Track say. Station creates no exporter, sends no daily count or feedback, and refuses connection checks and any change that raises a sharing choice. |
+| `limits.telemetry` | No usage sharing and no OpenTelemetry export from Station, whatever `telemetryTier`, `telemetryEnabled`, the telemetry endpoints, the environment variables or Do Not Track say. Station sends no daily count, notice or feedback to Kontour or to a configured product receiver. It registers no OpenTelemetry exporter, and the agent framework it embeds does not export traces or logs to its vendor service, even with `VOLTAGENT_PUBLIC_KEY` and `VOLTAGENT_SECRET_KEY` set. Connection checks and any change that raises a sharing choice are refused. See [what `limits.telemetry` does not cover](#what-limitstelemetry-does-not-cover). |
 | `limits.webhookAutomations` | `POST /api/webhooks/inbound` refuses every request, a correctly signed one included, before it reads the webhook file. The file and its tokens are kept, and you can still edit or delete them, but nothing in the file (`enabled: true`, a new token) makes them run. |
-| `limits.registries.allowedUrls` | Plugins and skills come only from marketplaces at these `http` or `https` URLs, plus Station's bundled catalog. Every other marketplace, a local folder included, reads as disabled and cannot be added, enabled, refreshed or installed from. URLs compare as parsed addresses, so `https://example.com/r` does not allow `https://example.com/r.evil`. An empty list allows only the bundled catalog. At most 64 URLs. |
-| `limits.registries.unsignedPackages` | A plugin from a registry must carry a signature from a key the machine's own `registryTrust` already trusts. The policy adds no keys: without a trust profile for the registry, the install is refused. Skills cannot be signed, so no skill comes from a marketplace other than the bundled catalog. |
+| `limits.registries.allowedUrls` | Plugins, skills and tool servers (MCP) come only from catalogs at these `https` URLs, plus Station's bundled catalogs. Station refuses to load a policy that lists an `http` URL, because a registry read over plain http can be altered in transit. Every other catalog, a local folder included, reads as disabled. It cannot be added, enabled, refreshed or installed from, and update checks never contact it. URLs compare as parsed addresses, so `https://example.com/r` does not allow `https://example.com/r.evil`. A redirect from a listed catalog is followed only to the same origin or to another listed URL, and it is checked before it is requested. An empty list allows only the bundled catalogs. At most 64 URLs. |
+| `limits.registries.unsignedPackages` | A plugin from a registry must carry a signature from a key the machine's own `registryTrust` already trusts. The policy adds no keys: without a trust profile for the registry, the install is refused. When the registry's entry shows the package is unsigned, the install is refused before any package bytes are fetched. A signature can only be verified against the bytes it signs, so a signed package is fetched first and then checked. Skills and tool-server definitions cannot be signed, so none comes from a catalog other than Station's bundled ones. |
 | `limits.registries.defaultSkillRegistries` | Station's built-in skill registries are not registered, as if `disableDefaultSkillRegistries` were set. |
 | `limits.registries.acpRegistryInstalls` | Engines cannot be added from the public ACP registry. Station's own engine entries are unaffected. |
 
@@ -94,10 +94,28 @@ What the switches do not cover:
 Users see one sentence wherever a switch refuses something, for example
 "Example Corp's policy manages usage sharing: it is turned off. For help, visit
 https://help.example.com/station". Settings shows it instead of the sharing
-choices, beside a refused marketplace and in the OpenTelemetry delivery status;
+choices, beside a refused marketplace and in the product and OpenTelemetry
+delivery status, where the connection checks are disabled;
 the Connections page shows it for webhooks, and `station telemetry status`
 prints it. API refusals answer `403` with code
-`managed-policy-capability-disabled`.
+`managed-policy-capability-disabled`. A refused registry install also carries
+`reason: "managed-signature-required"` when the signature requirement refused
+it.
+
+### What `limits.telemetry` does not cover
+
+The switch covers usage sharing and OpenTelemetry export. These separate
+paths keep their own settings:
+
+- **The Kontour Console bridge.** With `STATION_CONSOLE_HUB_URL` or
+  `STATION_CONSOLE_FILE_SINK` set, Station delivers session and run events to
+  that Console hub or to workspace files. It is off unless configured.
+- **Private usage storage.** A person's usage pages go to the operator's own
+  telemetry companion only after that person's analytics custody is set up.
+- **Engines Station runs.** An engine's own program (a coding agent's
+  command-line tool, for example) follows its own telemetry settings and
+  environment variables, not this policy, and may report to its own vendor.
+  Turn that off in the engine's configuration.
 
 ## Where to install it
 
