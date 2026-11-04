@@ -144,7 +144,12 @@ function followedItems(
         notFollowed.push({ itemRef: ref, reason: 'different-repository' });
       continue;
     }
-    if (refs.length > MAX_KEPT_PULL_REQUESTS) continue;
+    // #4582: past the per-Task cap a kept pull request is reported, not
+    // silently dropped.
+    if (refs.length > MAX_KEPT_PULL_REQUESTS) {
+      notFollowed.push({ itemRef: ref, reason: 'over-cap' });
+      continue;
+    }
     refs.push(ref);
   }
   return { refs, notFollowed };
@@ -198,12 +203,10 @@ export class TaskFollowUpPoller {
     if (!enabled) return { outcome: 'disabled', tasks: [] };
     if (input.now < this.backoffUntil)
       return { outcome: 'backing-off', tasks: [] };
-    const signal = AbortSignal.any([
-      input.signal,
-      AbortSignal.timeout(
-        this.options.deadlineMs ?? TASK_FOLLOW_UP_TICK_DEADLINE_MS,
-      ),
-    ]);
+    const deadline = AbortSignal.timeout(
+      this.options.deadlineMs ?? TASK_FOLLOW_UP_TICK_DEADLINE_MS,
+    );
+    const signal = AbortSignal.any([input.signal, deadline]);
     const store = this.options.store();
     if (!store) return { outcome: 'stopped', tasks: [] };
     const tasks = this.options.tasks.listTasks();
@@ -256,7 +259,27 @@ export class TaskFollowUpPoller {
         });
         return { ...summary, outcome: 'backing-off' };
       }
-      if (signal.aborted) return { ...summary, outcome: 'stopped' };
+      if (signal.aborted) {
+        // #4582: the deadline cut this Task short. Mark it polled anyway, so
+        // the five-minute interval applies and a Task that never finishes
+        // inside the deadline cannot sort first on every tick and starve the
+        // rest. Its cursors already hold what it read; it resumes there.
+        // A shutdown abort marks nothing.
+        if (deadline.aborted && !input.signal.aborted) {
+          store.markPolled(
+            incarnation,
+            new Date(input.now).toISOString(),
+            'deadline',
+          );
+          summary.tasks.push({
+            taskId: task.id,
+            items: items.length,
+            recorded,
+            outcome: 'deadline',
+          });
+        }
+        return { ...summary, outcome: 'stopped' };
+      }
       const outcome = failures.length ? 'partial' : 'ok';
       if (failures.length)
         this.options.logger?.warn(

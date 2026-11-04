@@ -42,6 +42,7 @@ import {
   hang,
   installFakeGhGraphql,
   noLogin,
+  slow,
 } from './fixtures/fake-gh-graphql.js';
 
 const temp = trackTempDirs();
@@ -664,7 +665,7 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     expect(digestOf(second)).toBe(digestOf(first));
   });
 
-  test('a hanging gh is stopped at the tick deadline and the Task stays due', async () => {
+  test('a hanging gh is stopped at the tick deadline and the Task is marked polled with a deadline outcome', async () => {
     const task = await trackerTask();
     await enable();
     hang(ghDir);
@@ -680,13 +681,16 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       signal: new AbortController().signal,
     });
     expect(performance.now() - started).toBeLessThan(5_000);
-    expect(summary.outcome).toBe('stopped');
+    expect(summary).toEqual({
+      outcome: 'stopped',
+      tasks: [{ taskId: task.id, items: 2, recorded: 0, outcome: 'deadline' }],
+    });
     expect(calls(ghDir)).toHaveLength(1);
     expect(
       holder
         .forRead()!
         .lastPolledAt({ taskId: task.id, taskCreatedAt: task.createdAt }),
-    ).toBeUndefined();
+    ).toBe(new Date(NOW).toISOString());
   });
 
   test('gh without a login stops the poll after one call and backs off', async () => {
@@ -770,5 +774,87 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
         line.startsWith('- Comment on github:acme/widgets#1 '),
       ),
     ).toEqual([]);
+  });
+
+  test('a Task the deadline always cuts short cannot starve another: Task B is polled within two ticks (#4582)', async () => {
+    const b = await trackerTask('2026-10-01T09:00:00.000Z', {
+      keepPullRequest: false,
+      ref: 'github:acme/widgets#14883',
+    });
+    const a = await trackerTask();
+    await enable();
+    // B was polled before and is due again; A never was, so oldest-first
+    // puts A first on every tick unless a cut-short poll counts as a poll.
+    holder
+      .forWrite()!
+      .markPolled(
+        { taskId: b.id, taskCreatedAt: b.createdAt },
+        new Date(NOW - 6 * 60_000).toISOString(),
+        'ok',
+      );
+    answerFirstPoll();
+    answer(ghDir, { number: 14883 }, issuePage2);
+    slow(ghDir, 400);
+    const bounded = composeTaskFollowUpPoller(registry, false, {
+      store: () => holder.forWrite(),
+      tasks: graph,
+      reader: new GhGitHubFollowUpReader({ command: gh }),
+      // A needs four reads (two pages on each of two items); one fits.
+      deadlineMs: 700,
+    })!;
+    const tick = (now: number) =>
+      bounded.poll({ now, signal: new AbortController().signal });
+    const first = await tick(NOW);
+    expect(first.tasks).toEqual([
+      expect.objectContaining({ taskId: a.id, outcome: 'deadline' }),
+    ]);
+    await tick(NOW + 60_000);
+    expect(calls(ghDir).some((call) => call.number === '14883')).toBe(true);
+    expect(
+      holder
+        .forRead()!
+        .lastPolledAt({ taskId: b.id, taskCreatedAt: b.createdAt }),
+    ).toBe(new Date(NOW + 60_000).toISOString());
+  });
+
+  test('kept pull requests past the per-Task cap are reported in the brief, not silently dropped (#4582)', async () => {
+    const task = await trackerTask('2026-10-01T09:00:00.000Z', {
+      keepPullRequest: false,
+    });
+    for (let n = 1; n <= 11; n += 1)
+      await graph.keepDeclaredPullRequest(
+        {
+          taskId: task.id,
+          operationId: `op-cap-${n}`,
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'widgets' },
+          ref: String(30000 + n),
+          nativeId: `PR_cap_${n}`,
+          provenance: {
+            sessionId: 'session-cap',
+            turnId: `turn-cap-${n}`,
+            toolCallId: `call-cap-${n}`,
+            declarationId: `declaration-cap-${n}`,
+            eventId: `event-cap-${n}`,
+          },
+        },
+        { expectedProjectId: 'project-alpha', isAuthorized: () => true },
+      );
+    await enable();
+    answer(ghDir, { number: ISSUE }, issuePage1);
+    answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C2 }, issuePage2);
+    const summary = await poll();
+    // The primary item and ten kept pull requests; the eleventh is not read.
+    expect(summary.tasks[0]).toMatchObject({ items: 11 });
+    expect(calls(ghDir).map((c) => c.number)).not.toContain('30011');
+    const text = await brief(graph.readTask(task.id)!);
+    expect(text).toContain(
+      [
+        'Kept pull requests not followed: past the limit of 10 kept pull requests followed per Task (1 pull request).',
+        'Quoted, written by agents and people on this Task:',
+        '> github:acme/widgets#30011',
+      ].join('\n'),
+    );
   });
 });

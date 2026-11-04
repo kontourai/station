@@ -438,6 +438,22 @@ function followUpEntry(item: TaskFollowUpObservation): string[] {
   ];
 }
 
+/** One not-followed group: Station's line, then the refs, quoted. */
+function notFollowedLines(
+  entries: readonly TaskFollowUpBriefView['notFollowed'][number][],
+  why: string,
+): string[] {
+  if (!entries.length) return [];
+  return [
+    `${why} (${count(entries.length, 'pull request', 'pull requests')}).`,
+    BY_TASK,
+    quotedLine(
+      entries.map((entry) => entry.itemRef).join(', '),
+      NOT_FOLLOWED_LINE_MAX,
+    ),
+  ];
+}
+
 /** The follow-up section within `max` characters, newest first. */
 function renderFollowUps(
   view: TaskFollowUpBriefView | undefined,
@@ -452,17 +468,16 @@ function renderFollowUps(
     '## Tracker follow-ups (newest first)',
     `Recorded from the Task's followed GitHub items${view.lastPolledAt ? `; last read ${stamp(view.lastPolledAt)}` : ''}. Classes: member (owner, member or collaborator), bot (GitHub App or [bot] login), other (anyone else), ci (check run).`,
     // A kept pull request's repository came from a Session's declaration;
-    // one outside the board-checked item's repository is never read.
-    ...(view.notFollowed.length
-      ? [
-          `Kept pull requests not followed: different repository from the Task's work item, so Station does not read them (${count(view.notFollowed.length, 'pull request', 'pull requests')}).`,
-          BY_TASK,
-          quotedLine(
-            view.notFollowed.map((entry) => entry.itemRef).join(', '),
-            NOT_FOLLOWED_LINE_MAX,
-          ),
-        ]
-      : []),
+    // one outside the board-checked item's repository is never read, and
+    // one past the per-Task cap is not read this slice (#4582).
+    ...notFollowedLines(
+      view.notFollowed.filter((e) => e.reason === 'different-repository'),
+      "Kept pull requests not followed: different repository from the Task's work item, so Station does not read them",
+    ),
+    ...notFollowedLines(
+      view.notFollowed.filter((e) => e.reason === 'over-cap'),
+      'Kept pull requests not followed: past the limit of 10 kept pull requests followed per Task',
+    ),
     BY_TRACKER,
   ];
   const entries = view.items.map((item) => followUpEntry(item).join('\n'));

@@ -292,11 +292,13 @@ export interface BuiltinSchedulerOptions {
   /**
    * Automation polling (`github-poll`) rides this scheduler's minute tick and
    * has no timer of its own. At most one poll is in flight; `stop()` aborts
-   * it, waits for it, then closes the poller.
+   * it, waits for it, then closes the poller and waits for that close. Work
+   * a poller runs on its own single flight (Task tracker follow-ups) is
+   * stopped and awaited by its `close()`, not by the poll.
    */
   automationPoller?: {
     poll(input: { now: number; signal: AbortSignal }): Promise<unknown>;
-    close(): void;
+    close(): void | Promise<void>;
   };
 }
 
@@ -451,7 +453,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     await Promise.all(this.runningJobs.values());
     await Promise.all(this.pendingAnnouncements);
     await this.automationPoll;
-    this.options.automationPoller?.close();
+    await this.options.automationPoller?.close();
     if (!this.closed) {
       this.closed = true;
       this.ledger.close();

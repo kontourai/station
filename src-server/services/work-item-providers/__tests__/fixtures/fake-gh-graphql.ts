@@ -48,6 +48,11 @@ export function answer(
   writeFileSync(path, JSON.stringify(table));
 }
 
+/** Every later call answers only after `ms` milliseconds. */
+export function slow(dir: string, ms: number): void {
+  writeFileSync(join(dir, 'slow'), String(ms));
+}
+
 /** Every later call hangs until killed. */
 export function hang(dir: string): void {
   writeFileSync(join(dir, 'hang'), '');
@@ -95,6 +100,10 @@ fs.appendFileSync(path.join(dir, 'calls.log'), JSON.stringify({
   withChecks: vars.withChecks,
   cwd: process.cwd(),
 }) + '\\n');
+if (fs.existsSync(path.join(dir, 'slow'))) {
+  const ms = Number(fs.readFileSync(path.join(dir, 'slow'), 'utf8'));
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 if (fs.existsSync(path.join(dir, 'hang'))) {
   // Never answers; only a kill (the caller's deadline) ends it.
   setInterval(() => {}, 1000);

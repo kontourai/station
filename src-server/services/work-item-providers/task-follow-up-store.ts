@@ -173,7 +173,8 @@ function fromRow(row: ObservationRow): TaskFollowUpObservation {
 /** A kept pull request the poller refused to follow, and why. */
 export interface TaskFollowUpNotFollowed {
   itemRef: string;
-  reason: 'different-repository';
+  /** Another repository than the board-checked item's, or past the per-Task cap. */
+  reason: 'different-repository' | 'over-cap';
 }
 
 /** What the brief shows: newest first, passing checks only counted. */
@@ -355,8 +356,8 @@ export class TaskFollowUpStore {
       .all(task.taskId, task.taskCreatedAt)
       .flatMap((row) =>
         typeof row.item_ref === 'string' &&
-        row.reason === 'different-repository'
-          ? [{ itemRef: row.item_ref, reason: 'different-repository' as const }]
+        (row.reason === 'different-repository' || row.reason === 'over-cap')
+          ? [{ itemRef: row.item_ref, reason: row.reason }]
           : [],
       );
   }
