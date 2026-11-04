@@ -145,6 +145,17 @@
   text-decoration: underline;
 }
 
+/* Its own row under the reason, a full 44px touch target. */
+.browser-pane__notice .browser-pane__notice-help {
+  align-items: center;
+  display: flex;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--k-space-1);
+  margin-inline-start: calc(-1 * var(--k-space-1));
+  width: fit-content;
+}
+
 .browser-pane__panel {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 6px);

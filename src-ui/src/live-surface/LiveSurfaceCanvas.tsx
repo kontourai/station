@@ -1626,7 +1626,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
                 setChromeHeld(false);
             }}
           >
-            {inputNotice}
             <LiveSurfaceViewerControls
               label={`${label}: full screen controls`}
               status={DRIVER_TEXT[tone]}
@@ -1658,6 +1657,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
                 sendInput,
               })}
             />
+            {inputNotice}
           </div>
         ) : (
           <Button

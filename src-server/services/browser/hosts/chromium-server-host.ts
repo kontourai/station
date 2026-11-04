@@ -483,13 +483,18 @@ export const launchChromiumProcess: ChromiumLauncher = ({
   });
   let stderrTail = '';
   let failure: ChromiumLaunchFailure | undefined;
-  // Classified as it arrives: a stack trace after the FATAL line can push
-  // the line itself out of the bounded tail.
+  // Classified as it arrives, and before the tail is trimmed: one write can
+  // carry the FATAL line and kilobytes of stack after it. The unfinished
+  // last line of earlier output is kept with the chunk, so a line split
+  // across writes still classifies.
+  let lineCarry = '';
   proc.stderr?.on('data', (chunk: Buffer) => {
-    stderrTail = (stderrTail + chunk.toString('utf8')).slice(
-      -STDERR_TAIL_BYTES,
-    );
-    failure ??= classifyChromiumStderr(stderrTail);
+    const text = chunk.toString('utf8');
+    const scanned = lineCarry + text;
+    failure ??= classifyChromiumStderr(scanned);
+    const lastNewline = scanned.lastIndexOf('\n');
+    lineCarry = scanned.slice(lastNewline + 1).slice(-STDERR_TAIL_BYTES);
+    stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
   });
   proc.stderr?.on('error', () => {});
   const stderrEnded = new Promise<void>((resolve) => {
@@ -591,6 +596,14 @@ function settleWithin<T>(
   ]).finally(() => clearTimeout(timer));
 }
 
+/** A bounded host step that did not finish in time. */
+class HostStepTimeoutError extends Error {
+  constructor(what: string, ms: number) {
+    super(`${what} timed out after ${ms}ms`);
+    this.name = 'HostStepTimeoutError';
+  }
+}
+
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
@@ -600,10 +613,7 @@ function withTimeout<T>(
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`${what} timed out after ${ms}ms`)),
-        ms,
-      );
+      timer = setTimeout(() => reject(new HostStepTimeoutError(what, ms)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -877,7 +887,11 @@ export class ChromiumServerHost implements BrowserHost {
             )
           : error instanceof BrowserHostExitedError
             ? new BrowserHostExitedError(error.reason, launch.failure?.())
-            : error;
+            : // A browser that hangs instead of exiting could not start
+              // either: the same typed failure, not an untyped 500.
+              error instanceof HostStepTimeoutError
+              ? new BrowserHostExitedError(error.message, launch.failure?.())
+              : error;
       for (const off of running.unsubscribe) off();
       await launch.terminate().catch(() => {});
       await proxy.close();

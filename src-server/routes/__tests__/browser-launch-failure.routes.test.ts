@@ -49,7 +49,22 @@ function fakeChromium(stderr: readonly string[], code: number): string {
   return path;
 }
 
-function harness(executablePath: string) {
+/**
+ * An executable that writes `stderr` in ONE write(2) call, then exits with
+ * `code` (or, with `code` null, stays up and never answers CDP).
+ */
+function fakeChromiumSingleWrite(stderr: string, code: number | null): string {
+  const path = join(tempDir('station-fake-chromium-'), 'chrome');
+  const body =
+    code === null
+      ? `require('node:fs').writeSync(2, ${JSON.stringify(stderr)}); setInterval(() => {}, 1000);`
+      : `require('node:fs').writeSync(2, ${JSON.stringify(stderr)}); process.exit(${code});`;
+  writeFileSync(path, `#!${process.execPath}\n${body}\n`);
+  chmodSync(path, 0o755);
+  return path;
+}
+
+function harness(executablePath: string, launchTimeoutMs?: number) {
   const stationHome = tempDir('station-browser-launch-');
   const events: ChromiumHostEvent[] = [];
   const listeners = deriveStationListeners({
@@ -68,6 +83,7 @@ function harness(executablePath: string) {
             reach: { kind: 'operator' },
           },
           onEvent: (event) => events.push(event),
+          ...(launchTimeoutMs ? { launchTimeoutMs } : {}),
         }),
     ),
   });
@@ -147,6 +163,36 @@ describe.skipIf(process.platform === 'win32')(
         code: 'browser-sandbox-unavailable',
       });
     });
+
+    test('the FATAL line classifies when one stderr write carries it and over 4 KiB after it', async () => {
+      const payload = `${SANDBOX_FATAL}\n${'#0 0x5555deadbeef stack frame\n'.repeat(400)}`;
+      expect(payload.length).toBeGreaterThan(4096);
+      const { open } = harness(fakeChromiumSingleWrite(payload, 134));
+      const response = await open();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        success: false,
+        code: 'browser-sandbox-unavailable',
+      });
+    });
+
+    test('a Chromium that hangs at launch (never answers, never exits) is "could not start", not an untyped 500', async () => {
+      const { open, events, registry } = harness(
+        fakeChromiumSingleWrite('starting\n', null),
+        300,
+      );
+      const response = await open();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        success: false,
+        code: 'browser-host-failed',
+      });
+      const failed = events.find((event) => event.kind === 'launch-failed');
+      expect(failed && 'reason' in failed && failed.reason).toContain(
+        'timed out',
+      );
+      await registry.shutdown();
+    }, 20_000);
 
     test('any other launch death is "could not start", not an untyped 500', async () => {
       const { open, events } = harness(

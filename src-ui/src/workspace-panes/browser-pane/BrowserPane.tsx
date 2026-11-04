@@ -716,21 +716,7 @@ function BrowserNewSession({
         </p>
       )}
       {open.isError ? (
-        <p className="browser-pane__notice" role="alert">
-          {describeBrowserFailure(open.error, address)}
-          {browserFailureHelpUrl(open.error) ? (
-            <>
-              {' '}
-              <a
-                href={browserFailureHelpUrl(open.error)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                How to fix
-              </a>
-            </>
-          ) : null}
-        </p>
+        <BrowserOpenFailureNotice error={open.error} typed={address} />
       ) : null}
       <BrowserSessionList
         apiBase={apiBase}
@@ -2055,5 +2041,34 @@ function BrowserSessionPane({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Why Open failed, with the guide link when there is a fix to follow. The
+ * link is its own 44px row under the reason, not a word-sized inline target.
+ */
+export function BrowserOpenFailureNotice(props: {
+  error: unknown;
+  typed?: string;
+}) {
+  const help = browserFailureHelpUrl(props.error);
+  return (
+    <p className="browser-pane__notice" role="alert">
+      {describeBrowserFailure(props.error, props.typed)}
+      {help ? (
+        <>
+          {' '}
+          <a
+            className="browser-pane__notice-help"
+            href={help}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            How to fix
+          </a>
+        </>
+      ) : null}
+    </p>
   );
 }

@@ -265,11 +265,15 @@ describe('ConnectionListPanel', () => {
       );
 
       expect(document.body.textContent).not.toContain("Can't connect");
+      // One status: the status line says it, and nothing repeats it.
       expect(screen.getByText('Current · Waiting for approval')).toBeTruthy();
-      expect(
-        screen.getByText('Waiting for the code to be approved on Station One…'),
-      ).toBeTruthy();
-      expect(screen.getByText(/^Expires in 2m 30s$/)).toBeTruthy();
+      expect(document.body.textContent?.match(/approv/gi)).toHaveLength(1);
+      // The countdown and the one action share the row under it.
+      const countdown = screen.getByText(/^Expires in 2m 30s$/);
+      const stop = screen.getByRole('button', {
+        name: 'Stop waiting for Station One',
+      });
+      expect(countdown.parentElement).toBe(stop.parentElement);
       expect(
         screen.queryByRole('button', { name: 'Request access to Station One' }),
       ).toBeNull();
@@ -680,9 +684,11 @@ describe('ConnectionListPanel', () => {
         />,
       );
 
+      // The pending state is the status line itself; no warning prose
+      // block renders under it.
+      expect(screen.getByText('Current · Waiting for approval')).toBeTruthy();
       const rows = warningRows();
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.textContent).toContain('Waiting for approval on');
+      expect(rows).toHaveLength(0);
       // The retired copy: none of the other three prose blocks render
       // alongside it — including the identity-mismatch explanation this
       // same connection also carries in `lastError`.
@@ -690,8 +696,8 @@ describe('ConnectionListPanel', () => {
       expect(document.body.textContent).not.toContain(
         "isn't the one this device paired with",
       );
-      // No action for a pending row — waiting is the only thing to do.
-      expect(rows[0]?.querySelector('button')).toBeNull();
+      // No action without a way to stop waiting: waiting is all there is.
+      expect(screen.queryByRole('button', { name: /Stop waiting/ })).toBeNull();
     });
 
     it('shows only the mismatch line (short summary + Pair again) when nothing is pending', () => {

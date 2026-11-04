@@ -213,11 +213,13 @@
 }
 
 /* With the chrome hidden in immersive mode, clear the Show controls handle. */
-.live-surface[data-immersive] .live-surface__stage > .live-surface__input-notice {
+.live-surface[data-immersive]
+  .live-surface__stage
+  > .live-surface__input-notice {
   right: calc(44px + 2 * var(--k-space-1));
 }
 
-/* With the immersive bar shown, the notice is its first row instead. */
+/* With the immersive bar shown, the notice is its row under the controls. */
 .live-surface__immersive-bar > .live-surface__input-notice {
   pointer-events: auto;
   position: static;
