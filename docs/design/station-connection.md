@@ -8,6 +8,20 @@
 > [remote access threat model](../security/remote-access-threat-model.md) owns
 > authorization. Implementation must update those owners together.
 
+The P1.1 foundation now lives in the [connection model](../../src-ui/src/connections/station-connection.ts),
+[registry](../../src-ui/src/connections/station-connection-registry.ts),
+[resolver](../../src-ui/src/connections/resolve-station-connection.ts), and
+[authority boundary](../../src-ui/src/connections/StationConnectionsContext.tsx).
+The credential bridge registers a fresh public lease scope for each source
+lifetime; reconnecting the same profile cannot revive an old reader. Direct
+candidates require a live credential-bound authority observation. Native
+profiles require an existing exact host binding; its absence makes that route
+unavailable without changing the selected profile. Broker owners retain their
+current route ceiling. Relay descriptors/tunneling, stream/state adoption,
+durable delivery and shared conversation controls belong to subsequent plan
+steps; existing chats still use the host. Focused JS tests do not establish
+installed-shell or physical-device qualification.
+
 A chat on a paired Station uses the same conversation, messages, composer,
 approval controls, delivery feedback, and live events as a chat on this Station.
 Its header says `Via <Station name>`. Route details belong in connection

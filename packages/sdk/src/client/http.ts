@@ -769,12 +769,164 @@ function bindRequestAuthority(
 }
 
 /** Guard owned body readers as well as the request/response boundary. */
+function guardResponseStream(
+  body: ReadableStream<Uint8Array>,
+  assertCurrent: () => void,
+): ReadableStream<Uint8Array> {
+  return new Proxy(body, {
+    get(target, property) {
+      if (property === 'getReader') {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const reader = Reflect.apply(target.getReader, target, args);
+          return new Proxy(reader, {
+            get(ownedReader, readerProperty) {
+              const value = Reflect.get(
+                ownedReader,
+                readerProperty,
+                ownedReader,
+              );
+              if (readerProperty === 'read') {
+                return async (...readArgs: unknown[]) => {
+                  try {
+                    assertCurrent();
+                    const chunk: unknown = await Reflect.apply(
+                      value,
+                      ownedReader,
+                      readArgs,
+                    );
+                    assertCurrent();
+                    return chunk;
+                  } catch (error) {
+                    // A tee branch's cancellation waits for its sibling; it
+                    // must not hold this reader's authority refusal open.
+                    void ownedReader.cancel(error).catch(() => {});
+                    throw error;
+                  }
+                };
+              }
+              return typeof value === 'function'
+                ? value.bind(ownedReader)
+                : value;
+            },
+          });
+        };
+      }
+      if (property === 'tee') {
+        return () => {
+          assertCurrent();
+          return target
+            .tee()
+            .map((branch) => guardResponseStream(branch, assertCurrent));
+        };
+      }
+      if (property === 'values' || property === Symbol.asyncIterator) {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const iterator: unknown = Reflect.apply(
+            Reflect.get(target, property, target),
+            target,
+            args,
+          );
+          if (!iterator || typeof iterator !== 'object')
+            throw new TypeError('Invalid response body iterator');
+          const guardedIterator: object = new Proxy(iterator, {
+            get(ownedIterator, iteratorProperty) {
+              if (iteratorProperty === Symbol.asyncIterator)
+                return () => guardedIterator;
+              const value = Reflect.get(
+                ownedIterator,
+                iteratorProperty,
+                ownedIterator,
+              );
+              if (iteratorProperty === 'next')
+                return async (...nextArgs: unknown[]) => {
+                  try {
+                    assertCurrent();
+                    const chunk: unknown = await Reflect.apply(
+                      value,
+                      ownedIterator,
+                      nextArgs,
+                    );
+                    assertCurrent();
+                    return chunk;
+                  } catch (error) {
+                    void Promise.resolve(
+                      Reflect.apply(
+                        Reflect.get(ownedIterator, 'return', ownedIterator),
+                        ownedIterator,
+                        [],
+                      ),
+                    ).catch(() => {});
+                    throw error;
+                  }
+                };
+              return typeof value === 'function'
+                ? value.bind(ownedIterator)
+                : value;
+            },
+          });
+          return guardedIterator;
+        };
+      }
+      if (property === 'pipeTo' || property === 'pipeThrough') {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const reader = target.getReader();
+          const guarded = new ReadableStream<Uint8Array>(
+            {
+              async pull(controller) {
+                try {
+                  assertCurrent();
+                  const chunk = await reader.read();
+                  assertCurrent();
+                  if (chunk.done) {
+                    controller.close();
+                    reader.releaseLock();
+                  } else controller.enqueue(chunk.value);
+                } catch (error) {
+                  controller.error(error);
+                  await reader.cancel(error).catch(() => {});
+                  reader.releaseLock();
+                }
+              },
+              cancel: (reason) =>
+                reader.cancel(reason).finally(() => reader.releaseLock()),
+            },
+            { highWaterMark: 0 },
+          );
+          const result = Reflect.apply(
+            Reflect.get(guarded, property, guarded),
+            guarded,
+            args,
+          );
+          if (property !== 'pipeThrough') return result;
+          if (!(result instanceof ReadableStream))
+            throw new TypeError('Invalid response body transform');
+          return guardResponseStream(result, assertCurrent);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 function guardResponseAuthority(
   response: Response,
   assertCurrent: () => void,
 ): Response {
+  let guardedBody: ReadableStream<Uint8Array> | null | undefined;
   return new Proxy(response, {
     get(target, property) {
+      if (property === 'body') {
+        assertCurrent();
+        if (guardedBody === undefined)
+          guardedBody = target.body
+            ? guardResponseStream(target.body, assertCurrent)
+            : null;
+        return guardedBody;
+      }
       if (
         property === 'json' ||
         property === 'text' ||

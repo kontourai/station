@@ -1,0 +1,96 @@
+import { useConnections } from '@kontourai/station-connect';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useInsertionEffect,
+  useMemo,
+} from 'react';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
+import {
+  resolveStationConnection,
+  type StationConnectionSource,
+  StationConnectionUnavailableError,
+} from './resolve-station-connection';
+import type { ChatStationBindingV1 } from './station-connection';
+import {
+  registerStationConnectionRegistry,
+  StationConnectionRegistry,
+} from './station-connection-registry';
+
+interface StationConnections {
+  resolve(options?: {
+    environmentId?: string;
+    binding?: ChatStationBindingV1;
+  }): ReturnType<typeof resolveStationConnection>;
+}
+
+const StationConnectionsContext = createContext<StationConnections | null>(
+  null,
+);
+
+export function StationConnectionsProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const { namespace, observation } = useAuthorityPersistence();
+  const queryClient = useQueryClient();
+  const { activeConnection, connections } = useConnections();
+  const scope = useHostRequestAuthorityScope();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: replacing a query client must mint fresh leases even under the same namespace and scope.
+  const registry = useMemo(
+    () =>
+      new StationConnectionRegistry(() =>
+        Boolean(namespace && scope?.isCurrent()),
+      ),
+    [namespace, scope, queryClient],
+  );
+  // Insertion cleanup retires the old namespace before descendant layout
+  // effects can publish data during an authority replacement.
+  useInsertionEffect(
+    () => registerStationConnectionRegistry(queryClient, registry),
+    [queryClient, registry],
+  );
+  const value = useMemo<StationConnections>(
+    () => ({
+      resolve: (options = {}) => {
+        if (!namespace || !observation || !scope || !activeConnection)
+          return Promise.reject(
+            new StationConnectionUnavailableError('authority-unavailable'),
+          );
+        const source: StationConnectionSource = {
+          authorityNamespace: namespace,
+          observation,
+          connectionId: activeConnection.id,
+          stationName: activeConnection.name,
+          requestScope: scope,
+          mutationAllowed:
+            !activeConnection.brokerRoute &&
+            !activeConnection.nativeBrokerRoute,
+          isCurrent: scope.isCurrent,
+        };
+        return resolveStationConnection({
+          registry,
+          source,
+          profiles: connections,
+          ...options,
+        });
+      },
+    }),
+    [registry, namespace, observation, scope, activeConnection, connections],
+  );
+  return (
+    <StationConnectionsContext.Provider value={value}>
+      {children}
+    </StationConnectionsContext.Provider>
+  );
+}
+
+export function useStationConnections(): StationConnections {
+  const connections = useContext(StationConnectionsContext);
+  if (!connections) throw new Error('StationConnectionsProvider is required');
+  return connections;
+}

@@ -16,6 +16,14 @@ The React-free client exports `mutateBinary(url, method, options, blob)` for
 binary requests. Pass a captured `requestScope` to bind dispatch and response
 reads to that Station authority; the helper sends `application/octet-stream`.
 
+Credential and raw-egress resolvers receive an optional request selector with
+the destination URL and a snapshotted `requestScope`. Scoped consumers retain
+the captured scope rather than select credentials by URL: profiles can share
+an origin. A replaced authority raises `StationRequestAuthorityError` before
+dispatch or publication. This also fences whole-body readers, clones, stream
+readers, iterators, branches and pipes; cancellation remains available after
+retirement. Unscoped calls retain the selected host contract.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
