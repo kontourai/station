@@ -151,8 +151,12 @@ export interface ThreadInboxPayload {
  *    unattended work).
  * 3. A person's entry (operator or paired device) is `interactive`.
  * 4. A delegated child's result (`sender.kind` `delegation-result`, which
- *    the server stamps) is `delegation`, on a Task's Session too: the cause
- *    is the delegation, and both are unattended work.
+ *    the server stamps) is `delegation` only when the parent Session is
+ *    itself unattended: bound to a Task, or itself a delegated child Station
+ *    derived (`parent.delegatedChild`). Delivered into anyone else's chat it
+ *    inherits that conversation's own classification (`parent.priorOrigin`:
+ *    a person's chat stays `interactive`), and without those facts it is
+ *    `unknown`.
  * 5. Station's own entry (`internal` actor) into a Session bound to a Task
  *    (`taskBound`: its room execution binding) is `task-dispatch`: a Task
  *    question wake, an automatic memory continuation, or a check-back the
@@ -165,6 +169,7 @@ export function inboxTurnDispatchOrigin(
     'serverAutomationIntentId' | 'dispatchOrigin' | 'clientOrigin'
   >,
   taskBound: boolean,
+  parent?: SessionDispatchFacts,
 ): TurnDispatchOrigin {
   if (payload.serverAutomationIntentId) return 'automation';
   if (payload.dispatchOrigin) return payload.dispatchOrigin;
@@ -174,9 +179,22 @@ export function inboxTurnDispatchOrigin(
     actor === 'internal' &&
     payload.clientOrigin?.sender?.kind === 'delegation-result'
   )
-    return 'delegation';
+    return taskBound || parent?.delegatedChild
+      ? 'delegation'
+      : (parent?.priorOrigin() ?? 'unknown');
   if (actor === 'internal' && taskBound) return 'task-dispatch';
   return 'unknown';
+}
+
+/**
+ * #4512: what the Session that takes a turn says about who it works for,
+ * read from its own server-written record.
+ */
+export interface SessionDispatchFacts {
+  /** Started as a delegated child whose context Station derived or attested. */
+  readonly delegatedChild: boolean;
+  /** The origin of its newest turn that was not a delegated result. */
+  priorOrigin(): TurnDispatchOrigin;
 }
 
 /** JSON with object keys sorted, so equal inputs digest equally. */

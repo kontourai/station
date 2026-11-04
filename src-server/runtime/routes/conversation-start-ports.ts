@@ -16,13 +16,19 @@ import {
 } from '@kontourai/station-contracts/client-origin';
 import type { ExecutionModelRequest } from '@kontourai/station-contracts/execution-target';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
+import { DELEGATION_PROVENANCE_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  type TurnDispatchOrigin,
+  turnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ForegroundMessageContext } from '../../services/execution-target/execution-target-execution.js';
+import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
   inboxTurnDispatchOrigin,
+  type SessionDispatchFacts,
   type ThreadInboxPayload,
 } from '../../services/orchestration/thread-inbox.js';
 import type { ScheduledConversationRunsPorts } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -53,7 +59,50 @@ export type ContinueAsRecordedActor = (
 interface StartPortDeps {
   /** The Session's immutable room execution binding, when it has one. */
   readProjectTaskRoomExecutionBinding(sessionId: string): unknown;
+  /**
+   * What the Session that takes the turn says about whom it works for
+   * (`readSessionDispatchFacts`). Without it a delegated result off a Task's
+   * Session is `unknown`, never `delegation`.
+   */
+  sessionFacts?(sessionId: string): SessionDispatchFacts;
   continueAsRecordedActor: ContinueAsRecordedActor;
+}
+
+/**
+ * #4512: a Session's dispatch facts from its own record. A delegated child
+ * is one whose start carries the provenance stamp only a dispatch route
+ * writes for a context Station derived or attested (`direct-claim` is a
+ * requester's own word). Its prior origin is that of its newest turn that
+ * was not itself a delegated result.
+ */
+export function readSessionDispatchFacts(
+  eventStore: Pick<EventStore, 'latestEventByMethod' | 'listEventsByMethods'>,
+  sessionId: string,
+): SessionDispatchFacts {
+  const started = eventStore.latestEventByMethod(sessionId, 'session.started')
+    ?.payload as { metadata?: Record<string, unknown> } | undefined;
+  const provenance = started?.metadata?.[DELEGATION_PROVENANCE_METADATA_KEY];
+  return {
+    delegatedChild:
+      provenance === 'caller-derived' || provenance === 'runtime-attested',
+    priorOrigin: () => {
+      const prior = eventStore
+        .listEventsByMethods(sessionId, ['turn.started'])
+        .map(
+          (event) =>
+            event.payload as {
+              dispatchOrigin?: unknown;
+              clientOrigin?: { sender?: { kind?: unknown } };
+            },
+        )
+        .filter(
+          (payload) =>
+            payload.clientOrigin?.sender?.kind !== 'delegation-result',
+        )
+        .at(-1);
+      return prior ? turnDispatchOrigin(prior) : 'unknown';
+    },
+  };
 }
 
 /** Whether the Session that will take the turn is bound to a Task. */
@@ -84,6 +133,7 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
         dispatchOrigin: inboxTurnDispatchOrigin(
           payload,
           taskBound(deps, threadId),
+          deps.sessionFacts?.(threadId),
         ),
         clientTurnId,
         userId: payload.actor.userId,
@@ -181,6 +231,7 @@ export function delegationResultStartPort(
         dispatchOrigin: inboxTurnDispatchOrigin(
           { clientOrigin },
           taskBound(deps, input.threadId),
+          deps.sessionFacts?.(input.threadId),
         ),
       },
       input.threadId,

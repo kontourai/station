@@ -20,7 +20,11 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
-import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
+import {
+  delegationResultStartPort,
+  inboxPlacementStartPort,
+  readSessionDispatchFacts,
+} from '../../../runtime/routes/conversation-start-ports.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -301,6 +305,26 @@ async function startWork(
   );
 }
 
+/** End the newest turn the engine left running on `threadId`. */
+async function finishTurn(boot: Boot, threadId: string): Promise<void> {
+  const started = boot.store
+    .listEventsByMethods(threadId, ['turn.started'])
+    .map((event) => event.payload as { turnId: string; invocationId?: string })
+    .at(-1)!;
+  boot.adapter.events.push({
+    eventId: randomUUID(),
+    provider: boot.adapter.provider,
+    threadId,
+    createdAt: new Date().toISOString(),
+    method: 'turn.completed',
+    turnId: started.turnId,
+    ...(started.invocationId ? { invocationId: started.invocationId } : {}),
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(boot.service.hasActiveTurn(threadId)).toBe(false),
+  );
+}
+
 const continuationsTo = (boot: Boot, threadId: string) =>
   boot.adapter.sends.filter(
     (send) =>
@@ -371,6 +395,74 @@ describe('continue unattended work after a restart (#4512)', () => {
     await third.inbox.idle();
     expect(third.adapter.sends).toHaveLength(0);
     expect(again.filter((outcome) => outcome.kind === 'queued')).toEqual([]);
+  });
+
+  test("#4512 review: a delegated result delivered into a person's own chat is not continued after a restart", async () => {
+    const path = join(makeTempDir('station-restart-continue-'), 'o.sqlite');
+    const first = bootAt(path);
+    first.service.initialize();
+    await first.service.whenInterruptedTurnsRecovered();
+    await startWork(first, 'person-chat', 'person');
+    await finishTurn(first, 'person-chat');
+    // The child's result, through production's delivery start port.
+    await delegationResultStartPort({
+      origin: {
+        version: 1,
+        actor: { kind: 'internal' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
+      readProjectTaskRoomExecutionBinding: (sessionId) =>
+        first.store.readProjectTaskRoomExecutionBinding(sessionId),
+      sessionFacts: (sessionId) =>
+        readSessionDispatchFacts(first.store, sessionId),
+      continueAsRecordedActor: async (input, threadId) => {
+        const dispatched = await first.service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: input.message,
+              clientTurnId: input.clientTurnId,
+            },
+          },
+          { clientOrigin: input.clientOrigin },
+          input.dispatchOrigin
+            ? { dispatchOrigin: input.dispatchOrigin }
+            : undefined,
+        );
+        return {
+          outcome: 'started',
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: (dispatched.result as { turnId: string }).turnId,
+        };
+      },
+    })({
+      parentConversationId: 'person-chat',
+      threadId: 'person-chat',
+      actor: { userId: OWNER, attribution: 'verified-bound' },
+      sender: { kind: 'delegation-result', sessionId: 'child-1' },
+      text: 'The child finished: here is the result.',
+      clientTurnId: 'delegation-result:child-1',
+    });
+    await vi.waitFor(() =>
+      expect(
+        first.store
+          .listEventsByMethods('person-chat', ['turn.started'])
+          .map(
+            (event) =>
+              (event.payload as { dispatchOrigin?: string }).dispatchOrigin,
+          ),
+      ).toEqual(['interactive', 'interactive']),
+    );
+    await first.restart();
+
+    const { boot: second, outcomes } = await nextBoot(path);
+    await second.inbox.idle();
+    expect(continuationsTo(second, 'person-chat')).toHaveLength(0);
+    expect(outcomes).toEqual([
+      { kind: 'skipped', threadId: 'person-chat', reason: 'origin' },
+    ]);
   });
 
   test('done, canceled and blocked Tasks are skipped, and the oldest open Task is continued first', async () => {

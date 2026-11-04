@@ -423,10 +423,13 @@ export interface SessionCancellationRequestedEvent
  *   memory continuation, a check-back) and placed on a Session whose room
  *   execution binding names a Task. Off a Task's Session those are
  *   `unknown`.
- * - `delegation`: a delegated Session's first turn, a send carrying the
- *   server-resolved delegation context (Station Control `send_message`),
- *   and a delegated child's result delivered into its parent, on a Task's
- *   Session too.
+ * - `delegation`: a delegated Session's first turn, a send carrying a
+ *   delegation context Station derived or attested (Station Control
+ *   `send_message`; a requester's own `direct-claim` context does not
+ *   count), and a delegated child's result delivered into a parent that is
+ *   itself unattended: a Task's Session or a delegated child Station
+ *   derived. A result delivered into anyone else's chat takes that chat's
+ *   own classification (a person's chat stays `interactive`).
  * - `automation`: a scheduled Automation run, queued on its target
  *   conversation's inbox or starting its dedicated conversation, and an
  *   Automation action's inbox entry. Never `task-dispatch`, even on a Task's

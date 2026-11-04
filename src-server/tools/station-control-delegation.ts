@@ -7431,12 +7431,15 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  // #4512: a send carrying the server-resolved delegation context (the fact
-  // that admits its engine start as delegated background work above; the
-  // `/chat/delegated` route resolves it from the verified caller, e.g. a
-  // Station Control `send_message`) is a delegated turn.
+  // #4512: a send carrying a delegation context Station itself derived from
+  // the calling Session or its own runtime attested (a Station Control
+  // `send_message`) is a delegated turn. A `direct-claim` context is a
+  // requester's own word, so a person's send that names one stays theirs.
   const turnContext: ForegroundMessageContext | undefined =
-    input.delegation && !context?.dispatchOrigin
+    input.delegation &&
+    (input.delegationProvenance === 'caller-derived' ||
+      input.delegationProvenance === 'runtime-attested') &&
+    !context?.dispatchOrigin
       ? { ...context, dispatchOrigin: 'delegation' }
       : context;
   return executeResolvedForegroundMessage(

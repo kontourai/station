@@ -107,8 +107,10 @@ message instead.
 **Continue unattended work after restart** (`continue-unattended-after-restart`):
 with the preview on, after Station restarts it continues work nobody was
 watching. That covers a turn Station itself sent into a Task's Session (such as
-a Task question wake) and a delegated Session's work, including a delegated
-result. Each such turn the restart cut off gets one turn with the same note
+a Task question wake) and a delegated Session's work, including a result a
+delegated child returned to a Task's Session or to another delegated Session.
+A result returned into your own chat belongs to your chat and is not
+continued. Each such turn the restart cut off gets one turn with the same note
 **Continue** sends, oldest Task first, as the Session's owner. The chat shows it
 as **Continued after restart**. It is never sent for a turn you sent yourself,
 an Automation's run (Automations keep their own recovery), a coordinator, or a

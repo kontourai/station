@@ -8,6 +8,7 @@ import {
   delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  readSessionDispatchFacts,
   scheduledDedicatedStartPort,
 } from '../conversation-start-ports.js';
 
@@ -198,5 +199,101 @@ describe('delegated result start port (#4512)', () => {
       },
       dispatchOrigin: 'delegation',
     });
+  });
+});
+
+describe("a delegated result into a parent that is not a Task's (#4512 review)", () => {
+  async function deliverInto(
+    metadata: Record<string, unknown>,
+    priorTurn: Record<string, unknown> | undefined,
+  ) {
+    const store = new EventStore(
+      join(makeTempDir('station-start-ports-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    store.appendEvent({
+      eventId: 'started',
+      provider: 'claude',
+      threadId: 'parent',
+      sessionId: 'parent',
+      createdAt: '2026-11-04T00:00:00.000Z',
+      method: 'session.started',
+      metadata,
+    } as never);
+    if (priorTurn)
+      store.appendEvent({
+        eventId: 'prior',
+        provider: 'claude',
+        threadId: 'parent',
+        createdAt: '2026-11-04T00:00:01.000Z',
+        method: 'turn.started',
+        turnId: 'turn-prior',
+        ...priorTurn,
+      } as never);
+    const continued: RecordedActorContinuation[] = [];
+    await delegationResultStartPort({
+      origin: origin({ kind: 'internal' }),
+      readProjectTaskRoomExecutionBinding: (sessionId) =>
+        store.readProjectTaskRoomExecutionBinding(sessionId),
+      sessionFacts: (sessionId) => readSessionDispatchFacts(store, sessionId),
+      continueAsRecordedActor: async (input, threadId) => {
+        continued.push(input);
+        return {
+          outcome: 'started',
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: 'turn-1',
+        };
+      },
+    })({
+      parentConversationId: 'parent',
+      threadId: 'parent',
+      actor: { userId: 'owner', attribution: 'verified-bound' },
+      sender: { kind: 'delegation-result', sessionId: 'child-1' },
+      text: 'The child finished.',
+      clientTurnId: 'delegation-result:child-1',
+    });
+    return continued[0]!.dispatchOrigin;
+  }
+
+  test("into a person's own chat it inherits the person's turn, interactive", async () => {
+    expect(
+      await deliverInto(
+        { userId: 'owner' },
+        {
+          dispatchOrigin: 'interactive',
+          clientOrigin: origin({ kind: 'operator' }),
+        },
+      ),
+    ).toBe('interactive');
+  });
+
+  test('into a delegated child Station derived it is delegation', async () => {
+    expect(
+      await deliverInto(
+        {
+          userId: 'owner',
+          delegation: { mode: 'isolated-child', depth: 1, maxDepth: 2 },
+          stationDelegationProvenance: 'caller-derived',
+        },
+        { dispatchOrigin: 'delegation' },
+      ),
+    ).toBe('delegation');
+  });
+
+  test("a requester's own delegation claim does not make the chat unattended", async () => {
+    expect(
+      await deliverInto(
+        {
+          userId: 'owner',
+          delegation: { mode: 'isolated-child', depth: 1, maxDepth: 2 },
+          stationDelegationProvenance: 'direct-claim',
+        },
+        {
+          dispatchOrigin: 'interactive',
+          clientOrigin: origin({ kind: 'operator' }),
+        },
+      ),
+    ).toBe('interactive');
   });
 });

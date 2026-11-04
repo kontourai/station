@@ -1072,6 +1072,7 @@ import {
   delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  readSessionDispatchFacts,
   scheduledDedicatedStartPort,
 } from './conversation-start-ports.js';
 import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
@@ -6873,6 +6874,8 @@ export function configureRuntimeRoutes(
         inboxPlacementStartPort({
           readProjectTaskRoomExecutionBinding: (sessionId) =>
             eventStore.readProjectTaskRoomExecutionBinding(sessionId),
+          sessionFacts: (sessionId) =>
+            readSessionDispatchFacts(eventStore, sessionId),
           continueAsRecordedActor,
         }),
       ),
@@ -6886,6 +6889,8 @@ export function configureRuntimeRoutes(
       origin: DELEGATION_RESULT_CLIENT_ORIGIN,
       readProjectTaskRoomExecutionBinding: (sessionId) =>
         eventStore.readProjectTaskRoomExecutionBinding(sessionId),
+      sessionFacts: (sessionId) =>
+        readSessionDispatchFacts(eventStore, sessionId),
       continueAsRecordedActor,
     });
     return new DelegationResultDelivery({

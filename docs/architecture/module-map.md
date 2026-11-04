@@ -2245,10 +2245,11 @@ its own classification in the dispatch's internal options
 reads a person's client (operator or paired device) as `interactive` and
 anything else as `unknown`. Who passes what:
 
-- The delegation start, and any foreground send carrying the
-  server-resolved delegation context (`executeExecutionTargetMessage`;
-  Station Control `send_message` arrives through `/chat/delegated`), pass
-  `delegation`.
+- The delegation start, and any foreground send carrying a delegation
+  context Station derived or attested (`executeExecutionTargetMessage`, by
+  its `caller-derived`/`runtime-attested` provenance; Station Control
+  `send_message` arrives through `/chat/delegated`), pass `delegation`. A
+  requester's own `direct-claim` context does not.
 - A scheduled Automation's first run on its dedicated conversation passes
   `automation` ([`scheduledDedicatedStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts)).
 - The conversation inbox's placement ([`inboxPlacementStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts))
@@ -2260,7 +2261,11 @@ anything else as `unknown`. Who passes what:
   send `interactive`, coordinator and Project supervision wakes `unknown`);
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
-  `delegationResultStartPort`) is `delegation`; Station's other entries (a
+  `delegationResultStartPort`) is `delegation` when the parent Session is
+  itself unattended (bound to a Task, or a delegated child whose start
+  carries Station's provenance stamp), and otherwise takes the parent's own
+  newest non-result turn's origin (`readSessionDispatchFacts`), so a
+  person's chat stays `interactive`; Station's other entries (a
   Task question wake, an automatic memory continuation, a check-back) are
   `task-dispatch` on a Session bound to a Task and `unknown` elsewhere.
 
