@@ -27,6 +27,8 @@ export interface TailscaleCommandResult {
   readonly stderr: string;
   /** True only when no Tailscale executable exists. */
   readonly unavailable?: boolean;
+  /** Why the command was not run at all; reported as the failure. */
+  readonly detail?: string;
 }
 
 export type TailscaleCommand = (
@@ -126,6 +128,7 @@ function failureDetail(
   command: string,
   result: TailscaleCommandResult,
 ): string {
+  if (result.detail) return result.detail;
   const said = firstLine(result.stderr);
   return result.exitCode === null
     ? `\`tailscale ${command}\` did not answer`
@@ -137,8 +140,10 @@ let verifiedAuthority: TailscaleAuthority | undefined;
 /**
  * The production authority for this process. A CLI once verified (the
  * macOS signature check takes about a second) is reused by later listener
- * admissions; an absent or untrusted answer is not kept, so a Tailscale
- * installed later is still seen.
+ * admissions; its command re-verifies the file's identity before every run
+ * and checks it again in full if it changed (`tailscale-authority.ts`). An
+ * absent or untrusted answer is not kept, so a Tailscale installed later is
+ * still seen.
  */
 async function resolveProcessAuthority(): Promise<TailscaleAuthority> {
   if (verifiedAuthority) return verifiedAuthority;
@@ -164,6 +169,21 @@ export async function inspectTrustedTailscaleServeExposure(
       state: 'unverifiable',
       detail: `Tailscale may be installed (${authority.signs.slice(0, 4).join('; ').slice(0, 400)}), but there is no Tailscale CLI it can trust`,
       remedy: authority.remedy,
+    };
+  // The trusted CLI speaks for the system daemon only; another running
+  // `tailscaled` could forward while it reports stopped.
+  const foreign = await authority.foreignDaemons();
+  if (foreign === null)
+    return {
+      state: 'unverifiable',
+      detail: 'the process list could not be read',
+    };
+  if (foreign.length > 0)
+    return {
+      state: 'unverifiable',
+      detail: `${foreign.slice(0, 4).join('; ')} is running, and it is not the system Tailscale daemon this check can ask`,
+      remedy:
+        'Stop that `tailscaled` (a userspace one started by hand, or a Homebrew service: `brew services stop tailscale`), then start Station again.',
     };
   return inspectTailscaleServeExposure(ports, authority.command);
 }

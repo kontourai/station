@@ -24,6 +24,25 @@
  * loader or Tailscale variable changes what it does (on macOS it sets
  * `TAILSCALE_BE_CLI=1`, without which the app binary starts its GUI).
  *
+ * A trusted CLI is re-verified before every run (round 2): its identity
+ * (device, inode, size, modification and change times of the executable
+ * and, on macOS, of the bundle's code-signing manifest) is captured when it
+ * is verified, and any change re-runs the full trust check, signature
+ * included, before it may answer. What remains is the moment between that
+ * check and the exec; replacing the file in it needs write access to the
+ * bundle or system bin directory, which only an administrator has, and a
+ * local administrator is outside what the limit defends against.
+ *
+ * A trusted CLI answers for the system daemon only. A second `tailscaled`
+ * (for example a user-run userspace one with its own socket) could forward
+ * while the system daemon reports stopped, so any running `tailscaled` that
+ * is not the system daemon (by executable path and owner) makes the check
+ * refuse, naming it (round 2). A forwarder under another name, or a
+ * renamed copy, is in the same class as `ssh -R`, ngrok or cloudflared:
+ * port forwarding with other tools is not covered by this check, and the
+ * credential layer still refuses pairing and keeps earlier devices
+ * suspended.
+ *
  * Without a trusted CLI, "nothing forwards" stands only when nothing on the
  * machine looks like Tailscale: no `tailscale` or `tailscaled` on PATH, no
  * daemon socket, no Tailscale process, and no untrusted install. Any of
@@ -31,7 +50,12 @@
  * no trusted CLI the caller refuses and names what to install or stop.
  */
 import { execFile } from 'node:child_process';
-import { accessSync, existsSync, constants as fsConstants } from 'node:fs';
+import {
+  accessSync,
+  existsSync,
+  constants as fsConstants,
+  lstatSync,
+} from 'node:fs';
 import { basename, delimiter, join } from 'node:path';
 import {
   managedTrustedFileProblem,
@@ -46,11 +70,10 @@ import type {
 const COMMAND_TIMEOUT_MS = 5_000;
 const SIGNATURE_TIMEOUT_MS = 15_000;
 
-export const TAILSCALE_MACOS_APP_BUNDLE = '/Applications/Tailscale.app';
+const TAILSCALE_MACOS_APP_BUNDLE = '/Applications/Tailscale.app';
 /** Tailscale Inc.'s Apple Developer team, on both the App Store and standalone app. */
-export const TAILSCALE_APPLE_TEAM_ID = 'W5364U7YZB';
-export const TAILSCALE_WINDOWS_CLI =
-  'C:\\Program Files\\Tailscale\\tailscale.exe';
+const TAILSCALE_APPLE_TEAM_ID = 'W5364U7YZB';
+const TAILSCALE_WINDOWS_CLI = 'C:\\Program Files\\Tailscale\\tailscale.exe';
 
 /** The fixed locations the check may run, in order. Never a PATH lookup. */
 export function trustedTailscaleExecutables(
@@ -80,7 +103,17 @@ const TAILSCALE_PROCESS =
   /^(tailscaled?|tailscale-ipn|Tailscale|IPNExtension|io\.tailscale\..+)(\.exe)?$/i;
 
 export type TailscaleAuthority =
-  | { kind: 'trusted'; executable: string; command: TailscaleCommand }
+  | {
+      kind: 'trusted';
+      executable: string;
+      command: TailscaleCommand;
+      /**
+       * Running `tailscaled` processes the trusted CLI does not answer for,
+       * each described; `null` when the process list cannot be read. Asked
+       * on every check, never cached.
+       */
+      foreignDaemons(): Promise<string[] | null>;
+    }
   | { kind: 'absent' }
   | { kind: 'untrusted'; signs: string[]; remedy: string };
 
@@ -91,6 +124,13 @@ export interface TailscaleAuthorityProbe {
   trustProblem(path: string): Promise<string | null | undefined>;
   /** Signs of Tailscale besides the fixed locations; `null` if unreadable. */
   signs(): Promise<string[] | null>;
+  /**
+   * The identity of the trusted file at `path` (see the module comment), or
+   * `null` when it cannot be read; compared before every run.
+   */
+  fingerprint(path: string): string | null;
+  /** See `TailscaleAuthority.foreignDaemons`. */
+  foreignDaemons(): Promise<string[] | null>;
   run(
     executable: string,
     args: readonly string[],
@@ -255,6 +295,109 @@ export async function tailscaleSigns(
   return signs;
 }
 
+function statIdentity(path: string): string {
+  const stat = lstatSync(path, { bigint: true });
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+}
+
+/** See `TailscaleAuthorityProbe.fingerprint`. */
+export function trustedFileFingerprint(
+  platform: NodeJS.Platform,
+  path: string,
+): string | null {
+  try {
+    const parts = [statIdentity(path)];
+    if (platform === 'darwin')
+      parts.push(
+        statIdentity(
+          join(
+            TAILSCALE_MACOS_APP_BUNDLE,
+            'Contents/_CodeSignature/CodeResources',
+          ),
+        ),
+      );
+    return parts.join('|');
+  } catch {
+    return null;
+  }
+}
+
+/** Where the system `tailscaled` runs from: the package's sbin and bin. */
+const SYSTEM_DAEMON_PATHS = new Set(
+  [
+    '/usr/sbin',
+    '/usr/bin',
+    '/usr/local/sbin',
+    '/usr/local/bin',
+    '/sbin',
+    '/bin',
+  ].map((dir) => `${dir}/tailscaled`),
+);
+
+interface ProcessEntry {
+  pid: number;
+  uid: number;
+  /** The executable path where the platform reports one, else argv[0]. */
+  path: string;
+}
+
+/** `pid uid path` rows from `ps`; `null` when the list cannot be read. */
+async function processEntries(
+  platform: NodeJS.Platform,
+): Promise<ProcessEntry[] | null> {
+  const env = trustedTailscaleEnvironment(platform);
+  // macOS `comm` is the executable path; Linux truncates it to a name, so
+  // the first argument is used there. The owner is the kernel's real uid,
+  // which a process cannot choose.
+  const listed = await execBounded(
+    '/bin/ps',
+    ['-A', '-o', `pid=,ruid=,${platform === 'darwin' ? 'comm' : 'args'}=`],
+    env,
+    COMMAND_TIMEOUT_MS,
+  );
+  if (listed.exitCode !== 0) return null;
+  const entries: ProcessEntry[] = [];
+  for (const line of listed.stdout.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+    if (!match) continue;
+    const command = (match[3] ?? '').trim();
+    entries.push({
+      pid: Number(match[1]),
+      uid: Number(match[2]),
+      path: platform === 'darwin' ? command : (command.split(/\s+/)[0] ?? ''),
+    });
+  }
+  return entries;
+}
+
+/**
+ * Running `tailscaled` processes that are not the system daemon. On macOS
+ * the trusted app runs its daemon as a network extension, so every
+ * `tailscaled` is foreign; on Linux the system daemon is a root-owned
+ * `tailscaled` at a system path. Windows is not inspected here (the guide
+ * says so).
+ */
+export async function foreignTailscaleDaemons(
+  platform: NodeJS.Platform = process.platform,
+  list: typeof processEntries = processEntries,
+): Promise<string[] | null> {
+  if (platform === 'win32') return [];
+  const entries = await list(platform);
+  if (entries === null) return null;
+  return entries
+    .filter((entry) => basename(entry.path) === 'tailscaled')
+    .filter(
+      (entry) =>
+        platform === 'darwin' ||
+        entry.uid !== 0 ||
+        !SYSTEM_DAEMON_PATHS.has(entry.path),
+    )
+    .map(
+      (entry) =>
+        `\`tailscaled\` process ${entry.pid} (${entry.path.slice(0, 200)}, uid ${entry.uid})`,
+    );
+}
+
 export function defaultTailscaleAuthorityProbe(
   platform: NodeJS.Platform = process.platform,
 ): TailscaleAuthorityProbe {
@@ -264,13 +407,15 @@ export function defaultTailscaleAuthorityProbe(
     executables: trustedTailscaleExecutables(platform),
     trustProblem: (path) => systemTrustProblem(platform, path),
     signs: () => tailscaleSigns(platform),
+    fingerprint: (path) => trustedFileFingerprint(platform, path),
+    foreignDaemons: () => foreignTailscaleDaemons(platform),
     run: (executable, args) =>
       execBounded(executable, args, env, COMMAND_TIMEOUT_MS),
   };
 }
 
 /** What to install or stop so the check can answer; one sentence. */
-export function tailscaleAuthorityRemedy(platform: NodeJS.Platform): string {
+function tailscaleAuthorityRemedy(platform: NodeJS.Platform): string {
   if (platform === 'darwin')
     return 'Install Tailscale from the Mac App Store or tailscale.com (Station runs only the signed app in /Applications/Tailscale.app), or quit Tailscale and stop any `tailscaled` (Homebrew: `sudo brew services stop tailscale`), then start Station again.';
   if (platform === 'win32')
@@ -293,12 +438,29 @@ export async function resolveTailscaleAuthority(
       untrusted.push(problem);
       continue;
     }
+    let verified = probe.fingerprint(executable);
     return {
       kind: 'trusted',
       executable,
-      // A trusted CLI that then cannot be run is not absence: it answers
-      // with no exit code, which the check reads as unverifiable.
+      foreignDaemons: () => probe.foreignDaemons(),
       command: async (args) => {
+        // Re-verified before every run: a changed file is checked again in
+        // full, and runs only if it is still trusted and unchanged since.
+        const current = probe.fingerprint(executable);
+        if (current === null || current !== verified) {
+          const again =
+            current === null ? undefined : await probe.trustProblem(executable);
+          if (again !== null || probe.fingerprint(executable) !== current)
+            return {
+              exitCode: null,
+              stdout: '',
+              stderr: '',
+              detail: `the Tailscale CLI at ${executable} changed since Station verified it${typeof again === 'string' ? ` (${again})` : ''}`,
+            };
+          verified = current;
+        }
+        // A trusted CLI that then cannot be run is not absence: it answers
+        // with no exit code, which the check reads as unverifiable.
         const { unavailable: _unused, ...result } = await probe.run(
           executable,
           args,
