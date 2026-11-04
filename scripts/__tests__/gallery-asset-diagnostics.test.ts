@@ -1,18 +1,14 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  truncateSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   createGalleryAssetDiagnostics,
   inventoryGalleryAssets,
   readGalleryLifecycle,
 } from '../../tests/helpers/gallery-asset-diagnostics';
+
+const makeTempDir = trackTempDirs();
 
 it('retains only public asset metadata and marks bounded collection incomplete', async () => {
   const collector = createGalleryAssetDiagnostics('http://localhost:5314');
@@ -122,7 +118,7 @@ it('retains only public asset metadata and marks bounded collection incomplete',
   expect(result.records.length).toBe(2048);
   expect(Buffer.byteLength(json)).toBeLessThan(2 * 1024 * 1024);
 
-  const root = mkdtempSync(join(tmpdir(), 'gallery-asset-privacy-'));
+  const root = makeTempDir('gallery-asset-privacy-');
   try {
     mkdirSync(join(root, 'assets'));
     writeFileSync(
