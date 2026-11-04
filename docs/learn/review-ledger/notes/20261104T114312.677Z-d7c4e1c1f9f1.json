@@ -1,0 +1,13 @@
+{
+  "revision": "b6cb377ce330173f4ee2b65901abb69419599810",
+
+  "notes": [
+    {"path":"README.md","note":"Delta review of rounds persistence no-op readback at b6cb377ce330: retained-work and evidence claims remain accurate. Only redundant decoding of an unchanged transaction is removed; fresh secure durable reads and all authorization/history/capacity checks remain. No new capability, execution or provider/native/hosted acceptance follows.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Delta review of unchanged-transaction rounds readback: delegated results, raw outputs, Session/group limits and acceptance distinctions are unchanged. No new DTO, enrollment, engine selection, permission, output delivery or synchronization behavior is introduced; no prose change needed.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/privacy-policy.md","note":"Delta review of reserved report private-store paths against b6cb377ce330: record fields, storage destinations, retained provider/context/input content, deletion/retention and telemetry wiring are unchanged. One transaction retains already-read validated text only until completion; no cross-request cache or new export. Existing incomplete-inventory and runtime limits remain.","inputs":["docs/privacy-policy.md","src-server/services/orchestration/delegation-group-persistence.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta review of new-rounds persistence custody against both rounds store implementations and actual secure read/publication serializer. Added precise no-op transaction-local decoded-text readback explanation; changed writes retain full readback validation, all secure reads/fsync/currentness/history/capacity checks remain. No cross-transaction authority cache. Existing complete-body review remains bounded by its prior runtime/native limitations.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

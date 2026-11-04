@@ -627,7 +627,6 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       try {
         await expect(
           noOp.read(() => {
-            faultApplied = true;
             if (fault === 'rewritten-format')
               writeFileSync(file, `${formatted} `);
             else if (fault === 'truncated') writeFileSync(file, '{');
@@ -640,6 +639,7 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
               unlinkSync(file);
               symlinkSync(alias, file);
             } else chmodSync(file, 0o644);
+            faultApplied = true;
           }),
         ).rejects.toThrow();
         expect(faultApplied).toBe(true);

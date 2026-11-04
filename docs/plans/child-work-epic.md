@@ -33,9 +33,18 @@ and compares a fresh secure durable readback against it. Changed transactions
 retain full output and readback validation. Fourteen owner tests pass, including
 historical formatting and rewritten-format, truncation, invalid UTF-8, missing
 file, mode, hard-link and symlink controls for both rounds stores. Server-test
-types pass before the last test-only additions. Independent source review finds
-no P0–P2 defect, with cost, caller and final alias-control qualification still
-required. This candidate is not counted as a runtime repair yet.
+types pass with the final alias controls. Independent source review finds no
+P0–P2 production defect. Reverting to the original implementation catches the
+rewritten-format control; exact candidate restoration passes all 14 owner tests.
+A passive real-transaction counter measures authority-record decoding from two
+to one per no-op; the group record decodes once afterward, with its baseline
+count unmeasured. The counter is removed byte-exactly. At `b6cb377ce330`, the
+unchanged persistence/input caller selection passes all 16 cases, including both
+original input journeys at their original product deadlines. This supplies
+controlled caller acceptance for that source; it does not establish stable
+latency, finalizer acceptance, initialized start success or live-model behavior.
+The fault marker is subsequently tightened to confirm the injection completes
+before its refusal can count; final required checks remain separate.
 
 The initialized cold-start case remains held for #3558's separate stale-consumer
 fix: an old orchestration listener can consume a new runtime's start event after
