@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { STATION_NATIVE_SHELL_ORIGINS } from '@kontourai/station-shared/native-shell-origin';
 import type { VerifyClientCallbackAsync } from 'ws';
+import { publicIngressOriginResolver } from '../services/tailscale/public-ingress-origin.js';
 import {
   classifyRuntimePeer,
   type RuntimePeerClass,
@@ -44,6 +45,58 @@ export function resolveStationBrowserOrigins(input: {
   return [...origins];
 }
 
+/**
+ * The one answer to "is this browser Origin this Station's own?": an exact
+ * configured origin ({@link resolveStationBrowserOrigins}), else the HTTPS
+ * origin the local Tailscale daemon publishes for this Station's own
+ * listener (`PublicIngressOriginResolver.isOwnedOrigin`: own MagicDNS name,
+ * own ports only, Funnel off, no foreign handlers). The configured set is
+ * checked first, so an explicit entry never waits on the daemon, and the
+ * owned check refuses any non-`*.ts.net` origin without spawning `tailscale`.
+ *
+ * The HTTP origin gates, the pairing origin check, the credential-free
+ * WebSocket listeners and the sign-in origin picker all read this policy.
+ */
+export interface StationOriginPolicy {
+  /** Exact configured origins, in configured order. */
+  readonly configured: readonly string[];
+  admits(origin: string): Promise<boolean>;
+}
+
+export function createStationOriginPolicy(input: {
+  configured: readonly string[];
+  isOwnedOrigin?: (origin: string) => Promise<boolean>;
+}): StationOriginPolicy {
+  const configured = Object.freeze([...new Set(input.configured)]);
+  const exact = new Set(configured);
+  return {
+    configured,
+    async admits(origin) {
+      if (exact.has(origin)) return true;
+      if (!input.isOwnedOrigin) return false;
+      return (await input.isOwnedOrigin(origin).catch(() => false)) === true;
+    },
+  };
+}
+
+/**
+ * The production policy for the runtime listening on `port`. The owned-origin
+ * resolver is memoized per port process-wide, so every caller composing this
+ * shares one daemon cache and one answer.
+ */
+export function stationOriginPolicy(input: {
+  port: number;
+  host?: string;
+}): StationOriginPolicy {
+  return createStationOriginPolicy({
+    configured: resolveStationBrowserOrigins({
+      port: input.port,
+      host: input.host,
+    }),
+    isOwnedOrigin: publicIngressOriginResolver(input.port).isOwnedOrigin,
+  });
+}
+
 const WEBSOCKET_ORIGIN_FORBIDDEN = {
   status: 403,
   reason: 'origin_forbidden',
@@ -65,13 +118,13 @@ const WEBSOCKET_ORIGIN_FORBIDDEN = {
  * credential handshake: the origin check adds nothing there.
  */
 export function createCredentialFreeOriginVerifier(options: {
-  allowedOrigins: readonly string[];
+  /** Absent refuses every browser-shaped upgrade on the credential-free path. */
+  origins?: Pick<StationOriginPolicy, 'admits'>;
   /** True when non-loopback peers must authenticate before admission. */
   credentialRequired: boolean;
   classifyPeer?: (address: string | undefined) => RuntimePeerClass;
   onRejected?: (peerClass: RuntimePeerClass) => void;
 }): VerifyClientCallbackAsync<IncomingMessage> {
-  const allowed = new Set(options.allowedOrigins);
   return ({ req }, callback) => {
     // `ws` reports only one of these as `info.origin` depending on the
     // client's Sec-WebSocket-Version, so read both headers directly: an
@@ -91,16 +144,31 @@ export function createCredentialFreeOriginVerifier(options: {
       callback(true);
       return;
     }
-    // Exact, case-sensitive match, as the HTTP API's origin gate does.
-    if (presented.every((origin) => allowed.has(origin))) {
-      callback(true);
-      return;
-    }
-    options.onRejected?.(peerClass);
-    callback(
-      false,
-      WEBSOCKET_ORIGIN_FORBIDDEN.status,
-      WEBSOCKET_ORIGIN_FORBIDDEN.reason,
+    // The same policy, and so the same exact match, as the HTTP origin gate.
+    const policy = options.origins;
+    void (async () =>
+      policy !== undefined &&
+      (await Promise.all(presented.map((origin) => policy.admits(origin)))).every(
+        Boolean,
+      ))().then(
+      (admitted) => {
+        if (admitted) {
+          callback(true);
+          return;
+        }
+        options.onRejected?.(peerClass);
+        callback(
+          false,
+          WEBSOCKET_ORIGIN_FORBIDDEN.status,
+          WEBSOCKET_ORIGIN_FORBIDDEN.reason,
+        );
+      },
+      () =>
+        callback(
+          false,
+          WEBSOCKET_ORIGIN_FORBIDDEN.status,
+          WEBSOCKET_ORIGIN_FORBIDDEN.reason,
+        ),
     );
   };
 }

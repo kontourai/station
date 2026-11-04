@@ -52,6 +52,7 @@ import {
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
 import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
+import { createStationOriginPolicy } from '../../security/station-browser-origins.js';
 import { outsideAgentTokenAudience } from '../../security/outside-agent-token-audience.js';
 import {
   type ExternalSurfaceCapabilityRule,
@@ -495,7 +496,7 @@ export function configureRuntimeRouteClassificationGate(
   app: RuntimeApp,
   security: Pick<
     RuntimeHttpSecurityOptions,
-    'allowedOrigins' | 'isPublishedOrigin' | 'audit' | 'now'
+    'allowedOrigins' | 'originPolicy' | 'audit' | 'now'
   >,
   routeLabeler: RuntimeRouteLabeler,
 ): void {
@@ -899,21 +900,14 @@ async function admitNativeDeviceProofRequest(
   return c.res;
 }
 
-/**
- * The HTTP API's browser-origin policy: an exact configured origin, or the
- * HTTPS origin the local Tailscale daemon publishes for this Station's own
- * listener. Both gates below read this one predicate so they cannot disagree.
- */
+/** Both HTTP origin gates below read the one Station origin policy. */
 function runtimeOriginAdmission(
-  security: Pick<
-    RuntimeHttpSecurityOptions,
-    'allowedOrigins' | 'isPublishedOrigin'
-  >,
+  security: Pick<RuntimeHttpSecurityOptions, 'allowedOrigins' | 'originPolicy'>,
 ): (origin: string) => Promise<boolean> {
-  const allowedOrigins = new Set(security.allowedOrigins ?? []);
-  return async (origin) =>
-    allowedOrigins.has(origin) ||
-    (await security.isPublishedOrigin?.(origin).catch(() => false)) === true;
+  const policy =
+    security.originPolicy ??
+    createStationOriginPolicy({ configured: security.allowedOrigins ?? [] });
+  return (origin) => policy.admits(origin);
 }
 
 /** Exact declared leaves own their Origin, preflight, bearer and budgets after the compiled refusal. */

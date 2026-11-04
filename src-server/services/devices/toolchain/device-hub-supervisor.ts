@@ -262,8 +262,12 @@ interface Running {
 }
 
 export class DeviceHubSupervisor {
+  // `bundledNodePath` is consumed by the default `resolveRuntime` only.
   readonly #options: Required<
-    Omit<DeviceHubSupervisorOptions, 'resolveLaunch' | 'env'>
+    Omit<
+      DeviceHubSupervisorOptions,
+      'resolveLaunch' | 'env' | 'bundledNodePath'
+    >
   > &
     Pick<DeviceHubSupervisorOptions, 'resolveLaunch' | 'env'>;
   #state: DeviceHubProcessState = { state: 'stopped' };

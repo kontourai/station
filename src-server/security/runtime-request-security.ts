@@ -1,3 +1,4 @@
+import type { StationOriginPolicy } from './station-browser-origins.js';
 import {
   CLIENT_ORIGIN_HEADER,
   CLIENT_ORIGIN_VERSION,
@@ -463,13 +464,13 @@ export interface RuntimeHttpSecurityOptions {
   resolveGrantedScope: (
     credential: string,
   ) => string | undefined | Promise<string | undefined>;
-  allowedOrigins?: readonly string[];
   /**
-   * Admits an Origin outside `allowedOrigins` when the local Tailscale daemon
-   * publishes it as this Station's own Serve origin
-   * (`PublicIngressOriginResolver.isOwnedOrigin`). Absent admits nothing more.
+   * Shorthand for a configured-only {@link StationOriginPolicy}; ignored when
+   * `originPolicy` is present. Production passes `originPolicy`.
    */
-  isPublishedOrigin?: (origin: string) => Promise<boolean>;
+  allowedOrigins?: readonly string[];
+  /** The Station's one browser-origin policy (`stationOriginPolicy`). */
+  originPolicy?: Pick<StationOriginPolicy, 'admits'>;
   /**
    * Test seam for the client-protocol range this host enforces. Production
    * omits it and enforces the same block the public handshake advertises
