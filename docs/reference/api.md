@@ -3909,7 +3909,7 @@ with status `403`. That covers `POST /api/orchestration/commands`
 project or Agent, adding a plugin Agent's tool grant, and a known ACP
 full-access `mode` on a request's options. A mode carried on a request's
 options as a default (`approvalMode`, `never` included) is lowered to the
-ceiling, not refused. A turn on a chat whose recorded mode is above the ceiling is refused with the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
 same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding

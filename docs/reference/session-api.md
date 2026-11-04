@@ -808,10 +808,12 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
-A start or send on a chat whose recorded approval mode is above the machine's
+A start or send on a chat whose recorded approval pick is above the machine's
 managed approval ceiling is refused before any engine effect with
 `code: "managed-policy-approval-ceiling"` until the mode is lowered
-([ceiling](../guides/managed-policy.md#approval-mode-ceiling)).
+([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). A recorded
+personal default (`source: "personal-default"`) is lowered to the ceiling
+instead.
 
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
