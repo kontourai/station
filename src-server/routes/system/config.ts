@@ -1,3 +1,4 @@
+import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
@@ -117,7 +118,8 @@ function managedSettingRefusal(c: Context, error: ManagedSettingLockedError) {
       success: false,
       code: error.code,
       key: error.key,
-      error: error.message,
+      // Composed from the loaded policy's summary, not a caught message.
+      error: managedPolicyDenial(error.summary, 'this setting'),
     },
     403,
   );

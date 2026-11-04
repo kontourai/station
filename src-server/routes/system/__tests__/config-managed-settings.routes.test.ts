@@ -29,6 +29,11 @@ import { createConfigRoutes } from '../config.js';
 
 const makeTempDir = trackTempDirs();
 
+type ConfigBody = {
+  data: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+};
+
 const DENIAL =
   "Acme's policy manages this setting. For help, visit https://help.example/station";
 
@@ -131,7 +136,7 @@ describe('PUT /config/app with a managed policy', () => {
       put({ defaultMaxTurns: 40, checkoutStaleAfterDays: 4 }),
     );
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as ConfigBody;
     expect(body.data.defaultMaxTurns).toBe(40);
     // The policy value never reaches the user's file.
     expect(s.stored()).toMatchObject({
@@ -158,9 +163,9 @@ describe('PUT /config/app with a managed policy', () => {
     installManagedAppSettings(
       policy({ logLevel: { value: 'warn', locked: true } }),
     );
-    const current = await (
+    const current = (await (
       await s.routes.request('/config/app/log-level')
-    ).json();
+    ).json()) as { revision: string };
     const response = await s.routes.request('/config/app/log-level', {
       method: 'PUT',
       headers: {
@@ -171,7 +176,7 @@ describe('PUT /config/app with a managed policy', () => {
       body: JSON.stringify({ value: 'debug' }),
     });
     expect(response.status).toBe(403);
-    expect((await response.json()).error).toBe(DENIAL);
+    expect(((await response.json()) as { error: string }).error).toBe(DENIAL);
     expect(s.stored().logLevel).toBe('info');
   });
 });
@@ -189,7 +194,9 @@ describe('GET /config/app with a managed policy', () => {
         workspaceCheckpoints: { value: true, locked: false },
       }),
     );
-    const body = await (await s.routes.request('/config/app')).json();
+    const body = (await (
+      await s.routes.request('/config/app')
+    ).json()) as ConfigBody;
     expect(body.data.defaultMaxTurns).toBe(40);
     expect(body.data.checkoutStaleAfterDays).toBe(9);
     expect(body.data.workspaceCheckpoints).toBe(false);

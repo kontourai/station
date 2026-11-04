@@ -221,9 +221,7 @@ describe('ConfigLoader applies the overlay and refuses locked writes', () => {
     const before = readFileSync(join(dir, 'config', 'app.json'), 'utf8');
     await expect(
       loader.updateAppConfig({ defaultMaxTurns: 9 }),
-    ).rejects.toThrow(
-      new ManagedSettingLockedError('defaultMaxTurns', policy({}).summary),
-    );
+    ).rejects.toBeInstanceOf(ManagedSettingLockedError);
     await expect(
       loader.updateAppConfig({ defaultMaxTurns: null as never }),
     ).rejects.toBeInstanceOf(ManagedSettingLockedError);

@@ -174,7 +174,7 @@ export class ManagedSettingLockedError extends Error {
   readonly code = 'managed_setting_locked';
   constructor(
     readonly key: string,
-    summary: ManagedPolicySummary,
+    readonly summary: ManagedPolicySummary,
   ) {
     super(managedPolicyDenial(summary, 'this setting'));
     this.name = 'ManagedSettingLockedError';
