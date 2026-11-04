@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-04T15:11:50Z | nightly-npm | 0.11.0-nightly.2499.41852274071 | `b73f47e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41852274071) |
 | 2026-11-04T09:33:14Z | nightly-desktop | 0.1.11-nightly.2499 | `d6ec144` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41796352097) |
 | 2026-11-04T09:33:11Z | nightly-android | 0.1.11-nightly.2499 | `d6ec144` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41796352097) |
 | 2026-11-04T08:24:38Z | nightly-npm | 0.11.0-nightly.2499.41796352097 | `d6ec144` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41796352097) |
@@ -414,6 +415,42 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-04T15:11:50Z · nightly-npm · 0.11.0-nightly.2499.41852274071
+
+- Ship SHA: `b73f47e5a8a6752f037e0e006d6afcdcb19a2702`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2499.41852274071 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `d6ec144` ([full sha](https://github.com/kontourai/station/commit/d6ec144b4550a6d129da1bd95b24b615517d8385)):
+
+**Features**
+
+- [#4482](https://github.com/kontourai/station/pull/4482) feat(troubleshoot): add Troubleshoot entry points where errors appear
+- [#4526](https://github.com/kontourai/station/pull/4526) feat(policy): load a machine managed policy at startup and fail closed
+- [#4481](https://github.com/kontourai/station/pull/4481) feat(cli): run station triage as an interactive troubleshooting session
+
+**Fixes**
+
+- [#4552](https://github.com/kontourai/station/pull/4552) fix(profile): preserve access and keyboard context through usage recovery
+- [#4562](https://github.com/kontourai/station/pull/4562) fix(ci): repair nightly no-op caching and qualification fixtures
+- [#4545](https://github.com/kontourai/station/pull/4545) fix(tooling): handle asynchronous Windows abort IPC failures
+- [#4538](https://github.com/kontourai/station/pull/4538) fix(tooling): launch pinned Playwright CLI on Windows
+- [#4535](https://github.com/kontourai/station/pull/4535) fix(connect): resume shared health checks after reattachment
+- [#4532](https://github.com/kontourai/station/pull/4532) fix(tasks): preserve focus when renaming a Task
+- [#4534](https://github.com/kontourai/station/pull/4534) fix(ui): let Files retry a failed listing
+- [#4533](https://github.com/kontourai/station/pull/4533) fix(setup): invalidate changed import reviews and show failures
+
+**Docs**
+
+- [#4537](https://github.com/kontourai/station/pull/4537) docs: map whole-app UX campaign scope and integrated acceptance
+
+**Other**
+
+- [#4539](https://github.com/kontourai/station/pull/4539) test(ui): cover mounted desktop updater recovery
 
 ## 2026-11-04T09:33:14Z · nightly-desktop · 0.1.11-nightly.2499
 
