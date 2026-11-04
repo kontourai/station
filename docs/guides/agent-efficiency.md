@@ -170,6 +170,10 @@ off. This is a personal-host operator API preview: it has no agent/MCP grant
 surface or hosted-tenant execution. Running the model can spend provider credits.
 Docker, Python 3 and an immutable image containing the pinned Codex CLI must be
 available. The command below prepares and separately qualifies that image.
+Under a [managed policy](managed-policy.md#network-exposure) that allows no
+remote clients, the worker's relay binds loopback, and repairs are refused on
+Linux (`repair-network-local-only`), where Docker reaches the host over its
+bridge instead.
 
 Use the authenticated operator API at `/api/isolated-repairs`. Requests use the
 same current operator credential/session as other host administration; a paired
