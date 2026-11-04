@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { type CDPSession, devices, type Locator } from '@playwright/test';
 import {
   type AuthenticatedE2ERequest,
@@ -54,12 +55,8 @@ async function shellOutput(request: AuthenticatedE2ERequest, id: string) {
   const body = (await response.json()) as {
     data: { journal: { records: { data: string }[] } };
   };
-  return body.data.journal.records
-    .map((record) => record.data)
-    .join('')
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    .replace(/\u001b\][^\u0007\u001b]*(\u0007|\u001b\\)/g, '')
-    .replace(/\r/g, '');
+  const text = body.data.journal.records.map((record) => record.data).join('');
+  return stripVTControlCharacters(text).replace(/\r/g, '');
 }
 
 /** One letter the way Gboard commits it: keydown 229, then the text. */

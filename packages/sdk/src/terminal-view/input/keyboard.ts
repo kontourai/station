@@ -43,6 +43,11 @@ const CODE_BY_PUNCTUATION: Readonly<Record<string, string>> =
     Object.entries(PUNCTUATION_BY_CODE).map(([code, char]) => [char, code]),
   );
 
+/** Keys whose `key` value is also their code's name (Enter, ArrowUp, F1…). */
+const NAMED_KEYS: ReadonlySet<string> = new Set(
+  Object.keys(GHOSTTY_KEY_BY_CODE),
+);
+
 /** The key's code point on an unshifted US layout, or 0. */
 function unshiftedCodepoint(code: string, key: string): number {
   if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3) + 32;
@@ -62,8 +67,7 @@ function unshiftedCodepoint(code: string, key: string): number {
 export function keyCode(event: Pick<KeyboardEvent, 'code' | 'key'>): string {
   if (event.code && event.code !== 'Unidentified') return event.code;
   const { key } = event;
-  if (Object.prototype.hasOwnProperty.call(GHOSTTY_KEY_BY_CODE, key))
-    return key;
+  if (NAMED_KEYS.has(key)) return key;
   if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
   if (/^\d$/.test(key)) return `Digit${key}`;
   return CODE_BY_PUNCTUATION[key] ?? '';
