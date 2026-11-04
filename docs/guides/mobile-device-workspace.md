@@ -162,6 +162,46 @@ exit signal, and an unavailable inventory is not proof that a device stopped.
 Browser sessions have different lifetime rules, so do not apply this
 device idle timeout to a Browser pane.
 
+## Foldable devices
+
+A device whose helper reports a hinge carries a `fold` state in its live
+surface's stream state: the lit display (`cover` or `inner`), the hinge
+angle (0 closed to 180 flat, or null when unknown), the named stand
+(`closed`, `open`, `book`, `laptop`, `tent`, or null between stands), the
+stands it can be put into, whether a hinge angle can be set, and table mode
+when reported. A phone that does not fold has no `fold`; Station never
+infers one from a frame's shape.
+
+- **iOS dual-display simulators** (for example an iPhone Duo runtime):
+  the managed helper (expo-device-hub 0.19.1) reports the hinge in its
+  screen configuration. Every stand, a hinge angle and table mode can be
+  set. A `fold` input is settled by the helper's correlated reply, so a
+  stand the simulator refused is reported as a failed input, unlike a tap,
+  whose success means only that the socket accepted it. Video streams
+  the lit display's own panel and switches when the device hands off between
+  displays; each frame names its `display`. A helper that refuses panel
+  streams falls back to the device's main stream, whose frames carry no
+  `display`.
+- **Android foldable emulators**: the helper reads the emulator's hinge
+  sensor and posture when the input channel connects, and can fold an
+  emulator closed or unfold it flat (`closed` and `open` only). Other
+  stands and hinge angles are refused before anything is sent. A fold made
+  outside Station (the emulator's own controls) is not observed until the
+  input channel reconnects.
+
+The Device pane draws the lit inner display bent at its crease, which
+splits the frame's longer side. Each half turns about the crease under a
+perspective, and a touch on the bent drawing is mapped back to the flat
+display point under it. Touches outside the drawn halves send nothing. The
+fold controls (stands, a hinge slider and table mode) send `fold` input
+through the surface's control lease like any other input. The slider bends
+the drawing while it moves, settles on a stand's angle within six degrees,
+and sends one angle when released. The drawing is a 2D projection, not a
+model of the device body.
+
+`fold` input is also available to bound agents through `device_input`,
+under the same lease and authority checks as other input.
+
 ## Single-frame API and SDK
 
 - `GET /api/mobile-devices/hosts/local/devices` returns host state,
@@ -219,7 +259,9 @@ the Tools drawer can inspect application state.
 Use the owning lifecycle action for the resource you intend to stop: viewer,
 shared session, device and managed helper are distinct. No physical simulator,
 remote host, input effect, relay frame rate or native-client journey was verified
-by this documentation audit.
+by this documentation audit. No dual-display iOS simulator or foldable Android emulator
+was available when the foldable support was written: its hub messages,
+panel streams and fold route are exercised by fixtures, not a device.
 
 Fixture owners include the [single-frame adapter tests](../../src-server/services/mobile-device/__tests__/mobile-device-host.test.ts),
 [session-route tests](../../src-server/routes/__tests__/mobile-device-sessions.routes.test.ts),

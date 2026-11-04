@@ -39,6 +39,12 @@ export const POSTURE_HINGE_ANGLE: Readonly<Record<LiveSurfacePosture, number>> =
 
 /** A turn this close to edge-on would draw a sliver; it is held short of it. */
 const MAX_TURN = 80;
+/**
+ * A laptop's deck is seen from in front of its raised half, nearly edge-on;
+ * it is drawn tipped toward the viewer instead, so it stays legible and
+ * touchable.
+ */
+const MAX_DECK_TURN = 60;
 
 const FLAT: FoldPresentation = { crease: null, turns: [0, 0] };
 
@@ -67,7 +73,8 @@ export function foldPresentation(
   // A stand without a preview keeps its own shape; a dragged hinge bends
   // symmetrically, the way a hand opens a book.
   const posture = previewAngle === null ? fold.posture : null;
-  if (posture === 'laptop') return { crease, turns: [0, cap(bend)] };
+  if (posture === 'laptop')
+    return { crease, turns: [0, Math.min(MAX_DECK_TURN, cap(bend))] };
   if (posture === 'tent')
     return { crease, turns: [cap(-bend / 2), cap(-bend / 2)] };
   return { crease, turns: [cap(bend / 2), cap(bend / 2)] };

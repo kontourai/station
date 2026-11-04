@@ -35,7 +35,7 @@ describe('foldPresentation', () => {
     expect(foldPresentation(FOLD, WIDE).turns).toEqual([45, 45]);
     expect(
       foldPresentation({ ...FOLD, posture: 'laptop' }, TALL).turns,
-    ).toEqual([0, 80]);
+    ).toEqual([0, 60]);
     expect(
       foldPresentation({ ...FOLD, posture: 'tent', hingeAngle: 80 }, WIDE)
         .turns,
