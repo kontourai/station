@@ -71,6 +71,29 @@ const STORED_STATES: ReadonlyArray<{
     decision: false,
   },
   {
+    // A hand edit or another serializer may reorder an entry's keys; the
+    // seed is still the seed, so a managed default still fills it.
+    name: 'templateVariables seed with reordered keys',
+    key: 'templateVariables',
+    stored: {
+      templateVariables: [{ value: 'Station', type: 'static', key: 'AGENT_NAME' }],
+    },
+    decision: false,
+  },
+  {
+    // Array order is meaningful: the same entries in another order are a
+    // list the operator shaped.
+    name: 'templateVariables reordered entries',
+    key: 'templateVariables',
+    stored: {
+      templateVariables: [
+        { key: 'TEAM', type: 'static', value: 'Ops' },
+        ...APP_CONFIG_SEED.templateVariables,
+      ],
+    },
+    decision: true,
+  },
+  {
     name: 'systemPrompt real user value',
     key: 'systemPrompt',
     stored: { systemPrompt: 'My own prompt.' },

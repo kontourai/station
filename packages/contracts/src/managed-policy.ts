@@ -369,7 +369,7 @@ export const MANAGED_SETTING_NARROWER_SCOPES: Readonly<Record<string, string>> =
     region:
       "An Agent's own region, then a model connection's region, still apply before this one.",
     defaultModel:
-      "An Agent's own model and the model a person picks for a chat still apply.",
+      "An Agent's own model, the model a person picks for a chat, and a model connection's own default model still apply before this one.",
     defaultLLMProvider:
       "An Agent's own model connection and the connection a person picks for a chat still apply.",
     invokeModel: 'An invoke request that names its own model still uses it.',
@@ -383,6 +383,8 @@ export const MANAGED_SETTING_NARROWER_SCOPES: Readonly<Record<string, string>> =
       'Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in.',
     defaultChatFontSize:
       "A person's own Chat font size (an account setting) still applies first.",
+    usageLimitAutoResume:
+      'A person\'s "Resume" or "Don\'t resume" choice on one usage-limit stop decides that stop.',
   });
 
 /** The project fields hidden while `lockedKeys` are locked. */

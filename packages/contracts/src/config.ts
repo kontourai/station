@@ -550,11 +550,11 @@ export const SEEDED_APP_CONFIG_KEYS = [
 ] as const satisfies readonly (keyof typeof APP_CONFIG_SEED)[];
 
 /**
- * Whether `value` is byte-equal to what the loader seeds for `key`.
+ * Whether `value` equals what the loader seeds for `key`.
  *
- * Structural equality via JSON for `templateVariables`: the seed is a small
- * array of flat string records written by this repo, so key order is the
- * order the loader spread them in. An operator's list that merely CONTAINS
+ * Structural equality for `templateVariables`: a seed entry whose keys were
+ * reordered (by a hand edit or another serializer) is still the seed, so a
+ * managed default still fills it (#4517). An operator's list that merely CONTAINS
  * the seeded `AGENT_NAME` entry alongside their own is not equal and is
  * correctly reported as a decision — the loader appends rather than
  * replaces, so "seed plus their entries" is a file they shaped.
@@ -563,9 +563,28 @@ export function isSeededAppConfigValue(
   key: (typeof SEEDED_APP_CONFIG_KEYS)[number],
   value: unknown,
 ): boolean {
-  const seed = APP_CONFIG_SEED[key];
-  if (typeof seed === 'string') return value === seed;
-  return JSON.stringify(value) === JSON.stringify(seed);
+  return sameJsonValue(value, APP_CONFIG_SEED[key]);
+}
+
+/**
+ * Structural JSON equality: object key order is ignored (a hand-edited or
+ * re-serialized `app.json` may reorder keys), array order is not.
+ */
+function sameJsonValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null)
+    return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b))
+    return a.length === b.length && a.every((item, i) => sameJsonValue(item, b[i]));
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  return (
+    aKeys.length === bKeys.length &&
+    aKeys.every(
+      (k) => Object.hasOwn(b, k) && sameJsonValue(Reflect.get(a, k), Reflect.get(b, k)),
+    )
+  );
 }
 
 /**

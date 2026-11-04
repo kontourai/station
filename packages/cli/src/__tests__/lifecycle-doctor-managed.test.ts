@@ -35,10 +35,14 @@ const STORED = { agentConnections: { codex: { enabled: true } } };
 
 function deps(
   loadManagedPolicy: DoctorDeps['loadManagedPolicy'],
+  { codexCli = false }: { codexCli?: boolean } = {},
 ): Partial<DoctorDeps> {
   return {
-    // No CLI, no credentials: only the stored connection can make it ready.
-    exec: vi.fn(() => null),
+    // No credentials. Without `codexCli`, no CLI either: only the stored
+    // connection can make it ready.
+    exec: vi.fn((command: string) =>
+      codexCli && command === 'codex --version' ? 'codex-cli 1.0.0' : null,
+    ),
     checkOllama: vi.fn(async () => false),
     readJson: <T>(path: string, fallback: T) =>
       (path.endsWith('app.json') ? STORED : fallback) as T,
@@ -79,13 +83,38 @@ describe('station doctor under a managed policy', () => {
     expect(report.runtimeState.configured).toEqual([]);
   });
 
-  test('a policy startup would refuse is a failing check, not readiness', async () => {
+  test('a detected CLI whose connection the policy disables is not a runtime', async () => {
+    const disabled = () =>
+      policy({
+        agentConnections: {
+          value: { codex: { enabled: false } },
+          locked: true,
+        },
+      });
+    // Control: the same detected CLI is a runtime without the policy.
+    const unmanaged = await collectDoctorReport(
+      deps(() => null, { codexCli: true }),
+    );
+    expect(unmanaged.runtimeState.detected).toContain('codex-cli');
     const report = await collectDoctorReport(
-      deps(() => {
-        throw new ManagedPolicyInvalidError('/test/policy.json', 'bad value');
-      }),
+      deps(disabled, { codexCli: true }),
     );
     expect(report.runtimeReady).toBe(false);
+    expect(report.runtimeState.detected).not.toContain('codex-cli');
+    expect(report.runtimeState.effective).toBeNull();
+  });
+
+  test('a policy startup would refuse is a failing check, not readiness', async () => {
+    const report = await collectDoctorReport(
+      deps(
+        () => {
+          throw new ManagedPolicyInvalidError('/test/policy.json', 'bad value');
+        },
+        { codexCli: true },
+      ),
+    );
+    expect(report.runtimeReady).toBe(false);
+    expect(report.runtimeState.effective).toBeNull();
     const check = report.checks.find((item) => item.label === 'Managed policy');
     expect(check?.status).toBe('fail');
     expect(check?.detail).toContain('/test/policy.json');

@@ -56,8 +56,10 @@ Each key under `settings` is a Station setting key, the name `station config
 get` and `station config set` use (for example `defaultMaxTurns`). Each entry
 has exactly two keys:
 
-- `"locked": true` fixes the value. Users, agents and the offline CLI cannot
-  change it, in Settings or in a project's settings, and Settings shows the
+- `"locked": true` fixes the Station-level value and project overrides
+  (see [What a lock does not cover](#what-a-lock-does-not-cover) for narrower
+  values that still apply). Users, agents and the offline CLI cannot change
+  it, in Settings or in a project's settings, and Settings shows the
   control as "Managed by <organization>", disabled, with a "Get help" link to
   your `supportUrl`. A lock also replaces a project's own choice for that
   setting.
@@ -89,7 +91,7 @@ use limits: for approvals, `limits.maxApprovalMode` (#4518) is the hard bound.
 | --- | --- |
 | `defaultApprovalMode` | A mode a person picks for a conversation, an Agent's own approval default and a person's per-engine default still apply. The hard approval bound is `limits.maxApprovalMode` (#4518). |
 | `region` | An Agent's own region, then a model connection's region, still apply before this one. |
-| `defaultModel` | An Agent's own model and the model a person picks for a chat still apply. |
+| `defaultModel` | An Agent's own model, the model a person picks for a chat, and a model connection's own default model still apply before this one. |
 | `defaultLLMProvider` | An Agent's own model connection and the connection a person picks for a chat still apply. |
 | `invokeModel` | An invoke request that names its own model still uses it. |
 | `structureModel` | `approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first. |
@@ -97,6 +99,7 @@ use limits: for approvals, `limits.maxApprovalMode` (#4518) is the hard bound.
 | `defaultMaxOutputTokens` | An Agent's own `guardrails.maxTokens` still applies first. |
 | `defaultWorkspaceIsolation` | Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in. |
 | `defaultChatFontSize` | A person's own Chat font size (an account setting) still applies first. |
+| `usageLimitAutoResume` | A person's "Resume" or "Don't resume" choice on one usage-limit stop decides that stop. |
 
 Every other setting a policy can manage has no narrower value: its lock is the
 value in effect. `systemPrompt` is not overridden either: each Agent's own

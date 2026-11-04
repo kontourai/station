@@ -537,6 +537,11 @@ export async function collectDoctorReport(
   const enabledRuntimeConnections = Object.entries(agentConnections).filter(
     ([, settings]) => settings?.enabled !== false,
   );
+  // A detected CLI is a usable runtime only while its connection is not
+  // disabled in the effective configuration (a managed policy can disable
+  // it, #4517).
+  const runtimeAllowed = (connectionId: string): boolean =>
+    agentConnections[connectionId]?.enabled !== false;
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -673,13 +678,19 @@ export async function collectDoctorReport(
       )
     : sourceChecks;
 
+  const codexUsable = Boolean(codexVersion) && runtimeAllowed('codex');
+  const claudeUsable = Boolean(claudeVersion) && runtimeAllowed('claude');
+  // A policy server startup would refuse leaves nothing ready: the server
+  // does not start.
   const chatReady =
-    enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured;
+    managedPolicyProblem === null &&
+    (enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured);
   const runtimeReady =
-    awsConfigured ||
-    Boolean(codexVersion) ||
-    Boolean(claudeVersion) ||
-    enabledRuntimeConnections.length > 0;
+    managedPolicyProblem === null &&
+    (awsConfigured ||
+      codexUsable ||
+      claudeUsable ||
+      enabledRuntimeConnections.length > 0);
   const configuredProviderLabels = enabledLlmProviders
     .map(providerLabel)
     .filter(Boolean);
@@ -689,8 +700,8 @@ export async function collectDoctorReport(
   ].filter((value): value is string => Boolean(value));
   const configuredRuntimes = enabledRuntimeConnections.map(([id]) => id);
   const detectedRuntimes = [
-    codexVersion ? 'codex-cli' : null,
-    claudeVersion ? 'claude-cli' : null,
+    codexUsable ? 'codex-cli' : null,
+    claudeUsable ? 'claude-cli' : null,
     kiroVersion ? 'kiro-cli' : null,
   ].filter((value): value is string => Boolean(value));
   const fixCommands = buildFixCommands({
@@ -733,9 +744,11 @@ export async function collectDoctorReport(
       configured: configuredRuntimes,
       detected: detectedRuntimes,
       effective:
-        configuredRuntimes[0] ??
-        detectedRuntimes[0] ??
-        (awsConfigured ? 'bedrock-credentials' : null),
+        managedPolicyProblem !== null
+          ? null
+          : (configuredRuntimes[0] ??
+            detectedRuntimes[0] ??
+            (awsConfigured ? 'bedrock-credentials' : null)),
     },
     dependencyState,
     fixCommands,
