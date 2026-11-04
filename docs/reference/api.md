@@ -232,7 +232,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
