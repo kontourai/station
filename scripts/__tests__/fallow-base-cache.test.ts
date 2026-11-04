@@ -196,6 +196,7 @@ describe('fallow audit base snapshots (#2529)', () => {
         expect(diagnostic.error).toMatch(
           /signal=SIGTERM[\s\S]*interrupted=true[\s\S]*truncated=false/,
         );
+        expect(diagnostic.error).toContain('interruption=SIGTERM');
         expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
       } finally {
         clearTimeout(timeout);
