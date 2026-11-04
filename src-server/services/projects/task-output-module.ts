@@ -23,7 +23,10 @@ import {
   type TaskOutputRecord,
 } from '@kontourai/station-contracts';
 import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
-import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import {
+  type TaskRecord,
+  taskWorkingDirectory,
+} from '@kontourai/station-contracts/task-graph';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isRecord } from '../../utils/is-record.js';
@@ -120,7 +123,7 @@ export class TaskOutputModule {
           taskId: string,
         ): Promise<Pick<
           TaskRecord,
-          'id' | 'projectId' | 'createdAt' | 'workspaceBinding'
+          'id' | 'projectId' | 'createdAt' | 'workspaceBinding' | 'taskWorktree'
         > | null>;
       };
       hosted?: () => boolean;
@@ -271,7 +274,7 @@ export class TaskOutputModule {
         // resolve(expandTilde(...)), never resolve alone (archive#3155): a
         // workspace binding stores `~/...` verbatim, and `resolve` treats `~`
         // as an ordinary segment, so the root became `<cwd>/~/...`.
-        resolve(expandTilde(task.workspaceBinding!.workingDirectory!)),
+        resolve(expandTilde(taskWorkingDirectory(task)!)),
         normalized.relativePath,
         this.limits.maxBytes,
         this.input.sourceSnapshotPort ?? {
@@ -714,7 +717,7 @@ export class TaskOutputModule {
     // A presence check, not a path read: nothing here touches the filesystem,
     // so there is nothing to expand. The read itself is in
     // `readWorkspaceSnapshot`, which does `resolve(expandTilde(...))`.
-    if (binding?.availability !== 'available' || !binding?.workingDirectory) {
+    if (binding?.availability !== 'available' || !taskWorkingDirectory(task)) {
       throw new TaskOutputNotFoundError('Task output not found');
     }
     return task;

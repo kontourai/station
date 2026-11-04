@@ -31,7 +31,10 @@ const keepDeclaredSchema = z
 export function createTaskOutputRoutes(
   outputs: TaskOutputModule,
   options?: {
-    taskGraph: Pick<TaskGraphService, 'readTask' | 'keepDeclaredPullRequest'>;
+    taskGraph: Pick<
+      TaskGraphService,
+      'readTask' | 'keepDeclaredPullRequest' | 'taskWorkingDirectory'
+    >;
     sessionOutputs: SessionOutputsModule;
     readAuthorityForRequest: (
       request: Request,
@@ -88,7 +91,9 @@ export function createTaskOutputRoutes(
       // invariant has held since the field's introduction (archive#521: no other
       // writer sets it), so a captured binding can never carry an
       // unexpanded `~`; nothing downstream needs to expand it again.
-      const workspace = task?.workspaceBinding?.workingDirectory;
+      // #4507: a Task whose Sessions run in its own worktree is compared
+      // against that worktree, not the Project checkout.
+      const workspace = task && options.taskGraph.taskWorkingDirectory(task);
       const projectWorkspace =
         task && options.resolveProjectWorkspace(task.projectId);
       if (
@@ -116,7 +121,9 @@ export function createTaskOutputRoutes(
           // workspace = ...`) — one captured at request start, one re-read
           // here at witness time — to detect the Task moving to a different
           // workspace mid-request. Never used to touch the filesystem.
-          actual.workspaceBinding?.workingDirectory === originalWorkspace &&
+          !!actual &&
+          options.taskGraph.taskWorkingDirectory(actual) ===
+            originalWorkspace &&
           options.resolveProjectWorkspace(actual.projectId) === projectWorkspace
         );
       };
@@ -143,7 +150,7 @@ export function createTaskOutputRoutes(
                 canKeepForTask() &&
                 actualTask.projectId === originalProjectId &&
                 // Same witness compare as `canKeepForTask` above.
-                actualTask.workspaceBinding?.workingDirectory ===
+                options.taskGraph.taskWorkingDirectory(actualTask) ===
                   originalWorkspace &&
                 options.resolveProjectWorkspace(actualTask.projectId) ===
                   projectWorkspace,

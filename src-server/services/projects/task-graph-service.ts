@@ -30,6 +30,7 @@ import {
   type TaskStatus,
   type TaskWorkspaceBinding,
   taskReferenceToRelationGraphLinkInput,
+  taskWorkingDirectory,
   validateRelationGraphLinkInput,
   validateTaskCreateInput,
   validateTaskReferenceInput,
@@ -2022,10 +2023,37 @@ export class TaskGraphService {
   async readTaskForOpen(taskId: string): Promise<TaskRecord | null> {
     const task = this.readTask(taskId);
     if (!task) return null;
+    const workspaceBinding = await this.resolveWorkspaceForOpen(task);
+    const worktree = this.taskWorktrees.read(task.id, task.createdAt)?.worktree;
+    if (!worktree) return { ...task, workspaceBinding };
+    // #4507: the Task's own worktree is where its work is. The Project
+    // checkout stays `workingDirectory`; the Task view's existing "Task
+    // worktree" and branch rows show the Task's checkout.
     return {
       ...task,
-      workspaceBinding: await this.resolveWorkspaceForOpen(task),
+      workspaceBinding: {
+        ...workspaceBinding,
+        worktreePath: worktree.path,
+        branch: worktree.branch,
+      },
+      taskWorktree: { path: worktree.path, branch: worktree.branch },
     };
+  }
+
+  /**
+   * #4507: {@link taskWorkingDirectory} for a Task record read from the
+   * store, which never carries the worktree projection itself.
+   */
+  taskWorkingDirectory(
+    task: Pick<TaskRecord, 'id' | 'createdAt' | 'workspaceBinding'>,
+  ): string | undefined {
+    const worktree = this.taskWorktrees.read(task.id, task.createdAt)?.worktree;
+    return taskWorkingDirectory({
+      workspaceBinding: task.workspaceBinding,
+      ...(worktree
+        ? { taskWorktree: { path: worktree.path, branch: worktree.branch } }
+        : {}),
+    });
   }
 
   /**
@@ -4916,9 +4944,7 @@ export class TaskGraphService {
           taskCreatedAt: task.createdAt,
           worktree: provisioned.metadata,
         }));
-      const current = this.readStore().tasks.find(
-        (item) => item.id === taskId,
-      );
+      const current = this.readStore().tasks.find((item) => item.id === taskId);
       if (
         !current ||
         current.createdAt !== task.createdAt ||

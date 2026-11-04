@@ -14,7 +14,8 @@
  * fake provider that reports each pull request's state) and the repository
  * the workspace is.
  */
-import { mkdirSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -37,6 +38,8 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TaskWorktreeStore } from '../../../services/projects/task-worktree-store.js';
+import { WorktreeProvisioningService } from '../../../services/projects/worktree-provisioning-service.js';
 import { NativeDeclaredPullRequestResolver } from '../../../services/pull-requests/native-declared-pull-request-resolver.js';
 import type { PullRequestRepositoryContextResolver } from '../../../services/pull-requests/pull-request-repository-context-resolver.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
@@ -146,10 +149,32 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       throw new AggregateError(failures, 'Engine declaration teardown failed');
   });
 
-  async function setup() {
+  async function setup(options: { git?: boolean } = {}) {
     const homeDir = makeTempDir('station-declare-engine-');
-    const workspace = realpathSync(makeTempDir('station-declare-engine-ws-'));
+    // A git workspace sits in its own parent, so the `<repo>-worktrees`
+    // sibling a Task worktree is made in is cleaned up with it.
+    const workspace = options.git
+      ? join(realpathSync(makeTempDir('station-declare-engine-wt-')), 'repo')
+      : realpathSync(makeTempDir('station-declare-engine-ws-'));
     mkdirSync(workspace, { recursive: true });
+    if (options.git) {
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: workspace,
+          env: {
+            ...process.env,
+            GIT_AUTHOR_NAME: 'Station Test',
+            GIT_AUTHOR_EMAIL: 'test@station.invalid',
+            GIT_COMMITTER_NAME: 'Station Test',
+            GIT_COMMITTER_EMAIL: 'test@station.invalid',
+          },
+          windowsHide: true,
+        });
+      git('init', '--quiet', '--initial-branch=main');
+      writeFileSync(join(workspace, 'README.md'), 'project\n');
+      git('add', 'README.md');
+      git('commit', '--quiet', '-m', 'initial');
+    }
     const notifications = new NotificationService(
       new EventBus(),
       homeDir,
@@ -449,7 +474,16 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       };
     };
 
+    /** The directory the engine's session recorded it runs in. */
+    const setSessionCwd = (cwd: string) => {
+      const session = (orchestration as any).sessionReadModel.get(THREAD);
+      session.cwd = cwd;
+      store.upsertSession({ ...session, cwd });
+    };
+
     return {
+      homeDir,
+      setSessionCwd,
       store,
       taskGraph,
       states,
@@ -585,6 +619,65 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     );
     return task;
   }
+
+  // #4507: a Task whose Project isolates Sessions in worktrees runs them in
+  // the Task's own worktree. Keeping their pull request compares the
+  // Session's directory with that worktree, not the Project checkout, so the
+  // Task can be opted in to close on merge; the merge then finalizes it.
+  test('a worktree Task keeps its Session’s pull request, and the merge finalizes its clean worktree', async () => {
+    const e = await setup({ git: true });
+    e.states['kontourai/station#7'] = 'OPEN';
+    const task = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Ship the fix in its worktree',
+    });
+    await e.taskGraph.updateTaskStatus(task.id, 'in_progress');
+    // The Task's worktree as dispatch records it: real provisioning, the
+    // real store writer.
+    const { metadata: worktree } =
+      await new WorktreeProvisioningService().provisionForTask({
+        repoPath: e.workspace,
+        taskId: task.id,
+        providerKind: 'codex',
+        isolation: { mode: 'worktree' },
+      });
+    await new TaskWorktreeStore(e.homeDir).update(task.id, () => ({
+      taskCreatedAt: task.createdAt,
+      worktree,
+    }));
+    e.setSessionCwd(worktree.path);
+
+    await e.declare(PR);
+    const eventId = e.emit({
+      method: 'turn.completed',
+      turnId: 'turn-1',
+      finishReason: 'stop',
+    });
+    const kept = await e.asOperator(
+      'POST',
+      `/api/tasks/${task.id}/declared-outputs/${THREAD}/${eventId}/keep`,
+      { operationId: 'keep-worktree' },
+    );
+    expect(kept.status, JSON.stringify(kept.json)).toBe(201);
+    expect(kept.json.data).toMatchObject({ status: 'kept', outcome: 'kept' });
+
+    const optIn = await e.asOperator(
+      'PUT',
+      `/api/tasks/${task.id}/close-on-merge`,
+      { enabled: true },
+    );
+    expect(optIn.status).toBe(200);
+    e.states['kontourai/station#7'] = 'MERGED';
+    await e.asOperator('GET', `/api/conversation-pull-requests/${THREAD}`);
+    await vi.waitFor(() =>
+      expect(e.taskGraph.readTask(task.id)?.status).toBe('done'),
+    );
+    // Clean, and its branch has no commit of its own: removed and forgotten.
+    await vi.waitFor(() => {
+      expect(existsSync(worktree.path)).toBe(false);
+      expect(e.taskGraph.readTaskWorktree(task.id)).toBeUndefined();
+    });
+  });
 
   test('a Task a person opted in is done after the pull request merges and the conversation refreshes', async () => {
     const e = await setup();

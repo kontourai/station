@@ -94,6 +94,29 @@ const MAX_TASK_WORKSPACE_STRING_LENGTH = 4_096;
  * are optional because Station never infers an unavailable repository/worktree
  * value from a project or neighboring session.
  */
+/**
+ * #4507: the worktree a Task's Sessions run in, when its Project isolates
+ * them in worktrees. A read projection on the opened Task (and the server's
+ * own reads); it is never stored on the Task record.
+ */
+export interface TaskWorktreeView {
+  path: string;
+  branch: string;
+}
+
+/**
+ * #4507: the directory a Task's work happens in: its own worktree when it
+ * has one, otherwise the Project working directory it was created against.
+ * Every reader that compares or reads a Task's files uses this, so a Task
+ * whose Sessions run in a worktree is not compared against the Project
+ * checkout.
+ */
+export function taskWorkingDirectory(
+  task: Pick<TaskRecord, 'workspaceBinding' | 'taskWorktree'>,
+): string | undefined {
+  return task.taskWorktree?.path ?? task.workspaceBinding?.workingDirectory;
+}
+
 export interface TaskWorkspaceBinding {
   /** Server-derived current reopen state; raw paths are not authority to open. */
   availability?: TaskWorkspaceAvailability;
@@ -597,6 +620,8 @@ export interface TaskRecord {
   dispatchedAt?: string;
   sessionId?: string;
   workspaceBinding?: TaskWorkspaceBinding;
+  /** #4507: read projection only; see {@link TaskWorktreeView}. */
+  taskWorktree?: TaskWorktreeView;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */
