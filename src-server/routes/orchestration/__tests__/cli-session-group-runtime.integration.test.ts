@@ -341,7 +341,11 @@ class MemberAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture(operatorInspection = false, stationControl = false) {
+async function fixture(
+  operatorInspection = false,
+  stationControl = false,
+  heterogeneous = false,
+) {
   const root = realpathSync(temporary('station-real-cli-group-'));
   const actor = humanPrincipal('test', 'group-owner', 'Group owner');
   const security = operatorInspection
@@ -356,6 +360,10 @@ async function fixture(operatorInspection = false, stationControl = false) {
       })
     : () => actor;
   const adapter = new MemberAdapter();
+  const codex = heterogeneous ? new MemberAdapter('codex') : undefined;
+  const adapters = codex ? [adapter, codex] : [adapter];
+  const providerFor = (id: string) =>
+    codex && id === 'reviewer-codex' ? 'codex' : 'claude';
   adapter.authenticationExecutable = join(root, 'fixture-native');
   writeFileSync(adapter.authenticationExecutable, '');
   Object.assign(adapter.metadata, {
@@ -369,19 +377,33 @@ async function fixture(operatorInspection = false, stationControl = false) {
       overridePerTurn: true,
     },
   });
+  if (codex)
+    Object.assign(codex.metadata, adapter.metadata, {
+      connectionId: 'codex',
+      displayName: 'Codex',
+    });
   let inventoryRevision = 1;
   const inventory = createLocalEnsembleInventory({
     environmentId: () => 'group-host',
     captureAgentConfigurationFence: () => () => {},
     getProjectRevision: () => ({ value: null, assertCurrent() {} }),
     getProviderRevision: () => inventoryRevision,
-    getAgent: async () => ({
+    getAgent: async (id) => ({
       name: 'Reviewer',
       prompt: 'Review the supplied brief.',
-      execution: { agentConnectionId: engineConnectionId('claude') },
+      execution: { agentConnectionId: engineConnectionId(providerFor(id)) },
     }),
     listEngineConnectionIdentities: async () => [
       { id: engineConnectionId('claude'), engineId: 'claude', type: 'claude' },
+      ...(codex
+        ? [
+            {
+              id: engineConnectionId('codex'),
+              engineId: 'codex' as const,
+              type: 'codex',
+            },
+          ]
+        : []),
     ],
     loadAppConfig: async () => ({
       defaultModel: '',
@@ -390,7 +412,8 @@ async function fixture(operatorInspection = false, stationControl = false) {
       systemPrompt: '',
     }),
     getProject: () => undefined,
-    getProviderAdapter: () => adapter,
+    getProviderAdapter: (provider) =>
+      adapters.find((entry) => entry.provider === provider),
   });
   const ensembleGroups = security
     ? new EnsembleCliSessionGroupPreparation(
@@ -409,15 +432,21 @@ async function fixture(operatorInspection = false, stationControl = false) {
   const bus = new EventBus();
   let prepare: () => Promise<void> = async () => {};
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
+    adapterRegistry: createGateTestRegistry(adapter, ...(codex ? [codex] : [])),
     resourcePosture: createRuntimeResourcePostureController(),
     eventBus: bus,
     eventStore: store,
     logger: { debug() {}, warn() {} },
     resolveSessionAgent: createSessionAgentResolver({
-      loadAgentSpec: async () => {
+      loadAgentSpec: async (id) => {
         await prepare();
-        return { name: 'Reviewer', prompt: 'Review the supplied brief.' };
+        if (id !== 'reviewer' && !(codex && id === 'reviewer-codex'))
+          return null;
+        return {
+          name: 'Reviewer',
+          prompt: 'Review the supplied brief.',
+          execution: { agentConnectionId: engineConnectionId(providerFor(id)) },
+        };
       },
       resolveToolServer: async () => null,
       resolveSkillDir: async () => null,
@@ -507,30 +536,35 @@ async function fixture(operatorInspection = false, stationControl = false) {
   app.get('/.well-known/station/v1', (c) =>
     c.json({ environmentId: 'group-host' }),
   );
-  app.get('/api/agents/reviewer', (c) =>
-    c.json({
+  app.get('/api/agents/:slug', (c) => {
+    const slug = c.req.param('slug');
+    if (slug !== 'reviewer' && !(codex && slug === 'reviewer-codex'))
+      return c.notFound();
+    return c.json({
       success: true,
       data: {
-        slug: 'reviewer',
+        slug: c.req.param('slug'),
         name: 'Reviewer',
         available: true,
-        execution: { agentConnectionId: 'claude' },
+        execution: { agentConnectionId: providerFor(c.req.param('slug')) },
       },
-    }),
-  );
-  app.get('/api/connections/claude', (c) =>
-    c.json({
+    });
+  });
+  app.get('/api/connections/:id', (c) => {
+    const id = c.req.param('id');
+    if (!adapters.some((entry) => entry.provider === id)) return c.notFound();
+    return c.json({
       success: true,
       data: {
-        id: 'claude',
+        id: c.req.param('id'),
         kind: 'agent',
         enabled: true,
         status: 'ready',
         capabilities: ['agent-runtime'],
-        config: { provider: 'claude' },
+        config: { provider: c.req.param('id') },
       },
-    }),
-  );
+    });
+  });
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
@@ -629,6 +663,7 @@ async function fixture(operatorInspection = false, stationControl = false) {
     apiBase,
     root,
     adapter,
+    adapters,
     store,
     pendingDispatches,
     groupWarnings,
@@ -730,7 +765,9 @@ test('registered CLI sync reaches the retained session through HTTP, durable res
 }, 30_000);
 
 test('registered CLI and SDK create three real orchestration sessions and initial turns joined to durable Flow completion', async () => {
-  const f = await fixture();
+  const f = await fixture(false, false, true);
+  const starts = () => f.adapters.flatMap((entry) => entry.starts);
+  const turns = () => f.adapters.flatMap((entry) => entry.turns);
   let releaseStart!: () => void;
   f.adapter.startGate = new Promise<void>((resolve) => {
     releaseStart = resolve;
@@ -740,7 +777,10 @@ test('registered CLI and SDK create three real orchestration sessions and initia
     output.push(String(value));
   });
   const file = join(f.root, 'group.json');
-  writeFileSync(file, JSON.stringify(groupInput()));
+  const input = groupInput();
+  input.members[1].target.agent = 'reviewer-codex';
+  input.members[1].target.expectedEngine.connectionId = 'codex';
+  writeFileSync(file, JSON.stringify(input));
   await runCli([
     'group',
     'session-create',
@@ -817,7 +857,7 @@ test('registered CLI and SDK create three real orchestration sessions and initia
           value.flow?.status,
           JSON.stringify({
             value,
-            events: f.adapter.turns.map((turn) =>
+            events: turns().map((turn) =>
               f.store.listEvents(turn.threadId).map((event) => ({
                 method: event.payload.method,
                 turnId: event.payload.turnId,
@@ -870,18 +910,32 @@ test('registered CLI and SDK create three real orchestration sessions and initia
       .filter((member) => member.outcome === 'completed'),
   ).toHaveLength(3);
   expect(history.nextRevision).toBe(final.revision);
-  expect(f.adapter.starts).toHaveLength(3);
-  expect(f.adapter.turns).toHaveLength(3);
+  expect(starts()).toHaveLength(3);
+  expect(
+    f.adapters.map((entry) => [entry.provider, entry.starts.length]),
+  ).toEqual([
+    ['claude', 2],
+    ['codex', 1],
+  ]);
+  expect(turns()).toHaveLength(3);
   expect(final.flow?.status).toBe('completed');
   for (const member of final.members) {
     expect(member.outcome).toBe('completed');
-    const turn = f.adapter.turns.find(
+    const provider = member.seatId === 'seat-1' ? 'codex' : 'claude';
+    const selected = f.adapters.find((entry) => entry.provider === provider);
+    const turn = selected?.turns.find(
       (input) => input.threadId === member.reservedSessionId,
-    )!;
+    );
+    if (!turn)
+      throw new Error('Selected adapter did not receive its member turn');
     expect(turn.clientTurnId).toBe(member.initialClientTurnId);
     const events = f.store.listEvents(member.handle!.sessionId);
     expect(
-      events.some((event) => event.payload.method === 'session.started'),
+      events.some(
+        (event) =>
+          event.payload.method === 'session.started' &&
+          event.payload.provider === provider,
+      ),
     ).toBe(true);
     expect(
       events.some(
