@@ -1,8 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import {
-  AsyncEventQueue,
-  AsyncEventQueueConsumerConflictError,
-} from '../async-event-queue.js';
+import { AsyncEventQueue } from '../async-event-queue.js';
 
 describe('AsyncEventQueue', () => {
   test('refuses a second consumer and releases ownership on abort without an enqueue observer', async () => {
@@ -12,7 +9,10 @@ describe('AsyncEventQueue', () => {
       .iterable({ signal: controller.signal })
       [Symbol.asyncIterator]();
     expect(() => queue.iterable()[Symbol.asyncIterator]()).toThrow(
-      AsyncEventQueueConsumerConflictError,
+      expect.objectContaining({
+        name: 'AsyncEventQueueConsumerConflictError',
+        code: 'async_event_queue_consumer_conflict',
+      }),
     );
     const waiting = first.next();
     queue.push('owned');
