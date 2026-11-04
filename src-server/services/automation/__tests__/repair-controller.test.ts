@@ -7,7 +7,14 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createIsolatedRepairRoutes } from '../../../routes/operations/repairs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
-import { recordAutomationEvent } from '../automation-intake.js';
+import {
+  automationEpisodeKey,
+  recordAutomationEvent,
+} from '../automation-intake.js';
+import {
+  automationIntentId,
+  automationPolicyFingerprint,
+} from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
 import { AutomationStore } from '../automation-store.js';
 import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
@@ -931,6 +938,86 @@ test('a retained live repair intent is refused when its rule is switched off and
   await setMode('live');
   await context.controller.tick();
   await context.controller.tick();
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+test('the repair mode check alone refuses an intent whose fingerprint matches the rule as it is now in observe (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const created = await context.policy.createRule({
+    ...original,
+    name: 'observed repair',
+  });
+  const config = context.policy.read();
+  const source = config.sources[0]!;
+  const rule = config.rules.find((candidate) => candidate.id === created.id)!;
+  expect(rule.mode).toBe('observe');
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555558,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  const event = normalized.event;
+  const episodeKey = automationEpisodeKey(rule, event)!;
+  const episodeId = '55555558.2';
+  // Intake never retains an intent for an observe rule, so write one through
+  // the ledger's intake transaction with the current observe rule's
+  // fingerprint: only the controller's mode checks can refuse it.
+  context.ledger.recordIntake({
+    delivery: {
+      sourceId: source.id,
+      transportId: event.semanticKey,
+      semanticKey: event.semanticKey,
+      eventType: event.type,
+      receivedAt: Date.now(),
+      outcome: 'matched',
+      ruleId: rule.id,
+    },
+    openings: [
+      {
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        maxAttempts: 1,
+        now: Date.now(),
+      },
+    ],
+    closings: [],
+    intents: [
+      {
+        intentId: automationIntentId(rule.id, episodeKey, episodeId),
+        sourceId: source.id,
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        policyFingerprint: automationPolicyFingerprint(source, rule),
+        event,
+        action: rule.action as Extract<
+          typeof rule.action,
+          { kind: 'isolated-repair' }
+        >,
+      },
+    ],
+    now: Date.now(),
+  });
+  const intent = context.ledger
+    .listActionIntents()
+    .find((candidate) => candidate.ruleId === rule.id);
+  expect(intent?.state).toBe('pending');
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
   expect(
     context.controller.store.list().map((run) => run.intent.ruleId),
   ).toEqual([original.id]);

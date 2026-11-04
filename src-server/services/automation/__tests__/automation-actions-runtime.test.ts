@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AutomationActionIntent } from '@kontourai/station-contracts/automation';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -34,8 +35,15 @@ import { createTaskBriefSource } from '../../projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { GitHubWorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
-import { recordAutomationEvent } from '../automation-intake.js';
-import { automationConfigurationFingerprint } from '../automation-intent.js';
+import {
+  automationEpisodeKey,
+  recordAutomationEvent,
+} from '../automation-intake.js';
+import {
+  automationConfigurationFingerprint,
+  automationIntentId,
+  automationPolicyFingerprint,
+} from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
 import { AutomationStore } from '../automation-store.js';
 import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
@@ -569,6 +577,10 @@ test('controller recovery enforces retained Automation authority before polling 
 });
 
 type World = Awaited<ReturnType<typeof world>>;
+type NativeAction = Extract<
+  AutomationActionIntent['action'],
+  { kind: 'dispatch-task' }
+>;
 
 async function setRuleMode(
   w: World,
@@ -699,6 +711,64 @@ test('a pending live intent is refused, not dispatched, once its rule is switche
   const [intent] = w.ledger.listActionIntents();
   expect(intent?.state).toBe('pending');
   await setRuleMode(w, w.rule.id, 'observe');
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.adapter.sends).toEqual([]);
+});
+
+test('the mode check alone refuses an intent whose fingerprint matches the rule as it is now in observe (#4509)', async () => {
+  const w = await world({ ruleModes: ['observe'] });
+  const config = w.store.read();
+  const source = config.sources[0]!;
+  const rule = config.rules[0]!;
+  expect(rule.mode).toBe('observe');
+  // Intake never retains an intent for an observe rule, so write one through
+  // the ledger's own intake transaction with the fingerprint of the current
+  // observe rule: only the consumer's mode check can refuse it.
+  const event = laterFailure(w);
+  const episodeKey = automationEpisodeKey(rule, event)!;
+  const episodeId = event.fields['run.id']!;
+  w.ledger.recordIntake({
+    delivery: {
+      sourceId: source.id,
+      transportId: event.semanticKey,
+      semanticKey: event.semanticKey,
+      eventType: event.type,
+      receivedAt: Date.now(),
+      outcome: 'matched',
+      ruleId: rule.id,
+    },
+    openings: [
+      {
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        maxAttempts: 1,
+        now: Date.now(),
+      },
+    ],
+    closings: [],
+    intents: [
+      {
+        intentId: automationIntentId(rule.id, episodeKey, episodeId),
+        sourceId: source.id,
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        policyFingerprint: automationPolicyFingerprint(source, rule),
+        event,
+        action: rule.action as NativeAction,
+      },
+    ],
+    now: Date.now(),
+  });
+  const [intent] = w.ledger.listActionIntents();
+  expect(intent?.state).toBe('pending');
   await w.previews.setEnabled('github-automation-actions', true);
   await w.runtime.tick();
   expect(w.ledger.readIntent(intent!.intentId)).toMatchObject({
