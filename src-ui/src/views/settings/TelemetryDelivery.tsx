@@ -153,20 +153,31 @@ function DeliveryForAuthority({
         description="Delivery status for this process. Check connection sends no usage data."
         status={
           <span>
-            {product.sending ? 'Sending observations…' : productSummary}
+            {product.managedDenial
+              ? 'Off: managed policy.'
+              : product.sending
+                ? 'Sending observations…'
+                : productSummary}
           </span>
         }
         control={
           <Button
             size="sm"
             variant="ghost"
-            disabled={!product.endpointConfigured || productCheck.isPending}
+            disabled={
+              !!product.managedDenial ||
+              !product.endpointConfigured ||
+              productCheck.isPending
+            }
             onClick={() => productCheck.mutate()}
           >
             {productCheck.isPending ? 'Checking…' : 'Check connection'}
           </Button>
         }
       >
+        {product.managedDenial && (
+          <p className="settings__field-hint">{product.managedDenial}</p>
+        )}
         <p className="settings__field-hint">
           Queued: {product.queued}. Acknowledged: {product.counts.acknowledged}.
           Dropped on overflow: {product.counts.overflowDropped}. Discarded on

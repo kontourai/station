@@ -243,3 +243,14 @@ test('the connection check contacts nothing while the policy turns telemetry off
   }
   expect(operator.payloads).toEqual([]);
 });
+
+test('the product delivery status carries the policy sentence, so clients disable the check', async () => {
+  const operator = await receiver();
+  const { live } = await liveService(operator.endpoint);
+  // Control: without a policy there is no sentence.
+  expect((await live.deliveryStatus()).managedDenial).toBeUndefined();
+  installManagedCapabilityLimits(policy({ telemetry: false }));
+  expect((await live.deliveryStatus()).managedDenial).toBe(
+    "Acme's policy manages usage sharing: it is turned off. For help, visit https://help.example/station",
+  );
+});
