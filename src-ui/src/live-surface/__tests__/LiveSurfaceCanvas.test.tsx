@@ -1968,7 +1968,7 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
     );
     expect(liveSurfaceRoot().dataset.codec).toBe('h264');
     // Diagnostics, never resting copy under the picture.
-    expect(screen.queryByText(/H\.264|JPEG|PNG/)).toBeNull();
+    expect(screen.queryByText(/H\.?264|JPEG|PNG/i)).toBeNull();
   });
 
   test('a decode error reconnects for a keyframe; a second inside the window waits for its end', async () => {

@@ -223,7 +223,7 @@ test.each([
     // On top: a tap on it hits it, not the picture under it.
     expect(shown.hitIsNotice).toBe(true);
     // No codec name drawn under the picture.
-    expect(shown.text).not.toMatch(/\b(JPEG|PNG|H\.264)\b/);
+    expect(shown.text).not.toMatch(/JPEG|PNG|H\.?264/);
   },
   120_000,
 );
