@@ -17,6 +17,13 @@ function deferred() {
 
 function harness() {
   const controller = createRuntimeResourcePostureController();
+  const queued = deferred();
+  const waitForStart = controller.waitForEngineStart.bind(controller);
+  vi.spyOn(controller, 'waitForEngineStart').mockImplementation((signal) => {
+    const result = waitForStart(signal);
+    queued.release();
+    return result;
+  });
   const adapter = new GateTestAdapter();
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
@@ -33,7 +40,7 @@ function harness() {
       { userId: 'owner' },
       { resourceAdmissionIntent: intent },
     );
-  return { adapter, controller, service, start };
+  return { adapter, service, start, queued: queued.promise };
 }
 
 test('an interactive start waits for a background provider start to settle', async () => {
@@ -48,12 +55,16 @@ test('an interactive start waits for a background provider start to settle', asy
     }
     return original(input);
   });
-  const waiting = vi.spyOn(h.controller, 'waitForEngineStart');
   const background = h.start('background', 'queued_background');
   try {
     await entered.promise;
     const person = h.start('person', 'interactive_user');
-    await vi.waitFor(() => expect(waiting).toHaveBeenCalledOnce());
+    expect(
+      await Promise.race([
+        h.queued.then(() => 'waiting'),
+        person.then((result) => result.status),
+      ]),
+    ).toBe('waiting');
     expect(h.adapter.startSession).toHaveBeenCalledTimes(1);
     gate.release();
     expect((await background).status).toBe('accepted');
@@ -83,12 +94,16 @@ test('a later background start cannot pass a waiting person at lease handoff', a
     }
     return original(input);
   });
-  const waiting = vi.spyOn(h.controller, 'waitForEngineStart');
   const background = h.start('background', 'queued_background');
   try {
     await entered.promise;
     const person = h.start('person', 'interactive_user');
-    await vi.waitFor(() => expect(waiting).toHaveBeenCalledOnce());
+    expect(
+      await Promise.race([
+        h.queued.then(() => 'waiting'),
+        person.then((result) => result.status),
+      ]),
+    ).toBe('waiting');
     expect(await h.start('while-waiting', 'queued_background')).toMatchObject({
       status: 'rejected',
       code: 'resource_engine_start_capacity',
