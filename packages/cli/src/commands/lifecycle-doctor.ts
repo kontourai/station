@@ -23,7 +23,10 @@ import {
   inspectExactKontourDependencyPins,
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
+import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
+import { effectiveAppConfigOffline } from './managed-settings-guard.js';
 import {
   collectInstanceStatus,
   inspectTerminalShellHosts,
@@ -87,6 +90,8 @@ export interface DoctorDeps {
   codeRoot: LifecycleCodeRoot;
   /** The Node.js executing this CLI: an archive runs its bundled one. */
   processRuntime: { version: string; execPath: string };
+  /** The installed managed policy, as server startup accepts it (#4517). */
+  loadManagedPolicy: () => LoadedManagedPolicy | null;
 }
 
 export interface DoctorJsonDocument {
@@ -450,6 +455,7 @@ export async function collectDoctorReport(
     inspectShellHosts: inspectTerminalShellHosts,
     codeRoot: LIFECYCLE_CODE_ROOT,
     processRuntime: { version: process.version, execPath: process.execPath },
+    loadManagedPolicy: loadInstalledManagedPolicyChecked,
     ...deps,
   };
   const archive =
@@ -493,10 +499,27 @@ export async function collectDoctorReport(
   const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
   const shellHosts = runtimeDeps.inspectShellHosts(runtimeDeps.projectHome);
 
-  const appConfig = runtimeDeps.readJson<Record<string, unknown>>(
+  // #4517: readiness is derived from the settings in effect, with the
+  // managed policy's locks and defaults applied the way the server applies
+  // them, so a connection the policy disables is not reported as ready. A
+  // policy server startup would refuse is a failing check: nothing the
+  // stored file configures runs until it is fixed.
+  const storedAppConfig = runtimeDeps.readJson<Record<string, unknown>>(
     appConfigPath,
     {},
   );
+  let managedPolicyProblem: string | null = null;
+  let appConfig: Record<string, unknown>;
+  try {
+    appConfig = effectiveAppConfigOffline(
+      storedAppConfig,
+      runtimeDeps.loadManagedPolicy,
+    );
+  } catch (error) {
+    managedPolicyProblem =
+      error instanceof Error ? error.message : String(error);
+    appConfig = {};
+  }
   const providers = runtimeDeps.readJson<Array<Record<string, unknown>>>(
     providersPath,
     [],
@@ -522,6 +545,15 @@ export async function collectDoctorReport(
   );
 
   const sourceChecks: DoctorCheck[] = [
+    ...(managedPolicyProblem
+      ? [
+          {
+            label: 'Managed policy',
+            status: 'fail' as const,
+            detail: managedPolicyProblem,
+          },
+        ]
+      : []),
     {
       label: 'Node.js',
       status: isSupportedNodeVersion(nodeVersion) ? 'pass' : 'fail',
