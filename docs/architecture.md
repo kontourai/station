@@ -354,8 +354,10 @@ queries the advertised voice port and [derives its URL](../src-ui/src/hooks/voic
 using `ws:` or `wss:` from the selected endpoint. It does not add two to
 the browser-visible UI port. The CLI's same-origin HTTP/SSE proxy and a single
 container port mapping do not establish reachability or TLS termination for
-that socket. Terminal has a similar dedicated-listener boundary. No networking
-change or live voice qualification is implied by this diagram review.
+that socket. Terminal instead uses the main API listener at
+`/api/terminal/socket`, admitted by a single-use ticket from an authenticated
+HTTP request. No networking change or live voice qualification is implied by
+this diagram review.
 
 The SDK's [voiceRegistry](../packages/sdk/src/voice/registry.ts) registers
 Device-side STT/TTS implementations; its other public voice session/realtime

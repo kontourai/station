@@ -475,8 +475,9 @@ A session spawned before this change has nothing recorded.
     `engine:login` and #2412's `coding:exec`.
   - The operator grants it once per device: when approving a pairing
     request that asked for it (the Station app asks for it; only the operator
-    credential, the desktop's local grant, the host browser session or one of
-    the owner's own devices with owner-device standing may keep it, and **Limit access**
+    credential, the desktop's local grant, the host browser session, an
+    operator passkey session after exact per-action review, or one of the
+    owner's own devices with owner-device standing may keep it, and **Limit access**
     leaves it out), in the device access editor (**Paired devices** → the
     device → **Change access** → "Skip approval prompts"), or on the Station
     host with `station environment access scope <device> --add

@@ -2045,10 +2045,12 @@ person's Station group is Admin (#3557). A pairing notification opens the exact 
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 
-The current terminal and voice listeners retain a separate direct-loopback
-path without credential verification. Browser-shaped upgrades on that path
-must use an allowed Station Origin; this check is not a Device-scope check.
-A read-only pairing is therefore not a sandbox against a local process. See
+The voice listener retains a separate direct-loopback path without credential
+verification. Browser-shaped upgrades on that path must use an allowed Station
+Origin; this check is not a Device-scope check. Terminal uses the main API
+listener and requires a single-use ticket minted by an authenticated HTTP
+request before the socket upgrades. A read-only pairing is not a sandbox
+against a local process. See
 the [current transport matrix](../security/remote-access-threat-model.md#surface-matrix)
 and the HTTP-scope rationale in
 [the peer-pairing design decision](../design/station-peer-pairing.md#loopback-scopes-are-not-an-exception-station1198).

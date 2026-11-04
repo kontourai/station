@@ -123,7 +123,7 @@ checks at their source pins; independent delta review and workload admission
 remain separate. Strict new admission parses all selected active payloads;
 these checks establish no active-set cost or physical table-page I/O proof.
 
-The agent-turn writer is `agent-steps/10`. It adds cancellation requests,
+The current agent-turn writer is `agent-steps/12`. It retains cancellation requests,
 terminal timestamps and journaled transport frames without replacing the older
 model journal. Station's off-by-default durable preview consumes the root contract and explicit `/internal` integration entry
 at its real framework/model/tool/approval boundaries. Its native adapter suite
