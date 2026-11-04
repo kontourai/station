@@ -8,7 +8,10 @@
  *
  * Entries are keyed by Task id and bound to the Task incarnation
  * (`taskCreatedAt`), so a Task recreated under the same id does not inherit
- * a checkout. An entry that does not validate is ignored on its own (never
+ * the record. Its checkout's path and branch are derived from the Task id
+ * alone, though, so such a Task's first dispatch adopts a checkout still
+ * registered at that path (Task ids are server-generated, so this needs a
+ * restored or hand-edited task store). An entry that does not validate is ignored on its own (never
  * reused, never finalized) instead of making the other Tasks' entries
  * unreadable; the next provisioning for that Task replaces it.
  *
