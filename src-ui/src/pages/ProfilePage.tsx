@@ -171,177 +171,162 @@ export function ProfilePage() {
     }
   };
 
-  // Header first, skeleton only the awaited body (6-OPS-23). The whole page —
-  // eyebrow, name, every section heading — used to be replaced by the string
-  // "Loading profile...", which is both a twelfth loading vocabulary and a
-  // route that renders nothing identifying itself while it waits.
-  if (loading && !usageStats) {
-    return (
-      // The header C2 wrote here is the FRAME's now (SHELL-11): the route
-      // renders it above this body, on screen throughout the wait, so a
-      // second one below it would be the page's name printed twice.
-      <div className="profile-page">
-        <SkeletonBlock count={3} label="Loading profile" />
-      </div>
-    );
-  }
-
-  // `useAnalytics` already derived this error and the page ignored
-  // it, so a failed usage read settled with no stats and was drawn as "No
-  // usage data yet" — a claim about the user's activity over a read that
-  // never answered. Same header-first shape as the wait above: the frame's
-  // header stays up, the body carries the failure.
-  if (error && !usageStats) {
-    return (
-      <div className="profile-page">
-        <ErrorState
-          title="Unable to load profile"
-          description={describeReadFailure(error)}
-          action={
-            <Button size="sm" onClick={refresh}>
-              Retry
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="profile-page">
       <div className="profile-container">
         <StationToolLibraryProvider>
           <MyAccessPanel />
         </StationToolLibraryProvider>
-        <div className="profile-usage-status">
-          <div>
-            <span>Station usage</span>
-            <span>
-              {usageStats?.snapshot?.rescannedAt
-                ? `Updated ${new Date(usageStats.snapshot.rescannedAt).toLocaleString()}`
-                : 'Update time unavailable'}
-            </span>
-          </div>
-          <Button
-            size="sm"
-            disabled={rebuilding}
-            onClick={() => void rebuild()}
-          >
-            {rebuilding ? 'Rebuilding…' : 'Rebuild usage'}
-          </Button>
-        </div>
-        {(error || rebuildError) && (
+        {loading && !usageStats ? (
+          <SkeletonBlock count={3} label="Loading profile" />
+        ) : error && !usageStats ? (
           <ErrorState
-            variant="compact"
-            title="Usage refresh failed"
-            description={`Showing the last available snapshot. ${describeReadFailure(rebuildError || error)}`}
+            title="Unable to load profile"
+            description={describeReadFailure(error)}
             action={
-              <Button
-                size="sm"
-                onClick={rebuildError ? () => void rebuild() : refresh}
-              >
+              <Button size="sm" onClick={refresh}>
                 Retry
               </Button>
             }
           />
-        )}
-        {usageStats?.snapshot?.engineUsage === 'unavailable' && (
-          <p role="alert">
-            Engine usage could not be read during the last rebuild. These totals
-            may be incomplete.
-          </p>
-        )}
-        {usageStats?.snapshot?.skippedMessages > 0 && (
-          <p role="alert">
-            {usageStats.snapshot.skippedMessages} saved message records could
-            not be read during the last rebuild.
-          </p>
-        )}
-        <div className="profile-card">
-          <div className="profile-card__edit-btn">
-            <AuthStatusBadge expanded />
-          </div>
-          <div className="profile-hero-content">
-            <UserIcon size={72} className="profile-card__avatar" />
-            <div className="profile-hero-info">
+        ) : (
+          <>
+            <div className="profile-usage-status">
               <div>
-                <div className="profile-card__info">
-                  <div className="profile-card__name-row">
-                    {/* The page title is the frame's; this is the card's own
+                <span>Station usage</span>
+                <span>
+                  {usageStats?.snapshot?.rescannedAt
+                    ? `Updated ${new Date(usageStats.snapshot.rescannedAt).toLocaleString()}`
+                    : 'Update time unavailable'}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                disabled={rebuilding}
+                onClick={() => void rebuild()}
+              >
+                {rebuilding ? 'Rebuilding…' : 'Rebuild usage'}
+              </Button>
+            </div>
+            {(error || rebuildError) && (
+              <ErrorState
+                variant="compact"
+                title="Usage refresh failed"
+                description={`Showing the last available snapshot. ${describeReadFailure(rebuildError || error)}`}
+                action={
+                  <Button
+                    size="sm"
+                    onClick={rebuildError ? () => void rebuild() : refresh}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {usageStats?.snapshot?.engineUsage === 'unavailable' && (
+              <p role="alert">
+                Engine usage could not be read during the last rebuild. These
+                totals may be incomplete.
+              </p>
+            )}
+            {usageStats?.snapshot?.skippedMessages > 0 && (
+              <p role="alert">
+                {usageStats.snapshot.skippedMessages} saved message records
+                could not be read during the last rebuild.
+              </p>
+            )}
+            <div className="profile-card">
+              <div className="profile-card__edit-btn">
+                <AuthStatusBadge expanded />
+              </div>
+              <div className="profile-hero-content">
+                <UserIcon size={72} className="profile-card__avatar" />
+                <div className="profile-hero-info">
+                  <div>
+                    <div className="profile-card__info">
+                      <div className="profile-card__name-row">
+                        {/* The page title is the frame's; this is the card's own
                         heading, one level down. Classes unchanged, so the
                         rendered size is exactly what it was. */}
-                    <h2 className="profile-hero-title profile-card__name">
-                      {user?.name ? (
-                        <>
-                          {user.name}{' '}
-                          <span className="profile-card__alias">
-                            (
+                        <h2 className="profile-hero-title profile-card__name">
+                          {user?.name ? (
+                            <>
+                              {user.name}{' '}
+                              <span className="profile-card__alias">
+                                (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowUserLookup(true)}
+                                  className="profile-card__alias-btn"
+                                >
+                                  {user.alias}
+                                </button>
+                                )
+                              </span>
+                            </>
+                          ) : user?.alias ? (
                             <button
                               type="button"
                               onClick={() => setShowUserLookup(true)}
-                              className="profile-card__alias-btn"
+                              className="profile-card__copy-btn"
                             >
-                              {user.alias}
+                              {userName}
                             </button>
-                            )
+                          ) : (
+                            userName
+                          )}
+                        </h2>
+                        {usageStats?.lifetime.firstMessageDate && (
+                          <span className="profile-card__title">
+                            First recorded activity (UTC){' '}
+                            {new Date(
+                              usageStats.lifetime.firstMessageDate,
+                            ).toLocaleDateString(undefined, {
+                              timeZone: 'UTC',
+                            })}
                           </span>
-                        </>
-                      ) : user?.alias ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowUserLookup(true)}
-                          className="profile-card__copy-btn"
-                        >
-                          {userName}
-                        </button>
-                      ) : (
-                        userName
+                        )}
+                      </div>
+                      {user?.title && (
+                        <span className="profile-card__detail">
+                          {user.title}
+                        </span>
                       )}
-                    </h2>
-                    {usageStats?.lifetime.firstMessageDate && (
-                      <span className="profile-card__title">
-                        First recorded activity (UTC){' '}
-                        {new Date(
-                          usageStats.lifetime.firstMessageDate,
-                        ).toLocaleDateString(undefined, { timeZone: 'UTC' })}
-                      </span>
-                    )}
+                      {user?.email && (
+                        <span className="profile-card__detail--muted">
+                          {user.email}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  {user?.title && (
-                    <span className="profile-card__detail">{user.title}</span>
-                  )}
-                  {user?.email && (
-                    <span className="profile-card__detail--muted">
-                      {user.email}
-                    </span>
-                  )}
+                  <p className="profile-hero-subtitle">
+                    Your identity · usage below covers the connected Station
+                  </p>
+                  <details className="profile-disclosure profile-disclosure--inline">
+                    <summary>About these totals</summary>
+                    <p>
+                      Station-wide saved messages and completed engine turns.
+                      Costs include estimates and provider reports, not a
+                      billing total.
+                    </p>
+                    <p>
+                      {usageStats?.snapshot?.projection === 'retained-source-v1'
+                        ? 'Daily history includes dated retained observations and engine turns.'
+                        : 'Daily history covers Station-recorded messages only.'}
+                    </p>
+                    {costCoverage && <p>{costCoverage}</p>}
+                  </details>
+                  {historyGap && <p>{historyGap}</p>}
                 </div>
               </div>
-              <p className="profile-hero-subtitle">
-                Your identity · usage below covers the connected Station
-              </p>
-              <details className="profile-disclosure profile-disclosure--inline">
-                <summary>About these totals</summary>
-                <p>
-                  Station-wide saved messages and completed engine turns. Costs
-                  include estimates and provider reports, not a billing total.
-                </p>
-                <p>
-                  {usageStats?.snapshot?.projection === 'retained-source-v1'
-                    ? 'Daily history includes dated retained observations and engine turns.'
-                    : 'Daily history covers Station-recorded messages only.'}
-                </p>
-                {costCoverage && <p>{costCoverage}</p>}
-              </details>
-              {historyGap && <p>{historyGap}</p>}
+              <ProfileUsageGraph usageStats={usageStats ?? null} />
             </div>
-          </div>
-          <ProfileUsageGraph usageStats={usageStats ?? null} />
-        </div>
 
-        <div className="profile-card profile-usage-summary">
-          <UsageStatsPanel />
-        </div>
+            <div className="profile-card profile-usage-summary">
+              <UsageStatsPanel />
+            </div>
+          </>
+        )}
 
         <ProfileDisclosure
           title="Paired people"

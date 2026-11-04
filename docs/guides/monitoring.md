@@ -953,6 +953,10 @@ Paired people, the operator breakdown, peer receipts, milestones, diagnostics an
 history mount when their disclosure is opened and unmount when closed. Shared
 analytics queries, including milestone data, continue to follow their context
 ownership. Existing authorization rules still apply to the connected Station.
+Initial analytics loading or failure is local to the usage area. My access,
+Paired people and Diagnostics remain available, and an open Paired people
+disclosure stays open when usage recovers. Each child retains its own read and
+authorization rules.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.

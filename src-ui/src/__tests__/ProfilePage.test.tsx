@@ -203,10 +203,8 @@ describe('ProfilePage', () => {
     expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
     expect(screen.getByText('usage read failed')).toBeTruthy();
-    // Header first, in a failure exactly as in a wait (6-OPS-23): the page
-    // title is the frame's (page-frame-registry.ts) and never depended on
-    // the read, so the page itself renders only the failure here.
-
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired people')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refreshAnalytics).toHaveBeenCalledTimes(1);
   });
@@ -220,5 +218,41 @@ describe('ProfilePage', () => {
 
     expect(screen.getByLabelText('Loading profile')).toBeTruthy();
     expect(screen.queryByText('Unable to load profile')).toBeNull();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired people')).toBeTruthy();
+  });
+
+  test('keeps the access disclosure open through analytics pending, failure, Retry and recovery', async () => {
+    const { rerender } = render(<ProfilePage />);
+    const summary = screen.getByText('Paired people').closest('summary')!;
+    fireEvent.click(summary);
+    await waitFor(() =>
+      expect(screen.getByText('Paired profiles')).toBeTruthy(),
+    );
+
+    analyticsState.usageStats = null;
+    analyticsState.loading = true;
+    rerender(<ProfilePage />);
+    expect(screen.getByLabelText('Loading profile')).toBeTruthy();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
+
+    analyticsState.loading = false;
+    analyticsState.error = new Error('usage read failed');
+    rerender(<ProfilePage />);
+    expect(screen.getByText('usage read failed')).toBeTruthy();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
+    expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refreshAnalytics).toHaveBeenCalledTimes(1);
+
+    analyticsState.error = null;
+    analyticsState.usageStats = buildPopulatedUsageStats();
+    rerender(<ProfilePage />);
+    expect(screen.getByLabelText('Usage activity overview')).toBeTruthy();
+    expect(screen.queryByText('usage read failed')).toBeNull();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
   });
 });
