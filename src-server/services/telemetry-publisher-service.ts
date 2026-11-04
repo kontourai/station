@@ -166,6 +166,13 @@ export class TelemetryPublisherService {
     });
   }
   async notice(headless: boolean): Promise<void> {
+    // #4521: a managed policy turned telemetry off. Announcing Lite would be
+    // false, and recording the notice as shown would be a false receipt.
+    const resolved = this.options.configuration().publishers;
+    if (
+      PUBLISHERS.every((publisher) => resolved[publisher].reason === 'managed')
+    )
+      return;
     const facts = await this.options.facts?.();
     await this.update((ping) => {
       if (facts) Object.assign(ping, facts);

@@ -187,6 +187,8 @@ export {
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
 
+import { loadInstalledManagedPolicy } from '@kontourai/station-shared/managed-policy';
+
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
 /** MIME map for the static UI server. */
@@ -5159,6 +5161,15 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   } catch {
     // The server records the log receipt asynchronously after HTTP readiness.
+  }
+  // #4521: under a managed policy that turns telemetry off there is no
+  // sharing to announce. A policy that cannot be read stops the server, so
+  // the notice would not apply either.
+  try {
+    if (loadInstalledManagedPolicy()?.summary.limits.telemetry === false)
+      telemetryNoticesToShow = [];
+  } catch {
+    telemetryNoticesToShow = [];
   }
   // The supervisor, when this start runs one, is the process spawned here:
   // it forks the core server and owns the instance from now on.

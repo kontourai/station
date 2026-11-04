@@ -187,7 +187,7 @@ function DeliveryForAuthority({
         status={
           <span>
             {otel.managedDenial
-              ? otel.managedDenial
+              ? 'Off: managed policy.'
               : otel.phase === 'restart-required'
                 ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
                 : otel.phase === 'failed'
@@ -217,6 +217,9 @@ function DeliveryForAuthority({
           </Button>
         }
       >
+        {otel.managedDenial && (
+          <p className="settings__field-hint">{otel.managedDenial}</p>
+        )}
         <p className="settings__field-hint">
           Metrics: {otel.metrics.accepted} accepted exports,{' '}
           {otel.metrics.failed} failed. Traces: {otel.traces.accepted} accepted

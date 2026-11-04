@@ -4,7 +4,9 @@
  * and counts what the receiver got; a control with no policy proves the same
  * calls do send, so a zero is the policy's doing.
  */
+import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
@@ -103,6 +105,18 @@ async function liveService(endpoint: string) {
   return { live, homeDir, config };
 }
 
+/** The Lite notices the publisher recorded as shown, by publisher. */
+function recordedNotices(homeDir: string): string[] {
+  try {
+    const state = JSON.parse(
+      readFileSync(join(homeDir, 'config', 'telemetry-daily.json'), 'utf8'),
+    ) as { notices?: Record<string, unknown> };
+    return Object.keys(state.notices ?? {}).sort();
+  } catch {
+    return [];
+  }
+}
+
 /** Everything a running Station sends: daily pings and lowering feedback. */
 async function exercise(live: UsageTelemetryService) {
   await live.stationStarted();
@@ -122,8 +136,9 @@ test('control: without a policy the same calls reach both destinations', async (
   const author = await receiver();
   const operator = await receiver();
   build.endpoint = author.endpoint;
-  const { live } = await liveService(operator.endpoint);
+  const { live, homeDir } = await liveService(operator.endpoint);
   await exercise(live);
+  expect(recordedNotices(homeDir)).toEqual(['kontour', 'operator']);
   expect(author.payloads.length).toBeGreaterThan(0);
   expect(operator.payloads.length).toBeGreaterThan(0);
   expect(operator.payloads).toContainEqual({
@@ -138,8 +153,10 @@ test('limits.telemetry false: no destination receives anything, lowering feedbac
   const author = await receiver();
   const operator = await receiver();
   build.endpoint = author.endpoint;
-  const { live } = await liveService(operator.endpoint);
+  const { live, homeDir } = await liveService(operator.endpoint);
   await exercise(live);
+  // No Lite notice is announced or recorded as shown.
+  expect(recordedNotices(homeDir)).toEqual([]);
   expect(author.payloads).toEqual([]);
   expect(operator.payloads).toEqual([]);
   const status = (await live.telemetryStatus()).publishers;
