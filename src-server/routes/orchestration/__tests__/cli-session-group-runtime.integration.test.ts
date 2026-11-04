@@ -31,6 +31,10 @@ import {
   subscribeCliSessionGroupEvents,
 } from '@kontourai/station-sdk/client';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import {
+  CallToolResultSchema,
+  JSONRPCResponseSchema,
+} from '@modelcontextprotocol/core';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { runCli } from '../../../../packages/cli/src/cli.js';
@@ -84,6 +88,8 @@ import {
   respondToDelegatedTaskRequest,
 } from '../../../tools/station-control-delegation.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
+
+type StationControlReply = ReturnType<typeof JSONRPCResponseSchema.parse>;
 
 const temporary = trackTempDirs();
 const cleanup: (() => Promise<void>)[] = [];
@@ -473,25 +479,29 @@ async function fixture(operatorInspection = false, stationControl = false) {
     app.use('/api/orchestration/*', async (c, next) => {
       const credential =
         c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '';
-      if (
-        !security.authorizeCredential(credential, {
-          method: c.req.method,
-          path: c.req.path,
-        })
-      )
-        return c.json({ success: false }, 403);
-      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
-        kind: 'credential',
-        credential,
-        authority: security.verifyOperatorCredential(credential)
-          ? 'operator-credential'
-          : 'device-credential',
-        source: 'bearer',
-        deviceId: security.identifyDevice(credential)?.id,
-        locality: security.credentialLocality(credential),
-        mintKind: security.credentialMintKind(credential),
+      const admitted = security.withCurrentAuthority(() => {
+        if (
+          !security.authorizeCredential(credential, {
+            method: c.req.method,
+            path: c.req.path,
+          })
+        )
+          return false;
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'credential',
+          credential,
+          authority: security.verifyOperatorCredential(credential)
+            ? 'operator-credential'
+            : 'device-credential',
+          source: 'bearer',
+          deviceId: security.identifyDevice(credential)?.id,
+          locality: security.credentialLocality(credential),
+          mintKind: security.credentialMintKind(credential),
+        });
+        bindRuntimeLocalOperator(c.req.raw);
+        return true;
       });
-      bindRuntimeLocalOperator(c.req.raw);
+      if (!admitted) return c.json({ success: false }, 403);
       await next();
     });
   app.get('/.well-known/station/v1', (c) =>
@@ -1613,24 +1623,48 @@ test('bound Station Control operates its real session group and cannot read anot
     const instance = claudeInProcessStationControlOptions(
       () => f.resolveCallerRecord,
     ).createInProcessStationControl(sessionId);
-    const sent: any[] = [];
-    const transport: any = {
+    const replies = new Map<
+      number,
+      { resolve(reply: StationControlReply): void; reject(error: Error): void }
+    >();
+    const transport: {
+      onmessage?: (message: unknown) => void;
+      start(): Promise<void>;
+      close(): Promise<void>;
+      send(message: unknown): Promise<void>;
+      [key: string]: unknown;
+    } = {
       start: async () => {},
-      close: async () => {},
-      send: async (message: unknown) => sent.push(message),
+      close: async () => {
+        for (const reply of replies.values())
+          reply.reject(new Error('Station Control transport closed'));
+        replies.clear();
+      },
+      send: async (message) => {
+        const response = JSONRPCResponseSchema.safeParse(message);
+        if (!response.success || typeof response.data.id !== 'number') return;
+        const reply = replies.get(response.data.id);
+        replies.delete(response.data.id);
+        reply?.resolve(response.data);
+      },
     };
     await instance.connect(transport);
     cleanup.push(() => instance.close());
     let id = 0;
     const request = async (method: string, params: unknown) => {
       const current = ++id;
+      const deliver = transport.onmessage;
+      if (!deliver) throw new Error('Station Control transport not connected');
+      const response = new Promise<StationControlReply>((resolve, reject) => {
+        replies.set(current, { resolve, reject });
+      });
       setImmediate(() =>
-        transport.onmessage({ jsonrpc: '2.0', id: current, method, params }),
+        deliver({ jsonrpc: '2.0', id: current, method, params }),
       );
-      await vi.waitFor(() =>
-        expect(sent.some((message) => message.id === current)).toBe(true),
-      );
-      return sent.find((message) => message.id === current);
+      const reply = await response;
+      if ('error' in reply)
+        throw new Error(`Station Control protocol error: ${reply.error.code}`);
+      return reply;
     };
     await request('initialize', {
       protocolVersion: '2025-06-18',
@@ -1639,10 +1673,13 @@ test('bound Station Control operates its real session group and cannot read anot
     });
     return async (name: string, args: unknown) => {
       const response = await request('tools/call', { name, arguments: args });
-      const result = response.result;
+      const result = CallToolResultSchema.parse(response.result);
+      const content = result.content[0];
+      if (content?.type !== 'text')
+        throw new Error('Station Control returned no text result');
       return {
-        isError: result?.isError,
-        body: JSON.parse(result.content[0].text),
+        isError: result.isError,
+        body: JSON.parse(content.text),
       };
     };
   };
