@@ -256,7 +256,11 @@ async function runShow(args: string[], json: boolean): Promise<void> {
       'Restart needed: the running server did not load the installed policy.',
     );
   else if (restart === false)
-    console.log('The running server loaded the installed policy.');
+    console.log(
+      installed.state === 'none'
+        ? 'The running server matches: no policy is installed or loaded.'
+        : 'The running server loaded the installed policy.',
+    );
 }
 
 export async function runPolicyCommand(args: string[]): Promise<void> {

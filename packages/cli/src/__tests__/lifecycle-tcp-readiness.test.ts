@@ -187,7 +187,17 @@ describe('start failure names its cause (#4382)', () => {
         'STATION_MANAGED_POLICY_INVALID: an earlier boot',
         '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 ---',
         `\u001b[31m${refusal}\u001b[39m`,
-        '[19:16:29.300] FATAL (station): Failed to start Station',
+        // The logger's copy follows, with the path redacted (the real
+        // server log's shape); the server's own line must win.
+        '[2026-10-31 19:16:29.300 +0000] \u001b[41mFATAL\u001b[49m (station): Failed to start Station',
+        '    err: {',
+        '      "type": "Error",',
+        '      "message": "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at [REDACTED_PATH] it is not valid JSON (x).",',
+        '      "stack":',
+        '          ManagedPolicyInvalidError: STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at [REDACTED_PATH] it is not valid JSON (x).',
+        '              at decodeManagedPolicy ([REDACTED_URL]',
+        '      "name": "ManagedPolicyInvalidError"',
+        '    }',
         '',
       ].join('\n'),
     );
