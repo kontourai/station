@@ -6,7 +6,7 @@ import {
   useAnswerSharesQuery,
   useRevokeAnswerShareMutation,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import './AnswerSharesSection.css';
@@ -51,8 +51,16 @@ function formatDate(value: string): string {
 
 function ShareRow({ share }: { share: AnswerShareSummary }) {
   const [confirming, setConfirming] = useState(false);
+  const revokeControl = useRef<HTMLButtonElement>(null);
+  const restoreRevokeFocus = useRef(false);
   const revoke = useRevokeAnswerShareMutation();
   const busy = revoke.isPending;
+  useLayoutEffect(() => {
+    if (!confirming && restoreRevokeFocus.current) {
+      restoreRevokeFocus.current = false;
+      revokeControl.current?.focus();
+    }
+  }, [confirming]);
   return (
     <div className="answer-shares__row">
       <div className="answer-shares__body">
@@ -92,13 +100,17 @@ function ShareRow({ share }: { share: AnswerShareSummary }) {
                 type="button"
                 className="button"
                 disabled={busy}
-                onClick={() => setConfirming(false)}
+                onClick={() => {
+                  restoreRevokeFocus.current = true;
+                  setConfirming(false);
+                }}
               >
                 Cancel
               </button>
             </>
           ) : (
             <button
+              ref={revokeControl}
               type="button"
               className="button"
               disabled={busy}
