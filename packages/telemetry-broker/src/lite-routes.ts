@@ -1,11 +1,15 @@
-import { createHmac, randomBytes } from 'node:crypto';
-import { isIP } from 'node:net';
+import { randomBytes } from 'node:crypto';
 import type { HttpBindings } from '@hono/node-server';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { receiverAdmission } from './admission.js';
 import { BrokerError } from './broker-error.js';
 import { clientAddressPolicy } from './client-address.js';
+import {
+  dailyClientKeys,
+  LITE_BODY_LIMIT_BYTES,
+  LiteDailyBudget,
+} from './lite-core.js';
 import type { LiteRepository } from './lite-store.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './public-dashboard.js';
 
@@ -19,42 +23,30 @@ export function registerLiteRoutes(
 ) {
   let day = '';
   let salt = randomBytes(32);
-  const clients = new Map<string, number>();
+  const budget = new LiteDailyBudget();
   app.use('/v1/lite/*', async (c, next) => {
     const today = new Date().toISOString().slice(0, 10);
     if (day !== today) {
       day = today;
       salt = randomBytes(32);
-      clients.clear();
     }
     // The selected address remains transient; only the daily HMAC reaches storage.
     const address = addresses.resolve(
       c.env?.incoming?.socket.remoteAddress ?? 'unavailable',
       c.req.header('cf-connecting-ip'),
     );
-    const client = createHmac('sha256', salt)
-      .update(networkKey(address, 64))
-      .digest('hex');
-    const count = clients.get(client) ?? 0;
-    if (count >= 60) {
+    const keys = dailyClientKeys(salt, address);
+    if (!budget.admit(day, keys.rate)) {
       c.header('Retry-After', '86400');
       return c.json({ error: 'lite_rate_limit' }, 429);
     }
-    clients.delete(client);
-    if (clients.size >= 10000) clients.delete(clients.keys().next().value!);
-    clients.set(client, count + 1);
-    c.set('dailyClient', {
-      day,
-      hash: createHmac('sha256', salt)
-        .update(networkKey(address, 48))
-        .digest('hex'),
-    });
+    c.set('dailyClient', { day, hash: keys.contributor });
     await next();
   });
   app.use(
     '/v1/lite/*',
     bodyLimit({
-      maxSize: 16384,
+      maxSize: LITE_BODY_LIMIT_BYTES,
       onError: (c) => c.json({ error: 'body_too_large' }, 413),
     }),
   );
@@ -193,46 +185,4 @@ export function registerLiteRoutes(
       'Content-Type': 'text/javascript; charset=utf-8',
     }),
   );
-}
-
-function networkKey(address: string, prefix: 48 | 64): string {
-  if (isIP(address) !== 6) return isIP(address) === 4 ? address : 'unavailable';
-  const [left, right] = address.split('::');
-  const words = (part: string) =>
-    part
-      ? part
-          .split(':')
-          .flatMap((word) =>
-            word.includes('.')
-              ? [
-                  (
-                    (Number(word.split('.')[0]) << 8) |
-                    Number(word.split('.')[1])
-                  ).toString(16),
-                  (
-                    (Number(word.split('.')[2]) << 8) |
-                    Number(word.split('.')[3])
-                  ).toString(16),
-                ]
-              : [word],
-          )
-      : [];
-  const start = words(left),
-    end = words(right ?? '');
-  const full =
-    right === undefined
-      ? start
-      : [...start, ...Array(8 - start.length - end.length).fill('0'), ...end];
-  const numbers = full.map((word) => parseInt(word, 16));
-  if (numbers.slice(0, 5).every((n) => n === 0) && numbers[5] === 65535)
-    return [
-      numbers[6] >> 8,
-      numbers[6] & 255,
-      numbers[7] >> 8,
-      numbers[7] & 255,
-    ].join('.');
-  return `${numbers
-    .slice(0, prefix / 16)
-    .map((n) => n.toString(16))
-    .join(':')}::/${prefix}`;
 }
