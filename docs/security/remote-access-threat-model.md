@@ -1219,7 +1219,16 @@ on the host (`ui-bootstrap`):
   the host browser's limits: device grants only, never a delegation, never a
   protected administration or consent scope
   (`isProtectedPairingPromotionScope`, and the existing `access:devices` and
-  `home:control` refusals).
+  `home:control` refusals);
+- the [Paired Station chat bridge](../design/chat-composer.md#paired-station-foreground-chats)'s
+  two write leaves (`POST /api/environments/peers/:id/chat-api/api/orchestration/chat`
+  and `…/commands`), matched exactly in
+  [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
+  so the owner can chat on a paired Station from a phone. The bridge's own
+  allowlist and agent-origin refusal still apply, and the receiver still
+  checks the saved peer grant. Every other peer-family write (adding,
+  replacing, enrolling or removing outbound peer credentials) stays
+  operator-only.
 
 **What it does not grant.** No mint-time possession proof: everything keyed
 on `isBoundLocalGrantMintedOperator` (native consent custody, outside-agent

@@ -16,6 +16,7 @@ import fs, {
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pairingScopePresetString } from '@kontourai/station-contracts';
 import {
   ensureStationHomeSchemaSync,
   STATION_HOME_SCHEMA_FILE,
@@ -677,6 +678,62 @@ describe('EnvironmentSecurityService', () => {
         }),
       ).toBe(true);
     }
+  });
+
+  test("admits the owner's own device to the paired-Station chat writes and nothing else in the peer family", async () => {
+    const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+    const service = new EnvironmentSecurityService({ homeDir: makeHome() });
+    await service.initialize();
+    const pair = (scope: string) => {
+      const offer = service.devicePairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope,
+      });
+      const request = service.devicePairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Phone',
+      });
+      service.devicePairing.confirmRequest(request.requestId, {
+        kind: 'presented-credential',
+      });
+      return service.devicePairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }).credential;
+    };
+    const owner = pair(pairingScopePresetString('standard'));
+    const device = pair(DEVICE_WITHOUT_HOST_SHELL);
+    expect(service.credentialHasOwnerStanding(owner)).toBe(true);
+
+    const chat = [
+      '/api/environments/peers/environment-b/chat-api/api/orchestration/chat',
+      '/api/environments/peers/environment-b/chat-api/api/orchestration/commands',
+    ];
+    for (const path of chat) {
+      expect(service.authorizeCredential(owner, { method: 'POST', path })).toBe(
+        true,
+      );
+      expect(
+        service.authorizeCredential(device, { method: 'POST', path }),
+      ).toBe(false);
+      for (const method of ['PUT', 'PATCH', 'DELETE'])
+        expect(service.authorizeCredential(owner, { method, path })).toBe(
+          false,
+        );
+    }
+    for (const path of [
+      '/api/environments/peers',
+      '/api/environments/peers/environment-b',
+      '/api/environments/peers/environment-b/credential',
+      '/api/environments/peers/environment-b/chat-api/api/orchestration/chat/extra',
+      '/api/environments/peers/environment-b/chat-api/api/orchestration/delegations',
+      '/api/environments/peers/environment-b/nested/chat-api/api/orchestration/chat',
+    ])
+      expect(service.authorizeCredential(owner, { method: 'POST', path })).toBe(
+        false,
+      );
   });
 
   test('rejects a valid-looking record with unexpected schema keys', async () => {

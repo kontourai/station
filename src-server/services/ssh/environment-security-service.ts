@@ -85,6 +85,9 @@ const REVISION_EVIDENCE_KEY_PREFIX = 'revision-evidence-';
 const LOCK_RETRY_MS = 10;
 const LOCK_TIMEOUT_MS = 5_000;
 const STALE_LOCK_AGE_MS = 2_000;
+/** The paired-Station chat bridge's write leaves: a foreground send, or Stop and a request answer. */
+const PEER_CHAT_WRITE_LEAF =
+  /^\/api\/environments\/peers\/[^/]+\/chat-api\/api\/orchestration\/(?:chat|commands)$/;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const UUID_PATTERN =
@@ -661,7 +664,14 @@ export class EnvironmentSecurityService {
         request.method.toUpperCase(),
       ) &&
       (request.path === '/api/environments/peers' ||
-        request.path.startsWith('/api/environments/peers/'))
+        request.path.startsWith('/api/environments/peers/')) &&
+      // The owner's own devices may send foreground chat through the bridge
+      // (D14); peer-credential administration stays operator-only.
+      !(
+        request.method.toUpperCase() === 'POST' &&
+        PEER_CHAT_WRITE_LEAF.test(request.path) &&
+        this.credentialHasOwnerStanding(candidate)
+      )
     ) {
       return false;
     }

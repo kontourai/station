@@ -277,7 +277,10 @@ on personal hosts. [Peer chat routes](../../src-server/routes/environments/peer-
 own its server branch. Every read and write rechecks the preview and source
 request authority. The existing `access:manage` peer-family boundary and the
 agent-origin refusal prevent a delegated agent from using another Station’s
-saved credential for an onward hop. The receiver still applies its credential,
+saved credential for an onward hop. The two write leaves (send, and Stop or a
+request answer) admit the operator and the owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02);
+every other peer-family write stays operator-only. The receiver still applies its credential,
 Project, engine, approval and full-access checks.
 
 New Chat reads the receiver’s Projects through that bridge. It never sends the
