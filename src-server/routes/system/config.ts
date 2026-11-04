@@ -966,8 +966,8 @@ export function createConfigRoutes(
           // not a raise.
           // #4518: a change of the Station default to a posture above the
           // machine's managed ceiling is refused. Resending the value that
-          // stands is not a change: a default set before the policy was
-          // installed stays saved, and is lowered to the ceiling where it
+          // stands is not a change: a default saved before the policy took
+          // effect stays saved, and is lowered to the ceiling where it
           // applies (`ApprovalPosture`).
           if (
             managedCeilingRefuses(accepted.defaultApprovalMode) &&
