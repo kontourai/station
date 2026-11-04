@@ -7055,8 +7055,10 @@ export function configureRuntimeRoutes(
       submit: (input) => threadInbox.submit(input),
       logger: context.logger,
     });
-    void context.orchestrationService
-      .whenInterruptedTurnsRecovered()
+    // Fire-and-forget, and never a synchronous throw: route composition
+    // must not depend on recovery's shape.
+    void Promise.resolve()
+      .then(() => context.orchestrationService.whenInterruptedTurnsRecovered())
       .then((turns) => restartContinuation.continueRecovered(turns))
       .catch((error) => {
         context.logger.warn('restart continuation did not run', {
