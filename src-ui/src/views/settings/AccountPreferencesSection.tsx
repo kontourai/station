@@ -38,6 +38,12 @@ export function AccountPreferencesSection() {
       )
         return;
       applyReturnFocus([region], trigger);
+      if (document.activeElement === region)
+        region.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
     });
     return () => cancelAnimationFrame(frame);
   }, [account.retrying]);
@@ -95,21 +101,7 @@ export function AccountPreferencesSection() {
       title="Your account preferences"
       id="section-account-preferences"
     >
-      {account.status !== 'error' && (
-        <p role="status">
-          {account.status === 'account'
-            ? 'Your devices share these preferences on this Station.'
-            : account.status === 'loading'
-              ? 'Loading preferences…'
-              : 'Saved on this device. Sign in to sync.'}
-        </p>
-      )}
-      <section
-        className="settings__account-help"
-        ref={recoveryRegion}
-        aria-label="Account preferences"
-        tabIndex={-1}
-      >
+      <div className="settings__account-help">
         <details>
           <summary>About these preferences</summary>
           <p>
@@ -127,7 +119,7 @@ export function AccountPreferencesSection() {
             engine. Existing chats and unattended jobs keep their settings.
           </p>
         </details>
-      </section>
+      </div>
       <PageRow
         {...settingsRow('account-preference-sync')}
         description="Fills account choices you haven’t saved yet."
@@ -192,35 +184,50 @@ export function AccountPreferencesSection() {
             : 'Saving account preferences…'}
         </p>
       )}
-      {(account.error || account.status === 'error') && (
-        <ErrorState
-          variant="compact"
-          title={
-            account.status === 'error'
-              ? 'Couldn’t load your account preferences.'
-              : account.conflict
-                ? 'Changed on another device. Reload before trying again.'
-                : 'Couldn’t confirm the save.'
-          }
-          action={
-            <Button
-              onClick={(event) => {
-                retryTrigger.current =
-                  document.activeElement === event.currentTarget
-                    ? event.currentTarget
-                    : null;
-                account.retry();
-              }}
-              pending={account.retrying}
-              pendingLabel="Loading preferences…"
-            >
-              {account.status === 'error'
-                ? 'Retry loading preferences'
-                : 'Reload saved preferences'}
-            </Button>
-          }
-        />
-      )}
+      <section
+        ref={recoveryRegion}
+        aria-label="Account preference recovery"
+        tabIndex={-1}
+      >
+        {account.status !== 'error' && (
+          <p role="status">
+            {account.status === 'account'
+              ? 'Your devices share these preferences on this Station.'
+              : account.status === 'loading'
+                ? 'Loading preferences…'
+                : 'Saved on this device. Sign in to sync.'}
+          </p>
+        )}
+        {(account.error || account.status === 'error') && (
+          <ErrorState
+            variant="compact"
+            title={
+              account.status === 'error'
+                ? 'Couldn’t load your account preferences.'
+                : account.conflict
+                  ? 'Changed on another device. Reload before trying again.'
+                  : 'Couldn’t confirm the save.'
+            }
+            action={
+              <Button
+                onClick={(event) => {
+                  retryTrigger.current =
+                    document.activeElement === event.currentTarget
+                      ? event.currentTarget
+                      : null;
+                  account.retry();
+                }}
+                pending={account.retrying}
+                pendingLabel="Loading preferences…"
+              >
+                {account.status === 'error'
+                  ? 'Retry loading preferences'
+                  : 'Reload saved preferences'}
+              </Button>
+            }
+          />
+        )}
+      </section>
     </SettingsSection>
   );
 }

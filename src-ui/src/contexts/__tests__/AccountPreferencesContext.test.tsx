@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Toggle } from '../../components/Toggle';
@@ -245,6 +246,15 @@ test.each(['local recovery', 'another control'] as const)(
     const outside = screen.getByRole('button', {
       name: 'Outside account preferences',
     });
+    const scrollDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
+    );
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
     outside.focus();
     try {
       await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(2));
@@ -269,6 +279,7 @@ test.each(['local recovery', 'another control'] as const)(
       expect(fixture.get).toHaveBeenCalledTimes(2);
       expect(fixture.patch).not.toHaveBeenCalled();
       expect(document.activeElement).toBe(outside);
+      expect(scrollIntoView).not.toHaveBeenCalled();
 
       await act(async () => failReconnect(new Error('Still unavailable')));
       const retry = await screen.findByRole('button', {
@@ -290,17 +301,35 @@ test.each(['local recovery', 'another control'] as const)(
             requestAnimationFrame(() => resolve()),
           ),
       );
-      const expectedFocus =
+      const recovery =
         focusOwner === 'local recovery'
-          ? screen.getByRole('region', { name: 'Account preferences' })
-          : outside;
+          ? screen.getByRole('region', { name: 'Account preference recovery' })
+          : null;
+      const expectedFocus = recovery ?? outside;
       expect(document.activeElement).toBe(expectedFocus);
+      if (recovery) {
+        expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
+      } else {
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      }
       expect(disclosure).toHaveProperty('open', true);
       const loading = screen.getByRole('button', {
         name: 'Loading preferences…',
       });
       expect(loading.getAttribute('aria-busy')).toBe('true');
       expect(loading).toHaveProperty('disabled', true);
+      if (recovery) {
+        expect(within(recovery).getByRole('alert')).toBeTruthy();
+        expect(
+          within(recovery).getByRole('button', {
+            name: 'Loading preferences…',
+          }),
+        ).toBe(loading);
+      }
       fireEvent.click(loading);
       expect(fixture.get).toHaveBeenCalledTimes(3);
       expect(fixture.patch).not.toHaveBeenCalled();
@@ -315,6 +344,19 @@ test.each(['local recovery', 'another control'] as const)(
         screen.getByLabelText('New Codex chats approval mode'),
       ).toHaveProperty('disabled', false);
       expect(screen.queryByRole('alert')).toBeNull();
+      if (recovery) {
+        expect(
+          screen.getByRole('region', { name: 'Account preference recovery' }),
+        ).toBe(recovery);
+        expect(within(recovery).getByRole('status').textContent).toBe(
+          'Your devices share these preferences on this Station.',
+        );
+      }
+      expect(
+        screen.getAllByText(
+          'Your devices share these preferences on this Station.',
+        ),
+      ).toHaveLength(1);
       expect(document.activeElement).toBe(expectedFocus);
       expect(disclosure).toHaveProperty('open', true);
       expect(fixture.get).toHaveBeenCalledTimes(3);
@@ -322,10 +364,20 @@ test.each(['local recovery', 'another control'] as const)(
       expect(localStorage.getItem('station-device-settings-v1')).toBe(
         deviceRecord,
       );
+      expect(scrollIntoView).toHaveBeenCalledTimes(recovery ? 1 : 0);
     } finally {
       view.unmount();
       finishReconnect(recovered);
       finishRetry(recovered);
+      if (scrollDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'scrollIntoView',
+          scrollDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+      }
     }
   },
 );
