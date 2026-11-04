@@ -101,6 +101,42 @@ interface ObservationRow {
   recorded_at: string;
 }
 
+/** One SQLite row as the store wrote it; a column of another type refuses. */
+function readRow(raw: Record<string, unknown>): ObservationRow {
+  const text = (key: keyof ObservationRow): string => {
+    const value = raw[key];
+    if (typeof value !== 'string')
+      throw new Error(`Task follow-up row has no ${key}.`);
+    return value;
+  };
+  const optional = (key: keyof ObservationRow): string | null => {
+    const value = raw[key];
+    if (value === null) return null;
+    if (typeof value !== 'string')
+      throw new Error(`Task follow-up row has an unreadable ${key}.`);
+    return value;
+  };
+  const truncated = raw.truncated;
+  if (typeof truncated !== 'number')
+    throw new Error('Task follow-up row has no truncated flag.');
+  return {
+    kind: text('kind'),
+    github_id: text('github_id'),
+    item_ref: text('item_ref'),
+    author: text('author'),
+    actor_class: text('actor_class'),
+    association: optional('association'),
+    occurred_at: text('occurred_at'),
+    url: optional('url'),
+    excerpt: text('excerpt'),
+    truncated,
+    review_state: optional('review_state'),
+    check_name: optional('check_name'),
+    conclusion: optional('conclusion'),
+    recorded_at: text('recorded_at'),
+  };
+}
+
 function fromRow(row: ObservationRow): TaskFollowUpObservation {
   return {
     kind: row.kind as FollowUpKind,
@@ -253,27 +289,25 @@ export class TaskFollowUpStore {
 
   /** Every observation of the incarnation, newest first. */
   list(task: TaskIncarnation): TaskFollowUpObservation[] {
-    return (
-      this.db
-        .prepare(
-          `SELECT * FROM follow_up_observations WHERE task_id = ? AND task_created_at = ?
+    return this.db
+      .prepare(
+        `SELECT * FROM follow_up_observations WHERE task_id = ? AND task_created_at = ?
            ORDER BY occurred_at DESC, rowid DESC`,
-        )
-        .all(task.taskId, task.taskCreatedAt) as unknown as ObservationRow[]
-    ).map(fromRow);
+      )
+      .all(task.taskId, task.taskCreatedAt)
+      .map((raw) => fromRow(readRow(raw)));
   }
 
   briefView(task: TaskIncarnation, limit: number): TaskFollowUpBriefView {
     const passing = PASSING_CONCLUSIONS.map(() => '?').join(', ');
     const shown = `task_id = ? AND task_created_at = ? AND NOT (kind = 'check_run' AND conclusion IN (${passing}))`;
     const args = [task.taskId, task.taskCreatedAt, ...PASSING_CONCLUSIONS];
-    const items = (
-      this.db
-        .prepare(
-          `SELECT * FROM follow_up_observations WHERE ${shown} ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
-        )
-        .all(...args, limit) as unknown as ObservationRow[]
-    ).map(fromRow);
+    const items = this.db
+      .prepare(
+        `SELECT * FROM follow_up_observations WHERE ${shown} ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
+      )
+      .all(...args, limit)
+      .map((raw) => fromRow(readRow(raw)));
     const total = (
       this.db
         .prepare(
