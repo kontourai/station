@@ -534,7 +534,11 @@ export class GhGitHubFollowUpReader implements GitHubFollowUpReader {
             JSON.parse(run.stdout),
             request.withChecks,
           );
-          if (parsed.status === 'not-found' || parsed.stop) return parsed;
+          if (
+            parsed.status !== 'read' &&
+            (parsed.status === 'not-found' || parsed.stop)
+          )
+            return parsed;
         } catch {
           // Fall through to the process failure.
         }
