@@ -305,11 +305,20 @@ remote operator elevation. A refused peer request keeps its reference for retry
 from an operator session. **Request access for this device** remains available
 independently, so peer setup cannot prevent Device pairing.
 
-For a Tailscale API endpoint, the receiving Station must allow that endpoint's
-exact HTTPS origin with `--allowed-origin=<endpoint>`. Peer enrollment sends
-that origin when requesting receiver approval. An `origin_forbidden` refusal
-creates no approval request; changing Device scopes or minting another code
-cannot fix it. Apply the endpoint setting through the receiver's launcher.
+Peer enrollment presents the receiver's own address as its `Origin`. A receiver
+published through a local Tailscale Serve HTTPS mapping to its own API or
+UI-proxy port trusts that origin with no setting, in every distribution
+(desktop sidecar, service, CLI). This uses the
+[endpoint-suggestion resolver](#suggested-tailscale-endpoints), with stricter
+conditions: the mapping must be on the node's own MagicDNS name, every handler
+on that origin must proxy to this Station, Funnel must be off, and no foreground
+`serve` session or raw TCP forward can replace it. Any other Tailscale endpoint
+(for example one that also serves another app), or a receiver older than this
+behavior, still needs the exact HTTPS origin in `--allowed-origin=<endpoint>`
+(`ALLOWED_ORIGINS`). An `origin_forbidden` refusal creates no approval request.
+The sender's error names the refused address. Changing Device scopes or minting
+another code cannot fix it. Fix the receiver's Serve mapping or its launcher
+setting, then start a new peer request.
 
 Device access saves without replacing an existing selected Station. From a
 Project's Delegate dialog, setup preserves the draft and resource selection and
@@ -2140,6 +2149,7 @@ exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five
 seconds; publication is rebuilt using the current eligible addresses.
 
+<a id="suggested-tailscale-endpoints"></a>
 When creating a pairing code, the host can suggest an existing HTTPS Tailscale
 Serve mapping. `GET /api/pairing/endpoint-suggestions` requires the existing
 pairing-management authority and revalidates the principal after lookup. It
@@ -2147,7 +2157,9 @@ returns at most eight canonical endpoints, or an empty list if the daemon cannot
 establish a mapping. The existing resolver caches reads for 30 seconds and
 checks this node's MagicDNS name and Serve mappings to the Station's configured
 API or UI-proxy port. This proves daemon configuration, not reachability from a
-phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The same cached
+lookup decides which Serve origins the HTTP origin gate trusts as this Station's
+own (see [Saved Station addresses](#saved-station-addresses)). The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 

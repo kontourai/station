@@ -1804,6 +1804,12 @@ export function configureRuntimeRoutes(
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
+  // The HTTPS origin a local `tailscale serve` mapping publishes for this
+  // Station's own listener is this Station's origin too, with no
+  // ALLOWED_ORIGINS entry: the daemon, not the request, attests it.
+  const isPublishedOrigin = publicIngressOriginResolver(
+    context.port,
+  ).isOwnedOrigin;
   // #2893: the one native Device request authority for this runtime. Absent
   // unless the pilot was explicitly composed; proof headers then refuse closed.
   const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
@@ -1880,6 +1886,7 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.credentialHasOwnerStanding(credential),
     classifyPairedDeviceActivity: classifyRuntimePairedDeviceActivity,
     allowedOrigins,
+    isPublishedOrigin,
     audit: (record: RuntimeSecurityAuditRecord) =>
       record.reason === 'route_scope_unmapped'
         ? context.logger.error('Route missing pairing-scope table entry', {
@@ -3080,6 +3087,7 @@ export function configureRuntimeRoutes(
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
       allowedOrigins,
+      isPublishedOrigin,
       localGrant: {
         secretPath: join(
           context.configLoader.getProjectHomeDir(),
@@ -12767,6 +12775,8 @@ export function configureDevicePairingPublicRoutes(
      */
     operatorCli?: () => string;
     allowedOrigins?: readonly string[];
+    /** The runtime gate's own published-origin predicate; see `RuntimeHttpSecurityOptions`. */
+    isPublishedOrigin?: (origin: string) => Promise<boolean>;
     /**
      * Same-user local self-authorization (station#1715). Present in every
      * production boot; omitted only by tests/harnesses that do not exercise
@@ -13179,7 +13189,7 @@ export function configureDevicePairingPublicRoutes(
       !body ||
       typeof body.token !== 'string' ||
       body.token.length === 0 ||
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
+      !(await isTrustedBrowserPairingOrigin(c.req.raw, options))
     ) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
@@ -13321,9 +13331,7 @@ export function configureDevicePairingPublicRoutes(
     }
     const ingressIdentity = identifyIngress(c);
     const requestSource = ingressIdentity ? 'tailnet' : 'same-origin';
-    if (
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
-    ) {
+    if (!(await isTrustedBrowserPairingOrigin(c.req.raw, options))) {
       devicePairingRequests.add(1, {
         source: requestSource,
         outcome: 'denied',
@@ -13669,7 +13677,7 @@ export function configureDevicePairingPublicRoutes(
     }
     if (
       browserCookieDelivery &&
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
+      !(await isTrustedBrowserPairingOrigin(c.req.raw, options))
     ) {
       deviceSessionExchanges.add(1, {
         outcome: 'denied',
@@ -13803,10 +13811,14 @@ export function configureDevicePairingPublicRoutes(
  * `Origin` to any of these — the browser controls that header — so seeing one
  * is itself evidence the caller is the packaged app rather than a site.
  */
-function isTrustedBrowserPairingOrigin(
+async function isTrustedBrowserPairingOrigin(
   request: Request,
-  allowedOrigins: readonly string[],
-): boolean {
+  options: {
+    allowedOrigins?: readonly string[];
+    isPublishedOrigin?: (origin: string) => Promise<boolean>;
+  },
+): Promise<boolean> {
+  const allowedOrigins = options.allowedOrigins ?? [];
   const origin = request.headers.get('origin');
   if (!origin) return false;
   // A native shell reaching a REMOTE Station is inherently cross-site and its
@@ -13834,7 +13846,15 @@ function isTrustedBrowserPairingOrigin(
   } catch {
     requestOrigin = null;
   }
-  if (!allowedOrigins.includes(origin) && origin !== requestOrigin) {
+  // Behind `tailscale serve` TLS terminates in the daemon, so the request URL
+  // is plain HTTP and can never equal the HTTPS origin a caller addressed. The
+  // daemon's own statement that it serves only this Station at that origin is
+  // the equivalent proof (the same predicate the runtime origin gate uses).
+  if (
+    !allowedOrigins.includes(origin) &&
+    origin !== requestOrigin &&
+    !(await options.isPublishedOrigin?.(origin).catch(() => false))
+  ) {
     return false;
   }
   const fetchSite = request.headers.get('sec-fetch-site');

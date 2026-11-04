@@ -465,6 +465,12 @@ export interface RuntimeHttpSecurityOptions {
   ) => string | undefined | Promise<string | undefined>;
   allowedOrigins?: readonly string[];
   /**
+   * Admits an Origin outside `allowedOrigins` when the local Tailscale daemon
+   * publishes it as this Station's own Serve origin
+   * (`PublicIngressOriginResolver.isOwnedOrigin`). Absent admits nothing more.
+   */
+  isPublishedOrigin?: (origin: string) => Promise<boolean>;
+  /**
    * Test seam for the client-protocol range this host enforces. Production
    * omits it and enforces the same block the public handshake advertises
    * (`HOST_STATION_COMPATIBILITY`), so the two cannot disagree.

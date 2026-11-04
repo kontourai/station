@@ -222,7 +222,24 @@ Origin and authentication are independent controls:
 
 `ALLOWED_ORIGINS` adds exact browser origins to the CORS allowlist. It does not
 configure proxy attestation, grant network access, or replace the bearer
-credential. An external single-origin reverse proxy is not trusted to provide
+credential.
+
+The HTTP origin gates and the pairing provenance check also accept one
+daemon-attested origin class with no configuration: the exact canonical
+`https://<node>.ts.net[:port]` origin that the local `tailscale serve`
+configuration publishes on this node's own MagicDNS name. Every handler on that
+origin must proxy to this Station's API or UI-proxy port, Funnel must be off for
+it, and no foreground `serve` session or raw TCP forward can replace it. The
+facts come from `tailscale status --json` and `tailscale serve status --json`
+(the endpoint-suggestion resolver, cached 30 seconds), never from the request.
+Only an HTTPS `*.ts.net` Origin triggers a lookup. Because the daemon serves
+nothing but Station at that origin, a page presenting it is Station's own UI.
+Trusting it is equivalent to the operator listing it in `ALLOWED_ORIGINS`, and,
+like that entry, it grants no authentication or approval. Mappings for other
+hosts, other local ports, plain-HTTP spellings, Funnel-exposed authorities, and
+origins shared with another service stay refused unless explicitly listed. The
+credential-free WebSocket origin verifier is unchanged: it still reads only the
+static list. An external single-origin reverse proxy is not trusted to provide
 Station's internal attestation. The optional Tailscale Serve origin must be an
 exact HTTPS origin behind the loopback-only Station UI proxy; it is disabled by
 default. Funnel is rejected outright. Authority mismatches and missing or
@@ -234,7 +251,7 @@ malformed identity never produce verified provenance.
 |---|---|---|---|
 | `GET /.well-known/station/v1` | Public | Public | Public |
 | `POST /.well-known/station/v1/proof` | Public, bounded | Public, bounded | Public, bounded |
-| `POST /.well-known/station/v1/pairing/access-request` | Allowed only from an exact configured same-origin browser; rate-limited; cannot approve itself | Same | Same |
+| `POST /.well-known/station/v1/pairing/access-request` | Allowed only from an exact configured, same-origin, or own-Tailscale-Serve origin; rate-limited; cannot approve itself | Same | Same |
 | `POST /.well-known/station/v1/pairing/request` and `/pairing/exchange` | Public, bounded | Public, bounded | Public, bounded |
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
