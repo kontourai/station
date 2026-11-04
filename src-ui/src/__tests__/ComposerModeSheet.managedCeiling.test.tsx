@@ -66,9 +66,14 @@ test('a ceiling of Ask disables Auto and Full access and names the organization'
   expect(radio('never')?.disabled).toBe(true);
   expect(
     screen.getByText(
-      "Acme's policy manages approval modes: the broadest allowed is Ask first. For help, visit https://help.acme.example",
+      "Acme's policy manages approval modes: the broadest allowed is Ask first.",
+      { exact: false },
     ),
   ).toBeTruthy();
+  // The support link is a link, not a bare URL in the sentence.
+  const help = screen.getByRole('link', { name: 'Get help' });
+  expect(help.getAttribute('href')).toBe('https://help.acme.example');
+  expect(screen.queryByText(/visit https:/)).toBeNull();
   expect(screen.getAllByText('Managed')).toHaveLength(2);
   fireEvent.click(radio('auto')!);
   expect(onSelect).not.toHaveBeenCalled();

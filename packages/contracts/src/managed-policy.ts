@@ -556,7 +556,18 @@ export function managedPolicyDenial(
   const help = summary.supportUrl
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
-  return `${summary.organization}'s policy manages ${subject}.${help}`;
+  return `${managedPolicyStatement(summary, subject)}${help}`;
+}
+
+/**
+ * The first sentence of {@link managedPolicyDenial}, without the help
+ * sentence, for a surface that offers the support link as a link.
+ */
+export function managedPolicyStatement(
+  summary: Pick<ManagedPolicySummary, 'organization'>,
+  subject: string,
+): string {
+  return `${summary.organization}'s policy manages ${subject}.`;
 }
 
 /**
@@ -624,8 +635,17 @@ export function managedApprovalCeilingDenial(
   summary: ManagedPolicySummary,
   ceiling: ConcreteApprovalMode,
 ): string {
-  return managedPolicyDenial(
-    summary,
-    `approval modes: the broadest allowed is ${APPROVAL_MODE_NAMES[ceiling]}`,
-  );
+  return managedPolicyDenial(summary, approvalCeilingSubject(ceiling));
+}
+
+/** {@link managedApprovalCeilingDenial} without its help sentence. */
+export function managedApprovalCeilingStatement(
+  summary: Pick<ManagedPolicySummary, 'organization'>,
+  ceiling: ConcreteApprovalMode,
+): string {
+  return managedPolicyStatement(summary, approvalCeilingSubject(ceiling));
+}
+
+function approvalCeilingSubject(ceiling: ConcreteApprovalMode): string {
+  return `approval modes: the broadest allowed is ${APPROVAL_MODE_NAMES[ceiling]}`;
 }

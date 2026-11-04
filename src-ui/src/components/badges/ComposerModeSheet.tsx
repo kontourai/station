@@ -1,15 +1,9 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import {
-  approvalModeExceedsCeiling,
-  managedApprovalCeiling,
-  managedApprovalCeilingDenial,
-} from '@kontourai/station-contracts/managed-policy';
-import { isConcreteApprovalMode } from '@kontourai/station-contracts/provider';
 import { Badge } from '@kontourai/ui/react';
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
-import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
@@ -17,6 +11,7 @@ import {
 } from '../../utils/approvalMode';
 import { Button } from '../Button';
 import { EngineGlyph, HandGlyph, ReturnGlyph } from '../icons/Glyph';
+import { ManagedApprovalCeilingNote } from '../managed/ManagedApprovalCeilingNote';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -90,10 +85,7 @@ export function ComposerModeSheet({
   layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
-  const policySummary = useManagedPolicySummary();
-  const ceiling = managedApprovalCeiling(policySummary);
-  const aboveCeiling = (mode: ApprovalMode) =>
-    isConcreteApprovalMode(mode) && approvalModeExceedsCeiling(mode, ceiling);
+  const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const apply = (mode: ApprovalMode) => {
     if (
@@ -144,11 +136,7 @@ export function ComposerModeSheet({
         onClose={onClose}
       />
       <div className="composer-mode-sheet__notes">
-        {policySummary && ceiling ? (
-          <p className="composer-mode-sheet__confirm-body">
-            {managedApprovalCeilingDenial(policySummary, ceiling)}
-          </p>
-        ) : null}
+        <ManagedApprovalCeilingNote className="composer-mode-sheet__confirm-body" />
         <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
