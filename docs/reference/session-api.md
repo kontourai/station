@@ -813,7 +813,9 @@ managed approval ceiling is refused before any engine effect with
 `code: "managed-policy-approval-ceiling"` until the mode is lowered
 ([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). A recorded
 personal default (`source: "personal-default"`) is lowered to the ceiling
-instead.
+instead. A start whose engine could only run above the ceiling
+(Muse Code on `muse exec` under `ask`) is refused the same way, with status
+`403`; nothing has started, so there is no session to inspect.
 
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
