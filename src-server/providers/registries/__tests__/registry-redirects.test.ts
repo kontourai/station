@@ -48,7 +48,7 @@ function allowOnly(allowedUrls: string[]) {
 function recorder(routes: Record<string, () => Response>) {
   const requested: Array<{
     url: string;
-    redirect: RequestRedirect | undefined;
+    redirect: RequestInit['redirect'];
   }> = [];
   vi.stubGlobal(
     'fetch',
