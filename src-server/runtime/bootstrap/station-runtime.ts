@@ -579,6 +579,15 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  /**
+   * #4507: the boot sweep that reaps engine processes a previous Station
+   * left running (`sweepOrphanedOwnedProcesses`). An engine is spawned
+   * detached, so one can outlive a crashed or restarted core and keep
+   * working in a Task's worktree until this settles; the startup retry of
+   * deferred Task worktree finalizations waits for it. Absent: nothing to
+   * wait for.
+   */
+  orphanEngineSweep?: Promise<unknown>;
   /** Trusted connector composition; no virtual listener is enabled by default. */
   virtualApplication?: {
     origin: string;
@@ -2050,9 +2059,14 @@ export class StationRuntime {
       // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
       // for the accepted residual gap this sweep does not close.
       // #4507: finish Task worktree finalizations a previous process
-      // deferred while a turn ran; no turn of that process runs now.
-      void this.taskGraphService
-        .retryDeferredTaskWorktreeFinalizations()
+      // deferred while a turn ran. No engine turn survives a core restart
+      // (process-supervisor.md), but a detached engine can outlive one until
+      // the orphan sweep reaps it, so this waits for that sweep.
+      void Promise.resolve(options.orphanEngineSweep)
+        .catch(() => undefined)
+        .then(() =>
+          this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
+        )
         .catch((error) => {
           this.logger.warn('Deferred Task worktree finalization failed', {
             error: errorMessage(error),
