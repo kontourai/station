@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail } from '../components/scheduler';
@@ -80,6 +80,16 @@ export function ScheduleView() {
     onConfirm: () => void;
   } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [retryFailure, setRetryFailure] = useState<ReturnType<
+    typeof selectSchedulerFailure
+  > | null>(null);
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const returnRetryFocus = useRef(false);
+  useEffect(() => {
+    if (retryFailure || !returnRetryFocus.current) return;
+    returnRetryFocus.current = false;
+    if (document.activeElement === document.body) retryButton.current?.focus();
+  }, [retryFailure]);
   const [runTarget, setRunTarget] = useState(() =>
     new URLSearchParams(window.location.search).get('run'),
   );
@@ -147,8 +157,9 @@ export function ScheduleView() {
 
   // Both scheduler reads failed. What we may say about that is derived from
   // the errors themselves, not assumed — see `selectSchedulerFailure`.
-  if (jobsError && statusError) {
-    const notice = selectSchedulerFailure(jobsFailure, statusFailure);
+  if ((jobsError && statusError) || retryFailure) {
+    const notice =
+      retryFailure ?? selectSchedulerFailure(jobsFailure, statusFailure);
     return (
       <ErrorState
         className="schedule__failure"
@@ -156,10 +167,14 @@ export function ScheduleView() {
         description={notice.description}
         action={
           <Button
-            disabled={fetchingJobs || fetchingStatus}
-            onClick={() => {
-              void refetchJobs();
-              void refetchStatus();
+            ref={retryButton}
+            disabled={Boolean(retryFailure) || fetchingJobs || fetchingStatus}
+            onClick={async (event) => {
+              returnRetryFocus.current =
+                event.currentTarget === document.activeElement;
+              setRetryFailure(notice);
+              await Promise.allSettled([refetchJobs(), refetchStatus()]);
+              setRetryFailure(null);
             }}
           >
             Retry

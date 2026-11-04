@@ -23,7 +23,13 @@
  */
 
 import { listJobs } from '@kontourai/station-sdk/client';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const schedulerHooks = vi.hoisted(() => ({
@@ -183,14 +189,40 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
   test('retries both failed scheduler reads and returns to the job list after recovery', async () => {
     bothQueriesFail(await transportErrorFor());
+    const jobsRequest = Promise.withResolvers<void>();
+    const statusRequest = Promise.withResolvers<void>();
+    retryQueries.jobs.mockReturnValue(jobsRequest.promise);
+    retryQueries.status.mockReturnValue(statusRequest.promise);
     const { rerender } = render(<ScheduleView />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retry);
     expect(retryQueries.jobs).toHaveBeenCalledTimes(1);
     expect(retryQueries.status).toHaveBeenCalledTimes(1);
 
-    seedTwoRunnableJobs();
+    schedulerHooks.jobs = {
+      data: [],
+      isLoading: true,
+      isError: false,
+      error: null,
+    };
+    schedulerHooks.status = {
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+    };
     rerender(<ScheduleView />);
+    expect(screen.getByText('Scheduler Unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBe(retry);
+    expect(retry.hasAttribute('disabled')).toBe(true);
+
+    await act(async () => jobsRequest.resolve());
+    expect(retry.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Scheduler Unavailable')).toBeTruthy();
+
+    seedTwoRunnableJobs();
+    await act(async () => statusRequest.resolve());
     expect(screen.getByText('nightly-digest')).toBeTruthy();
     expect(screen.queryByText('Scheduler Unavailable')).toBeNull();
   });
