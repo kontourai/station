@@ -328,6 +328,7 @@ export interface InitializeRuntimeDeps {
     modelCatalog: BedrockModelCatalog;
   }) => void;
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
+  onOrchestrationServiceCreated?: (service: OrchestrationService) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
     nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
@@ -848,6 +849,7 @@ export async function initializeRuntime(
     >,
     logger,
   });
+  deps.onOrchestrationServiceCreated?.(orchestrationService);
   if (
     deps.skillService.withSkillExperience &&
     deps.skillService.listSkillExperiences &&

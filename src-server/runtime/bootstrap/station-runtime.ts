@@ -4430,6 +4430,9 @@ export class StationRuntime {
               | StrandsFramework;
             this.modelCatalog = core.modelCatalog;
           },
+          onOrchestrationServiceCreated: (service) => {
+            this.orchestrationService = service;
+          },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
             this.nativeForkStoredReadBinder =
@@ -4807,6 +4810,7 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.orchestrationService?.shutdown());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());

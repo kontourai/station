@@ -198,6 +198,7 @@ import {
   nativeSessionIdentityMatchesSource,
   providerNativeSessionIdentity,
 } from '../../providers/provider-session-identity.js';
+import { AsyncEventQueueConsumerConflictError } from '../../providers/sessions/async-event-queue.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createAuthorizedTurnCorrelation,
@@ -2094,6 +2095,11 @@ async function resolveStartSessionCwd(
   return { ...input, cwd };
 }
 
+const announcedStartObservers = new WeakMap<
+  ProviderAdapterShape,
+  Map<string, Map<OrchestrationService, () => void>>
+>();
+
 export class OrchestrationService {
   private taskSourceVerifier?: (sessionId: string) => Promise<void>;
   bindTaskSourceVerifier(verifier: (sessionId: string) => Promise<void>): void {
@@ -2251,6 +2257,12 @@ export class OrchestrationService {
   private readonly adapterRetirement: AdapterRetirement;
   /** Boot-time interrupted-turn recovery (epic archive#4024). */
   private readonly interruptedTurns: InterruptedTurnRecovery;
+  private storeClosingUnsubscribe?: () => void;
+  private eventConsumptionStopped = false;
+  private readonly eventConsumerFailures = new Map<
+    ProviderAdapterShape,
+    Error
+  >();
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
   private readonly coordinatorToolGenerations = new Map<string, number>();
@@ -2468,6 +2480,8 @@ export class OrchestrationService {
       eventId?: string;
       observedAt?: number;
       committed: boolean;
+      failure?: Error;
+      stopObserving?: () => void;
       promise: Promise<void>;
       resolve: () => void;
     }
@@ -3677,8 +3691,27 @@ export class OrchestrationService {
   }
 
   initialize(): void {
+    try {
+      this.initializeEventConsumption();
+    } catch (error) {
+      this.stopEventConsumption();
+      if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
+      this.idleSweepTimer = undefined;
+      throw error;
+    }
+  }
+
+  private initializeEventConsumption(): void {
+    if (this.eventConsumptionStopped || this.options.eventStore?.isClosed)
+      throw new SessionStartIndeterminateError(
+        undefined,
+        'Orchestration event store is closed.',
+      );
     if (this.started) return;
     this.started = true;
+    this.storeClosingUnsubscribe = this.options.eventStore?.onClosing(() =>
+      this.stopEventConsumption(),
+    );
     this.adoption.registerOwner();
     const parkAfterMs =
       this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
@@ -4307,7 +4340,30 @@ export class OrchestrationService {
     }
   }
 
+  private stopEventConsumption(): void {
+    this.eventConsumptionStopped = true;
+    if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
+    this.idleSweepTimer = undefined;
+    this.adapterRegistryUnsubscribe?.();
+    this.adapterRegistryUnsubscribe = undefined;
+    this.storeClosingUnsubscribe?.();
+    this.storeClosingUnsubscribe = undefined;
+    for (const adapter of this.adapterEventControllers.keys())
+      this.stopAdapterEventConsumer(adapter);
+    for (const pending of this.startedSessionCommits.values()) {
+      pending.failure = new SessionStartIndeterminateError(
+        undefined,
+        'Session event consumer is unavailable.',
+      );
+      pending.resolve();
+    }
+  }
+
   private consumeCurrentAdapterEvents(): void {
+    if (this.eventConsumptionStopped || this.options.eventStore?.isClosed) {
+      this.stopEventConsumption();
+      return;
+    }
     const currentAdapters = new Map(
       this.options.adapterRegistry
         .list()
@@ -4329,6 +4385,7 @@ export class OrchestrationService {
       ) {
         continue;
       }
+      this.eventConsumerFailures.delete(adapter);
       const controller = new AbortController();
       this.consumedAdapterEventStreams.add(adapter);
       this.adapterEventControllers.set(adapter, controller);
@@ -4399,6 +4456,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopEventConsumption();
     this.stopCascadeDelivery();
     this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
@@ -7566,6 +7624,10 @@ export class OrchestrationService {
     await scheduler.yield();
     if (signal?.aborted || !this.isAdapterCurrent(adapter))
       throw new SessionStartIndeterminateError();
+    if (pending.failure) throw pending.failure;
+    const consumerFailure = this.eventConsumerFailures.get(adapter);
+    if (consumerFailure)
+      throw new SessionStartIndeterminateError(consumerFailure);
     if (pending.committed) return;
     const blockedAdapter = [...this.observedRetryThreads.keys()].some(
       (thread) => this.sessionAdapters.get(thread) === adapter,
@@ -7593,6 +7655,7 @@ export class OrchestrationService {
         if (signal?.aborted) aborted();
         pending.promise.then(resolve);
       });
+      if (pending.failure) throw pending.failure;
       if (!pending.committed || !this.isAdapterCurrent(adapter))
         throw new SessionStartIndeterminateError();
     } finally {
@@ -7655,6 +7718,7 @@ export class OrchestrationService {
         },
         releaseStart: (threadId) => {
           this.startingSessionThreads.delete(threadId);
+          this.startedSessionCommits.get(threadId)?.stopObserving?.();
           this.startedSessionCommits.delete(threadId);
         },
         attachStarted: async (
@@ -12991,6 +13055,29 @@ export class OrchestrationService {
       // Announcement is a producer fact; a busy consumer must not turn it into a deferred start.
       pending.eventId ??= event.eventId;
       pending.observedAt ??= performance.now();
+      if (!pending.stopObserving) {
+        let events = announcedStartObservers.get(adapter);
+        if (!events) {
+          events = new Map();
+          announcedStartObservers.set(adapter, events);
+        }
+        let observers = events.get(event.eventId);
+        if (!observers) {
+          observers = new Map();
+          events.set(event.eventId, observers);
+        }
+        observers.set(this, () => {
+          pending.failure = new SessionStartIndeterminateError(
+            undefined,
+            'Session start event was received by another orchestration consumer; inspect the session before retrying.',
+          );
+          pending.resolve();
+        });
+        pending.stopObserving = () => {
+          observers.delete(this);
+          if (observers.size === 0) events.delete(event.eventId);
+        };
+      }
     }
   }
 
@@ -13147,6 +13234,13 @@ export class OrchestrationService {
             });
           }
         } finally {
+          if (settling?.method === 'session.started') {
+            const observers = announcedStartObservers
+              .get(adapter)
+              ?.get(settling.eventId);
+            for (const [owner, fail] of observers ?? [])
+              if (owner !== this) fail();
+          }
           // A replaced adapter's late event settles only a thread it still
           // owns, never another adapter's in-flight start.
           if (
@@ -13161,10 +13255,29 @@ export class OrchestrationService {
             );
         }
       }
+      if (!controller.signal.aborted && this.isAdapterCurrent(adapter))
+        throw new SessionStartIndeterminateError(
+          undefined,
+          'Session event consumer ended before durable confirmation.',
+        );
     } catch (error) {
       const message = errorMessage(error);
       if (controller.signal.aborted || !this.isAdapterCurrent(adapter)) return;
-      restart = true;
+      if (this.options.eventStore?.isClosed) {
+        this.stopEventConsumption();
+        return;
+      }
+      const unavailable = new SessionStartIndeterminateError(
+        error,
+        'Session event consumer is unavailable; inspect the session before retrying.',
+      );
+      this.eventConsumerFailures.set(adapter, unavailable);
+      for (const pending of this.startedSessionCommits.values()) {
+        if (pending.adapter !== adapter) continue;
+        pending.failure = unavailable;
+        pending.resolve();
+      }
+      restart = !(error instanceof AsyncEventQueueConsumerConflictError);
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
       // failure: the agent connection was fine and our store was locked —
       // typically by another Station process using the same Station home
@@ -13239,7 +13352,11 @@ export class OrchestrationService {
       if (this.adapterEventControllers.get(adapter) === controller) {
         this.adapterEventControllers.delete(adapter);
       }
-      if (restart && this.isAdapterCurrent(adapter)) {
+      if (
+        restart &&
+        !this.eventConsumptionStopped &&
+        this.isAdapterCurrent(adapter)
+      ) {
         this.consumedAdapterEventStreams.delete(adapter);
         queueMicrotask(() => this.consumeCurrentAdapterEvents());
       }

@@ -1,6 +1,14 @@
+import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createLogger } from '../../../utils/logger.js';
 
 const temporaryHome = trackTempDirs();
@@ -186,4 +194,40 @@ describe('StationRuntime failed initialization (#2443)', () => {
     expect(Reflect.get(runtime, 'deviceSessions')).toBeUndefined();
     expect(Reflect.get(runtime, 'deviceToolchainService')).toBeUndefined();
   });
+});
+
+test('failed initialization revokes the orchestration listener before route services are ready', async () => {
+  const store = new EventStore(
+    join(temporaryHome('failed-orchestration-'), 'events.sqlite'),
+  );
+  const listeners = new Set<() => void>();
+  const adapter = new GateTestAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: {
+      ...createGateTestRegistry(adapter),
+      onChange: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    eventStore: store,
+    eventBus: new EventBus(),
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  const { initializeRuntime } = await import('../runtime-initialize.js');
+  vi.mocked(initializeRuntime).mockImplementationOnce(async (deps) => {
+    deps.onOrchestrationServiceCreated?.(service);
+    service.initialize();
+    expect(listeners.size).toBe(1);
+    throw STARTUP_FAILURE;
+  });
+  try {
+    await expect(failingRuntime().initialize()).rejects.toBe(STARTUP_FAILURE);
+    expect(listeners.size).toBe(0);
+  } finally {
+    await service.shutdown();
+    store.close();
+  }
 });

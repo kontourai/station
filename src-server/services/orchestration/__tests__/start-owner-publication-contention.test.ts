@@ -20,6 +20,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import type { AsyncEventStreamOptions } from '../../../providers/sessions/async-event-queue.js';
 import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { createConversationForkContext } from '../conversation-fork-context.js';
@@ -98,9 +99,9 @@ class EchoingAdapter extends GateTestAdapter {
   }
   /** Event ids in the order the service's consumer pulled them. */
   readonly pulled: string[] = [];
-  override async *streamEvents(options?: {
-    signal?: AbortSignal;
-  }): AsyncIterable<CanonicalRuntimeEvent> {
+  override async *streamEvents(
+    options?: AsyncEventStreamOptions<CanonicalRuntimeEvent>,
+  ): AsyncIterable<CanonicalRuntimeEvent> {
     for await (const event of super.streamEvents(options)) {
       this.pulled.push(event.eventId);
       yield event;
@@ -1113,3 +1114,195 @@ test.each([
     }
   },
 );
+
+test('a closed-store service releases its real station-agent consumer and launchability subscription', async () => {
+  const eventBus = new EventBus();
+  const adapter = new StationAgentAdapter({
+    apiBase: 'http://127.0.0.1:43871',
+    hasAgent: () => true,
+    eventBus,
+    approvalRegistry: new ApprovalRegistry(
+      { info: vi.fn(), warn: vi.fn() },
+      { eventBus },
+    ),
+  });
+  const listeners = new Set<() => void>();
+  const registry = {
+    ...createGateTestRegistry(adapter),
+    onChange: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+  const staleStore = new EventStore(
+    join(makeTempDir('stale-consumer-'), 'events.sqlite'),
+  );
+  const liveStore = new EventStore(
+    join(makeTempDir('live-consumer-'), 'events.sqlite'),
+  );
+  const stale = new OrchestrationService({
+    adapterRegistry: registry,
+    eventBus,
+    eventStore: staleStore,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  const live = new OrchestrationService({
+    adapterRegistry: registry,
+    eventBus,
+    eventStore: liveStore,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  try {
+    stale.initialize();
+    await stale.whenSessionAttachmentSettled();
+    expect(listeners.size).toBe(1);
+    staleStore.close();
+    // Deliberately never call stale.shutdown(): store closure owns revocation.
+    live.initialize();
+    for (const notify of listeners) notify();
+    const outcome = await live.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'live-after-stale',
+          provider: 'station-agent',
+          metadata: { userId: 'owner', agentId: 'reviewer' },
+        },
+      },
+      { userId: 'owner' },
+    );
+    expect(outcome.status).toBe('accepted');
+    expect(
+      liveStore.latestEventByMethod('live-after-stale', 'session.started')
+        ?.payload.metadata,
+    ).toMatchObject({ userId: 'owner' });
+    expect(listeners.size).toBe(1);
+  } finally {
+    await live.shutdown();
+    liveStore.close();
+    staleStore.close();
+  }
+});
+
+test('an unavailable adapter consumer settles an announced start without spending the publication budget', async () => {
+  const f = fixture({ contend: 'none' });
+  f.adapter.deferStart = false;
+  const failed = new Error('consumer disconnected');
+  const announced = consumerGate();
+  const stream = f.adapter.streamEvents.bind(f.adapter);
+  vi.spyOn(f.adapter, 'streamEvents').mockImplementation((options) => ({
+    async *[Symbol.asyncIterator]() {
+      for await (const event of stream(options)) {
+        if (event.method === 'session.started') {
+          announced.resolve();
+          throw failed;
+        }
+        yield event;
+      }
+    },
+  }));
+  try {
+    const launch = f.sessions.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: { userId: 'owner' },
+        },
+      },
+      { userId: 'owner' },
+    );
+    await announced.promise;
+    const result = await Promise.race([
+      launch,
+      delay(500).then(() => 'budget burned'),
+    ]);
+    expect(result).toMatchObject({ status: 'indeterminate' });
+  } finally {
+    await f.sessions.shutdown();
+    f.store.close();
+  }
+});
+
+test('a start observed by the live service but settled by another service fails immediately', async () => {
+  const adapter = new EchoingAdapter();
+  const stream = adapter.streamEvents.bind(adapter);
+  let subscriptions = 0;
+  let announceLive: ((event: CanonicalRuntimeEvent) => void) | undefined;
+  const stop = consumerGate();
+  // A legacy/plugin stream permits two subscribers but delivers only to the first.
+  vi.spyOn(adapter, 'streamEvents').mockImplementation((options) => {
+    if (++subscriptions === 1) return stream(options);
+    announceLive = options?.onEnqueue;
+    options?.signal?.addEventListener('abort', stop.resolve, { once: true });
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: async () => {
+            await stop.promise;
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    };
+  });
+  const start = adapter.startSession.bind(adapter);
+  vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
+    // Notify the live subscriber synchronously before the stale consumer settles it.
+    const push = adapter.events.push.bind(adapter.events);
+    const tap = vi.spyOn(adapter.events, 'push').mockImplementation((event) => {
+      announceLive?.(event);
+      return push(event);
+    });
+    try {
+      return await start(input);
+    } finally {
+      tap.mockRestore();
+    }
+  });
+  const stores = ['first', 'live'].map(
+    (name) =>
+      new EventStore(join(makeTempDir(`foreign-${name}-`), 'events.sqlite')),
+  );
+  const services = stores.map(
+    (eventStore) =>
+      new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(adapter),
+        eventBus: new EventBus(),
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+  );
+  let launch:
+    | ReturnType<(typeof services)[1]['sessionCommands']['execute']>
+    | undefined;
+  try {
+    services[0].initialize();
+    services[1].initialize();
+    launch = services[1].sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'foreign-settlement',
+          provider: 'claude',
+          metadata: { userId: 'owner' },
+        },
+      },
+      { userId: 'owner' },
+    );
+    expect(
+      await Promise.race([launch, delay(500).then(() => 'budget burned')]),
+    ).toMatchObject({ status: 'indeterminate' });
+    expect(
+      stores[1].latestEventByMethod('foreign-settlement', 'session.started'),
+    ).toBeUndefined();
+  } finally {
+    stop.resolve();
+    await launch;
+    for (const service of services) await service.shutdown();
+    for (const store of stores) store.close();
+  }
+});
