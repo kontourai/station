@@ -128,10 +128,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",

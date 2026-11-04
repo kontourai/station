@@ -262,7 +262,11 @@
 
     "src-server/routes/operations/automations.ts",
 
-    "packages/sdk/src/client/delegations.ts"
+    "packages/sdk/src/client/delegations.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts"
   ],
 
   "checks": [
