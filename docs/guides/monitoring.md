@@ -94,7 +94,10 @@ publication of a week that closes during the pass. Publisher-scoped HMAC cursors
 are verified before caching; public pages cache for at most 60 seconds and reset
 at UTC midnight. Failed credential refresh beyond 60 seconds returns
 503. This receiver implementation does not establish an installed Station sender
-or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+or a deployment. The [Worker receiver](../../deploy/telemetry-worker/README.md)
+serves the same Lite contract and public routes from one Cloudflare Durable
+Object, with Workers rate limits instead of a tunnel, and adds a private owner
+dashboard. It is not deployed either. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker profile for Collector → Prometheus
