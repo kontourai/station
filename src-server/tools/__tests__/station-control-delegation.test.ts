@@ -2362,7 +2362,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
     );
     expect(sendTurn).toBeDefined();
-    expect(sendTurn?.[2]?.dispatchOrigin).toBeUndefined();
+    expect(
+      (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
+        ?.dispatchOrigin,
+    ).toBeUndefined();
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {

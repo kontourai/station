@@ -260,6 +260,7 @@ export interface ProjectSupervisionPorts {
       message: string;
       actor: { userId: string };
       clientOrigin: ClientOrigin;
+      dispatchOrigin: 'unknown';
     };
   }): ThreadInboxSubmission;
 }

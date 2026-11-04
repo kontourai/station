@@ -488,7 +488,11 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     const internalOrigin = {
       version: 1 as const,
       actor: { kind: 'internal' as const },
-      reported: { version: 1 as const, surface: 'unknown' as const },
+      reported: {
+        version: 1 as const,
+        surface: 'unknown' as const,
+        build: null,
+      },
     };
     const send = async (
       clientTurnId: string,

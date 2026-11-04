@@ -53,8 +53,8 @@ const engineSessions = new Set<string>();
 
 class HangingAdapter extends GateTestAdapter {
   readonly sends: ProviderSendTurnInput[] = [];
-  override async hasSession(threadId: string): Promise<boolean> {
-    return engineSessions.has(threadId);
+  override async hasSession(threadId?: string): Promise<boolean> {
+    return threadId !== undefined && engineSessions.has(threadId);
   }
   /** Real adapters publish the start metadata, where the owner is read. */
   override async startSession(input: ProviderSessionStartInput) {
@@ -357,7 +357,7 @@ describe('continue unattended work after a restart (#4512)', () => {
       .find(Boolean)!;
     const continued = second.store
       .listEventsByMethods('task-session', ['turn.started'])
-      .map((event) => event.payload as Record<string, unknown>)
+      .map((event) => event.payload as unknown as Record<string, unknown>)
       .at(-1)!;
     expect(continued).toMatchObject({
       clientTurnId: turnInterruptedContinueClientTurnId(banner.boundaryId),

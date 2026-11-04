@@ -695,6 +695,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(message.metadata?.stationMemoryContinuation
           ? { stationMemoryContinuation: true }
           : {}),
+        ...(message.metadata?.stationRestartContinuation
+          ? { stationRestartContinuation: true }
+          : {}),
         ...(message.metadata?.interruptedTurnBoundaryId
           ? {
               interruptedTurnBoundaryId:
