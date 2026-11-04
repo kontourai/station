@@ -816,8 +816,9 @@ personal default (`source: "personal-default"`) is lowered to the ceiling
 instead. A start whose engine could only run above the ceiling
 (Muse Code on `muse exec` under `ask`) is refused the same way, with status
 `403`, whether a new chat starts it or a send restarts a parked session; the
-`error` leads with the engine's reason before the managed sentence. Nothing has
-started, so there is no session to inspect. An inbound webhook gets the same
+`error` leads with the engine's reason before the managed sentence. No engine
+session started, so there is no uncertain start to inspect; a parked session
+keeps its history. An inbound webhook gets the same
 `403` with `retryable: false`. A delegation with staged files reports
 `delegation_files_start_refused` instead, like any other refused start.
 
