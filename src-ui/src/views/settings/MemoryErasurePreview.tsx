@@ -62,39 +62,48 @@ export function MemoryErasurePreview() {
   );
   if (!scope || !enabled) return null;
   return (
-    <section aria-label="Memory erasure preview">
+    <section
+      aria-label="Memory erasure preview"
+      className="knowledge-memory-preview"
+    >
       <h3>Preview memory erasure</h3>
       <p>Find a memory or proposal by its ID. Erasure is not available yet.</p>
-      <label>
-        Type{' '}
-        <select
-          value={kind}
-          onChange={(event) => {
-            setKind(event.target.value === 'proposal' ? 'proposal' : 'record');
-            setTarget(null);
-          }}
+      <div className="knowledge-memory-preview__form">
+        <label>
+          Type{' '}
+          <select
+            className="editor-input"
+            value={kind}
+            onChange={(event) => {
+              setKind(
+                event.target.value === 'proposal' ? 'proposal' : 'record',
+              );
+              setTarget(null);
+            }}
+          >
+            <option value="record">Record</option>
+            <option value="proposal">Proposal</option>
+          </select>
+        </label>
+        <label>
+          ID{' '}
+          <input
+            className="editor-input"
+            value={id}
+            maxLength={512}
+            onChange={(event) => {
+              setId(event.target.value);
+              setTarget(null);
+            }}
+          />
+        </label>
+        <Button
+          disabled={!id.trim() || preview.isFetching}
+          onClick={() => setTarget({ kind, id: id.trim() })}
         >
-          <option value="record">Record</option>
-          <option value="proposal">Proposal</option>
-        </select>
-      </label>
-      <label>
-        ID{' '}
-        <input
-          value={id}
-          maxLength={512}
-          onChange={(event) => {
-            setId(event.target.value);
-            setTarget(null);
-          }}
-        />
-      </label>
-      <Button
-        disabled={!id.trim() || preview.isFetching}
-        onClick={() => setTarget({ kind, id: id.trim() })}
-      >
-        Preview
-      </Button>
+          Preview
+        </Button>
+      </div>
       {preview.isFetching && <p>Loading preview…</p>}
       {preview.isError && (
         <ErrorState

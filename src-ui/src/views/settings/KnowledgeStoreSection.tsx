@@ -195,7 +195,8 @@ export function KnowledgeStoreSection() {
         ) : (
           (() => {
             const personalRoot = (rootsQuery.data ?? []).find(
-              (root) => root.scope.kind === 'personal',
+              (root) =>
+                root.scope.kind === 'personal' && root.readPolicy === undefined,
             );
 
             if (!personalRoot) {
