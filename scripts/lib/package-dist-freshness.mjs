@@ -354,7 +354,7 @@ const RELATIVE_JSON_SPECIFIER =
  * Returned relative to `pkgDir` (`../../schemas/app.schema.json`), which is
  * how `computeSourceDigest` reads every covered path.
  */
-export function externalDataInputs(pkgDir, sources) {
+function externalDataInputs(pkgDir, sources) {
   const found = new Set();
   const root = resolve(pkgDir);
   for (const rel of sources) {
