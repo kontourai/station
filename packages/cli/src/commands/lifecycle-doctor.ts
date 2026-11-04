@@ -438,6 +438,25 @@ export function prebuiltArchiveChecks(
   });
 }
 
+/**
+ * A detected CLI's row: `pass` only when its connection may run it, so the
+ * row agrees with `runtimeReady` and `runtimeState.detected` (#4517).
+ */
+function cliCheck(
+  label: string,
+  version: string | null,
+  allowed: boolean,
+): DoctorCheck {
+  if (!version) return { label, status: 'warn', detail: 'Not found' };
+  if (!allowed)
+    return {
+      label,
+      status: 'warn',
+      detail: `${version}, but its connection is disabled by configuration.`,
+    };
+  return { label, status: 'pass', detail: version };
+}
+
 export async function collectDoctorReport(
   deps: Partial<DoctorDeps> = {},
 ): Promise<DoctorReport> {
@@ -542,6 +561,8 @@ export async function collectDoctorReport(
   // it, #4517).
   const runtimeAllowed = (connectionId: string): boolean =>
     agentConnections[connectionId]?.enabled !== false;
+  // The Kiro CLI runs through the `acp` connection.
+  const kiroUsable = Boolean(kiroVersion) && runtimeAllowed('acp');
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -644,27 +665,21 @@ export async function collectDoctorReport(
         ? 'AWS credential sources detected.'
         : 'No AWS credential source detected.',
     },
-    {
-      label: 'Codex CLI',
-      status: codexVersion ? 'pass' : 'warn',
-      detail: codexVersion ?? 'Not found',
-    },
-    {
-      label: 'Claude CLI',
-      status: claudeVersion ? 'pass' : 'warn',
-      detail: claudeVersion ?? 'Not found',
-    },
+    cliCheck('Codex CLI', codexVersion, runtimeAllowed('codex')),
+    cliCheck('Claude CLI', claudeVersion, runtimeAllowed('claude')),
     {
       label: 'ACP / external runtime',
       status:
-        kiroVersion || enabledRuntimeConnections.some(([id]) => id === 'acp')
+        kiroUsable || enabledRuntimeConnections.some(([id]) => id === 'acp')
           ? 'pass'
           : 'warn',
-      detail:
-        kiroVersion ??
-        (enabledRuntimeConnections.some(([id]) => id === 'acp')
-          ? 'ACP runtime connection configured.'
-          : 'No ACP runtime detected.'),
+      detail: kiroUsable
+        ? (kiroVersion as string)
+        : kiroVersion
+          ? `${kiroVersion}, but the ACP connection is disabled by configuration.`
+          : enabledRuntimeConnections.some(([id]) => id === 'acp')
+            ? 'ACP runtime connection configured.'
+            : 'No ACP runtime detected.',
     },
   ];
   const checks = archive
@@ -702,7 +717,7 @@ export async function collectDoctorReport(
   const detectedRuntimes = [
     codexUsable ? 'codex-cli' : null,
     claudeUsable ? 'claude-cli' : null,
-    kiroVersion ? 'kiro-cli' : null,
+    kiroUsable ? 'kiro-cli' : null,
   ].filter((value): value is string => Boolean(value));
   const fixCommands = buildFixCommands({
     chatReady,

@@ -102,6 +102,13 @@ describe('station doctor under a managed policy', () => {
     expect(report.runtimeReady).toBe(false);
     expect(report.runtimeState.detected).not.toContain('codex-cli');
     expect(report.runtimeState.effective).toBeNull();
+    // The row agrees with the readiness verdict instead of reading `pass`.
+    const row = report.checks.find((item) => item.label === 'Codex CLI');
+    expect(row?.status).toBe('warn');
+    expect(row?.detail).toContain('disabled by configuration');
+    expect(
+      unmanaged.checks.find((item) => item.label === 'Codex CLI')?.status,
+    ).toBe('pass');
   });
 
   test('a policy startup would refuse is a failing check, not readiness', async () => {
