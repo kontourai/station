@@ -28,3 +28,9 @@
   font-size: 12px;
   color: var(--error-text);
 }
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .prompt-modal__input {
+    min-height: 44px;
+  }
+}
