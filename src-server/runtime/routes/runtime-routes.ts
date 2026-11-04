@@ -343,7 +343,10 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  SERVER_EVENTS,
+  type TurnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import {
   isStationGroup,
@@ -820,7 +823,10 @@ import {
   type TaskQuestionWakePorts,
 } from '../../services/orchestration/task-question-wake.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
-import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
+import {
+  inboxTurnDispatchOrigin,
+  ThreadInboxDelivery,
+} from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
@@ -6669,6 +6675,7 @@ export function configureRuntimeRoutes(
       inputDigest?: string;
       inboxPlacement?: true;
       automaticBackground?: true;
+      turnOrigin?: TurnDispatchOrigin;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -6684,6 +6691,7 @@ export function configureRuntimeRoutes(
         {
           submissionDigest: input.inputDigest,
           ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+          ...(input.turnOrigin ? { turnOrigin: input.turnOrigin } : {}),
         },
       );
       if (!isForegroundDispatchHandle(handle))
@@ -6912,6 +6920,11 @@ export function configureRuntimeRoutes(
               automaticBackground: payload.automaticBackground,
               inputDigest: payload.inputDigest,
               inboxPlacement: true,
+              turnOrigin: inboxTurnDispatchOrigin(
+                payload,
+                eventStore.readProjectTaskRoomExecutionBinding(threadId) !==
+                  undefined,
+              ),
               clientTurnId,
               userId: payload.actor.userId,
               principal: payload.actor.principal,

@@ -36,6 +36,7 @@ import {
   readProviderDurabilityProfile,
   SESSION_VISIBILITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   WorkspaceIsolationConfig,
@@ -104,6 +105,17 @@ async function provisionProjectWorktree(
   return await (deps.admitWorktreeProvisioning
     ? deps.admitWorktreeProvisioning(threadId, provision)
     : provision());
+}
+
+/**
+ * Server-only facts about a foreground send, set by Station's own callers
+ * (the conversation inbox), never read from a request body.
+ */
+export interface ForegroundMessageContext {
+  submissionDigest?: string;
+  inboxPlacement?: true;
+  /** #4512: forwarded to `sendTurn` and stamped on `turn.started`. */
+  turnOrigin?: TurnDispatchOrigin;
 }
 
 export interface ForegroundMessageInput {
@@ -417,6 +429,7 @@ export interface ExecutionTargetExecutionDependencies
       principal?: PrincipalRef;
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
+      turnOrigin?: TurnDispatchOrigin;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -677,7 +690,7 @@ async function refuseUngrantedCarriedPick(
 export async function executeForegroundMessage(
   input: ForegroundMessageInput,
   deps: ExecutionTargetExecutionDependencies,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent) {
@@ -1612,8 +1625,10 @@ export async function executeForegroundMessage(
       input.principal ||
       input.mcpPromptOrigin ||
       submissionDigest ||
-      context?.inboxPlacement
+      context?.inboxPlacement ||
+      context?.turnOrigin
       ? {
+          ...(context?.turnOrigin ? { turnOrigin: context.turnOrigin } : {}),
           ...(context?.inboxPlacement && submissionDigest === undefined
             ? { submissionDigest: null }
             : submissionDigest

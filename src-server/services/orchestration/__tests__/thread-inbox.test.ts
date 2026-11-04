@@ -64,6 +64,7 @@ import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { evaluateSessionWait } from '../session-turn-wait.js';
 import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
 import {
+  inboxTurnDispatchOrigin,
   ThreadInboxDelivery,
   type ThreadInboxDeliveryPorts,
   type ThreadInboxPayload,
@@ -2879,4 +2880,31 @@ test('restart preserves delivery proof before applying coordinator policy', asyn
   } finally {
     policy.stop();
   }
+});
+
+describe('inbox turn dispatch origin (#4512)', () => {
+  const by = (actor: { kind: string; deviceId?: string }) => ({
+    clientOrigin: {
+      version: 1,
+      actor,
+      reported: { version: 1, surface: 'unknown' },
+    } as never,
+  });
+  test.each([
+    // An Automation's entry is automation, whatever sends it.
+    [
+      { serverAutomationIntentId: 'a'.repeat(64), ...by({ kind: 'internal' }) },
+      true,
+      'automation',
+    ],
+    [by({ kind: 'operator' }), true, 'interactive'],
+    [by({ kind: 'device', deviceId: 'phone' }), false, 'interactive'],
+    [by({ kind: 'internal' }), true, 'task-dispatch'],
+    // Station's own entry with no Task behind the Session says nothing.
+    [by({ kind: 'internal' }), false, 'unknown'],
+    [by({ kind: 'unknown' }), true, 'unknown'],
+    [{}, true, 'unknown'],
+  ] as const)('%o (Task-bound %s) is %s', (payload, taskBound, expected) => {
+    expect(inboxTurnDispatchOrigin(payload, taskBound)).toBe(expected);
+  });
 });

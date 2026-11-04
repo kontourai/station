@@ -411,6 +411,39 @@ export interface SessionCancellationRequestedEvent
   action: 'stop' | 'cancel';
 }
 
+/**
+ * #4512: the server-classified cause of a turn, stamped on `turn.started`.
+ *
+ * - `interactive`: a person's own send (an operator or paired-device client).
+ * - `task-dispatch`: Station's own send into a Session dispatched for a Task.
+ * - `delegation`: the first turn of a delegated Session, sent by Station.
+ * - `automation`: a turn an Automation placed through the conversation inbox.
+ * - `unknown`: anything else, and every turn persisted before the field.
+ */
+export const TURN_DISPATCH_ORIGINS = [
+  'interactive',
+  'task-dispatch',
+  'delegation',
+  'automation',
+  'unknown',
+] as const;
+export type TurnDispatchOrigin = (typeof TURN_DISPATCH_ORIGINS)[number];
+
+/**
+ * The origin a `turn.started` payload records, or `unknown` when it records
+ * none or a value this build does not know (a newer Station's), so a reader
+ * never treats an unrecognised origin as one it acts on.
+ */
+export function turnDispatchOrigin(event: {
+  dispatchOrigin?: unknown;
+}): TurnDispatchOrigin {
+  const value = event.dispatchOrigin;
+  return typeof value === 'string' &&
+    (TURN_DISPATCH_ORIGINS as readonly string[]).includes(value)
+    ? (value as TurnDispatchOrigin)
+    : 'unknown';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -424,6 +457,15 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * produced (an engine-opened turn, another app's transcript).
    */
   clientTurnId?: string;
+  /**
+   * #4512: who caused this turn, as Station classified it when it admitted
+   * the send — never an adapter's or a client's claim (an adapter-supplied
+   * value is dropped and replaced, like `clientTurnId`). Absent on events
+   * persisted before it existed, on steers, and on turns no send produced;
+   * read it through {@link turnDispatchOrigin}, which reports those as
+   * `unknown`.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**

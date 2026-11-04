@@ -102,6 +102,7 @@ import {
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
+  type ForegroundMessageContext,
   type ForegroundMessageHandle,
   ForegroundMessageIndeterminateError,
   type ForegroundMessageInput,
@@ -6419,6 +6420,8 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            // #4512: the delegated Session's first turn, sent by Station.
+            turnOrigin: 'delegation',
             ...(input.taskRoomInvocationAdmission
               ? {
                   receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -6598,7 +6601,7 @@ export async function executeExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
@@ -7371,6 +7374,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.turnOrigin
+                ? { turnOrigin: context.turnOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7400,6 +7406,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
+              ...(context?.turnOrigin
+                ? { turnOrigin: context.turnOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
@@ -7592,7 +7601,7 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId)

@@ -128,6 +128,7 @@ import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
   SessionApprovalModeSetEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isProviderTriggeredTurn,
@@ -646,6 +647,27 @@ interface OrchestrationDispatchInternalOptions {
   /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
   delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
+  /**
+   * #4512: who caused this `sendTurn`, as the server-side caller knows it
+   * (the delegation start, the conversation inbox's placement). Stamped on
+   * the turn's `turn.started` as `dispatchOrigin`. Absent, the service
+   * classifies the send from its client origin (`classifyTurnDispatchOrigin`).
+   */
+  turnOrigin?: TurnDispatchOrigin;
+}
+
+/**
+ * #4512: the `dispatchOrigin` a `sendTurn` records. A server caller's own
+ * classification wins; otherwise a send from a person's client (operator or
+ * paired device) is `interactive` and everything else is `unknown`.
+ */
+export function classifyTurnDispatchOrigin(
+  turnOrigin: TurnDispatchOrigin | undefined,
+  clientOrigin: ClientOrigin | undefined,
+): TurnDispatchOrigin {
+  if (turnOrigin) return turnOrigin;
+  const actor = clientOrigin?.actor.kind;
+  return actor === 'operator' || actor === 'device' ? 'interactive' : 'unknown';
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -9382,6 +9404,10 @@ export class OrchestrationService {
                         | SkillExperienceInvocationReferenceV1
                         | undefined;
                       let experienceContext: string | undefined;
+                      const dispatchOrigin = classifyTurnDispatchOrigin(
+                        internal?.turnOrigin,
+                        context?.clientOrigin,
+                      );
                       if (internal?.skillExperience) {
                         if (
                           !this.skillExperienceRuntime ||
@@ -9453,6 +9479,7 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          dispatchOrigin,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -9796,6 +9823,7 @@ export class OrchestrationService {
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
                           turnInput.invocationId,
+                          dispatchOrigin,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);

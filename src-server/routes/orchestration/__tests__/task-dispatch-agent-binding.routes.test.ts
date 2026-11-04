@@ -37,6 +37,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { inboxTurnDispatchOrigin } from '../../../services/orchestration/thread-inbox.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import {
@@ -451,6 +452,109 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     expect(JSON.stringify(claude.sendTurn.mock.calls[0]![0])).toContain(
       `BRIEF FOR ${taskId}`,
     );
+  });
+
+  test("#4512: Station's own inbox turn into the dispatched Session is recorded as task-dispatch; a person's as interactive", async () => {
+    installCurrentStation(workspace);
+    const { app, claude, eventStore, service } = compose();
+    const taskId = await createTask(app, 'task-lead');
+    const dispatched = await dispatch(app, taskId, {
+      agentId: 'task-lead',
+      runtimeConfig: workspace ? { cwd: workspace } : undefined,
+      sourceSurface: 'project-page',
+    });
+    expect(dispatched.body.error).toBeUndefined();
+    const sessionId = dispatched.body.data.dispatch.sessionId as string;
+    // The engine reports each turn's start from inside sendTurn, before
+    // Station accepts the send.
+    const events = (
+      claude as unknown as { events: AsyncEventQueue<CanonicalRuntimeEvent> }
+    ).events;
+    let invocationId: string | undefined;
+    claude.sendTurn.mockImplementation(async (input: ProviderSendTurnInput) => {
+      invocationId = input.invocationId;
+      const turnId = `turn-${claude.sendTurn.mock.calls.length}`;
+      events.push({
+        eventId: crypto.randomUUID(),
+        provider: 'claude',
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        turnId,
+        ...(input.invocationId ? { invocationId: input.invocationId } : {}),
+      } as CanonicalRuntimeEvent);
+      return { threadId: input.threadId, turnId };
+    });
+    const internalOrigin = {
+      version: 1 as const,
+      actor: { kind: 'internal' as const },
+      reported: { version: 1 as const, surface: 'unknown' as const },
+    };
+    const send = async (
+      clientTurnId: string,
+      clientOrigin: typeof internalOrigin | undefined,
+      turnOrigin?: ReturnType<typeof inboxTurnDispatchOrigin>,
+    ) => {
+      const handle = await continueExecutionTargetMessage(
+        {
+          conversationId: sessionId,
+          message: 'Continue the Task',
+          clientTurnId,
+          userId: OWNER,
+          ...(clientOrigin ? { clientOrigin } : {}),
+          readAuthority: sessionReadAuthorityFromRequest(
+            OWNER,
+            undefined,
+            undefined,
+          ),
+        },
+        service,
+        undefined,
+        turnOrigin ? { inboxPlacement: true, turnOrigin } : undefined,
+      );
+      let started: Record<string, unknown> | undefined;
+      await vi.waitFor(() => {
+        started = eventStore
+          .listEventsByMethods(sessionId, ['turn.started'])
+          .map((event) => event.payload as unknown as Record<string, unknown>)
+          .find((payload) => payload.turnId === handle.providerTurnId);
+        expect(started).toBeDefined();
+      });
+      await vi.waitFor(() =>
+        expect(service.hasActiveTurn(sessionId)).toBe(true),
+      );
+      events.push({
+        eventId: crypto.randomUUID(),
+        provider: 'claude',
+        threadId: sessionId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        turnId: handle.providerTurnId,
+        ...(invocationId ? { invocationId } : {}),
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(service.hasActiveTurn(sessionId)).toBe(false),
+      );
+      return started!;
+    };
+
+    // The inbox start port's classification, over the binding the real
+    // dispatch wrote for this Session.
+    const taskBound =
+      eventStore.readProjectTaskRoomExecutionBinding(sessionId) !== undefined;
+    expect(taskBound).toBe(true);
+    const wake = await send(
+      'tq-wake',
+      internalOrigin,
+      inboxTurnDispatchOrigin({ clientOrigin: internalOrigin }, taskBound),
+    );
+    expect(wake.dispatchOrigin).toBe('task-dispatch');
+
+    const person = await send('person-1', {
+      ...internalOrigin,
+      actor: { kind: 'operator' },
+    } as never);
+    expect(person.dispatchOrigin).toBe('interactive');
   });
 
   test('a seeded dispatch records a known Agent and refuses an unknown one', async () => {

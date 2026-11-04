@@ -47,6 +47,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
@@ -127,6 +128,27 @@ export interface ThreadInboxPayload {
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
   readonly clientOrigin?: ClientOrigin;
+}
+
+/**
+ * #4512: the `dispatchOrigin` an inbox placement records, from the entry's
+ * own server-written facts. An Automation's entry is `automation`; a person's
+ * (operator or paired device) is `interactive`; Station's own entry into a
+ * Session bound to a Task (`taskBound`: its room execution binding) is
+ * `task-dispatch`; anything else is `unknown`.
+ */
+export function inboxTurnDispatchOrigin(
+  payload: Pick<
+    ThreadInboxPayload,
+    'serverAutomationIntentId' | 'clientOrigin'
+  >,
+  taskBound: boolean,
+): TurnDispatchOrigin {
+  if (payload.serverAutomationIntentId) return 'automation';
+  const actor = payload.clientOrigin?.actor.kind;
+  if (actor === 'operator' || actor === 'device') return 'interactive';
+  if (actor === 'internal' && taskBound) return 'task-dispatch';
+  return 'unknown';
 }
 
 /** JSON with object keys sorted, so equal inputs digest equally. */
