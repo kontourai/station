@@ -1,4 +1,8 @@
 import { realpathSync } from 'node:fs';
+import {
+  type ManagedPolicyUpdatesLimit,
+  managedUpdateServerManifestUrl,
+} from '@kontourai/station-contracts/managed-policy';
 import type {
   ServiceUpdateIntent,
   ServiceUpdateProgress,
@@ -31,6 +35,7 @@ import PINNED_RELEASE_MANIFEST_KEYS from '../../../config/release-manifest-keys.
 };
 import { errorMessage } from '../schemas/schemas.js';
 import type { InstallProvenance } from './install-provenance.js';
+import { managedUpdateRefusalFor } from './managed-update-policy.js';
 
 type ArchiveProvenance = Extract<InstallProvenance, { installKind: 'archive' }>;
 
@@ -76,6 +81,12 @@ export interface ArchiveUpdateOptions {
   pinnedKeys?: unknown;
   platform?: string;
   arch?: string;
+  /**
+   * #4522: the managed policy's `limits.updates`. A refusal stops every
+   * apply here; a `feedUrl` replaces the recorded release manifest with the
+   * mirror's copy of this ring's.
+   */
+  managedUpdates?: ManagedPolicyUpdatesLimit | null;
 }
 
 /**
@@ -340,7 +351,11 @@ export async function archiveUpdateStatus(
   let refusal: string | null =
     method === 'service-update' ? null : archiveApplyRefusal(method);
 
-  const manifestUrl = installState?.manifestUrl ?? null;
+  const feedUrl = options.managedUpdates?.feedUrl;
+  const manifestUrl =
+    feedUrl !== undefined
+      ? managedUpdateServerManifestUrl(feedUrl, ring)
+      : (installState?.manifestUrl ?? null);
   if (!manifestUrl) {
     return {
       ...base,
@@ -425,7 +440,7 @@ export async function archiveUpdateStatus(
 
 export type ArchiveApplyResult =
   | { ok: true; requestId: string; targetVersion?: string }
-  | { ok: false; status: 409 | 500; error: string };
+  | { ok: false; status: 403 | 409 | 500; error: string; code?: string };
 
 const IN_FLIGHT: ReadonlySet<ServiceUpdateProgress['state']> = new Set([
   'queued',
@@ -455,6 +470,15 @@ export async function applyArchiveUpdate(
   request: { intent?: ServiceUpdateIntent; version?: string } = {},
 ): Promise<ArchiveApplyResult> {
   const intent = request.intent ?? 'update';
+  // #4522: before anything else, so a refused install writes no request.
+  const managed = managedUpdateRefusalFor(provenance, options.managedUpdates);
+  if (managed)
+    return {
+      ok: false,
+      status: 403,
+      error: `${managed.message}.`,
+      code: managed.code,
+    };
   const method = archiveApplyMethod(provenance, options.env);
   if (method !== 'service-update' || !provenance.installRoot) {
     const reason = archiveApplyRefusal(
@@ -466,7 +490,11 @@ export async function applyArchiveUpdate(
       error: `This Station server cannot update itself: ${reason}.`,
     };
   }
-  if (!readArchiveInstallState(provenance.installRoot)?.manifestUrl) {
+  // Under a mirror the launcher stages from the mirror's manifest instead.
+  if (
+    options.managedUpdates?.feedUrl === undefined &&
+    !readArchiveInstallState(provenance.installRoot)?.manifestUrl
+  ) {
     return {
       ok: false,
       status: 409,

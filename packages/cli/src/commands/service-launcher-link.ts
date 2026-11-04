@@ -28,6 +28,10 @@ import {
   writeJsonAtomically,
   writeServiceStageProgress,
 } from '@kontourai/station-shared/service-launcher-protocol';
+import {
+  installedManagedUpdates,
+  managedInstallerEnv,
+} from './managed-update-installer.js';
 import type { ServiceFs } from './service.js';
 
 /**
@@ -206,6 +210,7 @@ export function stageServiceUpdate(input: {
   );
   let state: {
     channel?: unknown;
+    releaseChannel?: unknown;
     stationRoot?: unknown;
     stationHome?: unknown;
     manifestUrl?: unknown;
@@ -222,7 +227,24 @@ export function stageServiceUpdate(input: {
       new Error(`cannot read the install state: ${(error as Error).message}`),
     );
   }
+  // #4522: the launcher stages for a server it does not run inside, so it
+  // reads the machine's policy itself. An unusable policy, `off`, a
+  // disallowed nightly ring or a mirror the installer cannot follow refuses
+  // the stage before anything is downloaded.
+  let managedEnv: Record<string, string>;
+  try {
+    managedEnv = managedInstallerEnv({
+      updates: installedManagedUpdates(env),
+      ring:
+        typeof state.releaseChannel === 'string' ? state.releaseChannel : '',
+      platform: input.platform ?? process.platform,
+      requestedManifestUrl: env.STATION_INSTALL_PUBLIC_MANIFEST_URL,
+    });
+  } catch (error) {
+    return Promise.reject(error);
+  }
   const manifestUrl =
+    managedEnv.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
   const childEnv: NodeJS.ProcessEnv = {
@@ -243,6 +265,7 @@ export function stageServiceUpdate(input: {
     if (typeof value === 'string') childEnv[key] = value;
   }
   if (manifestUrl) childEnv.STATION_INSTALL_PUBLIC_MANIFEST_URL = manifestUrl;
+  Object.assign(childEnv, managedEnv);
   if (input.targetVersion) childEnv.STATION_VERSION = `v${input.targetVersion}`;
   else delete childEnv.STATION_VERSION;
   return new Promise((resolvePromise, reject) => {

@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -3000,4 +3001,93 @@ describe('install ports (#2675 slice C)', {
       expect(existsSync(harness.installRoot)).toBe(false);
     },
   );
+});
+
+describe('installs from a managed mirror (#4522)', {
+  timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
+}, () => {
+  const tempDir = trackTempDirs();
+  const DEFAULT_BASE =
+    'https://github.com/kontourai/station/releases/download/';
+
+  /** A mirror of the release download tree holding one signed release. */
+  function mirrorFixture(
+    prefix: string,
+    artifactUrl?: (name: string) => string,
+  ) {
+    const harness = archiveHarness(tempDir(prefix));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const mirror = join(harness.root, 'mirror');
+    mkdirSync(join(mirror, 'v1.2.3'), { recursive: true });
+    mkdirSync(join(mirror, 'portable-stable'), { recursive: true });
+    copyFileSync(archive.archive, join(mirror, 'v1.2.3', archive.name));
+    const signed = archiveManifest(harness, archive, {
+      artifact: {
+        url:
+          artifactUrl?.(archive.name) ??
+          `${DEFAULT_BASE}v1.2.3/${archive.name}`,
+      },
+    });
+    const manifest = join(
+      mirror,
+      'portable-stable',
+      'station-portable-stable-manifest.json',
+    );
+    copyFileSync(signed, manifest);
+    // The default location never holds the archive here, so a download from
+    // it could not succeed.
+    rmSync(archive.archive);
+    return {
+      harness,
+      manifest,
+      mirrorUrl: pathToFileURL(mirror).href,
+    };
+  }
+
+  it('downloads the signed archive from the mirror, by tag and file name', () => {
+    const { harness, manifest, mirrorUrl } = mirrorFixture(
+      'station-mirror-install-',
+    );
+    const result = runArchiveInstaller(harness, manifest, [], {
+      STATION_INSTALL_MIRROR_URL: mirrorUrl,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const installRoot = realpathSync(harness.installRoot);
+    expect(
+      existsSync(
+        join(installRoot, 'versions', '1.2.3', '.station-install-complete'),
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses an archive outside the release download tree, and a manifest from elsewhere', () => {
+    const outside = mirrorFixture(
+      'station-mirror-outside-',
+      (name) => `https://downloads.example.invalid/v1.2.3/${name}`,
+    );
+    const refused = runArchiveInstaller(outside.harness, outside.manifest, [], {
+      STATION_INSTALL_MIRROR_URL: outside.mirrorUrl,
+    });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(
+      'the signed manifest names an archive outside the release download tree',
+    );
+
+    const elsewhere = mirrorFixture('station-mirror-manifest-');
+    const result = runArchiveInstaller(
+      elsewhere.harness,
+      elsewhere.manifest,
+      [],
+      {
+        STATION_INSTALL_MIRROR_URL: `${elsewhere.mirrorUrl}-other/`,
+      },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      'the signed manifest must come from the mirror',
+    );
+    expect(existsSync(join(elsewhere.harness.installRoot, 'current'))).toBe(
+      false,
+    );
+  });
 });

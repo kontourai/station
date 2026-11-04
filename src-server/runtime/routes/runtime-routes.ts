@@ -3560,6 +3560,10 @@ export function configureRuntimeRoutes(
   // schedule; see the coordinator's header.
   const serverUpdate = new ServerUpdateCoordinator({
     provenance: resolveThisServerProvenance,
+    // #4522: the managed policy's update limit, loaded once at startup.
+    options: {
+      managedUpdates: context.managedPolicy?.document.limits?.updates ?? null,
+    },
     readDownloadPolicy: async () =>
       (await context.configLoader.loadAppConfig()).serverUpdateDownloadPolicy,
     // Every session's active-turn state, ephemeral ones included: what the

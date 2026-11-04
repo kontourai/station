@@ -13,6 +13,10 @@
  * yet enforce (any `settings` entry and every `limits` key, until each
  * enforcement slice lands) would make the machine look managed when it is
  * not. Both are rejected with a problem that names the key.
+ *
+ * `limits.updates` (#4522) also owns the update-source helpers every update
+ * surface shares: the refusal sentence and code, and the mapping from a
+ * default release download URL to the administrator's mirror.
  */
 import { boundaryText, isRecord } from './contract-validation.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
@@ -33,11 +37,29 @@ export interface ManagedPolicySettingEntry {
 }
 
 /**
- * Limits sit outside settings. No limit key is enforced by this build, so the
- * accepted shape is empty; each enforcement slice adds its key here and to
- * {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
+ * #4522: how Station on this machine updates itself. Every key is optional;
+ * an absent key keeps Station's own behavior.
  */
-export type ManagedPolicyLimits = Record<string, never>;
+export interface ManagedPolicyUpdatesLimit {
+  /** `off` stops every update check, download and install. */
+  mode?: 'auto' | 'off';
+  /**
+   * An https mirror of approved releases that replaces Station's default
+   * release download location on every update surface. It may carry an
+   * access token in its path, so it never reaches the client summary.
+   */
+  feedUrl?: string;
+  /** `false` makes the nightly channel unavailable. */
+  allowNightly?: boolean;
+}
+
+/**
+ * Limits sit outside settings. Each enforcement slice adds its key here and
+ * to {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
+ */
+export interface ManagedPolicyLimits {
+  updates?: ManagedPolicyUpdatesLimit;
+}
 
 export interface ManagedPolicyDocument {
   schemaVersion: typeof MANAGED_POLICY_SCHEMA_VERSION;
@@ -50,8 +72,10 @@ export interface ManagedPolicyDocument {
   limits?: ManagedPolicyLimits;
 }
 
-/** Limit keys this build enforces. Empty until the first limit slice lands. */
-export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
+/** Limit keys this build enforces. */
+export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  'updates',
+];
 
 /**
  * Limit keys the managed-policy plan reserves for later releases. A reserved
@@ -65,7 +89,6 @@ export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'telemetry',
   'webhookAutomations',
   'registries',
-  'updates',
 ];
 
 const DOCUMENT_KEYS = [
@@ -77,6 +100,7 @@ const DOCUMENT_KEYS = [
 ] as const;
 const ORGANIZATION_MAX_CHARS = 200;
 const SUPPORT_URL_MAX_CHARS = 2048;
+const UPDATES_KEYS = ['mode', 'feedUrl', 'allowNightly'] as const;
 
 /** One reason a document is refused; `path` is a dotted document path. */
 export interface ManagedPolicyProblem {
@@ -283,6 +307,64 @@ function limitProblem(name: string): string | null {
 }
 
 /**
+ * `record[key]` only when it is the record's own member. Not `Object.hasOwn`:
+ * the SDK, which imports this module, compiles against a library without it.
+ */
+function ownValue(record: Record<string, unknown>, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
+}
+
+/** #4522: every problem with `limits.updates`, its keys and its values. */
+function updatesLimitProblems(updates: unknown): ManagedPolicyProblem[] {
+  if (updates === undefined) return [];
+  if (!isRecord(updates))
+    return [{ path: 'limits.updates', message: 'must be an object' }];
+  const problems: ManagedPolicyProblem[] = Reflect.ownKeys(updates)
+    .filter(
+      (key) =>
+        typeof key !== 'string' ||
+        !(UPDATES_KEYS as readonly string[]).includes(key),
+    )
+    .map((key) => ({
+      path: describeKey('limits.updates', String(key)),
+      message:
+        'unknown key; this version of Station refuses keys it cannot enforce',
+    }));
+  const mode = ownValue(updates, 'mode');
+  if (mode !== undefined && mode !== 'auto' && mode !== 'off')
+    problems.push({
+      path: 'limits.updates.mode',
+      message: 'must be "auto" or "off"',
+    });
+  const feedUrl = ownValue(updates, 'feedUrl');
+  const feedProblem =
+    feedUrl === undefined ? null : updateFeedUrlProblem(feedUrl);
+  if (feedProblem)
+    problems.push({ path: 'limits.updates.feedUrl', message: feedProblem });
+  const allowNightly = ownValue(updates, 'allowNightly');
+  if (allowNightly !== undefined && typeof allowNightly !== 'boolean')
+    problems.push({
+      path: 'limits.updates.allowNightly',
+      message: 'must be true or false',
+    });
+  return problems;
+}
+
+/** #4522: the accepted `limits.updates`, from a value already checked. */
+function parsedUpdatesLimit(
+  updates: Record<string, unknown>,
+): ManagedPolicyUpdatesLimit {
+  const parsed: ManagedPolicyUpdatesLimit = {};
+  const mode = ownValue(updates, 'mode');
+  if (mode === 'auto' || mode === 'off') parsed.mode = mode;
+  const feedUrl = ownValue(updates, 'feedUrl');
+  if (typeof feedUrl === 'string') parsed.feedUrl = feedUrl;
+  const allowNightly = ownValue(updates, 'allowNightly');
+  if (typeof allowNightly === 'boolean') parsed.allowNightly = allowNightly;
+  return parsed;
+}
+
+/**
  * Parse an already-decoded JSON value as a v1 policy document. Every problem
  * is reported, not only the first, so `station policy check` can list them.
  */
@@ -314,6 +396,9 @@ export function parseManagedPolicyDocument(
       () => 'managed settings are not supported by this version of Station',
     ),
     ...reservedMapProblems('limits', limits, limitProblem),
+    ...(isRecord(limits)
+      ? updatesLimitProblems(ownValue(limits, 'updates'))
+      : []),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -323,7 +408,12 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined) document.limits = {};
+  if (isRecord(limits)) {
+    document.limits = {};
+    const updates = ownValue(limits, 'updates');
+    if (isRecord(updates))
+      document.limits.updates = parsedUpdatesLimit(updates);
+  }
   return { ok: true, document };
 }
 
@@ -343,6 +433,34 @@ function supportUrlProblem(value: unknown): string | null {
   // link; a credential in it would be disclosed to all of them.
   if (url.username || url.password)
     return 'must not contain a user name or password';
+  return null;
+}
+
+/**
+ * #4522: an update feed is an https base URL that release paths are appended
+ * to, so it has no query or fragment, and no user name or password (every
+ * user on the machine can read the policy).
+ */
+function updateFeedUrlProblem(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0)
+    return 'must be an https URL';
+  if (value.length > SUPPORT_URL_MAX_CHARS)
+    return `must be at most ${SUPPORT_URL_MAX_CHARS} characters`;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'must be an https URL';
+  }
+  if (url.protocol !== 'https:') return 'must be an https URL';
+  if (url.username || url.password)
+    return 'must not contain a user name or password';
+  if (value.includes('?') || value.includes('#'))
+    return 'must not contain a query or fragment; release paths are appended to it';
+  // Release paths are appended to the parsed form, so the text must be that
+  // form: `new URL` silently drops tabs and newlines and resolves `..`.
+  if (url.href !== value && url.href !== `${value}/`)
+    return 'must be a plain URL in canonical form';
   return null;
 }
 
@@ -378,7 +496,36 @@ export interface ManagedPolicySummary {
   organization: string;
   supportUrl: string | null;
   lockedSettings: string[];
-  limits: ManagedPolicyLimits;
+  limits: ManagedPolicySummaryLimits;
+}
+
+/**
+ * #4522: what clients learn about `limits.updates`. `mirror` says whether a
+ * feed is set; the feed URL itself is never sent, because it may carry an
+ * access token.
+ */
+export interface ManagedPolicyUpdatesSummary {
+  mode: 'auto' | 'off';
+  mirror: boolean;
+  allowNightly: boolean;
+}
+
+/** The effective limits a client sees: {@link ManagedPolicyLimits} without secrets. */
+export type ManagedPolicySummaryLimits = Omit<
+  ManagedPolicyLimits,
+  'updates'
+> & {
+  updates?: ManagedPolicyUpdatesSummary;
+};
+
+function summarizeUpdatesLimit(
+  updates: ManagedPolicyUpdatesLimit,
+): ManagedPolicyUpdatesSummary {
+  return {
+    mode: updates.mode ?? 'auto',
+    mirror: updates.feedUrl !== undefined,
+    allowNightly: updates.allowNightly ?? true,
+  };
 }
 
 export function summarizeManagedPolicy(
@@ -391,7 +538,9 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: {},
+    limits: document.limits?.updates
+      ? { updates: summarizeUpdatesLimit(document.limits.updates) }
+      : {},
   };
 }
 
@@ -449,6 +598,8 @@ export function parseManagedPolicyStatus(
   ) {
     return null;
   }
+  const updates = parseUpdatesSummary(ownValue(summary.limits, 'updates'));
+  if (updates === null) return null;
   return {
     state: 'loaded',
     source: { kind: source.kind, location: source.location },
@@ -457,9 +608,25 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: {},
+      limits: updates ? { updates } : {},
     },
   };
+}
+
+/** `undefined` when absent, `null` when malformed. */
+function parseUpdatesSummary(
+  value: unknown,
+): ManagedPolicyUpdatesSummary | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const { mode, mirror, allowNightly } = value;
+  if (
+    (mode !== 'auto' && mode !== 'off') ||
+    typeof mirror !== 'boolean' ||
+    typeof allowNightly !== 'boolean'
+  )
+    return null;
+  return { mode, mirror, allowNightly };
 }
 
 /** "Managed by <organization>", the label beside a managed control. */
@@ -480,4 +647,78 @@ export function managedPolicyDenial(
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
   return `${summary.organization}'s policy manages ${subject}.${help}`;
+}
+
+/**
+ * #4522: the refusal code every update surface answers with when the
+ * managed policy forbids an update check, download or install. Clients key
+ * on it to show the policy sentence instead of offering a retry.
+ */
+export const MANAGED_POLICY_UPDATES_REFUSED_CODE =
+  'managed-policy-updates-refused' as const;
+
+/**
+ * Station's default release download location: every desktop feed, signed
+ * server manifest and server archive is `<base><release tag>/<asset name>`.
+ * Mirrors `PUBLIC_RELEASE_BASE_URL` in scripts/lib/public-release-locations.mjs
+ * (a test pins the two together).
+ */
+export const STATION_RELEASE_DOWNLOAD_BASE =
+  'https://github.com/kontourai/station/releases/download/';
+
+/**
+ * #4522: the mirror's copy of a default release URL. A mirror reproduces the
+ * release download tree, so `<base><tag>/<asset>` becomes
+ * `<feedUrl>/<tag>/<asset>`. Returns null for a URL outside the release
+ * download tree: the mirror cannot serve it, and the caller must refuse
+ * rather than fall back to the default.
+ */
+export function managedUpdateMirrorUrl(
+  defaultUrl: string,
+  feedUrl: string,
+): string | null {
+  if (!defaultUrl.startsWith(STATION_RELEASE_DOWNLOAD_BASE)) return null;
+  const rest = defaultUrl.slice(STATION_RELEASE_DOWNLOAD_BASE.length);
+  if (rest.length === 0 || rest.includes('?') || rest.includes('#'))
+    return null;
+  return `${feedUrl.endsWith('/') ? feedUrl : `${feedUrl}/`}${rest}`;
+}
+
+/** The release channels the policy can make unavailable. */
+const NIGHTLY_CHANNEL = 'nightly';
+
+/**
+ * #4522: why the policy forbids updating a Station on `channel`, or null
+ * when it does not. `off` forbids every update; `allowNightly: false`
+ * forbids updating anything on the nightly channel. The sentence names no
+ * feed URL.
+ */
+export function managedUpdatesRefusal(
+  updates: ManagedPolicyUpdatesLimit | null | undefined,
+  channel: string | null | undefined,
+): string | null {
+  if (!updates) return null;
+  if (updates.mode === 'off')
+    return "This machine's managed policy turns off Station updates";
+  if (updates.allowNightly === false && channel === NIGHTLY_CHANNEL)
+    return "This machine's managed policy makes the nightly channel unavailable";
+  return null;
+}
+
+/**
+ * #4522: the signed server manifest a ring's update check reads from the
+ * mirror: the mirror's copy of the ring's rolling pointer release
+ * (`portable-<ring>/station-portable-<ring>-manifest.json`, the names
+ * `PUBLIC_MANIFEST_POINTERS` in scripts/lib/public-release-locations.mjs
+ * publishes; a test pins the two together).
+ */
+export function managedUpdateServerManifestUrl(
+  feedUrl: string,
+  ring: string,
+): string | null {
+  if (!/^[a-z]+$/.test(ring)) return null;
+  return managedUpdateMirrorUrl(
+    `${STATION_RELEASE_DOWNLOAD_BASE}portable-${ring}/station-portable-${ring}-manifest.json`,
+    feedUrl,
+  );
 }

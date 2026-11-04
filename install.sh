@@ -375,6 +375,36 @@ if [ -z "${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}" ] && \
   STATION_INSTALL_PUBLIC_MANIFEST_URL=$default_manifest_url
 fi
 
+# A managed mirror (#4522). `station upgrade` and the service launcher set
+# STATION_INSTALL_MIRROR_URL when the machine's managed policy names an
+# update feed. The mirror reproduces Station's release download tree, so
+# every archive the signed manifest names at
+# $RELEASE_DOWNLOAD_BASE<tag>/<asset> is downloaded from
+# <mirror>/<tag>/<asset> instead; its signed size and sha256 still bind the
+# bytes. The manifest itself must come from the mirror, and nothing is
+# downloaded from anywhere else: not the authenticated GitHub path, and not
+# the pinned Node.js.
+RELEASE_DOWNLOAD_BASE="https://github.com/$REPOSITORY/releases/download/"
+mirror_url="${STATION_INSTALL_MIRROR_URL:-}"
+if [ -n "$mirror_url" ]; then
+  case "$mirror_url" in
+    https://*) ;;
+    http://*|file://*)
+      [ "${STATION_INSTALL_ALLOW_INSECURE_TEST_URLS:-0}" = 1 ] || \
+        fail 'STATION_INSTALL_MIRROR_URL must be an https URL' ;;
+    *) fail 'STATION_INSTALL_MIRROR_URL must be an https URL' ;;
+  esac
+  case "$mirror_url" in
+    *[?#\ ]*) fail 'STATION_INSTALL_MIRROR_URL must not contain a query, a fragment or spaces' ;;
+    */) ;;
+    *) mirror_url="$mirror_url/" ;;
+  esac
+  case "${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}" in
+    "$mirror_url"?*) ;;
+    *) fail 'STATION_INSTALL_MIRROR_URL is set, so the signed manifest must come from the mirror; set STATION_INSTALL_PUBLIC_MANIFEST_URL to the mirror copy of it' ;;
+  esac
+fi
+
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -449,6 +479,8 @@ node_is_adequate() {
 }
 
 download_pinned_node() {
+  [ -z "$mirror_url" ] || \
+    fail "Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer is required to verify this install, and STATION_INSTALL_MIRROR_URL forbids downloading it; install Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer and rerun"
   node_target="$(host_target)"
   pinned_node_distribution "$node_target" || \
     fail "no pinned Node.js distribution for $node_target; install Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer and rerun"
@@ -1510,6 +1542,12 @@ if [ -n "$public_manifest_url" ]; then
   release_version="$(cat "$manifest_values/version")"
   release_sha="$(cat "$manifest_values/sourceSha")"
   asset_url="$(cat "$manifest_values/url")"
+  if [ -n "$mirror_url" ]; then
+    case "$asset_url" in
+      "$RELEASE_DOWNLOAD_BASE"?*) asset_url="$mirror_url${asset_url#"$RELEASE_DOWNLOAD_BASE"}" ;;
+      *) fail 'the signed manifest names an archive outside the release download tree, which the mirror does not serve' ;;
+    esac
+  fi
   expected_checksum="$(cat "$manifest_values/sha256")"
   [ "$version" = latest ] || [ "$version" = "$release_tag" ] || fail 'requested version does not match public ecosystem manifest'
   [ "$release_channel" = "$runtime_release_channel" ] || \

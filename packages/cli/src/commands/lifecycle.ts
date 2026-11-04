@@ -40,7 +40,11 @@ import {
   relative,
   resolve,
 } from 'node:path';
-import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
+import {
+  MANAGED_POLICY_INVALID_MARKER,
+  type ManagedPolicyUpdatesLimit,
+  managedUpdatesRefusal,
+} from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
@@ -141,6 +145,10 @@ import {
   type PackagedRuntimeChannel,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
+import {
+  installedManagedUpdates,
+  managedInstallerEnv,
+} from './managed-update-installer.js';
 import {
   captureStableProcessFingerprint,
   createAppShortcut,
@@ -6151,6 +6159,7 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  */
 function delegatePackagedUpgradeIfPresent(
   beforeInstall: (stationHome: string, installRoot: string) => void,
+  managedUpdates: ManagedPolicyUpdatesLimit | null = null,
 ): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
@@ -6204,6 +6213,14 @@ function delegatePackagedUpgradeIfPresent(
   ) {
     throw new Error('packaged current link does not resolve to this release');
   }
+  // #4522: the managed policy decides where this ring may update from (or
+  // that it may not), before the service check and the installer run.
+  const managedEnv = managedInstallerEnv({
+    updates: managedUpdates,
+    ring: state.releaseChannel,
+    platform: process.platform,
+    requestedManifestUrl: process.env.STATION_INSTALL_PUBLIC_MANIFEST_URL,
+  });
   // install.sh on Linux and macOS, install.ps1 on Windows (#2675 W2).
   const installer = packagedInstallerCommand(CWD);
   readSafePackagedFile(installer.file, 'packaged release installer');
@@ -6228,6 +6245,8 @@ function delegatePackagedUpgradeIfPresent(
       ...(manifestUrl
         ? { STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl }
         : {}),
+      // Last, so a mirror replaces the recorded manifest.
+      ...managedEnv,
     },
     stdio: 'inherit',
     windowsHide: true,
@@ -6457,6 +6476,15 @@ export function renderPrebuiltArchiveUpgradeRefusal(
 }
 
 export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  // #4522: first, before any refusal that would suggest another way to
+  // update. An installed policy Station cannot read refuses the upgrade the
+  // way it refuses server startup.
+  const managedUpdates = installedManagedUpdates();
+  // `off` refuses every install kind; a disallowed nightly is checked
+  // against the packaged ring below, the only install with one.
+  const managedOff = managedUpdatesRefusal(managedUpdates, null);
+  if (managedOff)
+    throw new Error(`station upgrade: ${managedOff}. Nothing was changed.`);
   if (
     LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive' &&
     !isInstallerOwnedArchiveVersion(LIFECYCLE_CODE_ROOT.root)
@@ -6483,11 +6511,18 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
           ? { archiveInstallRoot: installRoot }
           : {}),
       }),
+    managedUpdates,
   );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
     return;
   }
+  // #4522: a source checkout pulls from its git remote, which the mirror
+  // does not serve.
+  if (managedUpdates?.feedUrl !== undefined)
+    throw new Error(
+      "station upgrade: This machine's managed policy takes updates only from the organization's mirror, which a source checkout cannot update from. Nothing was changed.",
+    );
   // Source checkout: only services installed from THIS checkout are raced by
   // its rebuild (`service install` records the checkout as `repoPath`).
   assertNoSupervisingService(

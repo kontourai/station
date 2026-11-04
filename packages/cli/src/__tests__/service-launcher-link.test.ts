@@ -722,3 +722,138 @@ describe('staging and interrupted requests (#2675 D review F5, F8)', () => {
     expect(() => writeServiceUpdateRequest(installRoot)).not.toThrow();
   });
 });
+
+describe('staging under the managed update limit (#4522)', () => {
+  const MIRROR = 'https://mirror.example.test/station/t0ken/';
+
+  /** An install whose install.sh records its environment, and a policy. */
+  function stagingFixture(ring: string, updates: Record<string, unknown>) {
+    const installRoot = makeTempDir('station-stage-managed-');
+    const versionDir = join(installRoot, 'versions', '1.0.0');
+    mkdirSync(versionDir, { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({
+        channel: ring === 'nightly' ? 'nightly' : 'stable',
+        releaseChannel: ring,
+        manifestUrl: `https://github.com/kontourai/station/releases/download/portable-${ring}/station-portable-${ring}-manifest.json`,
+      }),
+    );
+    const dump = join(installRoot, 'env.txt');
+    writeFileSync(
+      join(versionDir, 'install.sh'),
+      `env > '${dump}'\necho STATION_STAGED_VERSION=1.1.0\n`,
+    );
+    const policy = join(installRoot, 'policy.json');
+    writeFileSync(
+      policy,
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { updates },
+      }),
+    );
+    const env = {
+      PATH: process.env.PATH,
+      STATION_MANAGED_POLICY_TEST_FILE: policy,
+    };
+    const seen = () =>
+      Object.fromEntries(
+        readFileSync(dump, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => [
+            line.slice(0, line.indexOf('=')),
+            line.slice(line.indexOf('=') + 1),
+          ]),
+      );
+    return { installRoot, env, dump, seen };
+  }
+
+  test('off: nothing is staged and the installer never runs', async () => {
+    const { installRoot, env, dump } = stagingFixture('stable', {
+      mode: 'off',
+    });
+    await expect(
+      stageServiceUpdate({ installRoot, version: '1.0.0', env }),
+    ).rejects.toThrow(
+      "This machine's managed policy turns off Station updates.",
+    );
+    expect(existsSync(dump)).toBe(false);
+  });
+
+  test('a mirror: the installer reads the mirror’s manifest and downloads from the mirror only', async () => {
+    const { installRoot, env, seen } = stagingFixture('stable', {
+      feedUrl: MIRROR,
+    });
+    await expect(
+      stageServiceUpdate({
+        installRoot,
+        version: '1.0.0',
+        env,
+        platform: 'linux',
+      }),
+    ).resolves.toBe('1.1.0');
+    expect(seen()).toMatchObject({
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: `${MIRROR}portable-stable/station-portable-stable-manifest.json`,
+      STATION_INSTALL_MIRROR_URL: MIRROR,
+    });
+    expect(JSON.stringify(seen())).not.toContain('github.com');
+  });
+
+  test('a mirror refuses a manifest named another way, and the Windows installer', async () => {
+    const fixture = stagingFixture('stable', { feedUrl: MIRROR });
+    await expect(
+      stageServiceUpdate({
+        installRoot: fixture.installRoot,
+        version: '1.0.0',
+        env: {
+          ...fixture.env,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL:
+            'https://github.com/kontourai/station/releases/download/portable-stable/station-portable-stable-manifest.json',
+        },
+        platform: 'linux',
+      }),
+    ).rejects.toThrow(/unset STATION_INSTALL_PUBLIC_MANIFEST_URL/);
+    await expect(
+      stageServiceUpdate({
+        installRoot: fixture.installRoot,
+        version: '1.0.0',
+        env: fixture.env,
+        platform: 'win32',
+      }),
+    ).rejects.toThrow(/Windows installer cannot update from a mirror yet/);
+    expect(existsSync(fixture.dump)).toBe(false);
+  });
+
+  test('allowNightly: false refuses a nightly ring and stages another', async () => {
+    const nightly = stagingFixture('nightly', { allowNightly: false });
+    await expect(
+      stageServiceUpdate({
+        installRoot: nightly.installRoot,
+        version: '1.0.0',
+        env: nightly.env,
+      }),
+    ).rejects.toThrow(
+      "This machine's managed policy makes the nightly channel unavailable.",
+    );
+    expect(existsSync(nightly.dump)).toBe(false);
+    const stable = stagingFixture('stable', { allowNightly: false });
+    await expect(
+      stageServiceUpdate({
+        installRoot: stable.installRoot,
+        version: '1.0.0',
+        env: stable.env,
+      }),
+    ).resolves.toBe('1.1.0');
+  });
+
+  test('an unusable policy refuses the stage', async () => {
+    const { installRoot, env, dump } = stagingFixture('stable', {});
+    writeFileSync(env.STATION_MANAGED_POLICY_TEST_FILE, '{"schemaVersion":');
+    await expect(
+      stageServiceUpdate({ installRoot, version: '1.0.0', env }),
+    ).rejects.toThrow(/STATION_MANAGED_POLICY_INVALID/);
+    expect(existsSync(dump)).toBe(false);
+  });
+});
