@@ -80,7 +80,15 @@ Every key is optional; `"updates": {}` changes nothing. Any other key inside
 | Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. |
 | Server update (`/api/system/core-update` and the server's own background check and download) | The check contacts nothing and reports the policy; download, apply and update when idle are refused (403). | A prebuilt archive checks the mirror's copy of its ring's signed manifest. A desktop bundle's or source checkout's server update is refused, because it compares against a git remote the mirror does not serve; the desktop app updates a desktop bundle from the mirror. |
 | `station upgrade` | Refused before anything changes, and exits `1`. | A packaged install runs its installer against the mirror. A source checkout is refused. |
-| The Station service's own update (the launcher's download step) | Refused before anything downloads. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
+| The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
+
+`limits.updates` governs these four, Station's own update paths. Running
+`install.sh` or `install.ps1` by hand is replacing Station, not updating it,
+and the policy does not govern it: a policy cannot stop a user from replacing
+Station, and application controls are the tool for that. `install.sh` follows
+a mirror only when `STATION_INSTALL_MIRROR_URL` is set, which `station upgrade`
+and the service's update step do under a `feedUrl`; run by hand without it, it
+downloads from the default location.
 
 The desktop app reads the policy itself when it starts, not from the server, so
 the updater obeys the policy even when the bundled server cannot start, and
@@ -112,8 +120,16 @@ With `"feedUrl": "https://mirror.example.com/station/"`:
 
 | Surface | Fetched from the mirror |
 | --- | --- |
-| Desktop app | `<channel>-desktop/latest.json` (for example `stable-desktop/latest.json`): the path of the endpoint the app was built with. Rewrite each `platforms.*.url` in it to the mirror's copy of the update archive; Station refuses a download outside the mirror. The archives keep their signatures, so rewriting the URLs does not need a new signature. |
+| Desktop app | `<channel>-desktop/latest.json` (for example `stable-desktop/latest.json`): the path of the endpoint the app was built with. Rewrite each `platforms.*.url` in it to the mirror's copy of the update archive; Station refuses a download whose URL is not under `feedUrl`. The archives keep their signatures, so rewriting the URLs does not need a new signature. |
 | Prebuilt server archive (check, `station upgrade`, the service's update) | `portable-<ring>/station-portable-<ring>-manifest.json`, where the ring is `stable`, `preview` or `nightly`; then `<tag>/<archive>` for every archive the signed manifest names (for example `v1.2.3/station-server-linux-x64.tar.gz`). Serve the manifest unchanged: it is signed, and its archive size and SHA-256 still bind the bytes the mirror serves. |
+
+Serve every file directly from the mirror's own origin. Under a mirror,
+Station follows a redirect for a feed, manifest or archive only when it stays
+on the same scheme, host and port as `feedUrl`, at most five times; a redirect
+anywhere else, including a CDN or object storage on another host, is refused.
+This applies to the server's check, `install.sh` under
+`STATION_INSTALL_MIRROR_URL`, and the desktop updater. Without a mirror,
+Station follows the redirects GitHub serves release assets through, as before.
 
 The installer also refuses to download Node.js under a mirror. The service's
 update step uses the Node.js the installed version bundles; if you run
@@ -123,7 +139,10 @@ first.
 `feedUrl` may contain an access token in its path. Clients never see it: the
 summary reports only `"mirror": true`. It is still readable by every user on
 the machine, like the rest of the policy, and a packaged install records the
-mirror's manifest URL in its own install state after an update.
+mirror's manifest URL in its own install state after an update. The desktop
+app removes the path from every URL in an update error before it shows or
+logs it, keeping only the scheme, host and port, and it drops the updater
+plugin's own log records, which contain request URLs.
 
 ## Where to install it
 

@@ -16,7 +16,8 @@ and the explicit fixture-key override boundary. With
 `STATION_INSTALL_MIRROR_URL`, which `station upgrade` and the service's update
 set from a [managed policy's](managed-policy.md#update-control) mirror, the
 manifest must come from the mirror and every archive it names is downloaded
-from the mirror; `install.sh` then downloads nothing else.
+from the mirror, following a redirect only within the mirror's own scheme,
+host and port; `install.sh` then downloads nothing else.
 
 The [cask renderer](../../packaging/homebrew/README.md) requires a schema-v1
 manifest with a macOS artifact. Rendering a cask does not create a tap or install
