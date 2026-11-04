@@ -106,7 +106,18 @@ fold cannot distinguish a reset from a downward correction, so it discards the
 thread's earlier dated figures and leaves the lower baseline unallocated.
 For example, 500,000 then 20,000 then 40,000 input tokens on one day contributes
 only the later 20,000 increase. Keeping the earlier 500,000 would overcount a
-correction; the shared fold is unchanged. Undated usage, undeclared scopes and
+correction; this reset/correction rule is unchanged.
+
+Daily cumulative-engine usage also withholds the first reported component after
+every repeated session start (resume or reattach), or an initially recorded
+native resume. That report establishes a new baseline; none of its jump is
+assigned a day. Later component increases count normally. For example, 100k
+in Station, then 5M outside, then a resumed 5.15M report and a 5.20M report
+contributes 50k after the resume. This deliberately misses the first resumed
+turn's consumption because its jump cannot be separated from outside work.
+Sparse components establish their baselines when first reported. The policy
+is opt-in for the Lite daily projection; lifetime accounting keeps its existing
+canonical totals. Undated usage, undeclared scopes and
 hosted home-wide totals are also omitted. A failed accounting read omits only
 the throughput field. The history read runs outside the daily-state mutation
 lock. These are retained observations, not complete billing totals.

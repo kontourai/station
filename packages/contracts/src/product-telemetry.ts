@@ -221,7 +221,7 @@ export const STATION_DAILY_FIELDS = {
   engine_tokens_today: {
     domain: 'engine-token-buckets',
     meaning:
-      'Reported tokens from conversations run in Station; outside CLI use excluded. Declared disjoint cache components included; empty or unavailable omitted.',
+      'Reported tokens from conversations run in Station; outside CLI use excluded. Declared disjoint cache components included; resumed cumulative jumps withheld; empty or unavailable omitted.',
     buckets: TELEMETRY_TOKEN_BUCKETS,
     arrayMax: 8,
     optional: true,

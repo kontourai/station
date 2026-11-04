@@ -363,7 +363,7 @@ export function UsageSharingChoices({
                 {tier === 'off'
                   ? 'No automatic usage sharing.'
                   : tier === 'lite'
-                    ? 'Coarse tokens per engine from conversations run in Station. No ID, account or content.'
+                    ? 'Daily counts, plus coarse tokens per engine from conversations run in Station. No ID, account or content.'
                     : 'Feature use. Monthly code. No account or content.'}
               </small>
             </span>

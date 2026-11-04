@@ -1,4 +1,7 @@
-# Daily throughput review fixes
+# Daily throughput: first review fixes
+
+**Historical first-review evidence.** See [round 2](lite-engine-tokens-round2.md)
+for the corrected cumulative-resume behavior and accessible Lite description.
 
 This supersedes the initial implementation's scope, cache treatment and
 always-present empty array. All commands used the Command Line Tools developer

@@ -245,8 +245,10 @@ export class SessionTranscriptReads {
               (event.method !== 'token-usage.updated' ||
                 providerUsageScope(event.provider) !== undefined),
           );
-        return foldUsageObservationProjection(events, (dropped) =>
-          this.deps.reportDroppedUsageFigure(dropped),
+        return foldUsageObservationProjection(
+          events,
+          (dropped) => this.deps.reportDroppedUsageFigure(dropped),
+          { withholdResumedCumulativeUsage: true },
         ).observations.filter(
           (observation) => observation.recordedAt?.slice(0, 10) === day,
         );
