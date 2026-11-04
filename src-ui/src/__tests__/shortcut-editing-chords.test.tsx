@@ -70,7 +70,13 @@ function ShortcutEditor({
   onSettings: () => void;
   onPalette: () => void;
 }) {
-  useKeyboardShortcut('app.settings', ',', ['cmd'], 'Toggle settings', onSettings);
+  useKeyboardShortcut(
+    'app.settings',
+    ',',
+    ['cmd'],
+    'Toggle settings',
+    onSettings,
+  );
   useKeyboardShortcut(
     'command-palette',
     'k',
@@ -111,7 +117,9 @@ test('restoring a displaced shortcut default asks before replacing its current o
     const firstConflict = await screen.findByRole('dialog', {
       name: 'Shortcut already in use',
     });
-    fireEvent.click(within(firstConflict).getByRole('button', { name: 'Replace' }));
+    fireEvent.click(
+      within(firstConflict).getByRole('button', { name: 'Replace' }),
+    );
     expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
       'app.settings': { key: 'k', modifiers: ['cmd'] },
       'command-palette': null,
@@ -129,7 +137,9 @@ test('restoring a displaced shortcut default asks before replacing its current o
       name: 'Shortcut already in use',
     });
     expect(restoreConflict.textContent).toContain('Toggle settings');
-    fireEvent.click(within(restoreConflict).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(
+      within(restoreConflict).getByRole('button', { name: 'Cancel' }),
+    );
     expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
       'app.settings': { key: 'k', modifiers: ['cmd'] },
       'command-palette': null,
@@ -142,7 +152,9 @@ test('restoring a displaced shortcut default asks before replacing its current o
     fireEvent.click(
       within(confirmedRestore).getByRole('button', { name: 'Replace' }),
     );
-    expect(deviceSettingsStore.get('shortcutOverrides')['app.settings']).toBeNull();
+    expect(
+      deviceSettingsStore.get('shortcutOverrides')['app.settings'],
+    ).toBeNull();
     expect(
       deviceSettingsStore.get('shortcutOverrides')['command-palette'],
     ).toBeUndefined();
