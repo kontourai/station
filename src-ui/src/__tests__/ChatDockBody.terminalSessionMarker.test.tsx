@@ -531,7 +531,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
 
   test('a replayed conversation’s failed turn does not offer Troubleshoot this', async () => {
     const session = buildSession({
-      replay: true,
+      replay: { sourceThreadId: 'thread-replayed', tapeEventCount: 1 },
       messages: [
         {
           role: 'user',
