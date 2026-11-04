@@ -5050,16 +5050,27 @@ export class TaskGraphService {
     // A deferral is recorded on the Task's worktree entry, so one made
     // before a restart is picked up by the first retry after it (the
     // runtime retries once at startup, then on every turn or Session end).
+    // Read back once the store can be read: a deferral recorded before a
+    // restart, and a terminal Task whose worktree was never finalized (it
+    // finished while the store was unreadable, or Station stopped before
+    // finalization ran). While the store cannot be read, every later retry
+    // tries again.
     if (!this.deferredTaskWorktreesLoaded) {
-      this.deferredTaskWorktreesLoaded = true;
-      for (const { taskId, entry } of this.taskWorktrees.list()) {
-        const task = this.readStore().tasks.find((item) => item.id === taskId);
-        if (
-          entry.kept?.reason === 'session-running' &&
-          task?.createdAt === entry.taskCreatedAt &&
-          isTerminalTaskStatus(task.status)
-        )
-          this.deferredTaskWorktrees.add(taskId);
+      const listed = this.taskWorktrees.listState();
+      if (listed.state === 'listed') {
+        this.deferredTaskWorktreesLoaded = true;
+        for (const { taskId, entry } of listed.entries) {
+          const task = this.readStore().tasks.find(
+            (item) => item.id === taskId,
+          );
+          if (
+            (entry.kept === undefined ||
+              entry.kept.reason === 'session-running') &&
+            task?.createdAt === entry.taskCreatedAt &&
+            isTerminalTaskStatus(task.status)
+          )
+            this.deferredTaskWorktrees.add(taskId);
+        }
       }
     }
     if (this.deferredTaskWorktrees.size === 0) return;

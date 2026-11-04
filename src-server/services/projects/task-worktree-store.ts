@@ -214,6 +214,24 @@ export class TaskWorktreeStore {
     return entry?.taskCreatedAt === taskCreatedAt ? entry : undefined;
   }
 
+  /** Every valid entry, or `unreadable` when the file cannot be read. */
+  listState():
+    | {
+        state: 'listed';
+        entries: Array<{ taskId: string; entry: TaskWorktreeEntry }>;
+      }
+    | { state: 'unreadable' } {
+    const data = this.loadForRead();
+    if (data.unreadable) return { state: 'unreadable' };
+    return {
+      state: 'listed',
+      entries: Object.entries(data.entries).flatMap(([taskId, value]) => {
+        const entry = parseTaskWorktreeEntry(taskId, value);
+        return entry ? [{ taskId, entry }] : [];
+      }),
+    };
+  }
+
   /** Every valid entry, for the deferred-finalization sweep. */
   list(): Array<{ taskId: string; entry: TaskWorktreeEntry }> {
     return Object.entries(this.loadForRead().entries).flatMap(

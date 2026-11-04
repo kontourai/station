@@ -170,7 +170,12 @@ whose own config names a program git would run keeps the worktree as
 `unsafe-config` and runs nothing. A
 `session-running` deferral is retried when a turn or Session ends, and once
 when Station starts (the deferral is recorded with the worktree, so a restart
-does not lose it); nothing else re-runs a kept finalization. A recorded worktree that is already gone is
+does not lose it); nothing else re-runs a kept finalization. A Task that
+finishes while the worktree store cannot be read has nothing finalized; the
+first retry after the store is readable again (a turn or Session ending, or
+the next start) finalizes every finished Task whose recorded worktree was
+never finalized. If the store is repaired by deleting it, those checkouts
+have no record and are left on disk, never removed by a guess. A recorded worktree that is already gone is
 forgotten and its branch left alone.
 
 Not covered: a setup command for a new checkout

@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -171,6 +172,29 @@ describe('a deferred finalization survives a restart (#4507)', () => {
 
     await vi.waitFor(() =>
       expect(restarted.readTaskWorktree(f.taskId)).toBeUndefined(),
+    );
+    expect(existsSync(f.worktree.path)).toBe(false);
+  });
+});
+
+describe('a Task finished while its worktree store was unreadable (#4507)', () => {
+  test('is finalized by the first retry once the store is repaired', async () => {
+    const f = await fixture();
+    const storePath = join(f.home, 'task-worktrees.json');
+    const good = readFileSync(storePath, 'utf8');
+    writeFileSync(storePath, 'not json');
+
+    await f.graph.updateTaskStatus(f.taskId, 'done');
+    // Nothing can be finalized, and a retry while it is unreadable does
+    // nothing either.
+    await f.graph.retryDeferredTaskWorktreeFinalizations();
+    expect(existsSync(f.worktree.path)).toBe(true);
+
+    // Repaired in place, no restart: the next retry (a turn ending) runs it.
+    writeFileSync(storePath, good);
+    await f.graph.retryDeferredTaskWorktreeFinalizations();
+    await vi.waitFor(() =>
+      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
     );
     expect(existsSync(f.worktree.path)).toBe(false);
   });
