@@ -551,6 +551,43 @@ describe('Config Routes', () => {
       expect((await move()).status).toBe(200);
     });
 
+    test('a history location that cannot be kept private is refused before it is saved', async () => {
+      const loader = createMockConfigLoader();
+      const probed: string[] = [];
+      const app = createConfigRoutes(
+        loader as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        async (directory: string) => {
+          probed.push(directory);
+          return directory.includes('fat')
+            ? "Terminal history can't be kept private in this folder."
+            : null;
+        },
+      );
+      const move = (terminalHistoryDirectory: string) =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ terminalHistoryDirectory }),
+        });
+      const refused = await move('/mnt/fat-usb/journals');
+      expect(refused.status).toBe(400);
+      expect((await json(refused)).error).toContain("can't be kept private");
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+      expect((await move('/var/station/journals')).status).toBe(200);
+      expect(probed).toHaveLength(2);
+    });
+
     test('Reset Station settings clears each one back to its default', async () => {
       const home = makeTempDir('station-retention-reset-');
       const loader = new ConfigLoader({
