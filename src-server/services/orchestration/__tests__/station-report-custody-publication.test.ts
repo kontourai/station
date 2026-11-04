@@ -399,3 +399,119 @@ test('custody metadata admission keeps physical Home ownership bounded and refus
     }
   }
 });
+
+test('metadata admission retains its returned callback and publication until failed Home retirement settles', async () => {
+  const { h, orchestration, eventStore, runtimeOwner, owners } =
+    await recoveryFixture();
+  const failure = Error('controlled metadata Home retirement failure');
+  let captured = false;
+  let returned = 0;
+  const failedRetirements: string[] = [];
+  let faultedPath: string | undefined;
+  const capture = h.custody.captureRequestLease.bind(h.custody);
+  const captureBoundary = vi
+    .spyOn(h.custody, 'captureRequestLease')
+    .mockImplementation(async (...args) => {
+      const lease = await capture(...args);
+      captured = true;
+      return lease;
+    });
+  const runRequest = HomeWriterOwner.prototype.runRequest;
+  const requestAdmission = vi
+    .spyOn(HomeWriterOwner.prototype, 'runRequest')
+    .mockImplementation(function <Value>(
+      this: HomeWriterOwner,
+      signal: AbortSignal,
+      body: () => Value,
+    ): Promise<Value> {
+      return (runRequest<Value>).call(this, signal, () => {
+        const value = body();
+        if (captured) returned++;
+        return value;
+      });
+    });
+  const remove = fs.rmSync;
+  const retirement = vi
+    .spyOn(fs, 'rmSync')
+    .mockImplementation((path, options) => {
+      if (
+        captured &&
+        String(path).startsWith(
+          join(h.f.home, 'security', '.home-writer.mutation.guard.stale-'),
+        ) &&
+        (faultedPath === undefined || String(path) === faultedPath)
+      ) {
+        faultedPath = String(path);
+        failedRetirements.push(String(path));
+        throw failure;
+      }
+      return remove(path, options);
+    });
+  const persistence = vi.spyOn(
+    h.custodyOwners.persistence,
+    'readReportAdmission',
+  );
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(
+      withReportRoundsPublication(
+        {
+          participant: owners.publicationParticipant,
+          home: h.f.home,
+          signal: h.f.req.signal,
+        },
+        (publication) =>
+          h.custody.inspectForMutation(
+            h.f.context(),
+            'missing-metadata-group',
+            publication,
+          ),
+      ),
+      (error: unknown) => {
+        assert.ok(hasReturnedCleanupFailure(error));
+        assert.ok(leaves(error).includes(failure));
+        return true;
+      },
+    );
+    assert.equal(captured, true);
+    assert.equal(
+      returned,
+      1,
+      'the actual metadata callback returns once before retirement fails',
+    );
+    assert.equal(
+      persistence.mock.calls.length,
+      0,
+      'uncertain metadata admission must not enter protected persistence',
+    );
+    assert.ok(
+      failedRetirements.length > 0,
+      'the physical retirement fault must execute',
+    );
+    assert.equal(new Set(failedRetirements).size, 1);
+    await assert.rejects(runtimeOwner.shutdown(), {
+      code: 'runtime_publication_pending',
+    });
+    retirement.mockRestore();
+    syncBuiltinESMExports();
+    await runtimeOwner.shutdown();
+    assert.equal(
+      returned,
+      1,
+      'cleanup retry must not replay the metadata callback',
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    retirement.mockRestore();
+    syncBuiltinESMExports();
+    captureBoundary.mockRestore();
+    requestAdmission.mockRestore();
+    persistence.mockRestore();
+    try {
+      await orchestration.shutdown();
+    } finally {
+      eventStore.close();
+      await runtimeOwner.shutdown();
+    }
+  }
+});
