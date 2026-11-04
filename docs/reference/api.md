@@ -3881,6 +3881,17 @@ summary never contains a setting value. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy.
 
+`summary.limits` carries `clients` when the policy sets it, for example
+`{ "clients": ["desktop", "local-browser"] }`. Without `remote` in that list
+(#4519), pairing offers and access requests answer `403` with
+`{ "error": "managed-policy-remote-clients" }` (a pairing code finds no
+offer to match); relay setup
+approvals and invitations answer `403` with that `code` and the policy's
+sentence as `message`; turning on `lanDiscoveryEnabled` through
+`PUT /config/app` answers `403` with that `code`; and credentials of devices
+paired earlier answer as unknown. See
+[Network exposure](../guides/managed-policy.md#network-exposure).
+
 ## Branding
 
 ### Get Branding Config
