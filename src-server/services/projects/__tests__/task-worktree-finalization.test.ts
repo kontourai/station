@@ -7,7 +7,13 @@
  * transition finalizing it.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
@@ -141,5 +147,46 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
       expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
     );
     expect(existsSync(f.worktree.path)).toBe(false);
+  });
+});
+
+describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
+  test('finishing it forgets the record and leaves its branch', async () => {
+    const f = await fixture();
+    writeFileSync(join(f.worktree.path, 'feature.txt'), 'work\n');
+    git(f.worktree.path, 'add', 'feature.txt');
+    git(f.worktree.path, 'commit', '--quiet', '-m', 'work on the branch');
+    rmSync(f.worktree.path, { recursive: true, force: true });
+
+    await f.graph.updateTaskStatus(f.taskId, 'done');
+
+    await vi.waitFor(() =>
+      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+    );
+    expect(branchExists(f.workspace, f.worktree)).toBe(true);
+  });
+
+  test('provisioning it again checks its own branch out at the same place', async () => {
+    const f = await fixture();
+    writeFileSync(join(f.worktree.path, 'feature.txt'), 'work\n');
+    git(f.worktree.path, 'add', 'feature.txt');
+    git(f.worktree.path, 'commit', '--quiet', '-m', 'work on the branch');
+    rmSync(f.worktree.path, { recursive: true, force: true });
+
+    const again = await new WorktreeProvisioningService().provisionForTask({
+      repoPath: f.workspace,
+      taskId: f.taskId,
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+      recorded: f.worktree,
+    });
+
+    expect(again.provenance).toBe('created');
+    expect(again.metadata).toMatchObject({
+      path: f.worktree.path,
+      branch: f.worktree.branch,
+    });
+    // The branch's committed work is back in the checkout.
+    expect(existsSync(join(f.worktree.path, 'feature.txt'))).toBe(true);
   });
 });

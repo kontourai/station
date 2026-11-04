@@ -60,7 +60,7 @@ export interface TaskWorktreeProvisionResult {
 
 /** #4507: what finalizing a Task-owned worktree did. */
 export type TaskWorktreeFinalization =
-  | { outcome: 'removed' }
+  | { outcome: 'removed' | 'missing' }
   | {
       outcome: 'kept';
       reason: 'policy' | 'uncommitted' | 'unpushed' | 'session-running';
@@ -480,8 +480,15 @@ export class WorktreeProvisioningService {
     request: TaskWorktreeProvisionRequest,
   ): Promise<TaskWorktreeProvisionResult> {
     if (request.recorded) {
-      await this.assertTaskWorkspace(request.recorded, request.taskId);
-      return { metadata: request.recorded, provenance: 'reused' };
+      assertWorktreeMetadataTaskBinding(request.recorded, request.taskId);
+      // A recorded worktree removed by hand, or left behind when its
+      // repository moved, is provisioned again (below) rather than leaving
+      // the Task undispatchable. One that exists must still be git's own
+      // registration on its branch.
+      if (existsSync(request.recorded.path)) {
+        await this.assertRegisteredCleanupTarget(request.recorded);
+        return { metadata: request.recorded, provenance: 'reused' };
+      }
     }
     return await this.inRepositoryQueue(request.repoPath, () =>
       this.provisionNewTaskWorktree(request),
@@ -498,13 +505,19 @@ export class WorktreeProvisioningService {
       branchPrefix:
         request.isolation.policy?.branchPrefix ?? DEFAULT_TASK_BRANCH_PREFIX,
     });
-    const adopted = await this.registeredTaskWorktree(
+    const found = await this.registeredTaskWorktree(
       request.repoPath,
       ownerKey,
       owner,
       policy,
     );
-    if (adopted) return { metadata: adopted, provenance: 'adopted' };
+    if (found.kind === 'registered')
+      return { metadata: found.metadata, provenance: 'adopted' };
+    // The Task's own branch outlived its checkout (removed by hand, or the
+    // repository moved): drop git's records of checkouts whose folders are
+    // gone, then check that branch out again instead of refusing it.
+    if (found.branchExists)
+      await this.git.run(['-C', found.repoRoot, 'worktree', 'prune']);
     const startedAt = performance.now();
     try {
       const metadata = await this.createWorktree({
@@ -512,6 +525,7 @@ export class WorktreeProvisioningService {
         ownerKey,
         owner,
         policy,
+        reuseOwnBranch: true,
       });
       worktreeProvisionTotal.add(1, {
         outcome: 'success',
@@ -573,6 +587,9 @@ export class WorktreeProvisioningService {
   }): Promise<TaskWorktreeFinalization> {
     const { metadata } = request;
     assertWorktreeMetadataTaskBinding(metadata, request.taskId);
+    // Gone already (removed by hand, or its repository moved): nothing to
+    // remove, and its branch, if any, is left alone.
+    if (!existsSync(metadata.path)) return { outcome: 'missing' };
     if (
       cleanupPolicyForTerminalState(metadata, request.terminalState) ===
       'preserve'
@@ -786,47 +803,85 @@ export class WorktreeProvisioningService {
     ownerKey: string,
     owner: WorktreeTaskOwner,
     policy: ReturnType<typeof validateWorktreePolicy>,
-  ): Promise<WorktreeSessionMetadata | undefined> {
-    const repoRoot = (
-      await this.git.run(['-C', repoPath, 'rev-parse', '--show-toplevel'])
-    ).stdout.trim();
-    if (!repoRoot) return undefined;
-    const branch = buildWorktreeBranchName({
-      threadId: ownerKey,
-      branchPrefix: policy.branchPrefix,
-    });
-    const worktreeBaseDir = resolveWorktreeBaseDir(
-      repoRoot,
-      policy.worktreeBaseDir,
-    );
-    const worktreePath = join(
-      worktreeBaseDir,
-      worktreeSessionSegment(ownerKey),
-    );
-    assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
-    if (!existsSync(worktreePath)) return undefined;
-    const registered = parseWorktreeList(
-      (await this.git.run(['-C', repoRoot, 'worktree', 'list', '--porcelain']))
-        .stdout,
-    );
-    const expectedPath = canonicalizePath(worktreePath);
-    if (
-      !registered.some(
-        (entry) => entry.path === expectedPath && entry.branch === branch,
+  ): Promise<
+    | { kind: 'registered'; metadata: WorktreeSessionMetadata }
+    | { kind: 'absent'; repoRoot: string; branchExists: boolean }
+  > {
+    // The folder's own repository, opened the way creation opens it, never
+    // one a `.git` file in the Project folder points git at.
+    let repository: LiveRepository;
+    try {
+      repository = await this.ownRepository(repoPath, repoPath, {
+        newWorktree: true,
+      });
+    } catch (error) {
+      if (error instanceof RepositoryConfigRefusedError)
+        throw new WorktreeRepositoryConfigError(error.keys);
+      throw error;
+    }
+    try {
+      const repoRoot = repository.top;
+      const repo = ['-C', repoRoot, ...repository.repoArgs];
+      const env = repository.env;
+      const branch = buildWorktreeBranchName({
+        threadId: ownerKey,
+        branchPrefix: policy.branchPrefix,
+      });
+      const branchExists =
+        (
+          await this.git.run(
+            [
+              ...repo,
+              'rev-parse',
+              '--verify',
+              '--quiet',
+              `refs/heads/${branch}`,
+            ],
+            { allowCodes: [0, 1], env },
+          )
+        ).code === 0;
+      const worktreeBaseDir = resolveWorktreeBaseDir(
+        repoRoot,
+        policy.worktreeBaseDir,
+      );
+      const worktreePath = join(
+        worktreeBaseDir,
+        worktreeSessionSegment(ownerKey),
+      );
+      assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
+      if (!existsSync(worktreePath))
+        return { kind: 'absent', repoRoot, branchExists };
+      const registered = parseWorktreeList(
+        (
+          await this.git.run([...repo, 'worktree', 'list', '--porcelain'], {
+            env,
+          })
+        ).stdout,
+      );
+      const expectedPath = canonicalizePath(worktreePath);
+      if (
+        !registered.some(
+          (entry) => entry.path === expectedPath && entry.branch === branch,
+        )
       )
-    )
-      return undefined;
-    return {
-      mode: 'worktree',
-      repoPath: repoRoot,
-      path: worktreePath,
-      branch,
-      baseRef: policy.baseRef,
-      cleanupPolicy: policy.cleanupPolicy,
-      preserveOnFailure: policy.preserveOnFailure,
-      createdAt: new Date().toISOString(),
-      owner,
-    };
+        return { kind: 'absent', repoRoot, branchExists };
+      return {
+        kind: 'registered',
+        metadata: {
+          mode: 'worktree',
+          repoPath: repoRoot,
+          path: worktreePath,
+          branch,
+          baseRef: policy.baseRef,
+          cleanupPolicy: policy.cleanupPolicy,
+          preserveOnFailure: policy.preserveOnFailure,
+          createdAt: new Date().toISOString(),
+          owner,
+        },
+      };
+    } finally {
+      await repository.dispose();
+    }
   }
 
   private async createWorktree(request: {
@@ -835,6 +890,12 @@ export class WorktreeProvisioningService {
     ownerKey: string;
     owner?: WorktreeTaskOwner;
     policy: ReturnType<typeof validateWorktreePolicy>;
+    /**
+     * #4507: a Task-owned worktree checks out its own existing branch again
+     * instead of refusing it; the branch name is derived from the owner, so
+     * an existing one is that owner's.
+     */
+    reuseOwnBranch?: boolean;
   }): Promise<WorktreeSessionMetadata> {
     const policy = request.policy;
     // The Project's folder is member-writable: a `.git` file there can name
@@ -888,7 +949,8 @@ export class WorktreeProvisioningService {
         [...repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
         { allowCodes: [0, 1], env },
       );
-      if (branchExists.code === 0) {
+      const reattach = branchExists.code === 0 && request.reuseOwnBranch;
+      if (branchExists.code === 0 && !reattach) {
         worktreeConflictPreventedTotal.add(1, {
           detection_source: 'branch_exists',
         });
@@ -939,7 +1001,17 @@ export class WorktreeProvisioningService {
       }
       try {
         await this.git.run(
-          [...repo, 'worktree', 'add', '-b', branch, worktreePath, baseCommit],
+          reattach
+            ? [...repo, 'worktree', 'add', worktreePath, branch]
+            : [
+                ...repo,
+                'worktree',
+                'add',
+                '-b',
+                branch,
+                worktreePath,
+                baseCommit,
+              ],
           { env },
         );
       } catch (error) {
@@ -961,7 +1033,8 @@ export class WorktreeProvisioningService {
         path: worktreePath,
         branch,
         baseRef: policy.baseRef,
-        baseCommit,
+        // A checkout of an existing branch did not start from `baseRef`.
+        ...(reattach ? {} : { baseCommit }),
         cleanupPolicy: policy.cleanupPolicy,
         preserveOnFailure: policy.preserveOnFailure,
         createdAt: new Date().toISOString(),

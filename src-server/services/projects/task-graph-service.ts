@@ -5047,7 +5047,7 @@ export class TaskGraphService {
       });
       throw error;
     }
-    if (finalization.outcome === 'removed') {
+    if (finalization.outcome !== 'kept') {
       await this.taskWorktrees.update(taskId, (current) =>
         current?.worktree.path === entry.worktree.path ? undefined : current,
       );
