@@ -1,0 +1,7 @@
+{
+  "revision": "fe32a5728df05603940082705dbb0b49a660bfd0",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the new current isolation checkpoint against committed ad1390a528dc source, corrected3-failure HTTP regression,27 owner passes,5-failure origin mutant and exactrestoration,89 restored inspector/preparation passes,final server-test types and fresh final source review with matching productiondigest. Registry9.12 remains unavailable after release1588 merged; artifact/dependency review and Survey/trust/finalizer qualification remain prerequisite. No complete topology/provider/native/epic or guard-enable claim. Historical checkpoints retain their own evidence scope.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
