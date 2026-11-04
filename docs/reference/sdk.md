@@ -5117,9 +5117,9 @@ that object; it never substitutes another turn's key. Repeated use with the same
 key keeps the association. Primitive throws cannot carry this association.
 Retain a caller-owned key separately when reusing an abort signal or error.
 Invalid-key validation happens before a key is chosen.
-The accessor does not prove dispatch, acceptance or completion. Queue, handoff,
-steer, delegation, answer, invoke and raw framework helpers do not yet register
-their errors with it.
+The accessor does not prove dispatch, acceptance or completion. Keyed delegation
+and ordinary steer helpers also register their errors. Queue, handoff, answer,
+invoke and raw framework helpers do not yet register their errors with it.
 
 Retain the key and the original input when inspecting an uncertain outcome.
 The SDK does not retry automatically. A `SyntaxError` can come from parsing a
@@ -5158,8 +5158,9 @@ one served by another live process, can instead end its stream with an error
 event. Resolved retries replay the conversation ID and a `completed` finish,
 without replaying output. Read the conversation after an uncertain send; do
 not automatically resend with a new key. Use a new `clientTurnId` only for a
-deliberate new request. The key is not yet bound to input or caller identity;
-legacy rows, older writers and retention limits still apply. See the
+deliberate new request. New rows bind the key to the original submitted-input
+digest; the key is not separately scoped to authenticated caller identity.
+Legacy rows with unknown input proof, older writers and retention limits still apply. See the
 [direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
 Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
@@ -5201,8 +5202,9 @@ head or conflicting key is a definitive refusal. Retain the original key,
 text and head after an unanswered request and reconcile against the same
 Station and authority before retrying. An unconfirmed handoff is never
 replayed automatically. Session snapshots and conversation-open execution also
-carry the current adapter's optional `durability` declaration; a missing field
-provides no steering authority. Conversation-open decoding accepts a complete
+carry the current adapter's optional `durability` declaration for ordinary
+Sessions. Trusted recorded sealed source Sessions carry their restrictive
+session-aware declaration instead. A missing field provides no steering authority. Conversation-open decoding accepts a complete
 adapter declaration, validates its capability states and placement/ownership
 fields, and rejects malformed declarations as `invalid-response`.
 An optional `queuedFollowUp: { state: 'none', detail: string }` cell declares

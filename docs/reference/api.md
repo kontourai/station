@@ -4012,8 +4012,8 @@ Withdrawn and retention-expired observations are excluded; an expired or revoked
 companion binding refuses. Coverage
 is `{state:"unknown",reason:"retained-terminal-observations-only",retentionDays}`.
 Source revocation and person, tenant and companion changes end held responses.
-The route has no capability flag or SDK/UI client yet, and is not joined to
-product telemetry.
+The `privateOperationalOutcomes` capability flag and scoped SDK reader
+`fetchPrivateOutcomes` expose this route. It is not joined to product telemetry.
 
 ### Principal-owned saved analytics views
 
@@ -6750,7 +6750,7 @@ refusals from the same proxy or NAT.
 The public handshake and proof remain reachable. The landing page, `/doc`,
 `/ui`, and integration icons are exempt because navigation and image requests
 cannot attach this header. Other capability families, attested internal
-loopback callers, and the separate terminal/voice WebSocket listeners are
+loopback callers, and the terminal and voice WebSocket upgrade paths are
 outside this HTTP check. Exemptions follow the capability table, not a blanket
 exception for every iframe, image, or link request. See the
 [admission owner](../../src-server/security/client-protocol-admission.ts) and

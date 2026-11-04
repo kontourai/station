@@ -949,8 +949,8 @@ become the child's data.
 Its expansion reveals model provenance and the retained result report without repeating that
 preview. Reports are capped at 4,000 UTF-16 code units and marked when truncated;
 transcript recovery is offered only when a persisted supported reference exists.
-Current recovery supports Claude subagents, not Codex child threads. Report text
-and recovery do not establish artifact verification. Usage and available transcript access share a wrapping footer. The Agents pane keeps
+Current recovery supports Claude subagents and Codex child threads through those
+retained references. Report text and recovery do not establish artifact verification. Usage and available transcript access share a wrapping footer. The Agents pane keeps
 open/stop actions beside each row and reveals usage on expansion.
 The Agents pane lists retained reported children and available stop controls,
 including children with no loaded spawn anchor. It is not exhaustive history:

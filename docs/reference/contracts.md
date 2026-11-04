@@ -1622,7 +1622,8 @@ the affected turns' lifecycle or dispatching replacements. Only subsequent
 engine evidence establishes completion or failure. This applies across engines.
 Before that, a publish that fails on event-store contention (the SQLITE_BUSY
 family; SQLITE_LOCKED is not retried) is retried for the same event, with the
-same `eventId`, at most twice before the next event is consumed. When the
+same `eventId`, within a five-second retry budget before the next event is consumed.
+Retries wait asynchronously for write availability with bounded backoff. When the
 failure was the delta coalescer's flush of text buffered before that event,
 the text is kept, with no window timer, and the retry delivers it first. Once
 no retry is in flight its window timer is re-armed, so text left after
@@ -2213,8 +2214,9 @@ never derives support from an engine name. Wire decoders still validate unknown
 values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
-Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time. The live composer consumes that
+Current Session summaries and conversation-open execution use the registered
+adapter's `durability` declaration for ordinary Sessions. Trusted recorded sealed
+source Sessions instead carry their restrictive session-aware declaration. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude and Codex declare their live steering channels as native. ACP discloses a
 connection-dependent orchestration-command fallback that may interrupt and
