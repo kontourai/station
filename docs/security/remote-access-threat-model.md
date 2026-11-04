@@ -233,7 +233,8 @@ configuration publishes on this node's own MagicDNS name. Every handler on that
 origin must proxy to this Station's API or UI-proxy port, Funnel must be off for
 it, and no foreground `serve` session or raw TCP forward can replace it. The
 facts come from `tailscale status --json` and `tailscale serve status --json`
-(the endpoint-suggestion resolver, cached 30 seconds), never from the request.
+(an admission read trusted for at most 1 second and refused when the daemon
+fails or is slow, never the 30-second endpoint-suggestion cache), never from the request.
 Only an HTTPS Origin on a MagicDNS name triggers a lookup. Because the daemon serves
 nothing but Station at that origin, a page presenting it is Station's own UI.
 Trusting it is equivalent to the operator listing it in `ALLOWED_ORIGINS`, and,
