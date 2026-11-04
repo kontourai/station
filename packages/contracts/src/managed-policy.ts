@@ -16,6 +16,13 @@
  */
 import { boundaryText, isRecord } from './contract-validation.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
+import {
+  APPROVAL_MODE_BREADTH_ORDER,
+  type ApprovalMode,
+  approvalModeBreadth,
+  type ConcreteApprovalMode,
+  isConcreteApprovalMode,
+} from './provider.js';
 
 export const MANAGED_POLICY_SCHEMA_VERSION = 1;
 
@@ -33,11 +40,16 @@ export interface ManagedPolicySettingEntry {
 }
 
 /**
- * Limits sit outside settings. No limit key is enforced by this build, so the
- * accepted shape is empty; each enforcement slice adds its key here and to
- * {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
+ * Limits sit outside settings. Each enforcement slice adds its key here and
+ * to {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
  */
-export type ManagedPolicyLimits = Record<string, never>;
+export interface ManagedPolicyLimits {
+  /**
+   * #4518: the broadest approval posture any run may use, whoever starts it.
+   * A concrete mode only: `connection-default` is not a posture.
+   */
+  maxApprovalMode?: ConcreteApprovalMode;
+}
 
 export interface ManagedPolicyDocument {
   schemaVersion: typeof MANAGED_POLICY_SCHEMA_VERSION;
@@ -50,8 +62,10 @@ export interface ManagedPolicyDocument {
   limits?: ManagedPolicyLimits;
 }
 
-/** Limit keys this build enforces. Empty until the first limit slice lands. */
-export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
+/** Limit keys this build enforces. */
+export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  'maxApprovalMode',
+];
 
 /**
  * Limit keys the managed-policy plan reserves for later releases. A reserved
@@ -59,7 +73,6 @@ export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
  * so an administrator learns to upgrade rather than to fix a typo.
  */
 export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
-  'maxApprovalMode',
   'clients',
   'engines',
   'telemetry',
@@ -205,7 +218,7 @@ export function duplicateJsonMemberPath(text: string): string | null {
     }
     // A value ended: close finished containers, then move to the next entry.
     for (;;) {
-      const frame = stack.at(-1);
+      const frame = stack[stack.length - 1];
       skipSpace();
       if (!frame) {
         if (i !== text.length) fail();
@@ -282,6 +295,55 @@ function limitProblem(name: string): string | null {
     : 'unknown limit; this version of Station refuses keys it cannot enforce';
 }
 
+function ownValue(record: Record<string, unknown>, key: string): unknown {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
+/** #4518: every problem with the `limits` object, keys and values. */
+function limitsProblems(limits: unknown): ManagedPolicyProblem[] {
+  const problems = reservedMapProblems('limits', limits, limitProblem);
+  if (!isRecord(limits)) return problems;
+  const ceiling = ownValue(limits, 'maxApprovalMode');
+  if (ceiling !== undefined && !isConcreteApprovalMode(ceiling))
+    problems.push({
+      path: 'limits.maxApprovalMode',
+      message:
+        ceiling === 'connection-default'
+          ? 'must be a posture ("ask", "auto" or "never"); "connection-default" depends on each engine\'s own settings'
+          : 'must be "ask", "auto" or "never"',
+    });
+  return problems;
+}
+
+/**
+ * #4518: a managed default approval mode (`settings.defaultApprovalMode`,
+ * the setting #4517 manages) broader than `limits.maxApprovalMode` is
+ * refused at load: it could never apply, and Station would have to pick
+ * between the administrator's two answers. Read from the raw document, so
+ * the check holds whatever the settings parser accepts. A
+ * `connection-default` value is not refused: under a ceiling it resolves to
+ * Ask (see the managed policy decision record).
+ */
+function managedDefaultAboveCeilingProblems(
+  settings: unknown,
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(settings) || !isRecord(limits)) return [];
+  const ceiling = ownValue(limits, 'maxApprovalMode');
+  const entry = ownValue(settings, 'defaultApprovalMode');
+  if (!isConcreteApprovalMode(ceiling) || !isRecord(entry)) return [];
+  const value = ownValue(entry, 'value');
+  if (!isConcreteApprovalMode(value)) return [];
+  return approvalModeExceedsCeiling(value, ceiling)
+    ? [
+        {
+          path: 'settings.defaultApprovalMode.value',
+          message: `"${value}" is broader than limits.maxApprovalMode ("${ceiling}")`,
+        },
+      ]
+    : [];
+}
+
 /**
  * Parse an already-decoded JSON value as a v1 policy document. Every problem
  * is reported, not only the first, so `station policy check` can list them.
@@ -313,7 +375,8 @@ export function parseManagedPolicyDocument(
       settings,
       () => 'managed settings are not supported by this version of Station',
     ),
-    ...reservedMapProblems('limits', limits, limitProblem),
+    ...limitsProblems(limits),
+    ...managedDefaultAboveCeilingProblems(settings, limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -323,7 +386,12 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined) document.limits = {};
+  if (isRecord(limits)) {
+    const ceiling = ownValue(limits, 'maxApprovalMode');
+    document.limits = isConcreteApprovalMode(ceiling)
+      ? { maxApprovalMode: ceiling }
+      : {};
+  }
   return { ok: true, document };
 }
 
@@ -391,7 +459,9 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: {},
+    limits: document.limits?.maxApprovalMode
+      ? { maxApprovalMode: document.limits.maxApprovalMode }
+      : {},
   };
 }
 
@@ -445,7 +515,9 @@ export function parseManagedPolicyStatus(
     (summary.supportUrl !== null && typeof summary.supportUrl !== 'string') ||
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
-    !isRecord(summary.limits)
+    !isRecord(summary.limits) ||
+    (summary.limits.maxApprovalMode !== undefined &&
+      !isConcreteApprovalMode(summary.limits.maxApprovalMode))
   ) {
     return null;
   }
@@ -457,7 +529,9 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: {},
+      limits: isConcreteApprovalMode(summary.limits.maxApprovalMode)
+        ? { maxApprovalMode: summary.limits.maxApprovalMode }
+        : {},
     },
   };
 }
@@ -480,4 +554,79 @@ export function managedPolicyDenial(
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
   return `${summary.organization}'s policy manages ${subject}.${help}`;
+}
+
+/**
+ * #4518: the refusal code for an approval posture broader than the managed
+ * ceiling: a pick, a turn on a thread recorded above it, or a raised
+ * default. Clients key on it to show the managed message instead of
+ * offering a retry.
+ */
+export const MANAGED_POLICY_APPROVAL_CEILING_CODE =
+  'managed-policy-approval-ceiling' as const;
+
+/** The approval picker's words for each posture (`APPROVAL_MODE_OPTIONS`). */
+const APPROVAL_MODE_NAMES: Readonly<Record<ConcreteApprovalMode, string>> = {
+  ask: 'Ask first',
+  auto: 'Auto',
+  never: 'Full access',
+};
+
+/**
+ * The ceiling a summary enforces, or `undefined` when it restricts nothing:
+ * no `maxApprovalMode`, or `never`, the broadest posture there is.
+ */
+export function managedApprovalCeiling(
+  summary: Pick<ManagedPolicySummary, 'limits'> | null | undefined,
+): ConcreteApprovalMode | undefined {
+  const ceiling = summary?.limits.maxApprovalMode;
+  return ceiling && ceiling !== 'never' ? ceiling : undefined;
+}
+
+/** Whether `mode` is broader than `ceiling`; nothing exceeds an absent ceiling. */
+export function approvalModeExceedsCeiling(
+  mode: ConcreteApprovalMode,
+  ceiling: ConcreteApprovalMode | undefined,
+): boolean {
+  return (
+    ceiling !== undefined &&
+    approvalModeBreadth(mode) > approvalModeBreadth(ceiling)
+  );
+}
+
+/**
+ * `mode`, lowered to `ceiling` when it is broader. `connection-default` is
+ * returned unchanged: it is not a posture, so the caller resolves it to the
+ * posture it stands for and clamps that.
+ */
+export function clampApprovalModeToCeiling<M extends ApprovalMode>(
+  mode: M,
+  ceiling: ConcreteApprovalMode | undefined,
+): M | ConcreteApprovalMode {
+  if (!isConcreteApprovalMode(mode) || ceiling === undefined) return mode;
+  return approvalModeExceedsCeiling(mode, ceiling) ? ceiling : mode;
+}
+
+/** The postures at or below `ceiling`, strictest first; all of them without one. */
+export function approvalModesWithinCeiling(
+  ceiling: ConcreteApprovalMode | undefined,
+): ConcreteApprovalMode[] {
+  return APPROVAL_MODE_BREADTH_ORDER.filter(
+    (mode) => !approvalModeExceedsCeiling(mode, ceiling),
+  );
+}
+
+/**
+ * The one sentence every surface uses to refuse a posture above the
+ * ceiling, e.g. "Acme's policy manages approval modes: the broadest allowed
+ * is Auto. For help, visit https://…".
+ */
+export function managedApprovalCeilingDenial(
+  summary: ManagedPolicySummary,
+  ceiling: ConcreteApprovalMode,
+): string {
+  return managedPolicyDenial(
+    summary,
+    `approval modes: the broadest allowed is ${APPROVAL_MODE_NAMES[ceiling]}`,
+  );
 }

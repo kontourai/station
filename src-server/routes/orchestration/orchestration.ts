@@ -246,6 +246,7 @@ import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
+  refuseAboveManagedCeiling,
   refuseUngrantedFullAccess,
   refuseUngrantedPick,
   requestedApprovalMode,
@@ -2760,6 +2761,12 @@ export function createOrchestrationRoutes(
       if (postureRefused) return postureRefused;
       // #2436: full access needs the operator in person or a granted device,
       // whether the send carries it as a pick or asks for it on the options.
+      // #4518: a pick above the managed ceiling is refused; a posture carried
+      // on the options is a default, lowered where it applies.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
+        body.setApprovalMode,
+      ]);
+      if (ceilingRefused) return ceilingRefused;
       const fullAccessRefused = refuseUngrantedFullAccess(c, [
         body.setApprovalMode,
         requestedApprovalMode(body.target.model?.options),
@@ -3346,6 +3353,11 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+        ]);
+        if (ceilingRefused) return ceilingRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
           requestedApprovalMode(body.target.model?.options),
@@ -3952,6 +3964,11 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
+          body.setApprovalMode,
+        ]);
+        if (ceilingRefused) return ceilingRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           body.setApprovalMode,
           requestedApprovalMode(body.model?.options),

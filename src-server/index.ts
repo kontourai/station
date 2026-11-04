@@ -52,6 +52,7 @@ import {
   parkUnderSupervisor,
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
+import { installManagedApprovalCeiling } from './security/managed-approval-ceiling.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -229,6 +230,9 @@ async function main() {
     );
     process.exit(1);
   }
+  // #4518: the approval ceiling every gate reads, installed before anything
+  // that can start or change a run is built.
+  installManagedApprovalCeiling(managedPolicy);
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
       source: managedPolicy.source,

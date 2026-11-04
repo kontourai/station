@@ -8,17 +8,20 @@ if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. Settings, limits, configuration profiles and Group Policy
-arrive in later releases (#4517–#4524). This guide grows with them.
+precedence rules. Settings, the remaining limits, configuration profiles and
+Group Policy arrive in later releases (#4517–#4524). This guide grows with
+them.
 
 ## What this release supports
 
 The current release supports the policy document, the file source, the
 fail-closed startup check, `station policy check` and `station policy show`,
-and a value-free summary that clients can read. It does **not** yet enforce
-any setting or limit. A policy that contains a setting entry or a limit key is
-refused with "not supported by this version of Station". Station never accepts
-a key it does not yet enforce, so a machine never looks managed when it is not.
+a value-free summary that clients can read, and one limit: the
+[approval-mode ceiling](#approval-mode-ceiling) (`limits.maxApprovalMode`). It
+does **not** yet enforce any setting or any other limit. A policy that
+contains a setting entry or another limit key is refused with "not supported
+by this version of Station". Station never accepts a key it does not yet
+enforce, so a machine never looks managed when it is not.
 
 A valid policy today names the organization and an optional support link:
 
@@ -36,13 +39,91 @@ A valid policy today names the organization and an optional support link:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Must be empty (`{}`) in this release. |
-| `limits` | no | Must be empty (`{}`) in this release. |
+| `limits` | no | May hold only `maxApprovalMode` in this release. |
+| `limits.maxApprovalMode` | no | `"ask"`, `"auto"` or `"never"`. See [Approval-mode ceiling](#approval-mode-ceiling). |
 
 Station refuses any other key, at any level. An unknown key may be a
 restriction from a newer release, and Station will not run while it cannot
 enforce one.
 
 Do not put credentials in the policy. Every user on the machine can read it.
+
+## Approval-mode ceiling
+
+`limits.maxApprovalMode` is the broadest approval mode any agent run on the
+machine may use, whoever starts it: a person, an agent, an automation, a
+scheduled job or a webhook.
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "supportUrl": "https://help.example.com/station",
+  "limits": { "maxApprovalMode": "auto" }
+}
+```
+
+The modes, from strictest to broadest, are `ask` (Ask first), `auto` (Auto)
+and `never` (Full access). A ceiling of `never` restricts nothing.
+`connection-default` is not accepted as a ceiling: it is not a mode but
+"whatever the engine's own settings say", which Station cannot rank.
+
+Under a ceiling:
+
+- **A choice above it is refused.** Picking a mode above the ceiling for a
+  chat, at its start or later, is refused for everyone, the operator
+  included, with "Example Corp's policy manages approval modes: the broadest
+  allowed is Auto. For help, visit https://help.example.com/station". So is
+  changing this Station's default approval mode to a mode above it. Nobody
+  can be granted full access while the ceiling is below `never`, so no
+  device's full-access grant takes effect either.
+- **A default above it is lowered to it.** A new chat whose default (the
+  Agent's, the project's, this Station's, a person's saved default, or the
+  mode an automation rule or a delegation carries) is above the ceiling
+  starts at the ceiling. A default saved before the policy was installed
+  stays saved, and applies again if the policy is removed.
+- **A chat already above it stops.** A chat whose chosen mode is above the
+  ceiling starts no new turn, and does not restart, until someone lowers its
+  mode. The turn is refused with the same message.
+- **The engine's own default is not used.** Where no mode is chosen and no
+  default applies, Station normally leaves the engine on its own settings,
+  which can be broader than the ceiling. Under a ceiling it asks the engine
+  for Ask first instead.
+- **Session-wide edit approval is a single approval.** Under a ceiling of
+  `ask`, "Auto-accept file edits for this session" approves only the edit in
+  front of you, because keeping it would move the chat to Auto.
+
+The approval picker shows the modes above the ceiling disabled, marked
+"Managed by Example Corp", with the same message.
+
+### This is not a sandbox
+
+The ceiling decides which approval mode Station asks the engine for.
+Engines still enforce their own approvals: an engine's allow rules, hooks
+and read-only classifier can let a call run without a Station prompt in any
+mode, as they do without a policy. Engines that have no approval control
+Station can set are not capped:
+
+- engines with no approval mode at all (for example Ollama, Amazon Bedrock
+  and Station's own agent runtime);
+- ACP engines whose approval rules Station does not set when it launches
+  them (see [ACP](acp.md)); they keep their own settings. ACP's own
+  full-access modes are refused where Station recognizes them.
+
+The engine's launch configuration still belongs to the user in this release,
+and it can defeat engine approvals:
+
+- the `claude` and `codex` executables are found on the `PATH` Station runs
+  with, so a wrapper placed earlier on that `PATH` can launch the engine with
+  its own flags, such as one that skips permission checks;
+- an engine connection's environment variables and config folder
+  (`configHome`) point the engine at configuration the user writes, such as
+  Claude Code allow rules or hooks;
+- an ACP connection's command and arguments are the user's.
+
+Owning these is the engine slice of the managed policy (#4520). Until it
+lands, treat the ceiling as protection against choosing a broader mode, not
+against a user who changes how the engine is launched.
 
 ## Where to install it
 
@@ -133,7 +214,8 @@ Station refuses to start when:
 - the document repeats a key name in the same object (`duplicate key
   <path>`), so a second `limits` cannot quietly replace the first;
 - the document does not match the schema, including a wrong `schemaVersion`,
-  an unknown key, a setting entry or a limit key;
+  an unknown key, a setting entry, a limit key other than `maxApprovalMode`,
+  or a managed default approval mode above `maxApprovalMode`;
 - more than one policy source is installed (this matters once configuration
   profiles and Group Policy are supported).
 
@@ -149,7 +231,9 @@ Fix or remove the policy, then start Station again.
 Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 `{ "state": "none" }`, or the source, the fingerprint and a summary: the
 organization, the support link, the locked setting paths and the effective
-limits. It never returns a setting value.
+limits (`{ "maxApprovalMode": "auto" }`). It never returns a setting value.
+A request refused by the approval-mode ceiling returns `403` with
+`"code": "managed-policy-approval-ceiling"`.
 
 ## What a managed policy does not do
 

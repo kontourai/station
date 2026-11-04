@@ -3870,16 +3870,40 @@ With one:
       "organization": "Example Corp",
       "supportUrl": "https://help.example.com/station",
       "lockedSettings": [],
-      "limits": {}
+      "limits": { "maxApprovalMode": "auto" }
     }
   }
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance.
+`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
+sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
-`station policy show` reports as a server too old to report a policy.
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /api/config/app`
+(`defaultApprovalMode`), and any request that asks for full access while the
+ceiling is below `never`, including a project's or Agent's `never` default. A
+turn on a chat whose recorded mode is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding
 

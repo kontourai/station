@@ -243,6 +243,11 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
+  clampToManagedCeiling,
+  ManagedApprovalCeilingRefusedError,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
+import {
   adapterSessionStartDuration,
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -11146,11 +11151,15 @@ export class OrchestrationService {
           // the engine is never switched to acceptEdits with no decision to
           // undo it. With it, the standing decision is kept: any decision
           // recorded while the engine takes the answer wins.
+          // #4518: under a managed ceiling below Auto the answer would switch
+          // the engine to acceptEdits past the ceiling, so it is downgraded
+          // to the one-call accept too.
           const editModeAnswer = this.isEditModeSessionAnswer(
             command,
             adapter.provider,
           )
-            ? context?.approvalModeAuthority === true
+            ? context?.approvalModeAuthority === true &&
+              !managedCeilingRefuses('auto')
               ? { standing: this.approvalPosture.decision(command.threadId) }
               : 'downgrade'
             : undefined;
@@ -13969,6 +13978,12 @@ export class OrchestrationService {
     /** #1796: set only by `resetFullAccessGrantedBy`. */
     revocation?: SessionApprovalModeSetEvent['revocation'];
   }): SetApprovalModeResult {
+    // #4518: no decision above the machine's managed approval ceiling is
+    // recorded, whichever path records it (the command route, a pick carried
+    // on a send, a delegated or agent-tool pick). The routes refuse first
+    // with the same message; this is the one writer, so it holds for all.
+    if (managedCeilingRefuses(input.approvalMode))
+      throw new ManagedApprovalCeilingRefusedError();
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
       input.approvalMode,
@@ -14495,6 +14510,12 @@ export class OrchestrationService {
     | { outcome: 'refused-full-access' }
     | { outcome: 'recorded'; result: SetApprovalModeResult }
   > {
+    // #4518: a saved personal default is a default, so one above the managed
+    // ceiling starts the chat at the ceiling rather than refusing it.
+    input = {
+      ...input,
+      approvalMode: clampToManagedCeiling(input.approvalMode),
+    };
     if (
       input.approvalMode === 'connection-default' ||
       !this.approvalKnobForThread(

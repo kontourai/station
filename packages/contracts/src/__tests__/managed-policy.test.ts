@@ -1,15 +1,26 @@
 import { describe, expect, test } from 'vitest';
 import {
+  approvalModeExceedsCeiling,
+  approvalModesWithinCeiling,
   canonicalManagedPolicyJson,
+  clampApprovalModeToCeiling,
   duplicateJsonMemberPath,
+  MANAGED_POLICY_ENFORCED_LIMIT_KEYS,
   MANAGED_POLICY_INVALID_MARKER,
   MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
+  MANAGED_POLICY_RESERVED_LIMIT_KEYS,
+  managedApprovalCeiling,
+  managedApprovalCeilingDenial,
   managedByLabel,
   managedPolicyDenial,
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
 } from '../managed-policy.js';
+import {
+  APPROVAL_MODE_BREADTH_ORDER,
+  approvalModeBreadth,
+} from '../provider.js';
 
 function problemsOf(value: unknown) {
   const result = parseManagedPolicyDocument(value);
@@ -78,9 +89,8 @@ describe('parseManagedPolicyDocument', () => {
     ).toEqual(['__proto__']);
   });
 
-  test('refuses every limit key and any managed setting until enforcement lands', () => {
+  test('refuses every limit key but maxApprovalMode, and any managed setting, until enforcement lands', () => {
     for (const key of [
-      'maxApprovalMode',
       'clients',
       'engines',
       'telemetry',
@@ -315,5 +325,176 @@ describe('problem paths for huge keys', () => {
           'unknown key; this version of Station refuses keys it cannot enforce',
       },
     ]);
+  });
+});
+
+describe('#4518: limits.maxApprovalMode', () => {
+  const policy = (limits: unknown, extra: Record<string, unknown> = {}) => ({
+    schemaVersion: 1,
+    organization: 'Acme',
+    limits,
+    ...extra,
+  });
+
+  test('the order is ask < auto < never (full access)', () => {
+    // Pinned literal, independent of the constant under test.
+    expect(APPROVAL_MODE_BREADTH_ORDER).toEqual(['ask', 'auto', 'never']);
+    expect(approvalModeBreadth('ask')).toBeLessThan(
+      approvalModeBreadth('auto'),
+    );
+    expect(approvalModeBreadth('auto')).toBeLessThan(
+      approvalModeBreadth('never'),
+    );
+  });
+
+  test('is the one enforced limit; the others stay reserved', () => {
+    expect(MANAGED_POLICY_ENFORCED_LIMIT_KEYS).toEqual(['maxApprovalMode']);
+    expect(MANAGED_POLICY_RESERVED_LIMIT_KEYS).not.toContain('maxApprovalMode');
+  });
+
+  for (const mode of ['ask', 'auto', 'never'] as const)
+    test(`accepts ${mode} and exposes it in the summary and the status`, () => {
+      const parsed = parseManagedPolicyDocument(
+        policy({ maxApprovalMode: mode }),
+      );
+      expect(parsed).toEqual({
+        ok: true,
+        document: {
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { maxApprovalMode: mode },
+        },
+      });
+      if (!parsed.ok) return;
+      const summary = summarizeManagedPolicy(parsed.document);
+      expect(summary.limits).toEqual({ maxApprovalMode: mode });
+      expect(
+        parseManagedPolicyStatus({
+          state: 'loaded',
+          source: { kind: 'file', location: '/etc/station/policy.json' },
+          digest: `sha256:${'a'.repeat(64)}`,
+          summary,
+        }),
+      ).toMatchObject({ summary: { limits: { maxApprovalMode: mode } } });
+    });
+
+  test('refuses connection-default and any non-posture value', () => {
+    expect(
+      problemsOf(policy({ maxApprovalMode: 'connection-default' })),
+    ).toEqual([
+      {
+        path: 'limits.maxApprovalMode',
+        message:
+          'must be a posture ("ask", "auto" or "never"); "connection-default" depends on each engine\'s own settings',
+      },
+    ]);
+    for (const value of ['full-access', 'ASK', 1, null, true, {}])
+      expect(problemsOf(policy({ maxApprovalMode: value }))).toEqual([
+        {
+          path: 'limits.maxApprovalMode',
+          message: 'must be "ask", "auto" or "never"',
+        },
+      ]);
+  });
+
+  test('another limit key beside it is still refused', () => {
+    expect(
+      problemsOf(policy({ maxApprovalMode: 'ask', telemetry: false })),
+    ).toEqual([
+      {
+        path: 'limits.telemetry',
+        message: 'this limit is not supported by this version of Station',
+      },
+    ]);
+  });
+
+  test('a status whose summary carries an invalid ceiling is unreadable', () => {
+    expect(
+      parseManagedPolicyStatus({
+        state: 'loaded',
+        source: { kind: 'file', location: '/etc/station/policy.json' },
+        digest: `sha256:${'a'.repeat(64)}`,
+        summary: {
+          organization: 'Acme',
+          supportUrl: null,
+          lockedSettings: [],
+          limits: { maxApprovalMode: 'connection-default' },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  test('a managed default approval mode above the ceiling is refused at load', () => {
+    const problems = problemsOf(
+      policy(
+        { maxApprovalMode: 'auto' },
+        {
+          settings: { defaultApprovalMode: { value: 'never', locked: false } },
+        },
+      ),
+    );
+    expect(problems).toContainEqual({
+      path: 'settings.defaultApprovalMode.value',
+      message: '"never" is broader than limits.maxApprovalMode ("auto")',
+    });
+    // At or below the ceiling, and connection-default, raise no ceiling
+    // problem (this build still refuses every managed setting entry: #4517).
+    for (const value of ['auto', 'ask', 'connection-default'])
+      expect(
+        problemsOf(
+          policy(
+            { maxApprovalMode: 'auto' },
+            { settings: { defaultApprovalMode: { value, locked: true } } },
+          ),
+        ).map((problem) => problem.path),
+      ).not.toContain('settings.defaultApprovalMode.value');
+  });
+
+  test('helpers: the ceiling, the comparison, the clamp and the modes left', () => {
+    const limits = (maxApprovalMode?: 'ask' | 'auto' | 'never') => ({
+      limits: maxApprovalMode ? { maxApprovalMode } : {},
+    });
+    expect(managedApprovalCeiling(null)).toBeUndefined();
+    expect(managedApprovalCeiling(limits())).toBeUndefined();
+    // Full access is the broadest posture: a ceiling there restricts nothing.
+    expect(managedApprovalCeiling(limits('never'))).toBeUndefined();
+    expect(managedApprovalCeiling(limits('auto'))).toBe('auto');
+
+    expect(approvalModeExceedsCeiling('never', 'auto')).toBe(true);
+    expect(approvalModeExceedsCeiling('auto', 'auto')).toBe(false);
+    expect(approvalModeExceedsCeiling('auto', 'ask')).toBe(true);
+    expect(approvalModeExceedsCeiling('never', undefined)).toBe(false);
+
+    expect(clampApprovalModeToCeiling('never', 'auto')).toBe('auto');
+    expect(clampApprovalModeToCeiling('ask', 'auto')).toBe('ask');
+    expect(clampApprovalModeToCeiling('connection-default', 'ask')).toBe(
+      'connection-default',
+    );
+    expect(clampApprovalModeToCeiling('never', undefined)).toBe('never');
+
+    expect(approvalModesWithinCeiling('ask')).toEqual(['ask']);
+    expect(approvalModesWithinCeiling('auto')).toEqual(['ask', 'auto']);
+    expect(approvalModesWithinCeiling(undefined)).toEqual([
+      'ask',
+      'auto',
+      'never',
+    ]);
+  });
+
+  test('the denial names the organization, the ceiling and where to get help', () => {
+    const summary = {
+      organization: 'Acme',
+      supportUrl: 'https://help.acme.example',
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'ask' as const },
+    };
+    expect(managedApprovalCeilingDenial(summary, 'ask')).toBe(
+      "Acme's policy manages approval modes: the broadest allowed is Ask first. For help, visit https://help.acme.example",
+    );
+    expect(
+      managedApprovalCeilingDenial({ ...summary, supportUrl: null }, 'auto'),
+    ).toBe(
+      "Acme's policy manages approval modes: the broadest allowed is Auto. Contact your administrator for help.",
+    );
   });
 });

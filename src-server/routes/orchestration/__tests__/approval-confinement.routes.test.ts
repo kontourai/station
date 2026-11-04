@@ -24,6 +24,11 @@ import {
   PAIRING_SCOPE_PRESETS,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import {
+  MANAGED_POLICY_APPROVAL_CEILING_CODE,
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type {
   ApprovalMode,
@@ -48,6 +53,10 @@ import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { configureDevicePairingHostRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
+import {
+  installManagedApprovalCeiling,
+  ManagedApprovalCeilingRefusedError,
+} from '../../../security/managed-approval-ceiling.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
@@ -2946,5 +2955,240 @@ describe('the personal approval default hint in a Project chat', () => {
     );
     expect(sent.status, sent.text).toBe(200);
     expect(lastStart(f, 'claude-agent').approvalMode).toBe('ask');
+  });
+});
+
+/**
+ * #4518: the managed approval ceiling (`limits.maxApprovalMode`) at every gate
+ * a run's posture is chosen or changed, through the real routes, the real
+ * executors and the real `OrchestrationService`. The policy is parsed and
+ * summarized by the real contract, then installed as the entrypoint does.
+ */
+describe('#4518: the managed approval ceiling', () => {
+  const installCeiling = (maxApprovalMode: 'ask' | 'auto') => {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      supportUrl: 'https://help.acme.example/station',
+      limits: { maxApprovalMode },
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    installManagedApprovalCeiling({
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+  };
+  const managedRefusal = {
+    success: false,
+    code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
+    error:
+      "Acme's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.acme.example/station",
+  };
+  afterEach(() => installManagedApprovalCeiling(null));
+
+  test('a new chat that picks full access is refused before any engine starts', async () => {
+    const f = await fixture();
+    installCeiling('auto');
+    const refused = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        setApprovalMode: 'never',
+        setApprovalModeBasedOn: null,
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+      },
+    );
+    expect(refused.status, refused.text).toBe(403);
+    expect(refused.body).toEqual(managedRefusal);
+    expect(f.claude.starts).toHaveLength(0);
+  });
+
+  test('a mode switch above the ceiling is refused for the operator too; one at it is recorded', async () => {
+    const f = await fixture({});
+    installCeiling('auto');
+    await f.chat(f.bearer(f.operator.credential), 'codex-agent');
+    const threadId = f.codex.starts.at(-1)!.threadId;
+    const pick = (approvalMode: string) =>
+      f.request(
+        f.bearer(f.operator.credential),
+        '/api/orchestration/commands',
+        {
+          type: 'setApprovalMode',
+          threadId,
+          approvalMode,
+          basedOnSequence: null,
+        },
+      );
+    const never = await pick('never');
+    expect(never.status, never.text).toBe(403);
+    expect(never.body).toEqual(managedRefusal);
+    // The one decision writer refuses too, whoever calls it.
+    expect(() =>
+      f.service.recordApprovalModeDecision({
+        threadId,
+        provider: 'codex',
+        approvalMode: 'never',
+        basedOnSequence: null,
+      }),
+    ).toThrow(ManagedApprovalCeilingRefusedError);
+    const auto = await pick('auto');
+    expect(auto.status, auto.text).toBe(200);
+  });
+
+  test('a Station default above the ceiling starts new chats at the ceiling, never host, on both engines', async () => {
+    const f = await fixture({ station: 'never' });
+    installCeiling('auto');
+    for (const agent of ['codex-agent', 'claude-agent'] as const) {
+      // The operator in person: without the policy this start is host at
+      // never (the first #2493 probe above).
+      await f.chat(f.bearer(f.operator.credential), agent);
+      expect(lastStart(f, agent)).toEqual({
+        confinement: 'workspace',
+        approvalMode: 'auto',
+        stamp: 'workspace',
+      });
+    }
+  });
+
+  test('with no default anywhere, a start under the ceiling sends Ask rather than leaving the engine on its own settings', async () => {
+    const f = await fixture({});
+    // Control: without a policy Station sends no posture.
+    await f.chat(f.bearer(f.operator.credential), 'codex-agent');
+    expect(lastStart(f, 'codex-agent').approvalMode).toBeUndefined();
+    installCeiling('auto');
+    for (const agent of ['codex-agent', 'claude-agent'] as const) {
+      await f.chat(f.bearer(f.operator.credential), agent);
+      expect(lastStart(f, agent).approvalMode).toBe('ask');
+    }
+  });
+
+  test('a thread recorded above the ceiling starts no turn until its mode is lowered', async () => {
+    const f = await fixture({});
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    // Recorded before the policy was installed.
+    const decided = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'never',
+        basedOnSequence: null,
+      },
+    );
+    expect(decided.status, decided.text).toBe(200);
+    installCeiling('auto');
+    const turnsBefore = f.claude.turns.length;
+    await expect(
+      f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'again' },
+      }),
+    ).rejects.toMatchObject({
+      code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
+      kind: 'permission_denied',
+    });
+    expect(f.claude.turns).toHaveLength(turnsBefore);
+
+    const lowered = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'auto',
+        // A lowering is at least as strict as the standing never, so the
+        // compare-and-set records it whatever basis it carries.
+        basedOnSequence: null,
+      },
+    );
+    expect(lowered.status, lowered.text).toBe(200);
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'lowered' },
+    });
+    expect(f.claude.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+  });
+
+  test('a webhook start under a full-access Station default starts at the ceiling', async () => {
+    const f = await fixture({ station: 'never' });
+    installCeiling('ask');
+    const startTurn = createWebhookTurnStarter({
+      readAuthorityFor: f.readAuthority,
+      orchestrationService: f.service,
+    });
+    await startTurn({
+      target: {
+        environment: { kind: 'current' },
+        agent: agentId('codex-agent'),
+      },
+      message: 'from a webhook',
+      ephemeral: true,
+      webhookTokenId: 'token-1',
+    });
+    expect(lastStart(f, 'codex-agent')).toEqual({
+      confinement: 'workspace',
+      approvalMode: 'ask',
+      stamp: 'workspace',
+    });
+  });
+
+  test('a delegation, by the operator or an agent tool, starts at the ceiling', async () => {
+    const f = await fixture({ station: 'never' });
+    installCeiling('auto');
+    const delegated = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/delegations',
+      {
+        prompt: 'go',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+      },
+    );
+    expect(delegated.status, delegated.text).toBe(200);
+    expect(lastStart(f, 'codex-agent')).toMatchObject({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+    });
+    await f.delegateTask(
+      {
+        prompt: 'go',
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          f.root,
+        ),
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('claude-agent'),
+        },
+        userId: 'operator',
+      },
+      f.service,
+    );
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+    });
+  });
+
+  test('a start carrying a posture above the ceiling on its options (the default channel) is lowered, not refused', async () => {
+    const f = await fixture({});
+    installCeiling('ask');
+    const sent = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'codex-agent',
+          model: { options: { approvalMode: 'auto' } },
+        },
+      },
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'codex-agent').approvalMode).toBe('ask');
   });
 });

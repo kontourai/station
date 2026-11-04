@@ -311,6 +311,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4518: boots the source Station with an injected approval ceiling and
+  // drives its routes over HTTP; private homes, ephemeral port.
+  'src-server/__tests__/managed-approval-ceiling.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.

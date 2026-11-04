@@ -1,7 +1,16 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import {
+  approvalModeExceedsCeiling,
+  managedApprovalCeiling,
+  managedApprovalCeilingDenial,
+  managedByLabel,
+} from '@kontourai/station-contracts/managed-policy';
+import { isConcreteApprovalMode } from '@kontourai/station-contracts/provider';
+import { Badge } from '@kontourai/ui/react';
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
@@ -62,6 +71,12 @@ interface ComposerModeSheetProps {
  * confirmation (archive#727) — but as an inline confirm step inside the
  * sheet rather than a chip that silently rewrites itself into a confirm button.
  * Backing out of the confirm leaves the session's mode untouched.
+ *
+ * #4518: under the machine's managed approval ceiling, the modes above it are
+ * disabled and the sheet says whose policy limits them. The server refuses
+ * them whatever this shows; until the policy is read (or if it cannot be),
+ * nothing is disabled and a pick above the ceiling comes back refused with
+ * the same sentence.
  */
 export function ComposerModeSheet({
   triggerRef,
@@ -76,6 +91,10 @@ export function ComposerModeSheet({
   layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
+  const policySummary = useManagedPolicySummary();
+  const ceiling = managedApprovalCeiling(policySummary);
+  const aboveCeiling = (mode: ApprovalMode) =>
+    isConcreteApprovalMode(mode) && approvalModeExceedsCeiling(mode, ceiling);
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const apply = (mode: ApprovalMode) => {
     if (
@@ -96,6 +115,7 @@ export function ComposerModeSheet({
   const [pendingEscalation, setPendingEscalation] = useState(false);
 
   const choose = (mode: ApprovalMode) => {
+    if (aboveCeiling(mode)) return;
     if (mode === effectiveMode && !saveAsDefault) {
       onClose();
       return;
@@ -125,6 +145,11 @@ export function ComposerModeSheet({
         onClose={onClose}
       />
       <div className="composer-mode-sheet__notes">
+        {policySummary && ceiling ? (
+          <p className="composer-mode-sheet__confirm-body composer-mode-sheet__managed">
+            {managedApprovalCeilingDenial(policySummary, ceiling)}
+          </p>
+        ) : null}
         <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
@@ -192,10 +217,13 @@ export function ComposerModeSheet({
         >
           {APPROVAL_MODE_OPTIONS.map((option) => {
             const isSelected = option.value === effectiveMode;
+            const managed = aboveCeiling(option.value);
             return (
               <label
                 key={option.value}
-                className="composer-actions-menu__item composer-mode-sheet__option"
+                className={`composer-actions-menu__item composer-mode-sheet__option${
+                  managed ? ' composer-mode-sheet__option--managed' : ''
+                }`}
               >
                 <input
                   type="radio"
@@ -203,6 +231,7 @@ export function ComposerModeSheet({
                   value={option.value}
                   checked={isSelected}
                   aria-checked={isSelected}
+                  disabled={managed}
                   className="composer-mode-sheet__option-input"
                   // Native change fires only for a real selection transition,
                   // suppressing duplicate/no-op mode events by construction.
@@ -215,7 +244,18 @@ export function ComposerModeSheet({
                   {MODE_GLYPH[option.value]}
                 </span>
                 <span className="composer-mode-sheet__option-body">
-                  <strong>{option.label}</strong>
+                  <strong>
+                    {option.label}
+                    {managed && policySummary ? (
+                      <>
+                        {' '}
+                        <Badge
+                          value={managedByLabel(policySummary)}
+                          tone="neutral"
+                        />
+                      </>
+                    ) : null}
+                  </strong>
                   <small>
                     {approvalModeDescription(option.value, engineConnectionId)}
                   </small>

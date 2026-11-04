@@ -20,6 +20,11 @@ import {
 } from '../../security/coding-authority.js';
 import { fullAccessRefusalBody } from '../../security/full-access-refusal.js';
 import {
+  ManagedApprovalCeilingRefusedError,
+  managedApprovalCeilingRefusalBody,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
+import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -54,14 +59,39 @@ export function requestedApprovalMode(options: unknown): unknown {
 }
 
 /**
+ * #4518: the 403 for a posture above the machine's managed approval ceiling.
+ * It names the organization and its support link, not a grant to ask for:
+ * nobody on this Station can grant past the policy.
+ */
+export function managedApprovalCeilingRefusal(c: Context): Response {
+  return c.json(managedApprovalCeilingRefusalBody(), 403);
+}
+
+/**
+ * #4518: a 403 when any of `modes` is a posture broader than the managed
+ * ceiling; `undefined` otherwise. A pick is refused, not lowered: lowering a
+ * choice someone made would claim a posture they did not choose.
+ */
+export function refuseAboveManagedCeiling(
+  c: Context,
+  modes: readonly unknown[],
+): Response | undefined {
+  return modes.some(managedCeilingRefuses)
+    ? managedApprovalCeilingRefusal(c)
+    : undefined;
+}
+
+/**
  * A 403 when any of `modes` is full access and this request may not grant
- * it; `undefined` otherwise.
+ * it; `undefined` otherwise. #4518: under a managed ceiling below full
+ * access the refusal is the managed one, because no grant could help.
  */
 export function refuseUngrantedFullAccess(
   c: Context,
   modes: readonly unknown[],
 ): Response | undefined {
   if (!modes.includes('never')) return undefined;
+  if (managedCeilingRefuses('never')) return managedApprovalCeilingRefusal(c);
   if (
     mayGrantFullAccess(
       c.req.raw,
@@ -87,7 +117,10 @@ export async function refuseUngrantedPick(
   reachesFullAccess: () => Promise<boolean>,
 ): Promise<Response | undefined> {
   if (pick !== 'connection-default')
-    return refuseUngrantedFullAccess(c, [pick]);
+    return (
+      refuseAboveManagedCeiling(c, [pick]) ??
+      refuseUngrantedFullAccess(c, [pick])
+    );
   let fullAccess: boolean;
   try {
     fullAccess = await reachesFullAccess();
@@ -106,6 +139,8 @@ export function fullAccessRefusalFor(
   c: Context,
   error: unknown,
 ): Response | undefined {
+  if (error instanceof ManagedApprovalCeilingRefusedError)
+    return managedApprovalCeilingRefusal(c);
   return error instanceof FullAccessNotGrantedError
     ? fullAccessRefusal(c)
     : undefined;

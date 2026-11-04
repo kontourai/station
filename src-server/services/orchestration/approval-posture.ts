@@ -3,6 +3,7 @@ import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-cap
 import type { ExecutionConfinementRecord } from '@kontourai/station-contracts/execution-confinement';
 import {
   type ApprovalMode,
+  approvalModeBreadth,
   type EngineId,
   isApprovalMode,
   PROVIDER_ACP,
@@ -12,6 +13,12 @@ import {
   type StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import { isFullAccessGrant } from '../../security/coding-authority.js';
+import {
+  clampToManagedCeiling,
+  ManagedApprovalCeilingRefusedError,
+  managedApprovalCeilingInForce,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
 
 /**
  * #2436: the conversation's approval posture as the SERVER orders it. See
@@ -147,6 +154,26 @@ function concrete(mode: unknown): ApprovalMode | undefined {
 }
 
 /**
+ * #4518: a default's posture, lowered to the managed approval ceiling. A
+ * default is never refused for being above it: a new thread whose default is
+ * broader starts at the ceiling instead.
+ */
+function concreteWithinCeiling(mode: unknown): ApprovalMode | undefined {
+  const posture = concrete(mode);
+  return posture ? clampToManagedCeiling(posture) : undefined;
+}
+
+/**
+ * #4518: whether the managed ceiling rules out full access. Then no session
+ * runs `host`: a grant cannot be minted (`mayGrantFullAccess`), and a `host`
+ * stamp or a `never` recorded before the policy was installed lets Claude
+ * spawn holding the bypass grant, which nothing under the ceiling may use.
+ */
+function ceilingRulesOutFullAccess(): boolean {
+  return managedCeilingRefuses('never');
+}
+
+/**
  * The default posture below a decision: the Agent's own, then this
  * Station's (#2436 §4.9). `ApprovalPosture` applies it at a start and for a
  * Default pick; an Agent write reads it to see what the write leaves in
@@ -158,13 +185,6 @@ export function effectiveDefaultPosture(
 ): ApprovalMode | undefined {
   return concrete(agentDefault) ?? concrete(stationDefault);
 }
-
-/** Strictness order of the concrete postures: lower is stricter. */
-const STRICTNESS: Readonly<Record<string, number>> = {
-  ask: 0,
-  auto: 1,
-  never: 2,
-};
 
 /**
  * Whether `pick` is at least as strict as `standing` in a way that cannot
@@ -178,9 +198,7 @@ function atLeastAsStrict(pick: ApprovalMode, standing: ApprovalMode): boolean {
   if (pick === 'ask') return true;
   if (pick === 'connection-default' || standing === 'connection-default')
     return false;
-  const picked = STRICTNESS[pick];
-  const stands = STRICTNESS[standing];
-  return picked !== undefined && stands !== undefined && picked <= stands;
+  return approvalModeBreadth(pick) <= approvalModeBreadth(standing);
 }
 
 /** The facts a start's Project approval layer is resolved from. */
@@ -274,10 +292,11 @@ export class ApprovalPosture {
     agentSlug: string | undefined,
   ): Promise<'agent-default' | 'station-default' | undefined> {
     const agent = agentSlug
-      ? concrete(await this.deps.resolveAgentDefault?.(agentSlug))
+      ? concreteWithinCeiling(await this.deps.resolveAgentDefault?.(agentSlug))
       : undefined;
     if (agent) return agent === 'never' ? 'agent-default' : undefined;
-    return concrete(await this.deps.resolveStationDefault?.()) === 'never'
+    return concreteWithinCeiling(await this.deps.resolveStationDefault?.()) ===
+      'never'
       ? 'station-default'
       : undefined;
   }
@@ -303,6 +322,7 @@ export class ApprovalPosture {
    * is a concrete `never`. Everything else is `workspace`.
    */
   startConfinement(threadId: string, grant: unknown): StationConfinement {
+    if (ceilingRulesOutFullAccess()) return 'workspace';
     return isFullAccessGrant(grant) || this.recordedFullAccess(threadId)
       ? 'host'
       : 'workspace';
@@ -325,6 +345,7 @@ export class ApprovalPosture {
    * pick.
    */
   standingConfinement(threadId: string, stamp: unknown): StationConfinement {
+    if (ceilingRulesOutFullAccess()) return 'workspace';
     return stamp === 'host' || this.recordedFullAccess(threadId)
       ? 'host'
       : 'workspace';
@@ -380,10 +401,13 @@ export class ApprovalPosture {
     // Both sources are the Agent's EFFECTIVE default: for a plugin-owned
     // Agent, the operator's override, else the plugin's own value short of
     // full access (`agent-approval-overrides.ts`, applied at the read seam).
+    // #4518: every layer here is a default, lowered to the managed ceiling.
     const agent = input.capturedAgent
-      ? concrete(input.capturedAgent.approvalMode)
+      ? concreteWithinCeiling(input.capturedAgent.approvalMode)
       : input.agentSlug
-        ? concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
+        ? concreteWithinCeiling(
+            await this.deps.resolveAgentDefault?.(input.agentSlug),
+          )
         : undefined;
     if (agent) return agent;
     // A recorded full access is re-applied only to a start that may grant it
@@ -391,7 +415,7 @@ export class ApprovalPosture {
     // exactly the caller's minted grant (`startConfinement`).
     const project =
       input.project && input.confinement
-        ? concrete(
+        ? concreteWithinCeiling(
             await this.deps.resolveProjectDefault?.({
               ...input.project,
               mayGrantFullAccess: input.confinement === 'host',
@@ -399,9 +423,11 @@ export class ApprovalPosture {
           )
         : undefined;
     if (project) return project;
-    return effectiveDefaultPosture(
-      undefined,
-      await this.deps.resolveStationDefault?.(),
+    return concreteWithinCeiling(
+      effectiveDefaultPosture(
+        undefined,
+        await this.deps.resolveStationDefault?.(),
+      ),
     );
   }
 
@@ -479,6 +505,11 @@ export class ApprovalPosture {
     if (!approvalKnobSupported(input.provider, input.acpControl))
       return input.modelOptions;
     const decision = this.decision(input.threadId);
+    // #4518, the turn-start gate: a thread whose recorded pick is above the
+    // managed ceiling starts no turn, and no (re)start, until someone lowers
+    // its mode. Its engine keeps whatever it ran; nothing reaches it.
+    if (decision && managedCeilingRefuses(decision.approvalMode))
+      throw new ManagedApprovalCeilingRefusedError();
     const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;
     if (decision) {
@@ -492,12 +523,28 @@ export class ApprovalPosture {
             })
           : decision.approvalMode;
     } else {
+      // #4518: a carried posture is the default channel (a client's default,
+      // an automation's or a webhook's), so it is lowered, not refused.
       mode =
-        concrete(carried) ??
+        concreteWithinCeiling(carried) ??
         (input.phase === 'start'
           ? await this.defaultPosture(input)
           : this.reconfinedMode(input.threadId, input.confinement));
     }
+    // #4518: under a managed ceiling Station never leaves the posture to the
+    // engine's own settings, which can be broader (a Claude settings
+    // `defaultMode`, a Codex `approval_policy`). Where nothing above decides
+    // it sends Ask, which is at or below any ceiling: at every start (a new
+    // engine process keeps nothing Station applied to the one before), and
+    // at a turn on an engine this process has applied nothing to (one a
+    // previous process started). Ask, not the ceiling: the engine's own
+    // default may be stricter, and Station must not widen it.
+    if (
+      !mode &&
+      managedApprovalCeilingInForce() !== undefined &&
+      (input.phase === 'start' || !this.stationApplied.has(input.threadId))
+    )
+      mode = 'ask';
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
     const startConfinement =
       input.phase === 'start'
