@@ -64,6 +64,12 @@ sudo mkdir -p "/Library/Application Support/Station"
 sudo install -m 0644 policy.json "/Library/Application Support/Station/policy.json"
 ```
 
+Station checks owner and mode bits, not ACLs, so do not grant write access
+through a macOS ACL. Keep the `Station` folder writable by root only: anyone
+who can write it can delete the policy, and Station starts unmanaged when the
+file is gone. `station policy check` applies the ownership rule only when you
+pass it the system path itself, so run it there after installing.
+
 On Windows, Station refuses a link at the path but does not yet check the
 file's owner or ACL (#4524). Make sure only administrators can write the file
 and its folder. Station reads these exact paths; it does not use environment

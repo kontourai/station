@@ -340,8 +340,8 @@ function readPolicyBytes(path: string, fd: number): string {
  * Read a policy file. Only an absent entry means "no policy": a symbolic
  * link is refused, never followed, even when it dangles (a dangling link
  * would otherwise read as absence). The descriptor is opened without
- * following links and without blocking, so a FIFO cannot hang startup, and
- * every check after the open runs on that descriptor.
+ * following links and without blocking, so a FIFO cannot hang startup. The
+ * file checks run on that descriptor; the directory chain is checked by path.
  *
  * With `ownership` (system sources only), the file and each directory up to
  * `ownership.trustedRoot` must belong to the owner and not be writable by
@@ -380,10 +380,11 @@ export function managedPolicyFileSource(
  */
 export function systemManagedPolicySources(
   platform: NodeJS.Platform = process.platform,
+  filePath: string = managedPolicyFilePath(platform),
 ): ManagedPolicySource[] {
   return [
     managedPolicyFileSource(
-      managedPolicyFilePath(platform),
+      filePath,
       'file',
       SYSTEM_MANAGED_POLICY_OWNERSHIP,
     ),
@@ -409,7 +410,16 @@ export function decodeManagedPolicy(
     }
     // JSON.parse keeps the last of two equal names, so a second `"limits"`
     // would silently erase the first one's restrictions.
-    const duplicate = duplicateJsonMemberPath(text);
+    let duplicate: string | null;
+    try {
+      duplicate = duplicateJsonMemberPath(text);
+    } catch (error) {
+      // A scanner failure must still refuse with the marker, never escape.
+      throw new ManagedPolicyInvalidError(
+        location,
+        `it cannot be checked for duplicate keys (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
     if (duplicate !== null)
       throw new ManagedPolicyInvalidError(
         location,

@@ -13500,28 +13500,20 @@ fn spawn_sidecar_stderr_reader(
 #[cfg(not(mobile))]
 fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     const MAX_TAIL_BYTES: usize = 64 * 1024;
-    // The head of each line, where the server writes a fatal marker. The
-    // first such line is latched as it is read, because a long diagnostic
+    // The head of each line. The first line that starts with the server's
+    // policy refusal is latched as it is read, because a long diagnostic
     // after it (or the 16-line cut below) can drop it from the tail, and the
     // exit is classified as terminal only when the marker reaches `detail`.
+    // Only that exact line prefix counts: a line that merely mentions the
+    // marker must not make an unrelated crash terminal.
     const MAX_LATCHED_LINE_BYTES: usize = 4096;
+    let prefix = bundled_server_state::MANAGED_POLICY_LINE_PREFIX.as_bytes();
     let mut tail = std::collections::VecDeque::with_capacity(MAX_TAIL_BYTES + 4096);
     let mut line_head: Vec<u8> = Vec::with_capacity(MAX_LATCHED_LINE_BYTES);
-    let mut latched: Option<(&'static str, String)> = None;
-    let latch_line = |line_head: &mut Vec<u8>, latched: &mut Option<(&'static str, String)>| {
-        if latched.is_none() {
-            if let Some(marker) =
-                bundled_server_state::FATAL_MARKERS
-                    .iter()
-                    .copied()
-                    .find(|marker| {
-                        line_head
-                            .windows(marker.len())
-                            .any(|window| window == marker.as_bytes())
-                    })
-            {
-                *latched = Some((marker, String::from_utf8_lossy(line_head).into_owned()));
-            }
+    let mut latched: Option<String> = None;
+    let latch_line = |line_head: &mut Vec<u8>, latched: &mut Option<String>| {
+        if latched.is_none() && line_head.starts_with(prefix) {
+            *latched = Some(String::from_utf8_lossy(line_head).into_owned());
         }
         line_head.clear();
     };
@@ -13557,10 +13549,12 @@ fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     // At most MAX_LATCHED_LINE_BYTES (plus replacement expansion) beyond
     // the tail bound, and only when the tail lost the marker.
     match (latched, tail) {
-        (Some((marker, line)), Some(tail)) if !tail.contains(marker) => {
+        (Some(line), Some(tail))
+            if !tail.contains(bundled_server_state::MANAGED_POLICY_LINE_PREFIX) =>
+        {
             Some(format!("{line}\n{tail}"))
         }
-        (Some((_, line)), None) => Some(line),
+        (Some(line), None) => Some(line),
         (_, tail) => tail,
     }
 }
@@ -18299,6 +18293,29 @@ mod tests {
             capture_sidecar_stderr("STATION_HOME_RESET_REQUIRED: incompatible schema\n".as_bytes())
                 .unwrap();
         assert_eq!(short, "STATION_HOME_RESET_REQUIRED: incompatible schema");
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_does_not_latch_a_line_that_only_mentions_the_policy_marker() {
+        // An agent or a logged search can print the marker mid-line long
+        // before an unrelated crash; that crash must still be retried.
+        let mut text = String::from(
+            "Unhandled rejection (non-fatal): Error: grep found STATION_MANAGED_POLICY_INVALID in docs\n",
+        );
+        text.push_str(&(0..5_000).map(|i| format!("ordinary line {i}\n")).collect::<String>());
+        text.push_str("Uncaught exception: RangeError: boom\n");
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(!detail.contains("STATION_MANAGED_POLICY_INVALID"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(!next.fail_closed, "an unrelated crash must stay retryable");
+        assert_ne!(effects, vec![SupervisorEffect::None]);
     }
 
     #[cfg(all(not(mobile), unix))]

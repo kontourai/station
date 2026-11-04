@@ -15,6 +15,7 @@ import {
   ManagedPolicyInvalidError,
   managedPolicyDigest,
   managedPolicyFilePath,
+  SYSTEM_MANAGED_POLICY_OWNERSHIP,
   readManagedPolicyFile,
 } from '@kontourai/station-shared/managed-policy';
 import {
@@ -52,15 +53,20 @@ interface CheckReport {
 }
 
 /**
- * `station policy check <file>`: offline. Runs the exact decoder the server
- * runs at startup, so a file that passes here loads there.
+ * `station policy check <file>`: offline. Runs the decoder the server runs at
+ * startup. At the system policy path it also applies the server's ownership
+ * rule; elsewhere it cannot, so a file checked before installation must still
+ * be installed as root (see the managed policy guide).
  */
 function runCheck(file: string, json: boolean): void {
   const path = isAbsolute(file) ? file : resolve(file);
   let report: CheckReport;
   let document: ManagedPolicyDocument | undefined;
   try {
-    const raw = readManagedPolicyFile(path);
+    const raw = readManagedPolicyFile(
+      path,
+      path === managedPolicyFilePath() ? SYSTEM_MANAGED_POLICY_OWNERSHIP : undefined,
+    );
     if (!raw)
       throw new ManagedPolicyInvalidError(path, 'no file exists at this path');
     document = decodeManagedPolicy(path, raw);

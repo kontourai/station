@@ -97,9 +97,10 @@ link or junction that `lstat` reports as one) is an error, even when it
 dangles, and is never followed: a dangling link would otherwise read as absence
 and let the test override stand in, and a link to a user's file would load the
 user's document. On POSIX the file is opened with `O_NOFOLLOW` and
-`O_NONBLOCK`. Every later check runs on that descriptor: `fstat` must report a
+`O_NONBLOCK`. The file checks run on that descriptor: `fstat` must report a
 regular file (so a FIFO or a device is refused instead of hanging startup), and
-it must be the same file `lstat` saw.
+it must be the same file `lstat` saw. The directory chain below is checked by
+path, which is safe because every directory in it must be root's.
 
 **System files must be root's.** For the system sources (not the test override
 and not `station policy check`), the file and every directory above it up to
@@ -110,6 +111,16 @@ group itself is not checked: a stock Mac has `/Library` as root:wheel 0755 and
 link among the parent directories must be owned by root, and the directories it
 leads to are checked as well. On NixOS, install the file with a copy mode
 instead of the default store link.
+
+The check reads owner and mode bits only, not ACLs. On Linux a POSIX ACL that
+grants write sets the group-write bit through the mask, so it is refused; on
+macOS an `allow write` ACL entry is not detected. The rule guards against
+substituting the file, not removing it: when no file exists, Station does not
+inspect the folders, because refusing to start on an unmanaged machine over a
+loosened `/Library/Application Support` would break users who have no policy.
+Anyone who can write the policy folder can delete the policy, so administrators
+must keep that folder writable by root only. `station policy check` applies the
+ownership rule only when it is given the system path itself.
 
 Windows: Station rejects a link at the file, but it does not yet check the
 owner or ACL of the file and its folders. That check, and the reparse point

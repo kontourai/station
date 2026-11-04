@@ -101,10 +101,12 @@ pub const HOME_RESET_MARKER: &str = "STATION_HOME_RESET_REQUIRED";
 /// administrator can change the policy, so retrying cannot repair it either.
 pub const MANAGED_POLICY_MARKER: &str = "STATION_MANAGED_POLICY_INVALID";
 
-/// Every marker that makes a server exit terminal. The stderr capture
-/// latches the first line carrying one while it reads, so a long diagnostic
-/// cannot push the marker out of the retained tail.
-pub const FATAL_MARKERS: [&str; 2] = [MANAGED_POLICY_MARKER, HOME_RESET_MARKER];
+/// The exact line prefix the server writes when it refuses a managed policy.
+/// The stderr capture latches only a line that starts with it, so a long
+/// diagnostic cannot push the refusal out of the retained tail, while a line
+/// that merely mentions the marker (an agent's output, a logged search
+/// result) cannot turn an unrelated crash into a terminal exit.
+pub const MANAGED_POLICY_LINE_PREFIX: &str = "STATION_MANAGED_POLICY_INVALID:";
 
 /// The reader-facing fail-closed sentence. The marker stays a detection key
 /// only: it names an internal constant nothing in the dialog can act on, and

@@ -319,6 +319,20 @@ describe('system ownership', () => {
   });
 
   test.skipIf(!posix || uid === 0)(
+    'the system file source refuses a file the user owns',
+    () => {
+      // Reaches the source the server loads, so dropping the ownership
+      // requirement from it fails here, not only in the helper test.
+      const path = policyFile(VALID);
+      const [source] = systemManagedPolicySources(process.platform, path);
+      const error = invalid(() => source.read());
+      expect(error.reason).toBe(
+        `${path} must be owned by root (uid 0), but is owned by uid ${uid}`,
+      );
+    },
+  );
+
+  test.skipIf(!posix || uid === 0)(
     'a user-owned file at a system source is refused, naming the file',
     () => {
       const path = policyFile(VALID);
