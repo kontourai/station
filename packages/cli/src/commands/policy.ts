@@ -15,8 +15,8 @@ import {
   ManagedPolicyInvalidError,
   managedPolicyDigest,
   managedPolicyFilePath,
-  SYSTEM_MANAGED_POLICY_OWNERSHIP,
   readManagedPolicyFile,
+  SYSTEM_MANAGED_POLICY_OWNERSHIP,
 } from '@kontourai/station-shared/managed-policy';
 import {
   configureApiCredential,
@@ -65,7 +65,9 @@ function runCheck(file: string, json: boolean): void {
   try {
     const raw = readManagedPolicyFile(
       path,
-      path === managedPolicyFilePath() ? SYSTEM_MANAGED_POLICY_OWNERSHIP : undefined,
+      path === managedPolicyFilePath()
+        ? SYSTEM_MANAGED_POLICY_OWNERSHIP
+        : undefined,
     );
     if (!raw)
       throw new ManagedPolicyInvalidError(path, 'no file exists at this path');

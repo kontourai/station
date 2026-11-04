@@ -18303,7 +18303,11 @@ mod tests {
         let mut text = String::from(
             "Unhandled rejection (non-fatal): Error: grep found STATION_MANAGED_POLICY_INVALID in docs\n",
         );
-        text.push_str(&(0..5_000).map(|i| format!("ordinary line {i}\n")).collect::<String>());
+        text.push_str(
+            &(0..5_000)
+                .map(|i| format!("ordinary line {i}\n"))
+                .collect::<String>(),
+        );
         text.push_str("Uncaught exception: RangeError: boom\n");
         let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
         assert!(!detail.contains("STATION_MANAGED_POLICY_INVALID"));

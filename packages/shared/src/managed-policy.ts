@@ -383,11 +383,7 @@ export function systemManagedPolicySources(
   filePath: string = managedPolicyFilePath(platform),
 ): ManagedPolicySource[] {
   return [
-    managedPolicyFileSource(
-      filePath,
-      'file',
-      SYSTEM_MANAGED_POLICY_OWNERSHIP,
-    ),
+    managedPolicyFileSource(filePath, 'file', SYSTEM_MANAGED_POLICY_OWNERSHIP),
   ];
 }
 
