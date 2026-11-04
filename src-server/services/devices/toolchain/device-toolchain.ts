@@ -44,6 +44,7 @@ import {
 } from './device-tool-pins.js';
 import {
   DEVICE_TOOL_RUNTIME_SETUP,
+  type DeviceToolRuntimeOptions,
   resolveDeviceToolRuntime,
 } from './device-tool-runtime.js';
 import { verifyInstalledTree } from './device-tool-verify.js';
@@ -158,12 +159,13 @@ export function createNpmCiInstaller(
     timeoutMs?: number;
     spawn?: SpawnInstaller;
     env?: NodeJS.ProcessEnv;
-  } = {},
+  } & DeviceToolRuntimeOptions = {},
 ): DeviceToolInstaller {
   const resolveNpm =
     options.resolveNpm ??
     (async () =>
-      (await resolveDeviceToolRuntime(options.env ?? process.env)).npm);
+      (await resolveDeviceToolRuntime(options.env ?? process.env, options))
+        .npm);
   const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
   const spawnChild: SpawnInstaller = options.spawn ?? spawn;
   return {

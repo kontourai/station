@@ -3,14 +3,13 @@ import { accessSync, constants, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix, win32 } from 'node:path';
 
 /**
- * Every route ends on the Station host, which a phone user may reach only
- * remotely, so the first route is the one that needs no Node toolchain: a
- * Linux or macOS service unit puts the archive's `runtime/bin` on its PATH,
- * and archives now carry npm there. Older archives, Windows tasks and
- * foreground starts still need a Node.js with npm on Station's PATH.
+ * Reached only when neither a Node.js on Station's PATH nor the Node.js
+ * running Station has a usable npm: in practice an archive built before its
+ * runtime carried npm, or the desktop app, whose private Node is never used.
+ * Updating Station is the route that needs no other software.
  */
 export const DEVICE_TOOL_RUNTIME_SETUP =
-  "On the Station host, upgrade Station (`station help upgrade`); on Linux and macOS an installed Station service then uses the Node.js and npm bundled with Station. Otherwise install Node.js 24 or later with npm there and put it first on Station's PATH. Then restart Station.";
+  'Update Station on this computer; current Station releases include the npm device tools need. With the Station desktop app, or if updating does not help, install Node.js 24 or later with npm and restart Station.';
 
 export class DeviceToolRuntimeUnavailableError extends Error {
   constructor(reason: string) {
@@ -108,11 +107,8 @@ function probeEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Resolve the user's Node, including mise/nvm shims, without altering PATH. */
-export async function resolveDeviceToolRuntime(
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<DeviceToolRuntime> {
-  let candidate: string | undefined;
+/** The first executable `node` on PATH, unresolved, or undefined. */
+function firstPathNode(env: NodeJS.ProcessEnv): string | undefined {
   for (const entry of (env.PATH ?? '').split(
     process.platform === 'win32' ? ';' : ':',
   )) {
@@ -127,17 +123,56 @@ export async function resolveDeviceToolRuntime(
       accessSync(executable, constants.X_OK);
       if (/^station-node(?:\.exe)?$/i.test(basename(realpathSync(executable))))
         continue;
-      candidate = executable;
-      break;
+      return executable;
     } catch {
       // Continue only past absent or non-executable PATH entries.
     }
   }
-  if (!candidate)
-    throw new DeviceToolRuntimeUnavailableError(
-      'A user-installed Node.js was not found.',
-    );
-  const executable = candidate;
+  return undefined;
+}
+
+export interface DeviceToolRuntimeOptions {
+  /**
+   * The Node.js running Station, tried when PATH offers no usable Node with
+   * npm. Defaults to `process.execPath`: an archive's runtime, which carries
+   * its distribution's npm. `null` means there is none.
+   */
+  bundledNodePath?: string | null;
+}
+
+/**
+ * Resolve Node and its own npm for device tools without altering PATH: the
+ * first `node` on PATH (following mise/nvm shims) when it is usable, else the
+ * Node.js running Station. The desktop's private `station-node` never is.
+ */
+export async function resolveDeviceToolRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+  options: DeviceToolRuntimeOptions = {},
+): Promise<DeviceToolRuntime> {
+  const bundled =
+    options.bundledNodePath === undefined
+      ? process.execPath
+      : options.bundledNodePath;
+  const failures: DeviceToolRuntimeUnavailableError[] = [];
+  for (const candidate of [firstPathNode(env), bundled ?? undefined]) {
+    if (!candidate) continue;
+    try {
+      return await probeRuntime(candidate, env);
+    } catch (error) {
+      if (!(error instanceof DeviceToolRuntimeUnavailableError)) throw error;
+      failures.push(error);
+    }
+  }
+  throw (
+    failures[0] ??
+    new DeviceToolRuntimeUnavailableError('Node.js with npm was not found.')
+  );
+}
+
+async function probeRuntime(
+  executable: string,
+  env: NodeJS.ProcessEnv,
+): Promise<DeviceToolRuntime> {
   let output: string;
   try {
     output = await new Promise<string>((resolve, reject) => {
@@ -158,7 +193,7 @@ export async function resolveDeviceToolRuntime(
     });
   } catch {
     throw new DeviceToolRuntimeUnavailableError(
-      'The user-installed Node.js could not start.',
+      'The selected Node.js could not start.',
     );
   }
   let identity: { nodePath?: unknown; version?: unknown };
@@ -172,7 +207,7 @@ export async function resolveDeviceToolRuntime(
     };
   } catch {
     throw new DeviceToolRuntimeUnavailableError(
-      'The user-installed Node.js did not report its version.',
+      'The selected Node.js did not report its version.',
     );
   }
   if (
@@ -182,7 +217,7 @@ export async function resolveDeviceToolRuntime(
     !/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(identity.version)
   )
     throw new DeviceToolRuntimeUnavailableError(
-      'The user-installed Node.js identity is invalid.',
+      'The selected Node.js identity is invalid.',
     );
   let nodePath: string;
   try {
@@ -191,16 +226,16 @@ export async function resolveDeviceToolRuntime(
     accessSync(nodePath, constants.X_OK);
   } catch {
     throw new DeviceToolRuntimeUnavailableError(
-      'The selected user-installed Node.js is no longer available.',
+      'The selected Node.js is no longer available.',
     );
   }
   if (/^station-node(?:\.exe)?$/i.test(basename(nodePath)))
     throw new DeviceToolRuntimeUnavailableError(
-      'Device tools require a user-installed Node.js.',
+      "Device tools cannot use the desktop app's private Node.js.",
     );
   if (Number(identity.version.split('.')[0]) < 24)
     throw new DeviceToolRuntimeUnavailableError(
-      `The user-installed Node.js ${identity.version} is too old.`,
+      `The selected Node.js ${identity.version} is too old.`,
     );
   const npm = resolveNpmCommand(nodePath);
   if (!npm)
