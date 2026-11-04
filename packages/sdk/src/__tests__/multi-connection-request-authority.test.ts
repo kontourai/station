@@ -1,9 +1,41 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { getJson, setClientCredentialResolver } from '../client/http';
+import {
+  authenticatedFetch,
+  getJson,
+  setClientCredentialResolver,
+} from '../client/http';
 
 afterEach(() => {
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
+});
+
+test('authenticatedFetch captures the requested authority before awaiting', async () => {
+  const base = 'https://station.example.test';
+  const scope = { apiBase: base, authorityKey: 'profile-b' };
+  const rejected = vi.fn();
+  setClientCredentialResolver(async (selector) => {
+    await Promise.resolve();
+    const captured = selector!.requestScope!;
+    return {
+      origin: base,
+      credential: captured.authorityKey,
+      requestAuthority: { ...captured, isCurrent: () => true },
+      onUnauthorized: rejected,
+    };
+  });
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(new Response('', { status: 401 }));
+  vi.stubGlobal('fetch', fetch);
+  const pending = authenticatedFetch(`${base}/api/b`, { requestScope: scope });
+  scope.authorityKey = 'changed';
+  await pending;
+  expect(fetch.mock.calls[0][0]).toBe(`${base}/api/b`);
+  expect(
+    new Headers(fetch.mock.calls[0][1]?.headers).get('Authorization'),
+  ).toBe('Bearer profile-b');
+  expect(rejected).toHaveBeenCalledOnce();
 });
 
 test('concurrent same-origin requests select and snapshot their own authority', async () => {

@@ -1057,6 +1057,7 @@ async function settleCredentialResponse(
  * pass `timeoutMs: null` to opt out of the host default.
  */
 export type AuthenticatedFetchInit = RequestInit & {
+  requestScope?: ApiRequestScope;
   /** Opt-in header/body inactivity timeout with a five-minute total cap; supersedes timeoutMs. */
   progressTimeoutMs?: number;
   timeoutMs?: number | null;
@@ -1086,13 +1087,24 @@ async function dispatchAuthenticatedFetch(
     timeoutMs: initTimeoutMs,
     progressTimeoutMs,
     readOnly,
+    requestScope: suppliedScope,
     ...rest
   } = args[0] ?? {};
+  const opts = snapshotRequestOptions(
+    suppliedScope ? { requestScope: suppliedScope } : undefined,
+  );
   const progressTimeout = normalizeTimeout(progressTimeoutMs);
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
   const url = input instanceof Request ? input.url : input.toString();
-  const configured = await credentialResolver?.();
+  const configured = await resolveRequestCredential(url, opts);
+  const assertAuthority = bindRequestAuthority(url, opts, configured);
+  assertAuthority();
+  if (
+    opts?.requestScope &&
+    (!configured || !sameOrigin(url, configured.origin))
+  )
+    throw new StationRequestAuthorityError();
   const timeoutMs = resolveTimeoutMs({
     ...(initTimeoutMs !== undefined ? { timeoutMs: initTimeoutMs } : {}),
     ...(init?.signal ? { signal: init.signal } : {}),
@@ -1192,8 +1204,6 @@ async function dispatchAuthenticatedFetch(
     request !== fetch,
   );
   if (originHeaders) requestInit.headers = originHeaders;
-  const assertAuthority = bindRequestAuthority(url, undefined, configured);
-  assertAuthority();
   const transportInit = nativeTransportInit(
     requestInit,
     undefined,
@@ -1223,7 +1233,7 @@ async function dispatchAuthenticatedFetch(
     { authentication: 'required' },
     assertAuthority,
   );
-  return needsAuthorityGuard(url, undefined, configured)
+  return needsAuthorityGuard(url, opts, configured)
     ? guardResponseAuthority(response, assertAuthority)
     : response;
 }
