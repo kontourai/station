@@ -374,7 +374,11 @@ describe('Task worktree removal races (#4507)', () => {
     const unanswered: GitCommandRunner = {
       run: (args, options) =>
         args.includes('--quiet') && args.includes('--verify')
-          ? Promise.resolve({ stdout: '', stderr: 'fatal', code: 128 })
+          ? // As the real runner: an exit code the caller did not allow
+            // rejects.
+            (options?.allowCodes ?? [0]).includes(128)
+            ? Promise.resolve({ stdout: '', stderr: 'fatal', code: 128 })
+            : Promise.reject(new Error('git rev-parse failed with code 128'))
           : real.run(args, options),
     };
 
