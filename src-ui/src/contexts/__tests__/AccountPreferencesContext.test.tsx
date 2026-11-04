@@ -18,6 +18,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Toggle } from '../../components/Toggle';
+import { useQueryCacheReconnectSync } from '../../hooks/useQueryCacheReconnectSync';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   readModelPickerPreferences,
@@ -49,6 +50,17 @@ vi.mock('@kontourai/station-sdk/client', async (original) => ({
 vi.mock('../ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'https://station.test' }),
   useHostRequestAuthorityScope: () => fixture.scope,
+}));
+vi.mock('@kontourai/station-connect', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-connect')>()),
+  useConnections: () => ({ activeConnection: null }),
+  useConnectionStatus: () => ({
+    status: 'connected',
+    checking: false,
+    reason: null,
+    blocked: false,
+    recheck: vi.fn(),
+  }),
 }));
 vi.mock('../AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
@@ -89,6 +101,11 @@ function Probe() {
     </>
   );
 }
+function ReconnectingSection() {
+  useQueryCacheReconnectSync();
+  return <AccountPreferencesSection />;
+}
+
 function tree(client: QueryClient) {
   return (
     <QueryClientProvider client={client}>
@@ -190,6 +207,60 @@ test('an initial preference read failure explains loading and retries without wr
     );
   } finally {
     view.unmount();
+  }
+});
+
+test('cold-connect recovery keeps the failed account section mounted while its real reconnect read is pending', async () => {
+  const recovered: AccountPreferencesView = {
+    schemaVersion: 1,
+    values: { interactiveApprovalModes: { codex: 'auto' } },
+  };
+  let releaseRead!: (value: AccountPreferencesView) => void;
+  const reconnectRead = new Promise<AccountPreferencesView>((resolve) => {
+    releaseRead = resolve;
+  });
+  fixture.get
+    .mockRejectedValueOnce(new Error('Preferences unavailable'))
+    .mockImplementationOnce(() => reconnectRead);
+  const deviceRecord = localStorage.getItem('station-device-settings-v1');
+  const view = render(
+    <QueryClientProvider client={client()}>
+      <AccountPreferencesProvider>
+        <ReconnectingSection />
+      </AccountPreferencesProvider>
+    </QueryClientProvider>,
+  );
+  try {
+    await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      // Commit the pending read before checking whether its error UI survived.
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Couldn’t load your account preferences.',
+    );
+    expect(
+      screen.getByLabelText('New Codex chats approval mode'),
+    ).toHaveProperty('disabled', true);
+    expect(fixture.get).toHaveBeenCalledTimes(2);
+    expect(fixture.patch).not.toHaveBeenCalled();
+    await act(async () => releaseRead(recovered));
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('New Codex chats approval mode'),
+      ).toHaveProperty('value', 'auto'),
+    );
+    expect(
+      screen.getByLabelText('New Codex chats approval mode'),
+    ).toHaveProperty('disabled', false);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(fixture.get).toHaveBeenCalledTimes(2);
+    expect(fixture.patch).not.toHaveBeenCalled();
+    expect(localStorage.getItem('station-device-settings-v1')).toBe(
+      deviceRecord,
+    );
+  } finally {
+    view.unmount();
+    releaseRead(recovered);
   }
 });
 

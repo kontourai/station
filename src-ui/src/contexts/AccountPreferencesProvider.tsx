@@ -23,6 +23,7 @@ import {
   useRef,
 } from 'react';
 import { StartupScreen } from '../components/StartupScreen';
+import { useRetainedReadFailure } from '../components/state';
 import { applyAccentColor } from '../lib/accent-contrast';
 import { applyAccountPreferencePatch } from '../lib/account-preference-values';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -84,6 +85,7 @@ export function AccountPreferencesProvider({
     refetchOnReconnect: true,
     retry: false,
   });
+  const readFailure = useRetainedReadFailure(query);
   const mutation = useMutation({
     mutationKey: queryKey,
     scope: { id: JSON.stringify(queryKey) },
@@ -266,6 +268,7 @@ export function AccountPreferencesProvider({
   }, []);
   if (
     eligible &&
+    !readFailure &&
     (query.isPending || (query.isFetching && !query.isFetchedAfterMount))
   )
     return <StartupScreen message="Loading your preferences" />;
@@ -274,7 +277,7 @@ export function AccountPreferencesProvider({
       value={{
         status: !eligible
           ? 'device'
-          : query.isError
+          : query.isError || readFailure
             ? 'error'
             : available
               ? 'account'
