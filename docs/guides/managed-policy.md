@@ -139,7 +139,10 @@ Station refuses to start when:
 
 The desktop app shows that the organization's policy cannot be used and does
 not retry; restarting cannot fix it. `station start` prints the same line as
-the last server error. Fix or remove the policy, then start Station again.
+the last server error. Its process supervisor does not yet recognize the
+refusal, so it retries a few times (about 30 seconds) before it gives up
+(#4536).
+Fix or remove the policy, then start Station again.
 
 ## What clients see
 
