@@ -335,18 +335,12 @@ import {
   parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
-import type {
-  EnvironmentRef,
-  ExecutionModelRequest,
-} from '@kontourai/station-contracts/execution-target';
+import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import {
-  SERVER_EVENTS,
-  type TurnDispatchOrigin,
-} from '@kontourai/station-contracts/runtime-events';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import {
   isStationGroup,
@@ -814,7 +808,6 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
@@ -823,10 +816,7 @@ import {
   type TaskQuestionWakePorts,
 } from '../../services/orchestration/task-question-wake.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
-import {
-  inboxTurnDispatchOrigin,
-  ThreadInboxDelivery,
-} from '../../services/orchestration/thread-inbox.js';
+import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
@@ -1078,6 +1068,10 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
+import {
+  inboxPlacementStartPort,
+  type RecordedActorContinuation,
+} from './conversation-start-ports.js';
 import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
   mayAnswerDelegatedRequest,
@@ -6662,21 +6656,7 @@ export function configureRuntimeRoutes(
    * `indeterminate`.
    */
   async function continueAsRecordedActor(
-    input: {
-      conversationId: string;
-      message: string;
-      clientTurnId: string;
-      userId: string;
-      principal?: PrincipalRef;
-      ownerAttribution: StartOwnerAttribution | undefined;
-      clientOrigin: ClientOrigin;
-      ambientContext?: string;
-      model?: ExecutionModelRequest;
-      inputDigest?: string;
-      inboxPlacement?: true;
-      automaticBackground?: true;
-      dispatchOrigin?: TurnDispatchOrigin;
-    },
+    input: RecordedActorContinuation,
     threadId: string,
   ): Promise<SessionStartResult> {
     try {
@@ -6914,31 +6894,11 @@ export function configureRuntimeRoutes(
         },
       ),
       start: stationServerEntry(
-        ({ conversationId, threadId, payload, clientTurnId }) =>
-          continueAsRecordedActor(
-            {
-              conversationId,
-              message: payload.message,
-              automaticBackground: payload.automaticBackground,
-              inputDigest: payload.inputDigest,
-              inboxPlacement: true,
-              dispatchOrigin: inboxTurnDispatchOrigin(
-                payload,
-                eventStore.readProjectTaskRoomExecutionBinding(threadId) !==
-                  undefined,
-              ),
-              clientTurnId,
-              userId: payload.actor.userId,
-              principal: payload.actor.principal,
-              ownerAttribution: payload.actor.ownerAttribution,
-              clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
-              ...(payload.ambientContext
-                ? { ambientContext: payload.ambientContext }
-                : {}),
-              ...(payload.model ? { model: payload.model } : {}),
-            },
-            threadId,
-          ),
+        inboxPlacementStartPort({
+          readProjectTaskRoomExecutionBinding: (sessionId) =>
+            eventStore.readProjectTaskRoomExecutionBinding(sessionId),
+          continueAsRecordedActor,
+        }),
       ),
     });
   }
@@ -14409,8 +14369,7 @@ export function configureDevicePairingHostRoutes(
     if (!currentOperator(c, c.req.raw) && !session)
       return c.json({ error: 'authentication_required' }, 401);
     if (
-      !transaction ||
-      transaction.ceremony !== 'webauthn' ||
+      transaction?.ceremony !== 'webauthn' ||
       (!currentOperator(c, c.req.raw) &&
         transaction.operatorSessionId !== session?.sessionId)
     )
@@ -14612,8 +14571,7 @@ export function configureDevicePairingHostRoutes(
         .find((item) => item.requestId === requestId);
       const account = pairing.accountCandidateForRequest(requestId);
       if (
-        !request ||
-        request.status !== 'pending' ||
+        request?.status !== 'pending' ||
         request.kind !== 'device' ||
         !account ||
         pairing.isRelayEnrollmentRequest(requestId)
@@ -14621,8 +14579,7 @@ export function configureDevicePairingHostRoutes(
         return null;
       const scope = parsePairingScope(request.scope);
       if (
-        !scope ||
-        !scope.includes(PAIRING_SCOPE_ORCHESTRATION_READ) ||
+        !scope?.includes(PAIRING_SCOPE_ORCHESTRATION_READ) ||
         scope.some(isProtectedPairingPromotionScope)
       )
         return null;
