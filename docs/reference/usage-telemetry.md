@@ -120,7 +120,10 @@ translated into tier changes under the same authorization rules.
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
 Off permits no product traffic to that publisher, and Full requires explicit choice
-and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty or
+and the current disclosure receipt. A [managed policy](../guides/managed-policy.md#capability-switches)
+with `limits.telemetry: false` forces Off for every publisher with reason
+`managed`, ahead of every other input, and stops OpenTelemetry export as well.
+`DO_NOT_TRACK` with any value except empty or
 `0` forces Off for every publisher. Saved `telemetryTier` choices precede
 `STATION_TELEMETRY_TIER`, then the legacy product-enabled aliases.
 Distribution/operator policies can lower the default, never raise it to Full;

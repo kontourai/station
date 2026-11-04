@@ -266,3 +266,37 @@ test('missing Station authority sends no status or connection request', () => {
   ).toBeTruthy();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test('#4521: a managed policy explains OTel and a refused connection check in its own words', async () => {
+  const denial =
+    "Acme's policy manages telemetry: it is turned off. Contact your administrator for help.";
+  const status = delivery();
+  status.otel.phase = 'unconfigured';
+  status.otel.endpointConfigured = false;
+  status.otel.managedDenial = denial;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof globalThis.fetch>().mockImplementation(async (_url, init) =>
+      init?.method === 'POST'
+        ? Response.json(
+            {
+              success: false,
+              code: 'managed-policy-capability-disabled',
+              error: denial,
+              retryable: false,
+            },
+            { status: 403 },
+          )
+        : reply(status),
+    ),
+  );
+  mount();
+  await screen.findByText(denial);
+  const [productCheck, otelCheck] = screen.getAllByRole('button', {
+    name: 'Check connection',
+  }) as HTMLButtonElement[];
+  expect(otelCheck?.disabled).toBe(true);
+  fireEvent.click(productCheck!);
+  await waitFor(() => expect(screen.getAllByText(denial)).toHaveLength(2));
+  expect(screen.queryByText('An operator must check this connection.')).toBeNull();
+});

@@ -79,15 +79,7 @@ describe('parseManagedPolicyDocument', () => {
   });
 
   test('refuses every limit key and any managed setting until enforcement lands', () => {
-    for (const key of [
-      'maxApprovalMode',
-      'clients',
-      'engines',
-      'telemetry',
-      'webhookAutomations',
-      'registries',
-      'updates',
-    ]) {
+    for (const key of ['maxApprovalMode', 'clients', 'engines', 'updates']) {
       expect(
         problemsOf({
           schemaVersion: 1,

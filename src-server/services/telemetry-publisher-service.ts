@@ -7,6 +7,7 @@ import type {
   UsageTelemetryEvent,
   UsageTelemetryProperties,
 } from '@kontourai/station-contracts/product-telemetry';
+import { telemetrySendingForbidden } from '@kontourai/station-contracts/product-telemetry';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   liteTelemetryNoticeText,
@@ -348,7 +349,11 @@ export class TelemetryPublisherService {
     publisher: Publisher,
     reason?: TelemetryFeedback['reason'],
   ): Promise<void> {
-    if (this.options.configuration().publishers[publisher].reason === 'DNT')
+    if (
+      telemetrySendingForbidden(
+        this.options.configuration().publishers[publisher],
+      )
+    )
       return;
     let sendReason = false;
     await this.update();
@@ -395,7 +400,9 @@ export class TelemetryPublisherService {
     const publisher = payload.publisher;
     if (
       payload.action !== 'tier-lowered' ||
-      this.options.configuration().publishers[publisher].reason === 'DNT'
+      telemetrySendingForbidden(
+        this.options.configuration().publishers[publisher],
+      )
     )
       return false;
     let allowed = false;
@@ -431,9 +438,11 @@ export class TelemetryPublisherService {
     const resolution = config.publishers[publisher];
     const endpoint = this.endpoint(publisher);
     const epoch = this.epochs[publisher];
+    // A tier-lowered reason may follow a user's own "off"; Do Not Track
+    // and a managed policy's `limits.telemetry: false` (#4521) forbid it too.
     let reason: TelemetryOutboxEntry['reason'] =
       resolution.tier === 'off' &&
-      (!('action' in payload) || resolution.reason === 'DNT')
+      (!('action' in payload) || telemetrySendingForbidden(resolution))
         ? resolution.reason === 'DNT'
           ? 'DNT'
           : 'off'

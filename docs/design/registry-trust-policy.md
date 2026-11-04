@@ -61,6 +61,13 @@ the policy identity and its applied epoch.
 
 ## Acquisition and consent
 
+A [managed policy](../guides/managed-policy.md#capability-switches) can narrow
+acquisition further with `limits.registries`: a registry URL allow list
+(applied in `RegistrySourceManager` and the name-based plugin resolver), a
+signer requirement that turns every registry install into one that needs a key
+from this applied policy (`managed-signature-required`), and switches for the
+default skill registries and ACP registry installs. It adds no trust anchor.
+
 `JsonManifestRegistryProvider.resolvePackage()` obtains source and untrusted
 claim from one fresh catalog response, bypassing its browsing cache. The central
 installer resolves the host provider again before building. Request bodies

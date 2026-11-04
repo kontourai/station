@@ -7,6 +7,11 @@ import type {
   RegistrySource,
 } from '@kontourai/station-contracts/catalog';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
+import {
+  managedCapabilityDenial,
+  managedPolicyRequiresSignedPackages,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type {
   IPluginRegistryProvider,
@@ -24,6 +29,7 @@ import {
 import { readRegistryCatalogInstalledState } from './registry-catalog-installed-state.js';
 import {
   digest,
+  ManagedRegistryRefusal,
   RegistryCatalogRefusal,
   readRegistryCatalogSelection,
   readRegistrySourceConfiguration,
@@ -36,6 +42,7 @@ import {
 } from './registry-source-configuration.js';
 
 export {
+  ManagedRegistryRefusal,
   RegistryCatalogRefusal,
   readRegistryCatalogSelection,
 } from './registry-source-configuration.js';
@@ -48,6 +55,38 @@ type Entry = {
   generation: number;
 };
 type Snapshot = { data: RegistryItem[]; revision: string; checkedAt: string };
+
+/**
+ * #4521: why the managed policy refuses a source, or undefined. Station's
+ * bundled catalog ships with the install and is never refused. A location
+ * outside `limits.registries.allowedUrls` is refused, and with
+ * `unsignedPackages: false` so is every other skill catalog, because a skill
+ * has no signature to verify.
+ */
+export function managedRegistrySourceDenial(
+  source: Pick<RegistrySource, 'kind' | 'origin' | 'location'>,
+): string | undefined {
+  const bundled = source.origin === 'station';
+  if (!registryLocationAllowedByManagedPolicy(source.location, bundled))
+    return managedCapabilityDenial('this marketplace');
+  if (
+    !bundled &&
+    source.kind === 'skills' &&
+    managedPolicyRequiresSignedPackages()
+  )
+    return managedCapabilityDenial(
+      'skills from marketplaces, because they cannot be signed',
+    );
+  return undefined;
+}
+
+/** The entry as the managed policy leaves it: a refused source is disabled. */
+function withManagedPolicy(entry: Entry): Entry {
+  const managedDenial = managedRegistrySourceDenial(entry.source);
+  return managedDenial === undefined
+    ? entry
+    : { ...entry, source: { ...entry.source, enabled: false, managedDenial } };
+}
 
 const managers = new Map<string, RegistrySourceManager>();
 export function registrySourceManager(home: string): RegistrySourceManager {
@@ -116,6 +155,13 @@ export class RegistrySourceManager {
   add(input: unknown): RegistrySource {
     const parsed = sourceInput.parse(input);
     const location = validateRegistrySourceLocation(parsed);
+    const managedDenial = managedRegistrySourceDenial({
+      kind: parsed.adapter === 'manifest' ? 'plugins' : 'skills',
+      origin: 'user',
+      location,
+    });
+    if (managedDenial !== undefined)
+      throw new ManagedRegistryRefusal(managedDenial);
     if (
       this.list().some(
         (source) =>
@@ -145,6 +191,8 @@ export class RegistrySourceManager {
     if (!source) throw new Error('Marketplace not found.');
     if (source.origin === 'plugin')
       throw new Error('Manage this marketplace through its owning plugin.');
+    if (enabled && source.managedDenial !== undefined)
+      throw new ManagedRegistryRefusal(source.managedDenial);
     this.persist({
       ...this.config,
       sources: this.config.sources.map((source) =>
@@ -273,7 +321,9 @@ export class RegistrySourceManager {
         throw new Error('Marketplace provider source identity is ambiguous.');
       seen.add(entry.source.id);
     }
-    return entries;
+    // #4521: every reader (catalog, refresh, resolve, install) sees a
+    // refused source as disabled, so it cannot supply anything.
+    return entries.map(withManagedPolicy);
   }
 
   hasSource(id: string, kind: RegistryCatalogSelection['kind']): boolean {
@@ -466,6 +516,8 @@ export class RegistrySourceManager {
   async refresh(id: string): Promise<RegistrySource> {
     const entry = this.entries().find((entry) => entry.source.id === id);
     if (!entry) throw new Error('Marketplace not found.');
+    if (entry.source.managedDenial !== undefined)
+      throw new ManagedRegistryRefusal(entry.source.managedDenial);
     if (!entry.source.enabled)
       throw new Error('Enable this marketplace before refreshing it.');
     try {
@@ -500,6 +552,8 @@ export class RegistrySourceManager {
       (entry) =>
         entry.source.id === selection.sourceId && entry.kind === selection.kind,
     );
+    if (entry?.source.managedDenial !== undefined)
+      throw new ManagedRegistryRefusal(entry.source.managedDenial);
     if (!entry?.source.enabled)
       throw new RegistryCatalogRefusal(
         'source-unavailable',

@@ -27,6 +27,10 @@ import {
 } from '../../providers/auth/cli-auth.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import {
+  managedCapabilityRefusalBody,
+  managedRegistryLimits,
+} from '../../security/managed-capability-limits.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
@@ -742,6 +746,18 @@ export function createACPRoutes(
 
           const listing =
             entry.source === 'registry' ? entry.publicRegistry : undefined;
+          // #4521: `limits.registries.acpRegistryInstalls: false` refuses an
+          // engine from the public registry; Station's own entries remain.
+          if (
+            entry.source === 'registry' &&
+            managedRegistryLimits()?.acpRegistryInstalls === false
+          )
+            return c.json(
+              managedCapabilityRefusalBody(
+                'installing engines from the ACP registry',
+              ),
+              403,
+            );
           if (entry.source === 'registry') {
             // A public listing names the program and arguments Station will
             // run, so adding one is choosing a command: the same authority,

@@ -314,6 +314,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4521: boots the source Station with every capability switch off and
+  // drives its routes over HTTP; private homes, ephemeral ports.
+  'src-server/__tests__/managed-capability-switches.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
@@ -483,6 +486,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
+  // #4521: runs `station telemetry` as a CLI child against a local server.
+  'packages/cli/src/__tests__/telemetry-managed-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.

@@ -9,6 +9,7 @@ import {
   EXECUTION_ENGINE_CHANGED_CODE,
 } from './execution-target.js';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from './managed-policy.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
@@ -218,6 +219,8 @@ export const PROVIDER_FAILURE_KINDS = {
   client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
+  // #4521: a capability the machine's managed policy turned off.
+  [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

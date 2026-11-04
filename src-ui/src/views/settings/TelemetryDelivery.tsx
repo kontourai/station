@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import type {
   TelemetryConnectionProbeStatus,
   TelemetryRequestFailureCode,
@@ -134,18 +135,17 @@ function DeliveryForAuthority({
       ? failures[product.lastFailure.code]
       : 'The latest delivery attempt failed.',
   }[product.phase];
-  const productError = productCheck.isError
-    ? productCheck.error instanceof StationHttpError &&
-      productCheck.error.status === 403
-      ? 'An operator must check this connection.'
-      : 'Connection check is unavailable.'
-    : null;
-  const otelError = otelCheck.isError
-    ? otelCheck.error instanceof StationHttpError &&
-      otelCheck.error.status === 403
-      ? 'An operator must check this connection.'
-      : 'Connection check is unavailable.'
-    : null;
+  const checkError = (check: typeof productCheck) =>
+    !check.isError
+      ? null
+      : check.error instanceof StationHttpError &&
+          check.error.code === MANAGED_POLICY_CAPABILITY_DISABLED_CODE
+        ? check.error.message
+        : check.error instanceof StationHttpError && check.error.status === 403
+          ? 'An operator must check this connection.'
+          : 'Connection check is unavailable.';
+  const productError = checkError(productCheck);
+  const otelError = checkError(otelCheck);
   return (
     <>
       <PageRow
@@ -186,17 +186,19 @@ function DeliveryForAuthority({
         description="Metrics and traces sent to the operator’s collector."
         status={
           <span>
-            {otel.phase === 'restart-required'
-              ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
-              : otel.phase === 'failed'
-                ? 'Exporter initialization failed.'
-                : !otel.endpointConfigured
-                  ? 'No collector is configured.'
-                  : otel.phase === 'stopped'
-                    ? 'Exporter stopped.'
-                    : otel.identity !== 'ready'
-                      ? 'Waiting for installation identity.'
-                      : 'Exporter initialized; downstream delivery unverified.'}
+            {otel.managedDenial
+              ? otel.managedDenial
+              : otel.phase === 'restart-required'
+                ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
+                : otel.phase === 'failed'
+                  ? 'Exporter initialization failed.'
+                  : !otel.endpointConfigured
+                    ? 'No collector is configured.'
+                    : otel.phase === 'stopped'
+                      ? 'Exporter stopped.'
+                      : otel.identity !== 'ready'
+                        ? 'Waiting for installation identity.'
+                        : 'Exporter initialized; downstream delivery unverified.'}
           </span>
         }
         control={
@@ -204,6 +206,7 @@ function DeliveryForAuthority({
             size="sm"
             variant="ghost"
             disabled={
+              !!otel.managedDenial ||
               !otel.endpointConfigured ||
               otel.phase === 'restart-required' ||
               otelCheck.isPending

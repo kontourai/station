@@ -8,17 +8,20 @@ if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. Settings, limits, configuration profiles and Group Policy
-arrive in later releases (#4517–#4524). This guide grows with them.
+precedence rules. Settings, the other limits, configuration profiles and Group
+Policy arrive in later releases (#4517–#4524). This guide grows with them.
 
 ## What this release supports
 
 The current release supports the policy document, the file source, the
 fail-closed startup check, `station policy check` and `station policy show`,
-and a value-free summary that clients can read. It does **not** yet enforce
-any setting or limit. A policy that contains a setting entry or a limit key is
-refused with "not supported by this version of Station". Station never accepts
-a key it does not yet enforce, so a machine never looks managed when it is not.
+a value-free summary that clients can read, and three
+[capability switches](#capability-switches) in `limits`: `telemetry`,
+`webhookAutomations` and `registries`. It does **not** yet enforce any setting
+or any other limit. A policy that contains a setting entry or another limit
+key is refused with "not supported by this version of Station". Station never
+accepts a key it does not yet enforce, so a machine never looks managed when it
+is not.
 
 A valid policy today names the organization and an optional support link:
 
@@ -36,13 +39,65 @@ A valid policy today names the organization and an optional support link:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Must be empty (`{}`) in this release. |
-| `limits` | no | Must be empty (`{}`) in this release. |
+| `limits` | no | Only the [capability switches](#capability-switches) in this release. |
 
 Station refuses any other key, at any level. An unknown key may be a
 restriction from a newer release, and Station will not run while it cannot
 enforce one.
 
 Do not put credentials in the policy. Every user on the machine can read it.
+
+## Capability switches
+
+Each switch can only turn something off. `false` restricts; any other value,
+`true` included, is refused when Station starts, because a policy can never
+force a capability on. Leave a key out to leave that capability to each user.
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "supportUrl": "https://help.example.com/station",
+  "limits": {
+    "telemetry": false,
+    "webhookAutomations": false,
+    "registries": {
+      "allowedUrls": ["https://plugins.example.com/registry.json"],
+      "unsignedPackages": false,
+      "defaultSkillRegistries": false,
+      "acpRegistryInstalls": false
+    }
+  }
+}
+```
+
+| Key | What `false` (or the list) does |
+| --- | --- |
+| `limits.telemetry` | No usage data and no OpenTelemetry export, whatever `telemetryTier`, `telemetryEnabled`, the telemetry endpoints, the environment variables or Do Not Track say. Station creates no exporter, sends no daily count or feedback, and refuses connection checks and any change that raises a sharing choice. |
+| `limits.webhookAutomations` | `POST /api/webhooks/inbound` refuses every request, a correctly signed one included, before it reads the webhook file. The file and its tokens are kept, and you can still edit or delete them, but nothing in the file (`enabled: true`, a new token) makes them run. |
+| `limits.registries.allowedUrls` | Plugins and skills come only from marketplaces at these `http` or `https` URLs, plus Station's bundled catalog. Every other marketplace, a local folder included, reads as disabled and cannot be added, enabled, refreshed or installed from. URLs compare as parsed addresses, so `https://example.com/r` does not allow `https://example.com/r.evil`. An empty list allows only the bundled catalog. At most 64 URLs. |
+| `limits.registries.unsignedPackages` | A plugin from a registry must carry a signature from a key the machine's own `registryTrust` already trusts. The policy adds no keys: without a trust profile for the registry, the install is refused. Skills cannot be signed, so no skill comes from a marketplace other than the bundled catalog. |
+| `limits.registries.defaultSkillRegistries` | Station's built-in skill registries are not registered, as if `disableDefaultSkillRegistries` were set. |
+| `limits.registries.acpRegistryInstalls` | Engines cannot be added from the public ACP agent registry. Station's own engine entries are unaffected. |
+
+What the switches do not cover:
+
+- Code that is already installed keeps running. A switch stops new
+  acquisition, not existing plugins, skills or engines.
+- Installing a plugin or skill straight from a source (a Git URL or a folder),
+  not through a marketplace, is not a registry acquisition, so
+  `limits.registries` does not govern it.
+- The telemetry settings themselves (`telemetryTier`, the endpoints and their
+  key references) cannot be managed under `settings`. Use `limits.telemetry`
+  to turn telemetry off.
+
+Users see one sentence wherever a switch refuses something, for example
+"Example Corp's policy manages usage sharing: it is turned off. For help, visit
+https://help.example.com/station". Settings shows it instead of the sharing
+choices, beside a refused marketplace and in the OpenTelemetry delivery status;
+the Connections page shows it for webhooks, and `station telemetry status`
+prints it. API refusals answer `403` with code
+`managed-policy-capability-disabled`.
 
 ## Where to install it
 
@@ -118,7 +173,7 @@ listens and writes one line that starts with `STATION_MANAGED_POLICY_INVALID`.
 The line names the file and the reason, for example:
 
 ```text
-STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it does not match the policy schema (limits.telemetry: this limit is not supported by this version of Station). Station will not start until an administrator fixes or removes it.
+STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it does not match the policy schema (limits.engines: this limit is not supported by this version of Station). Station will not start until an administrator fixes or removes it.
 ```
 
 Station refuses to start when:
@@ -149,7 +204,8 @@ Fix or remove the policy, then start Station again.
 Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 `{ "state": "none" }`, or the source, the fingerprint and a summary: the
 organization, the support link, the locked setting paths and the effective
-limits. It never returns a setting value.
+limits, including each capability switch and the registry allow list. It never
+returns a setting value.
 
 ## What a managed policy does not do
 

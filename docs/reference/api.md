@@ -2361,7 +2361,9 @@ defaults or cached success.
 
 `POST /api/usage-telemetry/connection-checks/product` and
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
-Product checks use a separate content-free source/schema probe;
+Under a managed policy with `limits.telemetry: false` both answer `403` with
+code `managed-policy-capability-disabled` and contact nothing; `PUT /config/app`
+refuses a raised sharing tier the same way. Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
 disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.

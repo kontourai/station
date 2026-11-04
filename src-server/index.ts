@@ -12,10 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
-import {
-  type LoadedManagedPolicy,
-  loadInstalledManagedPolicy,
-} from '@kontourai/station-shared/managed-policy';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
@@ -29,6 +26,7 @@ import {
   installCrashHandlers,
   logFatalAndFlush,
 } from './runtime/bootstrap/crash-handlers.js';
+import { bootManagedPolicy } from './runtime/bootstrap/managed-policy-boot.js';
 import {
   installStdoutEpipeGuard,
   writeReadinessHandshake,
@@ -52,6 +50,7 @@ import {
   parkUnderSupervisor,
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
+import { installManagedCapabilityLimits } from './security/managed-capability-limits.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -213,7 +212,8 @@ async function main() {
   // the durable log; neither depends on the policy.
   let managedPolicy: LoadedManagedPolicy | null;
   try {
-    managedPolicy = loadInstalledManagedPolicy();
+    // The same load the OTel bootstrap read before `main()` (#4521).
+    managedPolicy = bootManagedPolicy();
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
@@ -229,6 +229,9 @@ async function main() {
     );
     process.exit(1);
   }
+  // #4521: the capability switches every seam reads, installed before
+  // anything they govern is built.
+  installManagedCapabilityLimits(managedPolicy);
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
       source: managedPolicy.source,

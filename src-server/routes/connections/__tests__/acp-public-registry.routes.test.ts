@@ -5,11 +5,17 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BuiltinACPConnectionRegistryProvider } from '../../../providers/llm/defaults.js';
+import { installManagedCapabilityLimits } from '../../../security/managed-capability-limits.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { PublicAgentRegistrySource } from '../../../services/acp/public-agent-registry.js';
 
@@ -443,5 +449,47 @@ describe('public agent registry in the engine catalogue', () => {
       (candidate) => candidate.id === 'stakpak',
     );
     expect(entry?.publicRegistry).not.toHaveProperty('update');
+  });
+});
+
+describe('#4521: limits.registries.acpRegistryInstalls false', () => {
+  beforeEach(() => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: new BuiltinACPConnectionRegistryProvider(
+          () => false,
+          () => false,
+        ),
+      },
+    ];
+  });
+  afterEach(() => installManagedCapabilityLimits(null));
+
+  test('refuses a confirmed public-registry install and saves nothing', async () => {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { registries: { acpRegistryInstalls: false } },
+    });
+    if (!parsed.ok) throw new Error('fixture policy refused');
+    installManagedCapabilityLimits({
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+    const { app, store, ctx, saveACPConfig } = await fixture();
+
+    const response = await install(app, 'stakpak', STAKPAK_CONFIRM);
+
+    expect(response.status).toBe(403);
+    expect(await json(response)).toMatchObject({
+      code: MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+      error: expect.stringContaining(
+        "Acme's policy manages installing engines from the ACP registry",
+      ),
+    });
+    expect(store.connections).toEqual([]);
+    expect(saveACPConfig).not.toHaveBeenCalled();
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
   });
 });

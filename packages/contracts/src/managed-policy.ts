@@ -12,7 +12,9 @@
  * may be a restriction from a newer release, and a key it knows but does not
  * yet enforce (any `settings` entry and every `limits` key, until each
  * enforcement slice lands) would make the machine look managed when it is
- * not. Both are rejected with a problem that names the key.
+ * not. Both are rejected with a problem that names the key. The capability
+ * switches (`telemetry`, `webhookAutomations`, `registries`; #4521) are
+ * enforced.
  */
 import { boundaryText, isRecord } from './contract-validation.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
@@ -33,11 +35,17 @@ export interface ManagedPolicySettingEntry {
 }
 
 /**
- * Limits sit outside settings. No limit key is enforced by this build, so the
- * accepted shape is empty; each enforcement slice adds its key here and to
- * {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
+ * Limits sit outside settings. Each enforcement slice adds its key here and
+ * to {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
  */
-export type ManagedPolicyLimits = Record<string, never>;
+export interface ManagedPolicyLimits {
+  /** #4521: `false` turns off usage data and OTel export. */
+  telemetry?: false;
+  /** #4521: `false` stops inbound webhook automations from running. */
+  webhookAutomations?: false;
+  /** #4521: narrows where plugins and skills may be acquired from. */
+  registries?: ManagedPolicyRegistryLimits;
+}
 
 export interface ManagedPolicyDocument {
   schemaVersion: typeof MANAGED_POLICY_SCHEMA_VERSION;
@@ -50,8 +58,43 @@ export interface ManagedPolicyDocument {
   limits?: ManagedPolicyLimits;
 }
 
-/** Limit keys this build enforces. Empty until the first limit slice lands. */
-export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [];
+/**
+ * #4521: the capability switches. Each one can only take something away, so a
+ * policy can turn a capability off but never force it on.
+ */
+export const MANAGED_POLICY_CAPABILITY_LIMIT_KEYS = [
+  'telemetry',
+  'webhookAutomations',
+  'registries',
+] as const;
+
+/**
+ * #4521: `limits.registries`. Each key narrows the host's own registry trust
+ * (`registryTrust`, the configured marketplaces); none adds a trust anchor.
+ */
+export interface ManagedPolicyRegistryLimits {
+  /**
+   * The only registry locations plugins and skills may be acquired from,
+   * as http(s) URLs. Station's bundled catalog is always allowed; any other
+   * catalog, a local folder included, must be listed. Empty allows none.
+   */
+  allowedUrls?: string[];
+  /**
+   * `false`: a plugin from a registry must carry a signature from a key the
+   * host's `registryTrust` already trusts, and skills (which cannot be
+   * signed) are not acquired from registries.
+   */
+  unsignedPackages?: false;
+  /** `false`: Station's built-in skill registries are not registered. */
+  defaultSkillRegistries?: false;
+  /** `false`: engines cannot be installed from the public ACP registry. */
+  acpRegistryInstalls?: false;
+}
+
+/** Limit keys this build enforces. */
+export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
+];
 
 /**
  * Limit keys the managed-policy plan reserves for later releases. A reserved
@@ -62,9 +105,6 @@ export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'maxApprovalMode',
   'clients',
   'engines',
-  'telemetry',
-  'webhookAutomations',
-  'registries',
   'updates',
 ];
 
@@ -205,7 +245,7 @@ export function duplicateJsonMemberPath(text: string): string | null {
     }
     // A value ended: close finished containers, then move to the next entry.
     for (;;) {
-      const frame = stack.at(-1);
+      const frame = stack[stack.length - 1];
       skipSpace();
       if (!frame) {
         if (i !== text.length) fail();
@@ -314,6 +354,7 @@ export function parseManagedPolicyDocument(
       () => 'managed settings are not supported by this version of Station',
     ),
     ...reservedMapProblems('limits', limits, limitProblem),
+    ...capabilityLimitProblems(limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -323,7 +364,7 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined) document.limits = {};
+  if (limits !== undefined) document.limits = { ...capabilityLimitsOf(limits) };
   return { ok: true, document };
 }
 
@@ -391,7 +432,7 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: {},
+    limits: { ...capabilityLimitsOf(document.limits) },
   };
 }
 
@@ -445,7 +486,8 @@ export function parseManagedPolicyStatus(
     (summary.supportUrl !== null && typeof summary.supportUrl !== 'string') ||
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
-    !isRecord(summary.limits)
+    !isRecord(summary.limits) ||
+    capabilityLimitProblems(summary.limits).length > 0
   ) {
     return null;
   }
@@ -457,7 +499,7 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: {},
+      limits: { ...capabilityLimitsOf(summary.limits) },
     },
   };
 }
@@ -480,4 +522,210 @@ export function managedPolicyDenial(
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
   return `${summary.organization}'s policy manages ${subject}.${help}`;
+}
+
+// ---------------------------------------------------------------------------
+// #4521: capability switches (`limits.telemetry`, `limits.webhookAutomations`,
+// `limits.registries`). A switch can only turn a capability off: `false`
+// restricts and any other value is refused, so a policy can never force
+// telemetry, webhooks or a registry on.
+// ---------------------------------------------------------------------------
+
+/**
+ * The refusal code every surface uses for a capability the managed policy
+ * turned off. Clients key on it to show the managed message instead of
+ * offering a retry.
+ */
+export const MANAGED_POLICY_CAPABILITY_DISABLED_CODE =
+  'managed-policy-capability-disabled' as const;
+
+const REGISTRY_LIMIT_KEYS = [
+  'allowedUrls',
+  'unsignedPackages',
+  'defaultSkillRegistries',
+  'acpRegistryInstalls',
+] as const;
+const REGISTRY_ALLOWED_URLS_MAX = 64;
+const REGISTRY_URL_MAX_CHARS = 2048;
+
+/** `record[key]` when it is the record's own member (no `Object.hasOwn`: ES2020). */
+function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
+}
+
+function offOnlyProblem(value: unknown, subject: string): string | null {
+  if (value === undefined || value === false) return null;
+  return `must be false; a policy can turn ${subject} off but never on, so omit the key to leave it to each user`;
+}
+
+/**
+ * A registry location as the allow list compares it: an http(s) URL with no
+ * credentials, query or fragment, without a trailing slash. `github:o/r`
+ * (the key Station gives a GitHub skill catalog) reads as
+ * `https://github.com/o/r`. Anything else, such as a local path, is null.
+ */
+export function normalizeManagedRegistryUrl(value: string): string | null {
+  const github = /^github:([^/\s]+\/[^/\s]+)$/.exec(value);
+  let url: URL;
+  try {
+    url = new URL(github ? `https://github.com/${github[1]}` : value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  const path = url.pathname.replace(/\/+$/, '');
+  return `${url.protocol}//${url.host}${path}`;
+}
+
+function allowedUrlsProblems(value: unknown): ManagedPolicyProblem[] {
+  const path = 'limits.registries.allowedUrls';
+  if (!Array.isArray(value))
+    return [{ path, message: 'must be an array of http or https URLs' }];
+  if (value.length > REGISTRY_ALLOWED_URLS_MAX)
+    return [
+      {
+        path,
+        message: `must list at most ${REGISTRY_ALLOWED_URLS_MAX} URLs`,
+      },
+    ];
+  const seen = new Set<string>();
+  const problems: ManagedPolicyProblem[] = [];
+  value.forEach((entry, index) => {
+    const at = `${path}[${index}]`;
+    if (
+      typeof entry !== 'string' ||
+      entry.length === 0 ||
+      entry.length > REGISTRY_URL_MAX_CHARS ||
+      entry.startsWith('github:')
+    ) {
+      problems.push({
+        path: at,
+        message: `must be an http or https URL of at most ${REGISTRY_URL_MAX_CHARS} characters`,
+      });
+      return;
+    }
+    const normalized = normalizeManagedRegistryUrl(entry);
+    if (normalized === null) {
+      problems.push({
+        path: at,
+        message:
+          'must be an http or https URL without a user name, password, query or fragment',
+      });
+      return;
+    }
+    if (seen.has(normalized))
+      problems.push({ path: at, message: 'repeats an earlier URL' });
+    seen.add(normalized);
+  });
+  return problems;
+}
+
+function registryLimitProblems(value: unknown): ManagedPolicyProblem[] {
+  if (value === undefined) return [];
+  if (!isRecord(value))
+    return [{ path: 'limits.registries', message: 'must be an object' }];
+  const problems: ManagedPolicyProblem[] = Reflect.ownKeys(value)
+    .filter(
+      (key) =>
+        typeof key !== 'string' ||
+        !(REGISTRY_LIMIT_KEYS as readonly string[]).includes(key),
+    )
+    .map((key) => ({
+      path: describeKey('limits.registries', String(key)),
+      message:
+        'unknown key; this version of Station refuses keys it cannot enforce',
+    }));
+  const allowedUrls = ownLimitValue(value, 'allowedUrls');
+  if (allowedUrls !== undefined)
+    problems.push(...allowedUrlsProblems(allowedUrls));
+  const switches: Array<[string, string]> = [
+    ['unsignedPackages', 'unsigned packages'],
+    ['defaultSkillRegistries', 'the default skill registries'],
+    ['acpRegistryInstalls', 'ACP registry installs'],
+  ];
+  for (const [key, subject] of switches) {
+    const message = offOnlyProblem(ownLimitValue(value, key), subject);
+    if (message) problems.push({ path: `limits.registries.${key}`, message });
+  }
+  return problems;
+}
+
+/** Problems with the capability switches in `limits`; other keys are not checked. */
+export function capabilityLimitProblems(
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(limits)) return [];
+  const problems: ManagedPolicyProblem[] = [];
+  for (const [key, subject] of [
+    ['telemetry', 'telemetry'],
+    ['webhookAutomations', 'webhook automations'],
+  ] as const) {
+    const message = offOnlyProblem(ownLimitValue(limits, key), subject);
+    if (message) problems.push({ path: `limits.${key}`, message });
+  }
+  problems.push(...registryLimitProblems(ownLimitValue(limits, 'registries')));
+  return problems;
+}
+
+/**
+ * The capability switches of a `limits` value that passed
+ * {@link capabilityLimitProblems}, copied. URLs are kept as written.
+ */
+export function capabilityLimitsOf(limits: unknown): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  const result: ManagedPolicyLimits = {};
+  if (ownLimitValue(limits, 'telemetry') === false) result.telemetry = false;
+  if (ownLimitValue(limits, 'webhookAutomations') === false)
+    result.webhookAutomations = false;
+  const registries = ownLimitValue(limits, 'registries');
+  if (isRecord(registries)) {
+    const copy: ManagedPolicyRegistryLimits = {};
+    const allowedUrls = ownLimitValue(registries, 'allowedUrls');
+    if (Array.isArray(allowedUrls))
+      copy.allowedUrls = allowedUrls.filter(
+        (url): url is string => typeof url === 'string',
+      );
+    if (ownLimitValue(registries, 'unsignedPackages') === false)
+      copy.unsignedPackages = false;
+    if (ownLimitValue(registries, 'defaultSkillRegistries') === false)
+      copy.defaultSkillRegistries = false;
+    if (ownLimitValue(registries, 'acpRegistryInstalls') === false)
+      copy.acpRegistryInstalls = false;
+    result.registries = copy;
+  }
+  return result;
+}
+
+/** Whether the limits leave telemetry to each user (no `telemetry: false`). */
+export function managedTelemetryAllowed(
+  limits: ManagedPolicyLimits | undefined,
+): boolean {
+  return limits?.telemetry !== false;
+}
+
+/** Whether the limits leave inbound webhook automations running. */
+export function managedWebhookAutomationsAllowed(
+  limits: ManagedPolicyLimits | undefined,
+): boolean {
+  return limits?.webhookAutomations !== false;
+}
+
+/**
+ * Whether a registry at `location` may supply plugins or skills. `bundled`
+ * is Station's own catalog, shipped in the install, which the allow list
+ * never removes. Without `allowedUrls` every location is allowed; with it, a
+ * location must normalize to a listed URL, so a local folder is refused.
+ */
+export function managedRegistryLocationAllowed(
+  registries: ManagedPolicyRegistryLimits | undefined,
+  location: string | undefined,
+  bundled = false,
+): boolean {
+  const allowed = registries?.allowedUrls;
+  if (!allowed || bundled) return true;
+  const normalized =
+    location === undefined ? null : normalizeManagedRegistryUrl(location);
+  if (normalized === null) return false;
+  return allowed.some((url) => normalizeManagedRegistryUrl(url) === normalized);
 }

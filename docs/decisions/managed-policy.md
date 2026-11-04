@@ -7,6 +7,8 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4515
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4516
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4521
 ---
 
 # Managed policy
@@ -69,9 +71,10 @@ looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
 Version 1 reserves `settings` (managed defaults and locks, #4517) and `limits`
-(#4518–#4522). This build accepts `settings` and `limits` only as empty
-objects. Any setting entry or limit key gets a "not supported by this version
-of Station" error. If Station accepted a key before it enforced that key, the
+(#4518–#4522). This build accepts `settings` only as an empty object, and in
+`limits` only the [capability switches](#capability-switches) (#4521). Any
+setting entry or other limit key gets a "not supported by this version of
+Station" error. If Station accepted a key before it enforced that key, the
 administrator would see the machine as managed while nothing was managed. Each
 enforcement slice adds its key to the parser in the same change that enforces
 it.
@@ -172,8 +175,74 @@ cover each branch. The startup tests in
 `src-server/__tests__/managed-policy-startup.process.test.ts` use the override
 to run the real server entrypoint.
 
+## Capability switches
+
+`limits.telemetry`, `limits.webhookAutomations` and `limits.registries` (#4521)
+turn a capability off. The parser accepts only `false` for each switch, and
+refuses `true` with a problem that says so, because a policy can never force a
+capability on. Each enforcement seam reads the switches through
+`src-server/security/managed-capability-limits.ts`, which `main()` installs
+from the loaded policy before the runtime is built, and refuses with one
+sentence (`managedPolicyDenial`) and the error code
+`managed-policy-capability-disabled` (`permission_denied`).
+
+**Telemetry is off at the publisher, not at the setting.** The usage resolver
+(`resolveTelemetryConfiguration`) gives every publisher tier `off` with reason
+`managed`, which outranks the saved choice, the environment and Do Not Track.
+Like Do Not Track, it forbids the tier-lowered feedback that a user's own
+"off" still allows. The connection checks and any `PUT /config/app` that
+raises a sharing choice are refused; a choice that keeps or lowers is saved,
+because it changes nothing that is sent. The OpenTelemetry bootstrap runs when
+`telemetry.ts` is imported, before `main()`, so it reads the policy itself.
+Both read one memoized load (`managed-policy-boot.ts`), so the bootstrap and
+the startup check cannot see different policies. When that load fails, the
+bootstrap registers nothing and `main()` refuses to start.
+
+**Managed telemetry settings stay refused.** #4517 refuses `telemetryTier`,
+the telemetry endpoints and their key references in `settings`. Their readers
+(the OTel bootstrap, the publisher resolver) do not see the managed settings
+overlay, and a managed `full` tier or endpoint would force telemetry on, which
+this record forbids. `limits.telemetry: false` covers the only safe direction.
+
+**Webhook automations are refused before anything is read.** The inbound
+route answers `403` before it reads the configuration file, the body or the
+limiter, so no state in the file can re-enable it. Station never writes that
+file, so the tokens are kept and remain the operator's to edit or delete. The
+webhook turn starter refuses too, for any other caller, and the integration
+status reports the policy (state `unsupported`, an existing state, so older
+clients still parse it) instead of the file's own switch. Automations with a
+`github-webhook` source have no inbound receiver in this build, so there is
+nothing for the switch to stop there yet.
+
+**Registry limits only narrow the host's own trust.**
+
+- `allowedUrls` is checked where every marketplace is listed
+  (`RegistrySourceManager`), so a refused source reads as disabled to every
+  reader (catalog, refresh, install) and cannot be added or enabled. The
+  name-based plugin resolver, which reads registry providers directly, applies
+  the same check.
+- Locations compare as normalized URLs (`github:o/r` reads as
+  `https://github.com/o/r`), never as substrings.
+- Station's bundled catalog ships with the install and is always allowed. A
+  local folder is not a listed URL, so it is refused: a local catalog can
+  still name remote package sources.
+- `unsignedPackages: false` requires a signer from the host's own
+  `registryTrust` on every registry plugin install. The policy adds no key, so
+  without a trust profile for the registry there is no signer and the install
+  is refused. A skill cannot carry a signature, so every skill marketplace but
+  the bundled one is refused.
+- `defaultSkillRegistries: false` skips the built-in skill registries at
+  startup, alongside `disableDefaultSkillRegistries`.
+- `acpRegistryInstalls: false` refuses `POST /acp/registry/:id/install` for
+  public-registry entries; Station's own engine entries remain.
+
+**Not covered.** Already installed code keeps running, and retained recovery
+of an installed plugin is not a new acquisition. Installing a plugin or skill
+straight from a source rather than through a registry is not governed by
+`limits.registries`; a source allow list would be a separate limit.
+
 ## Status of later slices
 
-Settings, limits, the macOS profile, the Windows registry, and
+Settings, the remaining limits, the macOS profile, the Windows registry, and
 `station policy templates` are tracked by #4517–#4524. Until each one lands, its
 keys are refused, as described above.

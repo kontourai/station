@@ -51,6 +51,10 @@ import {
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
 import {
+  managedCapabilityRefusalBody,
+  telemetryAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
+import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -93,6 +97,9 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from './configuration-activation.js';
+
+/** #4521: a telemetry raise refused because the managed policy turned it off. */
+const MANAGED_TELEMETRY_OFF = 'MANAGED_TELEMETRY_OFF';
 
 /**
  * Legacy-file projection only. New application authority is private SQLite.
@@ -918,6 +925,10 @@ export function createConfigRoutes(
               if (rank[after] < rank[before]) lowerings.push(key);
               if (rank[after] > rank[before]) raisesTelemetry = true;
             }
+            // #4521: the managed policy turned telemetry off. A raise could
+            // never take effect, so it is refused rather than stored.
+            if (raisesTelemetry && !telemetryAllowedByManagedPolicy())
+              throw new Error(MANAGED_TELEMETRY_OFF);
             if (
               requestMayBeAnAgent(c.req.raw) ||
               (raisesTelemetry && !mayRaiseTelemetry)
@@ -1026,6 +1037,10 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof Error && error.message === MANAGED_TELEMETRY_OFF) {
+        logRefusal('managed_telemetry_off');
+        return c.json(managedCapabilityRefusalBody('usage sharing'), 403);
+      }
       if (
         error instanceof Error &&
         error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'

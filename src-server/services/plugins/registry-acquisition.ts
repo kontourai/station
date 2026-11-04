@@ -45,6 +45,9 @@ const REFUSALS = {
     'Registry verification is unavailable for this mutation path. Retained data has not been migrated.',
   'continuity-change':
     'Registry trust continuity changed. Retained installation data requires reviewed migration.',
+  // #4521: `limits.registries.unsignedPackages: false`.
+  'managed-signature-required':
+    "Your organization's managed policy requires a registry package signed by a key this Station already trusts.",
 } as const;
 export type RegistryAcquisitionRefusalReason = keyof typeof REFUSALS;
 export class RegistryAcquisitionRefused extends Error {

@@ -178,10 +178,10 @@ describe('managed policy at real server startup', () => {
       body: JSON.stringify({
         schemaVersion: 1,
         organization: 'Acme',
-        limits: { telemetry: false },
+        limits: { engines: false },
       }),
       reason:
-        'limits.telemetry: this limit is not supported by this version of Station',
+        'limits.engines: this limit is not supported by this version of Station',
     },
     {
       name: 'a schema mismatch (organization is not a string)',

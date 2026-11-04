@@ -74,6 +74,11 @@ import {
 import { assertPluginBundleAssetsContained } from '../../routes/plugins/plugin-bundles.js';
 import { loadPluginProviders } from '../../routes/plugins/plugin-loader.js';
 import { errorMessage } from '../../routes/schemas/schemas.js';
+import {
+  managedCapabilityDenial,
+  managedPolicyRequiresSignedPackages,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -327,7 +332,19 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
     fresh?: boolean;
   }> = [];
 
+  // #4521: a provider outside `limits.registries.allowedUrls` supplies
+  // nothing; the catalog path refuses the same sources in the manager.
+  let managedDenial: string | undefined;
   for (const [providerIndex, entry] of entries.entries()) {
+    if (
+      !registryLocationAllowedByManagedPolicy(
+        entry.provider.registryKey,
+        entry.source === 'Bundled examples',
+      )
+    ) {
+      managedDenial ??= managedCapabilityDenial('this marketplace');
+      continue;
+    }
     if (entry.provider.resolvePackage) {
       const resolved = await entry.provider.resolvePackage(id);
       if (resolved)
@@ -407,6 +424,7 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
 
   const [providerMatch] = uniqueProviderMatches.values();
   if (!providerMatch) {
+    if (managedDenial !== undefined) throw new Error(managedDenial);
     throw new Error(`No plugin registry provider could install ${id}`);
   }
   return providerMatch;
@@ -5318,6 +5336,16 @@ export async function capturePluginRegistryAcquisition(
         previous: previous,
       })
     : undefined;
+  // #4521: a managed `unsignedPackages: false` turns every registry install
+  // into one that needs a signature from a key the host's own
+  // `registryTrust` lists. It adds no key: with no trust policy, or none for
+  // this registry, there is no signer and the install is refused.
+  if (
+    managedPolicyRequiresSignedPackages() &&
+    (registryId !== undefined || registryKey !== undefined) &&
+    !registryAcquisition?.signer
+  )
+    throw new RegistryAcquisitionRefused('managed-signature-required');
   return { policyAdmission, registryAcquisition };
 }
 

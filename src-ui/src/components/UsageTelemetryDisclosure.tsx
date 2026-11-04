@@ -494,7 +494,12 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
   const dismissalRevision = query.data?.publishers
     ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
+  // #4521: a managed policy turned telemetry off; there is nothing to decide.
+  const managedOff = Object.values(status.data?.publishers ?? {}).some(
+    (state) => state?.reason === 'managed',
+  );
   const dismissed =
+    managedOff ||
     inactiveWithoutEndpoint ||
     (pageDismissed !== undefined && pageDismissed === dismissalRevision) ||
     isSnoozedFor(dismissalRevision) ||

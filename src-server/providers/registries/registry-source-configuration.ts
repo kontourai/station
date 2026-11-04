@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type { RegistryCatalogSelection } from '@kontourai/station-contracts/catalog';
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import { readBoundedRegularFileSync } from '@kontourai/station-shared/regular-file';
 import { z } from 'zod';
 
@@ -90,6 +91,20 @@ export class RegistryCatalogRefusal extends Error {
   ) {
     super(message);
     this.name = 'RegistryCatalogRefusal';
+  }
+}
+
+/**
+ * #4521: the managed policy's `limits.registries` refuses the source. A
+ * `source-forbidden` refusal, so every existing handler answers 403, whose
+ * message is the managed denial sentence clients show.
+ */
+export class ManagedRegistryRefusal extends RegistryCatalogRefusal {
+  readonly managedCode = MANAGED_POLICY_CAPABILITY_DISABLED_CODE;
+
+  constructor(message: string) {
+    super('source-forbidden', message);
+    this.name = 'ManagedRegistryRefusal';
   }
 }
 

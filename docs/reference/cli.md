@@ -816,7 +816,9 @@ Status prints each destination's plain sharing label with its `off`, `lite` or
 explanations. Kontour Detailed saving requires its own current acknowledgement when its build
 destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
 prints the status object. Full remains Lite until the current disclosure has
-been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+been acknowledged. DNT forces Off. A managed policy with `limits.telemetry: false`
+forces Off too: status prints the policy's sentence beside each destination,
+and `set` to a higher tier fails with it. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.

@@ -34,6 +34,7 @@ import {
   getIntegrationRegistryProvider,
 } from '../../providers/registries/registry.js';
 import {
+  ManagedRegistryRefusal,
   RegistryCatalogRefusal,
   readRegistryCatalogSelection,
   registrySourceManager,
@@ -132,6 +133,20 @@ const CATALOG_REFUSAL_MESSAGES: Record<RegistryCatalogRefusal['code'], string> =
     'source-forbidden': 'Selected marketplace is not available to this caller.',
   };
 
+/**
+ * A catalog refusal's fixed outward text, except a managed policy refusal
+ * (#4521), which carries the policy's own sentence and the managed code.
+ */
+function catalogRefusalBody(error: RegistryCatalogRefusal) {
+  return error instanceof ManagedRegistryRefusal
+    ? { success: false, code: error.managedCode, message: error.message }
+    : {
+        success: false,
+        code: error.code,
+        message: CATALOG_REFUSAL_MESSAGES[error.code],
+      };
+}
+
 /** Remove display-only bracket qualifiers without a lazy wildcard regex.
  * Integration manifests are local project input, so this must make one pass
  * even when a malformed name contains many unclosed `[` characters. */
@@ -215,7 +230,16 @@ export function createRegistryRoutes(
           { success: true, data: sources.add(await c.req.json()) },
           201,
         );
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.message,
+            },
+            403,
+          );
         return c.json(
           {
             success: false,
@@ -241,7 +265,16 @@ export function createRegistryRoutes(
           success: true,
           data: sources.setEnabled(param(c, 'id'), body.enabled),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.message,
+            },
+            403,
+          );
         return c.json(
           {
             success: false,
@@ -261,7 +294,16 @@ export function createRegistryRoutes(
           success: true,
           data: await sources.refresh(param(c, 'id')),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.message,
+            },
+            403,
+          );
         return c.json(
           { success: false, error: 'Marketplace is unavailable or disabled.' },
           409,
@@ -994,11 +1036,7 @@ export function createRegistryRoutes(
     } catch (error) {
       if (error instanceof RegistryCatalogRefusal)
         return c.json(
-          {
-            success: false,
-            code: error.code,
-            message: CATALOG_REFUSAL_MESSAGES[error.code],
-          },
+          catalogRefusalBody(error),
           error.code === 'source-forbidden' ? 403 : 409,
         );
       if (!(error instanceof UnsupportedRegistrySkillFormatError))
@@ -1116,14 +1154,7 @@ export function createRegistryRoutes(
         error instanceof RegistryCatalogRefusal &&
         error.code === 'source-forbidden'
       )
-        return c.json(
-          {
-            success: false,
-            code: error.code,
-            message: CATALOG_REFUSAL_MESSAGES[error.code],
-          },
-          403,
-        );
+        return c.json(catalogRefusalBody(error), 403);
       return c.json(
         {
           success: false,

@@ -7,6 +7,10 @@ import { parseTelemetryFeedback } from '@kontourai/station-shared/product-teleme
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import {
+  managedCapabilityRefusalBody,
+  telemetryAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
@@ -203,6 +207,10 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_transport_invalid' } },
         400,
       );
+    // #4521: a connection check contacts the destination; with telemetry
+    // turned off by the managed policy, nothing is contacted.
+    if (!telemetryAllowedByManagedPolicy())
+      return c.json(managedCapabilityRefusalBody('telemetry'), 403);
     const service = resolve();
     if (!service)
       return c.json(
