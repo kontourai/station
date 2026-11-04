@@ -5,12 +5,14 @@
  */
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
+import { redactDeep } from '@kontourai/station-shared/redaction';
 import { describe, expect, test } from 'vitest';
 import {
   assertManagedAdoptedListenersLoopback,
   assertNoManagedRelayConnector,
   assertNoManagedTailscaleServeExposure,
   isLiteralLoopbackAddress,
+  managedSuspensionLogContext,
   resolveManagedListenHost,
 } from '../managed-network-exposure.js';
 
@@ -117,5 +119,22 @@ describe('the other startup gates', () => {
     await assertNoManagedTailscaleServeExposure(remote, [43144], serving);
     await assertNoManagedTailscaleServeExposure(null, [43144], serving);
     expect(asked).toEqual([]);
+  });
+});
+
+describe('the startup suspension log', () => {
+  test('every count survives the logger redaction', () => {
+    // Round 2, item 9: `suspendedPersonalTokens` was logged as [REDACTED].
+    const context = managedSuspensionLogContext('Acme', {
+      devices: 2,
+      relayAliases: 3,
+      personalTokens: 4,
+    });
+    expect(redactDeep(context)).toEqual({
+      organization: 'Acme',
+      suspendedDevices: 2,
+      suspendedRelayAliases: 3,
+      suspendedPersonalAccessTokenCount: 4,
+    });
   });
 });

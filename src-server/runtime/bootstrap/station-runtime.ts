@@ -172,6 +172,7 @@ import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenan
 import {
   createManagedListenerAdmission,
   type ManagedListenerAdmission,
+  managedSuspensionLogContext,
 } from '../../security/managed-network-exposure.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
@@ -4949,12 +4950,10 @@ export class StationRuntime {
       this.environmentSecurityService.devicePairing.managedSuspensionInventory();
     this.logger.info(
       'Managed policy allows no remote clients; earlier remote credentials are suspended, not revoked',
-      {
-        organization: this.managedPolicy.summary.organization,
-        suspendedDevices: inventory.devices,
-        suspendedRelayAliases: inventory.relayAliases,
-        suspendedPersonalTokens: inventory.personalTokens,
-      },
+      managedSuspensionLogContext(
+        this.managedPolicy.summary.organization,
+        inventory,
+      ),
     );
   }
 

@@ -34,7 +34,7 @@ import {
  * `STATION_MANAGED_POLICY_TEST_FILE`, which itself works only on a machine
  * with no installed policy, so it cannot weaken an administrator's check.
  */
-export const MANAGED_POLICY_TEST_TAILSCALE_CLI_ENV =
+const MANAGED_POLICY_TEST_TAILSCALE_CLI_ENV =
   'STATION_MANAGED_POLICY_TEST_TAILSCALE_CLI';
 
 /** The Tailscale command the startup check uses for `policy`. */
@@ -47,8 +47,26 @@ export function managedTailscaleCommand(
   return createTailscaleCommand([override]);
 }
 
+/**
+ * The startup suspension log's context. The logger redacts keys whose words
+ * name a credential (`token`, `credentials`, ...), so the token count uses
+ * the `...TokenCount` form the redaction rule treats as metadata; a key such
+ * as `suspendedPersonalTokens` would log `[REDACTED]` (#4519 round 2).
+ */
+export function managedSuspensionLogContext(
+  organization: string,
+  inventory: { devices: number; relayAliases: number; personalTokens: number },
+): Record<string, unknown> {
+  return {
+    organization,
+    suspendedDevices: inventory.devices,
+    suspendedRelayAliases: inventory.relayAliases,
+    suspendedPersonalAccessTokenCount: inventory.personalTokens,
+  };
+}
+
 /** The host Station binds when the limit applies and none is configured. */
-export const MANAGED_LOOPBACK_HOST = '127.0.0.1';
+const MANAGED_LOOPBACK_HOST = '127.0.0.1';
 
 /**
  * A literal loopback address: `127.0.0.0/8` or `::1` (bracketed or not).
