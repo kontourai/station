@@ -2233,6 +2233,33 @@ with no tool row, taking its outcome from `request.resolved`. This boundary
 does not redact engine history or establish engine acknowledgement.
 
 
+### Turn dispatch origin
+
+Each `turn.started` a send produces records who caused the turn
+(`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
+`automation` or `unknown`. Station classifies it when it admits the
+`sendTurn`, never from a request body or an engine. A server caller passes
+its own classification in the dispatch's internal options (`dispatchOrigin`):
+the delegation start sends `delegation`, and the conversation inbox's
+placement uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
+(an Automation's entry is `automation`, a person's `interactive`, Station's
+own entry into a Session whose room execution binding names a Task
+`task-dispatch`). Without one, `classifyTurnDispatchOrigin` in the
+[orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
+reads a person's client (operator or paired device) as `interactive` and
+anything else as `unknown`. [`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
+stamps the value. A classified origin holds an early start back until the
+send is accepted, as a client origin does, and an engine-supplied value is
+dropped. Readers use `turnDispatchOrigin` from
+`@kontourai/station-contracts/runtime-events`, which reads a missing or
+unrecognised value, including every event persisted before the field, as
+`unknown`. Steers and engine-opened turns carry none. Nothing acts on the
+field yet. Evidence: `turn-dispatch-origin.test.ts` (real service and event
+store, early engine start), `client-origin-propagation.test.ts`,
+`task-dispatch-agent-binding.routes.test.ts` (a real dispatched Task Session
+through `continueExecutionTargetMessage`) and the classifier table in
+`thread-inbox.test.ts`.
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.
@@ -2355,33 +2382,6 @@ failed completion write. Built-in repeat-stop behavior is exercised by
 retains unconfirmed host custody. These scripted cases establish local protocol
 behavior, with their existing unrelated expected failures and skips preserved;
 they do not qualify live providers, devices or installed releases.
-
-## Turn dispatch origin
-
-Each `turn.started` a send produces records who caused the turn
-(`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
-`automation` or `unknown`. Station classifies it when it admits the
-`sendTurn`, never from a request body or an engine. A server caller passes
-its own classification in the dispatch's internal options (`dispatchOrigin`):
-the delegation start sends `delegation`, and the conversation inbox's
-placement uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
-(an Automation's entry is `automation`, a person's `interactive`, Station's
-own entry into a Session whose room execution binding names a Task
-`task-dispatch`). Without one, `classifyTurnDispatchOrigin` in the
-[orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
-reads a person's client (operator or paired device) as `interactive` and
-anything else as `unknown`. [`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
-stamps the value. A classified origin holds an early start back until the
-send is accepted, as a client origin does, and an engine-supplied value is
-dropped. Readers use `turnDispatchOrigin` from
-`@kontourai/station-contracts/runtime-events`, which reads a missing or
-unrecognised value, including every event persisted before the field, as
-`unknown`. Steers and engine-opened turns carry none. Nothing acts on the
-field yet. Evidence: `turn-dispatch-origin.test.ts` (real service and event
-store, early engine start), `client-origin-propagation.test.ts`,
-`task-dispatch-agent-binding.routes.test.ts` (a real dispatched Task Session
-through `continueExecutionTargetMessage`) and the classifier table in
-`thread-inbox.test.ts`.
 
 ## SessionTurnBoundaryAuthority
 
