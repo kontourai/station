@@ -3899,10 +3899,12 @@ this Station's default to one, is refused before it has any effect:
 
 with status `403`. That covers `POST /api/orchestration/commands`
 (`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
-`/chat/:id/continue` or a handoff, `PUT /api/config/app`
-(`defaultApprovalMode`), and any request that asks for full access while the
-ceiling is below `never`, including a project's or Agent's `never` default. A
-turn on a chat whose recorded mode is above the ceiling is refused with the
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded mode is above the ceiling is refused with the
 same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding

@@ -81,7 +81,15 @@ Under a ceiling:
   Agent's, the project's, this Station's, a person's saved default, or the
   mode an automation rule or a delegation carries) is above the ceiling
   starts at the ceiling. A default saved before the policy was installed
-  stays saved, and applies again if the policy is removed.
+  stays saved, and applies again if the policy is removed. A mode a client
+  sends as its default (for example `station chat --approval-mode=never`) is
+  lowered the same way. Writing Full access as an Agent's own default is
+  refused; an Agent that inherits Full access from this Station's saved
+  default starts at the ceiling.
+- **A personal default follows the ceiling.** A chat started from a person's
+  saved default records it as a default, not a choice, so if the policy is
+  later tightened that chat is lowered to the new ceiling rather than
+  stopped.
 - **A chat already above it stops.** A chat whose chosen mode is above the
   ceiling starts no new turn, and does not restart, until someone lowers its
   mode. The turn is refused with the same message.
@@ -109,6 +117,14 @@ Station can set are not capped:
 - ACP engines whose approval rules Station does not set when it launches
   them (see [ACP](acp.md)); they keep their own settings. ACP's own
   full-access modes are refused where Station recognizes them.
+
+Muse Code's `muse exec` mode has no way to ask for approval, so it always
+runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
+that would run through `muse exec` (because `muse serve` is turned off or
+fails to start) does not start, and says why. Under `auto` it runs as usual.
+
+A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
+be removed or narrowed under a ceiling, but not added to.
 
 The engine's launch configuration still belongs to the user in this release,
 and it can defeat engine approvals:

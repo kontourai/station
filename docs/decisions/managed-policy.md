@@ -207,7 +207,25 @@ default is above the ceiling starts at the ceiling. A default saved before the
 policy is kept and resendable, so installing a policy does not break the
 Settings page, and it applies in full again if the policy is removed. An
 Agent's or project's `never` default is refused on write, by the full-access
-rule below.
+rule below. For an Agent the rule reads its own default, not the inherited
+one: writing an explicit `never` is refused even where it already inherits
+`never` from this Station, a `never` it saved before the policy may be resent
+unchanged, and clearing its own default to inherit a stored `never` is
+allowed, because the inherited value is lowered where it applies.
+
+A posture carried on a start's or turn's options (the default channel: a
+client's default, the CLI's `--approval-mode`) is a default too, so a carried
+`never` is lowered, not refused. A known ACP full-access mode id on the
+options is not lowered by anything, so it is still refused.
+
+A person's saved personal default is recorded on the new chat as its
+decision (so later sessions keep it), marked `source: "personal-default"` on
+the `session.approval-mode-set` event. It is recorded as it applies at that
+moment, lowered to the ceiling (a `never` needs a grant nobody holds under a
+ceiling). `ApprovalPosture.resolve` applies a marked decision as a default:
+lowered to the ceiling in force at each start and turn, never refused. So a
+later, tighter policy lowers that chat instead of stopping it for a pick
+nobody made.
 
 **A recorded pick above the ceiling stops the chat.** `ApprovalPosture.resolve`
 reads the conversation's recorded decision at every start, restart and turn,
@@ -224,11 +242,12 @@ stamp would let Claude spawn holding the bypass grant. An "Auto-accept file
 edits for this session" answer under a ceiling of `ask` is downgraded to a
 single accept, as it is for a caller without `setApprovalMode` authority.
 
-Everything else gated on that authority is closed too. Notably, a
-plugin-owned Agent's `autoApprove` and `unattendedAutoApprove` grants cannot
-be changed, removal included, while the ceiling is below `never`. Accepted:
-those grants let calls run without a prompt, and the route gates any change,
-so a narrower carve-out would need its own review.
+Everything else gated on that authority is closed too. A plugin-owned
+Agent's `autoApprove` and `unattendedAutoApprove` grants cannot be added to
+or widened while the ceiling is below `never`. Revoking needs no full-access
+authority, with or without a ceiling: an empty list, `null`, or a subset of
+the current grants (compared as exact patterns) is allowed under the normal
+Agent mutation authority.
 
 **One holder, installed by the entrypoint.** The ceiling is process state
 (`security/managed-approval-ceiling.ts`), installed right after the policy
@@ -249,9 +268,12 @@ accepts. So the check holds before and after #4517 enables managed settings.
 | A pick carried on `/chat`, `/chat/:id/continue` or a handoff | refused (route) |
 | `OrchestrationService.recordApprovalModeDecision`, the one decision writer (agent tools, delegated picks) | refused |
 | Every session start, restart and turn (`ApprovalPosture.resolve`) | a recorded pick above: refused; defaults and carried modes: lowered; nothing: Ask |
-| Station default (`PUT /api/config/app`; read through `resolveStationDefaultApprovalMode`) | change refused; stored value lowered where it applies |
-| Agent and project defaults | `never` refused on write; lower values lowered where they apply |
-| A person's saved default (`recordPersonalApprovalDefault`) | lowered |
+| Station default (`PUT /config/app`; read through `resolveStationDefaultApprovalMode`) | change refused; stored value lowered where it applies |
+| Agent and project defaults | an explicit `never` refused on write (an Agent's own, whatever it inherits); lower values and inherited ones lowered where they apply |
+| A posture carried on a start's or turn's options | lowered, `never` included; a known ACP full-access mode id refused |
+| A person's saved default (`recordPersonalApprovalDefault`) | recorded marked `personal-default`, lowered to the ceiling in force at every start and turn |
+| A plugin-owned Agent's tool grants | adding or widening refused; revoking allowed |
+| Muse Code on `muse exec` (serve disabled or failed) | session refused under `ask`: exec runs at Auto |
 | Automation rules and scheduled starts (`automation-actions-runtime.ts`) | carried mode lowered |
 | Inbound webhook starts (`webhook-turn-starter.ts`) | defaults lowered, else Ask |
 | Delegations and agent-started runs | defaults and carried modes lowered |
@@ -270,6 +292,13 @@ and engines still enforce their own approvals.
   engines whose approval rules Station does not set at launch. Known ACP
   full-access mode ids are refused through `mayGrantFullAccess`; others are
   not recognized.
+- **Muse Code's `muse exec` cannot run stricter than Auto.** Exec has no
+  channel to answer an approval, so it always runs `--approval-mode never`
+  inside Muse's sandbox, which is Auto in Station's terms. Under a ceiling of
+  `ask`, a Muse session that would run on exec (serve disabled, or a
+  `muse serve` start that failed) is refused when it starts, rather than
+  falling back past the ceiling. Under `auto` the fallback is within the
+  ceiling and still runs.
 - **Launch configuration is the user's.** The `claude` and `codex`
   executables are resolved on the `PATH` Station runs with, so a wrapper can
   add its own flags. An engine connection's `env` map and `configHome` point
