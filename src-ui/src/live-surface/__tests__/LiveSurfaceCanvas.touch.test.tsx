@@ -330,7 +330,8 @@ describe('immersive (full screen)', () => {
     element = null; // the system back gesture, Esc in the browser
     fireEvent(document, new Event('fullscreenchange'));
     expect(root.hasAttribute('data-immersive')).toBe(false);
-    delete (document as Partial<Document>).fullscreenElement;
+    // The own-property stub goes; the prototype's getter is back.
+    Reflect.deleteProperty(document, 'fullscreenElement');
   });
 
   test('a host enters it through the reported control state, and there a touch drives the surface (the lease-first rule is lifted)', async () => {
