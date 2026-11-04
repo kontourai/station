@@ -529,6 +529,8 @@ describe('source verification reconciler API boundary', () => {
         status: sourceState === 'pending' ? 'pending' : 'completed',
         conclusion: sourceState === 'pending' ? null : 'success',
       };
+      if (lineage === 'diverged reported base')
+        source.pull_requests[0].base.sha = liveBase;
       const metadata = (id: number, time: string, conclusion: string): Run => ({
         ...structuredClone(run),
         id,
