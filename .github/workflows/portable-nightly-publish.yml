@@ -103,7 +103,7 @@ jobs:
             # Direct dispatch: a dry run under a synthetic version that no
             # reservation backs, so it can never satisfy the publish gate.
             marketing=$(node -p 'require("./package.json").version')
-            version=$(node scripts/portable-nightly-publication.mjs version --marketing-version "$marketing" --version-code "$GITHUB_RUN_ID")
+            version="$marketing-nightly.$GITHUB_RUN_ID"
           fi
           { echo "source_sha=$head_sha"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
       - id: locations
