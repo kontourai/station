@@ -33,11 +33,15 @@ function parseQualifiedScheduleRun(runId: string | null) {
   if (!runId?.startsWith('schedule:')) return null;
   const [, providerId, jobName, logId, ...rest] = runId.split(':');
   if (!providerId || !jobName || !logId || rest.length) return null;
-  return {
-    providerId: decodeURIComponent(providerId),
-    jobName: decodeURIComponent(jobName),
-    logId: decodeURIComponent(logId),
-  };
+  try {
+    return {
+      providerId: decodeURIComponent(providerId),
+      jobName: decodeURIComponent(jobName),
+      logId: decodeURIComponent(logId),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function ScheduleView() {
@@ -47,6 +51,8 @@ export function ScheduleView() {
     isLoading,
     isError: jobsError,
     error: jobsFailure,
+    refetch: refetchJobs,
+    isFetching: fetchingJobs,
   } = useSchedulerJobs();
   const { data: stats, isLoading: loadingStats } = useSchedulerStats();
   const {
@@ -54,6 +60,8 @@ export function ScheduleView() {
     isLoading: loadingStatus,
     isError: statusError,
     error: statusFailure,
+    refetch: refetchStatus,
+    isFetching: fetchingStatus,
   } = useSchedulerStatus();
   const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
   const schedulerAvailable = !jobsError && !statusError;
@@ -146,6 +154,17 @@ export function ScheduleView() {
         className="schedule__failure"
         title={notice.title}
         description={notice.description}
+        action={
+          <Button
+            disabled={fetchingJobs || fetchingStatus}
+            onClick={() => {
+              void refetchJobs();
+              void refetchStatus();
+            }}
+          >
+            Retry
+          </Button>
+        }
       />
     );
   }
