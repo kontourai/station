@@ -2058,10 +2058,14 @@ export class StationRuntime {
       // which it is at this point in the constructor. See
       // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
       // for the accepted residual gap this sweep does not close.
-      // #4507: finish Task worktree finalizations a previous process
-      // deferred while a turn ran. No engine turn survives a core restart
-      // (process-supervisor.md), but a detached engine can outlive one until
-      // the orphan sweep reaps it, so this waits for that sweep.
+      // #4507: retry Task worktree finalizations a previous process
+      // deferred. Started only after the boot orphan-engine sweep settles,
+      // so it does not run while that sweep is still reaping a previous
+      // process's detached engines; a sweep that settled has not proved
+      // every orphan is gone (it reaps only what it can identify), and the
+      // later turn-end retries do not wait for it. Finalization's own
+      // checks (running turns here, a clean checkout, git refusing a dirty
+      // removal) still apply on every retry.
       void Promise.resolve(options.orphanEngineSweep)
         .catch(() => undefined)
         .then(() =>
