@@ -16,6 +16,7 @@ import {
   openSync,
   readSync,
   realpathSync,
+  type Stats,
 } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import {
@@ -218,7 +219,7 @@ export function managedPolicyDirectoryProblem(
     [real, true],
   ] as const) {
     for (const entry of chain) {
-      let stats: ReturnType<typeof lstatSync>;
+      let stats: Stats;
       try {
         stats = lstatSync(entry);
       } catch (error) {
@@ -241,6 +242,100 @@ export function managedPolicyDirectoryProblem(
 const SYMLINK_REASON =
   'it is a symbolic link or reparse point; install the policy as a regular file';
 
+/** Rethrow a policy error; turn any other failure into "cannot be read". */
+function asPolicyError(
+  path: string,
+  error: unknown,
+): ManagedPolicyInvalidError {
+  return error instanceof ManagedPolicyInvalidError
+    ? error
+    : new ManagedPolicyInvalidError(path, unreadableReason(error));
+}
+
+const TOO_LARGE_REASON = `the file is larger than ${MANAGED_POLICY_MAX_BYTES} bytes`;
+
+/**
+ * Open the entry at `path` without following a link and without blocking,
+ * or return undefined when nothing is there.
+ */
+function openPolicyEntry(
+  path: string,
+): { fd: number; entry: Stats } | undefined {
+  let entry: Stats;
+  try {
+    entry = lstatSync(path);
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT') return undefined;
+    throw asPolicyError(path, error);
+  }
+  // On Windows `lstat` reports symbolic links and junctions this way; there
+  // is no O_NOFOLLOW, so this check carries the refusal there.
+  if (entry.isSymbolicLink())
+    throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
+  if (entry.isDirectory())
+    throw new ManagedPolicyInvalidError(path, 'it is a directory, not a file');
+  try {
+    const fd = openSync(
+      path,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) |
+        (fsConstants.O_NONBLOCK ?? 0),
+    );
+    return { fd, entry };
+  } catch (error) {
+    // ELOOP: the entry became a link after lstat.
+    if (errnoCode(error) === 'ELOOP')
+      throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
+    throw asPolicyError(path, error);
+  }
+}
+
+/** Every check on the opened descriptor, before anything is read. */
+function checkOpenedPolicy(
+  path: string,
+  fd: number,
+  entry: Stats,
+  ownership: ManagedPolicyFileOwnership | undefined,
+): void {
+  const stats = fstatSync(fd);
+  if (stats.isDirectory())
+    throw new ManagedPolicyInvalidError(path, 'it is a directory, not a file');
+  if (!stats.isFile())
+    throw new ManagedPolicyInvalidError(path, 'it is not a regular file');
+  // The opened file must be the entry lstat saw, not one swapped in between
+  // (the only link check Windows has).
+  if (stats.dev !== entry.dev || stats.ino !== entry.ino)
+    throw new ManagedPolicyInvalidError(
+      path,
+      'it changed while Station was opening it',
+    );
+  if (ownership && process.platform !== 'win32') {
+    const problem =
+      ownershipProblem(path, stats, ownership, true) ??
+      managedPolicyDirectoryProblem(dirname(path), ownership);
+    if (problem) throw new ManagedPolicyInvalidError(path, problem);
+  }
+  if (stats.size > MANAGED_POLICY_MAX_BYTES)
+    throw new ManagedPolicyInvalidError(path, TOO_LARGE_REASON);
+}
+
+/**
+ * Read to the end, one byte past the limit, so a file that grew after
+ * `fstat` is refused rather than silently truncated.
+ */
+function readPolicyBytes(path: string, fd: number): string {
+  const buffer = Buffer.alloc(MANAGED_POLICY_MAX_BYTES + 1);
+  let length = 0;
+  for (;;) {
+    const read = readSync(fd, buffer, length, buffer.length - length, null);
+    if (read === 0) break;
+    length += read;
+    if (length > MANAGED_POLICY_MAX_BYTES)
+      throw new ManagedPolicyInvalidError(path, TOO_LARGE_REASON);
+  }
+  return buffer.subarray(0, length).toString('utf8');
+}
+
 /**
  * Read a policy file. Only an absent entry means "no policy": a symbolic
  * link is refused, never followed, even when it dangles (a dangling link
@@ -256,90 +351,15 @@ export function readManagedPolicyFile(
   path: string,
   ownership?: ManagedPolicyFileOwnership,
 ): ManagedPolicyRawInput | undefined {
-  let entry: ReturnType<typeof lstatSync>;
+  const opened = openPolicyEntry(path);
+  if (!opened) return undefined;
   try {
-    entry = lstatSync(path);
+    checkOpenedPolicy(path, opened.fd, opened.entry, ownership);
+    return { kind: 'text', text: readPolicyBytes(path, opened.fd) };
   } catch (error) {
-    if (errnoCode(error) === 'ENOENT') return undefined;
-    throw new ManagedPolicyInvalidError(path, unreadableReason(error));
-  }
-  // On Windows `lstat` reports symbolic links and junctions this way; there
-  // is no O_NOFOLLOW, so this check carries the refusal there.
-  if (entry.isSymbolicLink())
-    throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
-  if (entry.isDirectory())
-    throw new ManagedPolicyInvalidError(path, 'it is a directory, not a file');
-
-  let fd: number;
-  try {
-    fd = openSync(
-      path,
-      fsConstants.O_RDONLY |
-        (fsConstants.O_NOFOLLOW ?? 0) |
-        (fsConstants.O_NONBLOCK ?? 0),
-    );
-  } catch (error) {
-    // ELOOP: the entry became a link after lstat.
-    if (errnoCode(error) === 'ELOOP')
-      throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
-    throw new ManagedPolicyInvalidError(path, unreadableReason(error));
-  }
-  try {
-    let size: number;
-    try {
-      const stats = fstatSync(fd);
-      if (stats.isDirectory())
-        throw new ManagedPolicyInvalidError(
-          path,
-          'it is a directory, not a file',
-        );
-      if (!stats.isFile())
-        throw new ManagedPolicyInvalidError(path, 'it is not a regular file');
-      // The opened file must be the entry lstat saw, not one swapped in
-      // between (the only link check Windows has).
-      if (stats.dev !== entry.dev || stats.ino !== entry.ino)
-        throw new ManagedPolicyInvalidError(
-          path,
-          'it changed while Station was opening it',
-        );
-      if (ownership && process.platform !== 'win32') {
-        const problem =
-          ownershipProblem(path, stats, ownership, true) ??
-          managedPolicyDirectoryProblem(dirname(path), ownership);
-        if (problem) throw new ManagedPolicyInvalidError(path, problem);
-      }
-      size = stats.size;
-    } catch (error) {
-      if (error instanceof ManagedPolicyInvalidError) throw error;
-      throw new ManagedPolicyInvalidError(path, unreadableReason(error));
-    }
-    if (size > MANAGED_POLICY_MAX_BYTES)
-      throw new ManagedPolicyInvalidError(
-        path,
-        `the file is larger than ${MANAGED_POLICY_MAX_BYTES} bytes`,
-      );
-    // Read one byte past the limit so a file that grew after fstat is
-    // refused rather than silently truncated.
-    const buffer = Buffer.alloc(MANAGED_POLICY_MAX_BYTES + 1);
-    let length = 0;
-    try {
-      for (;;) {
-        const read = readSync(fd, buffer, length, buffer.length - length, null);
-        if (read === 0) break;
-        length += read;
-        if (length > MANAGED_POLICY_MAX_BYTES)
-          throw new ManagedPolicyInvalidError(
-            path,
-            `the file is larger than ${MANAGED_POLICY_MAX_BYTES} bytes`,
-          );
-      }
-    } catch (error) {
-      if (error instanceof ManagedPolicyInvalidError) throw error;
-      throw new ManagedPolicyInvalidError(path, unreadableReason(error));
-    }
-    return { kind: 'text', text: buffer.subarray(0, length).toString('utf8') };
+    throw asPolicyError(path, error);
   } finally {
-    closeSync(fd);
+    closeSync(opened.fd);
   }
 }
 
