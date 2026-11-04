@@ -5,9 +5,11 @@
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   renderHook,
   screen,
+  within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -19,6 +21,8 @@ import {
 import { listedShortcuts } from '../contexts/listedShortcuts';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import { deviceSettingsStore } from '../lib/device-settings-store';
+import { KeyboardShortcutsSection } from '../views/settings/KeyboardShortcutsSection';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <KeyboardShortcutsProvider>{children}</KeyboardShortcutsProvider>;
@@ -59,11 +63,100 @@ function SettingsLikePage() {
   return <ShortcutsCheatsheet isOpen onClose={() => undefined} />;
 }
 
+function ShortcutEditor({
+  onSettings,
+  onPalette,
+}: {
+  onSettings: () => void;
+  onPalette: () => void;
+}) {
+  useKeyboardShortcut('app.settings', ',', ['cmd'], 'Toggle settings', onSettings);
+  useKeyboardShortcut(
+    'command-palette',
+    'k',
+    ['cmd'],
+    'Open command palette',
+    onPalette,
+  );
+  return <KeyboardShortcutsSection />;
+}
+
 afterEach(() => {
   // Unmount React's trees before removing the nodes this file appended.
   cleanup();
   document.getSelection()?.removeAllRanges();
   document.body.innerHTML = '';
+});
+
+test('restoring a displaced shortcut default asks before replacing its current owner', async () => {
+  const previous = deviceSettingsStore.getEnvelope();
+  deviceSettingsStore.importEnvelope({ version: 1, values: {} });
+  const onSettings = vi.fn();
+  const onPalette = vi.fn();
+  try {
+    render(
+      <KeyboardShortcutsProvider>
+        <ShortcutEditor onSettings={onSettings} onPalette={onPalette} />
+      </KeyboardShortcutsProvider>,
+    );
+    const settings = screen.getByRole('button', {
+      name: 'Shortcut for Toggle settings',
+    });
+    fireEvent.click(settings);
+    fireEvent.keyDown(settings, {
+      key: 'k',
+      metaKey: mac(),
+      ctrlKey: !mac(),
+    });
+    const firstConflict = await screen.findByRole('dialog', {
+      name: 'Shortcut already in use',
+    });
+    fireEvent.click(within(firstConflict).getByRole('button', { name: 'Replace' }));
+    expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
+      'app.settings': { key: 'k', modifiers: ['cmd'] },
+      'command-palette': null,
+    });
+
+    const paletteRow = screen
+      .getByRole('button', { name: 'Shortcut for Open command palette' })
+      .closest('article');
+    expect(paletteRow).not.toBeNull();
+    const restore = within(paletteRow!).getByRole('button', {
+      name: 'Restore default',
+    });
+    fireEvent.click(restore);
+    const restoreConflict = await screen.findByRole('dialog', {
+      name: 'Shortcut already in use',
+    });
+    expect(restoreConflict.textContent).toContain('Toggle settings');
+    fireEvent.click(within(restoreConflict).getByRole('button', { name: 'Cancel' }));
+    expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
+      'app.settings': { key: 'k', modifiers: ['cmd'] },
+      'command-palette': null,
+    });
+
+    fireEvent.click(restore);
+    const confirmedRestore = await screen.findByRole('dialog', {
+      name: 'Shortcut already in use',
+    });
+    fireEvent.click(
+      within(confirmedRestore).getByRole('button', { name: 'Replace' }),
+    );
+    expect(deviceSettingsStore.get('shortcutOverrides')['app.settings']).toBeNull();
+    expect(
+      deviceSettingsStore.get('shortcutOverrides')['command-palette'],
+    ).toBeUndefined();
+    fireEvent.keyDown(document.body, {
+      key: 'k',
+      metaKey: mac(),
+      ctrlKey: !mac(),
+    });
+    expect(onPalette).toHaveBeenCalledTimes(1);
+    expect(onSettings).not.toHaveBeenCalled();
+  } finally {
+    cleanup();
+    deviceSettingsStore.importEnvelope(previous);
+  }
 });
 
 // #4383: the chat's Cancel request is Ctrl+C. Off a Mac that is Copy, so
