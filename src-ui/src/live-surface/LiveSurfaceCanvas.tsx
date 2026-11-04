@@ -23,8 +23,8 @@ import {
   useState,
 } from 'react';
 import { Button } from '../components/Button';
-import { Empty, ErrorState } from '../components/state';
 import { ExpandGlyph, MoreGlyph } from '../components/icons/Glyph';
+import { Empty, ErrorState } from '../components/state';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
