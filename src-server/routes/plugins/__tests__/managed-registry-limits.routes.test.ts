@@ -23,10 +23,14 @@ import { withOperatorPrincipal } from '../../../__test-utils__/operator-principa
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
+import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
+import { registerManifestRegistryProvider } from '../../../providers/registries/register-manifest-registry.js';
 import {
   clearAll,
+  getPluginRegistryProviders,
   registerPluginRegistryProvider,
 } from '../../../providers/registries/registry.js';
+import { writeRegistryInstallAliases } from '../../../providers/registries/registry-install-aliases.js';
 import { prepareRuntimeStartup } from '../../../runtime/bootstrap/runtime-startup.js';
 import { installManagedCapabilityLimits } from '../../../security/managed-capability-limits.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
@@ -50,6 +54,7 @@ const logger = createLogger({ name: 'managed-registry-test', level: 'error' });
 afterEach(() => {
   installManagedCapabilityLimits(null);
   clearAll();
+  vi.unstubAllGlobals();
 });
 
 function installPolicy(registries: Record<string, unknown>) {
@@ -469,5 +474,184 @@ describe('default skill registries', () => {
 
   test('defaultSkillRegistries false: never registered', async () => {
     expect(await registered({ defaultSkillRegistries: false })).toBe(0);
+  });
+});
+
+describe('removal is never refused by limits.registries (round 2)', () => {
+  const REGISTRY = 'https://registry-b.example/registry.json';
+
+  /** A registry plugin already installed (with no policy) and recorded. */
+  async function installedRegistryPlugin() {
+    const { request, home } = setup();
+    await ensureStationHomeSchema(home);
+    const dir = join(home, 'plugins', 'unsigned-package');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'plugin.json'),
+      JSON.stringify({ name: 'unsigned-package', version: '1.0.0' }),
+    );
+    writeRegistryInstallAliases(home, {
+      'unsigned-package': {
+        pluginName: 'unsigned-package',
+        registryKey: REGISTRY,
+      },
+    });
+    const listed: string[] = [];
+    let providerUninstalls = 0;
+    registerPluginRegistryProvider(
+      {
+        registryKey: REGISTRY,
+        listAvailable: async () => {
+          listed.push('listAvailable');
+          return [{ id: 'unsigned-package', installed: true }];
+        },
+        listInstalled: async () => [],
+        // The registry's claim for the package carries no signature.
+        resolvePackage: async () => {
+          listed.push('resolvePackage');
+          return {
+            source: 'https://registry-b.example/unsigned-package.git',
+            claim: {
+              packageSchema:
+                'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+              registryId: 'unsigned-package',
+              registryKey: REGISTRY,
+              pluginName: 'unsigned-package',
+              packageVersion: '1.0.0',
+              source: 'https://registry-b.example/unsigned-package.git',
+              packageDigest: `sha256:${'0'.repeat(64)}`,
+            },
+          };
+        },
+        install: async () => ({ success: false, message: 'n/a' }),
+        uninstall: async () => {
+          providerUninstalls++;
+          return { success: false, message: 'raw provider uninstall' };
+        },
+      },
+      'Configured registry',
+    );
+    return {
+      request,
+      dir,
+      listed,
+      providerUninstalls: () => providerUninstalls,
+    };
+  }
+
+  test.each([
+    ['no policy (control)', undefined],
+    ['unsignedPackages false', { unsignedPackages: false }],
+    ['an allow list that refuses its registry', { allowedUrls: [] }],
+  ])(
+    '%s: DELETE /agents/:id removes the installed registry plugin',
+    async (_name, policy) => {
+      const installed = await installedRegistryPlugin();
+      if (policy) installPolicy(policy);
+      const response = await installed.request(
+        '/agents/unsigned-package',
+        'DELETE',
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      await expect(access(installed.dir)).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      // The shared uninstall ran, not the provider's raw tree delete.
+      expect(installed.providerUninstalls()).toBe(0);
+      // A refused registry is not asked anything to remove its package.
+      if (policy && 'allowedUrls' in policy)
+        expect(installed.listed).toEqual([]);
+    },
+  );
+
+  test('installing the same unsigned entry is still refused (acquisition)', async () => {
+    const installed = await installedRegistryPlugin();
+    installPolicy({ unsignedPackages: false });
+    await expect(
+      resolvePluginRegistryInstall('unsigned-package'),
+    ).rejects.toMatchObject({ reason: 'managed-signature-required' });
+    expect(installed.listed).toContain('resolvePackage');
+  });
+});
+
+describe('the agent face of a manifest under allowedUrls (round 2)', () => {
+  const UNLISTED = 'https://unlisted-agents.example/registry.json';
+
+  function manifestHost() {
+    const requested: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        requested.push(
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        );
+        return Response.json({
+          version: 1,
+          plugins: [
+            {
+              id: 'listed-agent',
+              type: 'agent',
+              displayName: 'Listed agent',
+              description: 'An agent from the manifest',
+              version: '1.0.0',
+              source: 'https://github.com/example/listed-agent',
+            },
+          ],
+        });
+      }),
+    );
+    return requested;
+  }
+
+  test('control: without a policy GET /agents reads the manifest and lists its agent', async () => {
+    const requested = manifestHost();
+    const { request, home } = setup();
+    registerManifestRegistryProvider(
+      new JsonManifestRegistryProvider(UNLISTED, home),
+    );
+    const body = (await (await request('/agents')).json()) as {
+      data: RegistryItem[];
+    };
+    expect(body.data.map((item) => item.id)).toEqual(['listed-agent']);
+    expect(requested).toContain(UNLISTED);
+  });
+
+  test('an unlisted manifest is never read: no agents, and every face reads nothing', async () => {
+    installPolicy({ allowedUrls: [] });
+    const requested = manifestHost();
+    const { request, home } = setup();
+    const provider = new JsonManifestRegistryProvider(UNLISTED, home);
+    registerManifestRegistryProvider(provider);
+    const body = (await (await request('/agents')).json()) as {
+      data: RegistryItem[];
+    };
+    expect(body.data).toEqual([]);
+    expect(
+      (await request('/agents/install', 'POST', { id: 'listed-agent' })).status,
+    ).not.toBe(200);
+    // The shared reader refuses for any face, not only the agent view.
+    await expect(provider.listAvailable()).rejects.toThrow(
+      "Acme's policy manages this marketplace",
+    );
+    expect(requested).toEqual([]);
+  });
+
+  test('the bundled starter manifest is still read under the same allow list', async () => {
+    installPolicy({ allowedUrls: [] });
+    const { home } = setup();
+    const provider = new JsonManifestRegistryProvider(
+      join(process.cwd(), 'examples', 'registry', 'manifest.json'),
+      home,
+      undefined,
+      undefined,
+      { bundled: true },
+    );
+    registerManifestRegistryProvider(provider);
+    expect(getPluginRegistryProviders()).toHaveLength(1);
+    expect((await provider.listAvailable()).length).toBeGreaterThan(0);
   });
 });

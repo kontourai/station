@@ -274,13 +274,13 @@ test('a server started with every capability switch off refuses each one', async
     await api('/api/usage-telemetry/delivery-status')
   ).json()) as { data: { otel: { managedDenial?: string; phase: string } } };
   expect(delivery.data.otel.managedDenial).toContain(
-    "Acme's policy manages telemetry",
+    "Acme's policy manages usage sharing",
   );
   await managedRefusal(
     await api('/api/usage-telemetry/connection-checks/otel', {
       method: 'POST',
     }),
-    'telemetry',
+    'usage sharing',
   );
   await managedRefusal(
     await api('/config/app', {

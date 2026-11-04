@@ -4502,7 +4502,11 @@ records compensation and retained-state limits.
 checks git/registry update sources. Results use the installed manifest name as
 `name`, even when a registry entry ID differs. A caught top-level check failure
 currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates.
+there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`limits.registries.allowedUrls`, a plugin installed from a registry the policy
+refuses is not checked (its git origin is not fetched); it is listed in
+`managedByPolicy` as `{name, message}` with the policy sentence, not as an
+error. Older servers omit the field.
 
 ### Update Plugin
 
@@ -4653,7 +4657,10 @@ caught separately; it is not a universal runtime-activation receipt.
 ### Uninstall Agent from Registry
 
 `DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
-plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+plugin removal, or calls the Agent registry provider. Removal is never refused
+by a managed `limits.registries`: the lookup applies no signature admission,
+and when the policy refuses the registry, that registry is not contacted and
+the recorded registry install decides. Plugin lifecycle pending
 results retain their activation semantics; a plain provider result is not the
 same receipt.
 

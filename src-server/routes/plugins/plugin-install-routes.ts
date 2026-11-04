@@ -745,6 +745,12 @@ export function registerPluginInstallRoutes(
                 `Plugin preview must not install ${id}: /preview stages and reports, it never mutates.`,
               );
             },
+            // #4521: a source-less dependency is resolved and ADMITTED here,
+            // before anything is staged: under `unsignedPackages: false` an
+            // unsigned registry claim refuses before its source is fetched.
+            async resolveSource(id: string) {
+              return (await resolvePluginRegistryInstall(id))?.source ?? null;
+            },
             async listAvailable() {
               const entries = await Promise.all(
                 getPluginRegistryProviders().map((entry) =>

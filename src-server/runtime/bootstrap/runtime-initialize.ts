@@ -968,8 +968,9 @@ export async function initializeRuntime(
       configLoader.getProjectHomeDir(),
       undefined,
       logger,
+      { bundled: registrySource.origin === 'bundled' },
     );
-    registerManifestRegistryProvider(registryProvider, registrySource.origin);
+    registerManifestRegistryProvider(registryProvider);
     logger.info('JSON manifest registry configured', {
       url: registrySource.source,
       origin: registrySource.origin,

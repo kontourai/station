@@ -303,7 +303,7 @@ test('#4521: under the managed limit the product check is disabled and sends not
 // enabled; its 403 still shows the policy sentence, not a generic error.
 test('#4521: a managed policy explains OTel and a refused connection check in its own words', async () => {
   const denial =
-    "Acme's policy manages telemetry: it is turned off. Contact your administrator for help.";
+    "Acme's policy manages usage sharing: it is turned off. Contact your administrator for help.";
   const status = delivery();
   status.otel.phase = 'unconfigured';
   status.otel.endpointConfigured = false;

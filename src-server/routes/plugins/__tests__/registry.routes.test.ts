@@ -104,6 +104,7 @@ vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
     source: '/tmp/registry/plugin-one',
     registryKey: 'test-registry',
   }),
+  isRegistryPluginRemovalTarget: vi.fn().mockResolvedValue(true),
   uninstallInstalledPlugin: vi.fn().mockResolvedValue({ success: true }),
 }));
 
@@ -129,6 +130,7 @@ const { __integrationProvider, __agentProvider } = (await import(
 )) as any;
 const {
   installPluginFromSource,
+  isRegistryPluginRemovalTarget,
   resolvePluginRegistryInstall,
   uninstallInstalledPlugin,
 } = await import('../../../services/plugins/plugin-install-transaction.js');
@@ -957,7 +959,7 @@ describe('Registry Routes', () => {
 
   test('DELETE /agents/:id falls back to the agent provider for a non-plugin id', async () => {
     const { app } = setup();
-    vi.mocked(resolvePluginRegistryInstall).mockResolvedValueOnce(null);
+    vi.mocked(isRegistryPluginRemovalTarget).mockResolvedValueOnce(false);
     vi.mocked(uninstallInstalledPlugin).mockClear();
     __agentProvider.uninstall.mockClear();
 

@@ -233,7 +233,7 @@ export async function initializeTelemetry(
   }
   if (managed && !managedTelemetryAllowed(managed.summary.limits)) {
     markOtelTelemetryManagedOff(
-      managedPolicyDenial(managed.summary, 'telemetry: it is turned off'),
+      managedPolicyDenial(managed.summary, 'usage sharing: it is turned off'),
     );
     return;
   }

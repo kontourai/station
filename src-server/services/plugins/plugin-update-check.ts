@@ -1,6 +1,16 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
+import { dirname, join } from 'node:path';
+import {
+  getPluginRegistryProviders,
+  getRegisteredPluginRegistryProviders,
+  pluginRegistryAllowedByManagedPolicy,
+} from '../../providers/registries/registry.js';
+import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
+import {
+  managedCapabilityDenial,
+  managedRegistryLimits,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { execGit } from '../../utils/git-exec.js';
 import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
@@ -10,6 +20,42 @@ export interface PluginUpdateRecord {
   currentVersion: string;
   latestVersion: string;
   source: string;
+}
+
+/**
+ * #4521: an installed plugin whose update check the managed policy skips,
+ * because the registry it was installed from is outside
+ * `limits.registries.allowedUrls`. Not an error: nothing was contacted.
+ */
+export interface PluginUpdateManagedByPolicy {
+  name: string;
+  message: string;
+}
+
+/**
+ * #4521: installed plugin directories whose recorded registry provenance
+ * (`config/registry-installs.json`) is a registry the managed policy refuses.
+ * The registered provider decides when it is still registered, so the
+ * bundled examples stay allowed; a recorded registry no longer registered is
+ * judged by its location alone. Plugins installed from a Git URL or a folder
+ * carry no registry provenance and are not affected.
+ */
+function pluginsFromRefusedRegistries(projectHomeDir: string): Set<string> {
+  const refused = new Set<string>();
+  if (managedRegistryLimits()?.allowedUrls === undefined) return refused;
+  const registered = getRegisteredPluginRegistryProviders();
+  for (const alias of Object.values(
+    readRegistryInstallAliases(projectHomeDir),
+  )) {
+    const entry = registered.find(
+      (candidate) => candidate.provider.registryKey === alias.registryKey,
+    );
+    const allowed = entry
+      ? pluginRegistryAllowedByManagedPolicy(entry)
+      : registryLocationAllowedByManagedPolicy(alias.registryKey);
+    if (!allowed) refused.add(alias.pluginName);
+  }
+  return refused;
 }
 
 /** Narrow structural logger: this module debugs per-plugin misses. */
@@ -63,9 +109,25 @@ async function listPluginRegistryUpdates(): Promise<PluginUpdateRecord[]> {
 export async function checkPluginUpdates(options: {
   pluginsDir: string;
   logger: PluginUpdateCheckLogger;
-}): Promise<{ updates: PluginUpdateRecord[] }> {
+  /** Defaults to the parent of `pluginsDir`, the Station home layout. */
+  projectHomeDir?: string;
+}): Promise<{
+  updates: PluginUpdateRecord[];
+  managedByPolicy?: PluginUpdateManagedByPolicy[];
+}> {
   const { pluginsDir, logger } = options;
   const updates: PluginUpdateRecord[] = [];
+  const managedByPolicy: PluginUpdateManagedByPolicy[] = [];
+  let refusedProvenance = new Set<string>();
+  try {
+    refusedProvenance = pluginsFromRefusedRegistries(
+      options.projectHomeDir ?? dirname(pluginsDir),
+    );
+  } catch (error) {
+    // Unreadable provenance under an allow list: check no git origin rather
+    // than one the policy may refuse.
+    if (managedRegistryLimits()?.allowedUrls !== undefined) throw error;
+  }
 
   if (existsSync(pluginsDir)) {
     const entries = readdirSync(pluginsDir, { withFileTypes: true });
@@ -76,6 +138,17 @@ export async function checkPluginUpdates(options: {
       // Only the plugin's own repository: never one enclosing `dir`.
       const own = ownGitRepositoryArgs(dir);
       if (!own || !existsSync(manifestPath)) continue;
+      // #4521: its registry is refused, so its git origin (that registry's
+      // package host) is not fetched either.
+      if (refusedProvenance.has(entry.name)) {
+        managedByPolicy.push({
+          name: entry.name,
+          message: managedCapabilityDenial(
+            'updates for plugins from this marketplace',
+          ),
+        });
+        continue;
+      }
 
       try {
         await execGit([...own, 'fetch', '--quiet'], {
@@ -123,5 +196,7 @@ export async function checkPluginUpdates(options: {
     });
   }
 
-  return { updates };
+  return managedByPolicy.length > 0
+    ? { updates, managedByPolicy }
+    : { updates };
 }

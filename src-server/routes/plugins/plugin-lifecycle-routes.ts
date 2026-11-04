@@ -453,8 +453,7 @@ export function registerPluginLifecycleRoutes(
       // so the boot-time background check can run it in-process; the route
       // stays the operator-gated HTTP seam over the same scan.
       try {
-        const { updates } = await checkPluginUpdates({ pluginsDir, logger });
-        return c.json({ updates });
+        return c.json(await checkPluginUpdates({ pluginsDir, logger }));
       } catch (error: unknown) {
         logger.error('Failed to check for updates', {
           error: errorMessage(error),

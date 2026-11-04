@@ -92,7 +92,7 @@ test('limits.telemetry false: no exporter, and the status says why', async () =>
   const status = getOtelTelemetryDeliveryStatus();
   expect(status.phase).toBe('unconfigured');
   expect(status.managedDenial).toBe(
-    "Acme's policy manages telemetry: it is turned off. Contact your administrator for help.",
+    "Acme's policy manages usage sharing: it is turned off. Contact your administrator for help.",
   );
 });
 

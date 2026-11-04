@@ -29,7 +29,6 @@ import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import {
   managedCapabilityDenial,
-  managedRegistryLimits,
   registryLocationAllowedByManagedPolicy,
 } from '../../security/managed-capability-limits.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
@@ -56,10 +55,7 @@ import type {
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
-import {
-  fetchRegistryResource,
-  type RegistryHopPolicy,
-} from './registry-fetch.js';
+import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
   readRegistryInstallAliases,
@@ -341,20 +337,6 @@ function isGitSource(source: string): boolean {
  */
 const MANIFEST_FETCH_TIMEOUT_MS = 20_000;
 
-/**
- * #4521: a manifest redirect under `limits.registries.allowedUrls`. A hop to
- * the same origin (scheme, host and port) is followed: that origin already
- * serves the allowed URL and could serve the same bytes there directly. A hop
- * to another origin must itself be a listed URL, checked before it is
- * requested.
- */
-const managedManifestHop: RegistryHopPolicy = (from, to) => {
-  if (managedRegistryLimits()?.allowedUrls === undefined) return undefined;
-  if (to.origin === from.origin) return undefined;
-  if (registryLocationAllowedByManagedPolicy(to.href)) return undefined;
-  return managedCapabilityDenial('redirects to registries it does not list');
-};
-
 export class JsonManifestRegistryProvider
   implements
     IAgentRegistryProvider,
@@ -376,7 +358,27 @@ export class JsonManifestRegistryProvider
      */
     private readonly manifestFetchTimeoutMs: number = MANIFEST_FETCH_TIMEOUT_MS,
     private readonly logger?: Pick<Logger, 'warn'>,
+    /**
+     * #4521: whether this is the starter manifest that ships with Station,
+     * which `limits.registries.allowedUrls` never refuses.
+     */
+    readonly origin: { bundled?: boolean } = {},
   ) {}
+
+  /**
+   * #4521: the managed sentence when `limits.registries.allowedUrls` refuses
+   * this manifest's own location, or undefined. Every face (agents, plugins,
+   * tool servers) reads through {@link fetchManifest}, which checks this
+   * before any byte is read.
+   */
+  private managedLocationDenial(): string | undefined {
+    return registryLocationAllowedByManagedPolicy(
+      this.getRegistryKey(),
+      this.origin.bundled === true,
+    )
+      ? undefined
+      : managedCapabilityDenial('this marketplace');
+  }
 
   get displayName(): string {
     try {
@@ -403,6 +405,8 @@ export class JsonManifestRegistryProvider
    * until `json()` resolves.
    */
   private async fetchManifest(fresh = false): Promise<Manifest> {
+    const denial = this.managedLocationDenial();
+    if (denial !== undefined) throw new Error(denial);
     const now = Date.now();
     if (!fresh && this.manifestCache && now < this.cacheExpiry) {
       return this.manifestCache;
@@ -426,7 +430,7 @@ export class JsonManifestRegistryProvider
           signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
           ...(fresh ? { cache: 'no-store' as const } : {}),
         },
-        managedManifestHop,
+        managedRegistryHop,
       );
       if (!response.ok) {
         throw new Error(
@@ -947,8 +951,15 @@ export class JsonManifestRegistryProvider
    */
   agentRegistry(): IAgentRegistryProvider {
     return {
-      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
-      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      // #4521: a refused manifest lists no agents; removal stays local.
+      listAvailable: async () =>
+        this.managedLocationDenial() === undefined
+          ? this.listAvailableOfKind(AGENT_MANIFEST_KIND)
+          : [],
+      listInstalled: async () =>
+        this.managedLocationDenial() === undefined
+          ? this.listInstalledOfKind(AGENT_MANIFEST_KIND)
+          : [],
       install: (id: string) => this.install(id),
       uninstall: (id: string) => this.uninstall(id),
     };

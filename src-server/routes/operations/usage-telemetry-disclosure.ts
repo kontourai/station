@@ -210,7 +210,7 @@ export function createUsageTelemetryDisclosureRoutes(
     // #4521: a connection check contacts the destination; with telemetry
     // turned off by the managed policy, nothing is contacted.
     if (!telemetryAllowedByManagedPolicy())
-      return c.json(managedCapabilityRefusalBody('telemetry'), 403);
+      return c.json(managedCapabilityRefusalBody('usage sharing'), 403);
     const service = resolve();
     if (!service)
       return c.json(

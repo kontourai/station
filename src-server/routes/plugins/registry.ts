@@ -62,6 +62,7 @@ import {
 } from '../../services/plugins/plugin-install-consent.js';
 import {
   installPluginFromSource,
+  isRegistryPluginRemovalTarget,
   type PluginLifecycleEventBus,
   readRegistryPluginAvailability,
   resolvePluginRegistryInstall,
@@ -703,15 +704,15 @@ export function createRegistryRoutes(
     // install created. An id the plugin registry does not resolve falls
     // through to the provider, exactly as before.
     if (pluginInstallDeps) {
-      let registryPlugin: { source: string } | null = null;
+      // #4521: a removal lookup, not an acquisition, so no managed limit
+      // refuses it.
+      let registryPlugin = false;
       try {
-        registryPlugin = await resolvePluginRegistryInstall(id);
+        registryPlugin = await isRegistryPluginRemovalTarget(
+          id,
+          pluginInstallDeps.projectHomeDir,
+        );
       } catch (error: unknown) {
-        if (isRegistryAcquisitionRefusal(error))
-          return c.json(
-            { success: false, ...registryAcquisitionRefusalDetails(error) },
-            registryAcquisitionRefusalStatus(error),
-          );
         return c.json({ success: false, message: errorMessage(error) }, 500);
       }
       if (registryPlugin) {

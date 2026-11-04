@@ -64,11 +64,13 @@ the policy identity and its applied epoch.
 A [managed policy](../guides/managed-policy.md#capability-switches) can narrow
 acquisition further with `limits.registries`. It sets an https-only registry
 URL allow list, applied in `RegistrySourceManager`, in every reader of the
-registered plugin registries and in the tool-server catalogs, and checked at
-each manifest redirect hop. It can require a signer, which turns every
-registry install into one that needs a key from this applied policy
-(`managed-signature-required`, answered as the managed `403`); an unsigned
-claim is refused before the package is fetched. It also has switches for the
+registered plugin registries and in the tool-server catalogs, in the
+manifest reader itself (so every face of a manifest, agents included, is
+covered), and checked at each redirect hop of a manifest or GitHub skill read.
+It can require a signer, which turns every registry install into one that
+needs a key from this applied policy (`managed-signature-required`, answered as
+the managed `403`); an unsigned claim, a dependency's included, is refused
+before the package is fetched. Removal is never refused. It also has switches for the
 default skill registries and ACP registry installs. It adds no trust anchor.
 
 `JsonManifestRegistryProvider.resolvePackage()` obtains source and untrusted

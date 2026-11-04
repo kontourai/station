@@ -73,6 +73,7 @@ import {
   readRegistryInstallAliases,
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
+import { ManagedRegistryRefusal } from '../../providers/registries/registry-source-configuration.js';
 import { assertPluginBundleAssetsContained } from '../../routes/plugins/plugin-bundles.js';
 import { loadPluginProviders } from '../../routes/plugins/plugin-loader.js';
 import { errorMessage } from '../../routes/schemas/schemas.js';
@@ -276,6 +277,12 @@ function assertNoSymlinkTree(
   }
 }
 
+/**
+ * #4521: only registries `limits.registries` refuses list `id`, so they were
+ * not asked. Its message is the managed sentence.
+ */
+class ManagedPluginRegistryLookupRefusal extends Error {}
+
 async function resolveSinglePluginRegistryProvider(id: string): Promise<{
   provider: IPluginRegistryProvider;
   source: string | null;
@@ -427,7 +434,8 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
 
   const [providerMatch] = uniqueProviderMatches.values();
   if (!providerMatch) {
-    if (managedDenial !== undefined) throw new Error(managedDenial);
+    if (managedDenial !== undefined)
+      throw new ManagedPluginRegistryLookupRefusal(managedDenial);
     throw new Error(`No plugin registry provider could install ${id}`);
   }
   return providerMatch;
@@ -3408,6 +3416,7 @@ async function installPluginFromSourceUnderContext(
               throw new Error(
                 `Plugin dependency '${id}' has no inspectable source`,
               );
+            admitRegistryAcquisition(selected);
             return selected.source;
           },
           async listAvailable() {
@@ -4070,6 +4079,7 @@ async function installPluginFromSourceUnderContext(
               async resolveSource(id: string) {
                 const entry = await resolveSinglePluginRegistryProvider(id);
                 if (entry.source) {
+                  admitRegistryAcquisition(entry);
                   if (!entry.provider.registryKey) {
                     throw new Error(
                       `Plugin registry provider for '${id}' has no source identity`,
@@ -4093,6 +4103,7 @@ async function installPluginFromSourceUnderContext(
                 installOptions?: { expectedInstalledPluginName?: string },
               ) {
                 const entry = await resolveSinglePluginRegistryProvider(id);
+                admitRegistryAcquisition(entry);
                 return entry.provider.install(id, installOptions);
               },
             }),
@@ -5248,24 +5259,34 @@ function registryClaimCarriesSignature(claim: unknown): boolean {
   return typeof signature === 'object' && signature !== null;
 }
 
-export async function resolvePluginRegistryInstall(
+/**
+ * #4521: ACQUISITION admission for a resolved registry entry, run before any
+ * package byte is fetched. Under `unsignedPackages: false` an entry whose
+ * registry claim carries no signature is refused. A signed claim is checked
+ * against the host's trusted keys after the fetch
+ * (capturePluginRegistryAcquisition), because the signature covers the
+ * package bytes. Lookups for removal never call this.
+ */
+function admitRegistryAcquisition(match: { claim?: unknown }): void {
+  if (
+    managedPolicyRequiresSignedPackages() &&
+    !registryClaimCarriesSignature(match.claim)
+  )
+    throw new RegistryAcquisitionRefused('managed-signature-required');
+}
+
+/**
+ * The registry entry `id` names, found through the registries the managed
+ * policy lets Station read. A lookup only: it admits nothing.
+ */
+async function lookupPluginRegistryInstall(
   id: string,
-): Promise<{ source: string; registryKey: string } | null> {
+): Promise<{ source: string; registryKey: string; claim?: unknown } | null> {
   try {
     const match = await resolveSinglePluginRegistryProvider(id);
     if (!match.source) {
       return null;
     }
-    // #4521: under `unsignedPackages: false` an entry whose registry claim
-    // carries no signature is refused here, before any package byte is
-    // fetched. A signed claim is checked against the host's trusted keys
-    // after the fetch (capturePluginRegistryAcquisition), because the
-    // signature covers the package bytes.
-    if (
-      managedPolicyRequiresSignedPackages() &&
-      !registryClaimCarriesSignature(match.claim)
-    )
-      throw new RegistryAcquisitionRefused('managed-signature-required');
     if (!match.provider.registryKey) {
       throw new Error(
         `Plugin registry provider for '${id}' does not expose a stable source identity`,
@@ -5274,11 +5295,48 @@ export async function resolvePluginRegistryInstall(
     return {
       source: match.source,
       registryKey: match.provider.registryKey,
+      claim: match.claim,
     };
   } catch (error) {
     if (errorMessage(error).startsWith('No plugin registry provider')) {
       return null;
     }
+    throw error;
+  }
+}
+
+/**
+ * The registry entry `id` names, admitted for ACQUISITION: install, preview,
+ * update. Lookups for removal use {@link isRegistryPluginRemovalTarget}.
+ */
+export async function resolvePluginRegistryInstall(
+  id: string,
+): Promise<{ source: string; registryKey: string } | null> {
+  const match = await lookupPluginRegistryInstall(id);
+  if (!match) return null;
+  admitRegistryAcquisition(match);
+  return { source: match.source, registryKey: match.registryKey };
+}
+
+/**
+ * Whether `id` names a registry plugin that the shared uninstall removes
+ * (#4521). Removal only narrows what this Station runs, so no managed limit
+ * blocks it: no signature admission applies, and when the policy refuses
+ * every registry that could list `id`, that registry is not contacted and
+ * the local install record (`config/registry-installs.json`) answers.
+ */
+export async function isRegistryPluginRemovalTarget(
+  id: string,
+  projectHomeDir: string,
+): Promise<boolean> {
+  try {
+    return (await lookupPluginRegistryInstall(id)) !== null;
+  } catch (error) {
+    if (
+      error instanceof ManagedPluginRegistryLookupRefusal ||
+      error instanceof ManagedRegistryRefusal
+    )
+      return Object.hasOwn(readRegistryInstallAliases(projectHomeDir), id);
     throw error;
   }
 }

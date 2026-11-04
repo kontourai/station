@@ -11,10 +11,16 @@
  * - passes the caller's `permitHop`, which is how `limits.registries`
  *   allowedUrls governs a manifest read.
  */
+import {
+  managedCapabilityDenial,
+  managedRegistryLimits,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
+
 const MAX_REGISTRY_REDIRECTS = 5;
 
 /** A redirect the registry read refused to follow; nothing was requested. */
-export class RegistryRedirectRefusal extends Error {
+class RegistryRedirectRefusal extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'RegistryRedirectRefusal';
@@ -26,6 +32,20 @@ export class RegistryRedirectRefusal extends Error {
  * to follow it.
  */
 export type RegistryHopPolicy = (from: URL, to: URL) => string | undefined;
+
+/**
+ * #4521: a registry redirect under `limits.registries.allowedUrls`. A hop to
+ * the same origin (scheme, host and port) is followed: that origin already
+ * serves the allowed location and could serve the same bytes there directly.
+ * A hop to another origin must itself be a listed URL, checked before it is
+ * requested. Without an allow list every hop the read accepts is followed.
+ */
+export const managedRegistryHop: RegistryHopPolicy = (from, to) => {
+  if (managedRegistryLimits()?.allowedUrls === undefined) return undefined;
+  if (to.origin === from.origin) return undefined;
+  if (registryLocationAllowedByManagedPolicy(to.href)) return undefined;
+  return managedCapabilityDenial('redirects to registries it does not list');
+};
 
 export async function fetchRegistryResource(
   url: string | URL,

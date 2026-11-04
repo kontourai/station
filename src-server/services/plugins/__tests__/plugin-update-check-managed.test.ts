@@ -66,7 +66,6 @@ function setup() {
   mkdirSync(pluginsDir, { recursive: true });
   registerManifestRegistryProvider(
     new JsonManifestRegistryProvider(CATALOG, home),
-    'configured',
   );
   return { home, pluginsDir };
 }

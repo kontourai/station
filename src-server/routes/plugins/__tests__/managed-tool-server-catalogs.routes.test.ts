@@ -225,7 +225,6 @@ describe("a registry manifest's tools", () => {
   function registerManifest(home: string) {
     registerManifestRegistryProvider(
       new JsonManifestRegistryProvider(MANIFEST, home),
-      'configured',
     );
   }
 
