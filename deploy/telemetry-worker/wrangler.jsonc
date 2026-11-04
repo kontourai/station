@@ -6,18 +6,10 @@
   // The shared Lite rules (packages/telemetry-broker/src/lite-core.ts) and the
   // shared ping parser use synchronous node:crypto (SHA-256 and HMAC).
   "compatibility_flags": ["nodejs_compat"],
-  // Served only on the Kontour domains; the workers.dev address stays off.
-  // Released senders post to the .com hostname, so both must keep working.
-  // The .io hostname is a custom domain (deploying creates its DNS record).
-  // The .com hostname is a zone route: its proxied DNS record already exists
-  // and is managed outside this repository, and a custom domain cannot be
-  // created over an existing record. Both zones must be on the deploying account.
+  // Served only on the Kontour domain; the workers.dev address stays off.
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [
-    { "pattern": "telemetry.kontourai.io", "custom_domain": true },
-    { "pattern": "telemetry.kontourai.com/*", "zone_name": "kontourai.com" }
-  ],
+  "routes": [{ "pattern": "telemetry.kontourai.io", "custom_domain": true }],
   "vars": {
     // Retained Lite rows (pings plus feedback), database bytes and UTC days
     // kept including today. Ingestion refuses with 507 at either ceiling.

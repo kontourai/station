@@ -28,7 +28,7 @@ async function openPage(
   const html = await (await call(env, path)).text();
   const js = await (await call(env, script)).text();
   const dom = new JSDOM(html, {
-    url: 'https://telemetry.kontourai.com/',
+    url: 'https://telemetry.kontourai.io/',
     runScripts: 'outside-only',
   });
   const { window } = dom;

@@ -10,7 +10,7 @@ import worker, { type Env, type RateLimiter } from '../src/worker.ts';
 export { dailyPing };
 
 export const OPERATOR_KEY = `sto_${'o'.repeat(43)}`;
-export const ORIGIN = 'https://telemetry.kontourai.com';
+export const ORIGIN = 'https://telemetry.kontourai.io';
 
 /**
  * A Durable Object's storage over one in-memory SQLite database (node:sqlite).

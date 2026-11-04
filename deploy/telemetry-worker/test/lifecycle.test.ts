@@ -96,6 +96,24 @@ test('closing a day erases its salt and every contributor key', async () => {
   expect(receiver.storage.alarmAt()).toBe(nextMaintenance(Date.now()));
 });
 
+test("the alarm erases a closed day's salt even when no request follows", async () => {
+  at('2026-11-04T18:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  await post(env, LITE, ping());
+  at('2026-11-05T01:00:05Z');
+  await receiver.object.alarm();
+  expect(receiver.rows('SELECT count(*) AS n FROM lite_salts')).toEqual([
+    { n: 0 },
+  ]);
+  expect(
+    receiver.rows(
+      'SELECT count(*) AS n FROM lite_pings WHERE client_hash IS NOT NULL',
+    ),
+  ).toEqual([{ n: 0 }]);
+});
+
 test('the alarm applies 90-day retention and keeps its own schedule', async () => {
   at('2026-08-01T10:00:00Z');
   const receiver = fakeReceiver();
