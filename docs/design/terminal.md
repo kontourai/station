@@ -363,6 +363,37 @@ command palette, Settings and shortcut list work from a focused terminal; the
 rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
 under "In a terminal" from the SDK's `terminalViewShortcuts`.
 
+Phone keyboards (#3994). Gboard on Android Chrome, recorded on an emulator,
+sends each letter as a keydown with keyCode 229 and then a
+`beforeinput insertText`, and its Send (Enter) and Backspace keys as keydowns
+whose `key` is set and whose `code` is empty. The view derives a missing code
+from the key, since the encoder knows keys only by code: Send had typed
+nothing, so a command never ran. The keyboard's own insertions and deletions
+are left in the hidden input, which is emptied when a line is sent, so the
+keyboard's view of the field stays true: cancelling them had left Gboard
+deleting from a field it believed held text, which fires no event, and
+Backspace was lost.
+
+Selection gestures carry only the options Ghostty accepts for their type: a
+press takes a time and a repeat window (500 ms and a cell's width), and a drag
+takes the grid geometry. Sending both to both made every pointer selection
+fail, which on a phone's long press stopped the terminal ("could not start").
+A double click selects a word, and so does the double press a long touch
+sends; the long press also opens the terminal menu on that selection.
+
+A hidden view (another tab, a put-away region, the page in the background)
+gives its WebGL context back. Shown again, it restores it through the
+`WEBGL_lose_context` handle taken while the context was live (a lost context
+answers `getExtension` with null, so the view had stayed blank) and uploads
+the whole glyph atlas into the new texture (otherwise only the cursor was
+drawn). A context the browser does not give back within 1.5 s, or one it takes
+from a shown view, is replaced by the Canvas 2D renderer. The
+[renderer suite](../../packages/sdk/src/__tests__/terminal-view/webgl2-renderer.test.ts),
+the [engine suite](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
+and the Android keyboard cases in the
+[controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+fail when any of these is removed.
+
 A view refits on every change to its box through one `ResizeObserver`:
 renderer and emulator at once, the PTY with the latest size at most every
 100 ms. A real browser on an isolated Station (#3994) confirmed `tput cols`
@@ -941,12 +972,42 @@ verification.
   fail when a channel's events reach another session or output re-renders a
   panel.
 
-**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
-the iOS shell or the Android shell; the screen reader mode has not been used
-with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
-not qualified. The manual screen reader pass listed above has not happened.
-The browser broker (DataChannel) route is unsupported by design, not
-untested.
+- Phone (#3994, 2026-11-04, revision `031fed73e8`): real Android Chrome
+  124.0.6367.219 with Gboard on the Android 35 x86_64 emulator (Medium Phone,
+  1080×2400), typed through taps on Gboard's keys and `adb shell input`,
+  against an isolated Station on Windows 11 (cmd.exe). Verified: tapping the
+  terminal raises the keyboard; typing, Backspace and Send run the command;
+  the key bar's ^C (interrupting `ping -t`), Esc, Tab completion, ↑ history
+  and sticky Ctrl with a Gboard letter; the cursor row and key bar stay inside
+  the visual viewport with the keyboard open or closed and in landscape; a
+  reload keeps the same shell; `exit` then Restart shell; a second shell's tab
+  and closing it; Home and back redraws the screen; a long press selects a
+  word, Add to chat puts it in the open chat's composer, and the sent message
+  reaches the model with the output as a fenced block. Before the fixes above,
+  Send and Backspace typed nothing, the screen stayed blank after Home and
+  back, and a long press stopped the terminal. The
+  [phone keyboard journey](../../tests/terminal-mobile-keyboard.spec.ts) (Pixel 7
+  emulation, a real shell on an isolated Station, `smoke-live` and the PR
+  smoke contract) passed on macOS and failed with all the fixes, the renderer
+  fix or the selection fix reverted.
+- Desktop (#3994, same revision): Chromium at 1440×900 on the same Station
+  typed and ran a command, selected by drag and double click without stopping
+  the terminal, and opened the menu with Copy and Add to chat enabled.
+
+**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app or
+the iOS shell. The Android shell was not exercised: the CI debug APK of
+`470f8b49` installed on the emulator but stopped at "Station couldn't finish
+starting: saved mobile Station metadata is missing after initialization;
+refusing to recreate it", also after its data was cleared. An agent's
+`terminal_run` was not approved from a phone: a Station-native agent's call
+was refused as unattended in a chat started from the composer, and a Claude
+Code chat in a Project was not offered the tool. The script runner did not
+start a script on the Windows host (`spawn EINVAL` for the package manager's
+`.cmd` shim). Desktop copy to the system clipboard was not read back. The
+screen reader mode has not been used with real assistive technology
+(VoiceOver, NVDA, TalkBack); Windows/ConPTY is not qualified. The manual
+screen reader pass listed above has not happened. The browser broker
+(DataChannel) route is unsupported by design, not untested.
 
 ## Open questions
 
