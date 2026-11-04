@@ -144,8 +144,12 @@ therefore cause a reopened registration to adopt a different store. Durable host
 binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
 Proposals submitted through this preview are attributed to the operator; Corpus
 refuses that same person as an approver, including through a future review route.
-The preview provides no route to decide or erase those proposals. Agent-backed
-proposals and human review are separate future work.
+Corpus permits the proposer to reject a proposal, but rejection retains its
+content. The preview provides no decision or erasure route. An unsourced pending
+or rejected proposal cannot be erased through the current Corpus purge contract;
+its content remains in the store until removed manually. Proposal erasure is
+tracked in [corpus#62](https://github.com/kontourai/corpus/issues/62).
+Agent-backed proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index
 
