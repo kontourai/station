@@ -348,6 +348,7 @@ export class MemoryRootManager {
     );
   }
 
+  /** The host must attest proposerId to the actual proposer; request data alone is not authority. */
   async propose(
     authority: SessionReadAuthority,
     root: KnowledgeStoreRoot,

@@ -143,8 +143,9 @@ not pin that identity across a Station restart. Replacing the store directory ca
 therefore cause a reopened registration to adopt a different store. Durable host
 binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
 Proposals submitted through this preview are attributed to the operator; Corpus
-refuses that same person as an approver. The preview provides no decision route.
-An agent-backed proposal and human review are separate future work.
+refuses that same person as an approver, including through a future review route.
+The preview provides no route to decide or erase those proposals. Agent-backed
+proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index
 
