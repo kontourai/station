@@ -327,8 +327,9 @@ export interface InitializeRuntimeDeps {
     framework: IAgentFramework;
     modelCatalog: BedrockModelCatalog;
   }) => void;
-  /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
+  /** Transfers cleanup custody before initialization can subscribe or fail. */
   onOrchestrationServiceCreated?: (service: OrchestrationService) => void;
+  /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
     nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
