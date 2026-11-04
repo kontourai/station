@@ -107,7 +107,11 @@ This status is not persisted configuration or authenticated identity. Publicatio
 uses the actual bound API port and eligible private IPv4 interface; IPv6-only,
 IPv6 wildcard and public-only listeners do not establish a publishable address.
 See [LAN discovery](../guides/connections.md#make-this-host-discoverable-on-the-lan)
-for failure and withdrawal semantics.
+for failure and withdrawal semantics. Under a
+[managed policy](../guides/managed-policy.md#network-exposure) without `remote`
+clients, discovery stays off whatever this value says, its status gives the
+policy's sentence, and turning it on is refused with
+`managed-policy-remote-clients`.
 
 ### telemetry destinations
 

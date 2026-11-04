@@ -277,7 +277,9 @@ refuses to start otherwise. Until #4517 routes managed values through
 `resolveEffectiveAppSetting` and the write paths, no setting is managed.
 Clients can already read the value-free summary at
 `GET /api/settings/managed-policy` (organization, support link, locked setting
-paths), which the "Managed by" presentation will use.
+paths, effective limits), which the "Managed by" presentation will use. The
+first enforced limit, `limits.clients` (#4519), sits outside settings: it
+governs network exposure, not a setting value.
 
 ## 3. Target model: five scopes
 
