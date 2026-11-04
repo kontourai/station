@@ -62,25 +62,34 @@ for (const width of [390, 1440]) {
           workspace.getByRole('button', { name: /Project watch/ }),
         ).toBeDisabled();
         await expect.poll(() => failedReads).toBeGreaterThan(0);
+        const retryProjects = workspace.getByRole('button', {
+          name: 'Retry Projects',
+        });
+        await expect(retryProjects).toBeVisible();
+        const retryBox = await retryProjects.boundingBox();
+        expect(retryBox).not.toBeNull();
+        expect(retryBox!.height).toBeGreaterThanOrEqual(44);
+        expect(retryBox!.x).toBeGreaterThanOrEqual(0);
+        expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(width);
         await page.screenshot({
           path: testInfo.outputPath('projects-read-failed.png'),
           fullPage: true,
         });
-        await expect(
-          workspace.getByRole('button', { name: 'Retry Projects' }),
-        ).toBeVisible();
         await workspace.getByRole('button', { name: /Start blank/ }).click();
         await page.getByLabel('Board name').fill('Keep my Board draft');
         await workspace
           .getByRole('button', { name: 'Note', exact: true })
           .click();
         await page
-          .getByLabel('Note', { exact: true })
+          .getByRole('textbox', { name: 'Note', exact: true })
           .fill('Keep this note through retry.');
         await workspace
           .getByRole('button', { name: 'Tasks', exact: true })
           .click();
-        const projectSelect = page.getByLabel('Project', { exact: true });
+        const projectSelect = page.getByRole('combobox', {
+          name: 'Project',
+          exact: true,
+        });
         await expect(projectSelect).toHaveValue('');
         failProjects = false;
         const retry = workspace.getByRole('button', { name: 'Retry Projects' });
@@ -96,9 +105,9 @@ for (const width of [390, 1440]) {
         await expect(page.getByLabel('Board name')).toHaveValue(
           'Keep my Board draft',
         );
-        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
-          'Keep this note through retry.',
-        );
+        await expect(
+          page.getByRole('textbox', { name: 'Note', exact: true }),
+        ).toHaveValue('Keep this note through retry.');
         await expect(projectSelect).toHaveValue('');
         await projectSelect.selectOption(slug);
         await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
@@ -107,7 +116,9 @@ for (const width of [390, 1440]) {
             .getByRole('button', { name: 'Toggle menu', exact: true })
             .click();
         await page
-          .getByRole('navigation', { name: 'Primary navigation' })
+          .getByRole('navigation', {
+            name: width === 390 ? 'Mobile navigation' : 'Primary navigation',
+          })
           .getByRole('button', { name: 'Home', exact: true })
           .click();
         const discard = page.getByRole('dialog', { name: 'Unsaved Changes' });
@@ -116,9 +127,9 @@ for (const width of [390, 1440]) {
           .click();
         await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
         await expect(projectSelect).toHaveValue(slug);
-        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
-          'Keep this note through retry.',
-        );
+        await expect(
+          page.getByRole('textbox', { name: 'Note', exact: true }),
+        ).toHaveValue('Keep this note through retry.');
         await page.screenshot({
           path: testInfo.outputPath('projects-recovered-draft.png'),
           fullPage: true,
@@ -142,6 +153,7 @@ for (const width of [390, 1440]) {
           ],
         });
         await page.reload();
+        await expect(workspace).toBeVisible({ timeout: 30_000 });
         await expect(
           page.getByRole('heading', {
             name: 'Keep my Board draft',
@@ -151,12 +163,12 @@ for (const width of [390, 1440]) {
         await workspace
           .getByRole('button', { name: 'Edit Board', exact: true })
           .click();
-        await expect(page.getByLabel('Project', { exact: true })).toHaveValue(
-          slug,
-        );
-        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
-          'Keep this note through retry.',
-        );
+        await expect(
+          page.getByRole('combobox', { name: 'Project', exact: true }),
+        ).toHaveValue(slug);
+        await expect(
+          page.getByRole('textbox', { name: 'Note', exact: true }),
+        ).toHaveValue('Keep this note through retry.');
       } finally {
         expect(
           (
