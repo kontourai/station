@@ -788,6 +788,11 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+The bounded [CI browser installer](../../scripts/install-playwright-browsers.mjs)
+uses the installed Playwright package. Windows runs its advertised CLI binary
+with Node; other platforms use `npx --no`. Neither path fetches a new Playwright
+package. Browser downloads still use the ambient `PLAYWRIGHT_BROWSERS_PATH`.
+
 New or materially changed test files state their measured wall cost in the
 pull request (the `test:focused` duration line is the receipt). A file that
 needs seconds must name the contract no cheaper layer proves; prefer splitting
