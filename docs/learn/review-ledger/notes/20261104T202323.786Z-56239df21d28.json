@@ -1,0 +1,7 @@
+{
+  "revision": "bcb32f8f43b6e21dda784fcb7304df9aae888f8f",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Independent review narrowed the epoch recovery sentence to a chat whose binding read is pending, matching ChatDock conditional mount and the generation-triggered effect in ConversationOpenRevalidator. Re-read the full status/epoch paragraph against WorkObservation.resetStreamEpoch and ensureOrchestrationEventStream prior-epoch condition. Initial cold snapshot is not this race. No SDK/API/authority/model-selection semantics changed. Pre-fix and clean mutation each1intendedFAIL/2controls; restored39PASS, UItypes/scopedBiomePASS. No physical-browser repair or whole-epic approval inferred.","inputs":["docs/user/concepts.md"]}
+  ]
+}
