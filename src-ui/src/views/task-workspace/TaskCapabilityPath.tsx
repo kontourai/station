@@ -210,6 +210,7 @@ function ProjectToolInspection({
       {sources.length === 0 ? (
         <Empty
           variant="compact"
+          label="Nothing reported"
           description="The Project catalog returned an empty source list."
         />
       ) : matching.length === 0 ? (
@@ -333,6 +334,7 @@ function SourceTools({
         ) : (
           <Empty
             variant="compact"
+            label="Nothing reported"
             description="This source reported an empty tool list."
           />
         )}

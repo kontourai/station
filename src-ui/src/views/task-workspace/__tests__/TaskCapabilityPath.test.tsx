@@ -22,7 +22,7 @@ const state = vi.hoisted(() => ({
   scope: {
     apiBase: 'http://station.test',
     authorityKey: 'person-a',
-    isCurrent: () => true,
+    isCurrent: (): boolean => true,
   },
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
