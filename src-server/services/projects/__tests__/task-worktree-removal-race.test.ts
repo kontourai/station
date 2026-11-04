@@ -6,7 +6,13 @@
  * command, which is the window between the checks and the removal.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -68,7 +74,7 @@ async function taskWorktree() {
       isolation: { mode: 'worktree' },
     },
   );
-  return { repo, metadata };
+  return { parent, repo, metadata };
 }
 
 describe('Task worktree removal races (#4507)', () => {
@@ -138,5 +144,28 @@ describe('Task worktree removal races (#4507)', () => {
     expect(outcome).toEqual({ outcome: 'removed' });
     expect(existsSync(metadata.path)).toBe(false);
     expect(git(repo, 'branch', '--list', metadata.branch).trim()).toBe('');
+  });
+
+  // #2411 for finalization: `status` and a non-forced `worktree remove` run
+  // clean filters, and the repository's config is member-writable. A filter
+  // planted after the worktree was made must not run as the operator.
+  test('a clean filter planted in the repository config is not run, and the worktree is kept', async () => {
+    const { parent, repo, metadata } = await taskWorktree();
+    const marker = join(parent, 'FILTER-RAN');
+    git(repo, 'config', 'filter.evil.clean', `sh -c 'touch ${marker}; cat'`);
+    writeFileSync(join(repo, '.git', 'info', 'attributes'), '* filter=evil\n');
+    // Racy stat data, so git would re-read (and filter) the file.
+    const later = new Date(Date.now() + 5_000);
+    utimesSync(join(metadata.path, 'README.md'), later, later);
+
+    const outcome = await new WorktreeProvisioningService().finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(existsSync(marker)).toBe(false);
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'unsafe-config' });
+    expect(existsSync(metadata.path)).toBe(true);
   });
 });

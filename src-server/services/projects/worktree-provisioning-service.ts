@@ -63,7 +63,12 @@ export type TaskWorktreeFinalization =
   | { outcome: 'removed' | 'missing' }
   | {
       outcome: 'kept';
-      reason: 'policy' | 'uncommitted' | 'unpushed' | 'session-running';
+      reason:
+        | 'policy'
+        | 'uncommitted'
+        | 'unpushed'
+        | 'session-running'
+        | 'unsafe-config';
       detail?: string;
     };
 
@@ -563,7 +568,7 @@ export class WorktreeProvisioningService {
   private readonly ownRepository: (
     folder: string,
     projectRoot: string,
-    options: { newWorktree: true },
+    options: { newWorktree?: true },
   ) => Promise<LiveRepository>;
 
   constructor(
@@ -577,7 +582,7 @@ export class WorktreeProvisioningService {
     ownRepository: (
       folder: string,
       projectRoot: string,
-      options: { newWorktree: true },
+      options: { newWorktree?: true },
     ) => Promise<LiveRepository> = requireLiveRepository,
     /** #4507: see {@link DEFAULT_GIT_COMMAND_TIMEOUT_MS}. */
     options: { commandTimeoutMs?: number } = {},
@@ -669,7 +674,7 @@ export class WorktreeProvisioningService {
     // it. Other worktrees' records are never touched, even when their
     // folders are missing (an unmounted volume, a move in progress).
     for (const stale of found.staleElsewhere)
-      await this.forgetMissingRegistration(found.repoRoot, stale);
+      await this.forgetMissingRegistration(found.commonDir, stale);
     const startedAt = performance.now();
     try {
       const metadata = await this.createWorktree({
@@ -701,24 +706,61 @@ export class WorktreeProvisioningService {
   }
 
   /**
+   * #4507: the repository and the Task's worktree, each opened through the
+   * judged-config reader. A refused config is the worktree kept as
+   * `unsafe-config`; any other open failure is thrown.
+   */
+  private async openCheckedForFinalization(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<
+    | { repository: LiveRepository; worktree: LiveRepository }
+    | { kept: TaskWorktreeFinalization }
+  > {
+    const unsafe = (error: RepositoryConfigRefusedError) => ({
+      kept: {
+        outcome: 'kept' as const,
+        reason: 'unsafe-config' as const,
+        detail:
+          error.keys.length > 0
+            ? `The repository's own config sets ${error.keys.join(', ')}, which git would run; the worktree was not touched.`
+            : "The repository's config could not be read; the worktree was not touched.",
+      },
+    });
+    let repository: LiveRepository;
+    try {
+      repository = await this.ownRepository(
+        metadata.repoPath,
+        metadata.repoPath,
+        { newWorktree: true },
+      );
+    } catch (error) {
+      if (error instanceof RepositoryConfigRefusedError) return unsafe(error);
+      throw error;
+    }
+    try {
+      const worktree = await this.ownRepository(
+        metadata.path,
+        metadata.path,
+        {},
+      );
+      return { repository, worktree };
+    } catch (error) {
+      await repository.dispose();
+      if (error instanceof RepositoryConfigRefusedError) return unsafe(error);
+      throw error;
+    }
+  }
+
+  /**
    * #4507: forgets git's record of one checkout of a Task's branch whose
    * folder is gone: the admin entry under the common directory whose
    * `gitdir` names exactly that folder, and nothing else.
    */
   private async forgetMissingRegistration(
-    repoRoot: string,
+    common: string,
     folder: string,
   ): Promise<void> {
     if (existsSync(folder)) return;
-    const common = (
-      await this.git.run([
-        '-C',
-        repoRoot,
-        'rev-parse',
-        '--path-format=absolute',
-        '--git-common-dir',
-      ])
-    ).stdout.trim();
     const admin = join(common, 'worktrees');
     for (const name of await readdir(admin).catch(() => [] as string[])) {
       let gitdir: string;
@@ -785,81 +827,105 @@ export class WorktreeProvisioningService {
     if (request.isWorkspaceBusy?.(metadata.path))
       return { outcome: 'kept', reason: 'session-running' };
     await this.assertRegisteredCleanupTarget(metadata);
-    const changes = await this.git.run([
-      '-C',
-      metadata.path,
-      'status',
-      '--porcelain',
-      '--untracked-files=all',
-    ]);
-    if (changes.stdout.trim())
-      return {
-        outcome: 'kept',
-        reason: 'uncommitted',
-        detail: 'The worktree has uncommitted or untracked changes.',
-      };
-    const branchRef = `refs/heads/${metadata.branch}`;
-    // The tip checked here is the only one the branch may be deleted at.
-    const tip = (
-      await this.git.run([
-        '-C',
-        metadata.repoPath,
-        'rev-parse',
-        '--verify',
-        '--end-of-options',
-        `${branchRef}^{commit}`,
-      ])
-    ).stdout.trim();
-    const unique = await this.git.run([
-      '-C',
-      metadata.repoPath,
-      'rev-list',
-      '--max-count=1',
-      tip,
-      '--not',
-      '--remotes',
-      // `--exclude` patterns for `--branches` are branch names without
-      // `refs/heads/`; a prefixed one excludes nothing, and the Task's own
-      // branch would then count as another branch reaching its commits.
-      `--exclude=${metadata.branch}`,
-      '--branches',
-    ]);
-    if (unique.stdout.trim())
-      return {
-        outcome: 'kept',
-        reason: 'unpushed',
-        detail: `Branch ${metadata.branch} has commits no remote or other branch has.`,
-      };
-    // Without `--force`, so git itself refuses a worktree that gained a
-    // change after the checks above (a turn starting, a terminal write):
-    // the change is kept, never deleted.
-    const removed = await this.git.run(
-      ['-C', metadata.repoPath, 'worktree', 'remove', metadata.path],
-      { allowCodes: [0, 128] },
-    );
-    if (removed.code !== 0) {
-      if (/modified or untracked files/.test(removed.stderr))
+    // Every git call below runs through Station's judged copy of the
+    // repository's config, as creation does (#2411): `status` and a
+    // non-forced `worktree remove` run clean filters, and the repository's
+    // own config (a member-writable file) may name one. A config that
+    // defines such a program keeps the worktree; nothing is run.
+    const opened = await this.openCheckedForFinalization(metadata);
+    if ('kept' in opened) return opened.kept;
+    const { repository, worktree } = opened;
+    try {
+      const repo = ['-C', repository.top, ...repository.repoArgs];
+      const env = repository.env;
+      const changes = await this.git.run(
+        [
+          '-C',
+          worktree.top,
+          ...worktree.repoArgs,
+          'status',
+          '--porcelain',
+          '--untracked-files=all',
+        ],
+        { env: worktree.env },
+      );
+      if (changes.stdout.trim())
         return {
           outcome: 'kept',
           reason: 'uncommitted',
-          detail: 'The worktree gained changes while it was being finalized.',
+          detail: 'The worktree has uncommitted or untracked changes.',
         };
-      throw new Error(
-        `git worktree remove failed: ${removed.stderr.trim() || removed.stdout.trim()}`,
+      const branchRef = `refs/heads/${metadata.branch}`;
+      // The tip checked here is the only one the branch may be deleted at.
+      const tip = (
+        await this.git.run(
+          [
+            ...repo,
+            'rev-parse',
+            '--verify',
+            '--end-of-options',
+            `${branchRef}^{commit}`,
+          ],
+          { env },
+        )
+      ).stdout.trim();
+      const unique = await this.git.run(
+        [
+          ...repo,
+          'rev-list',
+          '--max-count=1',
+          tip,
+          '--not',
+          '--remotes',
+          // `--exclude` patterns for `--branches` are branch names without
+          // `refs/heads/`; a prefixed one excludes nothing, and the Task's
+          // own branch would then count as another branch reaching its
+          // commits.
+          `--exclude=${metadata.branch}`,
+          '--branches',
+        ],
+        { env },
       );
+      if (unique.stdout.trim())
+        return {
+          outcome: 'kept',
+          reason: 'unpushed',
+          detail: `Branch ${metadata.branch} has commits no remote or other branch has.`,
+        };
+      // Without `--force`, so git itself refuses a worktree that gained a
+      // change after the checks above (a turn starting, a terminal write):
+      // the change is kept, never deleted.
+      const removed = await this.git.run(
+        [...repo, 'worktree', 'remove', metadata.path],
+        { allowCodes: [0, 128], env },
+      );
+      if (removed.code !== 0) {
+        if (/modified or untracked files/.test(removed.stderr))
+          return {
+            outcome: 'kept',
+            reason: 'uncommitted',
+            detail: 'The worktree gained changes while it was being finalized.',
+          };
+        throw new Error(
+          `git worktree remove failed: ${removed.stderr.trim() || removed.stdout.trim()}`,
+        );
+      }
+      // Deleted only if the branch still points at the tip that was
+      // checked: a commit made since moves it, and git refuses.
+      const deleted = await this.git.run(
+        [...repo, 'update-ref', '-d', branchRef, tip],
+        { allowCodes: [0, 1, 128], env },
+      );
+      if (deleted.code !== 0)
+        return {
+          outcome: 'kept',
+          reason: 'unpushed',
+          detail: `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`,
+        };
+    } finally {
+      await worktree.dispose();
+      await repository.dispose();
     }
-    // Deleted only if the branch still points at the tip that was checked:
-    // a commit made since moves it, and git refuses.
-    const deleted = await this.git.run(
-      ['-C', metadata.repoPath, 'update-ref', '-d', branchRef, tip],
-      { allowCodes: [0, 1, 128] },
-    );
-    if (deleted.code !== 0)
-      return {
-        outcome: 'kept',
-        reason: 'unpushed',
-        detail: `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`,
-      };
     worktreeCleanupTotal.add(1, {
       outcome: 'success',
       policy: 'cleanup',
@@ -1038,6 +1104,8 @@ export class WorktreeProvisioningService {
     | {
         kind: 'absent';
         repoRoot: string;
+        /** The repository's real common git directory (from the checked open). */
+        commonDir: string;
         branchExists: boolean;
         /** Git still registers this branch at the derived path, now gone. */
         staleOwnPath: boolean;
@@ -1102,6 +1170,7 @@ export class WorktreeProvisioningService {
       const absent = {
         kind: 'absent' as const,
         repoRoot,
+        commonDir: repository.commonDir,
         branchExists,
         // Reused only while no existing checkout elsewhere holds the
         // branch; then git refuses the second checkout, as it should.

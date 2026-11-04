@@ -46,6 +46,7 @@ export type TaskWorktreeKeptReason =
   | 'uncommitted'
   | 'unpushed'
   | 'session-running'
+  | 'unsafe-config'
   | 'failed';
 
 export interface TaskWorktreeEntry {
@@ -77,6 +78,7 @@ const KEPT_REASONS: readonly TaskWorktreeKeptReason[] = [
   'uncommitted',
   'unpushed',
   'session-running',
+  'unsafe-config',
   'failed',
 ];
 

@@ -153,7 +153,12 @@ lost:
 
 When any of these fails the worktree and branch are kept and the reason is
 recorded and shown on the opened Task (`taskWorktree.kept`: `policy`,
-`uncommitted`, `unpushed`, `session-running`, or `failed`). A
+`uncommitted`, `unpushed`, `session-running`, `unsafe-config`, or `failed`).
+Every git call finalization and recovery make runs through Station's judged
+copy of the repository's config, as creation does: `status` and a non-forced
+`worktree remove` run clean filters, so a repository (or Task worktree)
+whose own config names a program git would run keeps the worktree as
+`unsafe-config` and runs nothing. A
 `session-running` deferral is retried when a turn or Session ends, and once
 when Station starts (the deferral is recorded with the worktree, so a restart
 does not lose it); nothing else re-runs a kept finalization. A recorded worktree that is already gone is

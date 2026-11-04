@@ -106,7 +106,8 @@ export interface TaskWorktreeView {
    * Set when the Task finished but its worktree was kept: its policy keeps
    * it (`policy`), removing it would lose work (`uncommitted`, `unpushed`),
    * a Session in it had a running turn (`session-running`, retried when the
-   * turn ends), or finalization failed (`failed`).
+   * turn ends), the repository's own config names a program git would run
+   * (`unsafe-config`), or finalization failed (`failed`).
    */
   kept?: {
     reason:
@@ -114,6 +115,7 @@ export interface TaskWorktreeView {
       | 'uncommitted'
       | 'unpushed'
       | 'session-running'
+      | 'unsafe-config'
       | 'failed';
     at: string;
     detail?: string;
