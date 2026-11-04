@@ -256,7 +256,9 @@ resolves once none of it remains, and fails otherwise. On POSIX the command
 leads its own process group, signaled SIGTERM then SIGKILL; after the leader
 exits, the group is checked continuously while termination runs and signaled
 only right after a check shows members, and once seen empty it is never
-signaled again, so a reused group id is not. On Windows each process proven to
+signaled again, so a reused group id is not. On Windows the command itself is
+ended at once (Node still holds its handle, so its pid names no other process),
+without waiting on a process-table read; then each process proven to
 descend from the command (parent pid plus birth order, the owned-process
 sweep's rule) is ended by pid until the process table shows none; a
 descendant whose parent had already exited before the stop cannot be proven
