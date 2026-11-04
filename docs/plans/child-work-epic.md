@@ -19,8 +19,12 @@ Project, directory, Station default, built-in shared fallback and missing
 observation controls. Earlier invalid fixture requests are excluded from
 regression evidence; the corrected pre-fix controls fail at their fact assertions.
 The source-only review found no P0–P2 issue before an unreachable override branch
-was removed and the two fallback controls were added. Final mutation/type/readiness
-qualification remains pending at this checkpoint.
+was removed and the two fallback controls were added; a fresh final source review
+also found no P0–P2 defect. From clean commit `ad1390a528dc`, clearing only origin
+attribution causes five intended failures. Exact source restoration passes the
+89-case inspector/preparation selection, and final server-test types pass.
+Readiness remains a separate required check; this increment does not complete
+schedule/output bindings or whole-topology acceptance.
 
 Flow scanner PR [#1599](https://github.com/kontourai/flow-agents/pull/1599)
 merged as `a531ad5e82f92f4f485da4c5ad8d4e52ecea3e7d`; release PR
