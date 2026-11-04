@@ -343,4 +343,49 @@ describe('Task worktree removal races (#4507)', () => {
       mainTip,
     );
   });
+
+  test('a branch git cannot lock is kept as failed, not as moved work', async () => {
+    const { repo, metadata } = await taskWorktree();
+    // A stale lock left by a crashed git process.
+    const service = new WorktreeProvisioningService(
+      racingRunner(
+        (args) => args.includes('update-ref'),
+        () =>
+          writeFileSync(
+            join(repo, '.git', 'refs', 'heads', `${metadata.branch}.lock`),
+            '',
+          ),
+      ),
+    );
+
+    const outcome = await service.finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'failed' });
+    expect(git(repo, 'branch', '--list', metadata.branch).trim()).not.toBe('');
+  });
+
+  test('an after-check git cannot answer is reported kept, not thrown', async () => {
+    const { metadata } = await taskWorktree();
+    const real = new SpawnGitCommandRunner();
+    const unanswered: GitCommandRunner = {
+      run: (args, options) =>
+        args.includes('--quiet') && args.includes('--verify')
+          ? Promise.resolve({ stdout: '', stderr: 'fatal', code: 128 })
+          : real.run(args, options),
+    };
+
+    const outcome = await new WorktreeProvisioningService(
+      unanswered,
+    ).finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'failed' });
+  });
 });

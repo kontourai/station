@@ -987,17 +987,30 @@ export class WorktreeProvisioningService {
         [...real, 'update-ref', '--no-deref', '-d', branchRef, tip],
         { allowCodes: [0, 1, 128] },
       );
-      if (deleted.code !== 0)
+      if (deleted.code !== 0) {
+        // Only "is at <new> but expected <tip>" means the branch moved; a
+        // stale lock, an unknown repository extension or an ownership
+        // refusal is a failure to delete, not new work.
+        const moved = /but expected/.test(deleted.stderr);
         return {
           outcome: 'kept',
-          reason: 'unpushed',
-          detail: `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`,
+          reason: moved ? 'unpushed' : 'failed',
+          detail: moved
+            ? `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`
+            : `The worktree was removed; branch ${metadata.branch} could not be deleted: ${deleted.stderr.trim() || `git exited ${deleted.code}`}`,
         };
+      }
       // Never report a branch removed that still exists.
       const remaining = await this.git.run(
         [...real, 'rev-parse', '--verify', '--quiet', branchRef],
-        { allowCodes: [0, 1] },
+        { allowCodes: [0, 1, 128] },
       );
+      if (remaining.code === 128)
+        return {
+          outcome: 'kept',
+          reason: 'failed',
+          detail: `The worktree was removed; whether branch ${metadata.branch} is gone could not be confirmed.`,
+        };
       if (remaining.code === 0)
         return {
           outcome: 'kept',
