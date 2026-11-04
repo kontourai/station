@@ -141,8 +141,9 @@ c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-ad
 5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:186
 5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:190
 
-# #4470: synthetic pairing-credential test fixture (it base64-decodes to
-# 'BootstrapSecret1234567890abcdefgh'); the file now builds it at runtime.
+# #4470: synthetic pairing-credential test fixture from an earlier commit (it
+# base64-decodes to 'BootstrapSecret1234567890abcdefgh'). The file no longer
+# holds that literal; it builds a different synthetic value at runtime.
 84dddacc0a10c4d9a5222ce5104a0f0fb7c63ecd:packages/shared/src/__tests__/triage-context.test.ts:generic-api-key:43
 
 # #4473: Brian approved this exact historical synthetic-fixture fingerprint on 2026-11-02.
