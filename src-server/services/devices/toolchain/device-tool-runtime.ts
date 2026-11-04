@@ -2,8 +2,15 @@ import { execFile } from 'node:child_process';
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix, win32 } from 'node:path';
 
-const DEVICE_TOOL_RUNTIME_SETUP =
-  'Install Node.js 24 or later with npm and make node available on your PATH to use device tools. Restart Station after changing your PATH.';
+/**
+ * Every route ends on the Station host, which a phone user may reach only
+ * remotely, so the first route is the one that needs no Node toolchain: a
+ * Linux or macOS service unit puts the archive's `runtime/bin` on its PATH,
+ * and archives now carry npm there. Older archives, Windows tasks and
+ * foreground starts still need a Node.js with npm on Station's PATH.
+ */
+export const DEVICE_TOOL_RUNTIME_SETUP =
+  "On the Station host, upgrade Station (`station help upgrade`); on Linux and macOS an installed Station service then uses the Node.js and npm bundled with Station. Otherwise install Node.js 24 or later with npm there and put it first on Station's PATH. Then restart Station.";
 
 export class DeviceToolRuntimeUnavailableError extends Error {
   constructor(reason: string) {

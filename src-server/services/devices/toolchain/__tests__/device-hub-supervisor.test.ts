@@ -176,11 +176,11 @@ describe('device hub supervisor', () => {
       setTimer: timer,
     });
     await expect(supervisor.ensureStarted()).rejects.toThrow(
-      'Install Node.js 24 or later with npm',
+      'install Node.js 24 or later with npm',
     );
     expect(supervisor.state()).toMatchObject({
       state: 'blocked',
-      detail: expect.stringContaining('Install Node.js 24'),
+      detail: expect.stringContaining('upgrade Station'),
     });
     expect(spawn).not.toHaveBeenCalled();
     expect(timer).not.toHaveBeenCalled();

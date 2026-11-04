@@ -13,7 +13,10 @@ import { delimiter, dirname, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { DeviceHubSupervisor } from '../device-hub-supervisor.js';
-import { resolveDeviceToolRuntime } from '../device-tool-runtime.js';
+import {
+  DEVICE_TOOL_RUNTIME_SETUP,
+  resolveDeviceToolRuntime,
+} from '../device-tool-runtime.js';
 import { createNpmCiInstaller } from '../device-toolchain.js';
 
 const makeTempDir = trackTempDirs();
@@ -123,7 +126,7 @@ describe('device tooling user runtime', () => {
     ).rejects.toMatchObject({
       reason: 'package-manager-unavailable',
       retryable: false,
-      message: expect.stringContaining('Install Node.js 24 or later with npm'),
+      message: expect.stringContaining(DEVICE_TOOL_RUNTIME_SETUP),
     });
   });
 

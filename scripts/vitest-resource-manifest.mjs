@@ -666,6 +666,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // Builds fixture archives with the host tar executable; bounded, private output.
   'scripts/__tests__/portable-server-archive.test.ts',
+  // Stages a fixture Node distribution (this host's node and npm) with the
+  // host tar, then runs that npm's `ci` against a loopback registry.
+  'scripts/__tests__/portable-node-device-install.process.test.ts',
   // Runs copied user Node executables and shell-free npm/hub entry fixtures.
   'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
