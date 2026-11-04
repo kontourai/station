@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleState,
@@ -781,7 +789,11 @@ export class WorktreeProvisioningService {
       } catch {
         continue;
       }
-      if (canonicalizePath(dirname(gitdir)) !== folder) continue;
+      // `worktree.useRelativePaths` writes it relative to its admin folder.
+      const pointer = isAbsolute(gitdir)
+        ? gitdir
+        : resolve(join(admin, name), gitdir);
+      if (canonicalizePath(dirname(pointer)) !== folder) continue;
       await rm(join(admin, name), { recursive: true, force: true });
     }
   }

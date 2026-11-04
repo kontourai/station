@@ -244,6 +244,29 @@ describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
     );
   });
 
+  test('a registration of its branch at another, missing folder is forgotten, with relative worktree paths', async () => {
+    const f = await fixture();
+    git(f.workspace, 'config', 'worktree.useRelativePaths', 'true');
+    // The Task's checkout was moved elsewhere, and that folder is gone too.
+    const moved = join(f.parent, 'moved-away');
+    git(f.workspace, 'worktree', 'move', f.worktree.path, moved);
+    rmSync(moved, { recursive: true, force: true });
+
+    const again = await new WorktreeProvisioningService().provisionForTask({
+      repoPath: f.workspace,
+      taskId: f.taskId,
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+      recorded: f.worktree,
+    });
+
+    expect(again.metadata.path).toBe(f.worktree.path);
+    expect(existsSync(f.worktree.path)).toBe(true);
+    expect(git(f.workspace, 'worktree', 'list', '--porcelain')).not.toContain(
+      `worktree ${moved}\n`,
+    );
+  });
+
   test('provisioning it again checks its own branch out at the same place', async () => {
     const f = await fixture();
     writeFileSync(join(f.worktree.path, 'feature.txt'), 'work\n');
