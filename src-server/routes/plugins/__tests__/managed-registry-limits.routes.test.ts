@@ -369,8 +369,7 @@ describe('unsignedPackages false through the registry install route', () => {
     return {
       url: `https://127.0.0.1:${address.port}/unsigned-package.git`,
       requests,
-      close: () =>
-        new Promise<void>((done) => server.close(() => done())),
+      close: () => new Promise<void>((done) => server.close(() => done())),
     };
   }
 
