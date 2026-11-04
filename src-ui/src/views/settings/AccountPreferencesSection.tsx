@@ -4,7 +4,8 @@ import {
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { ErrorState } from '../../components/state';
@@ -21,6 +22,25 @@ import { settingsRow } from './settings-catalog';
 
 export function AccountPreferencesSection() {
   const account = useAccountPreferences();
+  const recoveryRegion = useRef<HTMLDivElement>(null);
+  const retryTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const trigger = retryTrigger.current;
+    retryTrigger.current = null;
+    if (!account.retrying || !trigger) return;
+    const frame = requestAnimationFrame(() => {
+      const region = recoveryRegion.current;
+      if (
+        !document.hasFocus() ||
+        document.visibilityState !== 'visible' ||
+        !region?.isConnected ||
+        !trigger.isConnected
+      )
+        return;
+      applyReturnFocus([region], trigger);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [account.retrying]);
   const [confirmEngine, setConfirmEngine] =
     useState<InteractiveApprovalEngine | null>(null);
   const engineRows = {
@@ -84,7 +104,13 @@ export function AccountPreferencesSection() {
               : 'Saved on this device. Sign in to sync.'}
         </p>
       )}
-      <div className="settings__account-help">
+      <div
+        className="settings__account-help"
+        ref={recoveryRegion}
+        role="region"
+        aria-label="Account preferences"
+        tabIndex={-1}
+      >
         <details>
           <summary>About these preferences</summary>
           <p>
@@ -179,7 +205,13 @@ export function AccountPreferencesSection() {
           }
           action={
             <Button
-              onClick={account.retry}
+              onClick={(event) => {
+                retryTrigger.current =
+                  document.activeElement === event.currentTarget
+                    ? event.currentTarget
+                    : null;
+                account.retry();
+              }}
               pending={account.retrying}
               pendingLabel="Loading preferences…"
             >

@@ -210,64 +210,125 @@ test('an initial preference read failure explains loading and retries without wr
   }
 });
 
-test('cold-connect recovery keeps the failed account section mounted while its real reconnect read is pending', async () => {
-  const recovered: AccountPreferencesView = {
-    schemaVersion: 1,
-    values: { interactiveApprovalModes: { codex: 'auto' } },
-  };
-  let releaseRead!: (value: AccountPreferencesView) => void;
-  const reconnectRead = new Promise<AccountPreferencesView>((resolve) => {
-    releaseRead = resolve;
-  });
-  fixture.get
-    .mockRejectedValueOnce(new Error('Preferences unavailable'))
-    .mockImplementationOnce(() => reconnectRead);
-  const deviceRecord = localStorage.getItem('station-device-settings-v1');
-  const view = render(
-    <QueryClientProvider client={client()}>
-      <AccountPreferencesProvider>
-        <ReconnectingSection />
-      </AccountPreferencesProvider>
-    </QueryClientProvider>,
-  );
-  try {
-    await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(2));
-    await act(async () => {
-      // Commit the pending read before checking whether its error UI survived.
-    });
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Couldn’t load your account preferences.',
+test.each(['local recovery', 'another control'] as const)(
+  'cold-connect recovery preserves context and respects %s focus after user Retry',
+  async (focusOwner) => {
+    const recovered: AccountPreferencesView = {
+      schemaVersion: 1,
+      values: { interactiveApprovalModes: { codex: 'auto' } },
+    };
+    let finishReconnect!: (value: AccountPreferencesView) => void;
+    let failReconnect!: (error: Error) => void;
+    const reconnectRead = new Promise<AccountPreferencesView>(
+      (resolve, reject) => {
+        finishReconnect = resolve;
+        failReconnect = reject;
+      },
     );
-    const retry = screen.getByRole('button', { name: 'Loading preferences…' });
-    expect(retry.getAttribute('aria-busy')).toBe('true');
-    expect(retry).toHaveProperty('disabled', true);
-    fireEvent.click(retry);
-    expect(
-      screen.getByLabelText('New Codex chats approval mode'),
-    ).toHaveProperty('disabled', true);
-    expect(fixture.get).toHaveBeenCalledTimes(2);
-    expect(fixture.patch).not.toHaveBeenCalled();
-    await act(async () => releaseRead(recovered));
-    await waitFor(() =>
+    let finishRetry!: (value: AccountPreferencesView) => void;
+    const retryRead = new Promise<AccountPreferencesView>((resolve) => {
+      finishRetry = resolve;
+    });
+    fixture.get
+      .mockRejectedValueOnce(new Error('Preferences unavailable'))
+      .mockImplementationOnce(() => reconnectRead)
+      .mockImplementationOnce(() => retryRead);
+    const deviceRecord = localStorage.getItem('station-device-settings-v1');
+    const view = render(
+      <QueryClientProvider client={client()}>
+        <button type="button">Outside account preferences</button>
+        <AccountPreferencesProvider>
+          <ReconnectingSection />
+        </AccountPreferencesProvider>
+      </QueryClientProvider>,
+    );
+    const outside = screen.getByRole('button', {
+      name: 'Outside account preferences',
+    });
+    outside.focus();
+    try {
+      await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(2));
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Couldn’t load your account preferences.',
+      );
+      const pending = screen.getByRole('button', {
+        name: 'Loading preferences…',
+      });
+      expect(pending.getAttribute('aria-busy')).toBe('true');
+      expect(pending).toHaveProperty('disabled', true);
+      fireEvent.click(pending);
       expect(
         screen.getByLabelText('New Codex chats approval mode'),
-      ).toHaveProperty('value', 'auto'),
-    );
-    expect(
-      screen.getByLabelText('New Codex chats approval mode'),
-    ).toHaveProperty('disabled', false);
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(fixture.get).toHaveBeenCalledTimes(2);
-    expect(fixture.patch).not.toHaveBeenCalled();
-    expect(localStorage.getItem('station-device-settings-v1')).toBe(
-      deviceRecord,
-    );
-  } finally {
-    view.unmount();
-    releaseRead(recovered);
-  }
-});
+      ).toHaveProperty('disabled', true);
+      expect(fixture.get).toHaveBeenCalledTimes(2);
+      expect(fixture.patch).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(outside);
 
+      await act(async () => failReconnect(new Error('Still unavailable')));
+      const retry = await screen.findByRole('button', {
+        name: 'Retry loading preferences',
+      });
+      fireEvent.click(screen.getByText('About these preferences'));
+      const disclosure = screen
+        .getByText('About these preferences')
+        .closest('details');
+      expect(disclosure).toHaveProperty('open', true);
+      retry.focus();
+      expect(document.activeElement).toBe(retry);
+      fireEvent.click(retry);
+      if (focusOwner === 'another control') outside.focus();
+      await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(3));
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      const expectedFocus =
+        focusOwner === 'local recovery'
+          ? screen.getByRole('region', { name: 'Account preferences' })
+          : outside;
+      expect(document.activeElement).toBe(expectedFocus);
+      expect(disclosure).toHaveProperty('open', true);
+      const loading = screen.getByRole('button', {
+        name: 'Loading preferences…',
+      });
+      expect(loading.getAttribute('aria-busy')).toBe('true');
+      expect(loading).toHaveProperty('disabled', true);
+      fireEvent.click(loading);
+      expect(fixture.get).toHaveBeenCalledTimes(3);
+      expect(fixture.patch).not.toHaveBeenCalled();
+
+      await act(async () => finishRetry(recovered));
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('New Codex chats approval mode'),
+        ).toHaveProperty('value', 'auto'),
+      );
+      expect(
+        screen.getByLabelText('New Codex chats approval mode'),
+      ).toHaveProperty('disabled', false);
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(document.activeElement).toBe(expectedFocus);
+      expect(disclosure).toHaveProperty('open', true);
+      expect(fixture.get).toHaveBeenCalledTimes(3);
+      expect(fixture.patch).not.toHaveBeenCalled();
+      expect(localStorage.getItem('station-device-settings-v1')).toBe(
+        deviceRecord,
+      );
+    } finally {
+      view.unmount();
+      finishReconnect(recovered);
+      finishRetry(recovered);
+    }
+  },
+);
 test('switching accounts quarantines a late read and cannot import the previous account into the next', async () => {
   let finishA!: (value: AccountPreferencesView) => void;
   fixture.get.mockImplementationOnce(
