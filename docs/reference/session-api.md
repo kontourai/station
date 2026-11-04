@@ -554,7 +554,10 @@ refusal; a request alone does not prove storage.
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
-  so nobody takes the turn another person's message waits for. Only a caller
+  so nobody takes the turn another person's message waits for. For a
+  Continue key (`continue-interrupted:<boundary id>`) Station queued after a
+  restart (#4512), the error reads "Station is already continuing this
+  interrupted turn." rather than asking for a new key. Only a caller
   who may read the conversation is told so; anyone else gets the dispatch's
   ordinary refusal for a conversation they may not read. While Station is
   sending a held message (from the moment its send begins, and past the point
