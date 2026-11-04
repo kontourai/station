@@ -158,6 +158,10 @@
     height: 44px;
   }
 
+  .file-tree-panel__search-input {
+    min-height: 44px;
+  }
+
   .file-tree-row {
     min-height: 40px;
   }
