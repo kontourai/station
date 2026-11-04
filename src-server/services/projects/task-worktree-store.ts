@@ -94,32 +94,46 @@ function onlyKeys(value: Record<string, unknown>, keys: readonly string[]) {
   return Object.keys(value).every((key) => keys.includes(key));
 }
 
+function isKeptReason(value: unknown): value is TaskWorktreeKeptReason {
+  return KEPT_REASONS.some((reason) => reason === value);
+}
+
 /** The entry for `taskId`, or undefined when it is absent or not valid. */
 export function parseTaskWorktreeEntry(
   taskId: string,
   value: unknown,
 ): TaskWorktreeEntry | undefined {
   if (!isRecord(value) || !onlyKeys(value, ENTRY_KEYS)) return undefined;
-  if (!nonBlank(value.taskCreatedAt)) return undefined;
-  const worktree = value.worktree;
+  const { taskCreatedAt, worktree, kept } = value;
+  if (!nonBlank(taskCreatedAt)) return undefined;
   if (!isRecord(worktree) || !onlyKeys(worktree, WORKTREE_KEYS))
     return undefined;
+  const {
+    mode,
+    repoPath,
+    path,
+    branch,
+    baseRef,
+    baseCommit,
+    cleanupPolicy,
+    preserveOnFailure,
+    createdAt,
+    owner,
+  } = worktree;
   if (
-    worktree.mode !== 'worktree' ||
-    !nonBlank(worktree.repoPath) ||
-    !nonBlank(worktree.path) ||
-    !nonBlank(worktree.branch) ||
-    !nonBlank(worktree.baseRef) ||
-    (worktree.baseCommit !== undefined && !nonBlank(worktree.baseCommit)) ||
-    (worktree.cleanupPolicy !== 'cleanup' &&
-      worktree.cleanupPolicy !== 'preserve') ||
-    typeof worktree.preserveOnFailure !== 'boolean' ||
-    !nonBlank(worktree.createdAt)
+    mode !== 'worktree' ||
+    !nonBlank(repoPath) ||
+    !nonBlank(path) ||
+    !nonBlank(branch) ||
+    !nonBlank(baseRef) ||
+    (baseCommit !== undefined && !nonBlank(baseCommit)) ||
+    (cleanupPolicy !== 'cleanup' && cleanupPolicy !== 'preserve') ||
+    typeof preserveOnFailure !== 'boolean' ||
+    !nonBlank(createdAt)
   )
     return undefined;
   // The record belongs to exactly this Task; one naming another Task is a
   // transplant, never a checkout this Task may reuse or finalize.
-  const owner = worktree.owner;
   if (
     !isRecord(owner) ||
     !onlyKeys(owner, ['kind', 'taskId']) ||
@@ -127,17 +141,39 @@ export function parseTaskWorktreeEntry(
     owner.taskId !== taskId
   )
     return undefined;
-  const kept = value.kept;
-  if (
-    kept !== undefined &&
-    (!isRecord(kept) ||
-      !onlyKeys(kept, ['reason', 'at', 'detail']) ||
-      !KEPT_REASONS.includes(kept.reason as TaskWorktreeKeptReason) ||
-      !nonBlank(kept.at) ||
-      (kept.detail !== undefined && typeof kept.detail !== 'string'))
-  )
-    return undefined;
-  return structuredClone(value) as unknown as TaskWorktreeEntry;
+  let keptEntry: TaskWorktreeEntry['kept'];
+  if (kept !== undefined) {
+    if (!isRecord(kept) || !onlyKeys(kept, ['reason', 'at', 'detail']))
+      return undefined;
+    const { reason, at, detail } = kept;
+    if (
+      !isKeptReason(reason) ||
+      !nonBlank(at) ||
+      (detail !== undefined && typeof detail !== 'string')
+    )
+      return undefined;
+    keptEntry = {
+      reason,
+      at,
+      ...(typeof detail === 'string' ? { detail } : {}),
+    };
+  }
+  return {
+    taskCreatedAt,
+    worktree: {
+      mode,
+      repoPath,
+      path,
+      branch,
+      baseRef,
+      ...(typeof baseCommit === 'string' ? { baseCommit } : {}),
+      cleanupPolicy,
+      preserveOnFailure,
+      createdAt,
+      owner: { kind: 'task', taskId },
+    },
+    ...(keptEntry ? { kept: keptEntry } : {}),
+  };
 }
 
 export class TaskWorktreeStore {
