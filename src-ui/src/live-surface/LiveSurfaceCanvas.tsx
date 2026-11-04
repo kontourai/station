@@ -22,6 +22,7 @@ import {
   useState,
 } from 'react';
 import { Button } from '../components/Button';
+import { Empty, ErrorState } from '../components/state';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
 import { mapClientPointToSurface } from './liveSurfaceGeometry';
@@ -241,6 +242,51 @@ function isTextKey(event: ReactKeyboardEvent): boolean {
     !event.ctrlKey &&
     !event.metaKey &&
     !event.altKey
+  );
+}
+
+const INPUT_NOTICE_TEXT: Record<
+  NonNullable<UseLiveSurfaceResult['inputNotice']>,
+  string
+> = {
+  'control-changed':
+    'Control changed before your input arrived, so it was not sent.',
+  'input-failed': "Your last tap or keystroke didn't reach the page.",
+  'page-dialog': 'The page is showing a dialog. Answer it to continue.',
+  'host-busy': 'The host is busy, so nothing was sent.',
+};
+
+/**
+ * Why the person's last input did not take effect, over the top of the
+ * surface they are looking at. A failure that can be sent again offers
+ * Retry; the notice clears when later input gets through.
+ */
+function InputNotice(props: {
+  surface: UseLiveSurfaceResult;
+  onRetry: () => void;
+}) {
+  const notice = props.surface.inputNotice;
+  if (!notice) return null;
+  const title = INPUT_NOTICE_TEXT[notice];
+  if (notice === 'input-failed' || notice === 'host-busy')
+    return (
+      <ErrorState
+        variant="compact"
+        className="live-surface__input-notice"
+        title={title}
+        action={
+          props.surface.retryableInput ? (
+            <Button size="sm" onClick={props.onRetry}>
+              Retry
+            </Button>
+          ) : undefined
+        }
+      />
+    );
+  return (
+    <div className="live-surface__input-notice" role="status">
+      <Empty variant="compact" label={title} />
+    </div>
   );
 }
 
@@ -974,27 +1020,18 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           {videoLine}
         </p>
       ) : null}
-      {surface.inputNotice === 'control-changed' ? (
-        <p className="live-surface__notice" role="status">
-          Control changed before your input arrived, so it was not sent.
-        </p>
-      ) : surface.inputNotice === 'input-failed' ? (
-        <p className="live-surface__notice" role="status">
-          Your input could not be delivered.
-        </p>
-      ) : surface.inputNotice === 'page-dialog' ? (
-        <p className="live-surface__notice" role="status">
-          The page is showing a dialog. Answer it to continue.
-        </p>
-      ) : surface.inputNotice === 'host-busy' ? (
-        <p className="live-surface__notice" role="status">
-          The host is busy, so nothing was sent. Try again in a moment.
-        </p>
-      ) : null}
       <div
         className={`live-surface__stage${fitting ? ' live-surface__stage--fit' : ''}`}
         ref={stageRef}
       >
+        <InputNotice
+          surface={surface}
+          onRetry={() => {
+            surface.retryInput();
+            // Back to the page: on a phone, typing goes on where it stopped.
+            keyboardRef.current?.focus({ preventScroll: true });
+          }}
+        />
         <canvas
           ref={canvasRef}
           style={fitStyle}

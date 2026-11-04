@@ -195,3 +195,18 @@
     opacity: 0;
   }
 }
+
+/* Why input did not take effect, over the top of the surface (where the
+   person is looking, and above a phone's on-screen keyboard). */
+.live-surface__input-notice {
+  background: var(--k-panel-raised);
+  border-radius: var(--k-radius-md);
+  box-shadow: var(--k-shadow);
+  left: 50%;
+  max-width: calc(100% - 2 * var(--k-space-2));
+  position: absolute;
+  top: var(--k-space-2);
+  transform: translateX(-50%);
+  width: min(24rem, calc(100% - 2 * var(--k-space-2)));
+  z-index: 2;
+}
