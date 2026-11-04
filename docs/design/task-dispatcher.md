@@ -112,6 +112,15 @@ that does not validate, including one whose owner names another Task, is
 ignored on its own. The Task's `workspaceBinding` stays the Project checkout
 it was created against.
 
+A file that cannot be read at all (corrupt, or from a newer Station) reads as
+having no entries, so every Task still opens; writes refuse to replace it, so
+no dispatch records a worktree until it is repaired. While it is unreadable,
+a Task with a worktree at its default derived path is in an unknown state
+(`taskWorktreeUnknown` on the opened Task): its working directory is unknown
+rather than the Project checkout, so keeping an output, saving a Task output
+and browser capture refuse for it. A Task with nothing there is treated as a
+Project-checkout Task.
+
 **The Task's working directory.** Readers that compare or read a Task's files
 use one helper, `taskWorkingDirectory`: the Task's worktree when it has one,
 else the Project working directory. Keeping a Session's declared output or

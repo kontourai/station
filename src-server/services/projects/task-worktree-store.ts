@@ -165,8 +165,11 @@ export class TaskWorktreeStore {
 
   private unreadableLogged = false;
 
-  /** For reads: an unreadable file has no entries (see the module note). */
-  private loadForRead(): TaskWorktreeStoreData {
+  /**
+   * For reads: an unreadable file has no entries (see the module note);
+   * `unreadable` says so, for a reader that must not treat that as "none".
+   */
+  private loadForRead(): TaskWorktreeStoreData & { unreadable?: true } {
     try {
       const data = this.load();
       this.unreadableLogged = false;
@@ -179,8 +182,27 @@ export class TaskWorktreeStore {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      return { version: 1, entries: {} };
+      return { version: 1, entries: {}, unreadable: true };
     }
+  }
+
+  /**
+   * The Task's entry, or `unreadable` when the file cannot be read, so a
+   * caller can tell "no worktree" from "cannot tell".
+   */
+  readState(
+    taskId: string,
+    taskCreatedAt: string,
+  ):
+    | { state: 'recorded'; entry: TaskWorktreeEntry }
+    | { state: 'none' }
+    | { state: 'unreadable' } {
+    const data = this.loadForRead();
+    if (data.unreadable) return { state: 'unreadable' };
+    const entry = parseTaskWorktreeEntry(taskId, data.entries[taskId]);
+    return entry?.taskCreatedAt === taskCreatedAt
+      ? { state: 'recorded', entry }
+      : { state: 'none' };
   }
 
   /** The Task's entry for this incarnation, if any. */

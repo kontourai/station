@@ -43,6 +43,10 @@ import { OrchestrationService } from '../../../services/orchestration/orchestrat
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import {
+  TaskOutputModule,
+  TaskOutputNotFoundError,
+} from '../../../services/projects/task-output-module.js';
 import { WorktreeProvisioningService } from '../../../services/projects/worktree-provisioning-service.js';
 import {
   assertTaskDispatchAgentExists,
@@ -550,7 +554,22 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     const body = await readJson(opened);
     expect(body.data).toMatchObject({ id: taskId });
     expect(body.data.taskWorktree).toBeUndefined();
-    expect(graph.taskWorkingDirectory(graph.readTask(taskId)!)).toBe(workspace);
+    // Its worktree is on disk but unvouched for: the Task's working
+    // directory is unknown, never the shared Project checkout.
+    expect(body.data.taskWorktreeUnknown).toBe(true);
+    expect(graph.taskWorkingDirectory(graph.readTask(taskId)!)).toBeUndefined();
+    writeFileSync(join(workspace, 'shared-only.txt'), 'shared\n');
+    const outputs = new TaskOutputModule({
+      homeDir: join(home, 'output-check'),
+      taskGraphService: graph,
+    });
+    await expect(
+      outputs.create(taskId, {
+        operationId: 'snapshot-while-unknown',
+        relativePath: 'shared-only.txt',
+        title: 'Shared checkout file',
+      }),
+    ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
 
     // A new dispatch would record a worktree: it refuses instead of
     // replacing a file this Station cannot read.

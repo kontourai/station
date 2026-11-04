@@ -130,8 +130,14 @@ export interface TaskWorktreeView {
  * checkout.
  */
 export function taskWorkingDirectory(
-  task: Pick<TaskRecord, 'workspaceBinding' | 'taskWorktree'>,
+  task: Pick<
+    TaskRecord,
+    'workspaceBinding' | 'taskWorktree' | 'taskWorktreeUnknown'
+  >,
 ): string | undefined {
+  // Not the Project checkout: this Task may have a worktree nobody can
+  // vouch for right now, so nothing reads or compares its files.
+  if (task.taskWorktreeUnknown) return undefined;
   // Returned as stored, never expanded: this module has no home directory
   // to expand `~` against. Callers that read files with it expand it
   // (`resolve(expandTilde(...))`); the keep route compares it with a value
@@ -644,6 +650,12 @@ export interface TaskRecord {
   workspaceBinding?: TaskWorkspaceBinding;
   /** #4507: read projection only; see {@link TaskWorktreeView}. */
   taskWorktree?: TaskWorktreeView;
+  /**
+   * #4507: read projection only. Set when the Task worktree record cannot
+   * be read and this Task has a worktree on disk, so whether its work is in
+   * that worktree or the Project checkout is unknown.
+   */
+  taskWorktreeUnknown?: true;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */

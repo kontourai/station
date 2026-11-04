@@ -123,7 +123,12 @@ export class TaskOutputModule {
           taskId: string,
         ): Promise<Pick<
           TaskRecord,
-          'id' | 'projectId' | 'createdAt' | 'workspaceBinding' | 'taskWorktree'
+          | 'id'
+          | 'projectId'
+          | 'createdAt'
+          | 'workspaceBinding'
+          | 'taskWorktree'
+          | 'taskWorktreeUnknown'
         > | null>;
       };
       hosted?: () => boolean;

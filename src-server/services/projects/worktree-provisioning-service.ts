@@ -221,6 +221,18 @@ export function assertWorktreeMetadataSessionBinding(
   assertWorktreeNameBinding(metadata, threadId);
 }
 
+/**
+ * #4507: where a Task's worktree is made when no policy names a base
+ * directory, which Task dispatch never does: beside the repository, named
+ * for the Task.
+ */
+export function defaultTaskWorktreePath(repoRoot: string, taskId: string) {
+  return join(
+    defaultWorktreeBaseDir(repoRoot),
+    worktreeSessionSegment(taskWorktreeOwnerKey(taskId)),
+  );
+}
+
 /** #4507: prove hostile persisted metadata belongs to exactly this Task. */
 export function assertWorktreeMetadataTaskBinding(
   metadata: WorktreeSessionMetadata,

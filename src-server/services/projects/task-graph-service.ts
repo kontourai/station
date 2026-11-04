@@ -122,10 +122,12 @@ import {
   validTaskIdentity,
 } from './task-relationship-state.js';
 import {
+  type TaskWorktreeEntry,
   type TaskWorktreeKeptReason,
   TaskWorktreeStore,
 } from './task-worktree-store.js';
 import {
+  defaultTaskWorktreePath,
   WorktreeProvisioningService,
   type WorktreeTerminalState,
 } from './worktree-provisioning-service.js';
@@ -2040,9 +2042,12 @@ export class TaskGraphService {
     const task = this.readTask(taskId);
     if (!task) return null;
     const workspaceBinding = await this.resolveWorkspaceForOpen(task);
-    const entry = this.taskWorktrees.read(task.id, task.createdAt);
+    const state = this.taskWorktreeState(task);
+    if (state.state === 'unknown')
+      return { ...task, workspaceBinding, taskWorktreeUnknown: true };
+    const entry = state.state === 'recorded' ? state.entry : undefined;
     const worktree = entry?.worktree;
-    if (!worktree) return { ...task, workspaceBinding };
+    if (!worktree || !entry) return { ...task, workspaceBinding };
     // #4507: the Task's own worktree is where its work is. The Project
     // checkout stays `workingDirectory`; the Task view's existing "Task
     // worktree" and branch rows show the Task's checkout.
@@ -2068,13 +2073,36 @@ export class TaskGraphService {
   taskWorkingDirectory(
     task: Pick<TaskRecord, 'id' | 'createdAt' | 'workspaceBinding'>,
   ): string | undefined {
-    const worktree = this.taskWorktrees.read(task.id, task.createdAt)?.worktree;
+    const state = this.taskWorktreeState(task);
+    const worktree =
+      state.state === 'recorded' ? state.entry.worktree : undefined;
     return taskWorkingDirectory({
       workspaceBinding: task.workspaceBinding,
+      ...(state.state === 'unknown' ? { taskWorktreeUnknown: true } : {}),
       ...(worktree
         ? { taskWorktree: { path: worktree.path, branch: worktree.branch } }
         : {}),
     });
+  }
+
+  /**
+   * #4507: the Task's worktree record, or `unknown` when the record store
+   * cannot be read and a worktree exists at the Task's default derived path
+   * (where Task dispatch makes it). A Task with nothing there falls back to
+   * its Project checkout, as a shared Project's Task does.
+   */
+  private taskWorktreeState(
+    task: Pick<TaskRecord, 'id' | 'createdAt' | 'workspaceBinding'>,
+  ):
+    | { state: 'recorded'; entry: TaskWorktreeEntry }
+    | { state: 'none' }
+    | { state: 'unknown' } {
+    const read = this.taskWorktrees.readState(task.id, task.createdAt);
+    if (read.state !== 'unreadable') return read;
+    const root = task.workspaceBinding?.repoRoot;
+    return root && existsSync(defaultTaskWorktreePath(root, task.id))
+      ? { state: 'unknown' }
+      : { state: 'none' };
   }
 
   /**
