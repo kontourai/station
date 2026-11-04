@@ -305,6 +305,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     regionSurface: 'home',
     label: () => 'Home',
     hiddenFromNav: true,
+    palette: { order: 0 },
     managementViewTypes: ['home'],
     view: { type: 'home' },
   },
