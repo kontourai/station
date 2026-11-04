@@ -91,7 +91,7 @@ function underlineRects(
   out.push({ x, y, width, height: t, color, alpha: 1 });
 }
 
-export function paintRow(
+function paintRow(
   row: RowCells,
   colors: FrameColors,
   theme: TerminalTheme,

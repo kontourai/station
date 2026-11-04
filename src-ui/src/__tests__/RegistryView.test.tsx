@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -11,8 +12,23 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { useRegistryItemsQuery } from '../../../packages/sdk/src/query-domains/catalog';
 import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
+
+const catalogRecovery = vi.hoisted(() => ({
+  useItems: vi.fn(),
+  fetch: vi.fn(),
+}));
+vi.mock(
+  '../../../packages/sdk/src/query-domains/catalogRequests',
+  async (original) => ({
+    ...(await original<
+      typeof import('../../../packages/sdk/src/query-domains/catalogRequests')
+    >()),
+    fetchRegistryItems: catalogRecovery.fetch,
+  }),
+);
 
 const installedByTab = {
   agents: new Set<string>(),
@@ -275,17 +291,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     error: null,
   }),
-  useRegistryItemsQuery: (tab: string) => ({
-    data: emptyTabs.has(tab)
-      ? []
-      : registryItems[tab as keyof typeof registryItems].map((item) => ({
-          ...item,
-          installed: installedByTab[tab as keyof typeof installedByTab].has(
-            item.id,
-          ),
-        })),
-    isLoading: false,
-  }),
+  useRegistryItemsQuery: catalogRecovery.useItems,
   useRegistrySkillActionMutation: () => makeMutation('skills'),
 }));
 
@@ -350,7 +356,22 @@ vi.mock('../core/PermissionManager', () => ({
 
 import { RegistryView } from '../views/RegistryView';
 
+function fixtureRegistryItems(tab: keyof typeof registryItems) {
+  return {
+    data: emptyTabs.has(tab)
+      ? []
+      : registryItems[tab].map((item) => ({
+          ...item,
+          installed: installedByTab[tab].has(item.id),
+        })),
+    isLoading: false,
+  };
+}
+catalogRecovery.useItems.mockImplementation(fixtureRegistryItems);
+
 afterEach(() => {
+  catalogRecovery.useItems.mockImplementation(fixtureRegistryItems);
+  catalogRecovery.fetch.mockReset();
   localStorage.clear();
   for (const installedItems of Object.values(installedByTab)) {
     installedItems.clear();
@@ -436,6 +457,38 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
+  test.each(['agents', 'plugins'] as const)(
+    'recovers the %s catalog after a failed read and a failed retry',
+    async (tab) => {
+      catalogRecovery.useItems.mockImplementation(useRegistryItemsQuery);
+      catalogRecovery.fetch
+        .mockRejectedValueOnce(new Error('Catalog offline'))
+        .mockRejectedValueOnce(new Error('Still offline'))
+        .mockResolvedValue(registryItems[tab]);
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { unmount } = render(
+        <QueryClientProvider client={client}>
+          <RegistryView initialTab={tab} />
+        </QueryClientProvider>,
+      );
+      try {
+        await screen.findByText('Catalog offline');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
+        await screen.findByText('Still offline');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
+        await screen.findByRole('button', {
+          name: `View ${registryItems[tab][0]!.displayName} details`,
+        });
+        expect(screen.queryByText('Still offline')).toBeNull();
+        expect(catalogRecovery.fetch).toHaveBeenCalledTimes(3);
+      } finally {
+        unmount();
+        client.clear();
+      }
+    },
+  );
   test('the agent picker installs without navigating away from the agent draft', async () => {
     const { RegistryView } = await import('../views/RegistryView');
     const onInstalled = vi.fn();

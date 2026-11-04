@@ -32,22 +32,28 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
   server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
   mode}`); no executable, argument or directory is sent. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
-
-Station has no `port + 1` terminal listener; the SDK no longer exports
-`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
 - `list(target)` returns the binding's session records, oldest first.
 - `failure`/`restart()` expose and clear a refusal that stopped every session;
   `dispose()` ends the store.
 
+Station has no `port + 1` terminal listener; the SDK no longer exports
+`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
+
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
-`detach()`. A new subscriber first receives the retained output (256 KiB per
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+`restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
+session's program again under the same id (a shell, an agent tab, or a package
+script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
+run's output follows on the same session, with no reattach. It needs operate
+authority and rejects with `refused` for an agent's command or a server-owned
+launch. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
-Input is coalesced per animation frame and held until replay is acknowledged;
+Each session notifies only its own subscribers, so output on one terminal
+never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
 (sooner on `online` or when the page becomes visible), fetches a new ticket and
 resumes each session from its last applied sequence. Input already sent is
@@ -69,6 +75,25 @@ shell, and it returns null on a host that predates it. Terminal history usage
 and clearing (#3994) are `fetchTerminalHistory`, `clearTerminalHistory(projectId?)`,
 `useTerminalHistoryQuery` and `useClearTerminalHistoryMutation`; an older or
 hosted Station throws `TerminalHistoryUnsupportedError`.
+
+A `list` record's `launch` also names a command session's program:
+`{kind: 'script', name}` for a package script or `{kind: 'run', command}` for an
+agent's approved command; such records carry `kind: 'command'` and, once
+ended, `exitCode`. The script runner (#3994) is
+`listProjectTerminalScripts(apiBase, projectSlug)` (`{packageManager,
+scripts: [{name, command}]}`, or null on a host without it) and
+`runProjectTerminalScript(apiBase, projectSlug, name)` (`{terminalId}`);
+a script restarts through its session's `restart()`.
+`closeProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey)`
+ends a session in any binding the caller may operate.
+
+An agent's `terminal_run` requests are read and answered with
+`listConversationTerminalRuns(apiBase, conversationId)` (the runs that wait,
+start or run, and approved runs that ended in the last minute; empty on a host
+without them), `approveTerminalRun(apiBase,
+runId)` and `declineTerminalRun(apiBase, runId)`, typed `TerminalRun` and
+`TerminalRunState`. Each approval runs that one command once; see
+[agent terminal runs](api.md#agent-terminal-runs).
 
 ## Terminal output sessions
 
@@ -121,10 +146,17 @@ receives input, pastes or resizes. Several views may subscribe to one session:
 the view copies output before handing it to its worker, so a session may give
 every listener, and later subscribers, the same array. A view with no box (a
 hidden tab, a dock region put away) keeps its last grid and never resizes the
-session.
+session. A view refits whenever its box changes (a window resize, a pane
+splitter, moving between dock regions, a phone keyboard or rotation, a
+devicePixelRatio change): the grid and renderer follow at once, and the
+latest size reaches the session at most every 100 ms. The scrollbar sits in
+the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
+attachment of the same terminal) first resets its emulator to a fresh terminal,
+because the new attachment replays its terminal from the oldest retained
+output; the history is drawn once. A session `reset` does the same.
 
 `toTerminalViewSession(session)` adapts a `TerminalSession` from the
-[terminal session store](#terminal-output-sessions). Output the store hands a
+[terminal session store](#terminal-sessions). Output the store hands a
 new subscriber from its retained buffer, and output that arrives while the
 session replays, both count as replay. A program that has exited reads as
 `exited` whatever the connection state. The Coding terminal pane renders
@@ -135,7 +167,7 @@ Optional props:
 | Prop | Purpose |
 | --- | --- |
 | `label` | Accessible name (default `Terminal`) |
-| `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
+| `fontSize`, `fontFamily` | Font in CSS pixels (default 12, or 14 on a phone); the default stack ends in a bundled Nerd Font symbols face |
 | `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
 | `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
 | `touchKeys` | Shows the Ctrl+C (`^C`), Esc, Tab, arrow and sticky Ctrl key row: 44px targets that fit a 390px phone; narrower, the row scrolls and fades at the edge with more keys |
@@ -149,7 +181,19 @@ load with the first terminal on a page. Rendering uses WebGL2 and falls back to
 canvas 2D; a hidden terminal releases its GPU context and draws nothing.
 Escape then Tab moves focus out of the terminal (Shift+Tab backwards);
 Shift+F10 opens the context menu (Copy, Paste, Select all, Add to chat, Find,
-Jump to latest, Clear).
+Jump to latest, Clear) at the caret, and a right-click at the pointer; the
+menu flips above or left of that point when it would leave the viewport.
+Copy and paste outcomes show briefly on the terminal and are announced.
+
+A focused view keeps Copy, Paste, Find and Select all: ⌘C, ⌘V, ⌘F and ⌘A on a
+Mac, Ctrl+Shift+C, V, F and A elsewhere, where plain Ctrl+C copies only while
+there is a selection and otherwise reaches the program. Other Command chords
+on a Mac, and other Ctrl+Shift letter chords elsewhere, are left to the page,
+so the host's shortcuts still work from a focused terminal; every other key
+goes to the program. `terminalViewShortcuts(mac?)` returns these keys as
+`TerminalViewShortcut` records (`id`, `description`, `chords` of
+`{key, modifiers}` in Station's shortcut vocabulary, where `cmd` is Control
+off a Mac) for a host's shortcut list.
 
 ## Local speech and media tools
 
@@ -4969,9 +5013,10 @@ background route uses the same key custody.
 For a new foreground conversation, retain the original input and key. A server
 containing the durable create-claim implementation reserves an implicit
 conversation allocation under the caller scope and key, replays its completed
-handle, and refuses changed input.
+handle, and refuses changed input while the binding remains protected.
 A dead owner's unmarked request can be reclaimed immediately under the same
-key and input, including a request targeting an existing Session. A durable
+key, including changed input and a request targeting an existing Session.
+Live, unknown and marked owners still refuse changed input. A durable
 starting mark without confirmation is indeterminate within seven days. At expiry,
 the original key may reclaim only if no durable Session start record exists;
 otherwise it keeps refusing with its original Session reference in a tombstone.
@@ -4981,7 +5026,9 @@ automatically reconcile an absent Session.
 Tombstones are pruned only under record/byte capacity pressure, oldest first.
 Pruning removes key protection; neither absence nor expiry authorizes an automatic
 retry. A deliberate separate new key may duplicate existing work. Completed
-receipts replay for seven wall-clock days. Keys must be unique per intended
+receipts replay for seven days of elapsed host uptime; wall-clock jumps do not
+change that duration, and uptime resets conservatively preserve the remaining
+window. Keys must be unique per intended
 request within caller scope, including a verified calling Session. Capacity is a
 typed HTTP 429 before effects. See the [API limits](api.md) for precise rejection,
 expiry and capacity rules. Older hosts may allocate a fresh conversation per

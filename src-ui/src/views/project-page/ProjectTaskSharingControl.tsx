@@ -3,6 +3,10 @@ import type {
   ProjectSharedTaskPublicationExpectation,
 } from '@kontourai/station-contracts/project-shared-task';
 import {
+  StationHttpError,
+  StationRequestAuthorityError,
+} from '@kontourai/station-sdk/client';
+import {
   getProjectSharedTaskPublication,
   shareProjectTask,
   unshareProjectTask,
@@ -10,6 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { ErrorState } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -116,6 +121,35 @@ function ProjectTaskSharingControlInner({
     slug,
     task,
   );
+  const readDenied =
+    query.error instanceof StationRequestAuthorityError ||
+    (query.error instanceof StationHttpError &&
+      [401, 403, 404].includes(query.error.status));
+  if (authority && projectId && query.isError && !readDenied) {
+    const failure = (
+      <ErrorState
+        variant="compact"
+        title="Unable to check Task sharing"
+        description={userFacingErrorMessage(query.error)}
+        action={
+          <Button
+            pending={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            Retry
+          </Button>
+        }
+      />
+    );
+    return compact ? (
+      <details className="task-room-share">
+        <summary>Sharing unavailable</summary>
+        {failure}
+      </details>
+    ) : (
+      failure
+    );
+  }
   if (
     !authority ||
     !projectId ||

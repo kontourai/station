@@ -230,6 +230,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   schedule_wake_up: { minutes: 5, note: 'check the build' },
   cancel_wake_up: { id: 'w' },
+  terminal_run: { command: 'npm test' },
+  terminal_read: { runId: 'r', fromSeq: 0, waitSeconds: 0 },
   propose_job: {
     name: 'nightly',
     schedule: { kind: 'every', everyMs: 3_600_000 },
