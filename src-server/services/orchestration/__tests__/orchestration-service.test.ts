@@ -19086,7 +19086,8 @@ describe('OrchestrationService', () => {
     test('a chat that already ran in the home folder keeps it when it starts again', async () => {
       const stationHome = tempDir('station-4389-existing-');
       // Started before the change (or with the opt-out): it ran in home.
-      await scratchService(stationHome, 'home').dispatch({
+      const original = scratchService(stationHome, 'home');
+      await original.dispatch({
         type: 'startSession',
         input: {
           threadId: 'thread-existing-home',
@@ -19097,6 +19098,7 @@ describe('OrchestrationService', () => {
       expect(eventStore.readSessionByThread('thread-existing-home')?.cwd).toBe(
         homedir(),
       );
+      await original.shutdown();
       // Its next start, with the private default now in force, does not move it.
       await scratchService(stationHome).dispatch({
         type: 'startSession',

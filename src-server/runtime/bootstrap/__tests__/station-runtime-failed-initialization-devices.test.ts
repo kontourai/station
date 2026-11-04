@@ -1,6 +1,14 @@
+import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createLogger } from '../../../utils/logger.js';
 
 const temporaryHome = trackTempDirs();
@@ -187,3 +195,68 @@ describe('StationRuntime failed initialization (#2443)', () => {
     expect(Reflect.get(runtime, 'deviceToolchainService')).toBeUndefined();
   });
 });
+
+test.each(['inner-bootstrap', 'post-composition'] as const)(
+  'failed initialization revokes the orchestration listener (%s)',
+  async (phase) => {
+    const store = new EventStore(
+      join(temporaryHome('failed-orchestration-'), 'events.sqlite'),
+    );
+    const listeners = new Set<() => void>();
+    const adapter = new GateTestAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: {
+        ...createGateTestRegistry(adapter),
+        onChange: (listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+      },
+      eventStore: store,
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const { initializeRuntime } = await import('../runtime-initialize.js');
+    const runtime = failingRuntime();
+    if (phase === 'inner-bootstrap') {
+      vi.mocked(initializeRuntime).mockImplementationOnce(async (deps) => {
+        deps.onOrchestrationServiceCreated?.(service);
+        service.initialize();
+        expect(listeners.size).toBe(1);
+        throw STARTUP_FAILURE;
+      });
+    } else {
+      Object.assign(runtime, {
+        orchestrationService: service,
+        runInitialize: async () => {
+          service.initialize();
+          throw STARTUP_FAILURE;
+        },
+      });
+    }
+    const shutdown = vi.spyOn(service, 'shutdown');
+    if (phase === 'inner-bootstrap') {
+      Object.assign(runtime, {
+        runtimeSearch: {
+          stop() {},
+          retireAfterFailedInitialization: async () => {
+            // Inner cleanup must revoke subscriptions before retiring its next service.
+            expect(shutdown).toHaveBeenCalledTimes(1);
+            expect(listeners.size).toBe(0);
+            return { state: 'closed' };
+          },
+        },
+      });
+    }
+    try {
+      await expect(runtime.initialize()).rejects.toBe(STARTUP_FAILURE);
+      expect(listeners.size).toBe(0);
+      expect(shutdown).toHaveBeenCalledTimes(1);
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  },
+);
