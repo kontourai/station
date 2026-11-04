@@ -573,8 +573,8 @@ network. Only cloudflared and the receiver join the latter. Its static connector
 address `172.30.242.2/32` is the sole trusted proxy; the receiver also remains on
 the private database network and on `product-ingress`, which carries its
 loopback-published operator port. The recipe defines `product-ingress` itself
-because `extends` does not import the base file's network definitions. Check that `172.30.242.0/29` is free on the host;
-if changing it, update both static addresses, subnet, dynamic `ip_range` and
+because `extends` does not import the base file's network definitions. Check
+that `172.30.242.0/29` is free on the host; if changing it, update both static addresses, subnet, dynamic `ip_range` and
 trusted CIDR together. The `172.30.242.4/30` dynamic pool excludes static .2/.3.
 Never trust the edge ranges or the whole Docker subnet: the trust decision is
 about the receiver's immediate socket peer. Keep one receiver process.
