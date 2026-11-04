@@ -1,0 +1,120 @@
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
+const keychain = vi.hoisted(() => ({
+  value: JSON.stringify({ claudeAiOauth: { accessToken: 'synthetic-a' } }),
+  absent: false,
+  unavailable: false,
+}));
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof import('node:os')>()),
+  platform: () => 'darwin',
+}));
+vi.mock('node:child_process', async (original) => ({
+  ...(await original<typeof import('node:child_process')>()),
+  execFile: vi.fn((_command, _args, _options, callback) => {
+    if (keychain.unavailable)
+      callback(Object.assign(new Error('withheld'), { code: 1 }), '');
+    else if (keychain.absent)
+      callback(
+        Object.assign(new Error('withheld'), { code: 44, killed: false }),
+        '',
+      );
+    else callback(null, keychain.value);
+  }),
+  execFileSync: vi.fn(() => {
+    if (keychain.unavailable)
+      throw Object.assign(new Error('withheld'), { status: 1 });
+    if (keychain.absent)
+      throw Object.assign(new Error('withheld'), { status: 44, signal: null });
+    return keychain.value;
+  }),
+}));
+
+import {
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+} from '../native-authentication-context.js';
+
+const temporary = trackTempDirs();
+beforeEach(() => {
+  keychain.value = JSON.stringify({
+    claudeAiOauth: { accessToken: 'synthetic-a' },
+  });
+  keychain.absent = false;
+  keychain.unavailable = false;
+});
+afterEach(() => vi.clearAllMocks());
+
+async function capturedLaunch() {
+  const home = temporary('station-keychain-auth-');
+  const env = { HOME: home, USER: 'owned-keychain-fixture' };
+  const continuation = await observeNativeAuthenticationLaunch({
+    engine: 'claude',
+    profileRef: null,
+    command: process.execPath,
+    cwd: home,
+    env,
+    assertCurrent() {},
+  });
+  if (!continuation) throw new Error('Native continuation was not captured');
+  const adapter = {};
+  const effect = vi.fn();
+  const invoke = () =>
+    continuation.invoke(
+      adapter,
+      'owned-thread',
+      () => {},
+      () => {
+        const guard = captureNativeAuthenticationLaunch(
+          adapter,
+          'owned-thread',
+        );
+        if (!guard) throw new Error('Native launch guard is absent');
+        guard({
+          command: process.execPath,
+          args: [],
+          cwd: home,
+          env: { ...env, CLAUDE_CODE_SDK_READS_SESSION_STATE: '1' },
+        });
+        effect();
+      },
+    );
+  return { invoke, effect };
+}
+
+test('an unchanged Keychain item permits the exact guarded native launch', async () => {
+  const launch = await capturedLaunch();
+  launch.invoke();
+  expect(launch.effect).toHaveBeenCalledTimes(1);
+});
+
+test.each(['replacement', 'deletion', 'unavailable'] as const)(
+  'a Keychain %s refuses before the native launch effect',
+  async (change) => {
+    const launch = await capturedLaunch();
+    if (change === 'replacement')
+      keychain.value = JSON.stringify({
+        claudeAiOauth: { accessToken: 'synthetic-b' },
+      });
+    else if (change === 'deletion') keychain.absent = true;
+    else keychain.unavailable = true;
+    expect(launch.invoke).toThrow(/ensemble_auth_store_(changed|unavailable)/);
+    expect(launch.effect).not.toHaveBeenCalled();
+  },
+);
+
+test('a Keychain item appearing after an absent capture refuses before launch', async () => {
+  keychain.absent = true;
+  const launch = await capturedLaunch();
+  keychain.absent = false;
+  expect(launch.invoke).toThrow('ensemble_auth_store_changed');
+  expect(launch.effect).not.toHaveBeenCalled();
+});
+
+test('an unavailable Keychain cannot produce a launch continuation', async () => {
+  keychain.unavailable = true;
+  await expect(capturedLaunch()).rejects.toThrow(
+    'ensemble_auth_store_unsupported',
+  );
+});

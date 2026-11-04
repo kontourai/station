@@ -13,6 +13,10 @@ import { type FileHandle, open } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
+import {
+  claudeKeychainScope,
+  observeClaudeKeychain,
+} from './claude-keychain-authentication.js';
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_FILES = 256;
@@ -172,7 +176,7 @@ function claudeAuthenticationMetadata(text: string): string {
   );
 }
 
-/** Bounded local-file witnesses; OS stores and remote policy need separate qualification. */
+/** Bounded local-file and Claude Keychain witnesses; remote policy remains unsupported. */
 export async function observeNativeAuthenticationFiles(input: {
   engine: 'codex' | 'claude';
   cwd: string;
@@ -191,6 +195,7 @@ export async function observeNativeAuthenticationFiles(input: {
   };
   if (platform() === 'win32')
     throw new Error('ensemble_auth_store_unsupported');
+  let keychainCurrent: (() => void) | undefined;
   if (input.engine === 'claude') {
     if (
       platform() === 'darwin' &&
@@ -199,8 +204,20 @@ export async function observeNativeAuthenticationFiles(input: {
         'ANTHROPIC_AUTH_TOKEN',
         'CLAUDE_CODE_OAUTH_TOKEN',
       ].some((key) => Boolean(input.env[key]?.trim()))
-    )
-      throw new Error('ensemble_auth_store_unsupported');
+    ) {
+      const override = input.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+      const storage =
+        override === undefined ? config : override || join(home, '.claude');
+      const scope = claudeKeychainScope(
+        input.env,
+        storage,
+        override === undefined
+          ? !input.env.CLAUDE_CONFIG_DIR && home === homedir()
+          : override.length === 0,
+      );
+      if (!scope) throw new Error('ensemble_auth_store_unsupported');
+      keychainCurrent = await observeClaudeKeychain(scope);
+    }
     for (const key of [
       'CLAUDE_CODE_USE_BEDROCK',
       'CLAUDE_CODE_USE_VERTEX',
@@ -336,7 +353,7 @@ export async function observeNativeAuthenticationFiles(input: {
     }
     if (dirname(path) === path) break;
   }
-  const witnesses: Array<() => void> = [];
+  const witnesses: Array<() => void> = keychainCurrent ? [keychainCurrent] : [];
   for (const entry of entries.values())
     witnesses.push(await observeFile(entry));
   return () => {
