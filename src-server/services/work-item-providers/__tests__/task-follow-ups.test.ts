@@ -389,4 +389,73 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     // Exactly one new observation: the re-read check runs are the same ids.
     expect(store.list(incarnation)).toHaveLength(before + 1);
   });
+
+  test('a pending review does not move the cursor; once submitted it is recorded on the next poll', async () => {
+    const task = await trackerTask();
+    await enable();
+    answer(ghDir, { number: ISSUE }, issuePage1);
+    answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C2 }, issuePage2);
+    answer(ghDir, { number: PR }, prPage1);
+    // github.com's page with the gh login's own draft after the APPROVED
+    // review: `state: PENDING`, `submittedAt: null`, cursor `[null, created, id]`.
+    const pending = fixture('pull-request-page-2-pending');
+    answer(
+      ghDir,
+      { number: PR, commentsAfter: PR_C1, reviewsAfter: PR_R2 },
+      pending,
+    );
+    await poll();
+    const store = holder.forRead()!;
+    const incarnation = { taskId: task.id, taskCreatedAt: task.createdAt };
+    expect(
+      store.list(incarnation).some((item) => item.githubId === '5770935709'),
+    ).toBe(false);
+
+    // Submitted, it sorts after the last submitted review: the next poll
+    // must ask after that review's cursor, not the draft's.
+    const submitted = structuredClone(prPage2);
+    const edge = structuredClone(
+      pending.data.repository.issueOrPullRequest.reviews.edges[1],
+    );
+    edge.node.state = 'COMMENTED';
+    edge.node.submittedAt = '2026-11-04T15:30:00Z';
+    // GitHub's encoding: `cursor:v2:` + msgpack [submitted, created, id].
+    const id = Buffer.alloc(9);
+    id.writeUInt8(0xcf, 0);
+    id.writeBigUInt64BE(5770935709n, 1);
+    edge.cursor = Buffer.concat([
+      Buffer.from('cursor:v2:\x93\xb42026-11-04T15:30:00Z\xb42026-11-04T15:26:23Z', 'latin1'),
+      id,
+    ]).toString('base64');
+    submitted.data.repository.issueOrPullRequest.reviews = {
+      pageInfo: { hasNextPage: false, endCursor: edge.cursor },
+      edges: [edge],
+    };
+    submitted.data.repository.issueOrPullRequest.commits =
+      prPage1.data.repository.issueOrPullRequest.commits;
+    answer(
+      ghDir,
+      { number: PR, commentsAfter: PR_C1, reviewsAfter: PR_R3 },
+      submitted,
+    );
+    const emptyIssue = structuredClone(issuePage2);
+    emptyIssue.data.repository.issueOrPullRequest.comments = {
+      pageInfo: { hasNextPage: false, endCursor: null },
+      edges: [],
+    };
+    answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C3 }, emptyIssue);
+
+    await poll(NOW + 6 * 60_000);
+    expect(store.list(incarnation)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          githubId: '5770935709',
+          kind: 'review',
+          author: 'member-drafter',
+          actorClass: 'member',
+          reviewState: 'COMMENTED',
+        }),
+      ]),
+    );
+  });
 });

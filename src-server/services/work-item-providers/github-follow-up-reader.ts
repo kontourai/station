@@ -302,11 +302,15 @@ function readComments(value: unknown): FollowUpStreamPage {
 function readReviews(value: unknown): FollowUpStreamPage {
   const page = connection(value);
   const items: FollowUpItem[] = [];
-  for (const { node } of page.edges) {
-    // A PENDING review is the gh login's own unsubmitted draft. It is not
-    // recorded. Submitting it sets its submitted time, which sorts it after
-    // any cursor kept now, so passing it here loses nothing.
+  // The stream's cursor is the last NON-pending edge's. A PENDING review is
+  // the gh login's own unsubmitted draft; github.com gives it the cursor
+  // `[null, created at, id]` (captured 2026-11-04), so keeping that cursor
+  // would compare later reviews against a null submitted time. It is not
+  // recorded, and the next poll reads it again until it is submitted.
+  const kept: { cursor: string }[] = [];
+  for (const { cursor, node } of page.edges) {
     if (node.state === 'PENDING') continue;
+    kept.push({ cursor });
     if (!isIso(node.submittedAt))
       throw new Unreadable('GitHub returned a review without its time.');
     const inline = isRecord(node.comments) ? node.comments : {};
@@ -342,7 +346,7 @@ function readReviews(value: unknown): FollowUpStreamPage {
   }
   return {
     items,
-    ...lastCursor(page.edges),
+    ...lastCursor(kept),
     hasNextPage: page.hasNextPage,
   };
 }

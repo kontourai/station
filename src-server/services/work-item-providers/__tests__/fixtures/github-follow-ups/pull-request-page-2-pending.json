@@ -1,0 +1,62 @@
+{
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "edges": []
+        },
+        "reviews": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpPAtDIwMjYtMTEtMDRUMTU6MjY6MjNazwAAAAFX-X2d"
+          },
+          "edges": [
+            {
+              "cursor": "Y3Vyc29yOnYyOpO0MjAyNi0xMC0yM1QxOToyNzowOFq0MjAyNi0xMC0yM1QxOToyNzowOFrPAAAAAU_HbZs=",
+              "node": {
+                "databaseId": 5633437083,
+                "url": "https://github.com/acme/widgets/pull/14804#pullrequestreview-5633437083",
+                "body": "Synthetic single-line text 5.",
+                "state": "APPROVED",
+                "submittedAt": "2026-10-23T19:27:08Z",
+                "author": {
+                  "__typename": "User",
+                  "login": "member-approver"
+                },
+                "authorAssociation": "MEMBER",
+                "comments": {
+                  "totalCount": 0,
+                  "nodes": []
+                }
+              }
+            },
+            {
+              "cursor": "Y3Vyc29yOnYyOpPAtDIwMjYtMTEtMDRUMTU6MjY6MjNazwAAAAFX-X2d",
+              "node": {
+                "databaseId": 5770935709,
+                "url": "https://github.com/acme/widgets/pull/14804#pullrequestreview-5770935709",
+                "body": "Synthetic single-line text 6.",
+                "state": "PENDING",
+                "submittedAt": null,
+                "author": {
+                  "__typename": "User",
+                  "login": "member-drafter"
+                },
+                "authorAssociation": "MEMBER",
+                "comments": {
+                  "totalCount": 0,
+                  "nodes": []
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
