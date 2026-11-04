@@ -7401,7 +7401,10 @@ export function configureRuntimeRoutes(
                 input,
                 ensembleInventory,
                 principal.id,
-                assertCurrent,
+                () =>
+                  context.environmentSecurityService.withCurrentAuthority(
+                    assertCurrent,
+                  ),
               ),
             prepareEnsembleSessionGroup: (
               input,

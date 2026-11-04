@@ -536,7 +536,7 @@ async function fixture(operatorInspection = false, stationControl = false) {
     createOrchestrationRoutes(service, {
       cliSessionGroupHome: root,
       delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
-      ...(ensembleGroups
+      ...(ensembleGroups && security
         ? {
             prepareEnsembleSessionGroup:
               ensembleGroups.compose.bind(ensembleGroups),
@@ -549,7 +549,7 @@ async function fixture(operatorInspection = false, stationControl = false) {
                 input,
                 inventory,
                 principal.id,
-                assertCurrent,
+                () => security.withCurrentAuthority(assertCurrent),
               ),
           }
         : {}),
