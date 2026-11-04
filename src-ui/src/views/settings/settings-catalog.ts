@@ -385,14 +385,14 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'terminal-history-per-terminal',
-    title: 'Terminal history per terminal',
+    title: 'Maximum history per terminal',
     section: 'host-runtime',
     keywords: ['retention journal size limit mib'],
     configKeys: ['terminalHistoryMaxTerminalMiB'],
   },
   {
     id: 'terminal-history-total',
-    title: 'Terminal history total',
+    title: 'Maximum total history',
     section: 'host-runtime',
     keywords: ['retention journal size limit mib budget'],
     configKeys: ['terminalHistoryMaxTotalMiB'],
@@ -784,6 +784,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
+  },
+  {
+    id: 'terminal-screen-reader',
+    title: 'Terminal screen reader mode',
+    section: 'appearance',
+    configKeys: ['terminalScreenReader'],
+    keywords: ['accessibility', 'a11y', 'voiceover', 'nvda', 'announce'],
   },
   {
     id: 'accent-color',

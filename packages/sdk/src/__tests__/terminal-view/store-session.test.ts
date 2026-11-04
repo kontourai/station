@@ -29,6 +29,7 @@ function fakeSession(retained: string[]) {
     },
     resize: () => undefined,
     cwd: async () => null,
+    restart: async () => ({ restartedAfterSeq: 0 }),
     close: async () => undefined,
     detach: () => undefined,
   } satisfies TerminalSession;

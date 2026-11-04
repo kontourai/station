@@ -85,3 +85,13 @@ test('the key row names the edge that has more keys past it', async () => {
   });
   expect(row.dataset.overflow).toBe('start');
 });
+
+// In vim, less or fzf the arrows move a cursor or a selection, not through
+// command history: the keys are named for what they are.
+test('the arrow keys are named as arrows', () => {
+  render(<TerminalView session={null} touchKeys />);
+  const row = screen.getByRole('toolbar', { name: 'Terminal keys' });
+  for (const name of ['Up arrow', 'Down arrow', 'Left arrow', 'Right arrow'])
+    expect(row.querySelector(`[aria-label="${name}"]`)).not.toBeNull();
+  expect(row.querySelector('[aria-label="Previous command"]')).toBeNull();
+});

@@ -2,18 +2,20 @@ import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 
 interface NewTerminalItem {
   key: string;
-  type: 'shell' | 'agent';
+  type: 'shell' | 'agent' | 'script';
   label: string;
   hint: string;
   slug?: string;
   connectionId?: string;
-  section?: 'recent';
+  section?: 'recent' | 'scripts';
 }
 
 export function buildNewTerminalItems(
   connections: ACPConnectionInfo[],
   filter: string,
   recentAgentSlugs: string[],
+  /** The Project's package scripts, run by name as command sessions. */
+  scripts: readonly { name: string; command: string }[] = [],
 ): NewTerminalItem[] {
   const connectedAgents = connections
     .filter((connection) => connection.status === 'available')
@@ -73,6 +75,22 @@ export function buildNewTerminalItems(
       hint: agent.connection,
       slug: agent.slug,
       connectionId: agent.connectionId,
+    });
+  }
+
+  for (const script of scripts) {
+    if (
+      !script.name.toLowerCase().includes(normalizedFilter) &&
+      !script.command.toLowerCase().includes(normalizedFilter)
+    )
+      continue;
+    items.push({
+      key: `script-${script.name}`,
+      type: 'script',
+      label: script.name,
+      hint: script.command,
+      slug: script.name,
+      section: 'scripts',
     });
   }
 

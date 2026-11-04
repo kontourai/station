@@ -4,7 +4,7 @@
  * summary per window instead of drowning the screen reader.
  */
 
-export interface AnnouncerOptions {
+interface AnnouncerOptions {
   /** Minimum time between announcements, ms. */
   intervalMs?: number;
   /** Longest announcement, characters; longer output is summarized. */
