@@ -44,11 +44,24 @@ replace the binary.
 Station refuses to start when it cannot enforce the installed policy. That
 covers a file it cannot read, a directory at the policy path, invalid JSON, a
 schema mismatch, a wrong `schemaVersion`, an unknown key, and more than one
-installed source. The error starts with `STATION_MANAGED_POLICY_INVALID` and
-names the source and the reason. The desktop sidecar treats that marker as
+installed source. It also covers a symbolic link at the policy path, a file or
+parent directory that someone other than root can change, and a document that
+repeats a key name. The error starts with `STATION_MANAGED_POLICY_INVALID` and
+names the source and the reason. The error is one line of bounded length: a
+quoted key name longer than 64 characters is truncated, and the location and
+reason are capped, so a hostile document cannot push the marker out of the
+desktop sidecar's 64 KiB stderr capture. The sidecar also latches the first
+line carrying a fatal marker while it reads stderr, not only from the tail it
+keeps. The desktop sidecar treats that marker as
 unrecoverable and does not retry, and the CLI reports the line after a failed
 start. A missing file means no policy, and Station behaves as it does without
 one.
+
+**Each key may appear once.** `JSON.parse` keeps the last of two equal member
+names, so `"limits": {...}, "limits": {}` would silently erase the first
+restriction. Station rejects a repeated member name in any object, comparing
+names after unescaping, before it builds the document. The error is
+`duplicate key <path>`.
 
 **Unknown keys are refused at every level.** A key this build does not know
 may be a restriction from a newer release. Ignoring it would leave the machine
@@ -77,6 +90,30 @@ The paths are literals. Station does not expand `%ProgramFiles%` or use
 `%ProgramData%`, because a user can redirect an environment variable, or create
 a `ProgramData` folder first and own it. Either would let the user choose the
 policy.
+
+**Only an absent entry means no policy.** Station checks the path with `lstat`.
+`ENOENT` is the only "no policy" answer. A symbolic link (or, on Windows, a
+link or junction that `lstat` reports as one) is an error, even when it
+dangles, and is never followed: a dangling link would otherwise read as absence
+and let the test override stand in, and a link to a user's file would load the
+user's document. On POSIX the file is opened with `O_NOFOLLOW` and
+`O_NONBLOCK`. Every later check runs on that descriptor: `fstat` must report a
+regular file (so a FIFO or a device is refused instead of hanging startup), and
+it must be the same file `lstat` saw.
+
+**System files must be root's.** For the system sources (not the test override
+and not `station policy check`), the file and every directory above it up to
+`/` must be owned by root (uid 0) and must not be writable by their group or by
+other users. Otherwise Station refuses to start and names the offending path. The
+group itself is not checked: a stock Mac has `/Library` as root:wheel 0755 and
+`/Library/Application Support` as root:admin 0755, and both pass. A symbolic
+link among the parent directories must be owned by root, and the directories it
+leads to are checked as well. On NixOS, install the file with a copy mode
+instead of the default store link.
+
+Windows: Station rejects a link at the file, but it does not yet check the
+owner or ACL of the file and its folders. That check, and the reparse point
+types Node does not report as links, are a follow-up in #4524.
 
 Sources implement one interface. A source reports "no policy", returns raw
 input (JSON text or an already-decoded value), or throws the fail-closed error.

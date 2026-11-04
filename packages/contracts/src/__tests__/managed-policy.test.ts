@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   canonicalManagedPolicyJson,
+  duplicateJsonMemberPath,
   MANAGED_POLICY_INVALID_MARKER,
+  MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
   managedByLabel,
   managedPolicyDenial,
   parseManagedPolicyDocument,
@@ -248,5 +250,70 @@ describe('summary, fingerprint input and status', () => {
     expect(MANAGED_POLICY_INVALID_MARKER).toBe(
       'STATION_MANAGED_POLICY_INVALID',
     );
+  });
+});
+
+describe('duplicateJsonMemberPath', () => {
+  test.each([
+    ['{"a":1,"b":2}', null],
+    ['{"limits":{"telemetry":false},"limits":{}}', 'limits'],
+    ['{"limits":1,"\\u006cimits":2}', 'limits'],
+    ['{"a":{"b":[{"c":1},{"c":1,"c":2}]}}', 'a.b[1].c'],
+    ['{"a":{"x":1},"b":{"x":1}}', null],
+    ['{"a\\"":1,"a\\"":2}', '["a\\""]'],
+    ['{"x":"}","y":"\\\\","z":"\\"{"}', null],
+    ['[{"k":1},{"k":2}]', null],
+    [
+      ' {\n\t"n": -1.5e+3, "t": true, "f": false, "z": null, "e": [], "o": {} } ',
+      null,
+    ],
+    ['{"__proto__":1,"__proto__":2}', '__proto__'],
+    ['{"":1,"":2}', '[""]'],
+    ['"text"', null],
+  ])('%s -> %s', (text, expected) => {
+    // Every case is valid JSON, as the scanner expects.
+    JSON.parse(text);
+    expect(duplicateJsonMemberPath(text)).toBe(expected);
+  });
+
+  test('handles nesting deeper than a recursive parser could', () => {
+    const depth = 200_000;
+    expect(
+      duplicateJsonMemberPath(`${'['.repeat(depth)}${']'.repeat(depth)}`),
+    ).toBeNull();
+    const nested = `${'{"a":'.repeat(5000)}{"b":1,"b":2}${'}'.repeat(5000)}`;
+    expect(duplicateJsonMemberPath(nested)).toBe(`${'a.'.repeat(5000)}b`);
+  });
+
+  test.each(['{', '{"a":1,}', '[1 2]', '{"a" 1}', 'tru', '{} {}'])(
+    'throws on input JSON.parse refuses: %s',
+    (text) => {
+      expect(() => duplicateJsonMemberPath(text)).toThrow(SyntaxError);
+    },
+  );
+
+  test('a huge duplicate name is shown truncated', () => {
+    const name = 'k'.repeat(100_000);
+    const path = duplicateJsonMemberPath(`{"${name}":1,"${name}":2}`);
+    expect(path).toBe(`["${'k'.repeat(64)}"… (100000 characters)]`);
+    expect(MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS).toBe(64);
+  });
+});
+
+describe('problem paths for huge keys', () => {
+  test('quote at most the display bound of a key name', () => {
+    const key = 'k'.repeat(100_000);
+    const problems = problemsOf({
+      schemaVersion: 1,
+      organization: 'A',
+      [key]: 1,
+    });
+    expect(problems).toEqual([
+      {
+        path: `["${'k'.repeat(64)}"… (100000 characters)]`,
+        message:
+          'unknown key; this version of Station refuses keys it cannot enforce',
+      },
+    ]);
   });
 });

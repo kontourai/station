@@ -1,17 +1,24 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
+  decodeManagedPolicy,
   loadInstalledManagedPolicy,
   loadManagedPolicyFromSources,
+  MANAGED_POLICY_LOCATION_MAX_CHARS,
   MANAGED_POLICY_MAX_BYTES,
+  MANAGED_POLICY_REASON_MAX_CHARS,
   ManagedPolicyInvalidError,
+  managedPolicyDirectoryProblem,
   managedPolicyFilePath,
   managedPolicyFileSource,
   managedPolicyStatus,
   readManagedPolicyFile,
+  SYSTEM_MANAGED_POLICY_OWNERSHIP,
+  systemManagedPolicySources,
 } from '../managed-policy.js';
 
 const makeTempDir = trackTempDirs();
@@ -213,5 +220,238 @@ describe('test override', () => {
         }),
       ).reason,
     ).toContain('names a file that does not exist');
+  });
+});
+
+const posix = process.platform !== 'win32';
+
+describe('symbolic links', () => {
+  test.skipIf(!posix)('a dangling link is an error, not absence', () => {
+    const link = join(dir(), 'policy.json');
+    symlinkSync(join(dir(), 'absent.json'), link);
+    const error = invalid(() => readManagedPolicyFile(link));
+    expect(error.location).toBe(link);
+    expect(error.reason).toContain('it is a symbolic link');
+  });
+
+  test.skipIf(!posix)(
+    'a link to a readable policy is refused, not followed',
+    () => {
+      const link = join(dir(), 'policy.json');
+      symlinkSync(policyFile(VALID), link);
+      expect(invalid(() => readManagedPolicyFile(link)).reason).toContain(
+        'it is a symbolic link',
+      );
+    },
+  );
+
+  test.skipIf(!posix)(
+    'a dangling system link fails closed and the override cannot stand in',
+    () => {
+      const link = join(dir(), 'policy.json');
+      symlinkSync(join(dir(), 'absent.json'), link);
+      const error = invalid(() =>
+        loadInstalledManagedPolicy({
+          env: { STATION_MANAGED_POLICY_TEST_FILE: policyFile(VALID) },
+          systemSources: [managedPolicyFileSource(link)],
+        }),
+      );
+      expect(error.location).toBe(link);
+      expect(error.reason).toContain('it is a symbolic link');
+    },
+  );
+});
+
+describe('special files', () => {
+  test.skipIf(!posix)('a FIFO is refused without blocking on open', () => {
+    const path = join(dir(), 'policy.json');
+    execFileSync('mkfifo', [path]);
+    // A blocking open would never return here: no writer ever opens it.
+    expect(invalid(() => readManagedPolicyFile(path)).reason).toBe(
+      'it is not a regular file',
+    );
+  });
+});
+
+describe('system ownership', () => {
+  const uid = process.getuid?.() ?? -1;
+
+  /** A root `trusted` (0700, ours) holding `trusted/Station/policy.json`. */
+  function ownedTree() {
+    const trusted = dir();
+    chmodSync(trusted, 0o755);
+    const station = join(trusted, 'Station');
+    mkdirSync(station, { mode: 0o755 });
+    const path = join(station, 'policy.json');
+    writeFileSync(path, VALID, { mode: 0o644 });
+    chmodSync(path, 0o644);
+    return {
+      trusted,
+      station,
+      path,
+      ownership: { ownerUid: uid, trustedRoot: trusted },
+    };
+  }
+
+  test('system sources require root ownership up to /', () => {
+    expect(SYSTEM_MANAGED_POLICY_OWNERSHIP).toEqual({
+      ownerUid: 0,
+      trustedRoot: '/',
+    });
+    const [source] = systemManagedPolicySources('linux');
+    expect(source.descriptor.location).toBe('/etc/station/policy.json');
+  });
+
+  test.skipIf(!posix || uid === 0)(
+    'a user-owned file at a system source is refused, naming the file',
+    () => {
+      const path = policyFile(VALID);
+      const error = invalid(() =>
+        readManagedPolicyFile(path, SYSTEM_MANAGED_POLICY_OWNERSHIP),
+      );
+      expect(error.reason).toBe(
+        `${path} must be owned by root (uid 0), but is owned by uid ${uid}`,
+      );
+      // The same file without the system requirement (check, override).
+      expect(readManagedPolicyFile(path)).toEqual({
+        kind: 'text',
+        text: VALID,
+      });
+    },
+  );
+
+  test.skipIf(!posix)('an owned, unwritable chain is accepted', () => {
+    const { path, ownership } = ownedTree();
+    expect(readManagedPolicyFile(path, ownership)).toEqual({
+      kind: 'text',
+      text: VALID,
+    });
+  });
+
+  test.skipIf(!posix)('a group- or world-writable file is refused', () => {
+    const { path, ownership } = ownedTree();
+    chmodSync(path, 0o664);
+    expect(invalid(() => readManagedPolicyFile(path, ownership)).reason).toBe(
+      `${path} must not be writable by its group or other users (mode 664)`,
+    );
+    chmodSync(path, 0o646);
+    expect(
+      invalid(() => readManagedPolicyFile(path, ownership)).reason,
+    ).toContain('mode 646');
+  });
+
+  test.skipIf(!posix)(
+    'a writable parent directory is refused, naming it',
+    () => {
+      const { station, trusted, path, ownership } = ownedTree();
+      chmodSync(station, 0o775);
+      expect(invalid(() => readManagedPolicyFile(path, ownership)).reason).toBe(
+        `${station} must not be writable by its group or other users (mode 775)`,
+      );
+      chmodSync(station, 0o755);
+      chmodSync(trusted, 0o757);
+      expect(invalid(() => readManagedPolicyFile(path, ownership)).reason).toBe(
+        `${trusted} must not be writable by its group or other users (mode 757)`,
+      );
+    },
+  );
+
+  test.skipIf(!posix)(
+    'a linked parent is checked where it leads, not only where it sits',
+    () => {
+      const { trusted, ownership } = ownedTree();
+      const elsewhere = dir();
+      chmodSync(elsewhere, 0o777);
+      writeFileSync(join(elsewhere, 'policy.json'), VALID, { mode: 0o644 });
+      symlinkSync(elsewhere, join(trusted, 'Linked'));
+      const error = invalid(() =>
+        readManagedPolicyFile(
+          join(trusted, 'Linked', 'policy.json'),
+          ownership,
+        ),
+      );
+      expect(error.reason).toMatch(/is not under |must not be writable/);
+    },
+  );
+
+  test.skipIf(process.platform !== 'darwin')(
+    'the stock macOS chain above the policy directory is accepted',
+    () => {
+      // /Library is root:wheel 0755 and /Library/Application Support is
+      // root:admin 0755 on a stock Mac; group ownership is not a problem.
+      expect(
+        managedPolicyDirectoryProblem(
+          '/Library/Application Support',
+          SYSTEM_MANAGED_POLICY_OWNERSHIP,
+        ),
+      ).toBeNull();
+    },
+  );
+
+  test.skipIf(process.platform !== 'linux')(
+    'the stock Linux chain above the policy directory is accepted',
+    () => {
+      expect(
+        managedPolicyDirectoryProblem('/etc', SYSTEM_MANAGED_POLICY_OWNERSHIP),
+      ).toBeNull();
+    },
+  );
+});
+
+describe('duplicate keys', () => {
+  test('a second member with the same name is refused, not merged', () => {
+    const error = invalid(() =>
+      decodeManagedPolicy('/p', {
+        kind: 'text',
+        text: '{"schemaVersion":1,"organization":"Admin","limits":{"telemetry":false},"limits":{}}',
+      }),
+    );
+    expect(error.reason).toBe('duplicate key limits');
+  });
+
+  test('names are compared after unescaping', () => {
+    expect(
+      invalid(() =>
+        decodeManagedPolicy('/p', {
+          kind: 'text',
+          text: '{"schemaVersion":1,"organization":"A","\\u006frganization":"B"}',
+        }),
+      ).reason,
+    ).toBe('duplicate key organization');
+  });
+});
+
+describe('diagnostic bounds', () => {
+  test('a huge key keeps the fatal line short, one line, marker first', () => {
+    const key = 'k'.repeat(100_000);
+    const error = invalid(() =>
+      decodeManagedPolicy('/p', {
+        kind: 'text',
+        text: JSON.stringify({ schemaVersion: 1, organization: 'A', [key]: 1 }),
+      }),
+    );
+    expect(error.message.startsWith('STATION_MANAGED_POLICY_INVALID: ')).toBe(
+      true,
+    );
+    expect(error.message.length).toBeLessThan(4096);
+    expect(error.message).toContain('(100000 characters)');
+  });
+
+  test('a long location and reason are truncated and newlines removed', () => {
+    const error = new ManagedPolicyInvalidError(
+      `/a\n${'l'.repeat(5000)}`,
+      `r${'x'.repeat(10_000)}`,
+    );
+    expect(error.location.length).toBeLessThan(
+      MANAGED_POLICY_LOCATION_MAX_CHARS + 64,
+    );
+    expect(error.reason.length).toBeLessThan(
+      MANAGED_POLICY_REASON_MAX_CHARS + 64,
+    );
+    expect(error.message).not.toContain('\n');
+    expect(error.message).toMatch(/more characters\)\. Station will not start/);
+    // Literals beside the constants under test.
+    expect(MANAGED_POLICY_LOCATION_MAX_CHARS).toBe(1024);
+    expect(MANAGED_POLICY_REASON_MAX_CHARS).toBe(2048);
   });
 });

@@ -13500,18 +13500,50 @@ fn spawn_sidecar_stderr_reader(
 #[cfg(not(mobile))]
 fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     const MAX_TAIL_BYTES: usize = 64 * 1024;
+    // The head of each line, where the server writes a fatal marker. The
+    // first such line is latched as it is read, because a long diagnostic
+    // after it (or the 16-line cut below) can drop it from the tail, and the
+    // exit is classified as terminal only when the marker reaches `detail`.
+    const MAX_LATCHED_LINE_BYTES: usize = 4096;
     let mut tail = std::collections::VecDeque::with_capacity(MAX_TAIL_BYTES + 4096);
+    let mut line_head: Vec<u8> = Vec::with_capacity(MAX_LATCHED_LINE_BYTES);
+    let mut latched: Option<(&'static str, String)> = None;
+    let latch_line = |line_head: &mut Vec<u8>, latched: &mut Option<(&'static str, String)>| {
+        if latched.is_none() {
+            if let Some(marker) =
+                bundled_server_state::FATAL_MARKERS
+                    .iter()
+                    .copied()
+                    .find(|marker| {
+                        line_head
+                            .windows(marker.len())
+                            .any(|window| window == marker.as_bytes())
+                    })
+            {
+                *latched = Some((marker, String::from_utf8_lossy(line_head).into_owned()));
+            }
+        }
+        line_head.clear();
+    };
     let mut chunk = [0_u8; 4096];
     loop {
         let count = match stderr.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(count) => count,
         };
+        for &byte in &chunk[..count] {
+            if byte == b'\n' {
+                latch_line(&mut line_head, &mut latched);
+            } else if line_head.len() < MAX_LATCHED_LINE_BYTES {
+                line_head.push(byte);
+            }
+        }
         tail.extend(&chunk[..count]);
         if tail.len() > MAX_TAIL_BYTES {
             tail.drain(..tail.len() - MAX_TAIL_BYTES);
         }
     }
+    latch_line(&mut line_head, &mut latched);
     let bytes: Vec<u8> = tail.into_iter().collect();
     let text = String::from_utf8_lossy(&bytes);
     // Invalid UTF-8 expands into replacement characters; bound the rendered
@@ -13521,7 +13553,16 @@ fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
         start += 1;
     }
     let lines: Vec<&str> = text[start..].lines().rev().take(16).collect();
-    (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    let tail = (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"));
+    // At most MAX_LATCHED_LINE_BYTES (plus replacement expansion) beyond
+    // the tail bound, and only when the tail lost the marker.
+    match (latched, tail) {
+        (Some((marker, line)), Some(tail)) if !tail.contains(marker) => {
+            Some(format!("{line}\n{tail}"))
+        }
+        (Some((_, line)), None) => Some(line),
+        (_, tail) => tail,
+    }
 }
 
 /// The direct child can exit while a descendant retains its stderr pipe. Keep
@@ -18221,6 +18262,68 @@ mod tests {
         let tail = capture_sidecar_stderr(lines.as_bytes()).unwrap();
         assert_eq!(tail.lines().count(), 16);
         assert!(tail.starts_with("line 14\n"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_latches_a_fatal_marker_that_a_long_diagnostic_pushes_out_of_the_tail() {
+        // The marker leads a line longer than the retained tail, then later
+        // lines follow: without latching, neither the tail nor its last 16
+        // lines would carry the marker and the exit would be retried.
+        let mut text = format!(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p: unknown key {}\n",
+            "k".repeat(100_000)
+        );
+        text.push_str(&(0..30).map(|i| format!("later {i}\n")).collect::<String>());
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(detail.starts_with(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p"
+        ));
+        assert!(detail.len() <= 64 * 1024 + 4096 + 1);
+        assert!(detail.ends_with("later 29"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(
+            next.fail_closed,
+            "a latched marker must make the exit terminal"
+        );
+        assert_eq!(effects, vec![SupervisorEffect::None]);
+
+        // A marker still inside the tail is not duplicated.
+        let short =
+            capture_sidecar_stderr("STATION_HOME_RESET_REQUIRED: incompatible schema\n".as_bytes())
+                .unwrap();
+        assert_eq!(short, "STATION_HOME_RESET_REQUIRED: incompatible schema");
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn oversized_managed_policy_stderr_from_a_child_is_classified_terminal() {
+        // Crosses the real pipe: the child writes the marker, a 100,000-byte
+        // key, and more output in many reads' worth of chunks.
+        let mut child = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "printf 'STATION_MANAGED_POLICY_INVALID: unknown key ' >&2; \
+                 head -c 100000 /dev/zero | tr '\\0' k >&2; printf '\\n' >&2; \
+                 i=0; while [ $i -lt 40 ]; do echo \"later $i\" >&2; i=$((i+1)); done; exit 1",
+            ])
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let detail = capture_sidecar_stderr(stderr);
+        let code = child.wait().unwrap().code();
+        let status = BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into());
+        let (next, effects) = transition(&status, &SupervisorInput::Exited { code, detail });
+        assert_eq!(next.phase, bundled_server_state::ServerPhase::Failed);
+        assert!(next.fail_closed);
+        assert_eq!(effects, vec![SupervisorEffect::None]);
     }
 
     #[cfg(not(mobile))]

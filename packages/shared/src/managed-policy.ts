@@ -12,12 +12,15 @@ import {
   closeSync,
   constants as fsConstants,
   fstatSync,
+  lstatSync,
   openSync,
   readSync,
+  realpathSync,
 } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import {
   canonicalManagedPolicyJson,
+  duplicateJsonMemberPath,
   formatManagedPolicyProblems,
   MANAGED_POLICY_INVALID_MARKER,
   type ManagedPolicyDigest,
@@ -60,19 +63,46 @@ export function managedPolicyFilePath(
   }
 }
 
+/** Bounds for the parts of the fatal line that come from outside Station. */
+export const MANAGED_POLICY_LOCATION_MAX_CHARS = 1024;
+export const MANAGED_POLICY_REASON_MAX_CHARS = 2048;
+
+/**
+ * One line of at most `max` characters. The fatal message is read by the
+ * desktop sidecar from a bounded stderr capture and matched by its leading
+ * marker, so neither a long policy key nor a newline in a path may push the
+ * marker out of view or split the line.
+ */
+function boundedLine(text: string, max: number): string {
+  const line = text.replace(/[\r\n]+/g, ' ');
+  if (line.length <= max) return line;
+  const note = `… (${line.length - max} more characters)`;
+  return `${line.slice(0, max)}${note}`;
+}
+
 export class ManagedPolicyInvalidError extends Error {
   readonly code = MANAGED_POLICY_INVALID_MARKER;
+  /** The source location(s) at fault, for the administrator; bounded. */
+  readonly location: string;
+  /** Why the policy cannot be used; bounded. */
+  readonly reason: string;
 
   constructor(
-    /** The source location(s) at fault, for the administrator. */
-    readonly location: string,
-    readonly reason: string,
+    location: string,
+    reason: string,
     readonly problems: readonly ManagedPolicyProblem[] = [],
   ) {
+    const boundedLocation = boundedLine(
+      location,
+      MANAGED_POLICY_LOCATION_MAX_CHARS,
+    );
+    const boundedReason = boundedLine(reason, MANAGED_POLICY_REASON_MAX_CHARS);
     super(
-      `${MANAGED_POLICY_INVALID_MARKER}: Station cannot use the managed policy at ${location}: ${reason}. Station will not start until an administrator fixes or removes it.`,
+      `${MANAGED_POLICY_INVALID_MARKER}: Station cannot use the managed policy at ${boundedLocation}: ${boundedReason}. Station will not start until an administrator fixes or removes it.`,
     );
     this.name = 'ManagedPolicyInvalidError';
+    this.location = boundedLocation;
+    this.reason = boundedReason;
   }
 }
 
@@ -108,15 +138,150 @@ function unreadableReason(error: unknown): string {
   return `the file cannot be read (${code ?? 'unknown error'})`;
 }
 
-/** Read a policy file; only a missing path means "no policy". */
+/**
+ * Who must own a system policy file and every directory above it. The
+ * default is root with no group or other write bit, which a stock macOS
+ * (`/Library` is root:wheel 0755, `/Library/Application Support` is
+ * root:admin 0755) and Linux (`/etc` is root:root 0755) already satisfy:
+ * the group is not checked, only that it cannot write. Tests stop the walk
+ * at a directory they own; production walks to `/`.
+ */
+export interface ManagedPolicyFileOwnership {
+  ownerUid: number;
+  /** The highest directory checked, inclusive. */
+  trustedRoot: string;
+}
+
+export const SYSTEM_MANAGED_POLICY_OWNERSHIP: ManagedPolicyFileOwnership = {
+  ownerUid: 0,
+  trustedRoot: '/',
+};
+
+const GROUP_OR_OTHER_WRITE = 0o022;
+
+function ownerName(uid: number): string {
+  return uid === 0 ? 'root (uid 0)' : `uid ${uid}`;
+}
+
+function ownershipProblem(
+  target: string,
+  stats: { uid: number; mode: number },
+  ownership: ManagedPolicyFileOwnership,
+  checkMode: boolean,
+): string | null {
+  if (stats.uid !== ownership.ownerUid)
+    return `${target} must be owned by ${ownerName(ownership.ownerUid)}, but is owned by uid ${stats.uid}`;
+  if (checkMode && (stats.mode & GROUP_OR_OTHER_WRITE) !== 0)
+    return `${target} must not be writable by its group or other users (mode ${(stats.mode & 0o7777).toString(8)})`;
+  return null;
+}
+
+function ancestorsUpTo(start: string, root: string): string[] | null {
+  const chain: string[] = [];
+  let current = start;
+  for (;;) {
+    chain.push(current);
+    if (current === root) return chain;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+/**
+ * Refuse a policy whose directory chain someone other than the owner could
+ * change: a writable directory lets its writers swap the file for their own.
+ * The literal chain is checked with `lstat` (a symbolic link's own mode
+ * means nothing, so only its owner is checked), and the resolved chain is
+ * checked too, so a root-owned link cannot lead into a user's directory.
+ *
+ * Windows: not checked here. Owner and ACL inheritance under
+ * `C:\Program Files` need their own verification (#4524).
+ */
+export function managedPolicyDirectoryProblem(
+  directory: string,
+  ownership: ManagedPolicyFileOwnership,
+): string | null {
+  const root = resolve(ownership.trustedRoot);
+  const literal = ancestorsUpTo(resolve(directory), root);
+  let realRoot: string;
+  let real: string[] | null;
+  try {
+    realRoot = realpathSync(root);
+    real = ancestorsUpTo(realpathSync(directory), realRoot);
+  } catch (error) {
+    return `${directory} cannot be resolved (${errnoCode(error) ?? 'unknown error'})`;
+  }
+  if (!literal || !real) return `${directory} is not under ${root}`;
+  for (const [chain, resolved] of [
+    [literal, false],
+    [real, true],
+  ] as const) {
+    for (const entry of chain) {
+      let stats: ReturnType<typeof lstatSync>;
+      try {
+        stats = lstatSync(entry);
+      } catch (error) {
+        return `${entry} cannot be inspected (${errnoCode(error) ?? 'unknown error'})`;
+      }
+      if (resolved && !stats.isDirectory())
+        return `${entry} is not a directory`;
+      const problem = ownershipProblem(
+        entry,
+        stats,
+        ownership,
+        !stats.isSymbolicLink(),
+      );
+      if (problem) return problem;
+    }
+  }
+  return null;
+}
+
+const SYMLINK_REASON =
+  'it is a symbolic link or reparse point; install the policy as a regular file';
+
+/**
+ * Read a policy file. Only an absent entry means "no policy": a symbolic
+ * link is refused, never followed, even when it dangles (a dangling link
+ * would otherwise read as absence). The descriptor is opened without
+ * following links and without blocking, so a FIFO cannot hang startup, and
+ * every check after the open runs on that descriptor.
+ *
+ * With `ownership` (system sources only), the file and each directory up to
+ * `ownership.trustedRoot` must belong to the owner and not be writable by
+ * anyone else; see {@link managedPolicyDirectoryProblem}.
+ */
 export function readManagedPolicyFile(
   path: string,
+  ownership?: ManagedPolicyFileOwnership,
 ): ManagedPolicyRawInput | undefined {
-  let fd: number;
+  let entry: ReturnType<typeof lstatSync>;
   try {
-    fd = openSync(path, fsConstants.O_RDONLY);
+    entry = lstatSync(path);
   } catch (error) {
     if (errnoCode(error) === 'ENOENT') return undefined;
+    throw new ManagedPolicyInvalidError(path, unreadableReason(error));
+  }
+  // On Windows `lstat` reports symbolic links and junctions this way; there
+  // is no O_NOFOLLOW, so this check carries the refusal there.
+  if (entry.isSymbolicLink())
+    throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
+  if (entry.isDirectory())
+    throw new ManagedPolicyInvalidError(path, 'it is a directory, not a file');
+
+  let fd: number;
+  try {
+    fd = openSync(
+      path,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) |
+        (fsConstants.O_NONBLOCK ?? 0),
+    );
+  } catch (error) {
+    // ELOOP: the entry became a link after lstat.
+    if (errnoCode(error) === 'ELOOP')
+      throw new ManagedPolicyInvalidError(path, SYMLINK_REASON);
     throw new ManagedPolicyInvalidError(path, unreadableReason(error));
   }
   try {
@@ -130,6 +295,19 @@ export function readManagedPolicyFile(
         );
       if (!stats.isFile())
         throw new ManagedPolicyInvalidError(path, 'it is not a regular file');
+      // The opened file must be the entry lstat saw, not one swapped in
+      // between (the only link check Windows has).
+      if (stats.dev !== entry.dev || stats.ino !== entry.ino)
+        throw new ManagedPolicyInvalidError(
+          path,
+          'it changed while Station was opening it',
+        );
+      if (ownership && process.platform !== 'win32') {
+        const problem =
+          ownershipProblem(path, stats, ownership, true) ??
+          managedPolicyDirectoryProblem(dirname(path), ownership);
+        if (problem) throw new ManagedPolicyInvalidError(path, problem);
+      }
       size = stats.size;
     } catch (error) {
       if (error instanceof ManagedPolicyInvalidError) throw error;
@@ -168,10 +346,11 @@ export function readManagedPolicyFile(
 export function managedPolicyFileSource(
   path: string,
   kind: ManagedPolicySourceDescriptor['kind'] = 'file',
+  ownership?: ManagedPolicyFileOwnership,
 ): ManagedPolicySource {
   return {
     descriptor: { kind, location: path },
-    read: () => readManagedPolicyFile(path),
+    read: () => readManagedPolicyFile(path, ownership),
   };
 }
 
@@ -182,7 +361,13 @@ export function managedPolicyFileSource(
 export function systemManagedPolicySources(
   platform: NodeJS.Platform = process.platform,
 ): ManagedPolicySource[] {
-  return [managedPolicyFileSource(managedPolicyFilePath(platform))];
+  return [
+    managedPolicyFileSource(
+      managedPolicyFilePath(platform),
+      'file',
+      SYSTEM_MANAGED_POLICY_OWNERSHIP,
+    ),
+  ];
 }
 
 /** Decode and validate raw input; throws {@link ManagedPolicyInvalidError}. */
@@ -202,6 +387,14 @@ export function decodeManagedPolicy(
         `it is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
       );
     }
+    // JSON.parse keeps the last of two equal names, so a second `"limits"`
+    // would silently erase the first one's restrictions.
+    const duplicate = duplicateJsonMemberPath(text);
+    if (duplicate !== null)
+      throw new ManagedPolicyInvalidError(
+        location,
+        `duplicate key ${duplicate}`,
+      );
   } else {
     value = raw.value;
   }

@@ -88,12 +88,144 @@ export type ManagedPolicyParseResult =
   | { ok: true; document: ManagedPolicyDocument }
   | { ok: false; problems: ManagedPolicyProblem[] };
 
+/**
+ * Longest key name quoted in a problem path. Key names come from the policy
+ * file, and the paths end up in the server's one-line fatal message, so an
+ * enormous key must not make that line enormous.
+ */
+export const MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS = 64;
+
 function describeKey(parent: string, key: string): string {
+  if (key.length > MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS) {
+    const shown = JSON.stringify(
+      key.slice(0, MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS),
+    );
+    return `${parent}[${shown}… (${key.length} characters)]`;
+  }
   return /^[A-Za-z_$][\w$]*$/.test(key)
     ? parent
       ? `${parent}.${key}`
       : key
     : `${parent}[${JSON.stringify(key)}]`;
+}
+
+type JsonContainerFrame =
+  | { object: true; path: string; seen: Set<string> }
+  | { object: false; path: string; index: number };
+
+const JSON_LITERAL =
+  /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
+
+/**
+ * The path of the first member name repeated within one JSON object, or
+ * null when every object's names are distinct. Names are compared after
+ * unescaping, so `"limits"` and `"limits"` are the same name.
+ *
+ * `JSON.parse` keeps the last of two equal names, which would let a second
+ * `"limits": {}` erase the first one's restrictions; a policy must say each
+ * thing once. Expects text `JSON.parse` already accepted and throws a
+ * `SyntaxError` on anything else. Iterative, so nesting depth is bounded
+ * only by the input size.
+ */
+export function duplicateJsonMemberPath(text: string): string | null {
+  let i = 0;
+  let path = '';
+  const stack: JsonContainerFrame[] = [];
+  const fail = (): never => {
+    throw new SyntaxError(`unexpected JSON input at offset ${i}`);
+  };
+  const skipSpace = () => {
+    while (
+      text[i] === ' ' ||
+      text[i] === '\t' ||
+      text[i] === '\n' ||
+      text[i] === '\r'
+    )
+      i++;
+  };
+  const readString = (): string => {
+    const start = i;
+    let escaped = false;
+    for (i++; i < text.length; i++) {
+      const c = text[i];
+      if (c === '\\') {
+        escaped = true;
+        i++;
+      } else if (c === '"') {
+        i++;
+        return escaped
+          ? (JSON.parse(text.slice(start, i)) as string)
+          : text.slice(start + 1, i - 1);
+      }
+    }
+    return fail();
+  };
+  /** Reads `"name":` in `frame`; returns its path if the name repeats. */
+  const readMemberName = (
+    frame: Extract<JsonContainerFrame, { object: true }>,
+  ): string | null => {
+    skipSpace();
+    if (text[i] !== '"') fail();
+    const name = readString();
+    const memberPath = describeKey(frame.path, name);
+    if (frame.seen.has(name)) return memberPath;
+    frame.seen.add(name);
+    skipSpace();
+    if (text[i++] !== ':') fail();
+    path = memberPath;
+    return null;
+  };
+
+  for (;;) {
+    // A value starts here, at `path`.
+    skipSpace();
+    const c = text[i];
+    if (c === '{' || c === '[') {
+      i++;
+      skipSpace();
+      if (text[i] === (c === '{' ? '}' : ']')) {
+        i++;
+      } else if (c === '{') {
+        const frame = { object: true as const, path, seen: new Set<string>() };
+        stack.push(frame);
+        const duplicate = readMemberName(frame);
+        if (duplicate !== null) return duplicate;
+        continue;
+      } else {
+        stack.push({ object: false, path, index: 0 });
+        path = `${path}[0]`;
+        continue;
+      }
+    } else if (c === '"') {
+      readString();
+    } else {
+      JSON_LITERAL.lastIndex = i;
+      if (!JSON_LITERAL.test(text)) fail();
+      i = JSON_LITERAL.lastIndex;
+    }
+    // A value ended: close finished containers, then move to the next entry.
+    for (;;) {
+      const frame = stack.at(-1);
+      skipSpace();
+      if (!frame) {
+        if (i !== text.length) fail();
+        return null;
+      }
+      const separator = text[i++];
+      if (separator === ',') {
+        if (frame.object) {
+          const duplicate = readMemberName(frame);
+          if (duplicate !== null) return duplicate;
+        } else {
+          frame.index++;
+          path = `${frame.path}[${frame.index}]`;
+        }
+        break;
+      }
+      if (separator !== (frame.object ? '}' : ']')) fail();
+      stack.pop();
+    }
+  }
 }
 
 function unknownKeyProblems(

@@ -738,7 +738,9 @@ station policy show [--json] [--api-base=<url>|--station=<name>]
 `check` is offline and runs the same validation as server startup. It exits
 `0` and prints the organization, the support link, what the policy manages and
 its `sha256:` fingerprint. It exits `1` and names each problem when the file is
-missing, unreadable, a directory, invalid JSON, or does not match the schema.
+missing, unreadable, a directory or other non-regular file, a symbolic link,
+invalid JSON, repeats a key name, or does not match the schema. It does not
+check root ownership; the server checks that only at the installed path.
 With `--json` it prints `{valid, path, digest, summary}` or
 `{valid: false, path, reason, problems}`.
 

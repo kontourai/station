@@ -8,9 +8,15 @@
  * valid case also reads the summary endpoint and runs `station policy show`
  * against the same server.
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
@@ -128,7 +134,7 @@ function startServer(env: Record<string, string>) {
 /** Boot with `policy` at the override path; expect a fail-closed exit. */
 async function expectRefusal(
   install: (policyPath: string) => void,
-): Promise<{ stderr: string; policyPath: string }> {
+): Promise<{ stderr: string; fullStderr: string; policyPath: string }> {
   const root = fixtureRoot();
   const policyPath = join(root, 'policy.json');
   install(policyPath);
@@ -143,7 +149,7 @@ async function expectRefusal(
     .find((line) => line.startsWith(`${MARKER}:`));
   expect(markerLine, stderr.text.slice(-3000)).toBeDefined();
   expect(markerLine).toContain(policyPath);
-  return { stderr: markerLine as string, policyPath };
+  return { stderr: markerLine as string, fullStderr: stderr.text, policyPath };
 }
 
 describe('managed policy at real server startup', () => {
@@ -192,6 +198,58 @@ describe('managed policy at real server startup', () => {
     },
     120_000,
   );
+
+  test('refuses to start on a duplicate key instead of keeping the last one', async () => {
+    const { stderr } = await expectRefusal((path) =>
+      writeFileSync(
+        path,
+        '{"schemaVersion":1,"organization":"Admin","limits":{"telemetry":false},"limits":{}}',
+      ),
+    );
+    expect(stderr).toContain('duplicate key limits');
+  }, 120_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses to start on a symbolic link, even a dangling one, instead of reading it as absent',
+    async () => {
+      // Dangling: without the refusal this read as "no policy", and the
+      // test override would then be the one to report a missing file.
+      const dangling = await expectRefusal((path) =>
+        symlinkSync(`${path}.absent`, path),
+      );
+      expect(dangling.stderr).toContain('it is a symbolic link');
+    },
+    120_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses to start promptly on a FIFO instead of blocking on open',
+    async () => {
+      const { stderr } = await expectRefusal((path) =>
+        execFileSync('mkfifo', [path]),
+      );
+      expect(stderr).toContain('it is not a regular file');
+    },
+    120_000,
+  );
+
+  test('a huge unknown key yields a bounded diagnostic that starts with the marker', async () => {
+    const key = 'k'.repeat(100_000);
+    const { fullStderr, stderr } = await expectRefusal((path) =>
+      writeFileSync(
+        path,
+        JSON.stringify({ schemaVersion: 1, organization: 'A', [key]: true }),
+      ),
+    );
+    // The desktop sidecar keeps a 64 KiB tail and matches the leading
+    // marker; the whole stderr must stay far below that.
+    expect(fullStderr.length).toBeLessThan(16 * 1024);
+    expect(fullStderr.startsWith(`${MARKER}:`), fullStderr.slice(0, 200)).toBe(
+      true,
+    );
+    expect(stderr.length).toBeLessThan(4096);
+    expect(stderr).toContain('(100000 characters)');
+  }, 120_000);
 
   test('refuses to start when the policy path is a directory', async () => {
     const { stderr } = await expectRefusal((path) => mkdirSync(path));

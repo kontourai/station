@@ -52,8 +52,22 @@ Do not put credentials in the policy. Every user on the machine can read it.
 | Windows | `C:\Program Files\Station\policy.json` |
 | Linux | `/etc/station/policy.json` |
 
-Only administrators should be able to write the file and its folder. Station
-reads these exact paths; it does not use environment variables to find them.
+Install a regular file, not a symbolic link. On macOS and Linux the file and
+every folder above it must be owned by root and must not be writable by their
+group or by other users. Station refuses to start otherwise and names the
+offending path. The stock folders already qualify (on macOS, `/Library` is
+root:wheel 0755 and `/Library/Application Support` is root:admin 0755), and a
+`Station` folder and file created with `sudo` and the default umask do too:
+
+```bash
+sudo mkdir -p "/Library/Application Support/Station"
+sudo install -m 0644 policy.json "/Library/Application Support/Station/policy.json"
+```
+
+On Windows, Station refuses a link at the path but does not yet check the
+file's owner or ACL (#4524). Make sure only administrators can write the file
+and its folder. Station reads these exact paths; it does not use environment
+variables to find them.
 
 If no file is at the path, there is no policy, and Station runs exactly as it
 does without one.
@@ -103,9 +117,15 @@ STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/st
 
 Station refuses to start when:
 
-- the file cannot be read, or the path is a directory or another non-file;
+- the file cannot be read, or the path is a directory or another non-file
+  (such as a FIFO);
+- the path is a symbolic link, even one whose target is missing;
+- the file, or a folder above it, is not owned by root or is writable by its
+  group or other users (macOS and Linux);
 - the file is larger than 1 MiB;
 - the file is not valid JSON;
+- the document repeats a key name in the same object (`duplicate key
+  <path>`), so a second `limits` cannot quietly replace the first;
 - the document does not match the schema, including a wrong `schemaVersion`,
   an unknown key, a setting entry or a limit key;
 - more than one policy source is installed (this matters once configuration
@@ -136,7 +156,8 @@ limits. It never returns a setting value.
 
 Contributors can inject a policy into an isolated instance with
 `STATION_MANAGED_POLICY_TEST_FILE=<absolute path>`. It works only on a machine
-with no installed policy. If a policy is installed, Station refuses to start
+with no installed policy, and is not held to the root-ownership rule, though
+it must still be a regular file. If a policy is installed, Station refuses to start
 instead of using the test file, so the variable cannot be used to escape an
 administrator's policy. See the
 [decision record](../decisions/managed-policy.md#test-only-injection).

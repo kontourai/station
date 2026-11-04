@@ -3,7 +3,8 @@
  * through the supported source bootstrap, offline, and its exit status is
  * the contract an administrator's rollout script branches on.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
@@ -112,6 +113,16 @@ describe('station policy check', () => {
       }),
       'settings.x: managed settings are not supported',
     ],
+    [
+      'a duplicate key (the second limits would erase the first)',
+      '{"schemaVersion":1,"organization":"Admin","limits":{"telemetry":false},"limits":{}}',
+      'duplicate key limits',
+    ],
+    [
+      'a duplicate key spelled with an escape',
+      '{"schemaVersion":1,"organization":"Admin","limits":{},"\\u006cimits":{}}',
+      'duplicate key limits',
+    ],
   ])(
     'exits 1 on %s and names the problem',
     (_name, body, problem) => {
@@ -141,4 +152,40 @@ describe('station policy check', () => {
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain('no file exists at this path');
   }, 120_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'exits 1 promptly on a FIFO instead of waiting for a writer',
+    () => {
+      const path = join(fixture(), 'policy.json');
+      execFileSync('mkfifo', [path]);
+      const started = Date.now();
+      const result = check(path);
+      // A blocking open would hang until the 60 s kill (status null).
+      expect(result.status, result.stderr).toBe(1);
+      expect(Date.now() - started).toBeLessThan(55_000);
+      expect(result.stderr).toContain('it is not a regular file');
+    },
+    120_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'exits 1 on a symbolic link, dangling or not, without following it',
+    () => {
+      const target = write(
+        JSON.stringify({ schemaVersion: 1, organization: 'A' }),
+      );
+      const link = join(fixture(), 'policy.json');
+      symlinkSync(target, link);
+      const followed = check(link);
+      expect(followed.status, followed.stdout).toBe(1);
+      expect(followed.stderr).toContain('it is a symbolic link');
+
+      const dangling = join(fixture(), 'policy.json');
+      symlinkSync(join(fixture(), 'absent.json'), dangling);
+      const result = check(dangling);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('it is a symbolic link');
+    },
+    120_000,
+  );
 });
