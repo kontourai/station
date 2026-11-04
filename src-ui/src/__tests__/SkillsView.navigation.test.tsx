@@ -58,7 +58,7 @@ const requestAuthorityScope = {
 function RoutedGuidance() {
   const { pathname } = useNavigation();
   const route = resolveViewFromPath(`${pathname}${window.location.search}`);
-  if (route.type !== 'guidance') return <div>Outside Guidance</div>;
+  if (route.type !== 'guidance') return <div>Outside Skills</div>;
   return (
     <div key={routeSurfaceIdentity(route)}>
       <GuidanceView route={route} />
