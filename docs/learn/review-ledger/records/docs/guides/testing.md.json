@@ -256,13 +256,21 @@
 
     "scripts/__tests__/vitest-resource-manifest.test.ts",
 
+    "tests/helpers/hit-target-audit.ts",
+
+    "scripts/__tests__/gallery-ui-audit.browser.test.ts",
+
     "scripts/install-playwright-browsers.mjs",
 
     "scripts/__tests__/install-playwright-browsers.test.ts",
 
     "tests/helpers/gallery-asset-diagnostics.ts",
 
-    "scripts/__tests__/gallery-asset-diagnostics.test.ts"
+    "scripts/__tests__/gallery-asset-diagnostics.test.ts",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
   ],
 
   "checks": [

@@ -17,6 +17,11 @@ import {
   preferredChatRuntime,
   runtimeCatalogVisibleModels,
 } from '../../utils/execution';
+import {
+  isManagedLock,
+  ManagedFieldset,
+  ManagedSettingBadge,
+} from './SettingRowStatus';
 import { SettingsSection } from './SettingsSection';
 import type { StationConfigProjectOverride } from './StationConfigSection';
 import { settingsRow } from './settings-catalog';
@@ -132,6 +137,7 @@ export function AgentDefaultsSection({
   region,
   regionError,
   regionProvenance,
+  provenance,
   showRegion,
   onRegionChange,
   projectOverride,
@@ -146,6 +152,11 @@ export function AgentDefaultsSection({
   regionError?: string;
   /** docs/design/settings-architecture.md §4's named example: `region`/`AWS_REGION`. */
   regionProvenance?: SettingProvenanceEntry;
+  /**
+   * #4517: per-setting provenance, so each bespoke editor shows the managed
+   * policy's badge and is disabled while the policy locks its setting.
+   */
+  provenance?: Record<string, SettingProvenanceEntry>;
   showRegion: boolean;
   onRegionChange: (value: string) => void;
   projectOverride?: StationConfigProjectOverride;
@@ -168,6 +179,16 @@ export function AgentDefaultsSection({
   const runtimeModels = runtimeCatalogVisibleModels(preferredRuntime);
   const useRuntimeModelOptions =
     !config.defaultLLMProvider && runtimeModels.length > 0;
+  // The model and provider are one choice: a lock on either fixes both, so
+  // the row shows (and disables for) whichever of the two is locked.
+  const modelProvenance = isManagedLock(provenance?.defaultLLMProvider)
+    ? provenance?.defaultLLMProvider
+    : provenance?.defaultModel?.source === 'managed'
+      ? provenance.defaultModel
+      : provenance?.defaultLLMProvider;
+  const systemPromptProvenance = provenance?.systemPrompt;
+  const templateVariablesProvenance = provenance?.templateVariables;
+  const effectiveRegionProvenance = regionProvenance ?? provenance?.region;
 
   return (
     <SettingsSection icon="▾" title="Agent runs" id="section-agent-runs">
@@ -180,31 +201,34 @@ export function AgentDefaultsSection({
           <label className="settings__field-label" htmlFor="defaultModel">
             {settingsRow('default-model').title}
           </label>
-          {projectOverride ? (
-            <ProjectModelDefaults
-              config={config}
-              projectOverride={projectOverride}
-              readReady={projectReadReady}
-            />
-          ) : (
-            <ModelSelector
-              id="defaultModel"
-              value={config.defaultModel ?? ''}
-              models={
-                useRuntimeModelOptions
-                  ? runtimeModels.map((model) => ({
-                      id: model.id,
-                      name: model.name,
-                      originalId: model.originalId,
-                    }))
-                  : undefined
-              }
-              onChange={(modelId) =>
-                onChange({ ...config, defaultModel: modelId })
-              }
-              placeholder="Select a model…"
-            />
-          )}
+          <ManagedSettingBadge provenance={modelProvenance} />
+          <ManagedFieldset provenance={modelProvenance}>
+            {projectOverride ? (
+              <ProjectModelDefaults
+                config={config}
+                projectOverride={projectOverride}
+                readReady={projectReadReady}
+              />
+            ) : (
+              <ModelSelector
+                id="defaultModel"
+                value={config.defaultModel ?? ''}
+                models={
+                  useRuntimeModelOptions
+                    ? runtimeModels.map((model) => ({
+                        id: model.id,
+                        name: model.name,
+                        originalId: model.originalId,
+                      }))
+                    : undefined
+                }
+                onChange={(modelId) =>
+                  onChange({ ...config, defaultModel: modelId })
+                }
+                placeholder="Select a model…"
+              />
+            )}
+          </ManagedFieldset>
           {!projectOverride && (
             <>
               <span className="settings__field-hint">
@@ -235,15 +259,18 @@ export function AgentDefaultsSection({
             <label className="settings__field-label" htmlFor="region">
               {settingsRow('default-region').title}
             </label>
-            <ProvenanceBadge provenance={regionProvenance} />
-            <input
-              id="region"
-              type="text"
-              className={regionError ? 'settings__field--invalid' : ''}
-              value={region}
-              onChange={(event) => onRegionChange(event.target.value)}
-              placeholder="us-east-1"
-            />
+            <ManagedSettingBadge provenance={effectiveRegionProvenance} />
+            <ProvenanceBadge provenance={effectiveRegionProvenance} />
+            <ManagedFieldset provenance={effectiveRegionProvenance}>
+              <input
+                id="region"
+                type="text"
+                className={regionError ? 'settings__field--invalid' : ''}
+                value={region}
+                onChange={(event) => onRegionChange(event.target.value)}
+                placeholder="us-east-1"
+              />
+            </ManagedFieldset>
             {regionError && (
               <span className="settings__field-error">{regionError}</span>
             )}
@@ -271,15 +298,18 @@ export function AgentDefaultsSection({
           <label className="settings__field-label" htmlFor="systemPrompt">
             {settingsRow('default-agent-instructions').title}
           </label>
-          <textarea
-            id="systemPrompt"
-            value={config.systemPrompt || ''}
-            onChange={(event) =>
-              onChange({ ...config, systemPrompt: event.target.value })
-            }
-            placeholder="Default instructions used when an agent or chat doesn't define its own…"
-            rows={6}
-          />
+          <ManagedSettingBadge provenance={systemPromptProvenance} />
+          <ManagedFieldset provenance={systemPromptProvenance}>
+            <textarea
+              id="systemPrompt"
+              value={config.systemPrompt || ''}
+              onChange={(event) =>
+                onChange({ ...config, systemPrompt: event.target.value })
+              }
+              placeholder="Default instructions used when an agent or chat doesn't define its own…"
+              rows={6}
+            />
+          </ManagedFieldset>
           <div
             className="settings__char-count"
             aria-live="polite"
@@ -307,128 +337,131 @@ export function AgentDefaultsSection({
           <div className="settings__field-label">
             {settingsRow('template-variables').title}
           </div>
-          <div className="settings__vars">
-            {(config.templateVariables || []).map((variable, index) => (
-              <div key={index} className="settings__var-row">
-                <input
-                  type="text"
-                  value={variable.key}
-                  onChange={(event) => {
-                    const updated = [...(config.templateVariables || [])];
-                    updated[index] = {
-                      ...variable,
-                      key: event.target.value,
-                    };
-                    onChange({ ...config, templateVariables: updated });
-                  }}
-                  placeholder="variable_name"
-                />
-                <select
-                  value={variable.type}
-                  onChange={(event) => {
-                    const updated = [...(config.templateVariables || [])];
-                    updated[index] = {
-                      ...variable,
-                      type: event.target.value as
-                        | 'static'
-                        | 'date'
-                        | 'time'
-                        | 'datetime'
-                        | 'custom',
-                    };
-                    onChange({ ...config, templateVariables: updated });
-                  }}
-                >
-                  <option value="static">Static</option>
-                  <option value="date">Date</option>
-                  <option value="time">Time</option>
-                  <option value="datetime">DateTime</option>
-                  <option value="custom">Custom</option>
-                </select>
-                {variable.type === 'static' || variable.type === 'custom' ? (
+          <ManagedSettingBadge provenance={templateVariablesProvenance} />
+          <ManagedFieldset provenance={templateVariablesProvenance}>
+            <div className="settings__vars">
+              {(config.templateVariables || []).map((variable, index) => (
+                <div key={index} className="settings__var-row">
                   <input
                     type="text"
-                    value={variable.value || ''}
+                    value={variable.key}
                     onChange={(event) => {
                       const updated = [...(config.templateVariables || [])];
                       updated[index] = {
                         ...variable,
-                        value: event.target.value,
+                        key: event.target.value,
                       };
                       onChange({ ...config, templateVariables: updated });
                     }}
-                    placeholder="Value"
+                    placeholder="variable_name"
                   />
-                ) : (
-                  <input
-                    type="text"
-                    value={variable.format || ''}
+                  <select
+                    value={variable.type}
                     onChange={(event) => {
                       const updated = [...(config.templateVariables || [])];
                       updated[index] = {
                         ...variable,
-                        format: event.target.value,
+                        type: event.target.value as
+                          | 'static'
+                          | 'date'
+                          | 'time'
+                          | 'datetime'
+                          | 'custom',
                       };
                       onChange({ ...config, templateVariables: updated });
                     }}
-                    placeholder="Format (optional)"
-                    aria-label={`Date/time format for ${variable.key || 'unnamed variable'}`}
-                    title='JSON date/time options, e.g. {"year":"numeric","month":"short","day":"numeric"}. Leave empty for the default.'
-                  />
-                )}
-                <button
-                  type="button"
-                  className="settings__var-remove"
-                  aria-label={`Remove template variable ${index + 1}: ${variable.key || 'unnamed'}`}
-                  onClick={() => {
-                    const updated = (config.templateVariables || []).filter(
-                      (_, candidateIndex) => candidateIndex !== index,
-                    );
-                    onChange({ ...config, templateVariables: updated });
-                  }}
-                >
-                  <CloseGlyph />
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="settings__var-add"
-              onClick={() =>
-                onChange({
-                  ...config,
-                  templateVariables: [
-                    ...(config.templateVariables || []),
-                    { key: '', type: 'static' as const, value: '' },
-                  ],
-                })
-              }
-            >
-              + Add Variable
-            </button>
-            {validationErrors.templateVars && (
-              <span className="settings__field-error">
-                {validationErrors.templateVars}
-              </span>
-            )}
-            {validationWarnings.templateVarValues && (
-              <span className="settings__field-warning">
-                {validationWarnings.templateVarValues}
-              </span>
-            )}
-            {config.templateVariables?.some(
-              (variable) =>
-                variable.type === 'date' ||
-                variable.type === 'time' ||
-                variable.type === 'datetime',
-            ) && (
-              <span className="settings__field-hint">
-                Date/time format uses JSON options, such as{' '}
-                <code>{'{"year":"numeric"}'}</code>. Leave empty for the
-                default.
-              </span>
-            )}
-          </div>
+                  >
+                    <option value="static">Static</option>
+                    <option value="date">Date</option>
+                    <option value="time">Time</option>
+                    <option value="datetime">DateTime</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  {variable.type === 'static' || variable.type === 'custom' ? (
+                    <input
+                      type="text"
+                      value={variable.value || ''}
+                      onChange={(event) => {
+                        const updated = [...(config.templateVariables || [])];
+                        updated[index] = {
+                          ...variable,
+                          value: event.target.value,
+                        };
+                        onChange({ ...config, templateVariables: updated });
+                      }}
+                      placeholder="Value"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={variable.format || ''}
+                      onChange={(event) => {
+                        const updated = [...(config.templateVariables || [])];
+                        updated[index] = {
+                          ...variable,
+                          format: event.target.value,
+                        };
+                        onChange({ ...config, templateVariables: updated });
+                      }}
+                      placeholder="Format (optional)"
+                      aria-label={`Date/time format for ${variable.key || 'unnamed variable'}`}
+                      title='JSON date/time options, e.g. {"year":"numeric","month":"short","day":"numeric"}. Leave empty for the default.'
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="settings__var-remove"
+                    aria-label={`Remove template variable ${index + 1}: ${variable.key || 'unnamed'}`}
+                    onClick={() => {
+                      const updated = (config.templateVariables || []).filter(
+                        (_, candidateIndex) => candidateIndex !== index,
+                      );
+                      onChange({ ...config, templateVariables: updated });
+                    }}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="settings__var-add"
+                onClick={() =>
+                  onChange({
+                    ...config,
+                    templateVariables: [
+                      ...(config.templateVariables || []),
+                      { key: '', type: 'static' as const, value: '' },
+                    ],
+                  })
+                }
+              >
+                + Add Variable
+              </button>
+              {validationErrors.templateVars && (
+                <span className="settings__field-error">
+                  {validationErrors.templateVars}
+                </span>
+              )}
+              {validationWarnings.templateVarValues && (
+                <span className="settings__field-warning">
+                  {validationWarnings.templateVarValues}
+                </span>
+              )}
+              {config.templateVariables?.some(
+                (variable) =>
+                  variable.type === 'date' ||
+                  variable.type === 'time' ||
+                  variable.type === 'datetime',
+              ) && (
+                <span className="settings__field-hint">
+                  Date/time format uses JSON options, such as{' '}
+                  <code>{'{"year":"numeric"}'}</code>. Leave empty for the
+                  default.
+                </span>
+              )}
+            </div>
+          </ManagedFieldset>
           <div className="settings__var-ref">
             <strong>Built-in (always available):</strong>
             <ul>

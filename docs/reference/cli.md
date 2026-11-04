@@ -768,6 +768,37 @@ repository; otherwise it gives the person the form link.
 
 ## Configuration
 
+### `policy`
+
+Machine administrators use these commands to check and confirm a
+[managed policy](../guides/managed-policy.md).
+
+```bash
+station policy check <file> [--json]
+station policy show [--json] [--api-base=<url>|--station=<name>]
+```
+
+`check` is offline and runs the same validation as server startup, including
+each managed setting value against the settings schema (`schemas/app.schema.json`,
+bundled into the CLI), so a composite value such as `approvalGuardian` with a
+field of the wrong type fails `check` exactly as it would refuse startup. It
+exits `0` and prints the organization, the support link,
+one line per managed setting saying whether it is locked or a default, and
+its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+missing, unreadable, a directory or other non-regular file, a symbolic link,
+invalid JSON, repeats a key name, or does not match the schema. It does not
+check root ownership; the server checks that only at the installed path.
+With `--json` it prints `{valid, path, digest, summary}` or
+`{valid: false, path, reason, problems}`.
+
+`show` reads the policy installed on this machine and asks the target Station
+(`GET /api/settings/managed-policy`) which policy it loaded at startup. It
+compares the two only when the target is a loopback address; for a remote
+target it says the comparison was skipped. When the fingerprints differ, it
+says a restart is needed. When the installed policy is invalid, it reports the
+startup error and exits `1`. With `--json` it prints `{installed, running,
+restartNeeded}`, where `restartNeeded` is `null` when nothing could be compared.
+
 ### `telemetry`
 
 Read effective per-publisher tiers from a running Station or save a
@@ -842,7 +873,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
 
 `config get <key>` prints `(not set)` for an absent key.
 
@@ -865,9 +896,11 @@ once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
 side effects. `config get` reads through the live route when reachable
-(showing an env-override provenance note where one applies). On a transport
-failure it prints a notice and shows the local home's file instead; that is
-not a reading of the unavailable target Station's configuration.
+(showing a provenance note when the value comes from the environment or from
+the managed policy). On a transport
+failure it prints a notice and shows the local home's file instead, with the
+installed managed policy's locks and defaults applied; that is not a reading
+of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -3718,7 +3751,11 @@ tsx. Doctor also compares every exact-pinned `@kontourai/*` dependency in the
 Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
-separately.
+separately. External-agent readiness reads the agent connections in effect,
+with the installed [managed policy](../guides/managed-policy.md) applied as the
+server applies it, so a connection the policy disables is not counted. An
+installed policy the server would refuse is a fail-level `Managed policy`
+check, and no stored connection counts as ready while it stands.
 
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
@@ -3990,7 +4027,10 @@ installed state: the running Station owns that, and
 `station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
-file.
+file. A registry the installed
+[managed policy](../guides/managed-policy.md#settings) locks is used instead of
+either; a managed default is used only when neither is set. An installed
+policy that Station would refuse at startup refuses the read.
 
 With a URL argument, saves it to `<STATION_HOME>/config/app.json` and exits.
 

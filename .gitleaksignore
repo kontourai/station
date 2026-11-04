@@ -149,3 +149,8 @@ c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-ad
 # #4473: Brian approved this exact historical synthetic-fixture fingerprint on 2026-11-02.
 # Mocked peer bearer, not an issued credential; future same-path findings remain scanned.
 82c1480f6c4aebad1b13d1a338f8f3ab29021639:src-server/routes/environments/__tests__/peer-chat-routes.test.ts:generic-api-key:13
+
+# #4470: synthetic GitHub-token-shaped test fixture from an earlier commit (a
+# repeated 'A1b2C3d4E5' pattern, not an issued credential). The file no longer
+# holds that literal; it builds the value at runtime.
+2d86f2a487009120ede353d3c6e98e13ab16d540:src-ui/src/__tests__/ChatDockBody.terminalSessionMarker.test.tsx:github-pat:499

@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
+import { captureTroubleshootSeeds } from '../../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { WorkspacePaneAvailabilityList } from '../WorkspacePaneAvailabilityList';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
@@ -476,6 +477,73 @@ describe('WorkspacePaneAvailabilityList', () => {
       action: { type: 'setup', code: 'select-project' },
       actionLabel: 'Select Project',
     });
+  });
+
+  // #4470.
+  test('a temporarily unavailable pane offers Troubleshoot seeded with its reason', () => {
+    window.history.pushState({}, '', '/projects/demo/panes/preview');
+    const outage = entry('Live preview', {
+      state: 'temporarily-unavailable',
+      reason: { code: 'health-unavailable', source: 'health' },
+    });
+    const capture = captureTroubleshootSeeds();
+    try {
+      render(
+        <WorkspacePaneAvailabilityList
+          entries={[outage, unavailable]}
+          onSelect={vi.fn()}
+        />,
+      );
+      // Offered beside the reason, once the state badge is expanded. Only
+      // the outage offers it; the setup-needed card does not.
+      fireEvent.click(screen.getByRole('button', { name: /Preview/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Live preview/ }));
+      const buttons = screen.getAllByRole('button', { name: 'Troubleshoot' });
+      expect(buttons).toHaveLength(1);
+      expect(
+        buttons[0]!.closest('.workspace-pane-availability-list__explanation'),
+      ).not.toBeNull();
+      fireEvent.click(buttons[0]!);
+      expect(capture.seeds).toEqual([
+        {
+          route: '/projects/demo/panes/preview',
+          errorSummary:
+            'pane-health-unavailable: Live preview: The pane is temporarily unavailable. Try again shortly.',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a pane withheld by extension access or still loading does not offer Troubleshoot', () => {
+    const gated = {
+      ...entry('Remote review', {
+        state: 'temporarily-unavailable' as const,
+        reason: { code: 'renderer-missing' as const, source: 'renderer' },
+      }),
+      rendererGate: 'remote-isolation' as const,
+    };
+    const loading = {
+      ...entry('Loading pane', {
+        state: 'temporarily-unavailable' as const,
+        reason: { code: 'renderer-missing' as const, source: 'renderer' },
+      }),
+      rendererResolution: 'pending' as const,
+    };
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[gated, loading]}
+        onSelect={vi.fn()}
+        onReviewExtensions={vi.fn()}
+      />,
+    );
+    for (const name of [/Remote review/, /Loading pane/]) {
+      const toggle = screen.queryByRole('button', { name });
+      if (toggle) fireEvent.click(toggle);
+    }
+    expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
   });
 
   test('offers in-place access review only for a renderer absence', () => {

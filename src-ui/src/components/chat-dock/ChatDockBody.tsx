@@ -62,6 +62,7 @@ import { useSTT } from '../../hooks/useSTT';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useTTS } from '../../hooks/useTTS';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { requestTroubleshoot } from '../../lib/troubleshootEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
@@ -1662,6 +1663,21 @@ export function ChatDockBody({
             messageKey={`${activeSession.id}-msg-${idx}`}
             content={displayContent}
             details={translation?.disclosureRaw ? chatErrorText : undefined}
+            troubleshoot={
+              // #4470: a failed turn (a `[CHAT_ERROR]` marker) offers
+              // troubleshooting; the interrupted-turn notice and replays do
+              // not. It starts a new chat, so a caller refused one is not
+              // offered it. The raw error, not the translated copy, is what
+              // the assistant can diagnose; the start flow redacts it.
+              chatErrorMatch && !activeSession.replay && callerMayStartChat
+                ? {
+                    code: chatErrorCode ?? 'chat-error',
+                    message: chatErrorText,
+                    conversationId: activeSession.conversationId,
+                    turnId: msg.turnId,
+                  }
+                : undefined
+            }
             action={
               activeSession.replay
                 ? undefined
@@ -1755,6 +1771,7 @@ export function ChatDockBody({
       chatInput.handleCancel,
       callerAccess,
       callerMayContinue,
+      callerMayStartChat,
     ],
   );
 
@@ -2574,6 +2591,27 @@ export function ChatDockBody({
                     .
                   </>
                 )}
+                {callerMayStartChat ? (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        requestTroubleshoot({
+                          code:
+                            agent.unavailableFix?.kind ?? 'agent-unavailable',
+                          message:
+                            agent.unavailableReason ??
+                            'This agent is unavailable.',
+                          conversationId: activeSession.conversationId,
+                        })
+                      }
+                      style={BANNER_LINK_BUTTON_STYLE}
+                    >
+                      Troubleshoot
+                    </button>
+                  </>
+                ) : null}
               </>
             )}
           </div>

@@ -2,6 +2,7 @@ import {
   useAchievementsQuery,
   useAnalyticsRescanMutation,
   useInvalidateQuery,
+  useQueryClient,
   useUsageQuery,
 } from '@kontourai/station-sdk';
 import React, { createContext, useCallback, useContext, useMemo } from 'react';
@@ -42,6 +43,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAnalytics() {
+  const queryClient = useQueryClient();
   const context = useContext(AnalyticsContext);
   if (!context)
     throw new Error('useAnalytics must be used within AnalyticsProvider');
@@ -50,6 +52,7 @@ export function useAnalytics() {
     data: usageStats,
     isLoading: usageLoading,
     error: usageError,
+    refetch: refetchUsage,
   } = useUsageQuery();
   const {
     data: achievements,
@@ -57,12 +60,25 @@ export function useAnalytics() {
     error: achievementsError,
   } = useAchievementsQuery();
 
+  const retryUsage = useCallback(() => {
+    void queryClient.invalidateQueries(
+      { queryKey: ['analytics'] },
+      { cancelRefetch: false },
+    );
+    void queryClient.invalidateQueries(
+      { queryKey: ['insights'] },
+      { cancelRefetch: false },
+    );
+    return refetchUsage({ cancelRefetch: false });
+  }, [queryClient, refetchUsage]);
+
   return {
     usageStats,
     achievements,
     loading: usageLoading || achievementsLoading,
     error: usageError || achievementsError,
     refresh: context.refresh,
+    retryUsage,
     rescan: context.rescan,
   };
 }

@@ -12,10 +12,15 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
+import {
+  type LoadedManagedPolicy,
+  loadInstalledManagedPolicy,
+} from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import { assertManagedSettingsValid } from './domain/managed-settings.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
 import { reportSelfUpdateRestartAtBoot } from './routes/system/self-update-boot-report.js';
@@ -202,6 +207,45 @@ async function main() {
     level: resolveLogLevel(),
   });
 
+  // The machine administrator's managed policy (#4515), loaded once, before
+  // anything it may restrict is built. A policy this build cannot enforce
+  // refuses startup: running anyway would look managed without being so.
+  // Loaded after the schema gate and the log sink so the refusal reaches
+  // the durable log; neither depends on the policy.
+  let managedPolicy: LoadedManagedPolicy | null;
+  try {
+    managedPolicy = loadInstalledManagedPolicy();
+    // #4517: composite values and cross-field rules are checked against
+    // the settings file schema, which the contract parser cannot see.
+    if (managedPolicy?.document.settings) {
+      const { validator } = await import('./domain/validator.js');
+      assertManagedSettingsValid(managedPolicy, (config) =>
+        validator.validateAppConfig(config),
+      );
+    }
+  } catch (error) {
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(1);
+    // One line that starts with the marker: the desktop sidecar matches it
+    // to stop retrying, and the CLI's failed-start report prints it.
+    console.error(error instanceof Error ? error.message : String(error));
+    logFatalAndFlush(
+      logger,
+      'Failed to start Station',
+      { err: error },
+      flushLogSink,
+      buildProvenanceSnapshot,
+    );
+    process.exit(1);
+  }
+  if (managedPolicy) {
+    logger.info('Managed policy loaded', {
+      source: managedPolicy.source,
+      digest: managedPolicy.digest,
+      organization: managedPolicy.summary.organization,
+    });
+  }
+
   const configuredHost = process.env.STATION_HOST || undefined;
   const host = configuredHost || '0.0.0.0';
   const displayHost = host.includes(':') ? `[${host}]` : host;
@@ -229,6 +273,7 @@ async function main() {
     host: configuredHost,
     logger,
     buildProvenanceSnapshot,
+    managedPolicy,
     ...(connector
       ? {
           relayInvitationOwner: connector.invitationOwner,

@@ -12,7 +12,7 @@ import {createRoot} from 'react-dom/client';
 import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
 import {AccountPreferencesContext} from './src-ui/src/contexts/AccountPreferencesContext';
 import {ComposerModeSheet} from './src-ui/src/components/badges/ComposerModeSheet';
-const account = {status:'account', saving:false, waitingForConnection:false, error:false, conflict:false, save(){}, retry(){}};
+const account = {status:'account', saving:false, retrying:false, waitingForConnection:false, error:false, conflict:false, save(){}, retry(){}};
 function Host() {
   const trigger = useRef(null);
   return <div style={{position:'fixed',left:16,bottom:16}}>

@@ -11,6 +11,9 @@ Choose **+** beside **Personal Boards**, name the Board, and open it. Start with
 **Daily brief**, **Project watch**, **Review desk**, or **Start blank**. Project
 watch asks you to choose an available Project first.
 
+If the Project list cannot load, choose **Retry Projects**. Retrying keeps your
+Board draft and its selected Project filters.
+
 Use **Edit Board** to change its name and description, add or remove sections,
 move sections up or down, and choose half or full width. Live sections can show
 Tasks, items needing attention, recent Station work, or available Projects. Task,
