@@ -248,11 +248,6 @@ const VIDEO_RESYNC_MIN_INTERVAL_MS = 2_000;
 /** Decoder failures in a row, with no picture between, before images. */
 const VIDEO_FAILURES_BEFORE_IMAGES = 3;
 
-/** Pane diagnostics: what this viewer is drawing, and where it decodes. */
-function codecLabel(codec: LiveSurfaceFrameHeader['codec']): string {
-  if (codec === 'h264') return 'H.264, decoded in this browser';
-  return codec.toUpperCase();
-}
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 4;
 /** A held-back touch press goes out once the finger has stayed down this long. */
@@ -311,18 +306,21 @@ const INPUT_NOTICE_TEXT: Record<
 > = {
   'control-changed':
     'Control changed before your input arrived, so it was not sent.',
-  'input-failed': "Your last tap or keystroke didn't reach the page.",
+  'input-failed': 'Your last input may not have reached the page. Check it.',
   'page-dialog': 'The page is showing a dialog. Answer it to continue.',
   'host-busy': 'The host is busy, so nothing was sent.',
 };
 
 /**
- * Why the person's last input did not take effect, over the top of the
- * surface they are looking at. A failure that can be sent again offers
- * Retry; the notice clears when later input gets through.
+ * Why the person's last input did not take effect: one slim line over the
+ * top of the surface they are looking at, the same banner for every case.
+ * Input the host refused before sending any of it offers Retry while this
+ * viewer may still send input (`canRetry`); input whose delivery is unknown
+ * never does, since sending it again could apply it twice.
  */
 function InputNotice(props: {
   surface: UseLiveSurfaceResult;
+  canRetry: boolean;
   onRetry: () => void;
 }) {
   const notice = props.surface.inputNotice;
@@ -335,8 +333,12 @@ function InputNotice(props: {
         className="live-surface__input-notice"
         title={title}
         action={
-          props.surface.retryableInput ? (
-            <Button size="sm" onClick={props.onRetry}>
+          props.surface.retryableInput && props.canRetry ? (
+            <Button
+              size="sm"
+              className="live-surface__input-notice-action"
+              onClick={props.onRetry}
+            >
               Retry
             </Button>
           ) : undefined
@@ -802,11 +804,15 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const sendPressRef = useRef(sendPress);
   sendPressRef.current = sendPress;
 
+  /** Whether a press may go out NOW: eligibility can change while held. */
+  const mayPressRef = useRef<() => boolean>(() => false);
+  mayPressRef.current = () => canInteract && mayClaim();
   const flushPendingPress = () => {
     const pending = pendingPressRef.current;
     if (!pending) return;
     clearTimeout(pending.timer);
     pendingPressRef.current = null;
+    if (!mayPressRef.current()) return;
     sendPressRef.current(pending.press);
   };
   const flushPendingPressRef = useRef(flushPendingPress);
@@ -1277,6 +1283,29 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   immersiveRef.current = immersive;
   const requiresLease = props.inputRequiresLease === true && !immersive;
   requiresLeaseRef.current = requiresLease;
+  // A touch press held back before eligibility changed (read-only, lost
+  // input, immersive toggled, another surface) was meant for the old state:
+  // it never goes out.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are the eligibility change keys.
+  useEffect(() => {
+    const pending = pendingPressRef.current;
+    if (pending) clearTimeout(pending.timer);
+    pendingPressRef.current = null;
+  }, [canInteract, requiresLease, immersive, props.surfaceId]);
+  /** Retry applies the rules any new input would meet right now. */
+  const mayRetry = canInteract && (!requiresLease || holding);
+  const inputNotice = (
+    <InputNotice
+      surface={surface}
+      canRetry={mayRetry}
+      onRetry={() => {
+        if (!mayRetry) return;
+        surface.retryInput();
+        // Back to the page: on a phone, typing goes on where it stopped.
+        keyboardRef.current?.focus({ preventScroll: true });
+      }}
+    />
+  );
   const [chromeShown, setChromeShown] = useState(false);
   /** Any interaction with the chrome restarts its auto-hide. */
   const [chromeTouched, touchChrome] = useReducer((n: number) => n + 1, 0);
@@ -1380,6 +1409,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       className="live-surface"
       ref={containerRef}
       data-immersive={immersive ? '' : undefined}
+      // Diagnostics only (devtools, tests): what this viewer draws. Not
+      // shown; a codec name is not something the person acts on.
+      data-codec={
+        surface.activeCodec && surface.status === 'live'
+          ? surface.activeCodec
+          : undefined
+      }
       onPointerMove={
         immersive
           ? (event) => {
@@ -1452,15 +1488,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       <div
         className={`live-surface__stage${fitting ? ' live-surface__stage--fit' : ''}`}
         ref={stageRef}
+        data-zoomed={zoom.scale > 1 ? '' : undefined}
       >
-        <InputNotice
-          surface={surface}
-          onRetry={() => {
-            surface.retryInput();
-            // Back to the page: on a phone, typing goes on where it stopped.
-            keyboardRef.current?.focus({ preventScroll: true });
-          }}
-        />
+        {immersive && chromeShown ? null : inputNotice}
         {/* The zoom layer: the picture and what is drawn over the picture
             move and scale together; the stage around it does not. */}
         <div
@@ -1596,6 +1626,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
                 setChromeHeld(false);
             }}
           >
+            {inputNotice}
             <LiveSurfaceViewerControls
               label={`${label}: full screen controls`}
               status={DRIVER_TEXT[tone]}
@@ -1640,15 +1671,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
             <MoreGlyph />
           </Button>
         )
-      ) : null}
-      {surface.activeCodec && surface.status === 'live' ? (
-        <p
-          className="live-surface__codec"
-          data-testid="live-surface-codec"
-          data-codec={surface.activeCodec}
-        >
-          {codecLabel(surface.activeCodec)}
-        </p>
       ) : null}
     </div>
   );

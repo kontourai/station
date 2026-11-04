@@ -49,20 +49,6 @@
   margin: 0;
 }
 
-/* Pane diagnostics: the codec this viewer draws. Shown only while the
-   pointer or focus is on the live view, so it is never resting chrome. */
-.live-surface__codec {
-  color: var(--k-text-muted);
-  font-size: 0.75rem;
-  margin: 0;
-  visibility: hidden;
-}
-
-.live-surface:hover .live-surface__codec,
-.live-surface:focus-within .live-surface__codec {
-  visibility: visible;
-}
-
 .live-surface__stage {
   background: var(--bg-secondary, #111);
   border-radius: var(--radius-md, 6px);
@@ -209,19 +195,82 @@
   }
 }
 
-/* Why input did not take effect, over the top of the surface (where the
-   person is looking, and above a phone's on-screen keyboard). */
+/* Why input did not take effect: one slim line over the top of the surface
+   (where the person is looking, and above a phone's on-screen keyboard),
+   never a card that pushes the picture down. Outside the zoom layer, so it
+   neither scales nor pans; above the corner buttons, and clear of Reset
+   zoom when that shows. */
 .live-surface__input-notice {
+  left: var(--k-space-1);
+  position: absolute;
+  right: var(--k-space-1);
+  top: var(--k-space-1);
+  z-index: 4;
+}
+
+.live-surface__stage[data-zoomed] > .live-surface__input-notice {
+  left: calc(44px + 2 * var(--k-space-1));
+}
+
+/* With the chrome hidden in immersive mode, clear the Show controls handle. */
+.live-surface[data-immersive] .live-surface__stage > .live-surface__input-notice {
+  right: calc(44px + 2 * var(--k-space-1));
+}
+
+/* With the immersive bar shown, the notice is its first row instead. */
+.live-surface__immersive-bar > .live-surface__input-notice {
+  pointer-events: auto;
+  position: static;
+  width: min(32rem, 100%);
+}
+
+.live-surface__input-notice > .empty {
+  align-items: center;
   background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
   box-shadow: var(--k-shadow);
-  left: 50%;
-  max-width: calc(100% - 2 * var(--k-space-2));
-  position: absolute;
-  top: var(--k-space-2);
-  transform: translateX(-50%);
-  width: min(24rem, calc(100% - 2 * var(--k-space-2)));
-  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  gap: var(--k-space-1);
+  margin: 0 auto;
+  max-width: 32rem;
+  min-height: 44px;
+  padding: 0 0 0 var(--k-space-2);
+  text-align: start;
+}
+
+.live-surface__input-notice .empty__icon {
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+  margin: 0;
+}
+
+.live-surface__input-notice .error-state__icon {
+  font-size: 1rem;
+}
+
+.live-surface__input-notice .empty__label {
+  flex: 1 1 auto;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--k-space-1) 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface__input-notice .empty__action {
+  flex: none;
+  margin: 0;
+}
+
+.live-surface .live-surface__input-notice-action {
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Viewer chrome (the float's pill, the immersive bar): one compact row that
@@ -326,18 +375,16 @@
   z-index: calc(var(--layer-dialog) - 1);
 }
 
-/* Pane diagnostics are not immersive chrome. */
-.live-surface[data-immersive] .live-surface__codec {
-  display: none;
-}
-
 .live-surface[data-immersive] .live-surface__stage {
   background: #000;
   border-radius: 0;
 }
 
 .live-surface__immersive-bar {
+  align-items: center;
   display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
   justify-content: center;
   left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
   pointer-events: none;
