@@ -1,9 +1,177 @@
 import type { PersonalBoardDocument } from '@kontourai/station-contracts/personal-board';
-import { expect, test } from './helpers/authenticated-request';
+import { mergeTests } from '@playwright/test';
+import {
+  test as authenticatedTest,
+  expect,
+} from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import { test as fixtureTest } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 
+const test = mergeTests(authenticatedTest, fixtureTest);
 const API = resolveE2EApiBase();
+
+for (const width of [390, 1440]) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`retries the Project list without losing a Board draft at ${width}px in ${colorScheme}`, async ({
+      page,
+      authenticatedRequest,
+    }, testInfo) => {
+      const slug = `board-project-retry-${width}-${colorScheme}-${Date.now()}`;
+      expect(
+        (
+          await authenticatedRequest.post(`${API}/api/me/layouts`, {
+            data: { slug, name: 'Project retry Board' },
+          })
+        ).status(),
+      ).toBe(201);
+      expect(
+        (
+          await authenticatedRequest.post(`${API}/api/projects`, {
+            data: { slug, name: 'Recovered Project' },
+          })
+        ).status(),
+      ).toBe(201);
+      let failProjects = true;
+      let failedReads = 0;
+      await page.route(
+        (url) => url.pathname === '/api/projects',
+        async (route) => {
+          if (route.request().method() !== 'GET' || !failProjects) {
+            await route.continue();
+            return;
+          }
+          failedReads += 1;
+          await route.fulfill({
+            status: 503,
+            json: {
+              success: false,
+              error: 'Project list temporarily unavailable',
+            },
+          });
+        },
+      );
+      try {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.goto(`/boards/${slug}`);
+        await dismissSetupLauncher(page);
+        const workspace = page.locator('.personal-board-workspace');
+        await expect(workspace).toBeVisible({ timeout: 30_000 });
+        await expect(
+          workspace.getByRole('button', { name: /Project watch/ }),
+        ).toBeDisabled();
+        await expect.poll(() => failedReads).toBeGreaterThan(0);
+        await page.screenshot({
+          path: testInfo.outputPath('projects-read-failed.png'),
+          fullPage: true,
+        });
+        await expect(
+          workspace.getByRole('button', { name: 'Retry Projects' }),
+        ).toBeVisible();
+        await workspace.getByRole('button', { name: /Start blank/ }).click();
+        await page.getByLabel('Board name').fill('Keep my Board draft');
+        await workspace
+          .getByRole('button', { name: 'Note', exact: true })
+          .click();
+        await page
+          .getByLabel('Note', { exact: true })
+          .fill('Keep this note through retry.');
+        await workspace
+          .getByRole('button', { name: 'Tasks', exact: true })
+          .click();
+        const projectSelect = page.getByLabel('Project', { exact: true });
+        await expect(projectSelect).toHaveValue('');
+        failProjects = false;
+        const retry = workspace.getByRole('button', { name: 'Retry Projects' });
+        await retry.focus();
+        await page.keyboard.press('Enter');
+        await expect(
+          projectSelect.getByRole('option', {
+            name: 'Recovered Project',
+            exact: true,
+          }),
+        ).toBeAttached();
+        await expect(retry).toHaveCount(0);
+        await expect(page.getByLabel('Board name')).toHaveValue(
+          'Keep my Board draft',
+        );
+        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
+          'Keep this note through retry.',
+        );
+        await expect(projectSelect).toHaveValue('');
+        await projectSelect.selectOption(slug);
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        if (width === 390)
+          await page
+            .getByRole('button', { name: 'Toggle menu', exact: true })
+            .click();
+        await page
+          .getByRole('navigation', { name: 'Primary navigation' })
+          .getByRole('button', { name: 'Home', exact: true })
+          .click();
+        const discard = page.getByRole('dialog', { name: 'Unsaved Changes' });
+        await discard
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        await expect(projectSelect).toHaveValue(slug);
+        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
+          'Keep this note through retry.',
+        );
+        await page.screenshot({
+          path: testInfo.outputPath('projects-recovered-draft.png'),
+          fullPage: true,
+        });
+        await workspace
+          .getByRole('button', { name: 'Save Board', exact: true })
+          .click();
+        await expect(
+          workspace.getByRole('button', { name: 'Edit Board', exact: true }),
+        ).toBeVisible();
+        const saved = await authenticatedRequest.get(
+          `${API}/api/me/boards/${slug}`,
+        );
+        expect(saved.status()).toBe(200);
+        const document = (await saved.json()).data as PersonalBoardDocument;
+        expect(document.definition).toMatchObject({
+          name: 'Keep my Board draft',
+          sections: [
+            { kind: 'note', body: 'Keep this note through retry.' },
+            { kind: 'tasks', projectSlug: slug },
+          ],
+        });
+        await page.reload();
+        await expect(
+          page.getByRole('heading', {
+            name: 'Keep my Board draft',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await workspace
+          .getByRole('button', { name: 'Edit Board', exact: true })
+          .click();
+        await expect(page.getByLabel('Project', { exact: true })).toHaveValue(
+          slug,
+        );
+        await expect(page.getByLabel('Note', { exact: true })).toHaveValue(
+          'Keep this note through retry.',
+        );
+      } finally {
+        expect(
+          (
+            await authenticatedRequest.delete(`${API}/api/me/layouts/${slug}`)
+          ).status(),
+        ).toBe(200);
+        expect(
+          (
+            await authenticatedRequest.delete(`${API}/api/projects/${slug}`)
+          ).status(),
+        ).toBe(200);
+      }
+    });
+  }
+}
 
 for (const width of [1280, 390]) {
   test(`authors, previews and persists a Personal Board at ${width}px`, async ({
