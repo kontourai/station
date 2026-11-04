@@ -65,6 +65,7 @@ import { stationControlRequestAuthority } from '../../../security/station-contro
 import { runAsStationServer } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EnsembleCliSessionGroupPreparation } from '../../../services/orchestration/ensemble-cli-session-group.js';
 import { createLocalEnsembleInventory } from '../../../services/orchestration/ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../../../services/orchestration/ensemble-inspection.js';
@@ -524,6 +525,7 @@ async function fixture(operatorInspection = false, stationControl = false) {
     '/api/orchestration',
     createOrchestrationRoutes(service, {
       cliSessionGroupHome: root,
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       ...(ensembleGroups
         ? {
             prepareEnsembleSessionGroup:

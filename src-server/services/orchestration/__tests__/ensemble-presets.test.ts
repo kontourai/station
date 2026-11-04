@@ -543,7 +543,7 @@ describe('Ensemble file preparation', () => {
       'missing-agent': 'Agent missing',
       'unready-connection': 'not ready for execution',
       'changed-engine': 'lead engine/model changed',
-      'unsupported-option': "Unsupported option 'serviceTier'",
+      'unsupported-option': "unsupported model option value 'serviceTier'",
     }[failure];
     await expect(prepareEnsemble(fixture.input, host)).rejects.toThrow(reason);
     expect(fixture.authenticateMember).not.toHaveBeenCalled();
