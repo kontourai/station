@@ -82,6 +82,14 @@ starts and rule rate limits. The actual provider-start boundary persists the
 invocation transition before the effect; uncertain effects retain their original
 identity and are not retried as fresh work.
 
+The actions preview is not a per-rule dry run. While it is disabled, intake
+still retains pending Task-action intents, and the action runtime skips them
+instead of refusing them. Enabling the preview can dispatch retained intents
+whose events are less than 72 hours old, whose policy fingerprint is unchanged,
+and whose episode remains open, subject to the other admission checks. The
+delivery history does not record a per-rule decision that an action would have
+started.
+
 Task creation and Session seeding alone do not start a repair turn. The actions
 runtime submits the framed prompt to the existing durable inbox, retaining the
 server-issued intent, original turn key and automation-rule principal. Placement
