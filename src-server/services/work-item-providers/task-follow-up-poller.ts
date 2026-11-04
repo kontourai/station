@@ -149,8 +149,11 @@ export class TaskFollowUpPoller {
     if (!enabled) return { outcome: 'disabled', tasks: [] };
     const store = this.options.store();
     if (!store) return { outcome: 'stopped', tasks: [] };
-    const due = this.options.tasks
-      .listTasks()
+    const tasks = this.options.tasks.listTasks();
+    store.forgetAllExcept(
+      tasks.map((task) => ({ taskId: task.id, taskCreatedAt: task.createdAt })),
+    );
+    const due = tasks
       .filter((task) => isTaskFollowable(task, input.now))
       .map((task) => {
         const incarnation = { taskId: task.id, taskCreatedAt: task.createdAt };
@@ -263,6 +266,8 @@ export function composeTaskFollowUpPoller(
   // Hosted tenants have no host gh login of their own to read with.
   if (hosted) return undefined;
   const preview = featurePreviews.bind({
+    // A literal, as docs:feature-previews:check reads it; the tests pin it
+    // equal to TASK_FOLLOW_UP_PREVIEW_ID.
     id: 'task-tracker-follow-ups',
     label: 'Task tracker follow-ups',
     description:

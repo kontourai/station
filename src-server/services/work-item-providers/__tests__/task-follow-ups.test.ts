@@ -9,7 +9,13 @@
  * `gh` executable answering with sanitized github.com GraphQL answers
  * (`fixtures/fake-gh-graphql.ts`).
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -535,5 +541,36 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       expect(() => new TaskFollowUpStore(path)).toThrow(/not a database/);
     // A leak is one descriptor per attempt; allow the runner a little noise.
     expect(open() - before).toBeLessThan(5);
+  });
+
+  test('the store file is private, the preview id is pinned, and a vanished Task leaves no rows', async () => {
+    // docs:feature-previews:check needs the bind id as a literal; pin both.
+    expect(TASK_FOLLOW_UP_PREVIEW_ID).toBe('task-tracker-follow-ups');
+    expect(registry.list().map((p) => p.id)).toContain(
+      TASK_FOLLOW_UP_PREVIEW_ID,
+    );
+    const task = await trackerTask();
+    await enable();
+    answerFirstPoll();
+    await poll();
+    const path = taskFollowUpStorePath(home);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    const store = holder.forRead()!;
+    const incarnation = { taskId: task.id, taskCreatedAt: task.createdAt };
+    expect(store.list(incarnation).length).toBeGreaterThan(0);
+
+    // The Task is gone (or recreated): the next poll forgets its rows.
+    const after = composeTaskFollowUpPoller(registry, false, {
+      store: () => holder.forWrite(),
+      tasks: { listTasks: () => [], listKeptDeclaredPullRequests: () => [] },
+      reader: new GhGitHubFollowUpReader({ command: gh }),
+    })!;
+    await after.poll({
+      now: NOW + 6 * 60_000,
+      signal: new AbortController().signal,
+    });
+    expect(store.list(incarnation)).toEqual([]);
+    expect(store.lastPolledAt(incarnation)).toBeUndefined();
+    expect(store.readCursor(incarnation, PR_REF, 'reviews')).toBeUndefined();
   });
 });

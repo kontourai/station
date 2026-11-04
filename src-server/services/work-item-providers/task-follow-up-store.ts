@@ -14,7 +14,14 @@
  * One SQLite file in the Station home, opened only once something writes to
  * it; a brief read before any poll finds no file and shows nothing.
  */
-import { existsSync, mkdirSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  openSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
@@ -186,6 +193,18 @@ export class TaskFollowUpStore {
 
   constructor(dbPath: string) {
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
+    // Private like the other home stores: recorded GitHub text and the
+    // Task ids it belongs to. SQLite gives its -wal and -shm sidecars the
+    // database file's permissions.
+    if (!existsSync(dbPath))
+      closeSync(
+        openSync(
+          dbPath,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+          0o600,
+        ),
+      );
+    else if (process.platform !== 'win32') chmodSync(dbPath, 0o600);
     const db = new DatabaseSync(dbPath);
     try {
       db.exec('PRAGMA journal_mode = WAL');
@@ -345,6 +364,55 @@ export class TaskFollowUpStore {
       | { polled_at: string }
       | undefined;
     return row?.polled_at;
+  }
+
+  /**
+   * Forget every row of a Task incarnation not in `current`: a Task that no
+   * longer exists, or one recreated under the same id.
+   */
+  forgetAllExcept(current: readonly TaskIncarnation[]): number {
+    const keep = new Set(
+      current.map((task) => `${task.taskId}\u0000${task.taskCreatedAt}`),
+    );
+    const tables = [
+      'follow_up_observations',
+      'follow_up_cursors',
+      'follow_up_not_followed',
+      'follow_up_polls',
+    ] as const;
+    const stale = new Map<string, TaskIncarnation>();
+    for (const table of tables)
+      for (const row of this.db
+        .prepare(`SELECT DISTINCT task_id, task_created_at FROM ${table}`)
+        .all()) {
+        if (
+          typeof row.task_id !== 'string' ||
+          typeof row.task_created_at !== 'string'
+        )
+          continue;
+        const key = `${row.task_id}\u0000${row.task_created_at}`;
+        if (!keep.has(key))
+          stale.set(key, {
+            taskId: row.task_id,
+            taskCreatedAt: row.task_created_at,
+          });
+      }
+    if (!stale.size) return 0;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const task of stale.values())
+        for (const table of tables)
+          this.db
+            .prepare(
+              `DELETE FROM ${table} WHERE task_id = ? AND task_created_at = ?`,
+            )
+            .run(task.taskId, task.taskCreatedAt);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return stale.size;
   }
 
   /** Every observation of the incarnation, newest first. */
