@@ -137,7 +137,7 @@ export interface GitCommandRunner {
  * first checkout of a large repository is slow; its purpose is that a hung
  * command cannot hold a Task's or a repository's queue forever.
  */
-export const DEFAULT_GIT_COMMAND_TIMEOUT_MS = 300_000;
+const DEFAULT_GIT_COMMAND_TIMEOUT_MS = 300_000;
 
 const GIT_SUBCOMMANDS = new Set([
   'branch',
@@ -198,7 +198,7 @@ const DEFAULT_TASK_BRANCH_PREFIX = 'station/task';
  * #4507: the identity a Task-owned worktree's path and branch are derived
  * from. Prefixed so it can never equal a Session thread id's segment.
  */
-export function taskWorktreeOwnerKey(taskId: string): string {
+function taskWorktreeOwnerKey(taskId: string): string {
   return `task-${taskId}`;
 }
 const DEFAULT_BASE_REF = 'HEAD';
@@ -267,7 +267,7 @@ export function defaultTaskWorktreePath(repoRoot: string, taskId: string) {
 }
 
 /** #4507: prove hostile persisted metadata belongs to exactly this Task. */
-export function assertWorktreeMetadataTaskBinding(
+function assertWorktreeMetadataTaskBinding(
   metadata: WorktreeSessionMetadata,
   taskId: string,
 ): void {

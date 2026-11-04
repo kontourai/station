@@ -99,7 +99,7 @@ function isKeptReason(value: unknown): value is TaskWorktreeKeptReason {
 }
 
 /** The entry for `taskId`, or undefined when it is absent or not valid. */
-export function parseTaskWorktreeEntry(
+function parseTaskWorktreeEntry(
   taskId: string,
   value: unknown,
 ): TaskWorktreeEntry | undefined {
