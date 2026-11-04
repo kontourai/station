@@ -211,7 +211,16 @@ describe('a hung git command holds nothing up (#4507)', () => {
   test('provisioning gives up on a git command that never ends, and the next one in the repository runs', async () => {
     const f = await fixture();
     const hung: GitCommandRunner = { run: () => new Promise(() => {}) };
-    const service = new WorktreeProvisioningService(hung, undefined, {
+    // Opening the repository answers at once, so the only thing that can
+    // run out of time is the git command itself.
+    const opened = async () =>
+      ({
+        top: f.workspace,
+        repoArgs: [],
+        env: process.env,
+        dispose: async () => {},
+      }) as never;
+    const service = new WorktreeProvisioningService(hung, opened, {
       commandTimeoutMs: 100,
     });
     const request = (taskId: string) =>
@@ -227,7 +236,7 @@ describe('a hung git command holds nothing up (#4507)', () => {
 
     expect(first).toMatchObject({ settled: 'rejected' });
     expect(String((first as { error: unknown }).error)).toMatch(
-      /did not finish within 100 ms/,
+      /git rev-parse did not finish within 100 ms/,
     );
     // Queued behind the first in the same repository, and still answered.
     expect(second).toMatchObject({ settled: 'rejected' });
