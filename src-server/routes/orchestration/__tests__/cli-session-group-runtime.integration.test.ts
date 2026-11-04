@@ -94,10 +94,22 @@ type StationControlReply = ReturnType<typeof JSONRPCResponseSchema.parse>;
 const temporary = trackTempDirs();
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  for (const close of cleanup.splice(0).reverse()) await close();
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
-  setClientCredentialResolver(undefined);
+  const failures: unknown[] = [];
+  try {
+    for (const close of cleanup.splice(0).reverse()) {
+      try {
+        await close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  } finally {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    setClientCredentialResolver(undefined);
+  }
+  if (failures.length)
+    throw new AggregateError(failures, 'Group runtime fixture cleanup failed');
 });
 
 class MemberAdapter extends GateTestAdapter {
@@ -465,6 +477,26 @@ async function fixture(
   const pendingDispatches: Promise<unknown>[] = [];
   const groupWarnings: unknown[] = [];
   const app = new Hono();
+  const lifetime = new AbortController();
+  const pendingRequests = new Set<Promise<Response>>();
+  const fetch = app.fetch;
+  app.fetch = (request, ...args) => {
+    lifetime.signal.throwIfAborted();
+    const work = Promise.resolve(
+      fetch(
+        new Request(request, {
+          signal: AbortSignal.any([request.signal, lifetime.signal]),
+        }),
+        ...args,
+      ),
+    );
+    pendingRequests.add(work);
+    void work.then(
+      () => pendingRequests.delete(work),
+      () => pendingRequests.delete(work),
+    );
+    return work;
+  };
   const resolveCallerRecord = (sessionId: string) => ({
     principal: {
       id: sessionId.startsWith('other')
@@ -652,6 +684,10 @@ async function fixture(
         server.close((error) => (error ? reject(error) : resolve())),
       ),
   );
+  cleanup.push(async () => {
+    lifetime.abort();
+    while (pendingRequests.size) await Promise.allSettled([...pendingRequests]);
+  });
   const apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   vi.stubEnv('STATION_API_BASE', apiBase);
   vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'group-test');

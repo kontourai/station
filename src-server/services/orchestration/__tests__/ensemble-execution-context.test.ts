@@ -87,6 +87,7 @@ vi.mock('node:child_process', async (original) => {
   };
 });
 const tempDir = trackTempDirs();
+const loaders = new Set<ConfigLoader>();
 const endpoint = '/api/orchestration/ensembles/prepare';
 
 beforeEach(() => {
@@ -133,9 +134,27 @@ beforeEach(() => {
     });
   });
 });
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
+afterEach(async () => {
+  try {
+    const outcomes = await Promise.allSettled(
+      [...loaders].map(async (loader) => {
+        await loader.dispose();
+        await loader.whenWatcherClosed();
+      }),
+    );
+    const failures = outcomes.flatMap((outcome) =>
+      outcome.status === 'rejected' ? [outcome.reason] : [],
+    );
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        'Ensemble configuration fixture cleanup failed',
+      );
+  } finally {
+    loaders.clear();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  }
 });
 
 async function fixture(
@@ -187,6 +206,7 @@ async function fixture(
   const configurationHome = join(root, 'configuration');
   await mkdir(configurationHome);
   const configLoader = new ConfigLoader({ projectHomeDir: configurationHome });
+  loaders.add(configLoader);
   const storage = new FileStorageAdapter(configurationHome);
   const metadata = new Map<string, AgentMetadata>();
   const agentService = new AgentService(
