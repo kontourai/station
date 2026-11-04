@@ -92,7 +92,11 @@
 
     "deployment/telemetry/compose.dev.yaml",
 
-    "src-server/services/projects/task-browser-recording.ts"
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts"
   ],
 
   "checks": [

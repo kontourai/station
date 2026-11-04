@@ -98,7 +98,11 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/runtime/agents/durable-agent-tools.ts"
+    "src-server/runtime/agents/durable-agent-tools.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts"
   ],
 
   "checks": [

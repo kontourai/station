@@ -676,7 +676,11 @@
 
     "src-server/services/orchestration/create-request-claims.ts",
 
-    "src-server/services/orchestration/__tests__/create-request-claims.test.ts"
+    "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
+
+    "src-server/capabilities/station-capability-flags.ts",
+
+    "packages/sdk/src/client/private-insights.ts"
   ],
 
   "checks": [
