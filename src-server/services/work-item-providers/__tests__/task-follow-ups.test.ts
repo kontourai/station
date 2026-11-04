@@ -573,4 +573,80 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     expect(store.lastPolledAt(incarnation)).toBeUndefined();
     expect(store.readCursor(incarnation, PR_REF, 'reviews')).toBeUndefined();
   });
+
+  test('a polled Task with nothing recorded has no section and keeps its digest; a later empty poll keeps it too', async () => {
+    // Created after every fixture item, so nothing qualifies to be recorded.
+    const quiet = await trackerTask('2026-11-03T00:00:00.000Z');
+    const dispatch = async (task: TaskRecord) => {
+      const source = composeTaskBriefSource({
+        taskGraph: graph,
+        eventStore: undefined,
+        readAuthorityForUser: () => {
+          throw new Error('no other Session is read');
+        },
+        localProjectIdFor: () => undefined,
+        roomRuntime: () => ({
+          readTaskDocumentForBrief: async () => ({
+            kind: 'available',
+            revision: 'doc-1',
+            text: 'Fix the jam.',
+          }),
+        }),
+        workItemObserver: {
+          observeWorkItem: async () => ({
+            status: 'unavailable',
+            reason: 'not read in this test',
+          }),
+        },
+        followUps: holder,
+      });
+      return (await source.forDispatch(task, 'session-brief', 'owner-1'))
+        .brief;
+    };
+    const never = await dispatch(graph.readTask(quiet.id)!);
+    await enable();
+    answerFirstPoll();
+    await poll();
+    expect(holder.forRead()!.lastPolledAt({
+      taskId: quiet.id,
+      taskCreatedAt: quiet.createdAt,
+    })).toBeDefined();
+    const polled = await dispatch(graph.readTask(quiet.id)!);
+    expect(polled.text).not.toContain('## Tracker follow-ups');
+    expect(polled.digest).toBe(never.digest);
+  });
+
+  test('a poll that records nothing new changes the shown read time but not the digest', async () => {
+    const task = await trackerTask();
+    await enable();
+    answerFirstPoll();
+    await poll();
+    const first = await brief(graph.readTask(task.id)!);
+    const emptyIssue = structuredClone(issuePage2);
+    emptyIssue.data.repository.issueOrPullRequest.comments = {
+      pageInfo: { hasNextPage: false, endCursor: null },
+      edges: [],
+    };
+    answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C3 }, emptyIssue);
+    const emptyPr = structuredClone(prPage2);
+    emptyPr.data.repository.issueOrPullRequest.reviews = {
+      pageInfo: { hasNextPage: false, endCursor: null },
+      edges: [],
+    };
+    emptyPr.data.repository.issueOrPullRequest.commits =
+      prPage1.data.repository.issueOrPullRequest.commits;
+    answer(
+      ghDir,
+      { number: PR, commentsAfter: PR_C1, reviewsAfter: PR_R3 },
+      emptyPr,
+    );
+    expect((await poll(NOW + 6 * 60_000)).tasks[0]).toMatchObject({
+      recorded: 0,
+    });
+    const second = await brief(graph.readTask(task.id)!);
+    expect(second).not.toBe(first);
+    expect(second).toContain('last read 2026-11-04T12:06:00Z');
+    const digestOf = (text: string) => /digest ([0-9a-f]{16})/.exec(text)![1];
+    expect(digestOf(second)).toBe(digestOf(first));
+  });
 });

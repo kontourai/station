@@ -207,7 +207,9 @@ export interface TaskBriefInput {
   learningContext?: LearningReviewTaskContext;
   /**
    * What the follow-up poller recorded on the Task's followed GitHub items
-   * (#4508). Absent: nothing was ever polled, and the brief says nothing.
+   * (#4508). Absent, or with nothing recorded (no item, counted check or
+   * not-followed pull request): the brief has no section, and its digest is
+   * a never-polled Task's. The poll time is shown but never digested.
    */
   followUps?: TaskFollowUpBriefView;
 }
@@ -443,10 +445,7 @@ function renderFollowUps(
 ): string[] {
   if (
     !view ||
-    (!view.items.length &&
-      !view.passingChecks &&
-      !view.notFollowed.length &&
-      !view.lastPolledAt)
+    (!view.items.length && !view.passingChecks && !view.notFollowed.length)
   )
     return [];
   const head = [
@@ -489,7 +488,7 @@ function renderFollowUps(
     used += entry.length + 1;
   }
   if (!entries.length && !view.passingChecks)
-    shown.push('Nothing new on the followed items.');
+    shown.push('Nothing recorded on the followed items.');
   const lines = [
     ...head,
     ...shown,
@@ -715,6 +714,14 @@ const block = (lines: readonly string[]) =>
 
 export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const { task } = input;
+  // A view with nothing recorded is no view: the brief shows no section.
+  const followUpView =
+    input.followUps &&
+    (input.followUps.items.length ||
+      input.followUps.passingChecks ||
+      input.followUps.notFollowed.length)
+      ? input.followUps
+      : undefined;
   const title = cut(oneLine(task.title), TITLE_MAX);
   const documentRevision =
     input.document.kind === 'available' ? input.document.revision : null;
@@ -760,8 +767,12 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     sessions: input.sessions,
     workingContext: input.workingContext ?? null,
     learningContext: input.learningContext ?? null,
-    // Only when present, so a brief without follow-ups keeps its digest.
-    ...(input.followUps ? { followUps: input.followUps } : {}),
+    // Only when something was recorded, and never the poll time: a Task
+    // polled with nothing to show keeps the digest of a Task never polled,
+    // and a poll that recorded nothing new leaves the digest as it was.
+    ...(followUpView
+      ? { followUps: { ...followUpView, lastPolledAt: undefined } }
+      : {}),
   };
   const digest = createHash('sha256')
     .update(JSON.stringify([...scope, digestInput]))
@@ -927,7 +938,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   // Follow-ups take what the fixed parts leave, up to their cap, but never
   // the newest record's reserved line.
   const followUps = renderFollowUps(
-    input.followUps,
+    followUpView,
     Math.min(FOLLOW_UPS_MAX, Math.max(0, budgetFor() - newestCost) - 2),
   );
   const budget = Math.max(0, budgetFor() - block(followUps).length);
