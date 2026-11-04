@@ -115,7 +115,7 @@ export interface ForegroundMessageContext {
   submissionDigest?: string;
   inboxPlacement?: true;
   /** #4512: forwarded to `sendTurn` and stamped on `turn.started`. */
-  turnOrigin?: TurnDispatchOrigin;
+  dispatchOrigin?: TurnDispatchOrigin;
 }
 
 export interface ForegroundMessageInput {
@@ -429,7 +429,7 @@ export interface ExecutionTargetExecutionDependencies
       principal?: PrincipalRef;
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
-      turnOrigin?: TurnDispatchOrigin;
+      dispatchOrigin?: TurnDispatchOrigin;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -1626,9 +1626,11 @@ export async function executeForegroundMessage(
       input.mcpPromptOrigin ||
       submissionDigest ||
       context?.inboxPlacement ||
-      context?.turnOrigin
+      context?.dispatchOrigin
       ? {
-          ...(context?.turnOrigin ? { turnOrigin: context.turnOrigin } : {}),
+          ...(context?.dispatchOrigin
+            ? { dispatchOrigin: context.dispatchOrigin }
+            : {}),
           ...(context?.inboxPlacement && submissionDigest === undefined
             ? { submissionDigest: null }
             : submissionDigest

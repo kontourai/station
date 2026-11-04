@@ -6675,7 +6675,7 @@ export function configureRuntimeRoutes(
       inputDigest?: string;
       inboxPlacement?: true;
       automaticBackground?: true;
-      turnOrigin?: TurnDispatchOrigin;
+      dispatchOrigin?: TurnDispatchOrigin;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -6691,7 +6691,9 @@ export function configureRuntimeRoutes(
         {
           submissionDigest: input.inputDigest,
           ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
-          ...(input.turnOrigin ? { turnOrigin: input.turnOrigin } : {}),
+          ...(input.dispatchOrigin
+            ? { dispatchOrigin: input.dispatchOrigin }
+            : {}),
         },
       );
       if (!isForegroundDispatchHandle(handle))
@@ -6920,7 +6922,7 @@ export function configureRuntimeRoutes(
               automaticBackground: payload.automaticBackground,
               inputDigest: payload.inputDigest,
               inboxPlacement: true,
-              turnOrigin: inboxTurnDispatchOrigin(
+              dispatchOrigin: inboxTurnDispatchOrigin(
                 payload,
                 eventStore.readProjectTaskRoomExecutionBinding(threadId) !==
                   undefined,

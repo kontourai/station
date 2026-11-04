@@ -2362,7 +2362,7 @@ Each `turn.started` a send produces records who caused the turn
 (`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
 `automation` or `unknown`. Station classifies it when it admits the
 `sendTurn`, never from a request body or an engine. A server caller passes
-its own classification in the dispatch's internal options (`turnOrigin`):
+its own classification in the dispatch's internal options (`dispatchOrigin`):
 the delegation start sends `delegation`, and the conversation inbox's
 placement uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
 (an Automation's entry is `automation`, a person's `interactive`, Station's

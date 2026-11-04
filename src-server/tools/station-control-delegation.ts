@@ -6421,7 +6421,7 @@ export async function delegateTask(
             },
             resourceAdmissionIntent: 'delegated_background',
             // #4512: the delegated Session's first turn, sent by Station.
-            turnOrigin: 'delegation',
+            dispatchOrigin: 'delegation',
             ...(input.taskRoomInvocationAdmission
               ? {
                   receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -7374,8 +7374,8 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
-              ...(context?.turnOrigin
-                ? { turnOrigin: context.turnOrigin }
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
@@ -7407,8 +7407,8 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
-              ...(context?.turnOrigin
-                ? { turnOrigin: context.turnOrigin }
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }

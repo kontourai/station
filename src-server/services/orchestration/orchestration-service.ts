@@ -653,7 +653,7 @@ interface OrchestrationDispatchInternalOptions {
    * the turn's `turn.started` as `dispatchOrigin`. Absent, the service
    * classifies the send from its client origin (`classifyTurnDispatchOrigin`).
    */
-  turnOrigin?: TurnDispatchOrigin;
+  dispatchOrigin?: TurnDispatchOrigin;
 }
 
 /**
@@ -662,10 +662,10 @@ interface OrchestrationDispatchInternalOptions {
  * paired device) is `interactive` and everything else is `unknown`.
  */
 export function classifyTurnDispatchOrigin(
-  turnOrigin: TurnDispatchOrigin | undefined,
+  dispatchOrigin: TurnDispatchOrigin | undefined,
   clientOrigin: ClientOrigin | undefined,
 ): TurnDispatchOrigin {
-  if (turnOrigin) return turnOrigin;
+  if (dispatchOrigin) return dispatchOrigin;
   const actor = clientOrigin?.actor.kind;
   return actor === 'operator' || actor === 'device' ? 'interactive' : 'unknown';
 }
@@ -9405,7 +9405,7 @@ export class OrchestrationService {
                         | undefined;
                       let experienceContext: string | undefined;
                       const dispatchOrigin = classifyTurnDispatchOrigin(
-                        internal?.turnOrigin,
+                        internal?.dispatchOrigin,
                         context?.clientOrigin,
                       );
                       if (internal?.skillExperience) {

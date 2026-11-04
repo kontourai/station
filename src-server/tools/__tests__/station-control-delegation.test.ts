@@ -953,7 +953,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     // #4512: the delegated first turn is Station's, though a person asked
     // for the delegation (their operator origin rides the same dispatch).
     expect(service.dispatchWithReceipt.mock.calls[0][2]).toMatchObject({
-      turnOrigin: 'delegation',
+      dispatchOrigin: 'delegation',
     });
     expect(service.sessionCommands.execute.mock.calls[0][0]).toMatchObject({
       type: 'start-session',

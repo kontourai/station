@@ -78,7 +78,7 @@ async function boot() {
   });
   const send = async (
     context: Parameters<OrchestrationService['dispatch']>[1],
-    turnOrigin?: TurnDispatchOrigin,
+    dispatchOrigin?: TurnDispatchOrigin,
   ) => {
     const threadId = `thread-${randomUUID()}`;
     await service.dispatch({
@@ -91,7 +91,7 @@ async function boot() {
         input: { threadId, input: 'work', clientTurnId: randomUUID() },
       },
       context,
-      turnOrigin ? { turnOrigin } : undefined,
+      dispatchOrigin ? { dispatchOrigin } : undefined,
     )) as ProviderTurnStartResult;
     let started: Record<string, unknown> | undefined;
     await vi.waitFor(() => {

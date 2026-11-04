@@ -493,7 +493,7 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     const send = async (
       clientTurnId: string,
       clientOrigin: typeof internalOrigin | undefined,
-      turnOrigin?: ReturnType<typeof inboxTurnDispatchOrigin>,
+      dispatchOrigin?: ReturnType<typeof inboxTurnDispatchOrigin>,
     ) => {
       const handle = await continueExecutionTargetMessage(
         {
@@ -510,7 +510,7 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
         },
         service,
         undefined,
-        turnOrigin ? { inboxPlacement: true, turnOrigin } : undefined,
+        dispatchOrigin ? { inboxPlacement: true, dispatchOrigin } : undefined,
       );
       let started: Record<string, unknown> | undefined;
       await vi.waitFor(() => {
