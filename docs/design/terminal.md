@@ -993,17 +993,32 @@ verification.
 - Desktop (#3994, same revision): Chromium at 1440×900 on the same Station
   typed and ran a command, selected by drag and double click without stopping
   the terminal, and opened the menu with Copy and Add to chat enabled.
+- Windows host (#3994, 2026-11-04, Windows 11 26200): the Desktop app's
+  WebDriver debug build (`--features webdriver`, which compiles on Windows only
+  with `tauri-plugin-wdio-webdriver` 1.5.1) started its bundled Station, opened
+  the Coding terminal, and a command typed through WebView2's DevTools input
+  ran; the plugin's own keystrokes are synthetic DOM events, which produce no
+  `beforeinput`, so they cannot type into a terminal. On the isolated Station,
+  PowerShell 7.6, Windows PowerShell 5.1 and Git Bash each ran a command,
+  stopped a long one with Ctrl+C, reported the width the view sized them to
+  after a resize, and restarted after `exit`. The
+  [script-runner and agent-run suite](../../src-server/services/terminal/__tests__/terminal-runs.process.test.ts)
+  runs on Windows (and in `test:windows:portable`): package managers' batch
+  shims run through cmd.exe, an approved command reaches cmd with its quotes
+  as shown, and both fail when their fix is reverted.
 
-**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app or
-the iOS shell. The Android shell was not exercised: the CI debug APK of
+**NOT_VERIFIED.** No journey has run on a physical phone, the iOS shell, or
+the Desktop app on macOS or Linux. The Android shell was not exercised: the CI debug APK of
 `470f8b49` installed on the emulator but stopped at "Station couldn't finish
 starting: saved mobile Station metadata is missing after initialization;
 refusing to recreate it", also after its data was cleared. An agent's
 `terminal_run` was not approved from a phone: a Station-native agent's call
 was refused as unattended in a chat started from the composer, and a Claude
-Code chat in a Project was not offered the tool. The script runner did not
-start a script on the Windows host (`spawn EINVAL` for the package manager's
-`.cmd` shim). Desktop copy to the system clipboard was not read back. The
+Code chat in a Project was not offered the tool. Desktop copy to the system
+clipboard was not read back. On Windows, Stop does not reach a command's
+descendant whose parent already exited, and the journal does not record
+resizes, so ConPTY output replayed at another size can repaint over lines
+already scrolled. The
 screen reader mode has not been used with real assistive technology
 (VoiceOver, NVDA, TalkBack); Windows/ConPTY is not qualified. The manual
 screen reader pass listed above has not happened. The browser broker
