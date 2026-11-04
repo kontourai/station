@@ -261,11 +261,14 @@ export type AutomationEpisodePolicy = Readonly<{
  * What a rule does with a matching event (#4509).
  *
  * - `off`: the rule is ignored, as a disabled rule always was.
- * - `observe`: intake evaluates the rule's whole admission path and records a
- *   per-rule decision (`would-start` or `suppressed`) on the delivery, but
- *   never retains a dispatchable intent, opens a real episode, claims an
- *   action or consumes an attempt. Neither action consumer can start work
- *   for it.
+ * - `observe`: intake checks the rule's episode, concurrency, active and
+ *   hourly-start limits against current `live` load and records a per-rule
+ *   decision (`would-start` or `suppressed`) on the delivery. It never
+ *   retains a dispatchable intent, opens a real episode, claims an action or
+ *   consumes an attempt, so neither action consumer can start work for it.
+ *   The rule's own earlier `would-start`s count toward its hourly limit but
+ *   never as active work: the limits do not model what the rule would be
+ *   running had it been `live`.
  * - `live`: the rule acts, subject to the source grant, the
  *   `github-automation-actions` / `isolated-github-repairs` previews and the
  *   other admission checks.

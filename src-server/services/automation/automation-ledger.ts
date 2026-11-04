@@ -881,11 +881,16 @@ class SqliteAutomationLedger implements AutomationLedger {
   }
 
   /**
-   * Evaluates an observe rule in `claimAction`'s order (episode, global
-   * concurrency, the rule's active limit, its hourly starts) against current
-   * ledger state, writing nothing but its own open-episode marker. Starts
-   * count the rule's invoked live intents and its earlier `would-start`
-   * decisions in the last hour.
+   * Evaluates an observe rule against current ledger state, writing nothing
+   * but its own open-episode marker. The episode is checked first, unlike
+   * `claimAction` (concurrency, the rule's active limit, hourly starts, then
+   * episode state). A live event in an already-open episode never retains an
+   * intent at intake, so that is the first thing that would stop it.
+   *
+   * Concurrency and the active limit read live claims and intents only. The
+   * rule's would-starts never count as active, so this does not model what
+   * the rule itself would be running had it been live. Hourly starts count
+   * the rule's invoked live intents plus its earlier `would-start` decisions.
    */
   private observeDecision(
     candidate: RuleDecisionCandidate,

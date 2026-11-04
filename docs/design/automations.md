@@ -104,18 +104,43 @@ Each rule has a `mode` (#4509):
 A rule stored before this change has `enabled: boolean` instead. The store
 reads `false` as `off` and `true` as `live`, and the next write stores `mode`.
 A rule that has both fields, or a non-boolean `enabled`, makes the
-configuration unreadable, so it fails closed. Set a mode through
+configuration unreadable, so it fails closed.
+
+Downgrade: after any write by this version, every rule in
+`security/automations.json` carries `mode`. An older Station refuses that
+key, so it reads the whole configuration as `policy_unavailable`. That fails
+closed: its poller logs `Automation policy unavailable; poll skipped`, and
+its action consumers find no readable policy, so nothing is polled or
+dispatched. That holds until the file is restored or the rules are
+hand-edited back to `enabled`. Its validation detail (`rules[N]: unknown field
+mode`, `enabled must be a boolean`) is logged server-side only when its
+delivery history route is read.
+
+The configuration `schemaVersion` stays `1`. `AUTOMATION_SCHEMA_VERSION`
+also versions retained events and intents, so bumping it would invalidate
+retained intents. A separate configuration version would only change the
+older Station's detail to `unsupported schemaVersion`; it fails closed
+either way.
+
+Creating a rule starts observing immediately once its source is enabled and
+grants its action. An `observe` rule counts as an evaluable rule, so its
+source is polled on its interval, spending GitHub API quota. Each matched run
+records a delivery that holds that run's semantic dedupe key. Disable a rule
+with `mode: "off"` when you do not want that polling. Set a mode through
 `POST /api/isolated-repairs/configuration/enable` with
 `{kind:"rule",id,mode,expectedFingerprint}`. `enabled:true` or `false` keeps
 its earlier meaning there.
 
-For an `observe` rule, intake checks, in the action consumers' claim order:
-the match, then the episode, then global concurrency
-(`maxConcurrentActions`), then the rule's active limit (`maxActivePerRule`),
-then `maxStartsPerHour`. It does not open an episode, take a claim, consume an
-attempt, or retain an intent, so neither the native Task runtime nor the
-isolated-repair controller can start work for the rule. The episode check
-covers two cases:
+For an `observe` rule, intake checks the match, then the episode, then global
+concurrency (`maxConcurrentActions`), then the rule's active limit
+(`maxActivePerRule`), then `maxStartsPerHour`. This is not `claimAction`'s
+order, which checks concurrency, the active limit and the hourly rate before
+episode state. Observe checks the episode first because, for a `live` rule,
+an event in an already-open episode never retains an intent at intake, so the
+episode is what would stop it first. Observe does not open an episode, take a
+claim, consume an attempt, or retain an intent, so neither the native Task
+runtime nor the isolated-repair controller can start work for the rule. The
+episode check covers two cases:
 
 - an unclosed real episode for the key, for example one left while the rule
   was `live`, gives `episode-indeterminate`, `episode-exhausted` or
@@ -124,8 +149,12 @@ covers two cases:
   after the first `would-start`.
 
 The concurrency and active-limit checks read the claims and active intents of
-`live` actions. The hourly count includes the rule's invoked `live` starts and
-its own earlier `would-start` decisions. A matching `closeOn` clears the
+`live` actions only. An observe rule's `would-start`s never count as active,
+so these checks do not model what the rule itself would be running had it
+been `live`: two quick failures in different episodes can both record
+`would-start` where a `live` rule would have waited on `maxActivePerRule`.
+The hourly count includes the rule's invoked `live` starts and its own
+earlier `would-start` decisions. A matching `closeOn` clears the
 marker. It also closes a real episode the rule left open while `live`, because
 a stale episode would suppress the rule's next failure once it is `live`
 again; closing starts nothing.
