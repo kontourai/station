@@ -2624,7 +2624,9 @@ function taskCapabilityScreens(): Screen[] {
           await expect(
             panel.getByText('Project permits source', { exact: true }),
           ).toBeVisible();
-          await panel.scrollIntoViewIfNeeded();
+          await panel
+            .getByRole('heading', { name: 'Capabilities and evidence' })
+            .scrollIntoViewIfNeeded();
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth,

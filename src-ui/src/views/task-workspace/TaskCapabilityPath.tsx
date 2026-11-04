@@ -77,6 +77,7 @@ function CapabilityPath({
         </li>
       </ol>
       <DisclosureToggle
+        className="task-capability-path__toggle"
         expanded={open}
         onToggle={() => setOpen(!open)}
         controls={id}

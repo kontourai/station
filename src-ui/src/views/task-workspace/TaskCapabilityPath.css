@@ -103,3 +103,7 @@
 .task-capability-path__sources code {
   margin-inline: var(--k-space-2);
 }
+
+.task-capability-path__toggle {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
