@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   loadInstalledManagedPolicy,
   loadManagedPolicyFromSources,
@@ -14,16 +14,10 @@ import {
   readManagedPolicyFile,
 } from '../managed-policy.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function dir(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-policy-source-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-policy-source-');
 }
 
 function policyFile(body: string): string {

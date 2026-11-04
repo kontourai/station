@@ -3,23 +3,17 @@
  * through the supported source bootstrap, offline, and its exit status is
  * the contract an administrator's rollout script branches on.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function fixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-policy-check-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-policy-check-');
 }
 
 function check(...args: string[]) {

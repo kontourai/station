@@ -10,15 +10,7 @@
  */
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
@@ -28,12 +20,16 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
+import { trackTempDirs } from '../__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const readyPrefix = '{"event":"listening",';
 const MARKER = 'STATION_MANAGED_POLICY_INVALID';
 
 type Owned = ReturnType<typeof executeOwnedCommand>;
+// Created before the hook below, so the directories outlive the servers that
+// use them: vitest runs after-hooks in reverse registration order.
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterEach(async () => {
@@ -58,9 +54,8 @@ async function bounded<T>(promise: Promise<T>, label: string, ms: number) {
 }
 
 function fixtureRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-managed-policy-'));
+  const root = makeTempDir('station-managed-policy-');
   chmodSync(root, 0o700);
-  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
 
