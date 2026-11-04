@@ -491,7 +491,7 @@ function cleanupPolicyForTerminalState(
   return metadata.cleanupPolicy;
 }
 
-class SpawnGitCommandRunner implements GitCommandRunner {
+export class SpawnGitCommandRunner implements GitCommandRunner {
   async run(
     args: string[],
     options: {
@@ -764,12 +764,23 @@ export class WorktreeProvisioningService {
         detail: 'The worktree has uncommitted or untracked changes.',
       };
     const branchRef = `refs/heads/${metadata.branch}`;
+    // The tip checked here is the only one the branch may be deleted at.
+    const tip = (
+      await this.git.run([
+        '-C',
+        metadata.repoPath,
+        'rev-parse',
+        '--verify',
+        '--end-of-options',
+        `${branchRef}^{commit}`,
+      ])
+    ).stdout.trim();
     const unique = await this.git.run([
       '-C',
       metadata.repoPath,
       'rev-list',
       '--max-count=1',
-      branchRef,
+      tip,
       '--not',
       '--remotes',
       // `--exclude` patterns for `--branches` are branch names without
@@ -784,7 +795,41 @@ export class WorktreeProvisioningService {
         reason: 'unpushed',
         detail: `Branch ${metadata.branch} has commits no remote or other branch has.`,
       };
-    await this.cleanup({ metadata, terminalState: request.terminalState });
+    // Without `--force`, so git itself refuses a worktree that gained a
+    // change after the checks above (a turn starting, a terminal write):
+    // the change is kept, never deleted.
+    const removed = await this.git.run(
+      ['-C', metadata.repoPath, 'worktree', 'remove', metadata.path],
+      { allowCodes: [0, 128] },
+    );
+    if (removed.code !== 0) {
+      if (/modified or untracked files/.test(removed.stderr))
+        return {
+          outcome: 'kept',
+          reason: 'uncommitted',
+          detail: 'The worktree gained changes while it was being finalized.',
+        };
+      throw new Error(
+        `git worktree remove failed: ${removed.stderr.trim() || removed.stdout.trim()}`,
+      );
+    }
+    // Deleted only if the branch still points at the tip that was checked:
+    // a commit made since moves it, and git refuses.
+    const deleted = await this.git.run(
+      ['-C', metadata.repoPath, 'update-ref', '-d', branchRef, tip],
+      { allowCodes: [0, 1, 128] },
+    );
+    if (deleted.code !== 0)
+      return {
+        outcome: 'kept',
+        reason: 'unpushed',
+        detail: `The worktree was removed; branch ${metadata.branch} moved while it was being finalized and is kept.`,
+      };
+    worktreeCleanupTotal.add(1, {
+      outcome: 'success',
+      policy: 'cleanup',
+      terminal_state: request.terminalState,
+    });
     return { outcome: 'removed' };
   }
 
