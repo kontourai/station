@@ -6103,7 +6103,8 @@ HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
-The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+The preflight allow-list includes `If-Match` for revisioned writes, including
+account preference saves. It also includes `X-Station-Client-Protocol`. Cross-origin
 browser callers send it only after observing
 `compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
 handshake. The UI forgets the prior origin observation before re-handshaking;
