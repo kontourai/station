@@ -7184,10 +7184,9 @@ export async function executeExecutionTargetMessage(
             SESSION_BINDING_EVENTS,
           )
         : undefined;
-      const retained =
-        retainedWorktree as
-          | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
-          | undefined;
+      const retained = retainedWorktree as
+        | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+        | undefined;
       // #4507: a Task-owned worktree is admitted only for a Session the
       // server bound to that same Task when it dispatched it; the
       // metadata's own `owner` names which Task to check, not whether to.

@@ -80,16 +80,12 @@ import type {
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import { captureExecutionWorkspaceBinding } from '../orchestration/execution-workspace-binding.js';
+import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
 import type { ProjectService } from './project-service.js';
-import {
-  WorktreeProvisioningService,
-  type WorktreeTerminalState,
-} from './worktree-provisioning-service.js';
 import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
@@ -124,6 +120,10 @@ import {
   validateRelationshipState,
   validTaskIdentity,
 } from './task-relationship-state.js';
+import {
+  WorktreeProvisioningService,
+  type WorktreeTerminalState,
+} from './worktree-provisioning-service.js';
 
 interface TaskGraphStoreData {
   tasks: PersistedTaskRecord[];
@@ -5015,7 +5015,10 @@ export class TaskGraphService {
           data: {
             ...data,
             tasks: data.tasks.map((item) => {
-              if (item.id !== taskId || item.taskWorktree?.path !== worktree.path)
+              if (
+                item.id !== taskId ||
+                item.taskWorktree?.path !== worktree.path
+              )
                 return item;
               const { taskWorktree: _removed, ...rest } = item;
               return rest;

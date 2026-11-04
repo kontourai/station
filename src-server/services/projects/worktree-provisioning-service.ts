@@ -735,7 +735,10 @@ export class WorktreeProvisioningService {
       repoRoot,
       policy.worktreeBaseDir,
     );
-    const worktreePath = join(worktreeBaseDir, worktreeSessionSegment(ownerKey));
+    const worktreePath = join(
+      worktreeBaseDir,
+      worktreeSessionSegment(ownerKey),
+    );
     assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
     if (!existsSync(worktreePath)) return undefined;
     const registered = parseWorktreeList(

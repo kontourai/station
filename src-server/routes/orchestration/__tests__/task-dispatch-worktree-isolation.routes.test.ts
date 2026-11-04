@@ -272,7 +272,11 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       // Production lists Projects, so a start outside the Project folder is
       // refused unless the server admitted that exact directory.
       listProjects: () => [
-        { slug: 'project-alpha', id: 'project-alpha', workingDirectory: workspace },
+        {
+          slug: 'project-alpha',
+          id: 'project-alpha',
+          workingDirectory: workspace,
+        },
       ],
       resolveSessionAgent: createSessionAgentResolver({
         loadAgentSpec: async (slug) =>
@@ -355,7 +359,10 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     const response = await app.request(`/${taskId}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: 'task-lead', sourceSurface: 'project-page' }),
+      body: JSON.stringify({
+        agentId: 'task-lead',
+        sourceSurface: 'project-page',
+      }),
     });
     const body = await readJson(response);
     expect(body.error).toBeUndefined();
@@ -418,8 +425,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       new RegExp(`^station/task/task-${first}-[0-9a-f]{32}$`),
     );
     expect(
-      registered.find((entry) => entry.path === realpathSync(firstCwd))
-        ?.branch,
+      registered.find((entry) => entry.path === realpathSync(firstCwd))?.branch,
     ).toBe(firstTask.taskWorktree!.branch);
     expect(startOf(claude, firstSession)).toMatchObject({
       workspaceIsolation: { mode: 'worktree' },
@@ -431,9 +437,9 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     });
     // The Project checkout binding is unchanged, so the Task view still
     // reads it as available.
-    expect((await graph.readTaskForOpen(first))?.workspaceBinding).toMatchObject(
-      { availability: 'available', workingDirectory: workspace },
-    );
+    expect(
+      (await graph.readTaskForOpen(first))?.workspaceBinding,
+    ).toMatchObject({ availability: 'available', workingDirectory: workspace });
   });
 
   test('a second dispatch of the same Task reuses its worktree and branch; canceling preserves it', async () => {
@@ -545,9 +551,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     await graph.updateTaskStatus(taskId, 'done');
     expect(existsSync(late.path)).toBe(false);
     expect(linkedWorktrees(workspace)).toEqual([]);
-    expect(
-      git(workspace, 'branch', '--list', late.branch).trim(),
-    ).toBe('');
+    expect(git(workspace, 'branch', '--list', late.branch).trim()).toBe('');
     expect(graph.readTaskView(taskId)!.taskWorktree).toBeUndefined();
   });
 });
