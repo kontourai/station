@@ -85,7 +85,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
 | `terminalHistoryEnabled` | boolean | `true` | Whether terminals opened afterwards write their output to disk. Off keeps only the in-memory tail. See [Journal](../design/terminal.md#journal). |
-| `terminalHistoryDirectory` | absolute path | `<home>/terminal-journals` | Where terminal history is kept. Ended terminals' history moves there on the next open, usage read or start; a running one moves after it ends. A relative path is refused, and an agent cannot change it. |
+| `terminalHistoryDirectory` | absolute path | `<home>/terminal-journals` | Where terminal history is kept. Ended terminals' history moves there on the next open, usage read or start; a running one moves after it ends. A relative path is refused, and an agent cannot change it. On Windows, a location where Station cannot keep history private to its user (a drive without Windows permissions) is refused. |
 | `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
 | `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
 | `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
