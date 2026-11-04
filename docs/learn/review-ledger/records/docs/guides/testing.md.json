@@ -256,6 +256,10 @@
 
     "scripts/__tests__/vitest-resource-manifest.test.ts",
 
+    "tests/helpers/hit-target-audit.ts",
+
+    "scripts/__tests__/gallery-ui-audit.browser.test.ts",
+
     "scripts/install-playwright-browsers.mjs",
 
     "scripts/__tests__/install-playwright-browsers.test.ts"
