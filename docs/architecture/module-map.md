@@ -5514,7 +5514,14 @@ reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
 request), and after three failures with no picture between them switches the
 viewer to images.
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
-float-over-chat, and shows the codec it draws. When the origin, surface ID or
+float-over-chat, and shows the codec it draws. It owns the one viewer for
+every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
+whose client rect the pointer mapping already reads), touch presses held back
+until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
+element over the viewport, with the Fullscreen API where it is granted). The
+shared chrome is `LiveSurfaceViewerControls.tsx`. A surface kind extends the
+full-screen bar only through `renderImmersiveActions(api)`, for example
+`BrowserImmersiveNav` or `DeviceImmersiveActions`. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
 credential generation.

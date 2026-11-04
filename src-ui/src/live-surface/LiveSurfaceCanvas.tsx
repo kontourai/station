@@ -24,6 +24,7 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { ExpandGlyph, MoreGlyph } from '../components/icons/Glyph';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
 import {
@@ -1253,6 +1254,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     chromeTouched,
   );
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const coarsePointer = useCoarsePointer();
 
   useEffect(() => {
     onControlState?.({
@@ -1525,6 +1527,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
             size="sm"
             variant="ghost"
             className="live-surface__fullscreen"
+            data-pointer={coarsePointer ? 'coarse' : 'fine'}
             aria-label="Full screen"
             title="Full screen"
             onClick={enterImmersive}

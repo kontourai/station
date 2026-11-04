@@ -59,6 +59,42 @@ page should stop running. If its browser exits, or Station restarts, retained
 sessions become `needs-reopen`; they are not silently declared live. Reopening
 uses a new browser generation and invalidates the old live-surface reference.
 
+### Viewing a live surface: zoom, full screen and the chat floater
+
+Every live surface (a Browser session or a device) uses one viewer,
+[`LiveSurfaceCanvas`](../../src-ui/src/live-surface/LiveSurfaceCanvas.tsx),
+in the Browser pane, the Device pane and the chat floater.
+
+- **Zoom** changes this view only; the page or device never receives it.
+  (The Browser pane's **⋯ › Zoom** is different: it zooms the page itself.)
+  Pinch with two fingers, or pinch a trackpad (Ctrl+wheel, or Safari's gesture
+  events). Move two fingers to pan. A double tap while zoomed returns to fit.
+  While you only watch, a double tap zooms in 2× at the tap and a mouse drag
+  pans. The percentage badge resets to fit. Taps map to the page pixel shown
+  under the finger at any zoom.
+- **Presses on touch** go out when the finger lifts, moves 8 px, or stays down
+  for 150 ms. A second finger before then cancels the press, so a pinch never
+  clicks the page.
+- **Full screen** (the pane's corner button, or the floater's controls) lays
+  the same viewer over the whole screen, inside the safe area. It uses the
+  Fullscreen API where the platform grants it and a full-viewport layer where
+  it does not. The stream is not restarted. Touch input drives the surface
+  directly. The controls show on entry, hide after 4 s, and come back from the
+  ⋯ handle, a tap while you only watch, or mouse movement. They offer Exit,
+  Take or Release control, the keyboard while you drive, and the surface's own
+  actions: Back, Forward and Reload for a browser, and Home, Back and Recents
+  (Android) or Rotate (iOS) for a device. Escape, Exit or the platform
+  leaving full screen returns to where you were.
+- **The chat floater** moves when you drag the picture with one finger or the
+  mouse. While you drive, the picture takes the press and the Move handle
+  moves the floater. A tap, the corner dot, or a mouse hover shows the
+  controls; they hide after 4 s. **Minimize**, or dragging the floater's
+  centre past a side, tucks it into a tab on that side and closes its live
+  view. The tab brings it back. Position, width and the tuck are kept for this
+  device. On a touch screen, Full screen replaces **Open in right panel**. A
+  narrow chat's notice and a page dialog's **Open in pane** still open the
+  panel.
+
 ### Profiles and network reach
 
 The [session registry](../../src-server/services/browser/browser-session-registry.ts)
@@ -587,6 +623,10 @@ rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
 metered or data-saving connection it asks for at most 5 frames per second at
 quality 50 and 960 pixels on each side. See the
 [stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
+
+Zoom, full screen and the floater work for a device as they do for a browser;
+see [viewing a live surface](#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
+In full screen a device screen is fitted at its own aspect and orientation.
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares

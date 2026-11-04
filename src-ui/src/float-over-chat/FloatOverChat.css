@@ -71,13 +71,13 @@
 }
 
 .float-over-chat__player--tucked[data-tucked="right"] .float-over-chat__tab {
-  border-radius: var(--radius-md, 12px) 0 0 var(--radius-md, 12px);
+  border-radius: var(--k-radius-md) 0 0 var(--k-radius-md);
   border-right: 0;
 }
 
 .float-over-chat__player--tucked[data-tucked="left"] .float-over-chat__tab {
   border-left: 0;
-  border-radius: 0 var(--radius-md, 12px) var(--radius-md, 12px) 0;
+  border-radius: 0 var(--k-radius-md) var(--k-radius-md) 0;
 }
 
 .float-over-chat__tab:focus-visible {
@@ -183,7 +183,7 @@
 }
 
 .float-over-chat__handle:focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--k-focus);
   outline-offset: -2px;
 }
 

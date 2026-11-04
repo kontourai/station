@@ -213,9 +213,9 @@
    wraps only when it must. */
 .live-surface-controls {
   align-items: center;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 12px);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   display: flex;
   flex-wrap: wrap;
@@ -228,7 +228,7 @@
    keep one row (a status inline beside them wraps the bar onto the
    picture). */
 .live-surface-controls__status {
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   /* Takes the row's width, never sets it: the buttons decide how wide the
      bar is, and a long status ellipsizes. */
   contain: inline-size;
@@ -239,14 +239,14 @@
   min-width: 0;
   order: -1;
   overflow: hidden;
-  padding: 0 var(--space-1, 4px);
+  padding: 0 calc(var(--k-space-1) / 2);
   text-align: end;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .live-surface-controls__status[data-tone="agent"] {
-  color: var(--warning-text, var(--text-primary));
+  color: var(--warning-text, var(--k-text));
 }
 
 .live-surface-controls__action {
@@ -266,7 +266,7 @@
 .live-surface .live-surface__zoom-reset,
 .live-surface .live-surface__fullscreen {
   background: rgb(0 0 0 / 0.55);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--k-radius-sm);
   color: #fff;
   min-height: 44px;
   min-width: 44px;
@@ -275,25 +275,24 @@
 }
 
 .live-surface__zoom-reset {
-  left: var(--space-2, 8px);
-  top: var(--space-2, 8px);
+  left: var(--k-space-1);
+  top: var(--k-space-1);
 }
 
 .live-surface__fullscreen {
-  bottom: var(--space-2, 8px);
-  right: var(--space-2, 8px);
+  bottom: var(--k-space-1);
+  right: var(--k-space-1);
 }
 
-/* On a fine pointer the pane's Full screen waits for hover or focus. */
-@media (hover: hover) and (pointer: fine) {
-  .live-surface__fullscreen {
-    opacity: 0;
-  }
+/* On a fine pointer the pane's Full screen waits for hover or focus (the
+   component decides: a finger cannot hover, so there it always shows). */
+.live-surface .live-surface__fullscreen[data-pointer="fine"] {
+  opacity: 0;
+}
 
-  .live-surface__stage:hover .live-surface__fullscreen,
-  .live-surface__fullscreen:focus-visible {
-    opacity: 1;
-  }
+.live-surface__stage:hover .live-surface__fullscreen[data-pointer="fine"],
+.live-surface .live-surface__fullscreen[data-pointer="fine"]:focus-visible {
+  opacity: 1;
 }
 
 /*
@@ -325,11 +324,11 @@
 .live-surface__immersive-bar {
   display: flex;
   justify-content: center;
-  left: calc(env(safe-area-inset-left, 0px) + var(--space-2, 8px));
+  left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
   pointer-events: none;
   position: absolute;
-  right: calc(env(safe-area-inset-right, 0px) + var(--space-2, 8px));
-  top: calc(env(safe-area-inset-top, 0px) + var(--space-2, 8px));
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
   z-index: 3;
 }
 
@@ -341,12 +340,12 @@
 /* With the bar hidden: one quiet handle to bring it back. */
 .live-surface .live-surface__immersive-reveal {
   background: rgb(0 0 0 / 0.55);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--k-radius-sm);
   color: #fff;
   min-height: 44px;
   min-width: 44px;
   position: absolute;
-  right: calc(env(safe-area-inset-right, 0px) + var(--space-2, 8px));
-  top: calc(env(safe-area-inset-top, 0px) + var(--space-2, 8px));
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
   z-index: 3;
 }
