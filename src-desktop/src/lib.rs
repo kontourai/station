@@ -14312,6 +14312,14 @@ If a stable instance is running, this launch will focus its window and exit.",
     let mut builder = builder.plugin(
         tauri_plugin_log::Builder::new()
             .level(log_level)
+            // #4522: the updater plugin logs its HTTP client's raw errors at
+            // Error and each request URL at Debug, and a managed mirror's feed
+            // URL may carry a path token. Station logs every update outcome
+            // itself with URLs redacted (`desktop_update`), so the plugin's own
+            // records are dropped, and the HTTP client's are capped at Info
+            // (it logs hosts, never paths, at Debug).
+            .level_for("tauri_plugin_updater", log::LevelFilter::Off)
+            .level_for("reqwest", log_level.min(log::LevelFilter::Info))
             .max_file_size(5 * 1024 * 1024)
             .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
             .targets(log_targets)

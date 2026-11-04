@@ -91,6 +91,11 @@ tauri-plugin-opener = "=2.5.5"
 # crash guard.
 notify-rust = "=4.18.0"
 tauri-plugin-updater = "=2.14.0"
+# The updater plugin's own HTTP client, named only for its redirect policy
+# (#4522): under a managed mirror, `configure_client` confines every hop to
+# the mirror's origin. Same version and no features of its own, so it is the
+# plugin's instance and adds nothing to the build.
+reqwest = { version = "0.13", default-features = false }
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
 tauri-plugin-process = "=2.4.0"

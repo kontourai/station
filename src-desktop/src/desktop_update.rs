@@ -1082,7 +1082,9 @@ pub use tauri_glue::*;
 
 mod tauri_glue {
     use super::*;
-    use crate::managed_update_policy::{download_allowed, UpdateRoute};
+    use crate::managed_update_policy::{
+        download_allowed, mirror_redirect_refusal, redact_urls, UpdateRoute,
+    };
     use tauri::{AppHandle, Emitter, Manager, Runtime, State};
     use tauri_plugin_updater::{Update, UpdaterExt};
 
@@ -1130,28 +1132,48 @@ mod tauri_glue {
         timeouts: Timeouts,
     ) -> Result<tauri_plugin_updater::Updater, String> {
         let stall = timeouts.stall;
-        let mut builder = app
-            .updater_builder()
-            .timeout(timeouts.check)
+        let mut builder = app.updater_builder().timeout(timeouts.check);
+        match managed_route(app) {
             // Copied into every update handle's client, so it also bounds
             // downloads.
-            .configure_client(move |client| client.read_timeout(stall));
-        match managed_route(app) {
-            UpdateRoute::Default => {}
+            UpdateRoute::Default => {
+                builder = builder.configure_client(move |client| client.read_timeout(stall));
+            }
             // Unreachable while the controller is disabled; refused here too
             // so no path builds an updater the policy forbids.
             UpdateRoute::Refused(reason) => return Err(reason),
-            UpdateRoute::Mirror { endpoints, .. } => {
+            UpdateRoute::Mirror { endpoints, base } => {
                 let endpoints = endpoints
                     .iter()
                     .map(|endpoint| url::Url::parse(endpoint).map_err(|error| error.to_string()))
                     .collect::<Result<Vec<_>, _>>()?;
+                // The client follows redirects itself, so the mirror's hops
+                // are confined here, for the feed and (the handle copies this
+                // client setup) every download: each one must stay on the
+                // mirror's origin.
                 builder = builder
                     .endpoints(endpoints)
-                    .map_err(|error| error.to_string())?;
+                    .map_err(|error| redact_urls(&error.to_string()))?
+                    .configure_client(move |client| {
+                        let base = base.clone();
+                        client
+                            .read_timeout(stall)
+                            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                                match mirror_redirect_refusal(
+                                    &base,
+                                    attempt.url(),
+                                    attempt.previous().len().saturating_sub(1),
+                                ) {
+                                    None => attempt.follow(),
+                                    Some(refusal) => attempt.error(refusal),
+                                }
+                            }))
+                    });
             }
         }
-        builder.build().map_err(|error| error.to_string())
+        builder
+            .build()
+            .map_err(|error| redact_urls(&error.to_string()))
     }
 
     /// Manages the updater state for the app. `enabled` is the existing
@@ -1249,7 +1271,7 @@ mod tauri_glue {
                 update,
             ))),
             Ok(None) => Ok(None),
-            Err(error) => Err(error.to_string()),
+            Err(error) => Err(redact_urls(&error.to_string())),
         }
     }
 
@@ -1263,14 +1285,16 @@ mod tauri_glue {
     ) -> Result<Option<Update>, String> {
         let Some(update) = build_updater(app, TIMEOUTS)?
             .restore_update(manifest.clone())
-            .map_err(|error| error.to_string())?
+            .map_err(|error| redact_urls(&error.to_string()))?
         else {
             return Ok(None);
         };
         if !download_allowed(&managed_route(app), update.download_url.as_str()) {
             return Err(DOWNLOAD_OUTSIDE_MIRROR.to_string());
         }
-        update.verify(bytes).map_err(|error| error.to_string())?;
+        update
+            .verify(bytes)
+            .map_err(|error| redact_urls(&error.to_string()))?;
         Ok(Some(update))
     }
 
@@ -1291,7 +1315,7 @@ mod tauri_glue {
         for_download(update)
             .download(|chunk, total| on_chunk(chunk, total), || {})
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| redact_urls(&error.to_string()))
     }
 
     #[tauri::command]
@@ -1346,8 +1370,11 @@ mod tauri_glue {
         let installer = updater.clone();
         let installed = tauri::async_runtime::spawn_blocking(move || {
             // `Update::install` verifies the signature of the bytes first.
-            installer
-                .install(|update, bytes| update.install(bytes).map_err(|error| error.to_string()))
+            installer.install(|update, bytes| {
+                update
+                    .install(bytes)
+                    .map_err(|error| redact_urls(&error.to_string()))
+            })
         })
         .await
         .map_err(|error| format!("desktop update install task failed: {error}"))?;
@@ -1399,6 +1426,21 @@ mod tauri_glue {
             let request = String::from_utf8_lossy(&request[..read]).to_string();
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let target = tauri_plugin_updater::target().unwrap();
+            // #4522: a mirror feed that redirects within the mirror's origin
+            // (`127.0.0.1`), or to another origin (`localhost`, the same
+            // listener under another host name).
+            if path == "/mirror/redirect-in.json" || path == "/mirror/redirect-out.json" {
+                let host = if path == "/mirror/redirect-in.json" {
+                    "127.0.0.1"
+                } else {
+                    "localhost"
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 302 Found\r\nLocation: http://{host}:{port}/mirror/latest.json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                return;
+            }
             // #4522: a mirror's feed, offering a package under the mirror or,
             // for `/mirror/elsewhere.json`, outside it.
             if path == "/mirror/latest.json" || path == "/mirror/elsewhere.json" {
@@ -1687,6 +1729,23 @@ mod tauri_glue {
                 .err()
                 .expect("a download outside the mirror is refused");
             assert_eq!(error, DOWNLOAD_OUTSIDE_MIRROR);
+        }
+
+        #[test]
+        fn a_mirror_redirect_is_followed_on_the_mirror_origin_and_refused_off_it() {
+            let app = managed_app(|port| mirror(port, "redirect-in.json"));
+            let (offer, _) = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .unwrap()
+                .expect("a redirect within the mirror is followed");
+            assert_eq!(offer.version, "99.0.0");
+
+            let app = managed_app(|port| mirror(port, "redirect-out.json"));
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("a redirect off the mirror's origin is refused");
+            assert!(error.contains("redirect"), "{error}");
+            // The feed's path (where a mirror keeps its token) is redacted.
+            assert!(!error.contains("/mirror/"), "{error}");
         }
 
         #[test]
