@@ -142,7 +142,13 @@
 
     "src-server/services/notifications/agent-activity-publisher.ts",
 
-    "scripts/__tests__/nightly-build-identity.test.ts"
+    "scripts/__tests__/nightly-build-identity.test.ts",
+
+    "scripts/lib/nightly-build-identity.mjs",
+
+    "packages/shared/src/release-version-order.ts",
+
+    "packages/shared/src/__tests__/release-version-order.test.ts"
   ],
 
   "checks": [
