@@ -97,7 +97,10 @@ restarts while an agent is working, the chat marks the cut-off turn ("Station
 restarted mid-turn" or the restart notice). With the preview on, that marker
 offers **Continue** while it is still the chat's latest message, the chat has
 caught up, and no turn is running. Continue sends the agent a fixed note, as your message, asking it to
-continue from where it stopped and to check what already finished first.
+first check its working directory (`git status`, `git log`), the Task's pull request and
+issue, and any background processes, not to repeat a push, pull request,
+comment or other outside action until it has confirmed that did not already
+happen, and then to continue from where it stopped.
 Anything you were writing stays in the composer. A second tap, here or on
 another device, does not send it again. A newer message retires the button.
 If the agent refuses it as busy, that Continue cannot be sent again; type a
