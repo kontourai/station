@@ -11,6 +11,7 @@ import { ProviderRefusalError } from '../../providers/provider-failure.js';
  */
 
 import { cpus } from 'node:os';
+import { abortError, throwIfAborted } from '../../utils/bounded-async.js';
 import { sleep } from '../../utils/sleep.js';
 
 const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
@@ -256,7 +257,7 @@ export function createRuntimeResourcePostureController(
       return lease();
     },
     async waitForEngineStart(signal) {
-      signal?.throwIfAborted();
+      throwIfAborted(signal);
       if (!engineStartReserved) return lease();
       if (waiters.length >= ENGINE_START_MAX_WAITERS)
         throw new ConcurrentEngineStartCapacityError();
@@ -272,7 +273,7 @@ export function createRuntimeResourcePostureController(
         };
         const abort = () => {
           remove();
-          reject(signal?.reason);
+          reject(abortError(signal));
         };
         const accept = (next: RuntimeEngineStartLease) => {
           cleanup();

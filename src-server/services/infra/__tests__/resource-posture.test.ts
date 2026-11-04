@@ -133,6 +133,24 @@ describe('runtime resource diagnostics', () => {
     }
   });
 
+  test('normalizes non-Error abort reasons for pending and already-aborted starts', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const abort = new AbortController();
+    const pending = controller.waitForEngineStart(abort.signal);
+    abort.abort('person left');
+    await expect(pending).rejects.toEqual(new Error('Operation aborted.'));
+    await expect(controller.waitForEngineStart(abort.signal)).rejects.toEqual(
+      new Error('Operation aborted.'),
+    );
+    const reason = new Error('cancelled by caller');
+    const errorAbort = new AbortController();
+    const errorPending = controller.waitForEngineStart(errorAbort.signal);
+    errorAbort.abort(reason);
+    await expect(errorPending).rejects.toBe(reason);
+    held.release();
+  });
+
   test('grants waiting interactive starts in arrival order', async () => {
     const controller = createRuntimeResourcePostureController();
     const held = controller.reserveEngineStart();
