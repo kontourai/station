@@ -31,7 +31,8 @@ blocking the consumer cannot bypass the wait. A per-thread commit signal yields
 while publication retries. Each built-in adapter queue permits one active consumer.
 Closing its EventStore or abandoning runtime initialization revokes that service’s
 consumer and registry subscription. Loss of the consumer or settlement by another
-service ends the wait immediately with a typed indeterminate error.
+service ends the wait immediately with a typed indeterminate error. A start already committed
+retains accepted truth after a later stream fault.
 If the announcement settles
 without a durable append, or five seconds pass without confirmation, the command
 returns `indeterminate`, attempts provider cleanup, and retains no in-memory
