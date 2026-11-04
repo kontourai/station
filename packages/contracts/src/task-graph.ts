@@ -102,6 +102,22 @@ const MAX_TASK_WORKSPACE_STRING_LENGTH = 4_096;
 export interface TaskWorktreeView {
   path: string;
   branch: string;
+  /**
+   * Set when the Task finished but its worktree was kept: its policy keeps
+   * it (`policy`), removing it would lose work (`uncommitted`, `unpushed`),
+   * a Session in it had a running turn (`session-running`, retried when the
+   * turn ends), or finalization failed (`failed`).
+   */
+  kept?: {
+    reason:
+      | 'policy'
+      | 'uncommitted'
+      | 'unpushed'
+      | 'session-running'
+      | 'failed';
+    at: string;
+    detail?: string;
+  };
 }
 
 /**

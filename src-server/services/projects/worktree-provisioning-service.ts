@@ -58,6 +58,15 @@ export interface TaskWorktreeProvisionResult {
   provenance: 'reused' | 'adopted' | 'created';
 }
 
+/** #4507: what finalizing a Task-owned worktree did. */
+export type TaskWorktreeFinalization =
+  | { outcome: 'removed' }
+  | {
+      outcome: 'kept';
+      reason: 'policy' | 'uncommitted' | 'unpushed' | 'session-running';
+      detail?: string;
+    };
+
 interface WorktreeCleanupRequest {
   metadata: WorktreeSessionMetadata;
   terminalState: WorktreeTerminalState;
@@ -544,17 +553,72 @@ export class WorktreeProvisioningService {
     }
   }
 
-  /** #4507: Task-terminal finalization of a Task-owned worktree. */
+  /**
+   * #4507: Task-terminal finalization of a Task-owned worktree. Removal
+   * deletes the checkout and its branch, so it happens only when nothing
+   * would be lost: the policy allows it, no Session in the worktree has a
+   * running turn, the checkout has no uncommitted or untracked change, and
+   * the branch has no commit that only it holds (none that a remote-tracking
+   * ref or another local branch does not also reach). A squash merge leaves
+   * the branch's own commits off the base branch, so "merged" is not the
+   * test; being on a remote is. Anything else keeps the worktree and branch
+   * and says why.
+   */
   async finalizeForTask(request: {
     metadata: WorktreeSessionMetadata;
     taskId: string;
     terminalState: WorktreeTerminalState;
-  }): Promise<'removed' | 'preserved'> {
-    assertWorktreeMetadataTaskBinding(request.metadata, request.taskId);
-    return await this.cleanup({
-      metadata: request.metadata,
-      terminalState: request.terminalState,
-    });
+    /** Whether a Session in this directory has a running turn. */
+    isWorkspaceBusy?: (path: string) => boolean;
+  }): Promise<TaskWorktreeFinalization> {
+    const { metadata } = request;
+    assertWorktreeMetadataTaskBinding(metadata, request.taskId);
+    if (
+      cleanupPolicyForTerminalState(metadata, request.terminalState) ===
+      'preserve'
+    ) {
+      await this.preserve({ metadata, terminalState: request.terminalState });
+      return { outcome: 'kept', reason: 'policy' };
+    }
+    if (request.isWorkspaceBusy?.(metadata.path))
+      return { outcome: 'kept', reason: 'session-running' };
+    await this.assertRegisteredCleanupTarget(metadata);
+    const changes = await this.git.run([
+      '-C',
+      metadata.path,
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+    ]);
+    if (changes.stdout.trim())
+      return {
+        outcome: 'kept',
+        reason: 'uncommitted',
+        detail: 'The worktree has uncommitted or untracked changes.',
+      };
+    const branchRef = `refs/heads/${metadata.branch}`;
+    const unique = await this.git.run([
+      '-C',
+      metadata.repoPath,
+      'rev-list',
+      '--max-count=1',
+      branchRef,
+      '--not',
+      '--remotes',
+      // `--exclude` patterns for `--branches` are branch names without
+      // `refs/heads/`; a prefixed one excludes nothing, and the Task's own
+      // branch would then count as another branch reaching its commits.
+      `--exclude=${metadata.branch}`,
+      '--branches',
+    ]);
+    if (unique.stdout.trim())
+      return {
+        outcome: 'kept',
+        reason: 'unpushed',
+        detail: `Branch ${metadata.branch} has commits no remote or other branch has.`,
+      };
+    await this.cleanup({ metadata, terminalState: request.terminalState });
+    return { outcome: 'removed' };
   }
 
   async provision(

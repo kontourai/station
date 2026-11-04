@@ -121,7 +121,10 @@ import {
   validateRelationshipState,
   validTaskIdentity,
 } from './task-relationship-state.js';
-import { TaskWorktreeStore } from './task-worktree-store.js';
+import {
+  type TaskWorktreeKeptReason,
+  TaskWorktreeStore,
+} from './task-worktree-store.js';
 import {
   WorktreeProvisioningService,
   type WorktreeTerminalState,
@@ -313,6 +316,13 @@ interface TaskGraphServiceDeps {
     WorktreeProvisioningService,
     'provisionForTask' | 'finalizeForTask'
   >;
+  /**
+   * #4507: whether a Session running in `path` has a running turn. A Task
+   * worktree is never removed while one does; finalization is retried
+   * through `retryDeferredTaskWorktreeFinalizations` when a turn ends.
+   * Absent (most tests): nothing is treated as running.
+   */
+  isWorkspaceBusy?: (path: string) => boolean;
   logger?: TaskGraphServiceLogger;
   /** Injectable only to make cross-instance contention deterministic in tests. */
   acquireMutationLock?: FileMutationLock;
@@ -1720,6 +1730,9 @@ export class TaskGraphService {
   private readonly taskWorktreeCustody = new Map<string, Promise<unknown>>();
   /** #4507: Task-owned worktree records, kept out of the task store. */
   private readonly taskWorktrees: TaskWorktreeStore;
+  private readonly isWorkspaceBusy?: (path: string) => boolean;
+  /** Tasks whose worktree finalization waits for a running turn to end. */
+  private readonly deferredTaskWorktrees = new Set<string>();
 
   constructor(projectHomeDir: string, deps: TaskGraphServiceDeps = {}) {
     this.worktreeProvisioning =
@@ -1728,6 +1741,7 @@ export class TaskGraphService {
       projectHomeDir,
       deps.acquireMutationLock,
     );
+    this.isWorkspaceBusy = deps.isWorkspaceBusy;
     this.orchestrationService = deps.orchestrationService;
     this.projectService = deps.projectService;
     this.localProjectIdFor = deps.localProjectIdFor;
@@ -2024,7 +2038,8 @@ export class TaskGraphService {
     const task = this.readTask(taskId);
     if (!task) return null;
     const workspaceBinding = await this.resolveWorkspaceForOpen(task);
-    const worktree = this.taskWorktrees.read(task.id, task.createdAt)?.worktree;
+    const entry = this.taskWorktrees.read(task.id, task.createdAt);
+    const worktree = entry?.worktree;
     if (!worktree) return { ...task, workspaceBinding };
     // #4507: the Task's own worktree is where its work is. The Project
     // checkout stays `workingDirectory`; the Task view's existing "Task
@@ -2036,7 +2051,11 @@ export class TaskGraphService {
         worktreePath: worktree.path,
         branch: worktree.branch,
       },
-      taskWorktree: { path: worktree.path, branch: worktree.branch },
+      taskWorktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        ...(entry.kept ? { kept: { ...entry.kept } } : {}),
+      },
     };
   }
 
@@ -4989,22 +5008,68 @@ export class TaskGraphService {
     }
   }
 
+  /**
+   * #4507: retries finalization for every terminal Task whose worktree was
+   * kept because a Session in it had a running turn. Called when a turn or
+   * Session ends; a no-op while nothing is deferred.
+   */
+  async retryDeferredTaskWorktreeFinalizations(): Promise<void> {
+    if (this.deferredTaskWorktrees.size === 0) return;
+    for (const taskId of [...this.deferredTaskWorktrees])
+      await this.finalizeTaskWorktree(taskId);
+  }
+
   /** Runs inside the Task's custody queue. */
   private async finalizeRecordedTaskWorktree(
     taskId: string,
     taskCreatedAt: string,
     status: TaskStatus,
   ): Promise<void> {
+    this.deferredTaskWorktrees.delete(taskId);
     const entry = this.taskWorktrees.read(taskId, taskCreatedAt);
     if (!entry) return;
-    const outcome = await this.worktreeProvisioning.finalizeForTask({
-      metadata: entry.worktree,
-      taskId,
-      terminalState: taskWorktreeTerminalState(status),
+    let finalization: Awaited<
+      ReturnType<WorktreeProvisioningService['finalizeForTask']>
+    >;
+    try {
+      finalization = await this.worktreeProvisioning.finalizeForTask({
+        metadata: entry.worktree,
+        taskId,
+        terminalState: taskWorktreeTerminalState(status),
+        ...(this.isWorkspaceBusy
+          ? { isWorkspaceBusy: this.isWorkspaceBusy }
+          : {}),
+      });
+    } catch (error) {
+      await this.recordTaskWorktreeKept(taskId, entry.worktree.path, {
+        reason: 'failed',
+        detail: errorMessage(error),
+      });
+      throw error;
+    }
+    if (finalization.outcome === 'removed') {
+      await this.taskWorktrees.update(taskId, (current) =>
+        current?.worktree.path === entry.worktree.path ? undefined : current,
+      );
+      return;
+    }
+    if (finalization.reason === 'session-running')
+      this.deferredTaskWorktrees.add(taskId);
+    await this.recordTaskWorktreeKept(taskId, entry.worktree.path, {
+      reason: finalization.reason,
+      ...(finalization.detail ? { detail: finalization.detail } : {}),
     });
-    if (outcome !== 'removed') return;
+  }
+
+  private async recordTaskWorktreeKept(
+    taskId: string,
+    path: string,
+    kept: { reason: TaskWorktreeKeptReason; detail?: string },
+  ): Promise<void> {
     await this.taskWorktrees.update(taskId, (current) =>
-      current?.worktree.path === entry.worktree.path ? undefined : current,
+      current?.worktree.path === path
+        ? { ...current, kept: { ...kept, at: new Date().toISOString() } }
+        : current,
     );
   }
 
