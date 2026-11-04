@@ -37,6 +37,10 @@ import {
   type TerminalJournalOptions,
 } from './terminal-journal.js';
 import {
+  TerminalHistoryLocationUnavailable,
+  TerminalJournalPrivacy,
+} from './terminal-journal-privacy.js';
+import {
   defaultTerminalJournalDirectory,
   type TerminalRetention,
 } from './terminal-retention.js';
@@ -149,6 +153,51 @@ const recordSchema = scopeSchema
   })
   .strict();
 type SessionRecord = z.infer<typeof recordSchema>;
+/**
+ * A record as a caller sees it. `journalRoot` is storage layout and never
+ * leaves the service; the launch directory and the process id are host
+ * details for operate authority only.
+ */
+export type TerminalSessionView = Omit<SessionRecord, 'cwd' | 'journalRoot'> & {
+  /** The launch directory; present only for a caller who may operate it. */
+  cwd?: string;
+};
+
+function sessionView(
+  record: SessionRecord,
+  operate: boolean,
+): TerminalSessionView {
+  // Named fields, never a spread: a field added to the record stays
+  // internal until it is projected here deliberately.
+  return {
+    projectId: record.projectId,
+    bindingKey: record.bindingKey,
+    terminalId: record.terminalId,
+    cols: record.cols,
+    rows: record.rows,
+    status: record.status,
+    journalUnavailable: record.journalUnavailable,
+    createdAt: record.createdAt,
+    ...(record.launch && { launch: { ...record.launch } }),
+    ...(record.exitCode !== undefined && { exitCode: record.exitCode }),
+    ...(record.exitSignal !== undefined && { exitSignal: record.exitSignal }),
+    ...(record.kind && { kind: record.kind }),
+    ...(record.outputCapBytes !== undefined && {
+      outputCapBytes: record.outputCapBytes,
+    }),
+    ...(record.outputCapped !== undefined && {
+      outputCapped: record.outputCapped,
+    }),
+    ...(record.restart && { restart: { ...record.restart } }),
+    ...(record.legacy && { legacy: { ...record.legacy } }),
+    ...(record.ordinal !== undefined && { ordinal: record.ordinal }),
+    ...(record.persist !== undefined && { persist: record.persist }),
+    ...(record.endedAt !== undefined && { endedAt: record.endedAt }),
+    ...(record.restoredAt !== undefined && { restoredAt: record.restoredAt }),
+    ...(record.hostStopped && { hostStopped: record.hostStopped }),
+    ...(operate && { cwd: record.cwd }),
+  };
+}
 type LiveSession = {
   process: IPtyProcess;
   exit: Promise<void>;
@@ -273,6 +322,7 @@ export class TerminalSessions<Principal> {
   private readonly journalOptions: TerminalJournalOptions;
   private readonly defaultRetention: TerminalRetention;
   private retention: TerminalRetention;
+  private readonly privacy: TerminalJournalPrivacy;
   private readonly listeners = new Set<(terminalId: string) => void>();
   private readonly exits = new Map<string, (exit: TerminalExit) => void>();
 
@@ -291,7 +341,12 @@ export class TerminalSessions<Principal> {
      * pass. Absent: the constructor's limits, with no age expiry.
      */
     private readonly readRetention?: () => Promise<TerminalRetention>,
+    /** Keeps each journal's directory private to this user (Windows ACLs). */
+    privacy?: TerminalJournalPrivacy,
   ) {
+    this.privacy =
+      privacy ??
+      new TerminalJournalPrivacy(defaultTerminalJournalDirectory(home));
     this.journalOptions = resolveTerminalJournalOptions(journalOptions);
     this.budget = limitsSchema.parse(limits);
     this.defaultRetention = {
@@ -626,7 +681,8 @@ export class TerminalSessions<Principal> {
         await this.persist();
         throw error;
       }
-      return { record: { ...record }, exited };
+      // Opening needs operate authority, checked above.
+      return { record: sessionView(record, true), exited };
     });
   }
 
@@ -968,16 +1024,14 @@ export class TerminalSessions<Principal> {
     await this.check(principal, scope, 'observe');
     await this.ready;
     await this.check(principal, scope, 'observe');
+    const operate = await this.authority.authorize(principal, scope, 'operate');
     return [...this.records.values()]
       .filter(
         (record) =>
           record.projectId === scope.projectId &&
           record.bindingKey === scope.bindingKey,
       )
-      .map((record) => ({
-        ...record,
-        legacy: record.legacy && { ...record.legacy },
-      }));
+      .map((record) => sessionView(record, operate));
   }
 
   async read(
@@ -997,10 +1051,14 @@ export class TerminalSessions<Principal> {
       maxReadBytes,
     );
     await this.check(principal, scope, 'observe');
+    const operate = await this.authority.authorize(
+      principal,
+      record,
+      'operate',
+    );
     return {
-      ...record,
-      legacy: record.legacy && { ...record.legacy },
-      pid: this.live.get(terminalId)?.process.pid ?? null,
+      ...sessionView(record, operate),
+      pid: operate ? (this.live.get(terminalId)?.process.pid ?? null) : null,
       journal,
     };
   }
@@ -1041,14 +1099,20 @@ export class TerminalSessions<Principal> {
   /** Every record the caller may observe, across Projects and bindings. */
   async listObservable(principal: Principal) {
     await this.ready;
-    const visible: (SessionRecord & { pid: number | null })[] = [];
+    const visible: (TerminalSessionView & { pid: number | null })[] = [];
     for (const record of [...this.records.values()]) {
       if (!(await this.authority.authorize(principal, record, 'observe')))
         continue;
+      const operate = await this.authority.authorize(
+        principal,
+        record,
+        'operate',
+      );
       visible.push({
-        ...record,
-        legacy: record.legacy && { ...record.legacy },
-        pid: this.live.get(record.terminalId)?.process.pid ?? null,
+        ...sessionView(record, operate),
+        pid: operate
+          ? (this.live.get(record.terminalId)?.process.pid ?? null)
+          : null,
       });
     }
     return visible;
@@ -1233,11 +1297,29 @@ export class TerminalSessions<Principal> {
     let journal = this.journals.get(record.terminalId);
     if (!journal) {
       const spec = this.journalSpec(record);
-      journal = (async () => {
+      const pending: Promise<SessionJournal> = (async () => {
+        // Private before the first byte is written, wherever history lives.
+        if (spec.options.persist)
+          try {
+            await this.privacy.ensure(
+              record.journalRoot ?? this.defaultRetention.directory,
+              spec.directory,
+            );
+          } catch (error) {
+            // A later attempt may succeed once the location is fixed.
+            queueMicrotask(() => {
+              if (this.journals.get(record.terminalId) === pending)
+                this.journals.delete(record.terminalId);
+            });
+            if (error instanceof TerminalHistoryLocationUnavailable)
+              throw new TerminalSessionRefusal(error.message);
+            throw error;
+          }
         const value = new TerminalJournal(spec.directory, spec.options);
         await value.load();
         return value;
       })();
+      journal = pending;
       this.journals.set(record.terminalId, journal);
     }
     return journal;
@@ -1295,9 +1377,22 @@ export class TerminalSessions<Principal> {
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
       await rename(from, to);
+      try {
+        // Renamed, it keeps the ACL of where it was.
+        await this.privacy.protect(root, to);
+      } catch (error) {
+        await rename(to, from);
+        throw error;
+      }
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-        await cp(from, to, { recursive: true, errorOnExist: true });
+        // Private before any copied byte lands in it.
+        await this.privacy.protect(root, to);
+        await cp(from, to, {
+          recursive: true,
+          errorOnExist: true,
+          force: false,
+        });
         await rm(from, { recursive: true, force: true });
       } else if (!this.notFound(error)) {
         logger.warn('Terminal journal could not be moved', {

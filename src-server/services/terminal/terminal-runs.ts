@@ -55,6 +55,11 @@ export interface TerminalRun {
 
 const TERMINAL_RUN_APPROVAL_TTL_MS = 10 * 60_000;
 export const TERMINAL_RUN_MAX_PENDING_PER_CONVERSATION = 3;
+/**
+ * Unanswered requests across every conversation. A conversation's own limit
+ * does not bound how many conversations ask at once.
+ */
+export const TERMINAL_RUN_MAX_PENDING = 64;
 export const TERMINAL_RUN_MAX_COMMAND_CHARS = 8192;
 /** A run that ended is still shown to the person this long, with its exit. */
 const TERMINAL_RUN_RECENT_MS = 60_000;
@@ -78,12 +83,27 @@ export class TerminalRunRequests {
     subdirectory?: string;
   }):
     | { outcome: 'requested'; run: TerminalRun }
-    | { outcome: 'limit-reached' } {
+    | { outcome: 'limit-reached' }
+    | { outcome: 'capacity-reached' } {
+    // Expiry is otherwise read lazily per request; admission needs every
+    // conversation's current state, and only settled requests can be pruned.
+    for (const run of this.runs.values()) this.expire(run);
+    this.prune(input.conversationId, 1);
     const pending = this.forConversation(input.conversationId).filter(
       (run) => run.state === 'needs_approval',
     );
     if (pending.length >= TERMINAL_RUN_MAX_PENDING_PER_CONVERSATION)
       return { outcome: 'limit-reached' };
+    let unanswered = 0;
+    for (const run of this.runs.values())
+      if (run.state === 'needs_approval') unanswered++;
+    // Open requests are never pruned, so a full store refuses instead of
+    // growing past its bound.
+    if (
+      unanswered >= TERMINAL_RUN_MAX_PENDING ||
+      this.runs.size >= MAX_RECORDS
+    )
+      return { outcome: 'capacity-reached' };
     const at = this.now();
     const run: TerminalRun = {
       id: randomUUID(),
@@ -218,8 +238,11 @@ export class TerminalRunRequests {
     for (const listener of [...(this.waiters.get(run.id) ?? [])]) listener();
   }
 
-  /** Forgets the oldest settled requests past the per-conversation and total bounds. */
-  private prune(conversationId: string): void {
+  /**
+   * Forgets the oldest settled requests past the per-conversation and total
+   * bounds, leaving `room` free records for a request about to be added.
+   */
+  private prune(conversationId: string, room = 0): void {
     const settled = (runs: Iterable<TerminalRun>) =>
       [...runs]
         .filter((run) => !OPEN_STATES.has(run.state))
@@ -229,12 +252,12 @@ export class TerminalRunRequests {
     );
     for (const run of settled(own).slice(
       0,
-      Math.max(0, own.length - MAX_RECORDS_PER_CONVERSATION),
+      Math.max(0, own.length + room - MAX_RECORDS_PER_CONVERSATION),
     ))
       this.runs.delete(run.id);
     for (const run of settled(this.runs.values()).slice(
       0,
-      Math.max(0, this.runs.size - MAX_RECORDS),
+      Math.max(0, this.runs.size + room - MAX_RECORDS),
     ))
       this.runs.delete(run.id);
   }

@@ -5759,7 +5759,9 @@ and act for the verified caller's own conversation:
   owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
   outside a Project is refused (409 `terminal_run_needs_project`), as is one
   with no recorded owner (409 `terminal_run_owner_required`), and a fourth
-  waiting request (409 `terminal_run_limit_reached`). It answers
+  waiting request (409 `terminal_run_limit_reached`). Across all chats, at
+  most 64 requests wait at once and 512 are retained; past either, a request
+  is refused (429 `terminal_run_capacity_reached`). It answers
   `{runId, state: "needs_approval", command, cwd, …}` at once.
 - `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
   `waitSeconds` (0–50) waits for its state to change first. Once it started,

@@ -5,6 +5,7 @@ import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
  * Config Routes - app configuration management
  */
 
+import { normalize } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -271,6 +272,9 @@ export function createConfigRoutes(
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
   canSaveAuthorFull?: () => Promise<boolean>,
+  // #3994: why terminal history can't be kept private in a directory, or
+  // null. Production probes the location (Windows ACLs); absent, no probe.
+  terminalHistoryLocationProblem?: (directory: string) => Promise<string | null>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -810,6 +814,27 @@ export function createConfigRoutes(
             },
             403,
           );
+        }
+        const directory =
+          typeof merged.terminalHistoryDirectory === 'string'
+            ? merged.terminalHistoryDirectory.trim()
+            : '';
+        if (
+          directory &&
+          terminalHistoryLocationProblem &&
+          changesAny(body as object, current, ['terminalHistoryDirectory'])
+        ) {
+          const location = await terminalHistoryLocationProblem(
+            normalize(directory),
+          );
+          if (location)
+            return c.json(
+              {
+                success: false,
+                error: `terminalHistoryDirectory: ${location} No settings were saved.`,
+              },
+              400,
+            );
         }
       }
 
