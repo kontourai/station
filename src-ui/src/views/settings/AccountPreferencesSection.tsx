@@ -22,7 +22,7 @@ import { settingsRow } from './settings-catalog';
 
 export function AccountPreferencesSection() {
   const account = useAccountPreferences();
-  const recoveryRegion = useRef<HTMLDivElement>(null);
+  const recoveryRegion = useRef<HTMLElement>(null);
   const retryTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     const trigger = retryTrigger.current;
@@ -104,10 +104,9 @@ export function AccountPreferencesSection() {
               : 'Saved on this device. Sign in to sync.'}
         </p>
       )}
-      <div
+      <section
         className="settings__account-help"
         ref={recoveryRegion}
-        role="region"
         aria-label="Account preferences"
         tabIndex={-1}
       >
@@ -128,7 +127,7 @@ export function AccountPreferencesSection() {
             engine. Existing chats and unattended jobs keep their settings.
           </p>
         </details>
-      </div>
+      </section>
       <PageRow
         {...settingsRow('account-preference-sync')}
         description="Fills account choices you haven’t saved yet."
