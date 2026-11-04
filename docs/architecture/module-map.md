@@ -2356,6 +2356,33 @@ retains unconfirmed host custody. These scripted cases establish local protocol
 behavior, with their existing unrelated expected failures and skips preserved;
 they do not qualify live providers, devices or installed releases.
 
+## Turn dispatch origin
+
+Each `turn.started` a send produces records who caused the turn
+(`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
+`automation` or `unknown`. Station classifies it when it admits the
+`sendTurn`, never from a request body or an engine. A server caller passes
+its own classification in the dispatch's internal options (`turnOrigin`):
+the delegation start sends `delegation`, and the conversation inbox's
+placement uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
+(an Automation's entry is `automation`, a person's `interactive`, Station's
+own entry into a Session whose room execution binding names a Task
+`task-dispatch`). Without one, `classifyTurnDispatchOrigin` in the
+[orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
+reads a person's client (operator or paired device) as `interactive` and
+anything else as `unknown`. [`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
+stamps the value. A classified origin holds an early start back until the
+send is accepted, as a client origin does, and an engine-supplied value is
+dropped. Readers use `turnDispatchOrigin` from
+`@kontourai/station-contracts/runtime-events`, which reads a missing or
+unrecognised value, including every event persisted before the field, as
+`unknown`. Steers and engine-opened turns carry none. Nothing acts on the
+field yet. Evidence: `turn-dispatch-origin.test.ts` (real service and event
+store, early engine start), `client-origin-propagation.test.ts`,
+`task-dispatch-agent-binding.routes.test.ts` (a real dispatched Task Session
+through `continueExecutionTargetMessage`) and the classifier table in
+`thread-inbox.test.ts`.
+
 ## SessionTurnBoundaryAuthority
 
 This owner records when a provider call may have crossed into an external effect. A restart must not turn an unknown outcome into permission to replay. The [Monument authority](../../packages/monument/src/session-boundary.ts) owns the claim protocol; Station supplies the [event and provider binding](../../src-server/services/orchestration/session-turn-boundary-binding.ts) and [SQLite composition](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts).
