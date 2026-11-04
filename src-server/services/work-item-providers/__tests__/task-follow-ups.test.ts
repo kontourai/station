@@ -38,7 +38,9 @@ import {
   answer,
   calls,
   fixture,
+  hang,
   installFakeGhGraphql,
+  noLogin,
 } from './fixtures/fake-gh-graphql.js';
 
 const temp = trackTempDirs();
@@ -496,7 +498,10 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     id.writeUInt8(0xcf, 0);
     id.writeBigUInt64BE(5770935709n, 1);
     edge.cursor = Buffer.concat([
-      Buffer.from('cursor:v2:\x93\xb42026-11-04T15:30:00Z\xb42026-11-04T15:26:23Z', 'latin1'),
+      Buffer.from(
+        'cursor:v2:\x93\xb42026-11-04T15:30:00Z\xb42026-11-04T15:26:23Z',
+        'latin1',
+      ),
       id,
     ]).toString('base64');
     submitted.data.repository.issueOrPullRequest.reviews = {
@@ -600,17 +605,18 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
         },
         followUps: holder,
       });
-      return (await source.forDispatch(task, 'session-brief', 'owner-1'))
-        .brief;
+      return (await source.forDispatch(task, 'session-brief', 'owner-1')).brief;
     };
     const never = await dispatch(graph.readTask(quiet.id)!);
     await enable();
     answerFirstPoll();
     await poll();
-    expect(holder.forRead()!.lastPolledAt({
-      taskId: quiet.id,
-      taskCreatedAt: quiet.createdAt,
-    })).toBeDefined();
+    expect(
+      holder.forRead()!.lastPolledAt({
+        taskId: quiet.id,
+        taskCreatedAt: quiet.createdAt,
+      }),
+    ).toBeDefined();
     const polled = await dispatch(graph.readTask(quiet.id)!);
     expect(polled.text).not.toContain('## Tracker follow-ups');
     expect(polled.digest).toBe(never.digest);
@@ -648,5 +654,48 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     expect(second).toContain('last read 2026-11-04T12:06:00Z');
     const digestOf = (text: string) => /digest ([0-9a-f]{16})/.exec(text)![1];
     expect(digestOf(second)).toBe(digestOf(first));
+  });
+
+  test('a hanging gh is stopped at the tick deadline and the Task stays due', async () => {
+    const task = await trackerTask();
+    await enable();
+    hang(ghDir);
+    const bounded = composeTaskFollowUpPoller(registry, false, {
+      store: () => holder.forWrite(),
+      tasks: graph,
+      reader: new GhGitHubFollowUpReader({ command: gh }),
+      deadlineMs: 400,
+    })!;
+    const started = performance.now();
+    const summary = await bounded.poll({
+      now: NOW,
+      signal: new AbortController().signal,
+    });
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(summary.outcome).toBe('stopped');
+    expect(calls(ghDir)).toHaveLength(1);
+    expect(
+      holder
+        .forRead()!
+        .lastPolledAt({ taskId: task.id, taskCreatedAt: task.createdAt }),
+    ).toBeUndefined();
+  });
+
+  test('gh without a login stops the poll after one call and backs off', async () => {
+    await trackerTask();
+    await trackerTask('2026-10-01T09:00:00.000Z', {
+      keepPullRequest: false,
+      ref: 'github:acme/widgets#14883',
+    });
+    await enable();
+    noLogin(ghDir);
+    expect(await poll()).toEqual({ outcome: 'backing-off', tasks: [] });
+    expect(calls(ghDir)).toHaveLength(1);
+    // Still inside the backoff: no gh process at all.
+    expect((await poll(NOW + 6 * 60_000)).outcome).toBe('backing-off');
+    expect(calls(ghDir)).toHaveLength(1);
+    // After it, the poller tries again (and stops again at the first call).
+    await poll(NOW + 16 * 60_000);
+    expect(calls(ghDir)).toHaveLength(2);
   });
 });

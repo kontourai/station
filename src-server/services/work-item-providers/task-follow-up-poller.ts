@@ -8,6 +8,16 @@
  * Off unless the `task-tracker-follow-ups` Feature Preview is on; with it
  * off a poll reads nothing and starts no gh process.
  *
+ * Its own single flight (`tick`), not the scheduler's: the scheduler's
+ * `automationPoller` runs automation observation, actions and repairs in one
+ * awaited chain, and a slow GitHub read must never hold them up. `tick`
+ * starts a poll unless one is still running and returns at once. Each poll
+ * has a deadline (`TASK_FOLLOW_UP_TICK_DEADLINE_MS`) that stops its gh
+ * process; Tasks it did not finish stay due. A read failure every other read
+ * would share (gh missing, not signed in, rate limited) stops the poll at
+ * once and backs off for `TASK_FOLLOW_UP_BACKOFF_MS` (in memory: a restart
+ * tries again).
+ *
  * Which Tasks: a `workItemRef` that is a github.com issue or pull request
  * the Project's board offered (`workItemProvenance: 'project-board'`, the
  * same rule every other tracker read follows), and either live or ended
@@ -66,9 +76,11 @@ const MAX_TASKS_PER_POLL = 10;
 const MAX_KEPT_PULL_REQUESTS = 10;
 /** Pages read per item per poll; a longer history resumes next poll. */
 const MAX_PAGES_PER_ITEM = 5;
+const TASK_FOLLOW_UP_TICK_DEADLINE_MS = 60_000;
+const TASK_FOLLOW_UP_BACKOFF_MS = 15 * 60 * 1000;
 
 export interface TaskFollowUpPollSummary {
-  outcome: 'disabled' | 'polled' | 'stopped';
+  outcome: 'disabled' | 'polled' | 'stopped' | 'backing-off';
   tasks: { taskId: string; items: number; recorded: number; outcome: string }[];
 }
 
@@ -82,6 +94,9 @@ export interface TaskFollowUpPollerOptions {
   };
   reader: GitHubFollowUpReader;
   logger?: Pick<Logger, 'warn'>;
+  /** Tests shorten these. */
+  deadlineMs?: number;
+  backoffMs?: number;
 }
 
 const isEnded = (task: TaskRecord) =>
@@ -135,8 +150,42 @@ function followedItems(
   return { refs, notFollowed };
 }
 
+class StopTick extends Error {}
+
 export class TaskFollowUpPoller {
+  private backoffUntil = 0;
+  private inFlight: Promise<unknown> | undefined;
+  private readonly closing = new AbortController();
+
   constructor(private readonly options: TaskFollowUpPollerOptions) {}
+
+  /** Start a poll on its own single flight; never waits for it. */
+  tick(input: { now: number; signal: AbortSignal }): void {
+    if (this.inFlight || this.closing.signal.aborted) return;
+    this.inFlight = this.poll({
+      now: input.now,
+      signal: AbortSignal.any([input.signal, this.closing.signal]),
+    })
+      .catch((error) =>
+        this.options.logger?.warn('Task follow-up poll failed', {
+          error: errorMessage(error),
+        }),
+      )
+      .finally(() => {
+        this.inFlight = undefined;
+      });
+  }
+
+  /** The running poll, if any (tests and shutdown wait on it). */
+  settled(): Promise<unknown> {
+    return this.inFlight ?? Promise.resolve();
+  }
+
+  /** Stop the running poll's gh process and wait for it to finish. */
+  async close(): Promise<void> {
+    this.closing.abort(new Error('Task follow-ups are stopping'));
+    await this.settled();
+  }
 
   async poll(input: {
     now: number;
@@ -147,6 +196,14 @@ export class TaskFollowUpPoller {
       disabled: () => false,
     });
     if (!enabled) return { outcome: 'disabled', tasks: [] };
+    if (input.now < this.backoffUntil)
+      return { outcome: 'backing-off', tasks: [] };
+    const signal = AbortSignal.any([
+      input.signal,
+      AbortSignal.timeout(
+        this.options.deadlineMs ?? TASK_FOLLOW_UP_TICK_DEADLINE_MS,
+      ),
+    ]);
     const store = this.options.store();
     if (!store) return { outcome: 'stopped', tasks: [] };
     const tasks = this.options.tasks.listTasks();
@@ -165,7 +222,7 @@ export class TaskFollowUpPoller {
       .slice(0, MAX_TASKS_PER_POLL);
     const summary: TaskFollowUpPollSummary = { outcome: 'polled', tasks: [] };
     for (const { task, incarnation } of due) {
-      if (input.signal.aborted) return { ...summary, outcome: 'stopped' };
+      if (signal.aborted) return { ...summary, outcome: 'stopped' };
       const { refs: items, notFollowed } = followedItems(
         task,
         this.options.tasks.listKeptDeclaredPullRequests(task.id),
@@ -173,22 +230,33 @@ export class TaskFollowUpPoller {
       store.replaceNotFollowed(incarnation, notFollowed);
       let recorded = 0;
       const failures: string[] = [];
-      for (const itemRef of items) {
-        if (input.signal.aborted) break;
-        try {
-          const result = await this.pollItem(
-            store,
-            incarnation,
-            itemRef,
-            input,
-          );
-          recorded += result.recorded;
-          if (result.failure) failures.push(`${itemRef}: ${result.failure}`);
-        } catch (error) {
-          failures.push(`${itemRef}: ${errorMessage(error)}`);
+      try {
+        for (const itemRef of items) {
+          if (signal.aborted) break;
+          try {
+            const result = await this.pollItem(store, incarnation, itemRef, {
+              now: input.now,
+              signal,
+            });
+            recorded += result.recorded;
+            if (result.failure) failures.push(`${itemRef}: ${result.failure}`);
+          } catch (error) {
+            if (error instanceof StopTick) throw error;
+            failures.push(`${itemRef}: ${errorMessage(error)}`);
+          }
         }
+      } catch (error) {
+        if (!(error instanceof StopTick)) throw error;
+        // This Task is not marked polled: it stays due after the backoff.
+        this.backoffUntil =
+          input.now + (this.options.backoffMs ?? TASK_FOLLOW_UP_BACKOFF_MS);
+        this.options.logger?.warn('Task follow-ups paused', {
+          reason: error.message,
+          until: new Date(this.backoffUntil).toISOString(),
+        });
+        return { ...summary, outcome: 'backing-off' };
       }
-      if (input.signal.aborted) return { ...summary, outcome: 'stopped' };
+      if (signal.aborted) return { ...summary, outcome: 'stopped' };
       const outcome = failures.length ? 'partial' : 'ok';
       if (failures.length)
         this.options.logger?.warn(
@@ -234,7 +302,11 @@ export class TaskFollowUpPoller {
         withChecks: page === 0,
         signal: input.signal,
       });
-      if (result.status !== 'read') return { recorded, failure: result.reason };
+      if (result.status !== 'read') {
+        if (result.stop && !input.signal.aborted)
+          throw new StopTick(result.reason);
+        return { recorded, failure: result.reason };
+      }
       const { comments, reviews, checks } = result.page;
       const items: FollowUpItem[] = [
         ...comments.items,

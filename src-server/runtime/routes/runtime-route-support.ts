@@ -619,12 +619,16 @@ export function configureRuntimeSupportServices(
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {
+          // #4508: started, never awaited. Follow-ups keep their own single
+          // flight and deadline, so slow GitHub reads cannot hold up the
+          // observation, actions and repairs below.
+          taskFollowUpPoller?.tick(input);
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
-          if (!input.signal.aborted) await taskFollowUpPoller?.poll(input);
         },
         async close() {
+          await taskFollowUpPoller?.close();
           taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();

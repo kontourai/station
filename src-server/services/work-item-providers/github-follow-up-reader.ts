@@ -97,6 +97,11 @@ export type FollowUpReadResult =
   | {
       status: 'not-found' | 'unauthenticated' | 'unavailable';
       reason: string;
+      /**
+       * Every other read would fail the same way (no gh, no login, rate
+       * limited), so the caller stops this tick and backs off.
+       */
+      stop?: true;
     };
 
 export interface FollowUpPageRequest {
@@ -412,6 +417,12 @@ function parseFollowUpAnswer(
     repository && isRecord(repository.issueOrPullRequest)
       ? repository.issueOrPullRequest
       : undefined;
+  if (errors.some((error) => isRecord(error) && error.type === 'RATE_LIMITED'))
+    return {
+      status: 'unavailable',
+      reason: 'GitHub rate limit reached for the gh login.',
+      stop: true,
+    };
   if (!item) {
     const notFound =
       errors.some((error) => isRecord(error) && error.type === 'NOT_FOUND') ||
@@ -523,7 +534,7 @@ export class GhGitHubFollowUpReader implements GitHubFollowUpReader {
             JSON.parse(run.stdout),
             request.withChecks,
           );
-          if (parsed.status === 'not-found') return parsed;
+          if (parsed.status === 'not-found' || parsed.stop) return parsed;
         } catch {
           // Fall through to the process failure.
         }
@@ -549,6 +560,7 @@ export class GhGitHubFollowUpReader implements GitHubFollowUpReader {
       return {
         status: 'unavailable',
         reason: 'The GitHub CLI (gh) is not installed or not on PATH.',
+        stop: true,
       };
     if (run.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER')
       return {
@@ -566,6 +578,13 @@ export class GhGitHubFollowUpReader implements GitHubFollowUpReader {
         status: 'unauthenticated',
         reason:
           'The GitHub CLI is not signed in to github.com. Run `gh auth login` on the Station host.',
+        stop: true,
+      };
+    if (/rate limit|\(HTTP 429\)/i.test(stderr))
+      return {
+        status: 'unavailable',
+        reason: 'GitHub rate limit reached for the gh login.',
+        stop: true,
       };
     return {
       status: 'unavailable',

@@ -334,7 +334,12 @@ export class TaskFollowUpStore {
         )
         .run(task.taskId, task.taskCreatedAt);
       for (const entry of entries)
-        insert.run(task.taskId, task.taskCreatedAt, entry.itemRef, entry.reason);
+        insert.run(
+          task.taskId,
+          task.taskCreatedAt,
+          entry.itemRef,
+          entry.reason,
+        );
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -349,7 +354,8 @@ export class TaskFollowUpStore {
       )
       .all(task.taskId, task.taskCreatedAt)
       .flatMap((row) =>
-        typeof row.item_ref === 'string' && row.reason === 'different-repository'
+        typeof row.item_ref === 'string' &&
+        row.reason === 'different-repository'
           ? [{ itemRef: row.item_ref, reason: 'different-repository' as const }]
           : [],
       );

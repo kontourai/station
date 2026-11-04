@@ -48,6 +48,16 @@ export function answer(
   writeFileSync(path, JSON.stringify(table));
 }
 
+/** Every later call hangs until killed. */
+export function hang(dir: string): void {
+  writeFileSync(join(dir, 'hang'), '');
+}
+
+/** Every later call fails as gh does with no login: exit 4. */
+export function noLogin(dir: string): void {
+  writeFileSync(join(dir, 'nologin'), '');
+}
+
 export function calls(dir: string): GraphqlCall[] {
   const log = join(dir, 'calls.log');
   return existsSync(log)
@@ -85,6 +95,15 @@ fs.appendFileSync(path.join(dir, 'calls.log'), JSON.stringify({
   withChecks: vars.withChecks,
   cwd: process.cwd(),
 }) + '\\n');
+if (fs.existsSync(path.join(dir, 'hang'))) {
+  // Never answers; only a kill (the caller's deadline) ends it.
+  setInterval(() => {}, 1000);
+  return;
+}
+if (fs.existsSync(path.join(dir, 'nologin'))) {
+  process.stderr.write('To get started with GitHub CLI, please run:  gh auth login\\n');
+  process.exit(4);
+}
 const table = fs.existsSync(path.join(dir, 'answers.json'))
   ? JSON.parse(fs.readFileSync(path.join(dir, 'answers.json'), 'utf8'))
   : {};
