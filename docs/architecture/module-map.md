@@ -2200,7 +2200,7 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. For an attributed fresh start, the service binds the prepared owner for command authorization while the adapter's startup event is pending. The first turn can proceed during publication retries; durable ownership and public read access still depend on persisted events. The command check continues to refuse other callers and prefers the durable owner once available. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
 
-For an adapter that announces `session.started` before its start returns, acceptance also awaits that start’s durable event, using a per-thread commit signal and the five-second background publication budget. The same event-settlement hook ends the interim start owner and resolves the commit waiter: only an appended event confirms creation. A declined, abandoned or faulted announcement returns `indeterminate`; expiry does too. Failed-start cleanup settles any interim owner even if provider teardown fails, retaining the Session handle for inspection. Deferred announcements retain their existing acceptance and owner-fallback semantics. The contention, timeout, deferred-owner and failed-stop regressions live in `src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts`.
+For an adapter that announces `session.started` before its start returns, acceptance also awaits that start’s durable event. Built-in adapter queues report announcements synchronously at enqueue, independently of consumer progress. The wait uses a per-thread commit signal and the five-second background publication budget. The same event-settlement hook ends the interim start owner and resolves the commit waiter: only an appended event confirms creation. A declined, abandoned or faulted announcement returns `indeterminate`; expiry does too. Failed-start cleanup settles any interim owner even if provider teardown fails, retaining the Session handle for inspection. Deferred announcements retain their existing acceptance and owner-fallback semantics. The contention, timeout, deferred-owner and failed-stop regressions live in `src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts`.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
@@ -2391,11 +2391,23 @@ Before a Session exists, [CreateRequestClaims](../../src-server/services/orchest
 binds request kind, authenticated user/tenant/principal, verified calling
 Session and key to input and the reserved reference. A per-request owner lock
 prevents concurrent reclaim. The start ports and peer POST boundary persist `starting` before their
-effect; an unmarked dead reservation with no Session is reclaimable. A typed
+effect; an unmarked dead reservation is reclaimable immediately, even with
+changed input, without consulting Session existence. Live or unreadable ownership,
+a starting mark, and indeterminate tombstones still refuse changed input. A typed
 rejected start with no Session releases it. Started/unconfirmed creates stay
 indeterminate with an inspection reference. Completed receipts replay for seven
-wall-clock days, then expire; unresolved claims are retained. Before effects,
-the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt;
+days of elapsed host uptime, then expire. Each ledger write persists the remaining
+duration and uptime observation under the mutation lock; forward or backward
+wall-clock jumps neither shorten nor extend that duration. If host uptime resets,
+the remaining duration is re-anchored without credit for the unobserved interval;
+repeated reboots can conservatively prolong protection. Legacy timestamped rows
+begin a full window on first observation; unfinished rows without a start time
+remain indeterminate. This host-local clock uses the same host scope as the owner
+locks, not a cross-host lease. Unresolved claims remain inspection obligations:
+after their window, a durable Session start leaves a tombstone; without such a
+record the same key can retry and may repeat an earlier unrecorded effect. Before effects,
+the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt
+plus bounded ledger bookkeeping;
 capacity is a typed HTTP 429. Legacy unfinished claims remain indeterminate.
 Evidence: [claim lifecycle and capacity](../../src-server/services/orchestration/__tests__/create-request-claims.test.ts),
 [SIGKILL cuts](../../src-server/services/orchestration/__tests__/create-request-claims.process.test.ts),
@@ -6584,6 +6596,13 @@ other terminal service or listener remains. An ACP engine's terminals are
 on personal hosts only. `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
 `endProject`, wired into the Project routes as `endProjectTerminals`.
+A person's command sessions run a Project package script by
+name or an agent's approved command
+([command programs](../../src-server/services/terminal/terminal-command-programs.ts));
+a script restarts by name. An agent's `terminal_run` requests wait in
+[TerminalRunRequests](../../src-server/services/terminal/terminal-runs.ts), one
+approval per run, and [their routes](../../src-server/routes/orchestration/terminal-runs.ts)
+start an approved one as the approving person.
 
 The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
 are read before each open and usage read: history on or off, the journal

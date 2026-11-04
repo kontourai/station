@@ -559,7 +559,7 @@ export interface ProviderAdapterShape {
   stopAll(): Promise<void>;
   /** Implementations must settle pending reads when the signal is aborted. */
   streamEvents(
-    options?: AsyncEventStreamOptions,
+    options?: AsyncEventStreamOptions<CanonicalRuntimeEvent>,
   ): AsyncIterable<CanonicalRuntimeEvent>;
   getPrerequisites?(options?: {
     signal?: AbortSignal;

@@ -319,6 +319,12 @@ product decisions.
   last journaled sequence, `exit`) to the granted generation that is
   promoted or serving. A 1.2 core announces nothing and keeps terminals in
   process; a 1.2 supervisor grants nothing.
+  The core treats a Node IPC `send()` return of `false` as possible
+  backpressure: the queued request still waits for its workload response.
+  A send-callback error, synchronous send failure or disconnected channel
+  refuses that request as unavailable. Handoff requests also keep waiting
+  for their outcome under backpressure, and a queued `drained` waits for its send
+  callback before the core exits.
   - The workload host is a child process, `station-pty-host.js`, started
     from the build root on the first `spawn`. node-pty is a native addon the
     supervisor bundle cannot carry, and a crash in it should not take the

@@ -15,6 +15,7 @@
  * module the streaming progress indicator uses) is the shared fallback so
  * this doesn't invent a second naming scheme.
  */
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
   displayLines,
   displayText,
@@ -598,6 +599,9 @@ export interface ToolCallIdentity {
  * > gsd.mjs` guessed a read in one render and a search in another.
  */
 export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
+  // `terminal_run` (#3994) carries a command it only asks a person to run:
+  // the call itself ran nothing, so it is never labelled "Ran <command>".
+  if (stationControlToolName(call.toolName) === 'terminal_run') return 'other';
   if (hasCommandArgument(call.args)) return 'exec';
   if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
     return ENGINE_KIND[call.toolKind]!;

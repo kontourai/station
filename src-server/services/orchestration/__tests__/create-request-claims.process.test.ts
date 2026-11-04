@@ -10,14 +10,20 @@ import { CreateRequestClaims } from '../create-request-claims.js';
 
 const temp = trackTempDirs();
 afterEach(() => vi.useRealTimers());
-test.each([
-  { cut: 'reserved', age: 0 },
-  { cut: 'reserved', age: 210 * 24 * 60 * 60 * 1000 },
-  { cut: 'starting', age: 0 },
-  { cut: 'rejected', age: 0 },
-])(
-  'SIGKILL after $cut (age=$age): an unmarked resumed claim reclaims without checking Session existence',
-  async ({ cut, age }) => {
+test.each(
+  [
+    { cut: 'reserved', age: 0 },
+    { cut: 'reserved', age: 210 * 24 * 60 * 60 * 1000 },
+    { cut: 'starting', age: 0 },
+    { cut: 'rejected', age: 0 },
+  ].flatMap((row) =>
+    row.cut === 'starting'
+      ? [{ ...row, changed: true }]
+      : [false, true].map((changed) => ({ ...row, changed })),
+  ),
+)(
+  'SIGKILL after $cut (age=$age, changed=$changed): input conflicts while live and reclaims only after an unmarked owner dies',
+  async ({ cut, age, changed }) => {
     const home = temp('create-owner-crash-');
     const child = spawn(
       process.execPath,
@@ -66,8 +72,6 @@ test.each([
           no(error);
         });
       });
-      child.kill('SIGKILL');
-      await exit;
       const effect = vi.fn(async (sessionId: string) => ({
         conversationId: sessionId,
         sessionId,
@@ -86,10 +90,6 @@ test.each([
           },
         },
       }));
-      if (age) {
-        vi.useFakeTimers({ toFake: ['Date'] });
-        vi.setSystemTime(Date.now() + age);
-      }
       await expect(
         new CreateRequestClaims(home).run(
           {
@@ -108,6 +108,39 @@ test.each([
         ),
       ).rejects.toMatchObject({ code: 'create_request_conflict' });
       expect(effect).not.toHaveBeenCalled();
+      child.kill('SIGKILL');
+      await exit;
+      if (age) {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.now() + age);
+      }
+      const retryWithInput = new CreateRequestClaims(home).run(
+        {
+          kind: 'foreground',
+          principal: undefined,
+          authority: sessionReadAuthorityFromRequest(
+            'operator',
+            undefined,
+            undefined,
+          ),
+          requestKey: 'crash-key',
+          intent: { message: changed ? 'changed input' : 'original input' },
+          hasSessionStartRecord: () => false,
+        },
+        effect,
+      );
+      if (cut === 'starting') {
+        await expect(retryWithInput).rejects.toMatchObject({
+          code: 'create_request_conflict',
+        });
+        expect(effect).not.toHaveBeenCalled();
+      } else {
+        await expect(retryWithInput).resolves.toMatchObject({
+          providerTurnId: 'original-provider-turn',
+        });
+        expect(effect).toHaveBeenCalledOnce();
+        return;
+      }
       const retry = new CreateRequestClaims(home).run(
         {
           kind: 'foreground',
