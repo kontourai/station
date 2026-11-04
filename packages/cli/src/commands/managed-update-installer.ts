@@ -11,6 +11,7 @@ import {
   managedUpdatesRefusal,
 } from '@kontourai/station-contracts/managed-policy';
 import { loadInstalledManagedPolicy } from '@kontourai/station-shared/managed-policy';
+import { isPackagedReleaseChannel } from '@kontourai/station-shared/prebuilt-archive';
 
 /** The installer variable that sends every download to the mirror. */
 export const INSTALLER_MIRROR_ENV = 'STATION_INSTALL_MIRROR_URL';
@@ -35,16 +36,18 @@ export class ManagedUpdateRefusedError extends Error {
 
 /**
  * Why the policy refuses any update on `ring`, as a full sentence, or null.
- * An unknown ring (null) could be nightly, so it cannot pass a nightly
- * refusal.
+ * Only the release rings this build ships (`STATION_RELEASE_RINGS`) are
+ * known. Any other value, like a missing one, could be a nightly build, so
+ * it cannot pass a nightly refusal.
  */
 export function managedRingRefusal(
   updates: ManagedPolicyUpdatesLimit | null,
   ring: string | null,
 ): string | null {
-  const refusal = managedUpdatesRefusal(updates, ring);
+  const knownRing = isPackagedReleaseChannel(ring) ? ring : null;
+  const refusal = managedUpdatesRefusal(updates, knownRing);
   if (refusal) return `${refusal}.`;
-  if (ring === null && updates?.allowNightly === false)
+  if (knownRing === null && updates?.allowNightly === false)
     return "This machine's managed policy makes the nightly channel unavailable, and Station cannot tell which release channel this install updates from.";
   return null;
 }
@@ -97,7 +100,7 @@ export function managedInstallerEnv(input: {
  * records `releaseChannel` in the install state; an install state without
  * it, or a nightly-numbered version on either side, is read as nightly when
  * any signal says so, because a nightly refusal must not pass on a missing
- * field. Null when nothing names the ring.
+ * field. Null when nothing names a release ring this build ships.
  */
 export function launcherUpdateRing(input: {
   releaseChannel: unknown;
@@ -114,7 +117,8 @@ export function launcherUpdateRing(input: {
     nightlyVersion(input.targetVersion)
   )
     return 'nightly';
-  if (typeof input.releaseChannel === 'string' && input.releaseChannel !== '')
+  // Only a ring this build ships; anything else is unknown, not a pass.
+  if (isPackagedReleaseChannel(input.releaseChannel))
     return input.releaseChannel;
   return null;
 }

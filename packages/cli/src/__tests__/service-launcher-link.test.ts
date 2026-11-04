@@ -946,6 +946,48 @@ describe('staging under the managed update limit (#4522)', () => {
     expect(harness.sent).toEqual([]);
   });
 
+  // #4522 round 2: only a shipped ring is known. A value Station does not
+  // ship (a future or misspelled ring) could be nightly, so it must not pass.
+  test('allowNightly: false refuses applying a staged version on an unrecognized ring', async () => {
+    const harness = stagedLink({
+      channel: 'stable',
+      releaseChannel: 'future-ring',
+    });
+    harness.installPolicy({ allowNightly: false });
+    const request = writeServiceUpdateRequest(harness.installRoot, '1.2.0', {
+      mode: 'apply',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({
+        requestId: request.id,
+        status: 'failed',
+        reason:
+          "This machine's managed policy makes the nightly channel unavailable, and Station cannot tell which release channel this install updates from.",
+      }),
+    );
+    expect(harness.sent).toEqual([]);
+  });
+
+  test.each(['future-ring', 'Nightly', 'beta', 'toString'])(
+    'allowNightly: false refuses a stage on the unrecognized ring %j',
+    async (releaseChannel) => {
+      const { installRoot, env, dump } = stagingFixture('stable', {
+        allowNightly: false,
+      });
+      writeFileSync(
+        join(installRoot, '.station-release-state.json'),
+        JSON.stringify({ channel: 'stable', releaseChannel }),
+      );
+      await expect(
+        stageServiceUpdate({ installRoot, version: '1.0.0', env }),
+      ).rejects.toThrow(
+        "This machine's managed policy makes the nightly channel unavailable, and Station cannot tell which release channel this install updates from.",
+      );
+      expect(existsSync(dump)).toBe(false);
+    },
+  );
+
   test('a staged stable version is still applied when the policy allows it', async () => {
     const harness = stagedLink({ channel: 'stable', releaseChannel: 'stable' });
     harness.installPolicy({ allowNightly: false });
