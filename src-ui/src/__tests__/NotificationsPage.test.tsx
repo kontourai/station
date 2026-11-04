@@ -7,13 +7,14 @@ import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const clearActivity = vi.fn();
 const dismiss = vi.fn();
@@ -32,62 +33,70 @@ let snoozePreviews: { id: string; enabled: boolean }[] = [];
 const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
+let useRealUnsnooze = false;
 
 import { chooseRowAction } from './helpers/row-menu';
 
-vi.mock('@kontourai/station-sdk', () => ({
-  useNotificationsQuery: () => ({
-    data: notifications,
-    error: notificationsError,
-    isLoading: false,
-  }),
-  useAttentionQuery: () => ({ data: attention, isLoading: false }),
-  useDevicePresentation: () => undefined,
-  useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
-  useSnoozeAttentionItemMutation: () => ({
-    mutate: snoozeAttention,
-    isPending: false,
-  }),
-  useUnsnoozeAttentionItemMutation: () => ({
-    mutate: unsnoozeAttention,
-    isPending: false,
-  }),
-  useSnoozeNotificationMutation: () => ({
-    mutate: snoozeNotification,
-    isPending: false,
-  }),
-  useOrchestrationSessionsQuery: () => ({ data: sessions, isSuccess: true }),
-  useQueryClient: () => ({ invalidateQueries }),
-  sendOrchestrationTurn: vi.fn(),
-  useClearNotificationActivityMutation: () => ({
-    mutate: clearActivity,
-  }),
-  useDismissNotificationMutation: () => ({
-    isPending: false,
-    mutate: dismiss,
-  }),
-  useNotificationActionMutation: () => ({
-    isPending: false,
-    mutate: action,
-  }),
-  DevicePairingRequestActionError: class extends Error {},
-  useConfirmDevicePairingRequestMutation: () => ({
-    isPending: false,
-    error: null,
-    mutate: confirmPairing,
-  }),
-  useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
-  useDenyDevicePairingRequestMutation: () => ({
-    isPending: false,
-    error: null,
-    mutate: denyPairing,
-  }),
-  useAcknowledgeAttentionItemMutation: () => ({
-    isPending: false,
-    mutate: acknowledgeAttentionItem,
-  }),
-  acknowledgeAttentionItem: sdkMocks.acknowledgeAttentionItem,
-}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const sdk = await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    useNotificationsQuery: () => ({
+      data: notifications,
+      error: notificationsError,
+      isLoading: false,
+    }),
+    useAttentionQuery: () => ({ data: attention, isLoading: false }),
+    useDevicePresentation: () => undefined,
+    useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+    useSnoozeAttentionItemMutation: (apiBase?: string) => {
+      const mutation = sdk.useSnoozeAttentionItemMutation(apiBase);
+      return useRealUnsnooze
+        ? mutation
+        : { mutate: snoozeAttention, isPending: false };
+    },
+    useUnsnoozeAttentionItemMutation: (apiBase?: string) => {
+      const mutation = sdk.useUnsnoozeAttentionItemMutation(apiBase);
+      return useRealUnsnooze
+        ? mutation
+        : { mutate: unsnoozeAttention, isPending: false };
+    },
+    useSnoozeNotificationMutation: () => ({
+      mutate: snoozeNotification,
+      isPending: false,
+    }),
+    useOrchestrationSessionsQuery: () => ({ data: sessions, isSuccess: true }),
+    useQueryClient: () => ({ invalidateQueries }),
+    sendOrchestrationTurn: vi.fn(),
+    useClearNotificationActivityMutation: () => ({
+      mutate: clearActivity,
+    }),
+    useDismissNotificationMutation: () => ({
+      isPending: false,
+      mutate: dismiss,
+    }),
+    useNotificationActionMutation: () => ({
+      isPending: false,
+      mutate: action,
+    }),
+    DevicePairingRequestActionError: class extends Error {},
+    useConfirmDevicePairingRequestMutation: () => ({
+      isPending: false,
+      error: null,
+      mutate: confirmPairing,
+    }),
+    useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
+    useDenyDevicePairingRequestMutation: () => ({
+      isPending: false,
+      error: null,
+      mutate: denyPairing,
+    }),
+    useAcknowledgeAttentionItemMutation: () => ({
+      isPending: false,
+      mutate: acknowledgeAttentionItem,
+    }),
+    acknowledgeAttentionItem: sdkMocks.acknowledgeAttentionItem,
+  };
+});
 
 const acknowledgeAttentionItem = sdkMocks.acknowledgeAttentionItem;
 
@@ -1471,6 +1480,145 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     ];
   });
 
+  describe('Unsnooze through the SDK HTTP mutation', () => {
+    beforeEach(() => {
+      useRealUnsnooze = true;
+      snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+      act(() => {
+        toastStore.clear();
+        toastStore.clearHistory();
+      });
+    });
+
+    afterEach(() => {
+      useRealUnsnooze = false;
+      snoozePreviews = [];
+      vi.unstubAllGlobals();
+      act(() => {
+        toastStore.clear();
+        toastStore.clearHistory();
+      });
+    });
+
+    test('a rejected Unsnooze keeps the item, explains the failure and leaves retry available', async () => {
+      const request = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          expect(String(input)).toBe(
+            'http://station.test/api/attention/session-failed%3Ab/snooze',
+          );
+          expect(init?.method).toBe('DELETE');
+          return Response.json(
+            { success: false, error: 'Snooze storage is unavailable' },
+            { status: 503 },
+          );
+        },
+      );
+      vi.stubGlobal('fetch', request);
+      renderPage();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(/Couldn't unsnooze:.*Snooze storage is unavailable/),
+        ).toBeTruthy(),
+      );
+      expect(screen.getByText('Snoozed failure')).toBeTruthy();
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(
+        screen
+          .getByRole('button', { name: 'Unsnooze' })
+          .hasAttribute('disabled'),
+      ).toBe(false);
+    });
+
+    test('Unsnooze cannot send another request while its first response is pending', async () => {
+      let respond!: (response: Response) => void;
+      const response = new Promise<Response>((resolve) => {
+        respond = resolve;
+      });
+      const request = vi.fn(() => response);
+      vi.stubGlobal('fetch', request);
+      renderPage();
+      const button = screen.getByRole('button', { name: 'Unsnooze' });
+
+      fireEvent.click(button);
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      try {
+        await waitFor(() => expect(button.hasAttribute('disabled')).toBe(true));
+        fireEvent.click(button);
+        expect(request).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => {
+          respond(Response.json({ success: true }));
+          await response;
+        });
+      }
+    });
+
+    test('Undo retains its action until the unsnooze response settles and can retry a rejection', async () => {
+      let rejectUndo!: (response: Response) => void;
+      const undoResponse = new Promise<Response>((resolve) => {
+        rejectUndo = resolve;
+      });
+      let deleteRequests = 0;
+      const request = vi.fn(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          if (init?.method === 'POST') {
+            return Response.json({
+              success: true,
+              data: { snoozedUntil: later },
+            });
+          }
+          expect(init?.method).toBe('DELETE');
+          deleteRequests += 1;
+          if (deleteRequests > 1) {
+            return Response.json({ success: true });
+          }
+          return undoResponse;
+        },
+      );
+      vi.stubGlobal('fetch', request);
+      renderPage();
+      chooseRowAction('1 hour');
+      await waitFor(() => expect(toastStore.getSnapshot().length).toBe(1));
+      const notice = toastStore.getSnapshot()[0];
+      expect(notice.actions?.[0].label).toBe('Undo');
+
+      act(() => toastStore.runAction(notice.id, 0));
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      try {
+        expect(
+          toastStore.getSnapshot().find((item) => item.id === notice.id)
+            ?.pendingAction,
+        ).toBe(0);
+      } finally {
+        await act(async () => {
+          rejectUndo(
+            Response.json(
+              { success: false, error: 'Snooze storage is unavailable' },
+              { status: 503 },
+            ),
+          );
+          await undoResponse;
+        });
+      }
+      await waitFor(() =>
+        expect(
+          toastStore.getSnapshot().find((item) => item.id === notice.id)
+            ?.actionError,
+        ).toBe('Action failed. Try again.'),
+      );
+      act(() => toastStore.runAction(notice.id, 0));
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(
+          toastStore.getSnapshot().some((item) => item.id === notice.id),
+        ).toBe(false),
+      );
+    });
+  });
+
   test('with the preview on, snoozed rows leave their lists for one Snoozed section', () => {
     snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
     renderPage();
@@ -1486,7 +1634,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
 
     fireEvent.click(within(snoozed).getByRole('button', { name: 'Unsnooze' }));
-    expect(unsnoozeAttention).toHaveBeenCalledWith('session-failed:b');
+    expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
     snoozePreviews = [];
   });
 
@@ -1515,7 +1663,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
-    expect(unsnoozeAttention).toHaveBeenCalledWith('session-failed:b');
+    expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
     snoozePreviews = [];
   });
 
