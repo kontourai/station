@@ -572,17 +572,26 @@ export function isSeededAppConfigValue(
  */
 function sameJsonValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null)
+  if (
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
+    a === null ||
+    b === null
+  )
     return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a) && Array.isArray(b))
-    return a.length === b.length && a.every((item, i) => sameJsonValue(item, b[i]));
+    return (
+      a.length === b.length && a.every((item, i) => sameJsonValue(item, b[i]))
+    );
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
   return (
     aKeys.length === bKeys.length &&
     aKeys.every(
-      (k) => Object.hasOwn(b, k) && sameJsonValue(Reflect.get(a, k), Reflect.get(b, k)),
+      (k) =>
+        Object.hasOwn(b, k) &&
+        sameJsonValue(Reflect.get(a, k), Reflect.get(b, k)),
     )
   );
 }

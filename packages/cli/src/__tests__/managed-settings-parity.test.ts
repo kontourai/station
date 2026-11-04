@@ -76,7 +76,9 @@ const STORED_STATES: ReadonlyArray<{
     name: 'templateVariables seed with reordered keys',
     key: 'templateVariables',
     stored: {
-      templateVariables: [{ value: 'Station', type: 'static', key: 'AGENT_NAME' }],
+      templateVariables: [
+        { value: 'Station', type: 'static', key: 'AGENT_NAME' },
+      ],
     },
     decision: false,
   },
