@@ -14,10 +14,10 @@ import {
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { Hono } from 'hono';
-import { test, vi } from 'vitest';
+import { vi } from 'vitest';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
-import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import type { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
@@ -36,10 +36,16 @@ import {
   withReportRoundsPublication,
 } from '../report-rounds-publication.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
-import { setupFinalizer } from './delegation-source-fixtures/finalizer.js';
+import {
+  createFinalizerRuntime,
+  setupFinalizer,
+  finalizerTest as test,
+} from './delegation-source-fixtures/finalizer.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
 
-test('a lost reappraisal receipt can be finalized and replayed through Station custody', async () => {
+test('a lost reappraisal receipt can be finalized and replayed through Station custody', async ({
+  signal,
+}) => {
   const {
     h,
     reportRoot,
@@ -58,7 +64,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     setParticipant,
     runtime: initialRuntime,
     participant: initialParticipant,
-  } = await setupFinalizer();
+  } = await setupFinalizer(signal);
   let runtime = initialRuntime;
   let participant = initialParticipant;
   try {
@@ -264,7 +270,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         'Finalizer scenario cleanup failed',
       );
     assert.ok(finalized);
-    runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
     participant = Reflect.get(
       runtime,
       'runtimePublicationParticipant',
@@ -541,7 +547,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       syncBuiltinESMExports();
     }
     await runtime.shutdown();
-    runtime = new StationRuntime({ projectHomeDir: h.f.home });
+    runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
     participant = Reflect.get(
       runtime,
       'runtimePublicationParticipant',
@@ -727,9 +733,11 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
   }
 }, 60_000);
 
-test('continuation publication binds exact operation parents and isolates transaction and Flow children', async () => {
-  const h = await setup();
-  const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+test('continuation publication binds exact operation parents and isolates transaction and Flow children', async ({
+  signal,
+}) => {
+  const h = await setup('local-grant', undefined, signal);
+  const runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
   const participant = Reflect.get(
     runtime,
     'runtimePublicationParticipant',

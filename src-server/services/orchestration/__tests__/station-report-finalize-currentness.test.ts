@@ -5,7 +5,6 @@ import {
   ContinuationPublicationUncertainError,
   DelegationRoundsTransactionUncertainError,
 } from '@kontourai/flow-agents/delegation-group-rounds';
-import { test } from 'vitest';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
@@ -17,12 +16,15 @@ import {
   observeFinalTransaction,
   observeNoFinalizerEffects,
   setupFinalizer,
+  finalizerTest as test,
 } from './delegation-source-fixtures/finalizer.js';
 import { requestFor } from './delegation-source-fixtures/report.js';
 
 for (const phase of ['body', 'commit', 'return'] as const) {
-  test(`finalizer source preparation remains current through ${phase}`, async () => {
-    const f = await setupFinalizer();
+  test(`finalizer source preparation remains current through ${phase}`, async ({
+    signal,
+  }) => {
+    const f = await setupFinalizer(signal);
     const locator = join(
       f.h.f.store,
       `snapshot-${f.prepared.envelopes[0].execution_binding.source.source_admission_receipt.id}.json`,
@@ -71,8 +73,10 @@ for (const phase of ['body', 'commit', 'return'] as const) {
   }, 60_000);
 }
 
-test('prepared finalizer refuses replacement of its captured request authority in flight', async () => {
-  const f = await setupFinalizer();
+test('prepared finalizer refuses replacement of its captured request authority in flight', async ({
+  signal,
+}) => {
+  const f = await setupFinalizer(signal);
   const request = requestFor(f.h, 'POST');
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   assert.ok(principal);
@@ -94,8 +98,10 @@ test('prepared finalizer refuses replacement of its captured request authority i
   }
 }, 60_000);
 
-test('pass-through final transaction observer reaches body and durable return on valid preparation', async () => {
-  const f = await setupFinalizer();
+test('pass-through final transaction observer reaches body and durable return on valid preparation', async ({
+  signal,
+}) => {
+  const f = await setupFinalizer(signal);
   const noEffects = observeNoFinalizerEffects(f);
   const observer = observeFinalTransaction(f, 'return', () => {});
   try {

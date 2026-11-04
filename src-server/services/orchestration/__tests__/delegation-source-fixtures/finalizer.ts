@@ -11,7 +11,7 @@ import {
 } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
-import { vi } from 'vitest';
+import { afterEach, type TestContext, test, vi } from 'vitest';
 import { RuntimePublicationParticipant } from '../../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../../runtime/bootstrap/station-runtime.js';
 import { StationDelegationPersistence } from '../../delegation-group-persistence.js';
@@ -19,7 +19,7 @@ import { LocalSourceAdmissionOwner } from '../../delegation-group-source-admissi
 import { StationReportGroupCustody } from '../../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
 import { createReportFlow } from './flow.js';
-import { requestFor, setup } from './report.js';
+import { NOW, requestFor, setup } from './report.js';
 
 export interface FinalizerFixture {
   h: Awaited<ReturnType<typeof setup>>;
@@ -45,8 +45,66 @@ export interface FinalizerFixture {
   participant: RuntimePublicationParticipant;
   setParticipant(next: RuntimePublicationParticipant): void;
 }
-export async function setupFinalizer(): Promise<FinalizerFixture> {
-  const h = await setup();
+const pending = new Set<Promise<unknown>>();
+const runtimes = new Set<StationRuntime>();
+const lifetimes = new Set<AbortController>();
+
+function observeFinalizerWork<T>(work: Promise<T>): Promise<T> {
+  pending.add(work);
+  void work.then(
+    () => pending.delete(work),
+    () => pending.delete(work),
+  );
+  return work;
+}
+
+export function finalizerTest(
+  name: string,
+  body: (context: TestContext) => Promise<void>,
+  timeoutMs?: number,
+): void {
+  test(name, (context) => observeFinalizerWork(body(context)), timeoutMs);
+}
+
+export function createFinalizerRuntime(
+  options: ConstructorParameters<typeof StationRuntime>[0],
+  signal?: AbortSignal,
+): StationRuntime {
+  signal?.throwIfAborted();
+  const runtime = new StationRuntime(options);
+  runtimes.add(runtime);
+  return runtime;
+}
+
+afterEach(async () => {
+  for (const lifetime of lifetimes) lifetime.abort();
+  lifetimes.clear();
+  while (pending.size) await Promise.allSettled([...pending]);
+  const closed = await Promise.allSettled(
+    [...runtimes].map((runtime) => runtime.shutdown()),
+  );
+  runtimes.clear();
+  const failures = closed.flatMap((result) =>
+    result.status === 'rejected' ? [result.reason] : [],
+  );
+  if (failures.length)
+    throw new AggregateError(failures, 'Finalizer fixture teardown failed');
+});
+
+export function setupFinalizer(
+  signal?: AbortSignal,
+): Promise<FinalizerFixture> {
+  const lifetime = new AbortController();
+  lifetimes.add(lifetime);
+  return observeFinalizerWork(
+    createFinalizer(
+      signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal,
+    ),
+  );
+}
+
+async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
+  const h = await setup('local-grant', NOW, signal);
   const reportRoot = join(h.f.home, 'report-groups');
   const sourcesRoot = join(reportRoot, 'sources');
   const dispatchRoot = join(reportRoot, 'dispatch');
@@ -89,7 +147,7 @@ export async function setupFinalizer(): Promise<FinalizerFixture> {
       maxRecoveries: 2,
     },
   });
-  const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+  const runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
   let participant = Reflect.get(
     runtime,
     'runtimePublicationParticipant',

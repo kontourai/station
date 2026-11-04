@@ -24,9 +24,10 @@ afterEach(() => {
 export async function setup(
   kind: 'local-grant' | 'ui-bootstrap' = 'local-grant',
   now = NOW,
+  signal?: AbortSignal,
 ) {
   vi.spyOn(Date, 'now').mockReturnValue(now);
-  const f = await fixture(kind);
+  const f = await fixture(kind, undefined, signal);
   const delegationAttemptClaimStore = new FileDelegationAttemptClaimStore(
     f.home,
   );
@@ -144,7 +145,7 @@ export function requestFor(
   method: 'GET' | 'POST' = 'GET',
   credential?: string,
 ) {
-  const request = new Request(h.f.req.url, { method });
+  const request = new Request(h.f.req.url, { method, signal: h.f.req.signal });
   const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
   if (!principal || principal.kind === 'internal')
     throw Error('controlled credential stamp missing');

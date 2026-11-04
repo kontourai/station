@@ -6,17 +6,20 @@ import {
   acquireStationHomeMaintenanceLease,
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
-import { test, vi } from 'vitest';
+import { vi } from 'vitest';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   closeFinalizer,
   finalizeFixture,
   observeNoFinalizerEffects,
   setupFinalizer,
+  finalizerTest as test,
 } from './delegation-source-fixtures/finalizer.js';
 
-test('original continuation failure stays first when physical Home cleanup fails and the same cleanup retries', async () => {
-  const f = await setupFinalizer();
+test('original continuation failure stays first when physical Home cleanup fails and the same cleanup retries', async ({
+  signal,
+}) => {
+  const f = await setupFinalizer(signal);
   const noEffects = observeNoFinalizerEffects(f);
   const close = vi.spyOn(
     Reflect.get(f.runtime, 'orchestrationEventStore'),

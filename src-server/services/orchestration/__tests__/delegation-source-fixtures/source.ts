@@ -30,6 +30,7 @@ export const selection = { projectSlug: 'source', resourceId: 'local:source' };
 export async function fixture(
   kind: 'local-grant' | 'ui-bootstrap' = 'local-grant',
   scope?: string,
+  signal?: AbortSignal,
 ) {
   const root = realpathSync(makeTempDir('station-delegation-source-'));
   const home = join(root, 'home');
@@ -43,6 +44,7 @@ export async function fixture(
         timeout: 5000,
         maxBuffer: 128 * 1024,
         windowsHide: true,
+        assertCurrent: () => signal?.throwIfAborted(),
       })
     ).stdout;
   await git('init', '-q');
@@ -84,6 +86,11 @@ export async function fixture(
   function request(path = '/api/orchestration/chat', init?: RequestInit) {
     const req = new Request(`http://127.0.0.1:43979${path}`, {
       ...init,
+      signal: signal
+        ? init?.signal
+          ? AbortSignal.any([signal, init.signal])
+          : signal
+        : init?.signal,
       method: 'POST',
     });
     setRuntimeAuthenticatedRequestPrincipal(req, {

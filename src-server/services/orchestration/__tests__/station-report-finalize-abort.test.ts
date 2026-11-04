@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   closeFinalizer,
@@ -7,10 +6,13 @@ import {
   observeFinalTransaction,
   observeNoFinalizerEffects,
   setupFinalizer,
+  finalizerTest as test,
 } from './delegation-source-fixtures/finalizer.js';
 
-test('request abort after the authentic finalizer parent is borrowed refuses without another effect', async () => {
-  const f = await setupFinalizer();
+test('request abort after the authentic finalizer parent is borrowed refuses without another effect', async ({
+  signal,
+}) => {
+  const f = await setupFinalizer(signal);
   const abort = new AbortController();
   const reason = new DOMException(
     'controlled in-flight finalizer abort',
