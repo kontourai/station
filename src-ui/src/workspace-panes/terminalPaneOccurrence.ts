@@ -19,7 +19,7 @@ import { isBoundedPaneText } from './pluginPaneOccurrence';
 export const TERMINAL_PANE_ID = WORKSPACE_TERMINAL_PANE_INSTANCE_PATTERN;
 const STATE_PREFIX = 'station:terminal-pane-state:v1';
 /** At most this many terminal occurrences are stored; a further one is refused. */
-export const MAX_TERMINAL_PANE_STATES = 32;
+const MAX_TERMINAL_PANE_STATES = 32;
 const MAX_STATE_BYTES = 2 * 1024;
 
 export interface TerminalPaneState {
@@ -36,9 +36,7 @@ type Storage = Pick<
   'getItem' | 'setItem' | 'removeItem' | 'length' | 'key'
 >;
 
-export function parseTerminalPaneState(
-  value: unknown,
-): TerminalPaneState | null {
+function parseTerminalPaneState(value: unknown): TerminalPaneState | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return null;
   const state = value as Record<string, unknown>;

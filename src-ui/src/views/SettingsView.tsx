@@ -249,6 +249,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     chatFontSize,
     featureSettings,
     hapticsEnabled,
+    terminalScreenReader,
     developerToolsEnabled,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
@@ -1549,6 +1550,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    <PageRow
+                      {...settingsRow('terminal-screen-reader')}
+                      description="Keep a text copy of each terminal for screen readers and announce new output."
+                      control={
+                        <Toggle
+                          checked={terminalScreenReader}
+                          onChange={(checked) =>
+                            setDeviceSetting('terminalScreenReader', checked)
+                          }
+                          label={settingsRow('terminal-screen-reader').title}
+                        />
+                      }
+                    />
                     <PageRow
                       {...settingsRow('accent-color')}
                       description="Choose an accent on the Appearance page."

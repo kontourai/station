@@ -199,6 +199,31 @@ describe('TerminalEngine over libghostty-vt', () => {
     expect(mirror.slice(-4)).toEqual(rendered);
   });
 
+  it('resets to a fresh terminal for a replay, keeping the theme', async () => {
+    const { e } = await engine(10, 2);
+    const ansi = Array.from({ length: 16 }, (_, i) => 0x101010 * (i % 15));
+    e.setTheme({
+      foreground: 0x123456,
+      background: 0xfedcba,
+      cursor: null,
+      ansi,
+      scheme: 'light',
+    });
+    e.write(text('a\r\nb\r\nc\r\n\x1b[?1049h\x1b[1;31mfull-screen'));
+    e.reset();
+    e.write(text('fresh'));
+    // Primary screen, no scrollback, and no style left over from the program.
+    expect(e.plainText().split('\n')).toEqual(['fresh']);
+    const frame = e.frame()!;
+    expect(frame.dirty[0]!.attrs[0]! & Attr.BOLD).toBeFalsy();
+    expect(frame.dirty[0]!.fg[0]).toBe(DEFAULT_COLOR);
+    expect(frame.colors).toMatchObject({
+      foreground: 0x123456,
+      background: 0xfedcba,
+    });
+    expect(frame.colors.palette[1]).toBe(ansi[1]);
+  });
+
   it('includes scrollback in the accessible text', async () => {
     const { e } = await engine(10, 2);
     e.write(text('a\r\nb\r\nc\r\nd'));

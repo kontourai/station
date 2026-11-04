@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store, the Ghostty `TerminalView`, the Coding cutover onto it and the plugin terminal target are implemented. The legacy `port + 1` stack is removed. Supervisor workloads and the layout remain proposed.
+Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, the script runner and agent terminal tools, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -88,15 +88,16 @@ checks continued shell life and retained bounds (memory mode need not pause), th
 service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
-The Settings controls for persistence/location, age and aggregate retention,
-clear-history actions, doctor reporting, and restart and command sessions in
-the UI remain follow-ups within phase 1. The server side of command sessions
-and explicit restart is implemented (see Session kinds and Sessions below). `terminal:observe` is
+The retention settings, clear-history actions and doctor reporting have since
+shipped (see [Journal](#journal) and [Migration](#migration)). Restart and
+command sessions have their server side (see Session kinds and Sessions below);
+the UI offers Restart shell for an exited shell, and no command-session UI.
+`terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
 256 characters, leaving three characters. Part b1 adds the personal-operator socket
-below. Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
-phase 3; no interim TerminalView is introduced.
+below; part b2 adds device admission, the SDK runtime and the Coding cutover;
+phase 3 adds the Ghostty view.
 
 ## Transport implementation boundary (#3994, part b1)
 
@@ -342,8 +343,37 @@ plain-text formatting of scrollback and screen (emulator rows, not bytes) and
 is kept only in screen reader mode; announcements are coalesced to one per
 second with a length cap; Escape then Tab leaves the terminal. Browsers expose
 no screen-reader signal, so the mode follows the host's setting or an explicit
-`detectScreenReader` callback. Shell-integration marks, images and ligatures
-remain deferred.
+`detectScreenReader` callback. Station's setting is the device preference
+Settings › Appearance › Terminal screen reader mode (`terminalScreenReader`),
+off by default and restored by Restore device defaults. Shell-integration
+marks, images and ligatures remain deferred.
+
+A view handed a different session while mounted (Reconnect terminal, a
+read-only change) resets its emulator to a fresh terminal (RIS plus
+scrollback) before the new attachment replays, since a fresh attachment
+replays from the oldest retained output; a retention `reset` does the same.
+The [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+fails when the reset is removed.
+
+The view keeps Copy, Paste, Find and Select all (⌘ on a Mac, Ctrl+Shift
+elsewhere), Shift+F10 and the Escape-then-Tab exit. Other ⌘ chords on a Mac and
+other Ctrl+Shift letter chords elsewhere are left to the page, so Station's
+command palette, Settings and shortcut list work from a focused terminal; the
+rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
+under "In a terminal" from the SDK's `terminalViewShortcuts`.
+
+A view refits on every change to its box through one `ResizeObserver`:
+renderer and emulator at once, the PTY with the latest size at most every
+100 ms. A real browser on an isolated Station (#3994) confirmed `tput cols`
+and `tput lines` match the drawn grid after splitter drags, collapse and
+expand, a reload (the lower panel's height persists), 1440/1024/390 widths, a
+shorter viewport standing in for the phone keyboard, rotation, a
+devicePixelRatio change and moving between the bottom panel and the right
+dock, and that `vi` redraws to fill after a drag. The scrollbar sits in the
+inset; as a flex item it had taken two columns when scrollback first
+appeared. The [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+and the [key-row geometry suite](../../src-ui/src/components/coding-layout/__tests__/TerminalKeyRow.geometry.test.tsx)
+fail when the observer, the PTY resize or the inset scrollbar is removed.
 
 ## Why
 
@@ -546,6 +576,17 @@ can never act on a session it was not granted.
 Restart and cwd changes are explicit operations. They end the shell and open
 a new journal segment; earlier segments stay readable.
 
+Deleting a Project ends its running sessions in every binding (#3994); their
+records and history stay until retention expires them, and they are never
+restored. In a dock region, a related terminal pane renders only under the
+dock's own Project, so the region already holds a deleted Project's pane
+back; the pane also resolves its Project by id and shows "That Project is
+gone" rather than attaching. The
+[session suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts),
+the [Project route suite](../../src-server/routes/projects/__tests__/projects.routes.test.ts)
+and the [pane suite](../../src-ui/src/workspace-panes/__tests__/TerminalSessionPane.test.tsx)
+cover it.
+
 **Implemented (#3994, server side).** `TerminalSessions.restart`, the socket's
 `restart` command and `POST …/terminal-sessions/:id/restart` require operate
 authority. The session keeps its id; its program is resolved again (an agent
@@ -557,7 +598,10 @@ by a supervisor workload starts one too), and the record carries
 `restart: {count, afterSeq, at}`. The new run drops the previous run's end
 time and `hostStopped` marker, so its own exit dates age expiry and decides
 whether it is restored after a host restart. Command sessions and server-owned
-launches are refused: no program is stored for them.
+launches are refused: no program is stored for them. The Coding terminal
+offers Restart shell when its shell has exited
+(`TerminalSession.restart()`); Reconnect stays for a lost connection, and a
+watch-only view offers neither.
 
 ### Journal
 
@@ -575,8 +619,8 @@ Retention is configurable in Settings › Host options (implemented, #3994):
 | Keep terminal history (`terminalHistoryEnabled`) | On | | Off: terminals opened afterwards keep only the in-memory tail and write nothing to disk |
 | Terminal history location (`terminalHistoryDirectory`) | `<home>/terminal-journals` | absolute path | Ended terminals' journals move there; a running one moves after it ends |
 | Terminal history maximum age (`terminalHistoryMaxAgeDays`) | 30 days | 1–3650 | An ended terminal's journal is deleted this long after it ended |
-| Terminal history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1–1024 | Oldest segments are compacted away first |
-| Terminal history total (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16–1048576, at least the per-terminal size | The oldest ended terminals are expired first; running ones are pinned |
+| Maximum history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1 MiB–1 GiB | Oldest segments are compacted away first |
+| Maximum total history (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16 MiB–1 TiB, at least the per-terminal maximum | The oldest ended terminals are expired first; running ones are pinned |
 
 The service reads them before each open and each usage read, and on start,
 so a change applies without a restart. Settings shows usage per Project
@@ -593,9 +637,10 @@ One authenticated WebSocket per client at `/api/terminal/socket` on the main
 origin, multiplexing every terminal the client has open as channels. This
 costs one of the browser's per-origin HTTP/1.1 connections (see
 [ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md))
-and retires `port + 1` and `GET /api/system/terminal-port`. Auth uses the
-existing first-frame gate and pairing scopes, with `terminal:operate` joined
-by a new `terminal:observe`.
+and retires `port + 1` and `GET /api/system/terminal-port`. Auth is a
+single-use ticket minted over HTTP and redeemed before the upgrade (part b2;
+the first-frame gate is gone), with `terminal:operate` joined by a new
+`terminal:observe`.
 
 - Control messages are small JSON frames (attach, detach, resize, restart,
   close, list, error).
@@ -607,13 +652,17 @@ by a new `terminal:observe`.
 - Reconnect is automatic with backoff, and every channel resumes from its
   last acknowledged sequence.
 
-A decision record will supersede the terminal exception in ADR 0018 when the
-transport lands.
+[A decision record](../decisions/terminal-same-origin-only.md) supersedes the
+terminal exception in ADR 0018.
 
 #### Remote devices
 
-Terminals work fully over every route Station serves, including the relay
-and broker, governed only by permissions. A paired device or principal gets
+Terminals work over the same-origin routes Station serves (a UI or API
+port, a same-origin proxy, a tailnet name, the relay's HTTP route and the
+native shells), governed only by permissions. The browser broker
+(DataChannel) route is intentionally unsupported: it has no socket path, and
+the SDK refuses it with `raw-egress-unavailable` before dialing. The rest of
+this section is the original proposal. A paired device or principal gets
 what its scopes grant: `terminal:observe` to watch, `terminal:operate` to
 type, resize, restart, and close, each checked per project. The relay and
 broker carry the terminal socket like any other authenticated stream; their
@@ -683,13 +732,16 @@ this, so the Ghostty surface had to ship with an equivalent:
 - **Announcements.** New output is announced through a polite live region,
   coalesced and rate-limited so a flooding command does not drown the
   reader. Bell, shell exit, and a finished script run are announced.
-- **Screen reader mode** in terminal settings, defaulting on when the
-  operating system reports a screen reader. When off, the mirror is not
-  kept, so sighted users pay nothing for it.
+- **Screen reader mode** in Settings. Implemented as a device preference,
+  off by default: browsers report no screen reader, so it cannot default on
+  when one is active. When off, the mirror is not kept, so sighted users pay
+  nothing for it.
 - **Keyboard parity.** Everything in the context menu, find, links, splits,
   and the drawer is reachable from the keyboard, with visible focus and
   shortcuts listed in the shortcut registry. Focus can always leave the
   terminal with a documented key, since the terminal otherwise captures Tab.
+  Implemented for the view's own keys (listed in the shortcuts sheet); splits
+  and drawer shortcuts do not exist yet.
 - **Contrast and motion.** Theme colors meet the design system's contrast
   rules in light and dark; cursor blink follows reduced-motion settings.
 - **Mobile.** The mirror works with VoiceOver and TalkBack in the mobile
@@ -717,7 +769,9 @@ this, so the Ghostty surface had to ship with an equivalent:
   infers a process from equal pane keys.
 - Default shortcuts: toggle drawer, new terminal, split, split vertical,
   close, find. Registered in the shortcut registry so they appear in the
-  shortcut list.
+  shortcut list. Not implemented: only the view's own keys are listed (see
+  the [emulator boundary](#emulator-implementation-boundary-3994-phase-3)),
+  and there are no splits or groups (owner decision, 2026-10-31).
 
 ### Plugins
 
@@ -767,7 +821,7 @@ is the sample plugin.
 ### Agent integration
 
 - **Add to chat** attaches a selection with its line range and cwd, through
-  the existing credential scan.
+  the existing credential scan. Implemented, without the line range.
 - **Script runner** runs project scripts and chat code blocks in a visible
   terminal, opening a new one if the active terminal is busy, and reports
   exit codes through the end marker.
@@ -778,6 +832,9 @@ is the sample plugin.
     marker, subject to the thread's approval posture.
 
   Both are recorded in the thread's activity.
+
+  The script runner and both agent tools are not implemented. An agent's own
+  ACP terminal commands run as command sessions (see Session kinds).
 
 ## Migration
 
@@ -847,6 +904,19 @@ verification.
   budget, usage and clearing, stable ordinals, and a two-client race on a
   real loopback server that yields one shell. ConPTY is not qualified there.
 - Fault injection for each isolation check and for the query stripping.
+- Listener isolation (#3994): each store session notifies only its own
+  subscribers and output never enters React state; the
+  [store suite](../../packages/sdk/src/__tests__/terminal-session-store.test.ts)
+  and the [panel suite](../../src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx)
+  fail when a channel's events reach another session or output re-renders a
+  panel.
+
+**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
+the iOS shell or the Android shell; the screen reader mode has not been used
+with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
+not qualified. The manual screen reader pass listed above has not happened.
+The browser broker (DataChannel) route is unsupported by design, not
+untested.
 
 ## Open questions
 

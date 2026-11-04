@@ -835,14 +835,8 @@ const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
 const PARKED_EXIT_WAIT_MS = 10_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
-/**
- * #3560: the wait before each retry of an observed event whose publish hit
- * store contention. Two retries, so three attempts in all. Each attempt may
- * already have waited out SQLite's busy_timeout, so the bound is what keeps a
- * second Station process from stalling the adapter stream indefinitely before
- * the interruption warning names it.
- */
-const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
+/** Bound observation retries while yielding to room-worker authorization. */
+const OBSERVED_EVENT_RETRY_BUDGET_MS = 5_000;
 /** Match the EventStore background publication write budget without blocking the loop. */
 const STARTED_SESSION_COMMIT_BUDGET_MS = 5_000;
 
@@ -2524,6 +2518,8 @@ export class OrchestrationService {
         this.isRetryablePublishFailure(event, error),
     },
   );
+  private immediateObservedWrite = false;
+
   /**
    * #3560: how many observed-event retries are asleep or running per thread
    * (overlapping retries happen when an adapter is replaced while the old
@@ -7566,7 +7562,7 @@ export class OrchestrationService {
   ): Promise<void> {
     const pending = this.startedSessionCommits.get(session.threadId);
     if (!pending) return;
-    // Built-ins enqueue before returning; allow their queue consumer to observe the start.
+    // Preserve consume-time observation for adapters without enqueue notifications.
     await scheduler.yield();
     if (signal?.aborted || !this.isAdapterCurrent(adapter))
       throw new SessionStartIndeterminateError();
@@ -12981,6 +12977,23 @@ export class OrchestrationService {
     };
   }
 
+  private observeStartedSessionEvent(
+    adapter: ProviderAdapterShape,
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (event.method !== 'session.started' || !this.isAdapterCurrent(adapter))
+      return;
+    const pending = this.startedSessionCommits.get(event.threadId);
+    if (
+      pending?.adapter === adapter &&
+      event.eventId !== pending.previousEventId
+    ) {
+      // Announcement is a producer fact; a busy consumer must not turn it into a deferred start.
+      pending.eventId ??= event.eventId;
+      pending.observedAt ??= performance.now();
+    }
+  }
+
   private async consumeAdapterEvents(
     adapter: ProviderAdapterShape,
     controller: AbortController,
@@ -12994,6 +13007,7 @@ export class OrchestrationService {
       for await (let event of splitOversizedDeltas(
         adapter.streamEvents({
           signal: controller.signal,
+          onEnqueue: (event) => this.observeStartedSessionEvent(adapter, event),
         }),
       )) {
         // #4480: whatever happens to a start or exit event from here (a skip,
@@ -13010,16 +13024,7 @@ export class OrchestrationService {
             : undefined;
         try {
           if (!this.isAdapterCurrent(adapter)) continue;
-          if (event.method === 'session.started') {
-            const pending = this.startedSessionCommits.get(event.threadId);
-            if (
-              pending?.adapter === adapter &&
-              event.eventId !== pending.previousEventId
-            ) {
-              pending.eventId = event.eventId;
-              pending.observedAt ??= performance.now();
-            }
-          }
+          this.observeStartedSessionEvent(adapter, event);
           if (event.method === ('content.host-images' as string)) {
             // Station derives this from files it read itself; an engine's
             // version would map paths to images Station never admitted.
@@ -13302,25 +13307,49 @@ export class OrchestrationService {
     if (!admitted) return true;
     let attempt = admitted;
     let retrying = false;
+    let lastBusyFailure: unknown;
+    const deadline = performance.now() + OBSERVED_EVENT_RETRY_BUDGET_MS;
+    let delayMs = 25;
     try {
-      for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
+      for (;;) {
         try {
           if (retrying && this.options.eventStore) {
-            await this.options.eventStore.waitForPublicationWrite(
-              admitted.threadId,
-              controller.signal,
-            );
-            attempt = renormalize(admitted);
+            const availability = new AbortController();
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                this.options.eventStore.waitForPublicationWrite(
+                  admitted.threadId,
+                  AbortSignal.any([controller.signal, availability.signal]),
+                ),
+                new Promise<void>((_resolve, reject) => {
+                  timeout = setTimeout(
+                    () => {
+                      availability.abort();
+                      reject(lastBusyFailure);
+                    },
+                    Math.max(0, deadline - performance.now()),
+                  );
+                }),
+              ]);
+            } finally {
+              if (timeout) clearTimeout(timeout);
+              availability.abort();
+            }
           }
-          const publish = () => this.offerOrPublishEvent(attempt);
-          return this.options.eventStore
-            ? this.options.eventStore.withImmediateWriteAttempt(publish)
-            : publish();
+          if (retrying) attempt = renormalize(admitted);
+          const previous = this.immediateObservedWrite;
+          this.immediateObservedWrite = true;
+          try {
+            return this.offerOrPublishEvent(attempt);
+          } finally {
+            this.immediateObservedWrite = previous;
+          }
         } catch (error) {
           if (error instanceof EventStoreIngressError)
             return await this.publishResidualRefusal(attempt, adapter, error);
           if (
-            delayMs === undefined ||
+            performance.now() >= deadline ||
             !this.isRetryablePublishFailure(admitted, error)
           )
             throw error;
@@ -13333,6 +13362,7 @@ export class OrchestrationService {
               error: errorMessage(error),
             },
           );
+          lastBusyFailure = error;
           if (!retrying) {
             retrying = true;
             this.observedRetryThreads.set(
@@ -13342,13 +13372,17 @@ export class OrchestrationService {
           }
           // Leave the loop free for room-worker authorization. The next attempt
           // waits asynchronously for write availability before publishing.
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              Math.min(delayMs, Math.max(0, deadline - performance.now())),
+            ),
+          );
+          delayMs = Math.min(delayMs * 2, 100);
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;
-          attempt = renormalize(admitted);
         }
       }
-      throw new Error('unreachable: the final attempt returns or throws');
     } finally {
       // Whatever the outcome, this event's retry is over. Text still retained
       // for the thread gets its window timer back once no other retry on the
@@ -15143,7 +15177,12 @@ export class OrchestrationService {
     // #3561: store before show. Nothing a client or recovery can observe
     // changes before the append commits, so a throw from it propagates from
     // here with everything below unapplied, and a retry applies it once.
-    const committed = declined ? undefined : this.appendCanonicalEvent(event);
+    const append = () => this.appendCanonicalEvent(event);
+    const committed = declined
+      ? undefined
+      : this.immediateObservedWrite && this.options.eventStore
+        ? this.options.eventStore.withImmediateWriteAttempt(append)
+        : append();
     // T5 ordering, pinned by the source invariant in this file's test
     // suite: a stop must settle even for an event the quarantine gate
     // declines, or a stop on a quarantined thread never settles and rides

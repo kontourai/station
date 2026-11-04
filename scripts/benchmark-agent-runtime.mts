@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   mkdtempDisposableSync,
   readdirSync,
@@ -71,9 +72,14 @@ const pacing = (
 if (
   pacing.some((n) => ![0, 5, 20].includes(n)) ||
   sizes.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 200) ||
-  chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 100 || n > 400)
+  chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 16384)
 )
   throw new Error('Invalid bounded workload');
+const deltaBytes = Number(
+  args.find((a) => a.startsWith('--delta-bytes='))?.slice(14) ?? 64,
+);
+if (!Number.isSafeInteger(deltaBytes) || deltaBytes < 4 || deltaBytes > 1024)
+  throw new Error('Invalid delta byte size');
 const budgetMs =
   900_000 +
   2 *
@@ -154,10 +160,14 @@ async function run(
             delta:
               !tool && index === chunks - 1
                 ? 'DONE'
-                : `step${calls}.chunk${index}: streaming runtime durability evidence `.padEnd(
-                    64,
-                    'text ',
-                  ),
+                : deltaBytes === 4
+                  ? createHash('sha256')
+                      .update(`${calls}:${index}`)
+                      .digest('base64url')
+                      .slice(0, 4)
+                  : `step${calls}.chunk${index}: streaming runtime durability evidence `
+                      .padEnd(deltaBytes, 'text ')
+                      .slice(0, deltaBytes),
           })),
           { type: 'text-end', id: 'answer' },
           ...(tool
@@ -349,6 +359,13 @@ async function run(
     let bodyChunkBytes = 0;
     let framesBytes = 0;
     let frames = 0;
+    let tables: Array<{
+      name: string;
+      bytes: number;
+      payloadBytes: number;
+      rows: number;
+    }> = [];
+    const onDiskBytes = diskBytes(dir.path);
     if (journalBytes) {
       const database = new DatabaseSync(journalPath, { readOnly: true });
       try {
@@ -367,27 +384,88 @@ async function run(
             .get()?.n,
         );
         bodiesBytes += bodyChunkBytes;
-        const projected = database
+        const blocks = database
           .prepare(
-            'SELECT count(*) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frames',
+            'SELECT coalesce(sum(last_ordinal-first_ordinal+1),0) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frame_blocks',
           )
           .get();
-        frames = Number(projected?.n);
-        framesBytes = Number(projected?.bytes);
+        frames = Number(blocks?.n);
+        framesBytes = Number(blocks?.bytes);
+        tables = database
+          .prepare(
+            'SELECT name,sum(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY name',
+          )
+          .all()
+          .map((row) => ({
+            name: String(row.name),
+            bytes: Number(row.bytes),
+            payloadBytes: 0,
+            rows: 0,
+          }));
+        for (const table of tables) {
+          if (!/^agent_steps_[a-z_]+$/.test(table.name)) continue;
+          const columns = database
+            .prepare(`PRAGMA table_info(${table.name})`)
+            .all();
+          if (!columns.length) continue;
+          const values = columns
+            .map(
+              (column) =>
+                `coalesce(length(CAST(${String(column.name)} AS BLOB)),0)`,
+            )
+            .join('+');
+          const details = database
+            .prepare(
+              `SELECT count(*) AS n,coalesce(sum(${values}),0) AS payload FROM ${table.name}`,
+            )
+            .get();
+          table.rows = Number(details?.n);
+          table.payloadBytes = Number(details?.payload);
+        }
       } finally {
         database.close();
       }
     }
-    const onDiskBytes = diskBytes(dir.path);
-    const journalBudgetBytes = 128 * 1024 + steps * 512 * 1024 + 2 * textBytes;
-    const bodyBudgetBytes = steps * 128 * 1024 + 2 * textBytes;
+    const bodyNodeBytes =
+      tables.find((table) => table.name === 'agent_steps_body_nodes')
+        ?.payloadBytes ?? 0;
+    bodiesBytes += bodyNodeBytes;
+    const inspectionSidecarBytes = diskBytes(dir.path) - onDiskBytes;
+    const journalBudgetBytes = 128 * 1024 + steps * 16 * 1024 + 3 * textBytes;
+    const bodyBudgetBytes = steps * 8 * 1024 + 2 * textBytes;
     if (
       durable &&
-      (journalBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
-    )
-      throw new Error(
-        `Benchmark storage budget exceeded: ${JSON.stringify({ journalBytes, journalBudgetBytes, bodiesBytes, bodyBudgetBytes })}`,
+      (onDiskBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
+    ) {
+      copyFileSync(journalPath, `${output}.failure.sqlite`);
+      writeFileSync(
+        `${output}.failure.json`,
+        JSON.stringify(
+          {
+            revision,
+            steps,
+            chunks,
+            paceMs,
+            deltaBytes,
+            storage: {
+              onDiskBytes,
+              journalBytes,
+              bodiesBytes,
+              framesBytes,
+              textBytes,
+              tables,
+              journalBudgetBytes,
+              bodyBudgetBytes,
+            },
+          },
+          null,
+          2,
+        ),
       );
+      throw new Error(
+        `Benchmark storage budget exceeded: ${JSON.stringify({ onDiskBytes, journalBytes, journalBudgetBytes, bodiesBytes, bodyBudgetBytes })}`,
+      );
+    }
     if (
       calls !== steps ||
       tools !== steps - 1 ||
@@ -413,6 +491,7 @@ async function run(
       durable,
       steps,
       chunks,
+      deltaBytes,
       paceMs,
       profile,
       milliseconds,
@@ -429,10 +508,15 @@ async function run(
       },
       storage: {
         textBytes,
+        inspectionSidecarBytes,
+        tables,
+        fixedBytesPerStep:
+          Math.max(0, onDiskBytes - 3 * textBytes - 128 * 1024) / steps,
         onDiskBytes,
         journalBytes,
         bodiesBytes,
         bodyChunkBytes,
+        bodyNodeBytes,
         framesBytes,
         frames,
         walPeakBytes,

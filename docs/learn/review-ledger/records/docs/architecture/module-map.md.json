@@ -1604,9 +1604,23 @@
 
     "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts",
 
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts",
+
+    "packages/agent-runtime/src/turn-references.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.test.ts",
+
     "src-server/services/orchestration/__tests__/session-start-ownership.test.ts",
 
-    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
+    "src-server/services/orchestration/__tests__/create-request-claims.routes.test.ts",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
+
+    "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
   ],
 
   "checks": [
