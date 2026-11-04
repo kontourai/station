@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-04T23:58:11Z | nightly-desktop | 0.1.11-nightly.2499.3 | `970191e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
 | 2026-11-04T23:58:08Z | nightly-android | 0.1.11-nightly.2499.3 | `970191e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
 | 2026-11-04T22:33:16Z | nightly-npm | 0.11.0-nightly.2499.41923272661 | `970191e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
 | 2026-11-04T17:19:19Z | nightly-npm | 0.11.0-nightly.2499.41868844308 | `e0b0cec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41868844308) |
@@ -418,6 +419,48 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-04T23:58:11Z · nightly-desktop · 0.1.11-nightly.2499.3
+
+- Ship SHA: `970191e5e1c4e848415971473e362f79449eca8e`
+- Artifact built at: `2026-11-04T22:39:02.416Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41923272661)
+
+### Changelog
+
+Commits since `d6ec144` ([full sha](https://github.com/kontourai/station/commit/d6ec144b4550a6d129da1bd95b24b615517d8385)):
+
+**Features**
+
+- [#4563](https://github.com/kontourai/station/pull/4563) feat(policy): managed settings defaults and locks
+- [#4482](https://github.com/kontourai/station/pull/4482) feat(troubleshoot): add Troubleshoot entry points where errors appear
+- [#4526](https://github.com/kontourai/station/pull/4526) feat(policy): load a machine managed policy at startup and fail closed
+- [#4481](https://github.com/kontourai/station/pull/4481) feat(cli): run station triage as an interactive troubleshooting session
+
+**Fixes**
+
+- [#4530](https://github.com/kontourai/station/pull/4530) fix(boards): preserve recovery drafts and contain dock scrolling
+- [#4557](https://github.com/kontourai/station/pull/4557) fix(ui): distinguish account preference load failures
+- [#4549](https://github.com/kontourai/station/pull/4549) fix: report first Fallow interruption cause and timing
+- [#4552](https://github.com/kontourai/station/pull/4552) fix(profile): preserve access and keyboard context through usage recovery
+- [#4562](https://github.com/kontourai/station/pull/4562) fix(ci): repair nightly no-op caching and qualification fixtures
+- [#4545](https://github.com/kontourai/station/pull/4545) fix(tooling): handle asynchronous Windows abort IPC failures
+- [#4538](https://github.com/kontourai/station/pull/4538) fix(tooling): launch pinned Playwright CLI on Windows
+- [#4535](https://github.com/kontourai/station/pull/4535) fix(connect): resume shared health checks after reattachment
+- [#4532](https://github.com/kontourai/station/pull/4532) fix(tasks): preserve focus when renaming a Task
+- [#4534](https://github.com/kontourai/station/pull/4534) fix(ui): let Files retry a failed listing
+- [#4533](https://github.com/kontourai/station/pull/4533) fix(setup): invalidate changed import reviews and show failures
+
+**Docs**
+
+- [#4537](https://github.com/kontourai/station/pull/4537) docs: map whole-app UX campaign scope and integrated acceptance
+
+**Other**
+
+- [#4572](https://github.com/kontourai/station/pull/4572) test(devices): start cleanup observer before publishing cancellation PID
+- [#4566](https://github.com/kontourai/station/pull/4566) test(orchestration): separate path and credential redaction probes
+- [#4539](https://github.com/kontourai/station/pull/4539) test(ui): cover mounted desktop updater recovery
 
 ## 2026-11-04T23:58:08Z · nightly-android · 0.1.11-nightly.2499.3
 
