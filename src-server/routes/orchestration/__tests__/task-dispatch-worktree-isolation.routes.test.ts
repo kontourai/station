@@ -337,7 +337,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       await next();
     });
     app.route('/', routes);
-    return { app, graph, claude, dispatcher, service };
+    return { app, graph, claude, dispatcher, service, eventStore };
   }
 
   async function createTask(app: Hono, title: string): Promise<string> {
@@ -493,17 +493,23 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
   });
 
-  // `/chat/:id/continue` and the lead wake both enter here. With the
-  // Session gone, the continuation starts a new one, which may run in the
-  // Task's worktree only because the room binding names that Task.
-  test('a follow-up to a stopped Task Session starts again in the Task worktree', async () => {
+  // `/chat/:id/continue` and the lead wake both enter here. After a Station
+  // restart no process-local workspace capability survives, so the
+  // continuation's new Session may run in the Task's worktree only because
+  // the server-written room binding names that Task.
+  test('a follow-up after a restart starts the Task Session again in the Task worktree', async () => {
     installCurrentStation(workspace, 'worktree');
-    const { app, graph, claude, service } = compose();
-    const taskId = await createTask(app, 'Follow-up Task');
-    const sessionId = await dispatch(app, taskId);
-    const worktree = graph.readTaskWorktree(taskId)!;
-    await service.dispatch({ type: 'stopSession', threadId: sessionId });
+    const before = compose();
+    const taskId = await createTask(before.app, 'Follow-up Task');
+    const sessionId = await dispatch(before.app, taskId);
+    const worktree = before.graph.readTaskWorktree(taskId)!;
+    // Station stops: the service shuts down and its store closes.
+    await before.service.shutdown();
+    services.splice(services.indexOf(before.service), 1);
+    before.eventStore.close();
+    stores.splice(stores.indexOf(before.eventStore), 1);
 
+    const after = compose();
     await continueExecutionTargetMessage(
       {
         conversationId: sessionId,
@@ -515,11 +521,11 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
           undefined,
         ),
       },
-      service,
+      after.service,
     );
 
-    expect(claude.startSession).toHaveBeenCalledTimes(2);
-    const restarted = claude.startSession.mock.calls[1]![0];
+    expect(after.claude.startSession).toHaveBeenCalledTimes(1);
+    const restarted = after.claude.startSession.mock.calls[0]![0];
     expect(restarted.cwd).toBe(worktree.path);
     expect(restarted.metadata).toMatchObject({
       worktree: expect.objectContaining({
