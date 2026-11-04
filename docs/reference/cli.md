@@ -735,8 +735,11 @@ station policy check <file> [--json]
 station policy show [--json] [--api-base=<url>|--station=<name>]
 ```
 
-`check` is offline and runs the same validation as server startup. It exits
-`0` and prints the organization, the support link, what the policy manages and
+`check` is offline and runs the same validation as server startup, except
+the structure of a composite setting value (such as `approvalGuardian`), which
+the server checks against its settings schema at startup; `check` notes that on
+each such entry. It exits `0` and prints the organization, the support link,
+one line per managed setting saying whether it is locked or a default, and
 its `sha256:` fingerprint. It exits `1` and names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
 invalid JSON, repeats a key name, or does not match the schema. It does not
@@ -826,7 +829,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
 
 `config get <key>` prints `(not set)` for an absent key.
 
@@ -849,7 +852,8 @@ once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
 side effects. `config get` reads through the live route when reachable
-(showing an env-override provenance note where one applies). On a transport
+(showing a provenance note when the value comes from the environment or from
+the managed policy). On a transport
 failure it prints a notice and shows the local home's file instead; that is
 not a reading of the unavailable target Station's configuration.
 

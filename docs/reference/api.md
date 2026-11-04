@@ -2168,6 +2168,10 @@ public app-config projection with applicable runtime-derived fields; it is not
 a raw file dump. `?project=<slug>` adds Project provenance, while the values
 remain this Station's config. It does not automatically return fully composed
 Project-effective settings. Invalid/missing Project selections return 400/404.
+With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
+holds the managed values in effect, and `provenance` reports `{source:
+'managed', locked, organization, supportUrl}` for each value the policy
+supplied; it never carries the value.
 
 ### Update App Configuration
 
@@ -2186,6 +2190,12 @@ Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
+A change to a setting the managed policy locks is refused before any other
+check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
+policy's denial sentence; nothing in the request is saved. Sending exactly the
+locked value is dropped as a no-op. `PUT /config/app/log-level` and
+`POST /config/first-run` refuse with the same body; project create and update
+refuse a locked override with 403 and the same sentence.
 See [config reference](config.md) for effective defaults and consumer limits.
 
 Raising telemetry tiers (including legacy enabled writes), or changing destinations

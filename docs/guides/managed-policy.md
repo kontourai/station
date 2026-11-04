@@ -8,25 +8,31 @@ if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. Settings, limits, configuration profiles and Group Policy
-arrive in later releases (#4517–#4524). This guide grows with them.
+precedence rules. Limits, configuration profiles and Group Policy arrive in
+later releases (#4518–#4524). This guide grows with them.
 
 ## What this release supports
 
 The current release supports the policy document, the file source, the
 fail-closed startup check, `station policy check` and `station policy show`,
-and a value-free summary that clients can read. It does **not** yet enforce
-any setting or limit. A policy that contains a setting entry or a limit key is
+a value-free summary that clients can read, and
+[managed settings](#settings): defaults and fixed values for Station settings.
+It does **not** yet enforce any limit. A policy that contains a limit key is
 refused with "not supported by this version of Station". Station never accepts
 a key it does not yet enforce, so a machine never looks managed when it is not.
 
-A valid policy today names the organization and an optional support link:
+A valid policy names the organization and an optional support link, and can
+manage settings:
 
 ```json
 {
   "schemaVersion": 1,
   "organization": "Example Corp",
-  "supportUrl": "https://help.example.com/station"
+  "supportUrl": "https://help.example.com/station",
+  "settings": {
+    "defaultMaxTurns": { "value": 40, "locked": true },
+    "checkoutStaleAfterDays": { "value": 9, "locked": false }
+  }
 }
 ```
 
@@ -35,7 +41,7 @@ A valid policy today names the organization and an optional support link:
 | `schemaVersion` | yes | Must be `1`. A newer number means you need a newer Station. |
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
-| `settings` | no | Must be empty (`{}`) in this release. |
+| `settings` | no | Managed settings, keyed by setting. See [Settings](#settings). |
 | `limits` | no | Must be empty (`{}`) in this release. |
 
 Station refuses any other key, at any level. An unknown key may be a
@@ -43,6 +49,51 @@ restriction from a newer release, and Station will not run while it cannot
 enforce one.
 
 Do not put credentials in the policy. Every user on the machine can read it.
+
+## Settings
+
+Each key under `settings` is a Station setting key, the name `station config
+get` and `station config set` use (for example `defaultMaxTurns`). Each entry
+has exactly two keys:
+
+- `"locked": true` fixes the value. Users, agents and the offline CLI cannot
+  change it, in Settings or in a project's settings, and Settings shows the
+  control as "Managed by <organization>", disabled, with a "Get help" link to
+  your `supportUrl`. A lock also replaces a project's own choice for that
+  setting.
+- `"locked": false` sets a default. It applies only where the user has not
+  chosen a value and no environment variable supplies one, and users can
+  change it. Settings labels it "<organization> default".
+
+Station never writes these values into the user's configuration. Remove the
+policy and restart, and every user's own values come back.
+
+Station checks every entry when it starts and refuses the policy if:
+
+- the key is not a Station setting, or names a field inside one
+  (`approvalGuardian.enabled`): a setting is managed as a whole, so manage
+  `approvalGuardian` with its complete value;
+- the key is a device setting (such as `theme`): those are stored on each
+  device, where the server cannot enforce them;
+- the key is an environment variable (such as `AWS_REGION`): manage the
+  setting that reads it (`region`) instead;
+- the setting is internal, derived at runtime, or secret (the policy is
+  readable by every user on the machine);
+- the value has the wrong type or is out of range, as a settings write would
+  report it; is `null` for a setting that cannot store `null`; or is a blank
+  string, which Station reads as unset;
+- a structured value (such as `approvalGuardian`) does not match Station's
+  settings schema. `station policy check` cannot see that schema and says so;
+  the server checks it before it starts listening.
+
+`station policy check` prints one line per entry saying what it does. The
+summary clients read lists the locked setting keys, never their values.
+
+When a user, an agent or a script tries to change a locked setting, Station
+refuses with "<organization>'s policy manages this setting." and the support
+link. Over HTTP that is a `403` with `code: managed_setting_locked`. Saving
+exactly the locked value from Settings, `PUT /config/app` or `station config
+set` is accepted and stores nothing.
 
 ## Where to install it
 
@@ -133,7 +184,8 @@ Station refuses to start when:
 - the document repeats a key name in the same object (`duplicate key
   <path>`), so a second `limits` cannot quietly replace the first;
 - the document does not match the schema, including a wrong `schemaVersion`,
-  an unknown key, a setting entry or a limit key;
+  an unknown key, a [settings entry Station cannot apply](#settings), or a
+  limit key;
 - more than one policy source is installed (this matters once configuration
   profiles and Group Policy are supported).
 
@@ -148,8 +200,13 @@ Fix or remove the policy, then start Station again.
 
 Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 `{ "state": "none" }`, or the source, the fingerprint and a summary: the
-organization, the support link, the locked setting paths and the effective
+organization, the support link, the locked setting keys and the effective
 limits. It never returns a setting value.
+
+`GET /config/app` returns the values in effect, managed ones included, and its
+per-setting provenance reports `{ "source": "managed", "locked": true | false,
+"organization": …, "supportUrl": … }` for a value the policy supplied.
+`station config get <key>` prints the same as a note.
 
 ## What a managed policy does not do
 

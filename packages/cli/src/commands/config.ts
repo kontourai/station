@@ -436,6 +436,7 @@ function printConfigFromFile(key?: string): void {
  * told users their `config set` had not taken effect when it had.
  *
  * `source: 'file'|'default'` prints nothing extra — the unremarkable case.
+ * `source: 'managed'` names the organization whose policy supplied it.
  */
 function describeProvenanceNote(
   key: string,
@@ -447,6 +448,13 @@ function describeProvenanceNote(
     return entry.envVar
       ? `value comes from ${entry.envVar} (nothing stored)`
       : 'value comes from the environment (nothing stored)';
+  }
+  // #4517: the machine's managed policy supplied the value.
+  if (entry.source === 'managed') {
+    const organization = entry.organization ?? 'the managed policy';
+    return entry.locked
+      ? `managed by ${organization}; it cannot be changed here`
+      : `default from ${organization}; set a value to replace it`;
   }
   return undefined;
 }
