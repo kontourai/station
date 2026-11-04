@@ -13270,17 +13270,20 @@ export class OrchestrationService {
         error,
         'Session event consumer is unavailable; inspect the session before retrying.',
       );
-      // Empty legacy streams have announced no start; preserve their deferred semantics.
-      if (!streamEnded) this.eventConsumerFailures.set(adapter, unavailable);
-      for (const pending of this.startedSessionCommits.values()) {
-        if (pending.adapter !== adapter || (streamEnded && !pending.eventId))
-          continue;
-        pending.failure = unavailable;
-        pending.resolve();
-      }
       restart =
         !streamEnded &&
+        !this.eventConsumptionStopped &&
         !(error instanceof AsyncEventQueueConsumerConflictError);
+      // A recoverable fault loses only the event settled by the per-event finally.
+      // Other queued announcements remain deliverable after the consumer restarts.
+      if (!restart) {
+        if (!streamEnded) this.eventConsumerFailures.set(adapter, unavailable);
+        for (const pending of this.startedSessionCommits.values()) {
+          if (pending.adapter !== adapter || pending.committed) continue;
+          pending.failure = unavailable;
+          pending.resolve();
+        }
+      }
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
       // failure: the agent connection was fine and our store was locked —
       // typically by another Station process using the same Station home

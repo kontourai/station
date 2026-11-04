@@ -1208,46 +1208,60 @@ test('a closed-store service releases its real station-agent consumer and launch
   }
 });
 
-test('an unavailable adapter consumer settles an announced start without spending the publication budget', async () => {
-  const f = fixture({ contend: 'none' });
-  f.adapter.deferStart = false;
-  const failed = new Error('consumer disconnected');
-  const announced = consumerGate();
-  const stream = f.adapter.streamEvents.bind(f.adapter);
-  vi.spyOn(f.adapter, 'streamEvents').mockImplementation((options) => ({
-    async *[Symbol.asyncIterator]() {
-      for await (const event of stream(options)) {
+test.each(['ended-before-delivery', 'failed-after-pull'] as const)(
+  'an unavailable adapter consumer settles an announced start without spending the publication budget (%s)',
+  async (mode) => {
+    const f = fixture({ contend: 'none' });
+    f.adapter.deferStart = false;
+    const failed = new Error('consumer disconnected');
+    const announced = consumerGate();
+    if (mode === 'ended-before-delivery') {
+      const stream = f.adapter.streamEvents.bind(f.adapter);
+      vi.spyOn(f.adapter, 'streamEvents').mockImplementation((options) => ({
+        async *[Symbol.asyncIterator]() {
+          for await (const event of stream(options)) {
+            if (event.method === 'session.started') {
+              announced.resolve();
+              return;
+            }
+            yield event;
+          }
+        },
+      }));
+    } else {
+      const append = f.store.appendEvent.bind(f.store);
+      vi.spyOn(f.store, 'appendEvent').mockImplementation((event, ...rest) => {
         if (event.method === 'session.started') {
           announced.resolve();
           throw failed;
         }
-        yield event;
-      }
-    },
-  }));
-  try {
-    const launch = f.sessions.sessionCommands.execute(
-      {
-        type: 'start-session',
-        input: {
-          threadId,
-          provider: 'claude',
-          metadata: { userId: 'owner' },
+        return append(event, ...rest);
+      });
+    }
+    try {
+      const launch = f.sessions.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner' },
+          },
         },
-      },
-      { userId: 'owner' },
-    );
-    await announced.promise;
-    const result = await Promise.race([
-      launch,
-      delay(500).then(() => 'budget burned'),
-    ]);
-    expect(result).toMatchObject({ status: 'indeterminate' });
-  } finally {
-    await f.sessions.shutdown();
-    f.store.close();
-  }
-});
+        { userId: 'owner' },
+      );
+      await announced.promise;
+      const result = await Promise.race([
+        launch,
+        delay(500).then(() => 'budget burned'),
+      ]);
+      expect(result).toMatchObject({ status: 'indeterminate' });
+    } finally {
+      await f.sessions.shutdown();
+      f.store.close();
+    }
+  },
+);
 
 test('a start observed by the live service but settled by another service fails immediately', async () => {
   const adapter = new EchoingAdapter();
@@ -1349,6 +1363,9 @@ test('a second service without a queue consumer fails its start immediately', as
     | undefined;
   try {
     services[0].initialize();
+    expect(() => adapter.events.iterable()[Symbol.asyncIterator]()).toThrow(
+      expect.objectContaining({ code: 'async_event_queue_consumer_conflict' }),
+    );
     services[1].initialize();
     launch = services[1].sessionCommands.execute(
       {
@@ -1373,3 +1390,113 @@ test('a second service without a queue consumer fails its start immediately', as
     for (const store of stores) store.close();
   }
 });
+
+test.each(['announced', 'before-announcement'] as const)(
+  'a recoverable unrelated-thread read fault preserves a healthy start (%s)',
+  async (mode) => {
+    const f = fixture({ contend: 'none' });
+    f.adapter.deferStart = mode === 'before-announcement';
+    const priorPulled = consumerGate();
+    const releasePrior = consumerGate();
+    const startUnderway = consumerGate();
+    const returnStart = consumerGate();
+    const startPulled = consumerGate();
+    const releaseStart = consumerGate();
+    const stream = f.adapter.streamEvents.bind(f.adapter);
+    vi.spyOn(f.adapter, 'streamEvents').mockImplementation((options) => ({
+      async *[Symbol.asyncIterator]() {
+        for await (const event of stream(options)) {
+          if (event.threadId === 'unrelated-read-fault') {
+            priorPulled.resolve();
+            await releasePrior.promise;
+          }
+          if (
+            event.threadId === threadId &&
+            event.method === 'session.started'
+          ) {
+            startPulled.resolve();
+            await releaseStart.promise;
+          }
+          yield event;
+        }
+      },
+    }));
+    const read = f.store.listSessionProjectionEvents.bind(f.store);
+    let injected = false;
+    vi.spyOn(f.store, 'listSessionProjectionEvents').mockImplementation(
+      (thread, ...rest) => {
+        if (thread === 'unrelated-read-fault' && !injected) {
+          injected = true;
+          throw Object.assign(new Error('database is locked'), { errcode: 5 });
+        }
+        return read(thread, ...rest);
+      },
+    );
+    f.adapter.beforeReturn = async () => {
+      startUnderway.resolve();
+      await returnStart.promise;
+    };
+    let launch:
+      | ReturnType<typeof f.sessions.sessionCommands.execute>
+      | undefined;
+    let returned: unknown;
+    try {
+      f.sessions.initialize();
+      f.adapter.events.push({
+        eventId: randomUUID(),
+        provider: 'claude',
+        threadId: 'unrelated-read-fault',
+        sessionId: 'unrelated-read-fault',
+        method: 'session.configured',
+        createdAt: new Date().toISOString(),
+      });
+      await priorPulled.promise;
+      launch = f.sessions.sessionCommands
+        .execute(
+          {
+            type: 'start-session',
+            input: {
+              threadId,
+              provider: 'claude',
+              metadata: { userId: 'owner' },
+            },
+          },
+          { userId: 'owner' },
+        )
+        .then((outcome) => {
+          returned = outcome;
+          return outcome;
+        });
+      await startUnderway.promise;
+      releasePrior.resolve();
+      await vi.waitFor(() =>
+        expect(f.warn).toHaveBeenCalledWith(
+          'Provider adapter event stream stopped',
+          expect.objectContaining({ error: 'database is locked' }),
+        ),
+      );
+      if (mode === 'before-announcement') f.adapter.publishStarted();
+      await startPulled.promise;
+      returnStart.resolve();
+      await delay(30);
+      expect(returned).toBeUndefined();
+      expect(f.adapter.sessions.has(threadId)).toBe(true);
+      releaseStart.resolve();
+      expect((await launch).status).toBe('accepted');
+      expect(
+        f.store.latestEventByMethod(threadId, 'session.started')?.payload,
+      ).toMatchObject({
+        method: 'session.started',
+        threadId,
+        metadata: { userId: 'owner' },
+      });
+      expect(f.adapter.sessions.has(threadId)).toBe(true);
+    } finally {
+      releasePrior.resolve();
+      returnStart.resolve();
+      releaseStart.resolve();
+      await launch;
+      await f.close();
+    }
+  },
+);

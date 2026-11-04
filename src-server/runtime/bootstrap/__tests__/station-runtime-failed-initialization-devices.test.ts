@@ -237,6 +237,19 @@ test.each(['inner-bootstrap', 'post-composition'] as const)(
       });
     }
     const shutdown = vi.spyOn(service, 'shutdown');
+    if (phase === 'inner-bootstrap') {
+      Object.assign(runtime, {
+        runtimeSearch: {
+          stop() {},
+          retireAfterFailedInitialization: async () => {
+            // Inner cleanup must revoke subscriptions before retiring its next service.
+            expect(shutdown).toHaveBeenCalledTimes(1);
+            expect(listeners.size).toBe(0);
+            return { state: 'closed' };
+          },
+        },
+      });
+    }
     try {
       await expect(runtime.initialize()).rejects.toBe(STARTUP_FAILURE);
       expect(listeners.size).toBe(0);
