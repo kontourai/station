@@ -7,29 +7,43 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-**NOT_READY.** Normal merge `c434d1c4cab6` integrates main through
-`8ff82a7952c`; managed dependencies and hooks pass. The merge retains main's
-interim start-owner settlement and child-work's canonical request-commit
-acknowledgement. Neither mechanism proves durable `session.started` at an
-accepted start. The separate initialized durable-start acceptance remains
-blocked on #4491, extracted and owned by #3558; the interim owner fallback stays.
-#4467 now owns agent-runtime storage, retention and speed. No retry or
-synthetic-event workaround is added.
+**NOT_READY.** Normal merge `2f3c8e6f6e83` integrates main through
+`4dc2b370a58b`, including #4467, #4502 and #4505. Managed dependencies and
+hooks pass. Independent source review found no P0–P2 merge integration defect;
+canonical request-commit acknowledgement and enqueue-time start observation
+are both retained.
 
-Canonical raw-grant owner source `ce5b15e3621` validates both the originating
-and current Home contexts, including a two-Home release-notification escape.
-Its native-unfused roster baseline measured 159 lock inspections; the safe
-candidate passes an at-most-153 bound. Both complete principal checks, independent
-policy, signer reads and uncertainty fences remain. All 44 focused cases pass,
-three guard/cost mutations fail their intended assertions, and exact restoration
-passes 44. This is an inspection-count result, not a latency or fsync saving claim.
+The unchanged initialized cold-start file ran once after #4505: 38 cases pass
+and the successful Flow report case fails. Its start observer now records
+`indeterminate`, `persisted:true`, `started:false`, followed by HTTP 503. The
+previous false `accepted` result does not recur, but successful initialized
+report execution is still unqualified. The run had 93% host CPU pressure and
+the runner's standard liveness multiplier; the explicit 120-second product
+deadline stays unchanged. No retry or synthetic-event workaround is added.
 
-At `0a2ded30b1e`, both original report-input callers pass with unchanged
-120-second deadlines and assertions. That receipt precedes the latest main
-merge and does not establish combined-source or live-provider qualification.
-The merged finalizer matrix at `c434d1c4cab6` remains red: eight checks pass,
-but the original journey times out at its unchanged 60-second limit. Its failure
-requires diagnosis; no unchanged rerun or budget increase is counted as progress.
+Registry-span repair `b2b18781082b` closes a reproduced stale-cache escape:
+a real peer revokes the grant after the original Home lease is released, yet a
+new SDK read under a replacement span returned the protected fixture credential
+before repair. Both legacy and canonical cases fail before repair, then all 41
+owner cases pass. All 70 adjacent Home/credential tests and server-test types
+pass. Independent source review establishes no P0–P2 defect, with explicit
+coverage limits. Depth-only controls added at `7f030698757c` pass all 43 owner
+cases and server-test types. Removing only the registry identity check makes
+all four snapshot/depth and legacy/canonical controls return protected data;
+exact source restoration passes all 43 cases again. These results establish
+no latency or fsync saving.
+
+The finalizer matrix at `b2b18781082b` remains red: eight adverse checks pass,
+but the original journey times out at its unchanged 60-second limit. No
+unchanged rerun or deadline increase is counted as progress. Both original
+report-input callers passed earlier at `0a2ded30b1e`, before the latest main
+merge; that receipt is not combined-source qualification.
+
+Readiness at `b2b18781082b` reports one documentation-truth failure and one
+verification-policy warning. The documentation failure is the source-review
+binding assertion in `docs-index-reachability.test.ts`; the other fourteen
+documentation-truth lanes pass. Stale reviews must be substantively refreshed,
+not bypassed or marked current from narrow runtime evidence.
 
 The sealed composer visual approval remains bound to `f138f28e20b0` and its
 four hash-bound images. The SDK compatibility changeset is committed; older
