@@ -319,7 +319,7 @@ async function main() {
         ...(Number.isInteger(uiPort) && uiPort > 0 ? [uiPort] : []),
         // Round 2: a telemetry companion outlives Station, so one already
         // running publishes these now; Start admits them again.
-        ...(localClientsOnly(managedPolicy)
+        ...(managedPolicy && localClientsOnly(managedPolicy)
           ? await managedTelemetryCompanionPorts(managedPolicy, projectHomeDir)
           : []),
       ],
