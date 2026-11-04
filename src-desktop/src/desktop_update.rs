@@ -1090,6 +1090,30 @@ mod tauri_glue {
 
     pub type AppDesktopUpdater = DesktopUpdater<Update>;
 
+    /// An updater error as text that carries no URL path, query or
+    /// credential (#4522): a mirror's feed URL may hold a path token, and
+    /// this text reaches the window state, Tauri events and logs. A reqwest
+    /// error is rebuilt from its parts: its message without the URL, then
+    /// the URL's origin alone. Every other error's text passes through
+    /// `redact_urls`.
+    pub(super) fn updater_error_text(error: tauri_plugin_updater::Error) -> String {
+        match error {
+            tauri_plugin_updater::Error::Reqwest(error) => {
+                let origin = error
+                    .url()
+                    .map(|url| url.origin())
+                    .filter(url::Origin::is_tuple)
+                    .map(|origin| origin.ascii_serialization());
+                let text = redact_urls(&error.without_url().to_string());
+                match origin {
+                    Some(origin) => format!("{text} for url ({origin}/…)"),
+                    None => text,
+                }
+            }
+            other => redact_urls(&other.to_string()),
+        }
+    }
+
     /// #4522: where the managed policy lets this app update from, decided
     /// once at startup by `managed_update_policy::route`.
     pub struct ManagedUpdateRoute(pub UpdateRoute);
@@ -1153,7 +1177,7 @@ mod tauri_glue {
                 // mirror's origin.
                 builder = builder
                     .endpoints(endpoints)
-                    .map_err(|error| redact_urls(&error.to_string()))?
+                    .map_err(updater_error_text)?
                     .configure_client(move |client| {
                         let base = base.clone();
                         client
@@ -1171,9 +1195,7 @@ mod tauri_glue {
                     });
             }
         }
-        builder
-            .build()
-            .map_err(|error| redact_urls(&error.to_string()))
+        builder.build().map_err(updater_error_text)
     }
 
     /// Manages the updater state for the app. `enabled` is the existing
@@ -1271,7 +1293,7 @@ mod tauri_glue {
                 update,
             ))),
             Ok(None) => Ok(None),
-            Err(error) => Err(redact_urls(&error.to_string())),
+            Err(error) => Err(updater_error_text(error)),
         }
     }
 
@@ -1285,16 +1307,14 @@ mod tauri_glue {
     ) -> Result<Option<Update>, String> {
         let Some(update) = build_updater(app, TIMEOUTS)?
             .restore_update(manifest.clone())
-            .map_err(|error| redact_urls(&error.to_string()))?
+            .map_err(updater_error_text)?
         else {
             return Ok(None);
         };
         if !download_allowed(&managed_route(app), update.download_url.as_str()) {
             return Err(DOWNLOAD_OUTSIDE_MIRROR.to_string());
         }
-        update
-            .verify(bytes)
-            .map_err(|error| redact_urls(&error.to_string()))?;
+        update.verify(bytes).map_err(updater_error_text)?;
         Ok(Some(update))
     }
 
@@ -1315,7 +1335,7 @@ mod tauri_glue {
         for_download(update)
             .download(|chunk, total| on_chunk(chunk, total), || {})
             .await
-            .map_err(|error| redact_urls(&error.to_string()))
+            .map_err(updater_error_text)
     }
 
     #[tauri::command]
@@ -1370,11 +1390,7 @@ mod tauri_glue {
         let installer = updater.clone();
         let installed = tauri::async_runtime::spawn_blocking(move || {
             // `Update::install` verifies the signature of the bytes first.
-            installer.install(|update, bytes| {
-                update
-                    .install(bytes)
-                    .map_err(|error| redact_urls(&error.to_string()))
-            })
+            installer.install(|update, bytes| update.install(bytes).map_err(updater_error_text))
         })
         .await
         .map_err(|error| format!("desktop update install task failed: {error}"))?;
@@ -1746,6 +1762,37 @@ mod tauri_glue {
             assert!(error.contains("redirect"), "{error}");
             // The feed's path (where a mirror keeps its token) is redacted.
             assert!(!error.contains("/mirror/"), "{error}");
+        }
+
+        /// #4522 round 2: a real reqwest error for a feed whose path holds
+        /// parentheses keeps only the mirror's origin; no part of the path
+        /// (where a mirror keeps its token) survives.
+        #[test]
+        fn a_mirror_request_error_keeps_only_the_origin_of_a_path_with_parentheses() {
+            let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = closed.local_addr().unwrap().port();
+            drop(closed);
+            let app = managed_app(move |_| UpdateRoute::Mirror {
+                endpoints: vec![format!(
+                    "http://127.0.0.1:{port}/a(secret)/t0ken/stable-desktop/latest.json"
+                )],
+                base: format!("http://127.0.0.1:{port}/"),
+            });
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("nothing listens on the mirror's port");
+            assert!(
+                error.ends_with(&format!(" for url (http://127.0.0.1:{port}/…)")),
+                "{error}"
+            );
+            for secret in ["secret", "t0ken", "stable-desktop", "latest.json", "(", "'"] {
+                assert!(
+                    !error
+                        .replace(&format!("(http://127.0.0.1:{port}/…)"), "")
+                        .contains(secret),
+                    "{secret} in {error}"
+                );
+            }
         }
 
         #[test]

@@ -190,7 +190,7 @@ fn read_source(path: &Path, ownership: Option<&Ownership>) -> Result<Option<Stri
     if !stats.is_file() {
         return Err(format!("the policy at {shown} is not a regular file"));
     }
-    if !same_entry(&entry, &stats) {
+    if !same_entry(path, &entry, &file, &stats) {
         return Err(format!(
             "the policy at {shown} changed while Station was opening it"
         ));
@@ -240,11 +240,17 @@ fn open_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
-/// Windows has no O_NOFOLLOW; the `lstat` link check and the identity
-/// check carry the refusal there, as on the server.
-#[cfg(not(unix))]
+/// Windows has no O_NOFOLLOW. `FILE_FLAG_OPEN_REPARSE_POINT` opens a link
+/// or junction itself instead of its target, so an entry swapped for one
+/// after `lstat` yields a handle `same_entry` refuses as a reparse point.
+#[cfg(windows)]
 fn open_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
-    std::fs::File::open(path)
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
 }
 
 #[cfg(unix)]
@@ -252,23 +258,70 @@ fn is_loop(error: &std::io::Error) -> bool {
     error.raw_os_error() == Some(libc::ELOOP)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn is_loop(_error: &std::io::Error) -> bool {
     false
 }
 
+/// Whether the opened file is the entry `lstat` saw at `path`.
 #[cfg(unix)]
-fn same_entry(entry: &std::fs::Metadata, opened: &std::fs::Metadata) -> bool {
+fn same_entry(
+    _path: &Path,
+    entry: &std::fs::Metadata,
+    _file: &std::fs::File,
+    opened: &std::fs::Metadata,
+) -> bool {
     use std::os::unix::fs::MetadataExt;
     entry.dev() == opened.dev() && entry.ino() == opened.ino()
 }
 
-/// The server compares `dev`/`ino` on Windows too; std exposes neither
-/// there without unstable APIs, so the shell compares what it can (the
-/// lstat link check still refuses links and junctions).
-#[cfg(not(unix))]
-fn same_entry(entry: &std::fs::Metadata, opened: &std::fs::Metadata) -> bool {
-    entry.len() == opened.len() && entry.file_type().is_file() == opened.file_type().is_file()
+/// Windows (#4522 round 2): stable std exposes no file index, so the
+/// identity comes from `GetFileInformationByHandle` (volume serial number
+/// and 64-bit file index, what Node reports as `dev`/`ino` there). `path`
+/// is opened again without following a reparse point, standing in for the
+/// `lstat` identity as libuv's own `lstat` does, and both handles must name
+/// the same file and neither may be a reparse point. Any failure to read an
+/// identity refuses the policy: an identity Station cannot establish is not
+/// a match.
+#[cfg(windows)]
+fn same_entry(
+    path: &Path,
+    _entry: &std::fs::Metadata,
+    file: &std::fs::File,
+    _opened: &std::fs::Metadata,
+) -> bool {
+    let Ok(entry_file) = open_no_follow(path) else {
+        return false;
+    };
+    match (windows_identity(&entry_file), windows_identity(file)) {
+        (Some(entry), Some(opened)) => entry == opened,
+        _ => false,
+    }
+}
+
+/// Volume serial number and file index of a handle that is not a reparse
+/// point or a directory; `None` otherwise, or when Windows cannot say.
+#[cfg(windows)]
+fn windows_identity(file: &std::fs::File) -> Option<(u32, u64)> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY,
+        FILE_ATTRIBUTE_REPARSE_POINT,
+    };
+    // SAFETY: an all-zero BY_HANDLE_FILE_INFORMATION is a valid value of
+    // this plain C struct, and the call only writes into it.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: the handle is owned by `file`, which outlives the call.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut info) } == 0 {
+        return None;
+    }
+    if info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+        return None;
+    }
+    Some((
+        info.dwVolumeSerialNumber,
+        (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+    ))
 }
 
 #[cfg(unix)]
@@ -405,9 +458,17 @@ pub fn mirror_redirect_refusal(
 
 /// `text` with the path, query and fragment of every URL in it replaced by
 /// `/…`, and any user name or password dropped, keeping the scheme, host
-/// and port. The HTTP client puts the request URL into its error text, and a
-/// mirror's feed URL may carry a path token, so updater errors pass through
-/// this before they reach the window state or a log.
+/// and port. A mirror's feed URL may carry a path token, so updater error
+/// text passes through this before it reaches the window state or a log
+/// (reqwest errors are first rebuilt without their URL; this is the
+/// backstop for every other text).
+///
+/// A URL runs to the next whitespace or `"`, `<`, `>` or `` ` ``, which the
+/// URL serializer always percent-encodes. Parentheses and apostrophes are
+/// legal in a path, so they do not end it: `(…/a(secret)/token)` is
+/// replaced whole. Only trailing `.`, `,`, `;` or `:`, and then a final `)`
+/// closing a `(` just before the URL (as reqwest's `for url (…)` writes
+/// it), are kept.
 pub fn redact_urls(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = String::with_capacity(text.len());
@@ -430,13 +491,19 @@ pub fn redact_urls(text: &str) -> String {
             continue;
         }
         let rest = &text[marker + 3..];
-        let end = marker
+        let mut end = marker
             + 3
             + rest
-                .find(|c: char| {
-                    c.is_whitespace() || matches!(c, ')' | '(' | '"' | '\'' | '<' | '>' | '`')
-                })
+                .find(|c: char| c.is_whitespace() || matches!(c, '"' | '<' | '>' | '`'))
                 .unwrap_or(rest.len());
+        // Trailing sentence punctuation, then reqwest's closing `)`, stay
+        // outside the URL; both are replaced along with it otherwise.
+        while end > marker + 3 && matches!(bytes[end - 1], b'.' | b',' | b';' | b':') {
+            end -= 1;
+        }
+        if start > 0 && bytes[start - 1] == b'(' && end > marker + 3 && bytes[end - 1] == b')' {
+            end -= 1;
+        }
         let after_scheme = &text[marker + 3..end];
         let authority_end = after_scheme
             .find(['/', '?', '#'])
@@ -1136,6 +1203,41 @@ mod tests {
         );
         assert_eq!(redact_urls("no url :// here"), "no url :// here");
         assert_eq!(redact_urls("plain text"), "plain text");
+    }
+
+    /// #4522 round 2: parentheses and apostrophes are legal in a URL path,
+    /// so they must not end the URL and leave the rest of the path showing.
+    #[test]
+    fn redaction_replaces_a_path_with_parentheses_or_apostrophes_whole() {
+        // The reported repro, in reqwest's error shape.
+        let repro = "error sending request for url (https://mirror.example/a(secret)/token/stable-desktop/latest.json)";
+        assert_eq!(
+            redact_urls(repro),
+            "error sending request for url (https://mirror.example/…)"
+        );
+        for (text, expected) in [
+            (
+                "url (https://m.example/a'secret'/t0ken/latest.json): refused",
+                "url (https://m.example/…): refused",
+            ),
+            (
+                "url (https://m.example/(t0ken))",
+                "url (https://m.example/…)",
+            ),
+            (
+                "see https://m.example/x)t0ken(y and more",
+                "see https://m.example/… and more",
+            ),
+            (
+                "\"https://u:t0ken@m.example/a(b)\" twice https://m.example/c'd",
+                "\"https://m.example/…\" twice https://m.example/…",
+            ),
+        ] {
+            let redacted = redact_urls(text);
+            assert_eq!(redacted, expected, "{text}");
+            assert!(!redacted.contains("t0ken"), "{text}");
+            assert!(!redacted.contains("secret"), "{text}");
+        }
     }
 
     /// Whether files this process creates are root's (a root CI runner
