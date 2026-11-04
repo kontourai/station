@@ -38,7 +38,7 @@ import type { DeviceToolId } from '@kontourai/station-contracts/device-toolchain
 import agentDeviceLock from './locks/agent-device-0.21.12.lock.json' with {
   type: 'json',
 };
-import deviceHubLock from './locks/expo-device-hub-0.10.1.lock.json' with {
+import deviceHubLock from './locks/expo-device-hub-0.19.1.lock.json' with {
   type: 'json',
 };
 
@@ -72,9 +72,9 @@ export interface DeviceToolPin {
 export const DEVICE_TOOL_PINS: Readonly<Record<DeviceToolId, DeviceToolPin>> = {
   'expo-device-hub': {
     tool: 'expo-device-hub',
-    version: '0.10.1',
+    version: '0.19.1',
     requiredIntegrity:
-      'sha512-C2f36TsgiE86lMOxBxCPUrmBO2bBIjGZ3sM6IMM0Y5akZZZxALdy/LlDRcVGJg48cS336CHWsGvrCnnCjhw/Fw==',
+      'sha512-66hr69k4brclwKMtAEj+/j6GLtgtd+opcXDoUaFTxTppaGiKJGAytilh1mORXhDgdyfVVXtnvtWCugpYbxkKOw==',
     entry: ['dist', 'server', 'cli.mjs'],
     lock: deviceHubLock as PinnedLockfile,
   },

@@ -112,6 +112,10 @@ interface Harness {
   frames: { header: LiveSurfaceFrameHeader; body: Uint8Array }[];
   mjpeg: ReadableStreamDefaultController<Uint8Array> | null;
   screenshots: number;
+  /** Every hub request, in order. */
+  requests: { method: string; path: string; body?: unknown }[];
+  /** Answers a request before the default MJPEG/unknown handling. */
+  respond?: (method: string, path: string) => Response | undefined;
 }
 
 const boundary = 'frame';
@@ -138,25 +142,35 @@ function harness(
     frames: [],
     mjpeg: null,
     screenshots: 0,
+    requests: [],
   };
-  const request = vi.fn(async (_method: string, path: string) => {
-    if (path.endsWith('/stream.mjpeg')) {
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          // The helper answers at once with the frame it last buffered (a
-          // stale replay the producer must drop), then streams captures.
-          controller.enqueue(part(REPLAYED));
-          h.mjpeg = controller;
-        },
+  const request = vi.fn(
+    async (method: string, path: string, init?: { body?: unknown }) => {
+      h.requests.push({
+        method,
+        path,
+        ...(init?.body === undefined ? {} : { body: init.body }),
       });
-      return new Response(body, {
-        headers: {
-          'content-type': `multipart/x-mixed-replace; boundary=${boundary}`,
-        },
-      });
-    }
-    throw new Error(`unexpected request ${path}`);
-  });
+      const answer = h.respond?.(method, path);
+      if (answer) return answer;
+      if (path.endsWith('/stream.mjpeg')) {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            // The helper answers at once with the frame it last buffered (a
+            // stale replay the producer must drop), then streams captures.
+            controller.enqueue(part(REPLAYED));
+            h.mjpeg = controller;
+          },
+        });
+        return new Response(body, {
+          headers: {
+            'content-type': `multipart/x-mixed-replace; boundary=${boundary}`,
+          },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    },
+  );
   const connection = {
     baseUrl: ORIGIN,
     request,
@@ -838,6 +852,321 @@ describe('through the live-surface registry', () => {
       [{ kind: 'device-button', button: 'back' }],
     );
     expect(result).toMatchObject({ ok: false, code: 'dispatch-failed' });
+    await registry.dispose();
+  });
+});
+
+// ---- foldables ------------------------------------------------------------
+
+/** A helper screen-config packet, as serve-sim pushes it. */
+function screenConfig(config: Record<string, unknown>): Uint8Array {
+  return new Uint8Array([0x82, ...enc.encode(JSON.stringify(config))]);
+}
+function hingeReply(reply: Record<string, unknown>): Uint8Array {
+  return new Uint8Array([0x90, ...enc.encode(JSON.stringify(reply))]);
+}
+const DUO_COVER = {
+  width: 1080,
+  height: 2340,
+  orientation: 'portrait',
+  screenId: 1,
+  supportsHingeAngle: true,
+  hingeAngle: 0,
+  hingePose: 'closed',
+};
+const DUO_INNER_BOOK = {
+  width: 2200,
+  height: 1920,
+  orientation: 'portrait',
+  screenId: 3,
+  supportsHingeAngle: true,
+  hingeAngle: 90,
+  hingePose: 'book',
+  tableMode: false,
+};
+
+describe('iOS foldable (dual display)', () => {
+  test('a hinge-capable screen config publishes fold state; a plain phone has none', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit(
+      'message',
+      screenConfig({ width: 390, height: 844, orientation: 'portrait' }),
+      true,
+    );
+    expect(h.producer.status().fold).toBeUndefined();
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    expect(h.producer.status().fold).toEqual({
+      activeDisplay: 'inner',
+      hingeAngle: 90,
+      posture: 'book',
+      postures: ['closed', 'open', 'book', 'laptop', 'tent'],
+      angleControl: true,
+      tableMode: false,
+    });
+  });
+
+  test('a posture is a correlated hinge command, settled by the helper reply', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_COVER), true);
+    const done = h.producer.dispatch({ kind: 'fold', posture: 'tent' });
+    await until(() => socket.sent.length === 2, 'hinge command');
+    const [tag, body] = socket.packets()[1] as [number, { requestId: number }];
+    expect(tag).toBe(0x10);
+    expect(body).toEqual({
+      requestId: expect.any(Number),
+      command: { control: 'pose', value: 'tent' },
+    });
+    // Not settled by the socket accepting the bytes: only by the reply.
+    let settled = false;
+    void done.then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+    socket.emit(
+      'message',
+      hingeReply({ requestId: body.requestId + 1000, ok: true }),
+      true,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+    socket.emit(
+      'message',
+      hingeReply({ requestId: body.requestId, ok: true }),
+      true,
+    );
+    await done;
+  });
+
+  test('hinge angle and table mode use their own controls; a refusal rejects', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    const angle = h.producer.dispatch({ kind: 'fold', hingeAngle: 120.4 });
+    await until(() => socket.sent.length === 2, 'angle command');
+    const [, first] = socket.packets()[1] as [
+      number,
+      { requestId: number; command: unknown },
+    ];
+    expect(first.command).toEqual({ control: 'angle', value: 120 });
+    socket.emit(
+      'message',
+      hingeReply({
+        requestId: first.requestId,
+        ok: false,
+        error: 'Simulator could not change the device pose.',
+      }),
+      true,
+    );
+    await expect(angle).rejects.toMatchObject({
+      code: 'fold-refused',
+      message: 'Simulator could not change the device pose.',
+    });
+    const table = h.producer.dispatch({ kind: 'fold', tableMode: true });
+    await until(() => socket.sent.length === 3, 'table command');
+    const [, second] = socket.packets()[2] as [
+      number,
+      { requestId: number; command: unknown },
+    ];
+    expect(second.command).toEqual({ control: 'table', value: true });
+    expect(second.requestId).not.toBe(first.requestId);
+    socket.emit(
+      'message',
+      hingeReply({ requestId: second.requestId, ok: true }),
+      true,
+    );
+    await table;
+  });
+
+  test('a device that does not fold refuses fold input before sending anything', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    await expect(
+      h.producer.dispatch({ kind: 'fold', posture: 'book' }),
+    ).rejects.toMatchObject({ code: 'fold-unsupported' });
+    expect(socket.sent).toHaveLength(1);
+  });
+
+  test('video streams the lit display panel, switches on handoff, and tags each frame', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_COVER), true);
+    h.mjpeg = null;
+    await h.producer.start(PARAMS, (header, body) =>
+      h.frames.push({ header, body }),
+    );
+    await until(() => h.mjpeg !== null, 'cover stream');
+    expect(h.requests.at(-1)!.path).toBe(
+      `/vendor/serve-sim/helper/${IOS_UDID}/panel/1/stream.mjpeg`,
+    );
+    h.mjpeg!.enqueue(part(jpeg(1080, 2340, 3)));
+    await until(() => h.frames.length === 1, 'cover frame');
+    expect(h.frames[0]!.header.display).toBe('cover');
+    h.producer.ack(h.frames[0]!.header.seq);
+    // Unfolding hands off to the inner display: the read moves to panel 3.
+    h.mjpeg = null;
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    await until(() => h.mjpeg !== null, 'inner stream');
+    expect(h.requests.at(-1)!.path).toBe(
+      `/vendor/serve-sim/helper/${IOS_UDID}/panel/3/stream.mjpeg`,
+    );
+    h.mjpeg!.enqueue(part(jpeg(2200, 1920, 4)));
+    await until(() => h.frames.length === 2, 'inner frame');
+    expect(h.frames[1]!.header).toMatchObject({
+      display: 'inner',
+      width: 2200,
+      height: 1920,
+    });
+  });
+
+  test('a helper without panel streams falls back to the main stream', async () => {
+    const h = track(harness());
+    h.respond = (_method, path) =>
+      path.includes('/panel/')
+        ? new Response('{"error":"panel_streams_unsupported"}', { status: 409 })
+        : undefined;
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    // Requests before this were the input socket's prime.
+    const startedAt = h.requests.length;
+    h.mjpeg = null;
+    await h.producer.start(PARAMS, (header, body) =>
+      h.frames.push({ header, body }),
+    );
+    await until(() => h.mjpeg !== null, 'main stream');
+    expect(h.requests.slice(startedAt).map((r) => r.path)).toEqual([
+      `/vendor/serve-sim/helper/${IOS_UDID}/panel/3/stream.mjpeg`,
+      `/vendor/serve-sim/helper/${IOS_UDID}/stream.mjpeg`,
+    ]);
+    h.mjpeg!.enqueue(part(jpeg(2200, 1920, 5)));
+    await until(() => h.frames.length === 1, 'frame');
+    // The main stream does not say which display it shows.
+    expect(h.frames[0]!.header.display).toBeUndefined();
+  });
+
+  test('a touch on the lit inner display maps into that display', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    h.mjpeg = null;
+    await h.producer.start(PARAMS, (header, body) =>
+      h.frames.push({ header, body }),
+    );
+    await until(() => h.mjpeg !== null, 'inner stream');
+    h.mjpeg!.enqueue(part(jpeg(2200, 1920, 6)));
+    await until(() => h.frames.length === 1, 'frame');
+    // The right half of the book: x past the crease.
+    await h.producer.dispatch({
+      kind: 'pointer',
+      type: 'down',
+      x: 1650,
+      y: 480,
+      button: 'left',
+    });
+    expect(socket.packets().at(-1)).toEqual([
+      0x03,
+      { type: 'begin', x: 0.75, y: 0.25 },
+    ]);
+  });
+});
+
+describe('Android foldable', () => {
+  function foldResponse(posture: string | null, hingeAngle: number) {
+    return Response.json({
+      ok: true,
+      fold: { supported: true, posture, hingeAngle },
+    });
+  }
+
+  test('the emulator hinge is read on connect, and fold posts closed/opened', async () => {
+    const h = track(
+      harness({
+        surfaceId: 'device:android:test',
+        platform: 'android',
+        deviceId: 'emulator-5554',
+      }),
+    );
+    let posture = 'half_opened';
+    h.respond = (method, path) => {
+      if (!path.startsWith('/vendor/serve-emu/api/fold')) return undefined;
+      if (method === 'POST') posture = 'opened';
+      return foldResponse(posture, posture === 'opened' ? 180 : 90);
+    };
+    await openInput(h);
+    await until(() => h.producer.status().fold !== undefined, 'fold state');
+    expect(h.requests[0]).toMatchObject({
+      method: 'GET',
+      path: '/vendor/serve-emu/api/fold?device=emulator-5554',
+    });
+    expect(h.producer.status().fold).toEqual({
+      activeDisplay: 'inner',
+      hingeAngle: 90,
+      posture: 'book',
+      postures: ['closed', 'open'],
+      angleControl: false,
+    });
+    await h.producer.dispatch({ kind: 'fold', posture: 'open' });
+    expect(h.requests.at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/vendor/serve-emu/api/fold?device=emulator-5554',
+      body: JSON.stringify({ posture: 'opened' }),
+    });
+    expect(h.producer.status().fold).toMatchObject({
+      posture: 'open',
+      hingeAngle: 180,
+    });
+    // Stands the emulator cannot be put in are refused without a request.
+    const before = h.requests.length;
+    await expect(
+      h.producer.dispatch({ kind: 'fold', posture: 'tent' }),
+    ).rejects.toMatchObject({ code: 'fold-unsupported' });
+    await expect(
+      h.producer.dispatch({ kind: 'fold', hingeAngle: 45 }),
+    ).rejects.toMatchObject({ code: 'fold-unsupported' });
+    expect(h.requests).toHaveLength(before);
+  });
+});
+
+describe('foldables through the live-surface registry', () => {
+  test('fold state reaches viewers and a human fold input reaches the helper', async () => {
+    const h = track(harness());
+    const registry = new LiveSurfaceRegistry();
+    registry.register(h.producer, { authorize: () => true });
+    const entry = registry.get('device:ios:test')!;
+    const viewer = entry.hub.attach(PARAMS);
+    await viewer.next();
+    const socket = await openInput(h);
+    await viewer.next();
+    socket.emit('message', screenConfig(DUO_COVER), true);
+    const state = await viewer.next();
+    expect(state).toMatchObject({
+      kind: 'state',
+      state: { fold: { activeDisplay: 'cover', posture: 'closed' } },
+    });
+    const result = dispatchHumanInput(
+      entry,
+      { kind: 'human', principal: 'operator', device: 'd1' },
+      0,
+      [{ kind: 'fold', posture: 'laptop' }],
+    );
+    await until(() => socket.sent.length === 2, 'hinge command');
+    const [tag, body] = socket.packets()[1] as [
+      number,
+      { requestId: number; command: unknown },
+    ];
+    expect([tag, body.command]).toEqual([
+      0x10,
+      { control: 'pose', value: 'laptop' },
+    ]);
+    socket.emit(
+      'message',
+      hingeReply({ requestId: body.requestId, ok: true }),
+      true,
+    );
+    expect(await result).toMatchObject({ ok: true });
+    viewer.close();
     await registry.dispose();
   });
 });

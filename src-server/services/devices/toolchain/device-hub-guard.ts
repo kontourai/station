@@ -52,7 +52,7 @@
 import { hubGuardAllowlist } from './device-hub-connection.js';
 
 /** Hub versions whose route surface this guard was checked against. */
-export const HUB_GUARD_VERIFIED_VERSIONS: readonly string[] = ['0.10.1'];
+export const HUB_GUARD_VERIFIED_VERSIONS: readonly string[] = ['0.19.1'];
 
 export const HUB_GUARD_SECRET_ENV = 'STATION_HUB_GUARD_SECRET';
 
