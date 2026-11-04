@@ -8,8 +8,16 @@
  * stream; pointer events carry `pointerType: 'touch'` as a phone sends them.
  */
 
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { DeviceImmersiveActions } from '../../workspace-panes/device/DeviceImmersiveActions';
 import {
   LiveSurfaceCanvas,
@@ -385,6 +393,50 @@ describe('immersive (full screen)', () => {
     expect(root.hasAttribute('data-immersive')).toBe(false);
     // The own-property stub goes; the prototype's getter is back.
     Reflect.deleteProperty(document, 'fullscreenElement');
+  });
+
+  test('Escape that leaves full screen is not also the app\'s "Go up one level"', async () => {
+    requestFullscreenStub();
+    const h = canvasHarness();
+    const goUp = vi.fn();
+    // The app's own registration (App.tsx `app.escapeUp`), through the real
+    // shortcut dispatcher.
+    function EscapeUp() {
+      useKeyboardShortcut(
+        'app.escapeUp',
+        'Escape',
+        [],
+        'Go up one level',
+        goUp,
+        true,
+        -100,
+      );
+      return null;
+    }
+    const view = render(
+      <KeyboardShortcutsProvider>
+        <EscapeUp />
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Browser: example.com"
+          transport={h.transport as never}
+          fullScreenButton
+        />
+      </KeyboardShortcutsProvider>,
+    );
+    await flush();
+    await h.pushState(lease(0));
+    await h.pushFrame(1, 0);
+    const root = view.container.querySelector('.live-surface') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
+    expect(root.hasAttribute('data-immersive')).toBe(true);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(root.hasAttribute('data-immersive')).toBe(false);
+    expect(goUp).not.toHaveBeenCalled();
+    // Outside full screen, Escape is the app's again.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(goUp).toHaveBeenCalledTimes(1);
   });
 
   test('a host enters it through the reported control state, and there a touch drives the surface (the lease-first rule is lifted)', async () => {

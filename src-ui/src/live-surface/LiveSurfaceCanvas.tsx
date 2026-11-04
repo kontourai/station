@@ -1413,6 +1413,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       className="live-surface"
       ref={containerRef}
       data-immersive={immersive ? '' : undefined}
+      // Immersive owns Escape (it leaves full screen): the app's own Escape
+      // shortcuts, such as "Go up one level", yield while it is active.
+      data-escape-owner={immersive ? '' : undefined}
       // Diagnostics only (devtools, tests): what this viewer draws. Not
       // shown; a codec name is not something the person acts on.
       data-codec={
