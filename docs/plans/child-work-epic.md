@@ -49,7 +49,7 @@ A later CPU-profile observer at `113bd9f49ccb` passes both original finalizer
 file cases with all 66 assertions and the deadline unchanged; the observer is
 removed byte-exactly. That diagnostic pass does not erase earlier timeouts or
 establish stable latency. Its sampled self time includes 16.1 seconds of fsync
-and 11.5 seconds idle, with report persistence and Home lifecycle prominent. A subsequent
+and 11.5 seconds idle, with report persistence and Home lifecycle prominent. An earlier
 passive phase diagnostic at `2d47f13ad2a6` also times out; all 77 assertion calls
 and the original deadlines remain unchanged, and both instrumented files are
 restored exactly. Its inclusive phase timings are diagnostic, not isolated CPU
