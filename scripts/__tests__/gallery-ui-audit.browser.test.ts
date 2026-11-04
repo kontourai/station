@@ -7,6 +7,37 @@ import {
   type HitTargetAudit,
 } from '../../tests/helpers/hit-target-audit';
 
+type GeometryRect = {
+  x: number;
+  y: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+type GeometryElement = HTMLElement & {
+  parentElement: GeometryElement | null;
+  clientWidth: number;
+  clientHeight: number;
+  scrollHeight: number;
+  scrollTop: number;
+  getBoundingClientRect(): GeometryRect & { toJSON(): GeometryRect };
+  contains(node: GeometryElement | null): boolean;
+};
+
+// These declarations describe only callbacks serialized into Chromium.
+declare const document: {
+  querySelector(selector: string): GeometryElement | null;
+  elementFromPoint(x: number, y: number): GeometryElement | null;
+  elementsFromPoint(x: number, y: number): GeometryElement[];
+};
+declare const innerWidth: number;
+declare function getComputedStyle(element: GeometryElement): {
+  transform: string;
+};
+
 // The gallery's product assertions, run against fixture pages in a real
 // Chromium: geometry needs layout, and the axe keys need axe's real selectors.
 
@@ -327,7 +358,7 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       name: 'Clipped tail',
       exact: true,
     });
-    const geometry = await tail.evaluate((button) => {
+    const geometry = await tail.evaluate((button: GeometryElement) => {
       const pane = button.parentElement!;
       const dock = document.querySelector('.chat-dock')!;
       const targetRect = button.getBoundingClientRect();
@@ -363,7 +394,7 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     await page.mouse.wheel(0, 200);
     await expect
       .poll(() =>
-        tail.evaluate((button) => {
+        tail.evaluate((button: GeometryElement) => {
           const targetRect = button.getBoundingClientRect();
           const paneRect = button.parentElement!.getBoundingClientRect();
           return (
@@ -388,7 +419,7 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     );
     const geometry = await page
       .getByRole('button', { name: 'Scaled control', exact: true })
-      .evaluate((button) => {
+      .evaluate((button: GeometryElement) => {
         const pane = button.parentElement!;
         const bar = document.querySelector('.scaled-fixed-bar')!;
         return {
