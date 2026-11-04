@@ -5214,6 +5214,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // discloses strictly less than the `/config/app` read already at this
     // same tier, which returns the stored values themselves.
     { method: 'GET', path: '/api/settings/registry' },
+    // #4516: the managed policy this server loaded — organization, support
+    // link, locked setting PATHS, effective limits and a fingerprint. No
+    // setting value and no secret; every user on the machine can already
+    // read the policy file itself.
+    { method: 'GET', path: '/api/settings/managed-policy' },
     { method: 'GET', path: '/api/feature-previews' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },

@@ -15,6 +15,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
+| [managed-policy](./managed-policy.md) | current | A machine-level managed policy that Station loads at startup and fails closed on |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
 | [personal-coordinator-session](./personal-coordinator-session.md) | current | One coordinator Session per person, woken from delivered attention notifications through the conversation inbox |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |

@@ -65,6 +65,7 @@ vi.mock('../contexts/NavigationContext', () => {
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { claimApprovalThreads } from '../components/status/approvalReveal';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { activeChatsStore } from '../contexts/active-chats-store';
 
 /**
@@ -172,6 +173,80 @@ describe('NotificationContainer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(dismissToast).toHaveBeenCalledWith('turn-failed');
+  });
+
+  // #4470: Troubleshoot rides on every error toast at this one renderer.
+  describe('Troubleshoot on error toasts', () => {
+    test('an error toast offers Troubleshoot seeded with its message, then dismisses', () => {
+      window.history.pushState({}, '', '/agents/dev?tab=1');
+      notifications = [
+        {
+          id: 'save-failed',
+          type: 'error',
+          message:
+            'Could not save the agent: 500 Internal Server Error\nat save (/Users/alice/x.ts:1:2)',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [{ label: 'Retry', onClick: vi.fn() }],
+        },
+      ];
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(<NotificationContainer />);
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          {
+            route: '/agents/dev',
+            errorSummary: 'Could not save the agent: 500 Internal Server Error',
+          },
+        ]);
+        expect(dismissToast).toHaveBeenCalledWith('save-failed');
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
+    });
+
+    test('an error toast that already has two actions does not get a third', () => {
+      notifications = [
+        {
+          id: 'two-actions',
+          type: 'error',
+          message: 'Could not install the plugin.',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [
+            { label: 'Retry', onClick: vi.fn() },
+            { label: 'Open Plugins', onClick: vi.fn() },
+          ],
+        },
+      ];
+      render(<NotificationContainer />);
+      expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
+    });
+
+    test('warning toasts and the troubleshooting flow’s own error toasts do not offer it', () => {
+      notifications = [
+        {
+          id: 'warn',
+          type: 'warning',
+          message: 'Slow response',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+        {
+          id: 'troubleshoot-failed-toast',
+          type: 'error',
+          dedupeKey: 'troubleshoot-failed',
+          message: 'Troubleshooting couldn’t start.',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+      ];
+      render(<NotificationContainer />);
+      expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
+    });
   });
 
   describe('session shortcut hint', () => {

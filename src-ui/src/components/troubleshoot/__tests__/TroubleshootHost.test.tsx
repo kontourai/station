@@ -147,6 +147,48 @@ describe('TroubleshootHost', () => {
     );
   });
 
+  test('turns an error entry point’s facts into the prepare seed, with the route at dispatch time', async () => {
+    window.history.pushState({}, '', '/projects/demo?token=abc123#frag');
+    try {
+      render(<TroubleshootHost />);
+      await act(async () => {
+        requestTroubleshoot({
+          code: 'runtime-error',
+          message: 'Engine exited\n    at run (/Users/alice/station/x.ts:1:2)',
+          conversationId: 'conv-1',
+          turnId: 'turn-1',
+        });
+      });
+      await waitFor(() =>
+        expect(mocks.prepare).toHaveBeenCalledWith({
+          seed: {
+            route: '/projects/demo',
+            errorSummary: 'runtime-error: Engine exited',
+            conversationId: 'conv-1',
+            turnId: 'turn-1',
+          },
+        }),
+      );
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('sends no seed for an open event with no facts', async () => {
+    await openTroubleshoot();
+    await waitFor(() => expect(mocks.prepare).toHaveBeenCalledWith({}));
+  });
+
+  test('an error entry point falls back like the help menu when the assistant has no engine', async () => {
+    mocks.agent = { ...RUNNABLE_STATION, available: false };
+    render(<TroubleshootHost />);
+    await act(async () => {
+      requestTroubleshoot({ code: 'HTTP 500', message: 'Boom' });
+    });
+    expect(reportProblem).toHaveBeenCalledTimes(1);
+    expect(mocks.prepare).not.toHaveBeenCalled();
+  });
+
   test('sends the opening message when the description is left empty', async () => {
     await openTroubleshoot();
     fireEvent.click(

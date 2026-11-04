@@ -9,6 +9,7 @@ import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EngineSignInDisclosure } from '../components/engine-sign-in/EngineSignInDisclosure';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import type { NotConnectedEngine } from './EngineAddFlow';
 
 /**
@@ -84,6 +85,15 @@ export function NotConnectedEngineDetail({
               {connection.lastError.message}
             </span>
           ) : null}
+          <span>
+            <TroubleshootAction
+              size="sm"
+              request={{
+                code: `engine-${connection.lastError?.phase ?? 'not-connected'}`,
+                message: `${connection.name}: ${connection.lastError?.message ?? 'not connected yet'}`,
+              }}
+            />
+          </span>
         </div>
         <EngineSignInDisclosure
           connectionId={connection.id}

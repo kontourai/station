@@ -1241,6 +1241,24 @@ Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →
 Diagnostics.
 
+Where Station shows an error, a **Troubleshoot** action starts the same
+conversation with that error already attached:
+
+- a view that stopped working (under **More actions** when Station refused
+  the view), and an error notification;
+- a pane that is temporarily unavailable, and a layout tab Station can't show;
+- an engine that isn't connected, and an agent that can't run;
+- a local Station that stopped or failed when **Restart Station** isn't
+  offered;
+- a reply that failed (**Troubleshoot this**);
+- a reply you rated thumbs-down, through **This looks like a Station bug**.
+  Your rating is saved as usual; the bug report isn't added to it.
+
+The assistant receives the page you were on (without anything after `?` or
+`#`), the error's code and first line with known credential shapes, links and
+file paths removed, and for a reply, the conversation and turn ids. It never
+receives a stack trace.
+
 1. Describe what went wrong in your own words and choose **Start
    troubleshooting**. You can paste or drop screenshots into the chat.
 2. The Station Assistant asks for the steps that reproduce the problem and
@@ -1263,8 +1281,25 @@ download the diagnostics bundle from Settings → Diagnostics and paste the part
 that matter. Logs can contain conversation content.
 
 If the Station Assistant has no engine, these entries open **Report a
-problem** instead. If the app itself won't open, run `station triage` in a
-terminal. The [design](https://github.com/kontourai/station/blob/main/docs/design/troubleshoot-in-app.md) covers the details.
+problem** instead. The [design](https://github.com/kontourai/station/blob/main/docs/design/troubleshoot-in-app.md) covers the details.
+
+### From a terminal
+
+If the app itself won't open, run `station triage` in a terminal. It collects
+bounded, redacted diagnostics into a private run folder, then starts Codex or
+Claude, whichever is installed, as a troubleshooting conversation that follows
+the same playbook. The agent keeps its usual approval prompts, so it asks
+before it runs a command. It works from the run folder, Station's log folder
+and commands such as `station doctor`, because Station may be down. It will not
+stop or restart anything unless you say yes. To file, it prepares the report
+with `station triage draft-report`, shows you the redacted text and waits for
+your yes, then posts it or gives you a prefilled link.
+
+Use `station triage --headless` for a read-only, one-shot diagnosis that saves
+`diagnosis.md` and `issue-draft.md` instead. That is also what happens when
+input or output is not a terminal. `station triage --context-only` collects the
+diagnostics without starting an agent. See the
+[CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#triage).
 
 ## Update, Stop, Or Uninstall
 

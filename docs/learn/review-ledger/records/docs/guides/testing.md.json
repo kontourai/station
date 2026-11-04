@@ -254,7 +254,11 @@
 
     "patches/vitest-runner-4.1.12.patch",
 
-    "scripts/__tests__/vitest-resource-manifest.test.ts"
+    "scripts/__tests__/vitest-resource-manifest.test.ts",
+
+    "scripts/install-playwright-browsers.mjs",
+
+    "scripts/__tests__/install-playwright-browsers.test.ts"
   ],
 
   "checks": [
