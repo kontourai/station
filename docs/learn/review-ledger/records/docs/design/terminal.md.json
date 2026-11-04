@@ -58,7 +58,9 @@
 
     "src-server/services/terminal/__tests__/fixtures/real-shell.ts",
 
-    "tests/live/terminal-restart-journey.mjs"
+    "tests/live/terminal-restart-journey.mjs",
+
+    "packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts"
   ],
 
   "checks": [
