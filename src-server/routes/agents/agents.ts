@@ -16,6 +16,7 @@ import {
 import { Hono } from 'hono';
 import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { managedCeilingRefuses } from '../../security/managed-approval-ceiling.js';
 import {
   type AgentService,
   StationEngineIsAppSettingError,
@@ -23,7 +24,10 @@ import {
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { effectiveDefaultPosture } from '../../services/orchestration/approval-posture.js';
 import { agentOps } from '../../telemetry/metrics.js';
-import { refuseUngrantedFullAccess } from '../orchestration/approval-authority.js';
+import {
+  managedApprovalCeilingRefusal,
+  refuseUngrantedFullAccess,
+} from '../orchestration/approval-authority.js';
 import {
   agentCreateSchema,
   agentMaterializeEngineSchema,
@@ -280,6 +284,25 @@ export function createAgentRoutes(
     }
   });
 
+  /**
+   * #4518: whether `next` grants nothing beyond `current`: absent, `null`,
+   * an empty list, or a list of patterns each already granted. Patterns are
+   * compared as exact strings, so a new pattern that a granted one would
+   * match still counts as an addition.
+   */
+  function narrowsToolGrant(next: unknown, current: unknown): boolean {
+    if (next === undefined || next === null) return true;
+    if (!Array.isArray(next)) return false;
+    const granted = new Set(
+      Array.isArray(current)
+        ? current.filter((entry): entry is string => typeof entry === 'string')
+        : [],
+    );
+    return next.every(
+      (entry) => typeof entry === 'string' && granted.has(entry),
+    );
+  }
+
   /** The default approval posture an Agent body asks for, if any. */
   function agentDefaultApprovalMode(body: unknown): unknown {
     const execution = (body as { execution?: unknown } | undefined)?.execution;
@@ -304,6 +327,23 @@ export function createAgentRoutes(
     next: unknown,
     readPrevious?: () => Promise<unknown>,
   ): Promise<Response | undefined> {
+    // #4518: under a managed ceiling below full access, the rule is about the
+    // Agent's OWN default, not the effective one. Writing an explicit `never`
+    // is refused even where the inherited default is already `never`; one
+    // already saved (a client resending the execution block) is kept, as a
+    // stored Station default is. Clearing to an inherited `never` is allowed:
+    // an inherited default is lowered to the ceiling where it applies.
+    if (managedCeilingRefuses('never')) {
+      if (next !== 'never') return undefined;
+      if (readPrevious) {
+        try {
+          if ((await readPrevious()) === 'never') return undefined;
+        } catch {
+          // Unreadable: no evidence of a saved `never`; refused below.
+        }
+      }
+      return managedApprovalCeilingRefusal(c);
+    }
     let station: unknown;
     try {
       station = await resolveStationDefaultApprovalMode?.();
@@ -522,7 +562,12 @@ export function createAgentRoutes(
         if (fullAccessRefused) return fullAccessRefused;
       }
       // Tool grants on plugin-owned Agents are operator authority, kept outside
-      // the package. Gate any submitted change, including removal.
+      // the package. Adding or widening one needs full-access authority.
+      // #4518: revoking does not: an absent, `null` or empty list (recorded as
+      // an empty grant by `recordPluginToolApprovalChoice`) or any subset of
+      // the Agent's current effective grants only narrows what runs without a
+      // prompt, so it is allowed under the normal mutation authority, and
+      // under a managed ceiling where no full-access authority exists.
       if (
         updates.tools &&
         typeof updates.tools === 'object' &&
@@ -531,15 +576,14 @@ export function createAgentRoutes(
         agentService.isPluginOwnedAgent(slug)
       ) {
         const previous = await agentService.getAgent(slug);
-        const changed = (
+        const widened = (
           ['autoApprove', 'unattendedAutoApprove'] as const
         ).some(
           (field) =>
             Object.hasOwn(updates.tools!, field) &&
-            JSON.stringify(updates.tools![field]) !==
-              JSON.stringify(previous.tools?.[field]),
+            !narrowsToolGrant(updates.tools![field], previous.tools?.[field]),
         );
-        if (changed) {
+        if (widened) {
           const refused = refuseUngrantedFullAccess(c, ['never']);
           if (refused) return refused;
         }

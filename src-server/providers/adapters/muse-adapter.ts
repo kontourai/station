@@ -28,6 +28,10 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import {
+  ManagedApprovalCeilingRefusedError,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   spawnOwnedChild,
@@ -1142,6 +1146,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       await serve?.stop();
       throw new Error(`Muse session already exists: ${input.threadId}`);
+    }
+    // #4518: exec always runs `--approval-mode never`, which is `auto` in
+    // Station's vocabulary (see `buildMuseExecArgs`): it has no channel to
+    // answer an approval, so it cannot run stricter. Under a managed ceiling
+    // below `auto`, a session that would run on exec (serve disabled, the echo
+    // override, or a failed serve start) is refused before it exists, rather
+    // than reporting a posture above the ceiling.
+    if (!serveStarted && managedCeilingRefuses('auto')) {
+      throw new ManagedApprovalCeilingRefusedError(
+        serveUnavailable
+          ? 'Muse Code could not start `muse serve`, and its fallback, `muse exec`, runs tools without approval prompts (Auto).'
+          : 'Muse Code runs here through `muse exec`, which runs tools without approval prompts (Auto).',
+      );
     }
     const museSessionId = serveStarted?.museSessionId ?? this.newSessionId();
     const nowIso = this.now().toISOString();

@@ -90,8 +90,18 @@ function managedApprovalCeilingMessage(): string {
 export class ManagedApprovalCeilingRefusedError extends SendTurnRefusedError {
   readonly code = MANAGED_POLICY_APPROVAL_CEILING_CODE;
 
-  constructor() {
-    super(managedApprovalCeilingMessage(), 'permission_denied');
+  /**
+   * `reason` leads the managed sentence when the refused posture is not the
+   * one the caller asked for (an engine that can only run broader), so the
+   * message says why an allowed pick was still refused.
+   */
+  constructor(reason?: string) {
+    super(
+      reason
+        ? `${reason} ${managedApprovalCeilingMessage()}`
+        : managedApprovalCeilingMessage(),
+      'permission_denied',
+    );
     this.name = 'ManagedApprovalCeilingRefusedError';
   }
 }

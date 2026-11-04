@@ -59,6 +59,7 @@ import {
 } from '../../../security/managed-approval-ceiling.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { ApprovalPosture } from '../../../services/orchestration/approval-posture.js';
 import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -3190,5 +3191,118 @@ describe('#4518: the managed approval ceiling', () => {
     );
     expect(sent.status, sent.text).toBe(200);
     expect(lastStart(f, 'codex-agent').approvalMode).toBe('ask');
+  });
+  test('a personal default lowered to the ceiling is recorded as a default, not a pick, and follows the ceiling in force after a restart', async () => {
+    const f = await fixture({});
+    installCeiling('auto');
+    const sent = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+        personalApprovalDefault: 'never',
+      },
+    );
+    expect(sent.status, sent.text).toBe(200);
+    expect(lastStart(f, 'codex-agent').approvalMode).toBe('auto');
+    const threadId = f.codex.starts.at(-1)!.threadId;
+    const decisions = f.store
+      .listEvents(threadId)
+      .filter((row) => row.payload.method === 'session.approval-mode-set')
+      .map((row) => row.payload as { approvalMode: string; source?: string });
+    // Recorded at the ceiling and marked as the person's default: nobody
+    // picked Auto here.
+    expect(decisions).toEqual([
+      expect.objectContaining({
+        approvalMode: 'auto',
+        source: 'personal-default',
+      }),
+    ]);
+
+    // The policy is tightened, as a restart would install it: the chat is
+    // lowered to the new ceiling, not refused for a choice nobody made.
+    installCeiling('ask');
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'after tightening' },
+    });
+    expect(f.codex.turns.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+
+    // After a restart: a fresh store over the same database, read under each
+    // policy the next process could install.
+    const reopened = new EventStore(join(f.root, 'orchestration.sqlite'));
+    try {
+      const posture = new ApprovalPosture({ store: reopened });
+      const startAfterRestart = () =>
+        posture.resolve({
+          threadId,
+          provider: 'codex',
+          phase: 'start',
+          confinement: 'workspace',
+        });
+      expect(await startAfterRestart()).toEqual({ approvalMode: 'ask' });
+      installManagedApprovalCeiling(null);
+      // No policy: the recorded default applies as recorded.
+      expect(await startAfterRestart()).toEqual({ approvalMode: 'auto' });
+    } finally {
+      reopened.close();
+    }
+
+    // A pick at the same value is still a pick: tightening refuses it.
+    installCeiling('auto');
+    const picked = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'auto',
+        basedOnSequence: null,
+      },
+    );
+    expect(picked.status, picked.text).toBe(200);
+    installCeiling('ask');
+    await expect(
+      f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'after the pick' },
+      }),
+    ).rejects.toMatchObject({ code: MANAGED_POLICY_APPROVAL_CEILING_CODE });
+  });
+  test('a carried never (the CLI --approval-mode=never default channel) is lowered to the ceiling, not refused; a known ACP full-access mode still is', async () => {
+    const f = await fixture({});
+    installCeiling('auto');
+    const send = (
+      credential: string,
+      options: Record<string, unknown>,
+      agent: keyof typeof AGENTS = 'codex-agent',
+    ) =>
+      f.request(f.bearer(credential), '/api/orchestration/chat', {
+        message: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent,
+          model: { options },
+        },
+      });
+    const phone = f.pair('Phone');
+    for (const credential of [f.operator.credential, phone.credential]) {
+      const sent = await send(credential, { approvalMode: 'never' });
+      expect(sent.status, sent.text).toBe(200);
+      expect(lastStart(f, 'codex-agent')).toMatchObject({
+        approvalMode: 'auto',
+        confinement: 'workspace',
+      });
+    }
+    const startsBefore = f.claude.starts.length;
+    const acp = await send(
+      f.operator.credential,
+      { mode: 'bypassPermissions' },
+      'claude-agent',
+    );
+    expect(acp.status, acp.text).toBe(403);
+    expect(acp.body).toEqual(managedRefusal);
+    expect(f.claude.starts).toHaveLength(startsBefore);
   });
 });

@@ -13,6 +13,7 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
+import { MANAGED_POLICY_APPROVAL_CEILING_CODE } from '@kontourai/station-contracts/managed-policy';
 import {
   MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
@@ -31,6 +32,10 @@ import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-
 import { afterEach, describe, expect, test } from 'vitest';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import {
+  installManagedApprovalCeiling,
+  ManagedApprovalCeilingRefusedError,
+} from '../../security/managed-approval-ceiling.js';
 import {
   installSessionTmpDirPolicy,
   sessionTmpDirPath,
@@ -1092,6 +1097,86 @@ describe('#2452 muse serve: exec stays the fallback', () => {
         (event) => event.code === MUSE_SERVE_UNAVAILABLE_CODE,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('#4518 muse: the exec fallback stays within a managed ceiling', () => {
+  const installCeiling = (maxApprovalMode: 'ask' | 'auto') =>
+    installManagedApprovalCeiling({
+      summary: {
+        organization: 'Acme',
+        supportUrl: null,
+        lockedSettings: [],
+        limits: { maxApprovalMode },
+      },
+    });
+  afterEach(() => installManagedApprovalCeiling(null));
+
+  const failingServe = () =>
+    harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => {
+          host.stderr.write("error: unrecognized subcommand 'serve'\n");
+          host.exit(2);
+        });
+        return host;
+      },
+    });
+
+  test('under Ask, a failed serve start refuses the session instead of falling back to exec (Auto)', async () => {
+    installCeiling('ask');
+    const h = failingServe();
+    const started = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await expect(started).rejects.toBeInstanceOf(
+      ManagedApprovalCeilingRefusedError,
+    );
+    await expect(started).rejects.toMatchObject({
+      code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
+      kind: 'permission_denied',
+      message: expect.stringContaining('`muse exec`'),
+    });
+    await settle();
+    // No session exists, nothing reported a posture, and no exec turn can run.
+    expect(of(h.events, 'session.configured')).toEqual([]);
+    await expect(
+      h.adapter.sendTurn({ threadId: THREAD, input: 'hi' }),
+    ).rejects.toThrow();
+    expect(h.execSpawns).toEqual([]);
+  });
+
+  test('under Ask, an exec-only configuration (the echo override, no serve) is refused too', async () => {
+    installCeiling('ask');
+    const h = harness({
+      env: {
+        STATION_E2E_MUSE_PROVIDER: 'echo',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-smoke-live-1-abc',
+      },
+    });
+    await expect(
+      h.adapter.startSession({ provider: 'muse', threadId: THREAD }),
+    ).rejects.toBeInstanceOf(ManagedApprovalCeilingRefusedError);
+    expect(h.hosts).toEqual([]);
+  });
+
+  test('under Auto, the exec fallback is within the ceiling and still runs', async () => {
+    installCeiling('auto');
+    const h = failingServe();
+    await h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await settle();
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'exec',
+      approvalMode: 'auto',
+    });
   });
 });
 

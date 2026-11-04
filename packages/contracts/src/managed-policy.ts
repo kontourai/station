@@ -575,6 +575,11 @@ const APPROVAL_MODE_NAMES: Readonly<Record<ConcreteApprovalMode, string>> = {
   never: 'Full access',
 };
 
+/** The approval picker's name for `mode`, e.g. "Ask first" for `ask`. */
+export function managedApprovalModeName(mode: ConcreteApprovalMode): string {
+  return APPROVAL_MODE_NAMES[mode];
+}
+
 /**
  * The ceiling a summary enforces, or `undefined` when it restricts nothing:
  * no `maxApprovalMode`, or `never`, the broadest posture there is.

@@ -247,6 +247,7 @@ import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
   refuseAboveManagedCeiling,
+  refuseUngrantedCarriedFullAccess,
   refuseUngrantedFullAccess,
   refuseUngrantedPick,
   requestedApprovalMode,
@@ -2767,10 +2768,9 @@ export function createOrchestrationRoutes(
         body.setApprovalMode,
       ]);
       if (ceilingRefused) return ceilingRefused;
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
-        body.setApprovalMode,
-        requestedApprovalMode(body.target.model?.options),
-      ]);
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+        refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -3358,10 +3358,10 @@ export function createOrchestrationRoutes(
           (body as { setApprovalMode?: unknown }).setApprovalMode,
         ]);
         if (ceilingRefused) return ceilingRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
-          (body as { setApprovalMode?: unknown }).setApprovalMode,
-          requestedApprovalMode(body.target.model?.options),
-        ]);
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [
+            (body as { setApprovalMode?: unknown }).setApprovalMode,
+          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         const directoryRefused = refuseUngrantedDirectoryWorkspace(
           c,
@@ -3969,10 +3969,9 @@ export function createOrchestrationRoutes(
           body.setApprovalMode,
         ]);
         if (ceilingRefused) return ceilingRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
-          body.setApprovalMode,
-          requestedApprovalMode(body.model?.options),
-        ]);
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+          refuseUngrantedCarriedFullAccess(c, body.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(
@@ -4150,12 +4149,11 @@ export function createOrchestrationRoutes(
         },
       ]);
       if (postureRefused) return postureRefused;
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
-        requestedApprovalMode(
-          (body as { target?: { model?: { options?: unknown } } }).target?.model
-            ?.options,
-        ),
-      ]);
+      const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+        c,
+        (body as { target?: { model?: { options?: unknown } } }).target?.model
+          ?.options,
+      );
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -4945,11 +4943,10 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
-          requestedApprovalMode(
-            (getBody(c) as { modelOptions?: unknown }).modelOptions,
-          ),
-        ]);
+        const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+          c,
+          (getBody(c) as { modelOptions?: unknown }).modelOptions,
+        );
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up to a task stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(

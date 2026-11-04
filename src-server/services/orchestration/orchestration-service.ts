@@ -13986,6 +13986,8 @@ export class OrchestrationService {
     principal?: PrincipalRef;
     /** #1796: set only by `resetFullAccessGrantedBy`. */
     revocation?: SessionApprovalModeSetEvent['revocation'];
+    /** #4518: set only by `recordPersonalApprovalDefault`. */
+    source?: SessionApprovalModeSetEvent['source'];
   }): SetApprovalModeResult {
     // #4518: no decision above the machine's managed approval ceiling is
     // recorded, whichever path records it (the command route, a pick carried
@@ -14019,6 +14021,7 @@ export class OrchestrationService {
           approvalMode: input.approvalMode,
           ...(input.principal ? { principal: input.principal } : {}),
           ...(input.revocation ? { revocation: input.revocation } : {}),
+          ...(input.source ? { source: input.source } : {}),
         },
         input.clientOrigin,
       ),
@@ -14520,7 +14523,14 @@ export class OrchestrationService {
     | { outcome: 'recorded'; result: SetApprovalModeResult }
   > {
     // #4518: a saved personal default is a default, so one above the managed
-    // ceiling starts the chat at the ceiling rather than refusing it.
+    // ceiling starts the chat at the ceiling rather than refusing it. It is
+    // recorded marked `personal-default`, never as a pick: `ApprovalPosture`
+    // lowers such a decision to the ceiling in force at each start and turn,
+    // so a later, tighter policy lowers this chat instead of refusing it for
+    // a choice nobody made. What is recorded is the default as it applies
+    // now: a `never` needs a full-access grant, which nobody holds under the
+    // ceiling, so it is recorded at the ceiling and stays there if the policy
+    // is later removed.
     input = {
       ...input,
       approvalMode: clampToManagedCeiling(input.approvalMode),
@@ -14557,6 +14567,7 @@ export class OrchestrationService {
         provider: input.provider,
         approvalMode: input.approvalMode,
         basedOnSequence: null,
+        source: 'personal-default',
         ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
         ...(input.principal ? { principal: input.principal } : {}),
       }),

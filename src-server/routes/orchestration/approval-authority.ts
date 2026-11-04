@@ -103,6 +103,29 @@ export function refuseUngrantedFullAccess(
 }
 
 /**
+ * A 403 when a start or turn's `modelOptions` (the default channel: a
+ * client's default, the CLI's `--approval-mode`) asks for full access and
+ * this request may not grant it; `undefined` otherwise.
+ *
+ * #4518: a carried `approvalMode` is a default, not a pick, so under a
+ * managed ceiling below full access it is not refused: `ApprovalPosture`
+ * lowers it to the ceiling where it applies. A known ACP full-access mode id
+ * (`requestedApprovalMode`) is not lowered by anything, so it is still
+ * refused, with the managed refusal.
+ */
+export function refuseUngrantedCarriedFullAccess(
+  c: Context,
+  options: unknown,
+): Response | undefined {
+  if (requestedApprovalMode(options) !== 'never') return undefined;
+  const acpFullAccess = isKnownFullAccessAcpModeId(
+    (options as Record<string, unknown>).mode,
+  );
+  if (managedCeilingRefuses('never') && !acpFullAccess) return undefined;
+  return refuseUngrantedFullAccess(c, ['never']);
+}
+
+/**
  * #2377 slice C1: a recorded pick is checked by the posture it puts the
  * session in, not only by its literal value. A Default (`connection-default`)
  * is asked `reachesFullAccess`

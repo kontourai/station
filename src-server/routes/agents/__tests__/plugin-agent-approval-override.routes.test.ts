@@ -31,6 +31,7 @@ import { capturePluginAgentInvocation } from '../../../domain/config-loader-agen
 import { PLUGIN_AGENT_OWNER_FILE } from '../../../domain/plugin-agent-ownership.js';
 import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -350,4 +351,72 @@ test('plugin tool grants require operator authority and survive replacement into
   expect(
     (await f.configLoader.loadAgent(SLUG)).tools?.unattendedAutoApprove,
   ).toBeUndefined();
+});
+
+/**
+ * #4518: revoking a plugin Agent's tool grant only narrows what runs without
+ * a prompt, so it needs the normal mutation authority, not full access. Under
+ * a managed ceiling below full access, where nobody holds that authority,
+ * removal and a subset still go through; an addition is refused.
+ */
+test('plugin tool grants: removal and a subset need no full-access authority, under a ceiling too; an addition does', async () => {
+  const f = await fixture('ask');
+  expect(
+    (
+      await f.put(f.operator.credential, {
+        tools: { autoApprove: ['a', 'b'], unattendedAutoApprove: ['danger'] },
+      })
+    ).status,
+  ).toBe(200);
+  const grants = async () => (await f.configLoader.loadAgent(SLUG)).tools;
+
+  // Without a ceiling, a device holding no full-access grant may narrow.
+  const delegate = f.pair('Delegate', 'delegation');
+  expect(
+    (await f.put(delegate.credential, { tools: { autoApprove: ['a'] } }))
+      .status,
+  ).toBe(200);
+  expect((await grants())?.autoApprove).toEqual(['a']);
+  expect(
+    (await f.put(delegate.credential, { tools: { autoApprove: ['a', 'c'] } }))
+      .status,
+  ).toBe(403);
+
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'auto' },
+    },
+  });
+  try {
+    // An addition is refused for the operator too, and writes nothing.
+    const added = await f.put(f.operator.credential, {
+      tools: { autoApprove: ['a', 'z'] },
+    });
+    expect(added.status).toBe(403);
+    expect(added.body.code).toBe('managed-policy-approval-ceiling');
+    expect((await grants())?.autoApprove).toEqual(['a']);
+    // A subset, an empty list and `null` all go through.
+    expect(
+      (
+        await f.put(f.operator.credential, {
+          tools: { unattendedAutoApprove: [] },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await grants())?.unattendedAutoApprove).toEqual([]);
+    expect(
+      (await f.put(f.operator.credential, { tools: { autoApprove: ['a'] } }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await f.put(delegate.credential, { tools: { autoApprove: null } }))
+        .status,
+    ).toBe(200);
+    expect((await grants())?.autoApprove ?? []).toEqual([]);
+  } finally {
+    installManagedApprovalCeiling(null);
+  }
 });

@@ -106,6 +106,7 @@ export interface ApprovalPostureStore {
         approvalMode: unknown;
         globalSequence: number;
         actor?: unknown;
+        source?: unknown;
       }
     | undefined;
   conversationForSession(
@@ -129,6 +130,12 @@ export interface ApprovalPostureDecision {
    * `clientOrigin.actor`; `undefined` on events from before it existed.
    */
   actor?: ClientOriginActor;
+  /**
+   * #4518: `personal-default` when the decision records a person's saved
+   * default rather than a pick. It is applied as a default: lowered to the
+   * managed ceiling in force, never refused for being above it.
+   */
+  source?: 'personal-default';
 }
 
 function parseActor(value: unknown): ClientOriginActor | undefined {
@@ -280,6 +287,9 @@ export class ApprovalPosture {
       sequence: latest.globalSequence,
       threadId: latest.threadId,
       ...(actor ? { actor } : {}),
+      ...(latest.source === 'personal-default'
+        ? { source: 'personal-default' as const }
+        : {}),
     };
   }
 
@@ -507,8 +517,14 @@ export class ApprovalPosture {
     const decision = this.decision(input.threadId);
     // #4518, the turn-start gate: a thread whose recorded pick is above the
     // managed ceiling starts no turn, and no (re)start, until someone lowers
-    // its mode. Its engine keeps whatever it ran; nothing reaches it.
-    if (decision && managedCeilingRefuses(decision.approvalMode))
+    // its mode. Its engine keeps whatever it ran; nothing reaches it. A
+    // recorded personal default is not a pick: it is lowered below instead,
+    // so it follows the ceiling in force now, whatever it was when recorded.
+    if (
+      decision &&
+      decision.source !== 'personal-default' &&
+      managedCeilingRefuses(decision.approvalMode)
+    )
       throw new ManagedApprovalCeilingRefusedError();
     const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;
@@ -521,7 +537,9 @@ export class ApprovalPosture {
                 input.provider === PROVIDER_ACP &&
                 input.acpControl === 'station',
             })
-          : decision.approvalMode;
+          : decision.source === 'personal-default'
+            ? clampToManagedCeiling(decision.approvalMode)
+            : decision.approvalMode;
     } else {
       // #4518: a carried posture is the default channel (a client's default,
       // an automation's or a webhook's), so it is lowered, not refused.
