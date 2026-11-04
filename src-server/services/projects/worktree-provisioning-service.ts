@@ -962,14 +962,11 @@ export class WorktreeProvisioningService {
       // links need privilege the copy's `packed-refs` is a copy, and a
       // deletion there would rewrite only the copy while the branch lived
       // on. `update-ref` runs no filters; the only program it can start is
-      // the `reference-transaction` hook, so hooks point at a folder that
-      // does not exist (a command-line `-c` outranks every config file).
-      const real = [
-        '--git-dir',
-        repository.commonDir,
-        '-c',
-        `core.hooksPath=${join(repository.commonDir, 'station-no-hooks', 'none')}`,
-      ];
+      // the `reference-transaction` hook, and the git runner already sets
+      // `core.hooksPath` to the null device for every call (`spawnGit`), so
+      // no hook runs. Nothing here may set `core.hooksPath` again: a later
+      // `-c` would win over the runner's.
+      const real = ['--git-dir', repository.commonDir];
       const deleted = await this.git.run(
         [...real, 'update-ref', '-d', branchRef, tip],
         { allowCodes: [0, 1, 128] },

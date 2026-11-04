@@ -7,6 +7,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   lstatSync,
@@ -257,5 +258,33 @@ describe('Task worktree removal races (#4507)', () => {
     const detail = (outcome as { detail?: string }).detail ?? '';
     expect(detail).toContain('pulls in configuration from another file');
     expect(detail).not.toContain('which git would run');
+  });
+
+  // update-ref can start the reference-transaction hook. The runner points
+  // hooks at the null device; a hook planted anywhere in the
+  // member-writable git directory must never run, wherever it is.
+  test('a reference-transaction hook planted in the repository never runs when the branch is deleted', async () => {
+    const { parent, repo, metadata } = await taskWorktree();
+    const marker = join(parent, 'HOOK-RAN');
+    const hook = `#!/bin/sh\necho ran >> '${marker}'\n`;
+    for (const dir of [
+      join(repo, '.git', 'station-no-hooks', 'none'),
+      join(repo, '.git', 'hooks'),
+    ]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'reference-transaction'), hook);
+      chmodSync(join(dir, 'reference-transaction'), 0o755);
+    }
+    git(repo, 'config', 'core.hooksPath', join(repo, '.git', 'hooks'));
+
+    const outcome = await new WorktreeProvisioningService().finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(existsSync(marker)).toBe(false);
+    expect(outcome).toEqual({ outcome: 'removed' });
+    expect(git(repo, 'branch', '--list', metadata.branch).trim()).toBe('');
   });
 });

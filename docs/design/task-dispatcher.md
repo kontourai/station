@@ -171,8 +171,8 @@ file that is refused, keeps the worktree as `unsafe-config` and runs
 nothing. The one exception is deleting the branch: `update-ref` runs against
 the repository's real git directory (where links need privilege the judged
 copy holds a copy of `packed-refs`, so a deletion there could miss the real
-branch), with hooks pointed at a folder that does not exist; it runs no
-filters. Finalization then checks the branch is gone and reports the
+branch), with hooks off as for every Station git call (`core.hooksPath` is
+the null device); it runs no filters. Finalization then checks the branch is gone and reports the
 worktree kept (`failed`) if it is not. A
 `session-running` deferral is retried when a turn or Session ends, and once
 when Station starts (the deferral is recorded with the worktree, so a restart

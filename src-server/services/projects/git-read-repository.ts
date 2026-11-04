@@ -48,8 +48,8 @@
  * replace in the copy alone, so no operation that repacks or deletes refs
  * runs this way. Task worktree finalization (#4507) deletes its branch with
  * `update-ref` against the repository's real git directory instead, with
- * hooks pointed at a folder that does not exist, and then checks the ref is
- * gone.
+ * hooks off as for every call (`spawnGit` sets `core.hooksPath` to the null
+ * device), and then checks the ref is gone.
  *
  * WHAT A SWAP CAN STILL DO. `objects` and `refs` are links to PATHS, and
  * git opens them when it runs. A member can swap `.git`, or a folder above
