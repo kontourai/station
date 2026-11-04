@@ -821,11 +821,14 @@ export class EnvironmentSecurityService {
       });
     // Assessment must never turn a structurally supplied activity into a write.
     const request = { method: route.method, path: route.path };
-    if (!this.#authorizeDeviceCredential(candidate, request)) return undefined;
-    const grantedScope = this.#resolveDeviceGrantedScope(candidate);
-    return grantedScope === undefined
-      ? undefined
-      : Object.freeze({ operator: false, grantedScope });
+    return this.#devicePairingService?.withCurrentRegistry(() => {
+      if (!this.#authorizeDeviceCredential(candidate, request))
+        return undefined;
+      const grantedScope = this.#resolveDeviceGrantedScope(candidate);
+      return grantedScope === undefined
+        ? undefined
+        : Object.freeze({ operator: false, grantedScope });
+    });
   }
 
   #authorizeDeviceCredential(
