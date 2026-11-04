@@ -46,7 +46,10 @@ function deps(
     env: {},
     projectHome: '/nonexistent/project-home',
     repoRoot: '/nonexistent/repo-root',
-    inspectKontourDependencies: vi.fn(() => ({ exactPins: [], mismatches: [] })),
+    inspectKontourDependencies: vi.fn(() => ({
+      exactPins: [],
+      mismatches: [],
+    })),
     inspectSupervisorWedges: vi.fn(async () => []),
     inspectShellHosts: vi.fn(() => []),
     probeTerminalPty: vi.fn(() => ({ state: 'available' as const })),

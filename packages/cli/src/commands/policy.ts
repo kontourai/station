@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from 'node:path';
 import {
+  MANAGED_SETTING_NARROWER_SCOPES,
   type ManagedPolicyDigest,
   type ManagedPolicyDocument,
   type ManagedPolicyProblem,
@@ -57,9 +58,14 @@ function describeSettings(document: ManagedPolicyDocument): string[] {
     const label = definition ? ` (${definition.label})` : '';
     lines.push(
       entry.locked
-        ? `    ${key}${label}: locked to ${displaySettingValue(entry.value)}; users, projects and agents cannot change it`
+        ? `    ${key}${label}: locked to ${displaySettingValue(entry.value)}; the Station value and project overrides cannot be changed`
         : `    ${key}${label}: defaults to ${displaySettingValue(entry.value)} where nothing closer is set; users can change it`,
     );
+    // What the lock does not cover: narrower values that still decide.
+    const narrower = Object.hasOwn(MANAGED_SETTING_NARROWER_SCOPES, key)
+      ? MANAGED_SETTING_NARROWER_SCOPES[key]
+      : undefined;
+    if (entry.locked && narrower) lines.push(`      Not covered: ${narrower}`);
   }
   return lines;
 }

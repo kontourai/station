@@ -28,7 +28,7 @@ enforcement. A policy on one machine does not govern a server on another.
 
 Precedence for a setting, highest first: managed lock > project > Station >
 environment > managed default > built-in default. A managed default sits below
-the user's own choices; a lock sits above all of them. Station never writes
+the user's own choices; a lock sits above the project and Station values. Station never writes
 policy values into user configuration, so removing the policy restores the
 user's values.
 
@@ -253,6 +253,21 @@ update). A write that sets one to a value is refused. A write that sends it as
 unset (`null` or `''`), or resends the stored value, is dropped, so a project
 form that saw the field hidden can still save other changes. The stored record
 keeps the field, so it returns when the policy is removed.
+
+**A lock does not cover narrower scopes.** This is a decided product scope,
+not a gap to close in the settings layer. A lock fixes the Station-level value
+and the project overrides. Values set on an Agent, a connection, a
+conversation or a person's own account, which Station's resolvers apply before
+the Station value, still apply. For `defaultApprovalMode`, a mode a person
+picks for a conversation, an Agent's own default and a person's per-engine
+default still apply; the hard approval bound is `limits.maxApprovalMode`
+(#4518). For `region`, an Agent's region and then a model connection's region
+still win. `MANAGED_SETTING_NARROWER_SCOPES` in
+`@kontourai/station-contracts/managed-policy` lists every setting with such a
+value, traced to the resolver that applies it. `station policy check` prints
+that sentence under each locked setting, and the administrator guide lists the
+same table. Bounding those values is the job of `limits`, not of a setting
+lock.
 
 Project refusals carry the same 403 body as `/config/app` (`code`, `key`, and
 the organization's sentence with its support link), composed from the loaded

@@ -92,15 +92,34 @@ describe('station policy check', () => {
           defaultMaxTurns: { value: 40, locked: true },
           workspaceCheckpoints: { value: true, locked: false },
           approvalGuardian: { value: { enabled: false }, locked: true },
+          defaultApprovalMode: { value: 'ask', locked: true },
+          region: { value: 'eu-west-1', locked: true },
         },
       }),
     );
     const result = check(path);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('Managed settings: 3');
+    expect(result.stdout).toContain('Managed settings: 5');
     expect(result.stdout).toMatch(
-      /defaultMaxTurns \([^)]+\): locked to 40; users, projects and agents cannot change it/,
+      /defaultMaxTurns \([^)]+\): locked to 40; the Station value and project overrides cannot be changed/,
     );
+    // #4517 round 2: a lock states what it does not cover, under the key.
+    const notCovered = (key: string) => {
+      const lines = result.stdout.split('\n');
+      const at = lines.findIndex((line) => line.trim().startsWith(`${key} (`));
+      const next = lines[at + 1]?.trim() ?? '';
+      return next.startsWith('Not covered: ') ? next : undefined;
+    };
+    expect(notCovered('defaultApprovalMode')).toBe(
+      "Not covered: A mode a person picks for a conversation, an Agent's own approval default and a person's per-engine default still apply. The hard approval bound is `limits.maxApprovalMode` (#4518).",
+    );
+    expect(notCovered('region')).toBe(
+      "Not covered: An Agent's own region, then a model connection's region, still apply before this one.",
+    );
+    expect(notCovered('defaultMaxTurns')).toContain('maxSteps');
+    expect(notCovered('approvalGuardian')).toBeUndefined();
+    // A default is changeable anyway, so it carries no such line.
+    expect(notCovered('workspaceCheckpoints')).toBeUndefined();
     expect(result.stdout).toMatch(
       /workspaceCheckpoints \([^)]+\): defaults to true where nothing closer is set; users can change it/,
     );
@@ -110,7 +129,9 @@ describe('station policy check', () => {
     const report = JSON.parse(json.stdout);
     expect(report.summary.lockedSettings).toEqual([
       'approvalGuardian',
+      'defaultApprovalMode',
       'defaultMaxTurns',
+      'region',
     ]);
     // Paths only: no managed value reaches the summary.
     expect(JSON.stringify(report.summary)).not.toContain('40');

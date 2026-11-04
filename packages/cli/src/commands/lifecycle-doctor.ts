@@ -8,6 +8,7 @@ import {
   inspectLock,
   lockOwnerAlive,
 } from '@kontourai/station-shared/lifecycle-events';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   isSupportedNodeVersion,
   SUPPORTED_NODE_MAJOR,
@@ -23,10 +24,8 @@ import {
   inspectExactKontourDependencyPins,
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
-import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
-import { effectiveAppConfigOffline } from './managed-settings-guard.js';
 import {
   collectInstanceStatus,
   inspectTerminalShellHosts,
@@ -36,6 +35,7 @@ import {
   type LifecycleCodeRoot,
   resolveLifecycleStateLocation,
 } from './lifecycle-code-root.js';
+import { effectiveAppConfigOffline } from './managed-settings-guard.js';
 
 type DoctorCheckStatus = 'pass' | 'warn' | 'fail';
 

@@ -77,6 +77,32 @@ used" selection. Project settings show those fields as unset while the lock
 applies; saving a project with them unset keeps the project's own values for
 when the policy is removed, and setting one is refused.
 
+### What a lock does not cover
+
+A lock fixes two things: the Station-level value, and the project overrides
+described above. Some settings also have a narrower value, set on an Agent, a
+connection, a conversation or a person's own account, that Station applies
+before the Station-level value. A lock does not change those. To bound them,
+use limits: for approvals, `limits.maxApprovalMode` (#4518) is the hard bound.
+
+| Setting | Still applies over a lock |
+| --- | --- |
+| `defaultApprovalMode` | A mode a person picks for a conversation, an Agent's own approval default and a person's per-engine default still apply. The hard approval bound is `limits.maxApprovalMode` (#4518). |
+| `region` | An Agent's own region, then a model connection's region, still apply before this one. |
+| `defaultModel` | An Agent's own model and the model a person picks for a chat still apply. |
+| `defaultLLMProvider` | An Agent's own model connection and the connection a person picks for a chat still apply. |
+| `invokeModel` | An invoke request that names its own model still uses it. |
+| `structureModel` | `approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first. |
+| `defaultMaxTurns` | An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first. |
+| `defaultMaxOutputTokens` | An Agent's own `guardrails.maxTokens` still applies first. |
+| `defaultWorkspaceIsolation` | Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in. |
+| `defaultChatFontSize` | A person's own Chat font size (an account setting) still applies first. |
+
+Every other setting a policy can manage has no narrower value: its lock is the
+value in effect. `systemPrompt` is not overridden either: each Agent's own
+prompt is added after it. `station policy check` prints the same sentence
+under each locked setting in this table.
+
 Station never writes these values into the user's configuration. Remove the
 policy and restart, and every user's own values come back.
 

@@ -76,9 +76,9 @@ export function effectiveAppConfigOffline<T extends Record<string, unknown>>(
   )?.document.settings;
   if (!settings) return stored;
   const effective: Record<string, unknown> = { ...stored };
+  // The server's own predicate: an explicit `null` is a decision and a
+  // loader-written seed is not (#4517 round 2).
   for (const [key, entry] of Object.entries(settings))
-    // The server's own predicate: an explicit `null` is a decision and a
-    // loader-written seed is not (#4517 round 2).
     if (entry.locked || !hasAppConfigStationDecision(stored, key))
       effective[key] = structuredClone(entry.value);
   return effective as T;

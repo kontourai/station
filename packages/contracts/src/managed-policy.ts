@@ -354,6 +354,37 @@ export const MANAGED_SETTING_PROJECT_FIELDS: Readonly<
   defaultApprovalMode: ['defaultApprovalMode', 'defaultApprovalModeSelection'],
 });
 
+/**
+ * What a lock does NOT cover (#4517 round 2, a decided scope): a lock fixes
+ * the Station-level value and the project overrides
+ * (`MANAGED_SETTING_PROJECT_FIELDS`), and these narrower values still decide
+ * past it. Each sentence was traced to the resolver that applies it.
+ * `station policy check` prints it under the setting, and the managed policy
+ * guide lists the same sentences.
+ */
+export const MANAGED_SETTING_NARROWER_SCOPES: Readonly<Record<string, string>> =
+  Object.freeze({
+    defaultApprovalMode:
+      "A mode a person picks for a conversation, an Agent's own approval default and a person's per-engine default still apply. The hard approval bound is `limits.maxApprovalMode` (#4518).",
+    region:
+      "An Agent's own region, then a model connection's region, still apply before this one.",
+    defaultModel:
+      "An Agent's own model and the model a person picks for a chat still apply.",
+    defaultLLMProvider:
+      "An Agent's own model connection and the connection a person picks for a chat still apply.",
+    invokeModel: 'An invoke request that names its own model still uses it.',
+    structureModel:
+      "`approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first.",
+    defaultMaxTurns:
+      "An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first.",
+    defaultMaxOutputTokens:
+      "An Agent's own `guardrails.maxTokens` still applies first.",
+    defaultWorkspaceIsolation:
+      'Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in.',
+    defaultChatFontSize:
+      "A person's own Chat font size (an account setting) still applies first.",
+  });
+
 /** The project fields hidden while `lockedKeys` are locked. */
 export function projectFieldsMaskedByLocks(
   lockedKeys: Iterable<string>,

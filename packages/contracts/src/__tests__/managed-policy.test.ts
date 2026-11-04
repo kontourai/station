@@ -545,3 +545,30 @@ describe('withoutLockedProjectFields (#4517)', () => {
     );
   });
 });
+
+// #4517 round 2: the administrator guide's "What a lock does not cover"
+// table is the published form of MANAGED_SETTING_NARROWER_SCOPES; a row the
+// constant drops, adds or rewords fails here.
+describe('MANAGED_SETTING_NARROWER_SCOPES', () => {
+  test('matches the managed policy guide table row for row', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { MANAGED_SETTING_NARROWER_SCOPES } = await import(
+      '../managed-policy.js'
+    );
+    const guide = readFileSync(
+      new URL('../../../../docs/guides/managed-policy.md', import.meta.url),
+      'utf8',
+    );
+    const section = (
+      guide.split('### What a lock does not cover')[1] ?? ''
+    ).split(/^#{2,3} /m)[0];
+    const rows = [...section.matchAll(/^\| `([^`]+)` \| (.+) \|$/gm)].map(
+      ([, key, text]) => [key, text.replace(/\\\|/g, '|')],
+    );
+    expect(Object.fromEntries(rows)).toEqual(MANAGED_SETTING_NARROWER_SCOPES);
+    // Pinned independently: the two scopes the product decision names.
+    expect(Object.keys(MANAGED_SETTING_NARROWER_SCOPES)).toEqual(
+      expect.arrayContaining(['defaultApprovalMode', 'region']),
+    );
+  });
+});
