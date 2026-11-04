@@ -126,7 +126,7 @@ describe('telemetry commands', () => {
       '--api-base=http://127.0.0.1:43129',
     ]);
     expect(consoleLog).toHaveBeenCalledWith(
-      'Kontour: Anonymous usage counts (lite); This build has no Station usage destination, so nothing is sent to Kontour',
+      'Kontour: Anonymous usage counts (anonymous); This build has no Station usage destination, so nothing is sent to Kontour',
     );
     expect(consoleLog.mock.calls.flat().join(' ')).not.toContain(
       'waiting for your review',
@@ -148,11 +148,11 @@ describe('telemetry commands', () => {
     const { runTelemetryCommand } = await import('../commands/telemetry.js');
     await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
     expect(consoleLog).toHaveBeenCalledWith(
-      'Kontour: Anonymous usage counts (lite)',
+      'Kontour: Anonymous usage counts (anonymous)',
     );
     expect(consoleLog).toHaveBeenCalledTimes(2);
     expect(consoleLog).toHaveBeenCalledWith(
-      'Additional destination: Anonymous usage counts (lite); environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.',
+      'Additional destination: Anonymous usage counts (anonymous); environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.',
     );
   });
 
@@ -177,7 +177,7 @@ describe('telemetry commands', () => {
       "Kontour: Don't share (off); Do Not Track is on, so nothing is shared",
     );
     expect(consoleLog).toHaveBeenCalledWith(
-      'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+      'Additional destination: Anonymous usage counts (anonymous); Detailed sharing is waiting for your review in Privacy & sharing',
     );
   });
   test.each(['operator', 'kontour', 'publisher:writer'] as const)(
@@ -217,7 +217,7 @@ describe('telemetry commands', () => {
       expect(consoleLog).toHaveBeenCalledWith(
         publisher === 'publisher:writer'
           ? "writer: Plugin usage counts (lite); Detailed plugin sharing is waiting for this publisher's confirmation"
-          : `${publisher === 'kontour' ? 'Kontour' : 'Additional destination'}: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing`,
+          : `${publisher === 'kontour' ? 'Kontour' : 'Additional destination'}: Anonymous usage counts (anonymous); Detailed sharing is waiting for your review in Privacy & sharing`,
       );
     },
   );
