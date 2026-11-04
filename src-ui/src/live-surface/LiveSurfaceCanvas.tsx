@@ -115,6 +115,33 @@ export interface LiveSurfaceCanvasProps {
    * anyone meaning to drive it.
    */
   inputRequiresLease?: boolean;
+  /**
+   * Optional (foldable devices; fit mode only): draw the frame through a
+   * host-owned presentation instead of flat. The canvas stays the input
+   * target, invisible, and `toFrame` maps a client point on it to the
+   * SHOWN frame's pixels (null where the presentation shows nothing). The
+   * shared viewer's other hosts (fullscreen, float) pass the same object.
+   */
+  projection?: LiveSurfaceProjection;
+}
+
+/** What a `projection` gives the canvas. */
+export interface LiveSurfaceProjection {
+  toFrame(
+    client: { x: number; y: number },
+    box: { left: number; top: number; width: number; height: number },
+    shown: { width: number; height: number },
+  ): { x: number; y: number } | null;
+  /** Drawn over the canvas box; repaints from `source` after each frame. */
+  render(source: LiveSurfaceProjectionSource): ReactNode;
+}
+
+/** The drawn frame a projection copies from. */
+export interface LiveSurfaceProjectionSource {
+  canvas: HTMLCanvasElement | null;
+  shown: { width: number; height: number };
+  /** Called after every frame is drawn; returns an unsubscribe. */
+  subscribe(onDrawn: () => void): () => void;
 }
 
 /** What `renderOverlay` receives. */
@@ -279,6 +306,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const [frameRotation, setFrameRotation] =
     useState<LiveSurfaceFrameRotation>(0);
   const decodingRef = useRef(false);
+  const drawnListenersRef = useRef(new Set<() => void>());
+  const subscribeDrawn = useCallback((onDrawn: () => void) => {
+    drawnListenersRef.current.add(onDrawn);
+    return () => {
+      drawnListenersRef.current.delete(onDrawn);
+    };
+  }, []);
   const nextFrameRef = useRef<LiveSurfaceFrame | null>(null);
   const composingRef = useRef(false);
   const lastDownRef = useRef<{
@@ -339,6 +373,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               context.restore();
             }
             bitmap.close?.();
+            for (const onDrawn of drawnListenersRef.current) onDrawn();
           } catch {
             // An undecodable frame is skipped; the next one replaces it.
           }
@@ -383,6 +418,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     height: number;
   } | null>(null);
   const fitting = props.fit !== undefined;
+  const projecting = fitting && props.projection !== undefined;
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!fitting || !stage) return;
@@ -430,12 +466,35 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   /** Keys this client pressed (as key events) and has not released. */
   const heldKeysRef = useRef(new Map<string, { key: string; code: string }>());
 
+  const projectionRef = useRef(props.projection);
+  projectionRef.current = props.projection;
   const toSurface = useCallback(
     (clientX: number, clientY: number, clamp = false) => {
       const canvas = canvasRef.current;
       const header = headerRef.current;
       if (!canvas || !header) return null;
       const rect = canvas.getBoundingClientRect();
+      const projection = projectionRef.current;
+      if (projection) {
+        const shown = shownSize(header);
+        const point = projection.toFrame(
+          { x: clientX, y: clientY },
+          {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+          shown,
+        );
+        // A press must land on the drawn surface; a release or drag already
+        // under way is kept at the edge it left by, as flat input is.
+        if (!point) return clamp ? lastPointRef.current : null;
+        return {
+          x: point.x / header.deviceScaleFactor,
+          y: point.y / header.deviceScaleFactor,
+        };
+      }
       return mapClientPointToSurface(
         { x: clientX, y: clientY },
         {
@@ -826,7 +885,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         <canvas
           ref={canvasRef}
           style={fitStyle}
-          className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}`}
+          className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}${projecting ? ' live-surface__canvas--projected' : ''}`}
           role="img"
           aria-label={`Live view of ${label}`}
           data-testid="live-surface-canvas"
@@ -858,6 +917,20 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           onCompositionEnd={onCompositionEnd}
           onBlur={() => releaseEverything()}
         />
+        {projecting && fitStyle && frameSize ? (
+          <div
+            aria-hidden="true"
+            className="live-surface__overlay live-surface__projection"
+            data-testid="live-surface-projection"
+            style={fitStyle}
+          >
+            {props.projection!.render({
+              canvas: canvasRef.current,
+              shown: frameSize,
+              subscribe: subscribeDrawn,
+            })}
+          </div>
+        ) : null}
         {props.renderOverlay && fitStyle && frameSize ? (
           <div
             aria-hidden="true"

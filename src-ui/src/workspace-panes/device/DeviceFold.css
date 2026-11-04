@@ -1,0 +1,125 @@
+/*
+ * A foldable's lit display drawn bent at its hinge, and its fold controls
+ * (#1970 foldables). The view fills the canvas box it is laid over; each
+ * half is turned about the crease under the container's perspective.
+ */
+
+.device-fold {
+  height: 100%;
+  perspective-origin: 50% 50%;
+  position: relative;
+  transform-style: preserve-3d;
+  width: 100%;
+}
+
+.device-fold__half {
+  backface-visibility: hidden;
+  display: block;
+  position: absolute;
+}
+
+.device-fold__half--whole {
+  border-radius: inherit;
+  height: 100%;
+  inset: 0;
+  width: 100%;
+}
+
+.device-fold--vertical .device-fold__half {
+  height: 100%;
+  top: 0;
+  width: 50%;
+}
+
+.device-fold--vertical .device-fold__half--first {
+  left: 0;
+}
+
+.device-fold--vertical .device-fold__half--second {
+  left: 50%;
+}
+
+.device-fold--horizontal .device-fold__half {
+  height: 50%;
+  left: 0;
+  width: 100%;
+}
+
+.device-fold--horizontal .device-fold__half--first {
+  top: 0;
+}
+
+.device-fold--horizontal .device-fold__half--second {
+  top: 50%;
+}
+
+/* The crease itself: a soft seam where the display bends. */
+.device-fold__crease {
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(0 0 0 / 0.35),
+    transparent
+  );
+  pointer-events: none;
+  position: absolute;
+}
+
+.device-fold--vertical .device-fold__crease {
+  height: 100%;
+  left: calc(50% - 3px);
+  top: 0;
+  width: 6px;
+}
+
+.device-fold--horizontal .device-fold__crease {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgb(0 0 0 / 0.35),
+    transparent
+  );
+  height: 6px;
+  left: 0;
+  top: calc(50% - 3px);
+  width: 100%;
+}
+
+.device-fold-controls {
+  align-items: center;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-fold-controls__stands {
+  display: flex;
+  gap: var(--space-1, 4px);
+}
+
+.device-fold-controls__stand {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.device-fold-controls__hinge,
+.device-fold-controls__table {
+  align-items: center;
+  display: flex;
+  font-size: 0.8125rem;
+  gap: var(--space-2, 8px);
+}
+
+.device-fold-controls__hinge input[type="range"] {
+  min-height: 44px;
+  width: 9rem;
+}
+
+.device-fold-controls__hinge output {
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+}

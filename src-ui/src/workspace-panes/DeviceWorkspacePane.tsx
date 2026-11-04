@@ -49,6 +49,8 @@ import {
   type LiveSurfaceHeaderApi,
 } from '../live-surface/LiveSurfaceCanvas';
 import { DeviceSetupSlot } from './DeviceSetupSlot';
+import { DeviceFoldControls } from './device/DeviceFoldControls';
+import { type DeviceFoldState, useDeviceFold } from './device/DeviceFoldView';
 import {
   type DevicePaneSelection,
   onDevicePaneSelection,
@@ -891,6 +893,7 @@ function DeviceStage({
   }, [toolsOpen]);
   const [axOverlay, setAxOverlay] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
+  const foldState = useDeviceFold();
   const target = {
     hostId: session.hostId,
     platform,
@@ -933,9 +936,11 @@ function DeviceStage({
       {...(projectSlug ? { projectSlug } : {})}
       label={`${session.name} (${osLabel(session)})`}
       params={{ maxFps: 15, quality: 70, maxWidth: 1600, maxHeight: 1600 }}
+      {...(foldState.projection ? { projection: foldState.projection } : {})}
       renderHeader={(api) => (
         <DeviceToolbar
           api={api}
+          foldState={foldState}
           hostLabel={hostLabel}
           canManage={canManage}
           ending={ending}
@@ -1036,6 +1041,7 @@ function onToolbarKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 
 function DeviceToolbar({
   api,
+  foldState,
   hostLabel,
   session,
   canManage,
@@ -1055,6 +1061,7 @@ function DeviceToolbar({
   onReconnect,
 }: {
   api: LiveSurfaceHeaderApi;
+  foldState: DeviceFoldState;
   hostLabel: string;
   session: MobileDeviceSession;
   canManage: boolean;
@@ -1078,6 +1085,9 @@ function DeviceToolbar({
   const { surface, inputReady, sendInput } = api;
   const live = surface.status === 'live';
   useEffect(() => onStreamLive(live), [live, onStreamLive]);
+  const reportedFold = surface.producerStatus.fold;
+  const reportFold = foldState.report;
+  useEffect(() => reportFold(reportedFold), [reportedFold, reportFold]);
   const press = (button: LiveSurfaceDeviceButton) =>
     sendInput([{ kind: 'device-button', button }]);
   const orientation = surface.producerStatus.orientation ?? 'portrait';
@@ -1189,6 +1199,13 @@ function DeviceToolbar({
           {iconButton('Close', <CloseGlyph />, onClose)}
         </div>
       </div>
+      {foldState.fold ? (
+        <DeviceFoldControls
+          {...foldState.controls}
+          inputReady={inputReady}
+          sendInput={sendInput}
+        />
+      ) : null}
       {ended ? (
         <ErrorState
           variant="compact"

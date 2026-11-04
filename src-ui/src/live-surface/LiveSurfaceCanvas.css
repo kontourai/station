@@ -145,3 +145,15 @@
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
+/*
+ * A host projection (foldable devices): the canvas stays the input target
+ * but is not seen; the projection layer above it draws the frame.
+ */
+.live-surface__canvas--projected {
+  opacity: 0;
+}
+
+.live-surface__projection {
+  overflow: visible;
+}
