@@ -633,16 +633,22 @@ export function resolveBindingStatus({
     chatState?.provider ??
     (agentConnectionId || undefined);
   const engineId = connectionEngineId(runtimeConnection);
-  const agentModels = asModelOptions(agent?.modelOptions);
+  // A profile's aliases belong to its configured engine, not an override
+  // or a Session still running on a previous connection.
+  const agentModels =
+    runtimeConnection &&
+    runtimeConnection.id !== agent?.execution?.agentConnectionId
+      ? []
+      : asModelOptions(agent?.modelOptions);
   const runtimeModels = runtimeCatalogVisibleModels(runtimeConnection);
   const usesGlobalCatalog =
     chatState?.executionMode !== EXECUTION_MODE.STATION &&
     engineId === 'station';
   const visibleModels =
-    agentModels.length > 0
-      ? agentModels
-      : runtimeModels.length > 0
-        ? runtimeModels
+    runtimeModels.length > 0
+      ? runtimeModels
+      : agentModels.length > 0
+        ? agentModels
         : usesGlobalCatalog
           ? globalModels
           : [];
@@ -795,9 +801,17 @@ export function buildProviderOptions(
     };
   }
   if (agentConnectionId === 'codex') {
+    const effort = runtimeOptions?.effort ?? runtimeOptions?.reasoningEffort;
     return {
-      reasoningEffort: runtimeOptions?.reasoningEffort ?? 'medium',
-      fastMode: runtimeOptions?.fastMode === true,
+      ...(typeof effort === 'string' ? { reasoningEffort: effort } : {}),
+      ...(runtimeOptions?.serviceTier === undefined &&
+      runtimeOptions?.fastMode === true
+        ? { fastMode: true }
+        : {}),
+      ...(runtimeOptions?.serviceTier === null ||
+      typeof runtimeOptions?.serviceTier === 'string'
+        ? { serviceTier: runtimeOptions.serviceTier }
+        : {}),
     };
   }
   return {};
@@ -849,7 +863,7 @@ export function resolveAgentExecution(
     modelSource:
       agent.execution?.modelId || agent.model ? 'agent default' : 'unknown',
     providerOptions: buildProviderOptions(
-      agentConnectionId,
+      agent.engineConnectionType ?? agentConnectionId,
       agent.execution?.runtimeOptions,
     ),
   };

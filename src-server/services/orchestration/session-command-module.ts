@@ -338,7 +338,13 @@ interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       tenant: TenantExecutionContext | undefined,
       startInput: OrchestrationStartSessionInput,
-    ): void;
+      /**
+       * The principal that requested the start: a fork's admitted requester
+       * (its context names the fork owner instead), else the dispatching
+       * principal; undefined for an internal start.
+       */
+      startedBy: string | undefined,
+    ): void | Promise<void>;
   };
   launchPolicy: {
     assertStartAllowed(
@@ -759,16 +765,17 @@ export function createSessionCommandModule(
             context,
             internal,
           );
-          await deps.launchPolicy.ensureStartedSessionCurrent(
-            adapter,
-            session,
-            startInput.signal,
-          );
-          deps.sessionState.attachStarted(
+          await deps.sessionState.attachStarted(
             session,
             adapter,
             context.tenantExecutionContext,
             startInput,
+            internal?.forkContextRequester?.userId ?? context.userId,
+          );
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);

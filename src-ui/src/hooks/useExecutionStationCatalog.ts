@@ -137,6 +137,12 @@ export function useExecutionStations({
       (peers.isSuccess || peers.isError) &&
       (authority.isSuccess || authority.isError),
     stationsUnavailable: environments.isError || peers.isError,
+    retryStations: () =>
+      Promise.all([
+        environments.refetch(),
+        peers.refetch(),
+        authority.refetch(),
+      ]),
   };
 }
 
@@ -146,7 +152,7 @@ export function useExecutionStationCatalog(
   projectSelected = false,
 ) {
   const scope = useHostRequestAuthorityScope();
-  const { enabled, stations, nameFor, stationsUnavailable } =
+  const { enabled, stations, nameFor, stationsUnavailable, retryStations } =
     useExecutionStations({ projectSelected });
   const query = useQuery({
     queryKey: [
@@ -225,6 +231,7 @@ export function useExecutionStationCatalog(
     unmatched: environmentId !== 'current' && sameEnvironment && !counterpart,
     stationName,
     stationsUnavailable,
+    retryStations,
   };
 }
 

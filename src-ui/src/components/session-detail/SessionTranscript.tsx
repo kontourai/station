@@ -58,6 +58,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   onSettledChange,
   scrollContainerRef,
   preserveReading = false,
+  observation,
 }: {
   apiBase: string;
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>;
@@ -78,6 +79,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   onSettledChange?: (settled: boolean) => void;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   preserveReading?: boolean;
+  observation?: { live: false; revision: number };
 }) {
   const isMobile = useIsMobile();
   const {
@@ -90,7 +92,7 @@ export const SessionTranscript = memo(function SessionTranscript({
     upgradeRequired,
     retry,
     loading,
-  } = useSessionTranscriptEvents(apiBase, session, isStreaming);
+  } = useSessionTranscriptEvents(apiBase, session, isStreaming, observation);
   const contentRef = useRef<HTMLElement | null>(null);
   const noScrollRef = useRef<HTMLDivElement | null>(null);
   const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(

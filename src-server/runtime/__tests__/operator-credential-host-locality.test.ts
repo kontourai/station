@@ -11,6 +11,7 @@ import {
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../__test-utils__/owner-standing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { reportOperatorCredentialUse } from '../../security/host-operator-credential.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
@@ -149,7 +150,13 @@ async function createHarness(
     Authorization: `Bearer ${credential}`,
   });
 
-  async function pairDevice(name: string) {
+  /**
+   * `scope` omitted pairs the default grant, which carries a host shell,
+   * so the device is one of the owner's own (owner-device standing). Pass
+   * `DEVICE_WITHOUT_HOST_SHELL` for a device that holds no administration
+   * standing.
+   */
+  async function pairDevice(name: string, scope?: string) {
     const host = { peer: LOOPBACK, headers: { host: LOOPBACK_HOST } };
     const offer = (await (
       await call(
@@ -160,7 +167,10 @@ async function createHarness(
             'Content-Type': 'application/json',
             ...bearer(operatorCredential),
           },
-          body: JSON.stringify({ endpoint: ORIGIN }),
+          body: JSON.stringify({
+            endpoint: ORIGIN,
+            ...(scope !== undefined ? { scope } : {}),
+          }),
         },
         host,
       )
@@ -596,11 +606,14 @@ describe('device-admin routes observe raw operator-credential position (#2894 S1
     ['from the host', positions.hostCli],
     ['from a remote peer', positions.remotePeer],
   ] as const)(
-    'an ordinary paired device is refused on every device-admin route %s',
+    'a paired device without a host shell is refused on every device-admin route %s',
     async (_label, position) => {
       const harness = await createHarness();
       const target = await harness.pairDevice('Phone');
-      const other = await harness.pairDevice('Other phone');
+      const other = await harness.pairDevice(
+        'Other phone',
+        DEVICE_WITHOUT_HOST_SHELL,
+      );
       harness.observed.length = 0;
       const asDevice = harness.bearer(other.credential);
 
@@ -641,6 +654,40 @@ describe('device-admin routes observe raw operator-credential position (#2894 S1
       expect(harness.observed).toEqual([]);
     },
   );
+
+  test("the owner's own device administers ordinary devices from a remote peer, as the host browser does (owner-device standing)", async () => {
+    const harness = await createHarness();
+    const target = await harness.pairDevice('Tablet');
+    const owner = await harness.pairDevice('Laptop');
+    harness.observed.length = 0;
+    const asOwner = harness.bearer(owner.credential);
+
+    const list = await harness.call(
+      '/api/pairing/devices',
+      { headers: asOwner },
+      positions.remotePeer,
+    );
+    expect(list.status).toBe(200);
+    const scope = await harness.call(
+      `/api/pairing/devices/${target.device.id}/scope`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...asOwner },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      },
+      positions.remotePeer,
+    );
+    expect(scope.status).toBe(200);
+    expect(
+      harness.security.devicePairing.identifyDevice(target.credential)?.scope,
+    ).toBe('orchestration:read');
+    // Narrowed to read-only, the tablet no longer holds the standing.
+    expect(harness.security.credentialHasOwnerStanding(target.credential)).toBe(
+      false,
+    );
+    // No raw operator credential was used anywhere.
+    expect(harness.observed).toEqual([]);
+  });
 });
 
 describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
@@ -700,7 +747,12 @@ describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
 describe('explicit remote device administration', () => {
   test('a promoted device administers another device, and withdrawal takes effect on the next request', async () => {
     const h = await createHarness();
-    const admin = await h.pairDevice('Admin laptop');
+    // Inherited access:manage without a host shell is not owner standing, so
+    // only the explicit promotion below grants administration.
+    const admin = await h.pairDevice(
+      'Admin laptop',
+      `${DEVICE_WITHOUT_HOST_SHELL} access:manage`,
+    );
     const target = await h.pairDevice('Phone');
     const json = (credential: string, scope: string[]) => ({
       method: 'POST',

@@ -24,6 +24,18 @@ Environment, workspace and current Agent/engine binding. Supported per-turn mode
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
+For a new Session that announces `session.started` before its adapter start
+returns, an accepted start awaits that event’s durable commit. A per-thread
+commit signal yields while publication retries. If the announcement settles
+without a durable append, or five seconds pass without confirmation, the command
+returns `indeterminate`, attempts provider cleanup, and retains no in-memory
+start-owner send authority. Event settlement and failed-start cleanup share the
+same interim-owner revocation path. Inspect the Session before
+retrying. Adapters that defer their `session.started` announcement until after
+the adapter start returns retain their deferred-start semantics: acceptance
+does not promise that later event is already durable, and the accepted owner
+can still send through the in-memory fallback while it publishes.
+
 Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
@@ -302,7 +314,8 @@ against its own filesystem.
 
 A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
 engine in a folder that is not confined to a Project, so a paired device needs
-the operator's `coding:exec` grant to name one; without it the route answers
+the operator's `coding:exec` grant to name one (one of the owner's own devices
+with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
 `/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
@@ -673,10 +686,10 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   follow-ups resume after that review barrier and the turn's terminal.
   Later model steps retain the steer after its tool-result boundary and before
   the model's response to it, including when earlier history is compacted.
-  Missing adapter durability is treated as no declared steering support. During
-  a running turn this settles the inbox entry `refused`, with reason code
-  `unsupported-engine`, before any handoff; it does not block later follow-ups.
-  Direct steer dispatch also returns the typed `unsupported-engine` outcome.
+  Steering waits only while Session materialization has not registered its
+  adapter. Once the adapter is registered, a missing declaration or a declared
+  placement of `none` settles queued steering `refused` with reason code
+  `unsupported-engine` before any handoff. Direct steer dispatch still refuses missing declarations before effect.
   A missing registered adapter also refuses before effect. A confirmed missing
   Session returns `no-active-turn`; a Session still materializing retains its
   existing unavailable outcome rather than claiming no turn can arrive.

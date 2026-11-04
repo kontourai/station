@@ -438,11 +438,15 @@ A session spawned before this change has nothing recorded.
   Ask or Auto, or pick Default.
 - **Full access (`never`) is gated.** It needs the operator in person, or a
   device holding the new operator-promotion scope `approval:full-access`.
+  Since 2026-11-02 the operator in person includes one of the owner's own
+  devices holding [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02);
+  its grant still names that device as grantor.
   - The scope is in no preset and never in the default grant, like
     `engine:login` and #2412's `coding:exec`.
   - The operator grants it once per device: when approving a pairing
     request that asked for it (the Station app asks for it; only the operator
-    credential or the desktop's local grant may keep it, and **Limit access**
+    credential, the desktop's local grant, the host browser session or one of
+    the owner's own devices with owner-device standing may keep it, and **Limit access**
     leaves it out), in the device access editor (**Paired devices** → the
     device → **Change access** → "Skip approval prompts"), or on the Station
     host with `station environment access scope <device> --add

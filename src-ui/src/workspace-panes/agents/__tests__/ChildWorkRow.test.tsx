@@ -18,6 +18,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ChatRequestContext } from '../../../components/chat/ChatRequestContext';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
@@ -585,10 +586,14 @@ test('#3163: View transcript reads the child by session and id, renders it read-
   // Closed: nothing is read.
   expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith({
-    threadId: 'exec-1',
-    childId: 'task-1',
-  });
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
+    {
+      threadId: 'exec-1',
+      childId: 'task-1',
+      requestScope: undefined,
+    },
+    undefined,
+  );
   const region = screen.getByRole('region', { name: 'Subagent transcript' });
   expect(region.textContent).toContain('Reply INNER');
   expect(region.textContent).toContain('Tool · Agent');
@@ -600,6 +605,33 @@ test('#3163: View transcript reads the child by session and id, renders it read-
   expect(
     screen.queryByRole('region', { name: 'Subagent transcript' }),
   ).toBeNull();
+});
+
+test('a peer chat reads its subagent transcript through the receiver bridge under the source authority', () => {
+  const requestScope = {
+    apiBase: 'http://source.test',
+    authorityKey: 'source',
+    isCurrent: () => true,
+  };
+  const apiBase = `${requestScope.apiBase}/api/environments/peers/desktop-win/chat-api`;
+  useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
+  render(
+    <ChatRequestContext.Provider value={{ apiBase, requestScope }}>
+      <ul>
+        <ChildWorkRow
+          row={row({ status: 'completed', transcript: TRANSCRIPT })}
+          now={100_000}
+          showProvenance={false}
+          onOpenSession={onOpenSession}
+        />
+      </ul>
+    </ChatRequestContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
+    { threadId: 'exec-1', childId: 'task-1', requestScope },
+    apiBase,
+  );
 });
 
 test('#4266: a subagent reply in the transcript renders as Markdown, a prompt as written', async () => {

@@ -119,15 +119,17 @@ replies, continue chats, and review work. Start on your computer:
 
 1. Install and launch Station there using the options below.
 2. Open the Station name at the top of the computer’s window and choose
-   **Pair phone**. Check the address before creating the invitation.
-   **Settings → Pairing → Pair device** opens the same screen.
+   **Pair phone**. Station opens straight to a pairing code on a reachable
+   HTTPS address, and lists any other HTTPS addresses to switch to.
+   **Settings → Pairing → Pair device** opens the same screen. Any of your own
+   paired devices with full access can do this, not only the computer.
 3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
    invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
 
-Pairing codes require a reachable HTTPS address. The computer can suggest its
-own configured Tailscale Serve address; choose **Use this address** after checking
-it. Both devices still need access to that address.
+Scanning a pairing code on the phone needs a reachable HTTPS address, such as
+the computer's Tailscale HTTPS address, which Station lists first when it is
+configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
@@ -470,8 +472,9 @@ show what **Start** will use:
   **Engine & model** picker, which also offers alternative engines when they
   are available. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
-  filter by provider, **Recent**, or **Favorites**; open **Options** for
-  supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
+  filter by provider, **Recent**, or **Favorites**. Supported thinking effort
+  and Speed controls sit beside the list; on phones, open **Settings**.
+  Choosing a Model for an Agent also chooses
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or
@@ -483,9 +486,7 @@ show what **Start** will use:
   now (it is read-only, still loading, the check failed, or it is waiting on a
   turn the server reports as still running), the other engines are not listed
   and **Use Agent defaults** is unavailable.
-- The **project** control (above the message on Home, beside the Agent chip
-  in the dock) shows the Project's icon (or
-  its colour when none is displayable) and name, or **Without a project**.
+- The **project** control in the start heading shows its name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
   folder this chat will run in. For a linked checkout, that is its resolved
   execution root. An unavailable location states why Station cannot start
@@ -504,20 +505,31 @@ show what **Start** will use:
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
-**Runs on <Station>** says which Station runs the work. When you can run work
-on another Station (a verified SSH environment when no Project is chosen,
-or a paired Station you are allowed to list whose pairing can run work, with
-permission to start tasks), it opens **Where this work runs**, with the current one
-checked. Choosing another Station continues to its **Engine & model**, since
-that Station's own engines run the work. **Start** then opens **Run on a
-Station** with your message, Project and choices, and **Run task** starts a
-resumable task there. Unavailable destinations keep their refusal instead of
-falling back to this computer, and Cancel returns to your message, including
-edits made in the task chooser. A started task shows **Task started on
-<Station>.** with **Open task** to follow it in Activity. A
-foreground chat stays on its existing Station; choosing a remote task
-destination does not move that chat. With no other Station to choose, the
-control is plain text.
+The start heading includes a clickable **Project** name. **Or start without a
+project** clears it. Home and New Chat use the same composer and pickers;
+**Runs on <Station>** sits below the message box.
+
+When another Station is available, **Runs on <Station>** opens **Where this work
+runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+chats** enabled in Settings → Advanced → Feature previews, choose a Project
+from that Station’s own list, or **start without a project**. **Start** opens a
+chat tab that reads and replies to the conversation on the chosen Station.
+It keeps the destination visible, supports Stop and answers requests there.
+A failed or uncertain send keeps its text and delivery identity; **Check
+conversation** reads what arrived, and **Retry this message** reuses that
+message’s identity. **Edit in New Chat** opens a separate editable draft with
+those remote choices and keeps the original message. Check whether it arrived
+before sending changed work. You choose the receiver’s Project again before Start.
+This preview takes text only; attachment and visual-reply reads are unavailable.
+
+Choose the destination’s Project explicitly; Station does not match Projects
+between computers by name. Remote Tasks keep their separate execution consent.
+
+With that preview off, or for SSH destinations, **Start** opens **Run on a
+Station** and **Run task** starts a resumable Task there. Its existing portable
+Project admission still applies. A foreground chat stays on its owning Station;
+choosing another destination starts new work. With no other Station to choose,
+the control is plain text.
 
 The Project page opens on **Overview**. **Project room** is shared discussion
 with people in that Project; use **Bring an Agent** for an explicit request
@@ -657,8 +669,9 @@ are optional alternatives to **Start your first chat**. Both save the same selec
 
 On a phone, the dock starts at **Inbox** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the
-chat bar shrinks it to a peek and **Full screen chat** grows it back. The menu
-drawer lists your recent chats. Its Inbox icon returns to the work list; the chat title stays
+chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
+directly from the collapsed bar. The menu drawer lists places and Projects.
+The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
 and reopen restore the last view. Use the compose icon at the right of the
@@ -672,7 +685,10 @@ for creating a project, including a short first-project prompt when empty.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
-visible. Task-owned chats appear under their Task as sessions. **Show work**
+visible. Authorized work chats appear under their Task, including independent
+Agent requests and linked conversations. A chat associated with several Tasks
+stays separate. Select a Task to reveal Overview or a work chat to read its
+conversation. Running counts include actual chats, not the Task's status. **Show work**
 filters by project or Station and stays selected on this device. It starts at
 **All work**; **Current project** follows the project whose page you are on,
 and shows all work anywhere else. If work needs

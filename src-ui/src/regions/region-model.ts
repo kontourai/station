@@ -1279,6 +1279,19 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
   },
+  // One terminal session a plugin opened through related panes
+  // (docs/design/terminal.md, "Plugins"): the nonce is the host's, the
+  // session and its binding are the occurrence's stored record. With the
+  // Tools by default, where the Coding terminal sits.
+  {
+    prefix: 'terminal-pane:',
+    matches: (id) => /^terminal-pane:[0-9a-f]{32}$/.test(id),
+    descriptorId: 'pane:builtin:workspace-terminal',
+    title: 'Terminal',
+    icon: 'terminal',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'bottom',
+  },
 ];
 
 /**

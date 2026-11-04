@@ -31,6 +31,7 @@ import { pairingScopePresetString } from '@kontourai/station-contracts';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../../__test-utils__/owner-standing.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -222,16 +223,16 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     );
     await result.kitLifecycleReady;
 
-    /** A real paired device, of the given kind, with the given preset. */
+    /** A real paired device of the given kind and scope. */
     const pair = (
       name: string,
       kind: 'device' | 'delegation',
-      preset: 'standard' | 'delegation',
+      scope: string,
     ) => {
       const pairing = security.devicePairing;
       const offer = pairing.createOffer({
         endpoint: ORIGIN,
-        scope: pairingScopePresetString(preset),
+        scope,
         kind,
       });
       const pending = pairing.requestPairing({
@@ -288,8 +289,12 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
   test('a real delegation device is refused on install and remove; a person’s paired device is not refused by that gate', async () => {
     const { pair, request, homeDir } = await setup();
     mkdirSync(join(homeDir, 'plugins', 'installed-plugin'));
-    const delegation = pair('Peer: box-b', 'delegation', 'delegation');
-    const person = pair('Phone', 'device', 'standard');
+    const delegation = pair(
+      'Peer: box-b',
+      'delegation',
+      pairingScopePresetString('delegation'),
+    );
+    const person = pair('Phone', 'device', DEVICE_WITHOUT_HOST_SHELL);
     const install = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -349,8 +354,12 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       rationale: 'Adds the pulse pane.',
       author: { principal: 'agent' },
     });
-    const person = pair('Phone', 'device', 'standard');
-    const delegation = pair('Peer: box-b', 'delegation', 'delegation');
+    const person = pair('Phone', 'device', DEVICE_WITHOUT_HOST_SHELL);
+    const delegation = pair(
+      'Peer: box-b',
+      'delegation',
+      pairingScopePresetString('delegation'),
+    );
     // Station's own agent caller resolves as the operator (home possession),
     // and still reads nothing (#2323 S5 delta review). Since #2377 slice A the
     // station-control authority guard refuses it first: no station-control
@@ -421,7 +430,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
   });
   test('#2323 S4: plugin source status is mounted and scoped: a paired person and Station’s internal caller get 404, the operator gets the list', async () => {
     const { pair, request, operatorCredential, app } = await setup();
-    const person = pair('Phone', 'device', 'standard');
+    const person = pair('Phone', 'device', DEVICE_WITHOUT_HOST_SHELL);
     const hidden = await request(person, '/api/plugin-sources');
     // 404 from the handler, not a pairing-scope refusal: an unmapped family
     // would answer 403 before the handler ran.

@@ -2,10 +2,12 @@
  * @vitest-environment jsdom
  */
 
+import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import { createRef } from 'react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   assertNoImportsSurvive,
@@ -32,7 +34,7 @@ import {
  * DRIVEN: three widths — 320px (nothing fits; everything must clip, not
  * overprint), 800px (the identity is squeezed by the actions cluster) and
  * 1200px (comfortable, proving the rules cost nothing when there is room).
- * NOT driven: the mobile header (`ChatDockMobileHeader`, its own component).
+ * The render-evidence cases also cover the mobile header and shared Model picker.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,6 +48,27 @@ const NEW_CHAT_ACTION_CSS_PATH = resolve(
   HERE,
   '../components/NewChatAction.css',
 );
+
+const fixtureViewport = vi.hoisted(() => ({ width: 1440 }));
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches: fixtureViewport.width <= 768,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => fixtureViewport.width <= 768,
+}));
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '⌘W',
@@ -65,8 +88,10 @@ vi.mock('../components/icons/AgentIcon', () => ({
 }));
 
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
+import { ChatDockMobileHeader } from '../components/chat-dock/ChatDockMobileHeader';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import { ChatDockWorkspaceActions } from '../components/chat-dock/ChatDockWorkspaceControls';
+import { StartModelPicker } from '../components/chat-start/StartMenus';
 
 const session = {
   id: 'session-1',
@@ -130,7 +155,13 @@ function buildFixtureHtml(
   const cssPaths = ownerFirst
     ? [NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH, INDEX_CSS_PATH]
     : [INDEX_CSS_PATH, NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH];
-  const css = cssPaths.map((path) => resolveCssImports(path)).join('\n');
+  const css = [
+    ...cssPaths,
+    resolve(HERE, '../components/chat/chat.css'),
+    resolve(HERE, '../components/chat-dock/ChatDockHeader.css'),
+  ]
+    .map((path) => resolveCssImports(path))
+    .join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
 <html data-theme="${theme}">
@@ -335,6 +366,187 @@ test.skipIf(chromiumAvailable)(
       'Playwright Chromium is not installed in this worktree, so the ' +
         'browser-backed geometry assertions above did not run. Install it ' +
         '(`npx playwright install chromium`) and re-run.',
+    );
+  },
+);
+
+describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
+  'chat control render evidence (%s)',
+  (theme) => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+    const captures = resolve(REPO_ROOT, 'test-results/ui-reliability');
+    beforeAll(async () => {
+      mkdirSync(captures, { recursive: true });
+      browser = await chromium.launch();
+    });
+    afterAll(async () => {
+      await browser?.close();
+    });
+
+    test.each([320, 390, 1440])(
+      'chat bar controls fit at %ipx',
+      async (width) => {
+        fixtureViewport.width = width;
+        let markup: string;
+        if (width < 769) {
+          const view = render(
+            <div className="chat-dock chat-dock--bottom">
+              <ChatDockMobileHeader
+                inboxActive
+                hasConversation={false}
+                showDrawerToggle={false}
+                showConnection={false}
+                sessionTitle="Inbox"
+                agentIdentity={null}
+                projectSwitcher={{
+                  projectSlug: 'station',
+                  projectName: 'Station',
+                  projects: [],
+                  onOpenProject: () => {},
+                  onSwitchProject: () => {},
+                }}
+                activeCount={0}
+                unreadCount={0}
+                inboxTriggerRef={createRef<HTMLButtonElement>()}
+                onToggleInbox={() => {}}
+                onToggleSidebar={() => {}}
+                onDragPointerDown={() => {}}
+                onDragClickCapture={() => {}}
+                dockToggle={{
+                  state: 'collapsed',
+                  onExpand: () => {},
+                  onCollapse: () => {},
+                }}
+                extentToggle={{ maximized: false, onToggle: () => {} }}
+                onNewChat={() => {}}
+                overflow={{
+                  onOpenConversation: () => {},
+                  onToggleHistory: () => {},
+                  onOpenChatSettings: () => {},
+                  onOpenProject: null,
+                  openProjectName: null,
+                  onOpenProfile: () => {},
+                  onOpenAppSettings: () => {},
+                  onCollapseDock: () => {},
+                  onExpandDock: () => {},
+                  onRestoreDock: () => {},
+                  isDockMaximized: false,
+                }}
+              />
+            </div>,
+          );
+          markup = view.container.innerHTML;
+          view.unmount();
+        } else markup = renderHeaderMarkup();
+        fixtureViewport.width = 1440;
+        const page = await browser.newPage({
+          viewport: { width, height: 300 },
+        });
+        try {
+          await page.setContent(buildFixtureHtml(markup, theme, false));
+          await page.evaluate(() =>
+            Promise.all(
+              document.getAnimations().map((animation) => animation.finished),
+            ),
+          );
+          const header = page.locator('.chat-dock__header');
+          if (width < 769) {
+            const maximize = page.getByRole('button', {
+              name: 'Full screen chat',
+            });
+            expect(await maximize.isVisible()).toBe(true);
+            const box = await maximize.boundingBox();
+            expect(box?.width).toBeGreaterThanOrEqual(44);
+            expect(box?.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await maximize.evaluate((button) => {
+                const r = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  r.x + r.width / 2,
+                  r.y + r.height / 2,
+                );
+                return hit !== null && button.contains(hit);
+              }),
+            ).toBe(true);
+          }
+          await header.screenshot({
+            path: resolve(captures, `chat-bar-${width}-${theme}.png`),
+          });
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    test.each([390, 1440])(
+      'the shared model picker fits at %ipx',
+      async (width) => {
+        fixtureViewport.width = width;
+        const view = render(
+          <StartModelPicker
+            anchor={null}
+            layer="dialog"
+            loading={false}
+            modelConnections={[]}
+            models={[
+              {
+                id: 'gpt-6.1-terra',
+                name: 'GPT 6.1 Terra',
+                engineName: 'Codex',
+                capabilities: {
+                  supportsEffort: true,
+                  supportedEffortLevels: ['low', 'high'],
+                },
+              },
+            ]}
+            choice={{ modelId: 'gpt-6.1-terra', providerOptions: {} }}
+            onSelect={() => {}}
+            onReset={() => {}}
+            onRuntimeOptionChange={() => {}}
+            onClose={() => {}}
+          />,
+        );
+        await screen.findByRole('option', { name: /GPT 6.1 Terra/ });
+        const overlay = document.querySelector('.composer-popover-overlay');
+        if (!overlay) throw new Error('Model picker did not render');
+        const markup = overlay.outerHTML;
+        view.unmount();
+        fixtureViewport.width = 1440;
+        const page = await browser.newPage({
+          viewport: { width, height: 900 },
+        });
+        try {
+          const css = [
+            'components/chat/chat.css',
+            'components/chat-start/StartComposer.css',
+            'components/session/SessionModelPicker.css',
+          ]
+            .map((path) => resolveCssImports(resolve(HERE, '..', path)))
+            .join('\n');
+          assertNoImportsSurvive(css);
+          await page.setContent(
+            buildFixtureHtml(markup, theme, false).replace(
+              '</style>',
+              `${css}</style>`,
+            ),
+          );
+          await page.evaluate(() =>
+            Promise.all(
+              document.getAnimations().map((animation) => animation.finished),
+            ),
+          );
+          const picker = page.locator('.session-model-picker');
+          const box = await picker.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.x).toBeGreaterThanOrEqual(0);
+          expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+          await page.screenshot({
+            path: resolve(captures, `model-picker-${width}-${theme}.png`),
+          });
+        } finally {
+          await page.close();
+        }
+      },
     );
   },
 );

@@ -741,9 +741,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
+    durableTasks.isPending ||
     inventory.isPending ||
     !agentsLoaded;
-  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
+  const taskItemsFailed =
+    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
   const refetchInventory = inventory.refetch;
   const refetchTasks = durableTasks.refetch;
   const refetchRemote = remoteInboxSessions.refetch;
@@ -3582,12 +3584,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
               }
               extentToggle={
-                isFullscreenPlacement || !isPaneOpen
+                isFullscreenPlacement
                   ? null
                   : {
-                      maximized: isDockMaximized,
+                      maximized: isPaneOpen && isDockMaximized,
                       onToggle: () =>
-                        applyDockSnap(isDockMaximized ? 'half' : 'full'),
+                        applyDockSnap(
+                          isPaneOpen && isDockMaximized ? 'half' : 'full',
+                        ),
                     }
               }
               // Shared creation action opens a draft without starting an engine.
@@ -4146,6 +4150,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               },
                             );
                           },
+                          onPeerChatStarted: (agent, binding) => {
+                            const sessionId = openChatForAgentInScopedPane(
+                              agent,
+                              dockChromeProjectSlug ?? undefined,
+                            );
+                            if (!sessionId)
+                              throw new Error('Could not open the chat.');
+                            updateChat(sessionId, {
+                              peerChat: binding,
+                              provider: undefined,
+                              executionAgentId: undefined,
+                              conversationOpenPending: false,
+                              title:
+                                binding.pending?.text.trim().slice(0, 80) ||
+                                'New chat',
+                            });
+                            settleDockForStartedDraft();
+                            setShowNewChatModal(false, undefined, 'started');
+                            setNewChatProjectOverride(null);
+                            setHandoffSource(null);
+                            navigate(pathname, { chat: sessionId });
+                          },
                           onTaskStarted: (task, stationName) => {
                             setShowNewChatModal(false, undefined, 'started');
                             setNewChatProjectOverride(null);
@@ -4216,6 +4242,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       >
                         <ChatDockContentArea
                           onNewChat={handleStartNewChatWithMessage}
+                          onEditPeerChatDraft={(intent) =>
+                            requestNewChat({
+                              ...intent,
+                              selection: intent.selection && {
+                                ...intent.selection,
+                                context:
+                                  scopedProjectSlug ?? intent.selection.context,
+                              },
+                            })
+                          }
                           onRetryConversationOpen={retryActiveConversationOpen}
                           activeSession={activeSession}
                           workingDirectory={sessionDisplayCwd}

@@ -290,7 +290,7 @@ test('an Agent request survives initial polling failure, opens the real pane onc
   await act(async () => {
     await client.invalidateQueries({ queryKey: key });
   });
-  await screen.findByText('Step 2 of 2: connect video');
+  await screen.findByText('Connecting video…');
   await waitFor(() => expect(log.streams).toHaveLength(1));
   expect(log.streams[0]!.url).toContain(encodeURIComponent(session.surfaceId));
   expect(readDevicePaneState(localStorage, scope)).toMatchObject({

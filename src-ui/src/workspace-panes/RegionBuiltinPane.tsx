@@ -14,6 +14,7 @@ import type {
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import { WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-pull-request-pane';
+import { WORKSPACE_TERMINAL_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-terminal-pane';
 import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry';
 
 /**
@@ -43,6 +44,7 @@ export const REGION_BUILTIN_DESCRIPTORS: ReadonlyMap<
     WORKSPACE_DEVICE_PANE_DESCRIPTOR,
     WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
     WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+    WORKSPACE_TERMINAL_PANE_DESCRIPTOR,
   ].map((descriptor) => [descriptor.id, descriptor]),
 );
 

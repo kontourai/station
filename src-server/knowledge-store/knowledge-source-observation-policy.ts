@@ -6,7 +6,7 @@ import {
 import {
   type CurrentRuntimeRequestPrincipalSecurity,
   getRuntimeAuthenticatedRequestPrincipal,
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
   isRuntimeRequestPrincipalCurrent,
 } from '../security/runtime-request-security.js';
 import type { KnowledgeRecordObservationPolicy } from './knowledge-record-observation.js';
@@ -29,13 +29,14 @@ export function isLocalKnowledgeSourceRequestCurrent(
   if (
     !principal ||
     !isPersonalRequest(request) ||
-    !isBoundRuntimeLocalOperator(request) ||
+    !isBoundRuntimeOwner(request) ||
     !isRuntimeRequestPrincipalCurrent(request, security)
   )
     return false;
   return (
     principal.kind === 'internal' ||
-    security.credentialLocality(principal.credential) === 'home-possession'
+    security.credentialLocality(principal.credential) === 'home-possession' ||
+    security.credentialHasOwnerStanding?.(principal.credential) === true
   );
 }
 

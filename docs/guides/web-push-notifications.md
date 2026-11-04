@@ -154,7 +154,9 @@ property, not a guarantee of every browser's SSE/toast experience.
 Focus applies within the same principal; unbound owner-device identities are
 grouped, while tailnet-bound people remain distinct. A device whose credential
 was minted with home-possession (the desktop app's local grant, the local
-browser UI's bootstrap) reads as the operator for both its focus reports and
+browser UI's bootstrap), or one of the owner's own devices holding
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02),
+reads as the operator for both its focus reports and
 delivery, so its focus quiets the operator's other surfaces. Nothing yet ties a
 tailnet identity to the operator, so the owner's own tailnet-bound phone stays
 a separate person here. A focused document must

@@ -341,7 +341,7 @@ interface ChatInputAreaProps {
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
     key: string,
-    value: string | number | boolean | undefined,
+    value: string | number | boolean | null | undefined,
   ) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
   onAcpSessionModeChange?: (modeId: string) => void;
@@ -1966,7 +1966,9 @@ export function ChatInputArea({
                   : 'Steer when safe'}
               </Button>
               {busySteeringUnavailableReason && (
-                <p role="status">{busySteeringUnavailableReason}</p>
+                <p role="status" className="chat-input__mode-note">
+                  {busySteeringUnavailableReason}
+                </p>
               )}
             </ResponsiveDialogSurface>
           )}

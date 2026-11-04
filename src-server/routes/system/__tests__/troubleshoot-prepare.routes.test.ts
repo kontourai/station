@@ -71,7 +71,7 @@ function diagnostics(stationRoot: string) {
   });
 }
 
-type Caller = 'operator' | 'device' | 'internal' | 'none';
+type Caller = 'operator' | 'device' | 'owner-device' | 'internal' | 'none';
 
 /** The diagnostics routes behind a stand-in for the auth boundary's principal write. */
 function unitApp(stationRoot: string) {
@@ -91,6 +91,15 @@ function unitApp(stationRoot: string) {
         source: 'bearer',
         deviceId: 'device-a',
         deviceKind: 'device',
+      });
+    if (caller === 'owner-device')
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        credential: 'owner-device',
+        authority: 'device-credential',
+        source: 'bearer',
+        deviceId: 'device-owner',
+        deviceKind: 'device',
+        standing: 'owner-device',
       });
     if (caller === 'internal')
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -183,6 +192,14 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
       if (previous === undefined) delete process.env.STATION_ROOT;
       else process.env.STATION_ROOT = previous;
     }
+  });
+
+  test("records the owner's own paired device as the owner", async () => {
+    const stationRoot = makeTempDir('troubleshoot-owner-device-');
+    const response = await prepare(unitApp(stationRoot), 'owner-device');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, any>;
+    expect(body.display.role).toBe('owner');
   });
 
   test('records a paired device that is not the owner as a member', async () => {

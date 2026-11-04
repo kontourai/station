@@ -273,15 +273,15 @@ describe('useHomeWorkLanes', () => {
     );
   });
 
-  it('a persisted-task correlation forming does not reorder the live lanes', () => {
+  it('a persisted-task correlation preserves identity and order within Idle', () => {
     const otherSession = {
       threadId: 'thread-other',
       provider: 'codex',
       status: 'ready',
       lifecycleState: 'running',
-      hasActiveTurn: true,
+      hasActiveTurn: false,
       createdAt: '2026-01-01',
-      updatedAt: '2026-01-01',
+      updatedAt: '2026-01-02',
       isLoaded: true,
       isPersisted: true,
       answerability: { answerable: true },
@@ -292,7 +292,7 @@ describe('useHomeWorkLanes', () => {
       provider: 'codex',
       status: 'ready',
       lifecycleState: 'running',
-      hasActiveTurn: true,
+      hasActiveTurn: false,
       createdAt: '2026-01-01',
       updatedAt: '2026-01-01',
       isLoaded: true,
@@ -314,15 +314,19 @@ describe('useHomeWorkLanes', () => {
       ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
       { initialProps: { items: before } },
     );
-    const stableIdsBefore = liveOf(result.current).map((i) => i.stableId);
+    expect(result.current.running).toEqual([]);
+    expect(result.current.idle.map((entry) => entry.id)).toEqual([
+      'thread-other',
+      'thread-1',
+    ]);
+    const stableIdsBefore = result.current.idle.map((entry) => entry.stableId);
 
-    // A durable Task is created correlated to `thread-1`
-    // (`task.sessionId === session.threadId`) — mergeHomeWorkItems drops the
-    // raw orchestration item and surfaces a task-keyed item instead.
+    // Keep both snapshots idle: Task progress does not establish a running turn.
+    // The correlated row becomes newer, but must keep its established position.
     const after = buildHomeWorkItems({
       chats: {},
       sessions: [
-        { ...correlatedSession, updatedAt: '2026-01-02' },
+        { ...correlatedSession, updatedAt: '2026-01-03' },
         { ...otherSession, updatedAt: '2026-01-02' },
       ] as any,
       tasks: [
@@ -335,7 +339,7 @@ describe('useHomeWorkLanes', () => {
           description: '',
           createdBy: 'user',
           createdAt: '2026-01-01T00:00:00Z',
-          updatedAt: '2026-01-02T00:00:00Z',
+          updatedAt: '2026-01-03T00:00:00Z',
           sessionId: 'thread-1',
         },
       ] as any,
@@ -347,12 +351,12 @@ describe('useHomeWorkLanes', () => {
     expect(after.map((i) => i.id)).not.toContain('thread-1');
 
     rerender({ items: after });
-    // The raw id really did change...
-    expect(liveOf(result.current).map((i) => i.id)).toEqual(
-      expect.arrayContaining(['task-42', 'thread-other']),
-    );
-    //.but the stable id — and therefore the order — did not.
-    expect(liveOf(result.current).map((i) => i.stableId)).toEqual(
+    expect(result.current.running).toEqual([]);
+    expect(result.current.idle.map((entry) => entry.id)).toEqual([
+      'thread-other',
+      'task-42',
+    ]);
+    expect(result.current.idle.map((entry) => entry.stableId)).toEqual(
       stableIdsBefore,
     );
   });
