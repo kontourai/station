@@ -211,7 +211,7 @@ export function agentHostCommandRefusal(
 }
 
 /** Written below a shell's earlier output when it is not reopened (#492). */
-export function terminalRestoreRefusedNote(reason: string): string {
+function terminalRestoreRefusedNote(reason: string): string {
   return `\r\n\x1b[2m── not restored after restart: ${reason} ──\x1b[0m\r\n`;
 }
 
