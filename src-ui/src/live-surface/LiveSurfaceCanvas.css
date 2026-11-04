@@ -260,9 +260,11 @@
   justify-content: center;
 }
 
-/* Reset zoom, and a pane's Full screen: small, over the picture's corners. */
-.live-surface__zoom-reset,
-.live-surface__fullscreen {
+/* Reset zoom, and a pane's Full screen: small, over the picture's corners.
+   Scoped under .live-surface so the shared ghost Button's transparent
+   background does not win on order: over any page, these need a backdrop. */
+.live-surface .live-surface__zoom-reset,
+.live-surface .live-surface__fullscreen {
   background: rgb(0 0 0 / 0.55);
   border-radius: var(--radius-sm, 6px);
   color: #fff;
@@ -337,8 +339,8 @@
 }
 
 /* With the bar hidden: one quiet handle to bring it back. */
-.live-surface__immersive-reveal {
-  background: rgb(0 0 0 / 0.45);
+.live-surface .live-surface__immersive-reveal {
+  background: rgb(0 0 0 / 0.55);
   border-radius: var(--radius-sm, 6px);
   color: #fff;
   min-height: 44px;
