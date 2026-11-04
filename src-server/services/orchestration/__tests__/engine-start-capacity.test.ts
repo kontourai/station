@@ -59,13 +59,26 @@ test('an interactive start waits for a background provider start to settle', asy
   try {
     await entered.promise;
     const person = h.start('person', 'interactive_user');
+    let settled = false;
+    void person.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
     expect(
       await Promise.race([
         h.queued.then(() => 'waiting'),
         person.then((result) => result.status),
       ]),
     ).toBe('waiting');
-    expect(h.adapter.startSession).toHaveBeenCalledTimes(1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(h.adapter.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: 'person' }),
+    );
+    expect(settled).toBe(false);
     gate.release();
     expect((await background).status).toBe('accepted');
     expect((await person).status).toBe('accepted');
