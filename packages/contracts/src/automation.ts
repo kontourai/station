@@ -350,16 +350,68 @@ export const AUTOMATION_REFUSAL_REASONS = [
 export type AutomationRefusalReason =
   (typeof AUTOMATION_REFUSAL_REASONS)[number];
 
-/** Why a matched delivery started nothing. */
+/**
+ * Why a matched delivery started nothing. `rule-active-limit` and
+ * `concurrency-limit` are recorded only by an `observe` rule's decision: a
+ * `live` action held by those limits waits and is admitted later, so they
+ * mean "would have waited at the time of evaluation", not a refusal.
+ */
 export const AUTOMATION_SUPPRESSION_REASONS = [
   'episode-active',
   'episode-exhausted',
   'episode-indeterminate',
   'rate-limited',
+  'rule-active-limit',
+  'concurrency-limit',
 ] as const;
 
 export type AutomationSuppressionReason =
   (typeof AUTOMATION_SUPPRESSION_REASONS)[number];
+
+/**
+ * What intake decided for one matched rule on one delivery (#4509).
+ *
+ * - `would-start`: an `observe` rule passed every admission check intake can
+ *   evaluate. Only `observe` rules record it.
+ * - `suppressed`: the rule matched but would not (observe) or could not
+ *   (live) start; `reason` says why.
+ * - `intent-retained`: a `live` rule's dispatchable intent was retained for
+ *   its action consumer. Whether it then starts is decided later, by that
+ *   consumer, and is reflected in the delivery's `outcome`, not here.
+ */
+export const AUTOMATION_RULE_DECISION_OUTCOMES = [
+  'would-start',
+  'suppressed',
+  'intent-retained',
+] as const;
+
+export type AutomationRuleDecisionOutcome =
+  (typeof AUTOMATION_RULE_DECISION_OUTCOMES)[number];
+
+/**
+ * One rule's decision for one delivery, with a bounded snapshot of the
+ * action it names. Recorded for every matched `observe` or `live` rule with
+ * a `dispatch-task` or `isolated-repair` action; `notify` rules record none.
+ * It carries no instructions, event fields or payload.
+ */
+export type AutomationRuleDecision = Readonly<{
+  ruleId: string;
+  /** The rule's name when the decision was recorded. */
+  ruleName: string;
+  mode: Exclude<AutomationRuleMode, 'off'>;
+  outcome: AutomationRuleDecisionOutcome;
+  /** Present only when `outcome` is `suppressed`. */
+  reason?: AutomationSuppressionReason;
+  actionKind: Extract<
+    AutomationActionKind,
+    'dispatch-task' | 'isolated-repair'
+  >;
+  projectId: string;
+  agentId: string;
+  /** The episode this event belongs to, e.g. the first failing run id. */
+  episodeId: string;
+  decidedAt: string;
+}>;
 
 /**
  * Bounded, payload-free view of one recorded delivery, as the ledger keeps it
@@ -381,6 +433,12 @@ export type AutomationDeliveryRecord = Readonly<{
   episodeId?: string;
   taskId?: string;
   sessionId?: string;
+  /**
+   * Per-rule decisions, ordered by rule id; omitted when none was recorded.
+   * The delivery's own `ruleId`, `outcome` and `episodeId` describe one rule
+   * (a `live` rule when any matched); these describe every matched rule.
+   */
+  decisions?: readonly AutomationRuleDecision[];
 }>;
 
 export type AutomationPollOutcome =

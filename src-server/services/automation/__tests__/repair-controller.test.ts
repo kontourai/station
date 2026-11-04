@@ -824,3 +824,59 @@ test('a source that grants isolated execution only cannot grant publication afte
   expect(context.calls).toHaveLength(0);
   expect(context.worker).toHaveBeenCalledTimes(1);
 });
+
+test('an observe isolated-repair rule records would-start and starts no intent or repair run (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const observed = await context.policy.createRule({
+    ...original,
+    name: 'observed repair',
+  });
+  expect(observed.mode).toBe('observe');
+  const source = context.policy.read().sources[0]!;
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555556,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  const intentsBefore = context.ledger.listActionIntents().length;
+  expect(
+    recordAutomationEvent({
+      ledger: context.ledger,
+      source,
+      rules: context.policy
+        .actionableRules(source.id)
+        .filter((rule) => rule.id === observed.id),
+      event: normalized.event,
+      transportId: normalized.event.semanticKey,
+      now: Date.now(),
+    }).outcome,
+  ).toBe('matched');
+  expect(context.ledger.listDeliveries()[0]?.decisions).toEqual([
+    expect.objectContaining({
+      ruleId: observed.id,
+      mode: 'observe',
+      outcome: 'would-start',
+      actionKind: 'isolated-repair',
+      projectId: 'project',
+      agentId: 'repairer',
+    }),
+  ]);
+  expect(
+    context.ledger
+      .listActionIntents()
+      .filter((intent) => intent.ruleId === observed.id),
+  ).toEqual([]);
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(context.ledger.listActionIntents()).toHaveLength(intentsBefore);
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});

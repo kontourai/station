@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type CanonicalRuntimeEvent,
@@ -35,6 +35,7 @@ import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { GitHubWorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
 import { recordAutomationEvent } from '../automation-intake.js';
+import { automationConfigurationFingerprint } from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
 import { AutomationStore } from '../automation-store.js';
 import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
@@ -96,8 +97,13 @@ async function world(
   options: {
     episode?: boolean;
     turnPreparation?: { entered(): void; wait: Promise<void> };
+    /** One rule per entry, written in this mode (#4509). */
+    ruleModes?: readonly ('observe' | 'live')[];
+    /** Store the rules in the pre-#4509 `enabled: true` shape. */
+    legacyEnabled?: boolean;
   } = {},
 ) {
+  const ruleModes = options.ruleModes ?? ['live'];
   const home = makeTempDir('automation-actions-');
   const store = new AutomationStore(home);
   const source = (
@@ -114,25 +120,35 @@ async function world(
       ],
     })
   ).source;
-  const rule = await store.createRule({
-    ...QUALIFICATION_RULE,
-    ...(options.episode === false ? { episode: undefined } : {}),
-    sourceId: source.id,
-    action: {
-      kind: 'dispatch-task',
-      projectId: 'project',
-      agentId: FIXTURE_TASK_AGENT,
-      instructions: 'Investigate the failure.',
-      budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
-    },
-  });
+  const rules = [];
+  for (const [index] of ruleModes.entries())
+    rules.push(
+      await store.createRule({
+        ...QUALIFICATION_RULE,
+        name: index === 0 ? QUALIFICATION_RULE.name : `rule ${index}`,
+        ...(options.episode === false ? { episode: undefined } : {}),
+        sourceId: source.id,
+        action: {
+          kind: 'dispatch-task',
+          projectId: 'project',
+          agentId: FIXTURE_TASK_AGENT,
+          instructions: 'Investigate the failure.',
+          budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+        },
+      }),
+    );
+  const rule = rules[0]!;
   const draft = store.read();
   writeFileSync(
     store.path,
     JSON.stringify({
       ...draft,
       sources: draft.sources.map((source) => ({ ...source, enabled: true })),
-      rules: draft.rules.map((rule) => ({ ...rule, mode: 'live' })),
+      rules: draft.rules.map(({ mode: _mode, ...rule }, index) =>
+        options.legacyEnabled
+          ? { ...rule, enabled: true }
+          : { ...rule, mode: ruleModes[index] },
+      ),
     }),
     { mode: 0o600 },
   );
@@ -148,14 +164,17 @@ async function world(
   const ledger = createAutomationLedger({
     directory: join(home, 'automation'),
   });
-  recordAutomationEvent({
-    ledger,
-    rules: [config.rules[0]!],
-    source: config.sources[0],
-    event: normalized.event,
-    transportId: normalized.event.semanticKey,
-    now: Date.now(),
-  });
+  // As the poller does: the source's actionable rules, read for the delivery.
+  const intake = (event = normalized.event) =>
+    recordAutomationEvent({
+      ledger,
+      rules: store.actionableRules(source.id),
+      source: store.read().sources[0],
+      event,
+      transportId: event.semanticKey,
+      now: Date.now(),
+    });
+  intake();
   const bus = new EventBus();
   const eventStore = new EventStore(join(home, 'events.sqlite'));
   const adapter = new RecordingAdapter();
@@ -316,6 +335,9 @@ async function world(
       runtime.close();
       runtime = makeRuntime();
     },
+    intake,
+    firstEvent: normalized.event,
+    rules,
     store,
     previews,
     adapter,
@@ -544,4 +566,130 @@ test('controller recovery enforces retained Automation authority before polling 
     ).toBe('refused'),
   );
   expect(w.adapter.sends).toEqual([]);
+});
+
+type World = Awaited<ReturnType<typeof world>>;
+
+async function setRuleMode(
+  w: World,
+  ruleId: string,
+  mode: 'off' | 'observe' | 'live',
+) {
+  await w.store.setEnabled({
+    kind: 'rule',
+    id: ruleId,
+    expectedFingerprint: automationConfigurationFingerprint(w.store.read()),
+    mode,
+  });
+}
+
+function laterFailure(w: World) {
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 37423043590,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 500).toISOString(),
+    }),
+    { source: w.store.read().sources[0]!, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  return normalized.event;
+}
+
+test('an observe rule records would-start and creates no intent, Task or provider turn with the actions preview on (#4509)', async () => {
+  const w = await world({ ruleModes: ['observe'] });
+  expect(w.ledger.listActionIntents()).toEqual([]);
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.ledger.listDeliveries()).toEqual([
+    expect.objectContaining({
+      outcome: 'matched',
+      ruleId: w.rule.id,
+      decisions: [
+        expect.objectContaining({
+          ruleId: w.rule.id,
+          ruleName: QUALIFICATION_RULE.name,
+          mode: 'observe',
+          outcome: 'would-start',
+          actionKind: 'dispatch-task',
+          projectId: 'project',
+          agentId: FIXTURE_TASK_AGENT,
+        }),
+      ],
+    }),
+  ]);
+  expect(w.ledger.listActionIntents()).toEqual([]);
+  expect(w.ledger.listEpisodes()).toEqual([]);
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.adapter.sends).toEqual([]);
+});
+
+test('switching an observe rule to live dispatches nothing for the earlier event; a later event acts (#4509)', async () => {
+  const w = await world({ ruleModes: ['observe'] });
+  expect(w.ledger.listActionIntents()).toEqual([]);
+  await setRuleMode(w, w.rule.id, 'live');
+  await w.previews.setEnabled('github-automation-actions', true);
+  // The poller re-reads recent runs; the observed run is a semantic duplicate.
+  expect(w.intake(w.firstEvent).outcome).toBe('duplicate');
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.ledger.listActionIntents()).toEqual([]);
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.adapter.sends).toEqual([]);
+  expect(w.intake(laterFailure(w)).outcome).toBe('matched');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.sends[0]?.principal).toEqual({
+    kind: 'automation-rule',
+    ruleId: w.rule.id,
+  });
+  expect(w.graph.listTasks()).toHaveLength(1);
+});
+
+test('a delivery matching an observe and a live rule records both decisions and dispatches only the live rule (#4509)', async () => {
+  const w = await world({ ruleModes: ['observe', 'live'] });
+  const [observe, live] = w.rules;
+  const [delivery] = w.ledger.listDeliveries();
+  expect(delivery?.ruleId).toBe(live!.id);
+  expect(
+    [...(delivery?.decisions ?? [])]
+      .map(({ ruleId, mode, outcome }) => ({ ruleId, mode, outcome }))
+      .sort((a, b) => a.mode.localeCompare(b.mode)),
+  ).toEqual([
+    { ruleId: live!.id, mode: 'live', outcome: 'intent-retained' },
+    { ruleId: observe!.id, mode: 'observe', outcome: 'would-start' },
+  ]);
+  expect(w.ledger.listActionIntents().map(({ ruleId }) => ruleId)).toEqual([
+    live!.id,
+  ]);
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  await w.runtime.tick();
+  expect(w.adapter.sends).toHaveLength(1);
+  expect(w.adapter.sends[0]?.principal).toEqual({
+    kind: 'automation-rule',
+    ruleId: live!.id,
+  });
+  expect(w.graph.listTasks()).toHaveLength(1);
+});
+
+test('a pre-#4509 file with enabled: true still dispatches as a live rule (#4509)', async () => {
+  const w = await world({ legacyEnabled: true });
+  const stored = JSON.parse(readFileSync(w.store.path, 'utf8')).rules[0];
+  expect(stored.enabled).toBe(true);
+  expect(stored).not.toHaveProperty('mode');
+  expect(w.store.read().rules[0]?.mode).toBe('live');
+  expect(w.ledger.listDeliveries()[0]?.decisions).toEqual([
+    expect.objectContaining({ mode: 'live', outcome: 'intent-retained' }),
+  ]);
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.sends[0]?.principal).toEqual({
+    kind: 'automation-rule',
+    ruleId: w.rule.id,
+  });
+  expect(w.graph.listTasks()).toHaveLength(1);
 });
