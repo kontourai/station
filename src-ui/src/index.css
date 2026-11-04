@@ -9760,7 +9760,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* #4518: a mode above the managed approval ceiling. Still listed, so the
-   row says what exists and who limits it; dimmed and not choosable. */
+   picker shows what exists; dimmed and not choosable. */
 .composer-mode-sheet__option--managed {
   cursor: not-allowed;
   opacity: 0.6;
