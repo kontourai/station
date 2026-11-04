@@ -3,6 +3,26 @@ import { useRef, useState } from 'react';
 
 type RelatedHost = Pick<RelatedPanes, 'open' | 'reveal' | 'close'>;
 
+const OPENED = {
+  opened: 'Terminal opened',
+  focused: 'Terminal already open, now shown',
+  replaced: 'Terminal opened in place of the last one',
+} as const;
+
+const WHERE = {
+  beside: 'beside this pane',
+  child: 'inside this pane',
+  sheet: 'in a sheet',
+  tool: 'with the Tools',
+} as const;
+
+/** A refusal as a sentence a person can act on. */
+function refusal(reason: string): string {
+  return reason === 'not-authorized'
+    ? 'You need permission to run terminals in this Project.'
+    : `The terminal did not open (${reason.replace(/-/g, ' ')}).`;
+}
+
 /**
  * Opens a shell for this Project with the Tools. The plugin names only the
  * closed terminal target: the binding and that it wants a new shell. Station
@@ -22,18 +42,21 @@ function terminalActions(
         new: {},
       });
       if (outcome.status === 'unavailable') {
-        report(`No terminal opened (${outcome.reason}).`, handle);
+        report(refusal(outcome.reason), handle);
         return;
       }
       handle = outcome.handle;
-      report(`Terminal ${outcome.status}, ${outcome.presentation}.`, handle);
+      report(
+        `${OPENED[outcome.status]} ${WHERE[outcome.presentation]}.`,
+        handle,
+      );
     },
     async reveal() {
       if (!handle) return;
       const outcome = await host.reveal(handle);
       report(
         outcome.status === 'unavailable'
-          ? `Not revealed (${outcome.reason}).`
+          ? `The terminal could not be shown (${outcome.reason.replace(/-/g, ' ')}).`
           : 'Terminal revealed.',
         handle,
       );

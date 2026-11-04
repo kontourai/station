@@ -99,6 +99,57 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       expect(g.mask).toBe('none');
     });
 
+    // The scrollbar appears only once there is scrollback. In the flow it took
+    // 10px from the grid, so the first long output reflowed the shell two
+    // columns narrower (seen live: tput cols 163 in a 165-column view).
+    test.each([390, 1440])(
+      'scrollback appearing takes no width from the grid at %ipx',
+      async (width) => {
+        const tab = await browser.newPage({ viewport: { width, height: 844 } });
+        try {
+          await tab.setContent(page(css));
+          const measureGrid = () =>
+            tab.evaluate(() => {
+              const grid = document.querySelector<HTMLElement>(
+                '.station-terminal__grid',
+              )!;
+              return grid.getBoundingClientRect().width;
+            });
+          const without = await measureGrid();
+          await tab.evaluate(() => {
+            const bar = document.createElement('div');
+            bar.className = 'station-terminal__scrollbar';
+            bar.innerHTML =
+              '<div class="station-terminal__thumb" style="top:0;height:40%"></div>';
+            document.querySelector('.station-terminal__grid')!.after(bar);
+          });
+          const withBar = await tab.evaluate(() => {
+            const grid = document
+              .querySelector<HTMLElement>('.station-terminal__grid')!
+              .getBoundingClientRect();
+            const bar = document
+              .querySelector<HTMLElement>('.station-terminal__scrollbar')!
+              .getBoundingClientRect();
+            return {
+              grid: grid.width,
+              gridRight: grid.right,
+              barLeft: bar.left,
+              barWidth: bar.width,
+              barHeight: bar.height,
+            };
+          });
+          expect(without).toBeGreaterThan(0);
+          expect(withBar.grid).toBe(without);
+          // It sits in the inset beside the grid, not over the glyphs.
+          expect(withBar.barLeft).toBeGreaterThanOrEqual(withBar.gridRight);
+          expect(withBar.barWidth).toBeGreaterThan(0);
+          expect(withBar.barHeight).toBeGreaterThan(0);
+        } finally {
+          await tab.close();
+        }
+      },
+    );
+
     test('a narrower phone keeps 44px keys and fades the edge with more keys', async () => {
       const narrow = await measure(320);
       expect(narrow.scrollWidth).toBeGreaterThan(narrow.clientWidth);

@@ -203,6 +203,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'colorTheme',
         'colorThemeFlavor',
         'colorThemeAccent',
+        // #3994 — terminal screen reader mode, off by default.
+        'terminalScreenReader',
       ].sort(),
     );
   });
@@ -222,6 +224,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('colorThemeFlavor')).toBeNull();
     expect(byKey.get('colorThemeAccent')).toBeNull();
     expect(byKey.get('hapticsEnabled')).toBe(true);
+    expect(byKey.get('terminalScreenReader')).toBe(false);
     expect(byKey.get('featureSettings')).toEqual({
       ttsReadbackEnabled: false,
       pushNotificationsEnabled: false,

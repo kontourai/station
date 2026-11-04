@@ -1704,6 +1704,30 @@ describe('Project Routes', () => {
     );
   });
 
+  test("DELETE /:slug ends the deleted Project's terminal sessions by its id", async () => {
+    const storage = createMockStorageAdapter();
+    storage.getProject.mockImplementation(((slug: string) => {
+      if (slug === 'test') return { id: 'project-test', slug };
+      throw new Error(`Project '${slug}' not found`);
+    }) as any);
+    const projectService = createMockProjectService();
+    const endProjectTerminals = vi.fn(async (_projectId: string) => {
+      throw new Error('a shell would not end');
+    });
+    const app = createProjectRoutes(
+      projectService as any,
+      storage as any,
+      createTempProjectHome(),
+      { endProjectTerminals },
+    );
+
+    const deleted = await app.request('/test', { method: 'DELETE' });
+    // A shell that will not end never turns the finished delete into a failure.
+    expect(deleted.status).toBe(200);
+    expect(projectService.deleteProject).toHaveBeenCalledWith('test');
+    expect(endProjectTerminals).toHaveBeenCalledExactlyOnceWith('project-test');
+  });
+
   test('DELETE /:slug/terminals/:terminalId answers 503 without terminal sessions', async () => {
     const app = createProjectRoutes(
       createMockProjectService() as any,

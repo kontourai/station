@@ -5,6 +5,10 @@ export {
   type TaskWriteBackLog,
   useTaskWriteBackQuery,
 } from './query-domains/taskWriteBack';
+export {
+  ROOT_THEME_ATTRIBUTES,
+  rootThemeSignature,
+} from './theme-signature';
 
 // Re-export all types
 
@@ -237,13 +241,17 @@ export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
+  closeProjectTerminalSession,
   getProjectChatDefaults,
   getProjectCheckoutFreshness,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
+  listProjectTerminalScripts,
   listProjectViews,
   openOrAdoptProjectShell,
+  type ProjectTerminalScript,
+  runProjectTerminalScript,
 } from './client/projects';
 export {
   getReviewReceipt,
@@ -277,6 +285,13 @@ export {
   listTaskOutputs,
   listTaskOutputs as fetchTaskOutputs,
 } from './client/task-outputs';
+export {
+  approveTerminalRun,
+  declineTerminalRun,
+  listConversationTerminalRuns,
+  type TerminalRun,
+  type TerminalRunState,
+} from './client/terminal-runs';
 export type {
   TerminalSession,
   TerminalSessionErrorCode,

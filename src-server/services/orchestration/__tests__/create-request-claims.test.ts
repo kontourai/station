@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { withStationControlCallerContext } from '../../../tools/station-control-shared.js';
@@ -47,7 +48,13 @@ function setup() {
     claims: new CreateRequestClaims(home),
   };
 }
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  vi.spyOn(os, 'uptime').mockImplementation(() => Date.now() / 1000);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 test('completed receipts replay for seven days, then expire without removing unresolved claims', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -549,3 +556,57 @@ test('a fresh home treats both initial ledger reads as empty and writes its firs
   );
   expect(effect).toHaveBeenCalledTimes(1);
 });
+
+test.each([128, 256])(
+  'maximum-sized receipt capacity with %s bookkeeping bytes is settled before invocation',
+  async (bookkeepingBudget) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+    const { home, claims, file } = setup();
+    await claims.run(input(), async (id) => handle(id));
+    const ledger = JSON.parse(readFileSync(file, 'utf8'));
+    const existingKey = Object.keys(ledger.claims)[0];
+    const row = ledger.claims[existingKey];
+    row.result.resolution.padding = '';
+    const sessionId = 'reserved-capacity';
+    const reservation = { kind: 'foreground', digest: row.digest, sessionId };
+    const reservationBytes = Buffer.byteLength(
+      `,${JSON.stringify(existingKey)}:${JSON.stringify(reservation)}`,
+    );
+    const targetBytes =
+      4 * 1024 * 1024 - reservationBytes - (3 * 1024 + bookkeepingBudget) - 10;
+    row.result.resolution.padding = 'x'.repeat(
+      targetBytes - Buffer.byteLength(`${JSON.stringify(ledger)}\n`),
+    );
+    writeFileSync(file, `${JSON.stringify(ledger)}\n`);
+    const request = { ...input(), sessionId, requestKey: 'near-budget' };
+    const effect = vi.fn(async (id: string) => {
+      await markCreateRequestStarting(id);
+      const receipt = {
+        ...handle(id),
+        resolution: { ...handle(id).resolution, padding: '' },
+      };
+      receipt.resolution.padding = 'x'.repeat(
+        3 * 1024 - Buffer.byteLength(JSON.stringify(receipt)),
+      );
+      expect(Buffer.byteLength(JSON.stringify(receipt))).toBe(3 * 1024);
+      return receipt;
+    });
+    let result: ForegroundMessageHandle;
+    try {
+      result = await claims.run(request, effect);
+    } catch (error) {
+      expect(effect, String(error)).not.toHaveBeenCalled();
+      expect(error).toMatchObject({
+        code: 'create_request_capacity',
+        limit: 'bytes',
+      });
+      return;
+    }
+    expect(result.providerTurnId).toBe('turn-1');
+    expect(await new CreateRequestClaims(home).run(request, effect)).toEqual(
+      result,
+    );
+    expect(effect).toHaveBeenCalledOnce();
+  },
+);

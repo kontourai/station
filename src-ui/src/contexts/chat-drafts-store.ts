@@ -1,8 +1,8 @@
 import type { FileAttachment } from '../types';
 import {
+  type DraftQuote,
   MAX_DRAFT_QUOTES,
-  parseSavedAnswerQuote,
-  type SavedAnswerQuote,
+  parseDraftQuote,
 } from '../utils/answer-quotes';
 import { isRecord } from '../utils/isRecord';
 
@@ -12,7 +12,7 @@ const MAX_DRAFT_LENGTH = 20_000;
 const MAX_STASHED_IMAGES = 5;
 
 interface StoredDraft {
-  quotes?: SavedAnswerQuote[];
+  quotes?: DraftQuote[];
   text: string;
   updatedAt: number;
 }
@@ -21,7 +21,7 @@ type StoredDrafts = Record<string, StoredDraft>;
 
 /** Deliberately has no model, engine, provider, or connection field. */
 export interface PortableDraft {
-  quotes?: SavedAnswerQuote[];
+  quotes?: DraftQuote[];
   id: string;
   name: string;
   text: string;
@@ -91,8 +91,8 @@ function readSessionDrafts(value: unknown): StoredDrafts {
       ...(Array.isArray(candidateValue.quotes)
         ? {
             quotes: candidateValue.quotes
-              .map(parseSavedAnswerQuote)
-              .filter((quote): quote is SavedAnswerQuote => quote !== null)
+              .map(parseDraftQuote)
+              .filter((quote): quote is DraftQuote => quote !== null)
               .slice(0, MAX_DRAFT_QUOTES),
           }
         : {}),
@@ -152,8 +152,8 @@ function readState(): StoredState {
           ...(Array.isArray(draft.quotes)
             ? {
                 quotes: draft.quotes
-                  .map(parseSavedAnswerQuote)
-                  .filter((quote): quote is SavedAnswerQuote => quote !== null)
+                  .map(parseDraftQuote)
+                  .filter((quote): quote is DraftQuote => quote !== null)
                   .slice(0, MAX_DRAFT_QUOTES),
               }
             : {}),
@@ -174,7 +174,7 @@ function writeState(state: StoredState): void {
   }
 }
 
-const EMPTY_QUOTES: readonly SavedAnswerQuote[] = [];
+const EMPTY_QUOTES: readonly DraftQuote[] = [];
 let state = readState();
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
@@ -197,13 +197,13 @@ export const chatDraftsStore = {
   get(sessionId: string): string {
     return state.sessions[sessionId]?.text ?? '';
   },
-  getQuotes(sessionId: string): readonly SavedAnswerQuote[] {
+  getQuotes(sessionId: string): readonly DraftQuote[] {
     return state.sessions[sessionId]?.quotes ?? EMPTY_QUOTES;
   },
-  addQuote(sessionId: string, quote: SavedAnswerQuote): void {
+  addQuote(sessionId: string, quote: DraftQuote): void {
     const current = state.sessions[sessionId];
     const quotes = current?.quotes ?? [];
-    if (!parseSavedAnswerQuote(quote)) throw new Error('Invalid quote');
+    if (!parseDraftQuote(quote)) throw new Error('Invalid quote');
     if (quotes.length >= MAX_DRAFT_QUOTES)
       throw new Error(
         'Remove a quote before adding another. A draft can hold three quotes.',
@@ -230,7 +230,7 @@ export const chatDraftsStore = {
     writeState(state);
     notify();
   },
-  consumeQuotes(sessionId: string, sent: readonly SavedAnswerQuote[]): void {
+  consumeQuotes(sessionId: string, sent: readonly DraftQuote[]): void {
     const current = state.sessions[sessionId];
     if (!current) return;
     state = {
@@ -308,7 +308,7 @@ export const chatDraftsStore = {
     text: string,
     attachments: readonly FileAttachment[],
     encode: DraftAttachmentEncoder = async (attachment) => attachment,
-    quotes: readonly SavedAnswerQuote[] = [],
+    quotes: readonly DraftQuote[] = [],
   ): Promise<PortableDraft> {
     const createdAt = Date.now();
     const id = `draft-${createdAt}`;
@@ -324,8 +324,8 @@ export const chatDraftsStore = {
       ...(quotes.length
         ? {
             quotes: quotes
-              .map(parseSavedAnswerQuote)
-              .filter((quote): quote is SavedAnswerQuote => quote !== null)
+              .map(parseDraftQuote)
+              .filter((quote): quote is DraftQuote => quote !== null)
               .slice(0, MAX_DRAFT_QUOTES),
           }
         : {}),

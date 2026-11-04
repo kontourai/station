@@ -199,7 +199,7 @@ const count = (text: string, needle: string) => text.split(needle).length - 1;
 
 describe('a supervised terminal', () => {
   it(
-    'keeps its pid and every journal record across a core handoff, and ends with the supervisor',
+    'reattaches under IPC backpressure with the same pid and every journal record, and ends with the supervisor',
     async () => {
       const root = makeTempDir('svt-');
       const home = join(root, 'home');
@@ -291,10 +291,10 @@ describe('a supervised terminal', () => {
           outcome: 'committed',
           generation: 2,
         });
-        const state2 = await call<{ generation: number; workloads: boolean }>(
-          port,
-          '/state',
-        );
+        const state2 = await call<{
+          generation: number;
+          workloads: boolean;
+        }>(port, '/state');
         expect(state2).toMatchObject({ generation: 2, workloads: true });
 
         // Generation 2 reattached the same process and lost nothing.
@@ -310,6 +310,11 @@ describe('a supervised terminal', () => {
         );
         expect(replay.status).toBe('running');
         expect(replay.pid).toBe(opened.pid);
+        const reattached = await call<{ backpressuredAttaches: number }>(
+          port,
+          '/state',
+        );
+        expect(reattached.backpressuredAttaches).toBeGreaterThan(0);
         const seqs = replay.records.map((record) => record.seq);
         expect(seqs).toEqual(seqs.map((_, index) => index + 1));
         const supervised = await status();

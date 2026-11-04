@@ -1,11 +1,15 @@
-import { existsSync, readdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { TroubleshootReportBoundsError } from '@kontourai/station-contracts/troubleshoot';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   admitTroubleshootSeed,
   boundedTriageLogTail,
   createTriageRunDirectory,
+  draftTroubleshootReport,
+  homeRelativePath,
+  localTriageLogFacts,
   MAX_TRIAGE_CONTEXT_BYTES,
   MAX_TRIAGE_DOCTOR_CHECKS,
   MAX_TRIAGE_LOG_TAIL_LENGTH,
@@ -350,5 +354,88 @@ describe('createTriageRunDirectory', () => {
       createTriageRunDirectory('6c6c6c6c-6c6c-4c6c-8c6c-6c6c6c6c6c6c', other),
     ).toThrow('real directory');
     expect(readdirSync(outside)).toEqual([]);
+  });
+});
+
+describe('localTriageLogFacts', () => {
+  test('shows a location inside the real home as ~ and withholds any other path', () => {
+    const userHome = tempRoot();
+    expect(
+      localTriageLogFacts(
+        join(userHome, '.station/instances/stable'),
+        userHome,
+      ),
+    ).toEqual({
+      directory: '~/.station/instances/stable/logs',
+      status: 'absent',
+    });
+    // Another user's home is not this user's ~, whatever its name looks like.
+    expect(
+      localTriageLogFacts('/home/another-user/private', userHome).directory,
+    ).toBeNull();
+    expect(localTriageLogFacts('/opt/station', userHome).directory).toBeNull();
+    // Spaces in the home path are kept intact.
+    const spaced = join(userHome, 'Alice Smith');
+    mkdirSync(spaced);
+    expect(
+      localTriageLogFacts(join(spaced, '.station'), userHome).directory,
+    ).toBe('~/Alice Smith/.station/logs');
+  });
+
+  test('homeRelativePath refuses any path outside the home on its own', () => {
+    const userHome = tempRoot();
+    expect(homeRelativePath('/home/another-user/private', userHome)).toBeNull();
+    expect(
+      homeRelativePath(join(userHome, '..', 'sibling'), userHome),
+    ).toBeNull();
+    expect(homeRelativePath(userHome, userHome)).toBe('~');
+    expect(homeRelativePath(join(userHome, 'a', 'b'), userHome)).toBe('~/a/b');
+  });
+
+  test('an unavailable home directory withholds the location instead of failing', () => {
+    expect(homeRelativePath('/anything', null)).toBeNull();
+    expect(homeRelativePath('/anything', '')).toBeNull();
+  });
+
+  test('a symlink leading out of the home is withheld', () => {
+    const userHome = tempRoot();
+    const outside = tempRoot();
+    symlinkSync(outside, join(userHome, 'linked'));
+    expect(
+      localTriageLogFacts(join(userHome, 'linked', 'station'), userHome)
+        .directory,
+    ).toBeNull();
+  });
+
+  test('reports whether the log directory exists', () => {
+    const home = tempRoot();
+    expect(localTriageLogFacts(home).status).toBe('absent');
+    mkdirSync(join(home, 'logs'));
+    expect(localTriageLogFacts(home).status).toBe('present');
+  });
+});
+
+describe('draftTroubleshootReport', () => {
+  test('redacts title and fields before building the link', () => {
+    const draft = draftTroubleshootReport({
+      title: 'Crash at /Users/alice/project',
+      fields: {
+        'prior-issue': 'https://github.com/acme/private/issues/3',
+      },
+    });
+    expect(draft.title).toBe('Crash at ~/project');
+    expect(draft.fields).toEqual({ 'prior-issue': '[REDACTED_URL]' });
+    expect(new URL(draft.url).searchParams.get('prior-issue')).toBe(
+      '[REDACTED_URL]',
+    );
+  });
+
+  test('refuses an unknown field by name', () => {
+    expect(() =>
+      draftTroubleshootReport({
+        title: 'x',
+        fields: { body: 'y' } as never,
+      }),
+    ).toThrow(TroubleshootReportBoundsError);
   });
 });

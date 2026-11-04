@@ -67,6 +67,7 @@ function launcher(dir: string, name: string): string {
 function harness(command: 'opencode' | 'kiro-cli'): Harness {
   const dir = makeTempDir('station-acp-approval-');
   const cwd = makeTempDir('station-acp-approval-cwd-');
+  mkdirSync(join(cwd, '.git'));
   const recordPath = join(dir, 'launches.jsonl');
   writeFileSync(recordPath, '');
   const connection: ACPConnectionConfig = {

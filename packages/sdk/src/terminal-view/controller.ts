@@ -16,6 +16,7 @@ import type { Frame } from './engine/frame';
 import type { EngineSize, SearchState } from './engine/terminal-engine';
 import {
   FocusEscape,
+  isHostChord,
   keyInput,
   modsOf,
   type ViewKeyAction,
@@ -79,6 +80,9 @@ export interface ControllerElements {
   input: HTMLTextAreaElement;
 }
 
+/** Every event the controller listens for, on the root, window or document. */
+type ListenedEvents = HTMLElementEventMap & DocumentEventMap & WindowEventMap;
+
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 const LONG_PRESS_MS = 450;
 const BLINK_MS = 600;
@@ -111,6 +115,8 @@ export class TerminalController {
   private measured = false;
   private session: TerminalViewSession | null = null;
   private unsubscribeSession: (() => void) | null = null;
+  /** The engine holds output from an earlier attachment. */
+  private drawn = false;
   private readonly cleanups: (() => void)[] = [];
   private pendingFrame: Frame | null = null;
   private rafHandle = 0;
@@ -284,17 +290,22 @@ export class TerminalController {
 
   private attachSession(session: TerminalViewSession): void {
     this.unsubscribeSession?.();
+    // A new attachment replays its terminal from the oldest retained output,
+    // so the screen an earlier one drew would show that history twice.
+    if (this.drawn) this.engine?.send({ type: 'reset' });
+    this.drawn = false;
     this.unsubscribeSession = session.subscribe({
       output: (bytes, kind) => {
         // The session owns these bytes: it hands the same array to every view
         // of the session and keeps it for views that subscribe later.
         // Transferring it would detach it under them, so the worker gets a copy.
         const owned = bytes.slice();
+        this.drawn = true;
         this.engine?.send({ type: 'write', bytes: owned, mode: kind }, [
           owned.buffer,
         ]);
       },
-      reset: () => this.engine?.send({ type: 'clear' }),
+      reset: () => this.engine?.send({ type: 'reset' }),
       state: (state, detail) => {
         this.update({ session: state });
         if (state === 'exited')
@@ -381,7 +392,10 @@ export class TerminalController {
 
   private refreshTheme(): void {
     if (!this.engine || !this.renderer) return;
-    this.theme = readTerminalTheme(this.elements.root);
+    const theme = readTerminalTheme(this.elements.root);
+    // An unchanged palette repaints nothing and posts nothing.
+    if (JSON.stringify(theme) === JSON.stringify(this.theme)) return;
+    this.theme = theme;
     this.renderer.setTheme(this.theme);
     this.engine.send({ type: 'theme', theme: this.engineTheme(this.theme) });
   }
@@ -520,15 +534,16 @@ export class TerminalController {
 
   private installListeners(): void {
     const { root, input } = this.elements;
-    const on = <K extends keyof HTMLElementEventMap>(
+    const on = <K extends keyof ListenedEvents>(
       target: HTMLElement | Window | Document,
-      type: K | string,
-      handler: (event: any) => void,
+      type: K,
+      handler: (event: ListenedEvents[K]) => void,
       options?: AddEventListenerOptions,
     ) => {
-      target.addEventListener(type, handler, options);
+      const listener = handler as EventListener;
+      target.addEventListener(type, listener, options);
       this.cleanups.push(() =>
-        target.removeEventListener(type, handler, options),
+        target.removeEventListener(type, listener, options),
       );
     };
 
@@ -646,7 +661,7 @@ export class TerminalController {
       this.runViewAction(action);
       return;
     }
-    if (MODIFIER_KEYS.has(event.key)) return;
+    if (MODIFIER_KEYS.has(event.key) || isHostChord(event)) return;
     // Printable keys without modifiers arrive through beforeinput, which also
     // covers soft keyboards; everything else is encoded here.
     const printable = [...event.key].length === 1;

@@ -1624,3 +1624,16 @@ test('#4266: a call both failed and cancelled is counted once, as cancelled', ()
   expect(group.cancelledCount).toBe(1);
   expect(group.failedCount).toBe(0);
 });
+
+describe('terminal_run (#3994)', () => {
+  test('asking a person to run a command is never shown as having run it', () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolName: 'mcp__station-control__terminal_run',
+        args: { command: 'npm test' },
+      }),
+    ]);
+    expect(group.summary).toBe('Used mcp station-control terminal run');
+    expect(group.calls[0]?.kind).toBe('other');
+  });
+});
