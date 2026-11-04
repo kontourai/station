@@ -168,12 +168,14 @@ repository's config, as creation does: `status` and a non-forced `worktree
 remove` run clean filters, so a repository (or Task worktree) whose own
 config names a program git would run, or pulls in configuration from another
 file that is refused, keeps the worktree as `unsafe-config` and runs
-nothing. The one exception is deleting the branch: `update-ref` runs against
-the repository's real git directory (where links need privilege the judged
-copy holds a copy of `packed-refs`, so a deletion there could miss the real
-branch), with hooks off as for every Station git call (`core.hooksPath` is
-the null device); it runs no filters. Finalization then checks the branch is gone and reports the
-worktree kept (`failed`) if it is not. A
+nothing. The one exception is deleting the branch, which runs `update-ref
+--no-deref` against the repository's real git directory, because the judged
+copy's `packed-refs` may be a copy rather than a link. Hooks stay off, as for
+every Station git call, and `update-ref` runs no filters. A Task branch that
+has become a symbolic ref keeps everything (`failed`). A deletion git refuses
+is `unpushed` only when the branch moved, and `failed` otherwise. Finalization
+then checks the branch is gone and reports the worktree kept (`failed`) if it
+is not, or if git cannot say. A
 `session-running` deferral is retried when a turn or Session ends, and once
 when Station starts (the deferral is recorded with the worktree, so a restart
 does not lose it); nothing else re-runs a kept finalization. A Task that
