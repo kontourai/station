@@ -7,6 +7,7 @@ import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { ErrorState } from '../../components/state';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
@@ -74,15 +75,15 @@ export function AccountPreferencesSection() {
       title="Your account preferences"
       id="section-account-preferences"
     >
-      <p role="status">
-        {account.status === 'account'
-          ? 'Your devices share these preferences on this Station.'
-          : account.status === 'loading'
-            ? 'Loading preferences…'
-            : account.status === 'error'
-              ? 'Sync unavailable. Reload to try again.'
+      {account.status !== 'error' && (
+        <p role="status">
+          {account.status === 'account'
+            ? 'Your devices share these preferences on this Station.'
+            : account.status === 'loading'
+              ? 'Loading preferences…'
               : 'Saved on this device. Sign in to sync.'}
-      </p>
+        </p>
+      )}
       <div className="settings__account-help">
         <details>
           <summary>About these preferences</summary>
@@ -167,12 +168,23 @@ export function AccountPreferencesSection() {
         </p>
       )}
       {(account.error || account.status === 'error') && (
-        <p role="alert">
-          {account.conflict
-            ? 'Changed on another device. Reload before trying again.'
-            : 'Couldn’t confirm the save.'}{' '}
-          <Button onClick={account.retry}>Reload saved preferences</Button>
-        </p>
+        <ErrorState
+          variant="compact"
+          title={
+            account.status === 'error'
+              ? 'Couldn’t load your account preferences.'
+              : account.conflict
+                ? 'Changed on another device. Reload before trying again.'
+                : 'Couldn’t confirm the save.'
+          }
+          action={
+            <Button onClick={account.retry}>
+              {account.status === 'error'
+                ? 'Retry loading preferences'
+                : 'Reload saved preferences'}
+            </Button>
+          }
+        />
       )}
     </SettingsSection>
   );

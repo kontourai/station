@@ -160,10 +160,9 @@ test('an initial preference read failure explains loading and retries without wr
   try {
     const failure = await screen.findByRole('alert');
     expect(failure.textContent).not.toContain('Couldn’t confirm the save.');
-    expect(screen.getByLabelText('New Codex chats approval mode')).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(
+      screen.getByLabelText('New Codex chats approval mode'),
+    ).toHaveProperty('disabled', true);
     expect(fixture.patch).not.toHaveBeenCalled();
     fixture.get.mockResolvedValueOnce({
       schemaVersion: 1,
@@ -180,14 +179,15 @@ test('an initial preference read failure explains loading and retries without wr
         screen.getByLabelText('New Codex chats approval mode'),
       ).toHaveProperty('value', 'auto'),
     );
-    expect(screen.getByLabelText('New Codex chats approval mode')).toHaveProperty(
-      'disabled',
-      false,
-    );
+    expect(
+      screen.getByLabelText('New Codex chats approval mode'),
+    ).toHaveProperty('disabled', false);
     expect(screen.queryByRole('alert')).toBeNull();
     expect(fixture.get).toHaveBeenCalledTimes(2);
     expect(fixture.patch).not.toHaveBeenCalled();
-    expect(localStorage.getItem('station-device-settings-v1')).toBe(deviceRecord);
+    expect(localStorage.getItem('station-device-settings-v1')).toBe(
+      deviceRecord,
+    );
   } finally {
     view.unmount();
   }
