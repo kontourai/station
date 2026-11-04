@@ -20,4 +20,5 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [shared-work-delivery.md](shared-work-delivery.md) — Shared work delivery ledger
 - [task-experience-follow-through.md](task-experience-follow-through.md) — Task experience follow-through
 - [task-tracker-sync-upstream-gaps.md](task-tracker-sync-upstream-gaps.md) — Task tracker sync: published-contract gaps
+- [whole-app-ux-campaign.md](whole-app-ux-campaign.md) — Whole-app UX campaign
 <!-- docs-index:end -->

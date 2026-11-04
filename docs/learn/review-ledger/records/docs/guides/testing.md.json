@@ -256,7 +256,11 @@
 
     "scripts/__tests__/vitest-resource-manifest.test.ts",
 
-    "package.json"
+    "package.json",
+
+    "scripts/install-playwright-browsers.mjs",
+
+    "scripts/__tests__/install-playwright-browsers.test.ts"
   ],
 
   "checks": [

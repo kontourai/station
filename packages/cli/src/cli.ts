@@ -5,6 +5,7 @@ import {
   runOpenCommand,
 } from './commands/local-browser.js';
 import { runMediaToolsCommand } from './commands/media-tools.js';
+import { runPolicyCommand } from './commands/policy.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -474,6 +475,7 @@ const INDIVIDUAL_COMMANDS = [
   'config',
   'telemetry',
   'media-tools',
+  'policy',
   'checkpoints',
   'environment',
   'export',
@@ -1331,6 +1333,7 @@ function buildProgram(
 
   register('telemetry', runTelemetryCommand);
   register('media-tools', runMediaToolsCommand);
+  register('policy', runPolicyCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

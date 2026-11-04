@@ -953,6 +953,16 @@ Paired people, the operator breakdown, peer receipts, milestones, diagnostics an
 history mount when their disclosure is opened and unmount when closed. Shared
 analytics queries, including milestone data, continue to follow their context
 ownership. Existing authorization rules still apply to the connected Station.
+Initial analytics loading or failure is local to the usage area. My access,
+Paired people and Diagnostics remain available, and an open Paired people
+disclosure stays open when usage recovers. Each child retains its own read and
+authorization rules.
+
+**Retry** keeps the current usage error and shows **Retrying…** while its read
+is pending. If it fails again, the same Retry action remains available. After
+successful keyboard recovery, focus returns to the named Station usage region
+when the previous action disappeared; it does not move away from another
+control or an open dialog. The open Paired people disclosure stays open.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.

@@ -198,7 +198,9 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-server/security/runtime-request-security.ts"
+    "src-server/security/runtime-request-security.ts",
+
+    "src-ui/src/contexts/AnalyticsContext.tsx"
   ],
 
   "checks": [

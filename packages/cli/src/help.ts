@@ -553,6 +553,22 @@ const VERBS: Record<string, VerbSpec> = {
       'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
     ],
   },
+  policy: {
+    summary:
+      'Check a managed policy file, or show the installed policy and whether the running server loaded it',
+    usage: [
+      'station policy check <file> [--json]',
+      'station policy show [--json]',
+    ],
+    actions: ['check', 'show'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'check is offline: it runs the same validation as server startup, exits 1 with each problem, or prints what the policy does.',
+      'show reads the installed system policy and its fingerprint, compares it with what the running server loaded, and says when a restart is needed. Only a target on this machine is compared. It exits 1 when the installed policy is invalid.',
+      'See docs/guides/managed-policy.md.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',

@@ -377,6 +377,7 @@ import {
 } from '@kontourai/station-contracts/terminal-transport';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import type { Agent } from '@voltagent/core';
@@ -618,6 +619,7 @@ import {
 } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createManagedPolicyRoutes } from '../../routes/system/managed-policy-routes.js';
 import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native-device-proof-binding-routes.js';
 import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
@@ -1221,6 +1223,8 @@ export interface ConfigureRuntimeRoutesContext {
   port: number;
   host?: string;
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /** The managed policy loaded at startup (#4515); null when none. */
+  managedPolicy?: LoadedManagedPolicy | null;
   getReviewedTariffConfiguration?: () =>
     | import('../../analytics/reviewed-tariff-config.js').ReviewedTariffConfigurationService
     | undefined;
@@ -3468,6 +3472,12 @@ export function configureRuntimeRoutes(
   // that carries no stored values is not tiered with the route that reads
   // and writes them.
   context.app.route('/api/settings', createSettingsRegistryRoutes());
+  // #4516: the value-free summary of the managed policy this process
+  // loaded, plus its fingerprint. Same family tier as the registry above.
+  context.app.route(
+    '/api/settings/managed-policy',
+    createManagedPolicyRoutes(context.managedPolicy ?? null),
+  );
 
   if (context.nativeDeviceProofBindings) {
     context.app.route(

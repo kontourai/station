@@ -1891,6 +1891,11 @@ server reads refresh the lifetime snapshot at most once a minute. A request's
 success is not proof of complete provider reporting; retain source coverage and
 snapshot metadata. A rescan invalidates all analytics and Insights queries.
 
+An unsuccessful HTTP response rejects with `StationHttpError`, retaining its
+status and the server's error message when supplied. Without a message, the
+fallback names the HTTP status. A genuine transport rejection is preserved;
+an HTTP error does not imply that Station could not be reached.
+
 ### `fetchInsights(days?, filters?)` / `useInsightsQuery(days?, filters?, config?)`
 
 Return `UsageInsights` from `@kontourai/station-contracts/insights`, including
