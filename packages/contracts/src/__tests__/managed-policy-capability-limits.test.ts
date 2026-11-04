@@ -99,12 +99,12 @@ describe('capability switches in the policy document', () => {
         },
       }).map((problem) => `${problem.path}: ${problem.message}`),
     ).toEqual([
-      'limits.registries.allowedUrls[0]: must be an http or https URL without a user name, password, query or fragment',
-      'limits.registries.allowedUrls[1]: must be an http or https URL without a user name, password, query or fragment',
-      'limits.registries.allowedUrls[2]: must be an http or https URL without a user name, password, query or fragment',
-      'limits.registries.allowedUrls[3]: must be an http or https URL of at most 2048 characters',
+      'limits.registries.allowedUrls[0]: must be an https URL without a user name, password, query or fragment',
+      'limits.registries.allowedUrls[1]: must be an https URL without a user name, password, query or fragment',
+      'limits.registries.allowedUrls[2]: must be an https URL without a user name, password, query or fragment',
+      'limits.registries.allowedUrls[3]: must be an https URL of at most 2048 characters',
       'limits.registries.allowedUrls[5]: repeats an earlier URL',
-      'limits.registries.allowedUrls[6]: must be an http or https URL of at most 2048 characters',
+      'limits.registries.allowedUrls[6]: must be an https URL of at most 2048 characters',
     ]);
     expect(
       problemsOf({
@@ -121,6 +121,60 @@ describe('capability switches in the policy document', () => {
         message: 'must list at most 64 URLs',
       },
     ]);
+  });
+
+  test('refuses an http allow-list entry at load: a registry read over http can be altered in transit', () => {
+    expect(
+      problemsOf({
+        registries: {
+          allowedUrls: [
+            'https://plugins.example.com/registry.json',
+            'http://plugins.example.com/registry.json',
+            'HTTP://mirror.example/r',
+          ],
+        },
+      }),
+    ).toEqual([
+      {
+        path: 'limits.registries.allowedUrls[1]',
+        message:
+          'must use https; a registry read over http can be altered in transit',
+      },
+      {
+        path: 'limits.registries.allowedUrls[2]',
+        message:
+          'must use https; a registry read over http can be altered in transit',
+      },
+    ]);
+    // The status boundary refuses a summary that lists one, too.
+    expect(
+      parseManagedPolicyStatus({
+        state: 'loaded',
+        source: { kind: 'file', location: '/etc/station/policy.json' },
+        digest: `sha256:${'a'.repeat(64)}`,
+        summary: {
+          organization: 'Acme',
+          supportUrl: null,
+          lockedSettings: [],
+          limits: { registries: { allowedUrls: ['http://x.example/r'] } },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  test('an http location never matches an https entry, and the bundled catalog stays allowed', () => {
+    const registries = {
+      allowedUrls: ['https://plugins.example.com/registry.json'],
+    };
+    expect(
+      managedRegistryLocationAllowed(
+        registries,
+        'http://plugins.example.com/registry.json',
+      ),
+    ).toBe(false);
+    expect(
+      managedRegistryLocationAllowed(registries, '/opt/station/catalog', true),
+    ).toBe(true);
   });
 
   test('an empty allow list is accepted and allows nothing but the bundled catalog', () => {
@@ -202,5 +256,49 @@ describe('the status boundary', () => {
 
   test('refuses a summary claiming a switch is on', () => {
     expect(parseManagedPolicyStatus(loaded({ telemetry: true }))).toBeNull();
+  });
+});
+
+describe('limits from every slice survive each reconstruction', () => {
+  // Every enforced limit key, each set to a restricting value. A slice added
+  // to MANAGED_POLICY_ENFORCED_LIMIT_KEYS without an entry here fails the
+  // coverage check below, so the round trip always covers every slice.
+  const everyLimit: Record<string, unknown> = {
+    telemetry: false,
+    webhookAutomations: false,
+    registries: {
+      allowedUrls: ['https://plugins.example.com/registry.json'],
+      unsignedPackages: false,
+      defaultSkillRegistries: false,
+      acpRegistryInstalls: false,
+    },
+  };
+
+  test('the fixture sets every enforced limit key', () => {
+    expect(Object.keys(everyLimit).sort()).toEqual(
+      [...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort(),
+    );
+  });
+
+  test('the parsed document, the summary and the status decode keep every limit', () => {
+    const parsed = parseManagedPolicyDocument({ ...base, limits: everyLimit });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    expect(parsed.document.limits).toEqual(everyLimit);
+    const summary = summarizeManagedPolicy(parsed.document);
+    expect(summary.limits).toEqual(everyLimit);
+    const status = parseManagedPolicyStatus(
+      JSON.parse(
+        JSON.stringify({
+          state: 'loaded',
+          source: { kind: 'file', location: '/etc/station/policy.json' },
+          digest: `sha256:${'b'.repeat(64)}`,
+          summary,
+        }),
+      ),
+    );
+    expect(status?.state).toBe('loaded');
+    expect(status?.state === 'loaded' && status.summary.limits).toEqual(
+      everyLimit,
+    );
   });
 });

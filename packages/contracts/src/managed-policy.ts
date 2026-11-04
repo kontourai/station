@@ -75,7 +75,7 @@ export const MANAGED_POLICY_CAPABILITY_LIMIT_KEYS = [
 export interface ManagedPolicyRegistryLimits {
   /**
    * The only registry locations plugins and skills may be acquired from,
-   * as http(s) URLs. Station's bundled catalog is always allowed; any other
+   * as https URLs (an http entry is refused at load). Station's bundled catalog is always allowed; any other
    * catalog, a local folder included, must be listed. Empty allows none.
    */
   allowedUrls?: string[];
@@ -354,7 +354,7 @@ export function parseManagedPolicyDocument(
       () => 'managed settings are not supported by this version of Station',
     ),
     ...reservedMapProblems('limits', limits, limitProblem),
-    ...capabilityLimitProblems(limits),
+    ...managedPolicyLimitProblems(limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -364,7 +364,8 @@ export function parseManagedPolicyDocument(
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
   if (settings !== undefined) document.settings = {};
-  if (limits !== undefined) document.limits = { ...capabilityLimitsOf(limits) };
+  if (limits !== undefined)
+    document.limits = acceptedManagedPolicyLimits(limits);
   return { ok: true, document };
 }
 
@@ -432,7 +433,7 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: { ...capabilityLimitsOf(document.limits) },
+    limits: acceptedManagedPolicyLimits(document.limits),
   };
 }
 
@@ -487,7 +488,7 @@ export function parseManagedPolicyStatus(
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
     !isRecord(summary.limits) ||
-    capabilityLimitProblems(summary.limits).length > 0
+    managedPolicyLimitProblems(summary.limits).length > 0
   ) {
     return null;
   }
@@ -499,7 +500,7 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: { ...capabilityLimitsOf(summary.limits) },
+      limits: acceptedManagedPolicyLimits(summary.limits),
     },
   };
 }
@@ -581,7 +582,7 @@ export function normalizeManagedRegistryUrl(value: string): string | null {
 function allowedUrlsProblems(value: unknown): ManagedPolicyProblem[] {
   const path = 'limits.registries.allowedUrls';
   if (!Array.isArray(value))
-    return [{ path, message: 'must be an array of http or https URLs' }];
+    return [{ path, message: 'must be an array of https URLs' }];
   if (value.length > REGISTRY_ALLOWED_URLS_MAX)
     return [
       {
@@ -601,7 +602,7 @@ function allowedUrlsProblems(value: unknown): ManagedPolicyProblem[] {
     ) {
       problems.push({
         path: at,
-        message: `must be an http or https URL of at most ${REGISTRY_URL_MAX_CHARS} characters`,
+        message: `must be an https URL of at most ${REGISTRY_URL_MAX_CHARS} characters`,
       });
       return;
     }
@@ -610,7 +611,19 @@ function allowedUrlsProblems(value: unknown): ManagedPolicyProblem[] {
       problems.push({
         path: at,
         message:
-          'must be an http or https URL without a user name, password, query or fragment',
+          'must be an https URL without a user name, password, query or fragment',
+      });
+      return;
+    }
+    // A registry read over plain http can be altered in transit, so a policy
+    // cannot vouch for one (the update mirror is https-only for the same
+    // reason). Comparison still normalizes http, so an http location simply
+    // matches no entry.
+    if (!normalized.startsWith('https://')) {
+      problems.push({
+        path: at,
+        message:
+          'must use https; a registry read over http can be altered in transit',
       });
       return;
     }
@@ -694,6 +707,48 @@ export function capabilityLimitsOf(limits: unknown): ManagedPolicyLimits {
       copy.acpRegistryInstalls = false;
     result.registries = copy;
   }
+  return result;
+}
+
+/**
+ * One limit slice: the problems with its keys in a `limits` object, and its
+ * accepted value copied out of one that passed. Every slice is listed in
+ * {@link MANAGED_POLICY_LIMIT_SLICES}.
+ */
+interface ManagedPolicyLimitSlice {
+  problems(limits: Record<string, unknown>): ManagedPolicyProblem[];
+  accepted(limits: Record<string, unknown>): ManagedPolicyLimits;
+}
+
+/**
+ * Every limit slice this build enforces. The parsed document, the summary and
+ * the status decode all rebuild limits from this list, so a slice added here
+ * reaches all three; a site that rebuilt limits from one slice's own fields
+ * would silently drop every other slice's restriction.
+ */
+const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
+  { problems: capabilityLimitProblems, accepted: capabilityLimitsOf },
+];
+
+/** Problems with every enforced limit in `limits`, from every slice. */
+export function managedPolicyLimitProblems(
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(limits)) return [];
+  return MANAGED_POLICY_LIMIT_SLICES.flatMap((slice) => slice.problems(limits));
+}
+
+/**
+ * The accepted limits of a value that passed
+ * {@link managedPolicyLimitProblems}: every slice's result, merged.
+ */
+export function acceptedManagedPolicyLimits(
+  limits: unknown,
+): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  let result: ManagedPolicyLimits = {};
+  for (const slice of MANAGED_POLICY_LIMIT_SLICES)
+    result = { ...result, ...slice.accepted(limits) };
   return result;
 }
 
