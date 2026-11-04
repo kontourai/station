@@ -199,6 +199,13 @@ A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug
   vocabulary, and an Agent that needs its own posture sets its own default,
   which wins.
 
+While the machine's [managed policy](../guides/managed-policy.md#settings)
+locks `defaultModel` or `defaultLLMProvider`, the Project's
+`defaultProviderId`, `defaultModel` and `defaultModelSelection` do not apply;
+while it locks `defaultApprovalMode`, `defaultApprovalMode` and
+`defaultApprovalModeSelection` do not. Reads omit those fields, and writes
+treat them as described under [Update App Configuration](#update-app-configuration).
+
 A chat whose first send carries an explicit **Default** pick
 (`connection-default`) records that pick, and it resolves to the Agent's
 default, then the Station's, without the Project layer; the composer shows the

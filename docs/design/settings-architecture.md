@@ -279,12 +279,18 @@ reach readers through one overlay, `overlayManagedAppSettings`
 out `AppConfig` (`loadAppConfig`, the launchability snapshot, the mutation
 result) and in `observeAppConfigFile`; the stored file is read raw by the
 mutation path, so nothing writes a policy value back. A default fills a key
-only when no Station decision and no accepted environment value exists, the
-same test `resolveEffectiveAppSetting` and provenance apply. Every write path
-refuses a change to a locked key with one sentence ("<Organization>'s policy
-manages this setting."). Project overrides of a locked setting are hidden from
-readers (`FileStorageAdapter.getProject`) and refused on write; the stored
-project record keeps them. Device settings are out of scope: they live on each
+only when no Station decision and no accepted environment value exists (the
+registry's declared variable, or one the consumer reads itself:
+`STATION_LOG_LEVEL`, `SHELL`), the same test `resolveEffectiveAppSetting` and
+provenance apply; a `logLevel` lock outranks `STATION_LOG_LEVEL` in the logger
+itself. Settings with a reader the overlay cannot reach (the telemetry
+settings, read before the policy loads) are refused at policy load. Every
+write path refuses a change to a locked key with one sentence
+("<Organization>'s policy manages this setting."). A lock hides, and refuses
+writes to, every project field that would decide the setting past it
+(`MANAGED_SETTING_PROJECT_FIELDS`: the model and provider pair with its
+`last-used` selection, the approval default with its selection, the
+workspace isolation mode); the stored project record keeps them. Device settings are out of scope: they live on each
 client. Settings shows a "Managed by <organization>" layer and badge and
 disables the locked control.
 
