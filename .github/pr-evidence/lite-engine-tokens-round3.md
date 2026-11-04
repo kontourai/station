@@ -42,6 +42,18 @@ the accounting and privacy suites produced **6 intended failures / 64 passes**:
   correction passes the unchanged production behavior; it is not a new product
   defect.
 
+## Green after repair
+
+```sh
+npm run test:focused -- src-server/analytics/__tests__/usage-observation-projection.test.ts packages/shared/src/__tests__/usage-fold.test.ts src-server/services/__tests__/privacy-inventory.test.ts src-server/providers/__tests__/codex-adapter-adoption.test.ts src-server/services/__tests__/telemetry-publishers.test.ts src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts
+```
+
+All six suites passed **207/207** in **117.92 seconds**, including the native
+adoption adapter, canonical accounting, publisher, runtime composition and
+byte-identical generated privacy artifacts. The inherited first figure contributes
+zero, the subsequent increase contributes 50,000, and lifetime accounting retains
+42,100,000. The corrected Codex fixture uses matched configuration metadata.
+
 ## Limits
 
 NOT_VERIFIED: real outside-CLI/native adoption or resume handoffs, live-provider
