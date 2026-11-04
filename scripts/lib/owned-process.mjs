@@ -658,7 +658,12 @@ export function executeOwnedCommand(
           'Windows owned launcher cannot acknowledge Job settlement',
         );
       try {
-        const sent = execution.child.send({ type: 'owned-command-abort' });
+        const sent = execution.child.send(
+          { type: 'owned-command-abort' },
+          (error) => {
+            if (error) abortSettlement.resolve(error);
+          },
+        );
         if (sent === false)
           throw new Error(
             'Windows owned launcher refused the Job settlement request',
@@ -669,7 +674,10 @@ export function executeOwnedCommand(
     }
     try {
       await bounded(
-        () => abortSettlement.promise,
+        async () => {
+          const deliveryError = await abortSettlement.promise;
+          if (deliveryError) throw deliveryError;
+        },
         spawnOptions.treeSettlementTimeoutMs ??
           WINDOWS_TREE_SETTLEMENT_TIMEOUT_MS,
         'Windows owned launcher did not acknowledge Job settlement',

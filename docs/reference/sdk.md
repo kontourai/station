@@ -44,8 +44,13 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
-`detach()`. A new subscriber first receives the retained output (256 KiB per
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+`restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
+session's program again under the same id (a shell, an agent tab, or a package
+script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
+run's output follows on the same session, with no reattach. It needs operate
+authority and rejects with `refused` for an agent's command or a server-owned
+launch. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
@@ -70,6 +75,25 @@ shell, and it returns null on a host that predates it. Terminal history usage
 and clearing (#3994) are `fetchTerminalHistory`, `clearTerminalHistory(projectId?)`,
 `useTerminalHistoryQuery` and `useClearTerminalHistoryMutation`; an older or
 hosted Station throws `TerminalHistoryUnsupportedError`.
+
+A `list` record's `launch` also names a command session's program:
+`{kind: 'script', name}` for a package script or `{kind: 'run', command}` for an
+agent's approved command; such records carry `kind: 'command'` and, once
+ended, `exitCode`. The script runner (#3994) is
+`listProjectTerminalScripts(apiBase, projectSlug)` (`{packageManager,
+scripts: [{name, command}]}`, or null on a host without it) and
+`runProjectTerminalScript(apiBase, projectSlug, name)` (`{terminalId}`);
+a script restarts through its session's `restart()`.
+`closeProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey)`
+ends a session in any binding the caller may operate.
+
+An agent's `terminal_run` requests are read and answered with
+`listConversationTerminalRuns(apiBase, conversationId)` (the runs that wait,
+start or run, and approved runs that ended in the last minute; empty on a host
+without them), `approveTerminalRun(apiBase,
+runId)` and `declineTerminalRun(apiBase, runId)`, typed `TerminalRun` and
+`TerminalRunState`. Each approval runs that one command once; see
+[agent terminal runs](api.md#agent-terminal-runs).
 
 ## Terminal output sessions
 

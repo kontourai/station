@@ -81,7 +81,9 @@ describe('station-control tool classification', () => {
     // or record version of the caller's own Task's memory.
     // #4138: task_thread_reply and task_thread_resolve append one review event
     // to a thread on the caller's own Task; they never delete or reopen.
+    // #3994: terminal_run only records a request; a person approves each run.
     expect(boundedWrite).toEqual([
+      'terminal_run',
       'notify_user',
       'html_render',
       'html_preview',
@@ -92,6 +94,7 @@ describe('station-control tool classification', () => {
     ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_terminal_run',
       'station-control_task_summary_update',
       'station-control_task_record',
       'station-control_task_thread_reply',

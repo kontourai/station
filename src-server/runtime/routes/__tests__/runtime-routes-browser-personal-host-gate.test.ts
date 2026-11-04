@@ -104,8 +104,17 @@ describe('runtime routes: Browser pane personal-host gate', () => {
   test('no other /api/browser path is mounted anywhere', () => {
     const mounts: string[] = [];
     walk(source, (node) => {
-      if (ts.isStringLiteralLike(node) && node.text.startsWith('/api/browser'))
-        mounts.push(node.text);
+      if (!ts.isCallExpression(node)) return;
+      const callee = node.expression.getText(source);
+      if (callee !== 'context.app.route' && callee !== 'context.app.use')
+        return;
+      const path = node.arguments[0];
+      if (
+        path &&
+        ts.isStringLiteralLike(path) &&
+        path.text.startsWith('/api/browser')
+      )
+        mounts.push(path.text);
     });
     expect([...new Set(mounts)].sort()).toEqual([
       '/api/browser',

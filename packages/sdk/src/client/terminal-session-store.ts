@@ -122,6 +122,16 @@ export interface TerminalSession {
   resize(cols: number, rows: number): void;
   /** The shell's working directory, or null when unknown. */
   cwd(): Promise<string | null>;
+  /**
+   * Runs the session's program again under the same id: a shell, an agent
+   * tab, or a package script resolved again by name. Its earlier output
+   * stays; the new run's follows `restartedAfterSeq` on this session.
+   * `subdirectory` (relative) moves it within its binding. Needs operate
+   * authority; an agent's command and a server-owned launch are refused.
+   */
+  restart(options?: {
+    subdirectory?: string;
+  }): Promise<{ restartedAfterSeq: number }>;
   /** Ends the shell. */
   close(): Promise<void>;
   /** Stops this view; the shell keeps running and can be attached again. */
@@ -137,7 +147,15 @@ export interface TerminalSessionRecord {
   launch?:
     | { kind: 'shell' }
     | { kind: 'agent'; connectionId: string; mode: string }
-    | { kind: 'server' };
+    | { kind: 'server' }
+    /** A package script, restartable by name. */
+    | { kind: 'script'; name: string }
+    /** An agent's command a person approved. */
+    | { kind: 'run'; command: string };
+  /** A program without a terminal (a script or an agent's command). */
+  kind?: 'command';
+  /** How an ended session's program exited. */
+  exitCode?: number | null;
   legacy?: { projectSlug: string; terminalId: string; imported: boolean };
   /** A shell's stable number in its binding ("Shell N"); absent from older hosts. */
   ordinal?: number;
@@ -192,8 +210,12 @@ const record = z
           mode: z.string(),
         }),
         z.object({ kind: z.literal('server') }),
+        z.object({ kind: z.literal('script'), name: z.string() }),
+        z.object({ kind: z.literal('run'), command: z.string() }),
       ])
       .optional(),
+    kind: z.literal('command').optional(),
+    exitCode: z.number().nullable().optional(),
     legacy: z
       .object({
         projectSlug: z.string(),
@@ -375,6 +397,8 @@ export class TerminalSessionStore {
             status: item.status,
             createdAt: item.createdAt,
             ...(item.launch && { launch: item.launch }),
+            ...(item.kind && { kind: item.kind }),
+            ...(item.exitCode !== undefined && { exitCode: item.exitCode }),
             ...(item.legacy && { legacy: item.legacy }),
           }) satisfies TerminalSessionRecord,
       )
@@ -683,7 +707,10 @@ export class TerminalSessionStore {
           pending.reject(errorFor(message.code, message.message));
         else if (message.type === 'list') pending.resolve(message.records);
         else if (message.type === 'cwd') pending.resolve(message.cwd);
-        else pending.resolve(undefined);
+        else
+          pending.resolve(
+            (message as { restartedAfterSeq?: unknown }).restartedAfterSeq,
+          );
         // A refused request (a resize of an ended shell) belongs to its
         // caller, not to the session's channel.
         return;
@@ -805,6 +832,22 @@ class StoreSession implements TerminalSession {
       channel: this.channel,
     });
     return typeof cwd === 'string' ? cwd : null;
+  }
+
+  async restart(
+    options: { subdirectory?: string } = {},
+  ): Promise<{ restartedAfterSeq: number }> {
+    await this.whenReady();
+    const restartedAfterSeq = await this.store.request({
+      type: 'restart',
+      channel: this.channel,
+      ...(options.subdirectory !== undefined && {
+        subdirectory: options.subdirectory,
+      }),
+    });
+    if (typeof restartedAfterSeq !== 'number')
+      throw new TerminalSessionError('protocol');
+    return { restartedAfterSeq };
   }
 
   async close(): Promise<void> {

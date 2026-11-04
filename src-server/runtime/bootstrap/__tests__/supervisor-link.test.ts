@@ -37,6 +37,7 @@ interface Sent {
 class FakeChannel extends EventEmitter {
   readonly env: NodeJS.ProcessEnv;
   connected = true;
+  writable = true;
   readonly sent: Sent[] = [];
   readonly exit = vi.fn((_code: number) => {});
   readonly send = vi.fn(
@@ -48,7 +49,7 @@ class FakeChannel extends EventEmitter {
     ) => {
       this.sent.push({ message, handle });
       callback?.(null);
-      return true;
+      return this.writable;
     },
   );
 
@@ -654,28 +655,52 @@ describe('supervisor disconnect', () => {
 });
 
 describe('handoff requests', () => {
-  it('settles on handoff.refused and on this generation draining', async () => {
+  it.each([true, false])(
+    'settles on handoff.refused and draining with IPC writable=%s',
+    async (writable) => {
+      const channel = new FakeChannel();
+      const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
+      channel.writable = writable;
+      link.onDrain(() => {});
+      const refused = link.requestHandoff({ entry: '/build/next.js' });
+      const request = channel.sent.at(-1)?.message;
+      expect(request).toMatchObject({
+        type: 'handoff.request',
+        entry: '/build/next.js',
+      });
+      channel.deliver({
+        type: 'handoff.refused',
+        requestId: request?.requestId,
+        reason: 'busy',
+      });
+      await expect(refused).resolves.toEqual({
+        status: 'refused',
+        reason: 'busy',
+      });
+      const accepted = link.requestHandoff();
+      channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+      await expect(accepted).resolves.toEqual({ status: 'draining' });
+    },
+  );
+
+  it('waits for a backpressured drained message to flush before resolving', async () => {
     const channel = new FakeChannel();
-    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
-    link.onDrain(() => {});
-    const refused = link.requestHandoff({ entry: '/build/next.js' });
-    const request = channel.sent.at(-1)?.message;
-    expect(request).toMatchObject({
-      type: 'handoff.request',
-      entry: '/build/next.js',
-    });
-    channel.deliver({
-      type: 'handoff.refused',
-      requestId: request?.requestId,
-      reason: 'busy',
-    });
-    await expect(refused).resolves.toEqual({
-      status: 'refused',
-      reason: 'busy',
-    });
-    const accepted = link.requestHandoff();
-    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
-    await expect(accepted).resolves.toEqual({ status: 'draining' });
+    const link = quietLink(channel);
+    let flushed: ((error: Error | null) => void) | undefined;
+    channel.send.mockImplementationOnce(
+      (_message, _handle, _options, callback) => {
+        flushed = callback;
+        return false;
+      },
+    );
+    const done = vi.fn();
+    const pending = link.reportDrained().then(done);
+    await Promise.resolve();
+    expect(done).not.toHaveBeenCalled();
+    expect(flushed).toBeTypeOf('function');
+    flushed?.(null);
+    await pending;
+    expect(done).toHaveBeenCalledTimes(1);
   });
 });
 
