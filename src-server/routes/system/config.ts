@@ -1,4 +1,3 @@
-import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
@@ -37,6 +36,7 @@ import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
 import {
   installedManagedAppSettings,
   ManagedSettingLockedError,
+  managedSettingRefusalBody,
   overlayManagedAppSettings,
   withoutLockedNoOps,
 } from '../../domain/managed-settings.js';
@@ -113,16 +113,7 @@ import {
  * machine; `key` names the setting so a client can mark the right control.
  */
 function managedSettingRefusal(c: Context, error: ManagedSettingLockedError) {
-  return c.json(
-    {
-      success: false,
-      code: error.code,
-      key: error.key,
-      // Composed from the loaded policy's summary, not a caught message.
-      error: managedPolicyDenial(error.summary, 'this setting'),
-    },
-    403,
-  );
+  return c.json(managedSettingRefusalBody(error), 403);
 }
 
 function projectPublicAppConfig(config: Record<string, any>) {

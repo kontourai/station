@@ -2194,8 +2194,11 @@ A change to a setting the managed policy locks is refused before any other
 check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
 policy's denial sentence; nothing in the request is saved. Sending exactly the
 locked value is dropped as a no-op. `PUT /config/app/log-level` and
-`POST /config/first-run` refuse with the same body; project create and update
-refuse a locked override with 403 and the same sentence.
+`POST /config/first-run` refuse with the same body. Project create
+(`POST /api/projects`) and update (`PUT /api/projects/:slug`) refuse a value for a
+project field a lock outranks with the same 403 body; resending `null`, `''`
+or the stored value is dropped instead, and a successful response omits those
+fields, as `GET /api/projects/:slug` does.
 See [config reference](config.md) for effective defaults and consumer limits.
 
 Raising telemetry tiers (including legacy enabled writes), or changing destinations

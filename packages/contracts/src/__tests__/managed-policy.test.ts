@@ -10,6 +10,7 @@ import {
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
+  withoutLockedProjectFields,
 } from '../managed-policy.js';
 
 function problemsOf(value: unknown) {
@@ -471,5 +472,76 @@ describe('managed settings (#4517)', () => {
     expect(problemsOf(policy([]))).toEqual([
       { path: 'settings', message: 'must be an object' },
     ]);
+  });
+});
+
+describe('settings this version cannot manage (#4517)', () => {
+  // Each has a reader the overlay cannot reach (the OpenTelemetry bootstrap
+  // reads `config/app.json` before the policy loads; the tier resolves
+  // against environment variables outside the registry), so the policy is
+  // refused rather than reporting a managed value that is not in effect.
+  test.each([
+    'telemetryTier',
+    'productTelemetryEndpoint',
+    'productTelemetryKeyRef',
+    'otelTelemetryEndpoint',
+    'otelTelemetryKeyRef',
+  ])('refuses %s, locked or default, and says why', (key) => {
+    for (const locked of [true, false]) {
+      const problems = problemsOf({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: { [key]: { value: 'x', locked } },
+      });
+      expect(problems).toEqual([
+        {
+          path: `settings.${key}`,
+          message:
+            'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+        },
+      ]);
+    }
+  });
+});
+
+describe('withoutLockedProjectFields (#4517)', () => {
+  const project = {
+    slug: 'p',
+    defaultProviderId: 'provider',
+    defaultModel: 'model',
+    defaultModelSelection: 'last-used',
+    defaultApprovalMode: 'auto',
+    defaultApprovalModeSelection: 'last-used',
+    defaultWorkspaceIsolation: 'worktree',
+  };
+
+  test.each([
+    [
+      'defaultModel',
+      ['defaultProviderId', 'defaultModel', 'defaultModelSelection'],
+    ],
+    [
+      'defaultLLMProvider',
+      ['defaultProviderId', 'defaultModel', 'defaultModelSelection'],
+    ],
+    [
+      'defaultApprovalMode',
+      ['defaultApprovalMode', 'defaultApprovalModeSelection'],
+    ],
+    ['defaultWorkspaceIsolation', ['defaultWorkspaceIsolation']],
+  ])('a %s lock hides exactly %j', (key, hidden) => {
+    const masked = withoutLockedProjectFields(project, [key]);
+    expect(
+      Object.keys(project)
+        .filter((field) => !(field in masked))
+        .sort(),
+    ).toEqual([...hidden].sort());
+    expect(project.defaultModel).toBe('model');
+  });
+
+  test('nothing locked returns the record itself', () => {
+    expect(withoutLockedProjectFields(project, ['defaultMaxTurns'])).toBe(
+      project,
+    );
   });
 });

@@ -2,9 +2,9 @@ import { isDeepStrictEqual } from 'node:util';
 import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import {
   type LoadedManagedPolicy,
-  loadInstalledManagedPolicy,
   ManagedPolicyInvalidError,
 } from '@kontourai/station-shared/managed-policy';
+import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 
 /**
  * #4517: the CLI commands that write `config/app.json` directly
@@ -18,20 +18,28 @@ import {
  * other write to a locked key, and refuses outright when the installed
  * policy cannot be used, because what it locks cannot be known.
  */
-export function withoutManagedNoOpsOffline<T extends Record<string, unknown>>(
-  updates: T,
-  load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicy,
-): T {
-  let loaded: LoadedManagedPolicy | null;
+/** The installed policy, or a refusal naming what could not be done. */
+function loadPolicyOffline(
+  load: () => LoadedManagedPolicy | null,
+  refusal: string,
+): LoadedManagedPolicy | null {
   try {
-    loaded = load();
+    return load();
   } catch (error) {
     if (error instanceof ManagedPolicyInvalidError)
-      throw new Error(
-        `${error.message} Settings cannot be changed offline until it is fixed.`,
-      );
+      throw new Error(`${error.message} ${refusal}`);
     throw error;
   }
+}
+
+export function withoutManagedNoOpsOffline<T extends Record<string, unknown>>(
+  updates: T,
+  load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicyChecked,
+): T {
+  const loaded = loadPolicyOffline(
+    load,
+    'Settings cannot be changed offline until it is fixed.',
+  );
   const settings = loaded?.document.settings;
   if (!loaded || !settings) return updates;
   const kept: Record<string, unknown> = {};
@@ -45,4 +53,54 @@ export function withoutManagedNoOpsOffline<T extends Record<string, unknown>>(
     throw new Error(managedPolicyDenial(loaded.summary, 'this setting'));
   }
   return kept as T;
+}
+
+/** Whether the stored file carries a value for a key. */
+function hasStoredValue(stored: Record<string, unknown>, key: string): boolean {
+  const value = stored[key];
+  return !(
+    value === undefined ||
+    value === null ||
+    (typeof value === 'string' && value.trim().length === 0)
+  );
+}
+
+/**
+ * #4517: what an offline reader of `config/app.json` acts on (`config get
+ * --offline`, the `station registry` catalog read): the stored file with the
+ * installed policy's locks in place and its defaults filling keys the file
+ * leaves unset. The file is not changed.
+ *
+ * Unlike the server overlay, a default is not checked against environment
+ * variables: these readers never read one for a setting. An installed policy
+ * that cannot be used is refused, as the server refuses to start with it.
+ */
+export function effectiveAppConfigOffline<T extends Record<string, unknown>>(
+  stored: T,
+  load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicyChecked,
+): T {
+  const settings = loadPolicyOffline(
+    load,
+    'Station settings cannot be read offline until it is fixed.',
+  )?.document.settings;
+  if (!settings) return stored;
+  const effective: Record<string, unknown> = { ...stored };
+  for (const [key, entry] of Object.entries(settings))
+    if (entry.locked || !hasStoredValue(stored, key))
+      effective[key] = structuredClone(entry.value);
+  return effective as T;
+}
+
+/** The installed policy's lock on `key`, if it has one. */
+export function lockedSettingOffline(
+  key: string,
+  load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicyChecked,
+): { value: unknown } | undefined {
+  const settings = loadPolicyOffline(
+    load,
+    'Station settings cannot be read offline until it is fixed.',
+  )?.document.settings;
+  const entry =
+    settings && Object.hasOwn(settings, key) ? settings[key] : undefined;
+  return entry?.locked ? { value: entry.value } : undefined;
 }

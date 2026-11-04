@@ -80,7 +80,10 @@ import {
   isIndeterminateWriteFailure,
 } from './errors.js';
 import { PROJECT_HOME } from './helpers.js';
-import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
+import {
+  effectiveAppConfigOffline,
+  withoutManagedNoOpsOffline,
+} from './managed-settings-guard.js';
 
 const CONFIG_PATH = join(PROJECT_HOME, 'config', 'app.json');
 
@@ -425,7 +428,9 @@ function printConfigValue(config: Record<string, unknown>, key?: string): void {
 }
 
 function printConfigFromFile(key?: string): void {
-  printConfigValue(loadConfigFile(), key);
+  // #4517: the values in effect, with the installed policy's locks and
+  // defaults applied; the file itself is not changed.
+  printConfigValue(effectiveAppConfigOffline(loadConfigFile()), key);
 }
 
 /**

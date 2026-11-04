@@ -735,10 +735,11 @@ station policy check <file> [--json]
 station policy show [--json] [--api-base=<url>|--station=<name>]
 ```
 
-`check` is offline and runs the same validation as server startup, except
-the structure of a composite setting value (such as `approvalGuardian`), which
-the server checks against its settings schema at startup; `check` notes that on
-each such entry. It exits `0` and prints the organization, the support link,
+`check` is offline and runs the same validation as server startup, including
+each managed setting value against the settings schema (`schemas/app.schema.json`,
+bundled into the CLI), so a composite value such as `approvalGuardian` with a
+field of the wrong type fails `check` exactly as it would refuse startup. It
+exits `0` and prints the organization, the support link,
 one line per managed setting saying whether it is locked or a default, and
 its `sha256:` fingerprint. It exits `1` and names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
@@ -854,8 +855,9 @@ locally, it just cannot apply a running Station's live reload/event-emit
 side effects. `config get` reads through the live route when reachable
 (showing a provenance note when the value comes from the environment or from
 the managed policy). On a transport
-failure it prints a notice and shows the local home's file instead; that is
-not a reading of the unavailable target Station's configuration.
+failure it prints a notice and shows the local home's file instead, with the
+installed managed policy's locks and defaults applied; that is not a reading
+of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -3978,7 +3980,10 @@ installed state: the running Station owns that, and
 `station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
-file.
+file. A registry the installed
+[managed policy](../guides/managed-policy.md#settings) locks is used instead of
+either; a managed default is used only when neither is set. An installed
+policy that Station would refuse at startup refuses the read.
 
 With a URL argument, saves it to `<STATION_HOME>/config/app.json` and exits.
 

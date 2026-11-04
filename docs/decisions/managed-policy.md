@@ -188,14 +188,21 @@ would leave the rest to whoever writes next. The parser also refuses an unknown
 key, a `secret` setting (every user on the machine can read the policy), an
 internal or runtime-derived field (not a choice a person makes), and an
 environment variable name (it names the setting that reads the variable
-instead). Each value is checked with the registry's own sanitizer, the one a
-settings write runs. `null` is accepted only for a setting that stores `null`
+instead). It also refuses the telemetry settings (`telemetryTier`, the product
+and OpenTelemetry endpoints and key references): the OpenTelemetry bootstrap
+reads `config/app.json` itself before the policy loads, and the tier resolves
+against environment variables, Do Not Track and operator policy outside the
+settings registry, so a managed value there would be reported without being
+in effect. Telemetry is managed through `limits` (#4521). Each value is
+checked with the registry's own sanitizer, the one a settings write runs. `null` is accepted only for a setting that stores `null`
 as a value, and a blank string is refused because Station reads it as unset.
 The parser cannot see a composite's structure, so the server checks every
 managed value against the settings file schema before it listens and refuses to
 start, with the policy marker, when one does not match. `station policy check`
-prints what each entry does and notes that this structural check happens at
-startup.
+runs the same check (`managedSettingsSchemaError`, the same schema file bundled
+into the CLI, the same AJV options and the same `appConfigSemanticError`
+rules), so a policy it accepts is one startup accepts. The offline CLI readers
+and writers load the installed policy through the same check.
 
 **Device settings are out of scope.** Device settings live on each client, in
 the browser or app that sets them, and the server that loads the policy never
@@ -207,7 +214,12 @@ reads raw `AppConfig`, so `ConfigLoader` applies the managed values where it
 hands one out, and `observeAppConfigFile` applies them for the plugin and
 registry-trust observers. A lock replaces whatever is stored. A default fills a
 key only when there is no Station decision (a value equal to a loader-written
-seed is not one) and no environment value the setting's validator accepts.
+seed is not one) and no environment value the setting's consumer accepts: the
+registry's declared variable, or one the consumer reads itself
+(`STATION_LOG_LEVEL` for `logLevel`; `SHELL`, or `COMSPEC` on Windows, for
+`terminalShell`). A lock outranks those variables in the consumer too: the
+logger holds the locked level, which beats `STATION_LOG_LEVEL` and is applied
+to loggers created before the policy loaded.
 `resolveEffectiveAppSetting` and `GET /config/app` provenance apply the same
 rule and report `managed` only where the managed value is what readers get.
 Provenance never carries the value; it names the organization and support link
@@ -229,13 +241,22 @@ commands that write `config/app.json` directly (`config set --offline`,
 `registry <url>`, `import`) load the installed policy themselves and refuse; an
 installed policy they cannot load refuses the offline write.
 
-**A lock outranks a project override.** Readers do not see a project's
-override field for a locked setting (`FileStorageAdapter.getProject`, and the
-workspace-isolation reads that use the stored revision directly). Project create and
-update refuse to set, change or drop it. The stored record keeps it, so it
-returns when the policy is removed. A project overrides its default model and
-provider as a pair, so locking either one drops the project's pair while the
-lock applies.
+**A lock outranks a project override.** A lock hides every project field
+that would decide the setting past it (`MANAGED_SETTING_PROJECT_FIELDS`): the
+model, provider and `last-used` model selection for `defaultModel` or
+`defaultLLMProvider`, since New Chat fills a model from a provider alone; the
+approval default and its `last-used` selection for `defaultApprovalMode`; and
+the workspace isolation mode. Readers do not see those fields
+(`FileStorageAdapter.getProject`, the project list, the workspace-isolation
+reads that use the stored revision, and the responses of project create and
+update). A write that sets one to a value is refused. A write that sends it as
+unset (`null` or `''`), or resends the stored value, is dropped, so a project
+form that saw the field hidden can still save other changes. The stored record
+keeps the field, so it returns when the policy is removed.
+
+Project refusals carry the same 403 body as `/config/app` (`code`, `key`, and
+the organization's sentence with its support link), composed from the loaded
+policy rather than from the caught message, which the project route redacts.
 
 ## Status of later slices
 

@@ -6,19 +6,23 @@ import {
   type ManagedPolicySourceDescriptor,
   type ManagedPolicyStatus,
   type ManagedPolicySummary,
+  managedSettingsSchemaError,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
 import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   decodeManagedPolicy,
-  loadInstalledManagedPolicy,
   ManagedPolicyInvalidError,
   managedPolicyDigest,
   managedPolicyFilePath,
   readManagedPolicyFile,
   SYSTEM_MANAGED_POLICY_OWNERSHIP,
 } from '@kontourai/station-shared/managed-policy';
+import {
+  loadInstalledManagedPolicyChecked,
+  validateAppConfigOffline,
+} from './app-config-schema.js';
 import {
   configureApiCredential,
   parseCoreArgs,
@@ -56,10 +60,6 @@ function describeSettings(document: ManagedPolicyDocument): string[] {
         ? `    ${key}${label}: locked to ${displaySettingValue(entry.value)}; users, projects and agents cannot change it`
         : `    ${key}${label}: defaults to ${displaySettingValue(entry.value)} where nothing closer is set; users can change it`,
     );
-    if (definition?.descriptor.kind === 'composite')
-      lines.push(
-        '      Its structure is checked against the settings schema when Station starts.',
-      );
   }
   return lines;
 }
@@ -87,8 +87,8 @@ interface CheckReport {
 }
 
 /**
- * `station policy check <file>`: offline. Runs the decoder the server runs at
- * startup. At the system policy path it also applies the server's ownership
+ * `station policy check <file>`: offline. Runs the decoder and the managed
+ * settings schema check the server runs at startup. At the system policy path it also applies the server's ownership
  * rule; elsewhere it cannot, so a file checked before installation must still
  * be installed as root (see the managed policy guide).
  */
@@ -106,6 +106,17 @@ function runCheck(file: string, json: boolean): void {
     if (!raw)
       throw new ManagedPolicyInvalidError(path, 'no file exists at this path');
     document = decodeManagedPolicy(path, raw);
+    // #4517: the settings schema check server startup runs before it
+    // listens (`assertManagedSettingsValid`), with the same schema and rules.
+    const schemaProblem = managedSettingsSchemaError(
+      document.settings,
+      validateAppConfigOffline,
+    );
+    if (schemaProblem)
+      throw new ManagedPolicyInvalidError(
+        path,
+        `a managed setting does not match the settings schema (${schemaProblem})`,
+      );
     report = {
       valid: true,
       path,
@@ -209,7 +220,7 @@ async function readRunning(args: string[]): Promise<RunningState> {
 
 function readInstalled(): InstalledState {
   try {
-    const loaded = loadInstalledManagedPolicy();
+    const loaded = loadInstalledManagedPolicyChecked();
     if (!loaded) return { state: 'none', path: managedPolicyFilePath() };
     return {
       state: 'installed',

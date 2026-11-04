@@ -63,7 +63,19 @@ has exactly two keys:
   setting.
 - `"locked": false` sets a default. It applies only where the user has not
   chosen a value and no environment variable supplies one, and users can
-  change it. Settings labels it "<organization> default".
+  change it. Settings labels it "<organization> default". That includes the
+  variables a setting's consumer reads itself: `STATION_LOG_LEVEL` for
+  `logLevel`, and `SHELL` (or `COMSPEC` on Windows) for `terminalShell`, so a
+  `terminalShell` default rarely applies where a login shell is set. A lock
+  outranks all of them.
+
+A lock also replaces a project's own choice of that setting, and of the
+choices that go with it: locking `defaultModel` or `defaultLLMProvider` takes
+the project's model, provider and "last used" model selection, and locking
+`defaultApprovalMode` takes the project's approval default and its "last
+used" selection. Project settings show those fields as unset while the lock
+applies; saving a project with them unset keeps the project's own values for
+when the policy is removed, and setting one is refused.
 
 Station never writes these values into the user's configuration. Remove the
 policy and restart, and every user's own values come back.
@@ -79,21 +91,31 @@ Station checks every entry when it starts and refuses the policy if:
   setting that reads it (`region`) instead;
 - the setting is internal, derived at runtime, or secret (the policy is
   readable by every user on the machine);
+- the setting is a telemetry setting (`telemetryTier` and the product and
+  OpenTelemetry endpoints and key references): Station reads those before it
+  loads the policy and resolves them against environment variables, so it
+  could not apply a managed value. Telemetry will be managed through limits
+  (#4521);
 - the value has the wrong type or is out of range, as a settings write would
   report it; is `null` for a setting that cannot store `null`; or is a blank
   string, which Station reads as unset;
 - a structured value (such as `approvalGuardian`) does not match Station's
-  settings schema. `station policy check` cannot see that schema and says so;
-  the server checks it before it starts listening.
+  settings schema. `station policy check` runs the same schema check as the
+  server, which runs it before it starts listening.
 
 `station policy check` prints one line per entry saying what it does. The
 summary clients read lists the locked setting keys, never their values.
 
 When a user, an agent or a script tries to change a locked setting, Station
 refuses with "<organization>'s policy manages this setting." and the support
-link. Over HTTP that is a `403` with `code: managed_setting_locked`. Saving
-exactly the locked value from Settings, `PUT /config/app` or `station config
-set` is accepted and stores nothing.
+link. Over HTTP that is a `403` with `code: managed_setting_locked` and the
+setting's `key`, from `PUT /config/app` and from project create and update
+alike. Saving exactly the locked value from Settings, `PUT /config/app` or
+`station config set` is accepted and stores nothing.
+
+The offline CLI applies the installed policy too: `station config get
+--offline` and `station registry` read the managed values, and refuse while
+the installed policy is one Station would refuse at startup.
 
 ## Where to install it
 

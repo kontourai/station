@@ -16,6 +16,7 @@
  * key is a registered Station setting and each value is checked against
  * that setting's registry definition (see {@link managedSettingsProblems}).
  */
+import { APP_CONFIG_SEED } from './config.js';
 import { boundaryText, isRecord } from './contract-validation.js';
 import { DEVICE_SETTINGS_REGISTRY } from './device-settings.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
@@ -302,6 +303,86 @@ const RUNTIME_DERIVED_KEYS: ReadonlySet<string> = new Set(
 );
 
 /**
+ * Registered settings this version cannot manage, with the reason the
+ * refusal gives (#4517). Each one has a reader that does not see the managed
+ * overlay, so accepting it would report a managed value that is not the one
+ * in effect.
+ *
+ * The telemetry settings are read by the OpenTelemetry bootstrap before the
+ * policy loads (`telemetry-bootstrap-config.ts` reads `config/app.json`
+ * itself) and resolved against environment variables, Do Not Track and the
+ * operator policy outside the settings registry. Telemetry is managed through
+ * `limits` instead, which #4521 owns.
+ */
+export const MANAGED_POLICY_UNMANAGEABLE_SETTINGS: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  telemetryTier:
+    'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+  productTelemetryEndpoint:
+    'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+  productTelemetryKeyRef:
+    'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+  otelTelemetryEndpoint:
+    'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+  otelTelemetryKeyRef:
+    'telemetry settings are not manageable in this version of Station; telemetry limits arrive with #4521',
+});
+
+/**
+ * The project record fields a lock on each setting hides from readers and
+ * refuses writes to (#4517). A lock outranks a project's choice, and a
+ * project's choice of these settings is more than the one field:
+ *
+ * - the model and provider are one pair, and New Chat fills a model from
+ *   the provider alone, so locking either one takes both, together with the
+ *   `last-used` model selection that would pick a model past the lock;
+ * - the approval default is the fixed mode and its `last-used` selection,
+ *   either of which decides a session's starting posture over the Station
+ *   default.
+ */
+export const MANAGED_SETTING_PROJECT_FIELDS: Readonly<
+  Record<string, readonly string[]>
+> = Object.freeze({
+  defaultModel: ['defaultModel', 'defaultProviderId', 'defaultModelSelection'],
+  defaultLLMProvider: [
+    'defaultModel',
+    'defaultProviderId',
+    'defaultModelSelection',
+  ],
+  defaultWorkspaceIsolation: ['defaultWorkspaceIsolation'],
+  defaultApprovalMode: ['defaultApprovalMode', 'defaultApprovalModeSelection'],
+});
+
+/** The project fields hidden while `lockedKeys` are locked. */
+export function projectFieldsMaskedByLocks(
+  lockedKeys: Iterable<string>,
+): Map<string, string> {
+  const masked = new Map<string, string>();
+  for (const key of lockedKeys)
+    for (const field of MANAGED_SETTING_PROJECT_FIELDS[key] ?? [])
+      if (!masked.has(field)) masked.set(field, key);
+  return masked;
+}
+
+/**
+ * `project` as readers see it while `lockedKeys` are locked: every field a
+ * lock hides is removed. Returns `project` itself when nothing is hidden.
+ */
+export function withoutLockedProjectFields<P extends object>(
+  project: P,
+  lockedKeys: Iterable<string>,
+): P {
+  let masked: P | undefined;
+  for (const field of projectFieldsMaskedByLocks(lockedKeys).keys()) {
+    if (Reflect.get(project, field) === undefined) continue;
+    masked ??= { ...project };
+    Reflect.deleteProperty(masked, field);
+  }
+  return masked ?? project;
+}
+
+/**
  * Why the policy may not manage `path`, or null when it may.
  *
  * A setting is managed as a whole, at its registry key. Registry keys are
@@ -326,6 +407,8 @@ function managedSettingPathProblem(
       return 'secret settings cannot be managed; every user on the machine can read the policy';
     if (definition.userFacing === false)
       return 'this is an internal field, not a setting a policy can manage';
+    if (Object.hasOwn(MANAGED_POLICY_UNMANAGEABLE_SETTINGS, path))
+      return MANAGED_POLICY_UNMANAGEABLE_SETTINGS[path] as string;
     return null;
   }
   const dot = path.indexOf('.');
@@ -435,6 +518,34 @@ export function managedSettingsProblems(
       problems.push({ path: `${path}.value`, message: valueProblem });
   }
   return problems;
+}
+
+/**
+ * What the policy parser cannot see: a composite value's structure and the
+ * cross-field rules live in the settings file schema (`schemas/app.schema.json`
+ * plus `appConfigSemanticError`), which the caller compiles. Every managed
+ * value goes into one probe on top of the loader's seed, which supplies the
+ * schema's required fields, so only a managed value can fail it.
+ *
+ * Server startup and `station policy check` both call this with a validator
+ * built from the same schema file, so `check` reports exactly what startup
+ * would refuse. Returns the validator's message, or undefined when valid.
+ */
+export function managedSettingsSchemaError(
+  settings: Readonly<Record<string, ManagedPolicySettingEntry>> | undefined,
+  validateAppConfig: (config: unknown) => void,
+): string | undefined {
+  if (!settings || Object.keys(settings).length === 0) return undefined;
+  const probe: Record<string, unknown> = structuredClone({
+    ...APP_CONFIG_SEED,
+  });
+  for (const [key, entry] of Object.entries(settings)) probe[key] = entry.value;
+  try {
+    validateAppConfig(probe);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 /** The validated `settings` map, copied so the document owns its values. */

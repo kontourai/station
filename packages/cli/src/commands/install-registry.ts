@@ -12,7 +12,11 @@ import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { withRequestTimeout } from './core-api.js';
 import { PROJECT_HOME } from './helpers.js';
-import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
+import {
+  effectiveAppConfigOffline,
+  lockedSettingOffline,
+  withoutManagedNoOpsOffline,
+} from './managed-settings-guard.js';
 
 interface RegistryManifestPlugin {
   id: string;
@@ -124,13 +128,38 @@ function persistRegistryUrl(registryUrl: string): void {
   }
 }
 
+function readStoredAppConfig(): Record<string, unknown> {
+  if (!existsSync(APP_CONFIG_PATH)) return {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(APP_CONFIG_PATH, 'utf-8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
 function readConfiguredRegistryUrl(): string | undefined {
-  let configured = readJsonStringField(APP_CONFIG_PATH, 'registryUrl');
+  const stored = readStoredAppConfig();
+  // #4517: the installed policy's registry. A lock is the registry in
+  // effect, and the stored and legacy values are never consulted; a default
+  // applies only where neither is set. An installed policy that cannot be
+  // used refuses the read (both calls throw) instead of falling back.
+  const effective = effectiveAppConfigOffline(stored);
+  let configured = lockedSettingOffline('registryUrl')
+    ? nonBlank(effective.registryUrl)
+    : nonBlank(stored.registryUrl);
   if (!configured) {
     // Migration: a value set by an older `station registry <url>` (or
     // never moved) still lives at the legacy path. Read it once and copy
     // it forward so `station config get registryUrl` — and every
-    // subsequent read here — agree without the user re-typing it.
+    // subsequent read here — agree without the user re-typing it. Not
+    // reached under a lock, so the copy cannot be refused by one.
     const legacy = readJsonStringField(LEGACY_CONFIG_PATH, 'registryUrl');
     if (legacy) {
       configured = legacy;
@@ -142,11 +171,8 @@ function readConfiguredRegistryUrl(): string | undefined {
       }
     }
   }
-  const ref =
-    typeof configured === 'string' && configured.trim()
-      ? configured
-      : DEFAULT_REGISTRY_REF;
-  return resolveRegistryUrl(ref);
+  configured ??= nonBlank(effective.registryUrl);
+  return resolveRegistryUrl(configured ?? DEFAULT_REGISTRY_REF);
 }
 
 function saveRegistryUrl(registryUrl: string): void {

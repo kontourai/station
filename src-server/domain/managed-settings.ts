@@ -27,17 +27,19 @@ import {
   type ManagedPolicySettingEntry,
   type ManagedPolicySummary,
   managedPolicyDenial,
+  managedSettingsSchemaError,
+  projectFieldsMaskedByLocks,
+  withoutLockedProjectFields,
 } from '@kontourai/station-contracts/managed-policy';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
-import {
-  PROJECT_OVERRIDE_FIELD_ALIASES,
-  type ProjectOverridableAppSettingKey,
-} from '@kontourai/station-contracts/project-settings-overrides';
 import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   type LoadedManagedPolicy,
   ManagedPolicyInvalidError,
 } from '@kontourai/station-shared/managed-policy';
+import {
+  isConfigurableLogLevel,
+  setManagedLogLevelLock,
+} from '../utils/logger.js';
 import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
@@ -81,6 +83,22 @@ export function installManagedAppSettings(
   loaded: LoadedManagedPolicy | null,
 ): void {
   installed = managedAppSettingsOf(loaded);
+  // The logger resolves its level from `STATION_LOG_LEVEL` before any config
+  // is read, so a lock has to reach it directly to outrank the variable.
+  const logLevel = lockedManagedSetting('logLevel')?.value;
+  setManagedLogLevelLock(
+    isConfigurableLogLevel(logLevel) ? logLevel : undefined,
+  );
+}
+
+/** The keys the installed (or given) policy locks. */
+export function lockedManagedSettingKeys(
+  managed: ManagedAppSettings | null = installed,
+): string[] {
+  if (!managed) return [];
+  return [...managed.entries]
+    .filter(([, entry]) => entry.locked)
+    .map(([key]) => key);
 }
 
 export function installedManagedAppSettings(): ManagedAppSettings | null {
@@ -113,11 +131,38 @@ export function hasStationDecision(stored: object, key: string): boolean {
   );
 }
 
-/** Whether the environment supplies `key` (set and accepted by its validator). */
+/**
+ * Environment variables a setting's real consumer reads that the registry
+ * does not declare as its `envFallback`. A managed default sits below the
+ * environment, so it must not fill a key one of these supplies; a lock
+ * outranks them, which each consumer applies itself (the logger through
+ * {@link installManagedAppSettings}; the terminal resolver tries the
+ * configured shell before `SHELL`).
+ *
+ * The telemetry settings also read environment variables; the policy parser
+ * refuses them (`MANAGED_POLICY_UNMANAGEABLE_SETTINGS`).
+ */
+const UNDECLARED_ENVIRONMENT_READERS: Readonly<
+  Record<string, (environment: Record<string, string | undefined>) => boolean>
+> = {
+  // `utils/logger.ts` `envLogLevelOverride`: a valid level only.
+  logLevel: (environment) =>
+    isConfigurableLogLevel(environment.STATION_LOG_LEVEL),
+  // `services/terminal/terminal-shells.ts`: `SHELL`, then `COMSPEC` on
+  // Windows, after the configured shell.
+  terminalShell: (environment) =>
+    Boolean(
+      environment.SHELL ||
+        (process.platform === 'win32' && environment.COMSPEC),
+    ),
+};
+
+/** Whether the environment supplies `key` (set and accepted by its reader). */
 function environmentSupplies(
   key: string,
   environment: Record<string, string | undefined>,
 ): boolean {
+  if (UNDECLARED_ENVIRONMENT_READERS[key]?.(environment)) return true;
   const definition = REGISTRY_BY_KEY.get(key);
   if (!definition?.envFallback) return false;
   const resolved = resolveSettingEnvironment(definition, environment);
@@ -230,74 +275,101 @@ export function withoutLockedNoOps<T extends Record<string, unknown>>(
 }
 
 /**
- * The project record as readers see it: a locked setting's override field is
- * removed, because a lock outranks a project's choice. The stored record is
- * untouched, so the override returns when the policy is removed.
+ * The project record as readers see it: every field a locked setting hides
+ * is removed (`MANAGED_SETTING_PROJECT_FIELDS`: the model and provider as a
+ * pair, the approval default with its selection), because a lock outranks a
+ * project's choice. The stored record is untouched, so the override returns
+ * when the policy is removed.
  */
-export function withoutLockedProjectOverrides<
-  P extends Partial<Pick<ProjectConfig, ProjectOverrideField>>,
->(project: P, managed: ManagedAppSettings | null = installed): P {
+export function withoutLockedProjectOverrides<P extends object>(
+  project: P,
+  managed: ManagedAppSettings | null = installed,
+): P {
   if (!managed) return project;
-  let masked: P | undefined;
-  for (const [key, field] of Object.entries(PROJECT_OVERRIDE_FIELD_ALIASES)) {
-    if (!lockedManagedSetting(key, managed)) continue;
-    if ((project as Record<string, unknown>)[field] === undefined) continue;
-    masked ??= { ...project };
-    delete (masked as Record<string, unknown>)[field];
-  }
-  return masked ?? project;
+  return withoutLockedProjectFields(project, lockedManagedSettingKeys(managed));
 }
 
-type ProjectOverrideField =
-  (typeof PROJECT_OVERRIDE_FIELD_ALIASES)[ProjectOverridableAppSettingKey];
+/** A value a project form sends for a field it saw hidden: "no choice". */
+function isAbsentProjectValue(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === 'string' && value.trim().length === 0)
+  );
+}
 
 /**
- * Refuse a project write that would change a locked setting's override
- * field. Compared with the stored record (`existing`, absent on create), so
- * resending the stored value passes; setting, changing or dropping it is
- * refused, as for this Station's own file. Reads hide the field instead
- * (see {@link withoutLockedProjectOverrides}).
+ * A project write with the managed policy's locks applied. For each field a
+ * lock hides, compared with the stored record (`existing`, absent on
+ * create):
+ *
+ * - sending "no choice" (`null`, `''`) or the stored value is dropped from
+ *   the update, so the stored record keeps its value: readers were shown
+ *   the field as absent, and a form that saves an unrelated change sends it
+ *   back that way;
+ * - any other value is refused with {@link ManagedSettingLockedError}.
  */
-export function assertProjectOverridesUnlocked(
-  updates: object,
+export function projectUpdatesWithoutLockedFields<T extends object>(
+  updates: T,
   existing: object = {},
   managed: ManagedAppSettings | null = installed,
-): void {
-  if (!managed) return;
-  for (const [key, field] of Object.entries(PROJECT_OVERRIDE_FIELD_ALIASES)) {
-    if (!lockedManagedSetting(key, managed)) continue;
+): T {
+  if (!managed) return updates;
+  let kept: T | undefined;
+  for (const [field, key] of projectFieldsMaskedByLocks(
+    lockedManagedSettingKeys(managed),
+  )) {
     if (!Object.hasOwn(updates, field)) continue;
-    // `null` drops an override, which is a change only when one is stored.
     const requested: unknown = Reflect.get(updates, field);
-    if (isDeepStrictEqual(requested ?? undefined, Reflect.get(existing, field)))
-      continue;
-    throw new ManagedSettingLockedError(key, managed.summary);
+    if (
+      !isAbsentProjectValue(requested) &&
+      !isDeepStrictEqual(requested, Reflect.get(existing, field))
+    )
+      throw new ManagedSettingLockedError(key, managed.summary);
+    kept ??= { ...updates };
+    Reflect.deleteProperty(kept, field);
   }
+  return kept ?? updates;
 }
 
 /**
- * Startup check for what the contract parser cannot see: a composite
- * value's structure (and the cross-field rules `validateAppConfig` applies)
- * lives in the settings file schema, which belongs to the server. Every
- * managed value is run through the same validator a stored config passes
- * on load, on top of the seed's required fields so only managed values can
- * fail it. A failure refuses startup with the policy marker.
+ * The 403 body every route sends for {@link ManagedSettingLockedError}:
+ * the code, the key, and the sentence composed from the loaded policy's
+ * summary (organization and support link are the policy's own public text,
+ * not a caught message, so they need no redaction).
+ */
+export function managedSettingRefusalBody(error: ManagedSettingLockedError): {
+  success: false;
+  code: 'managed_setting_locked';
+  key: string;
+  error: string;
+} {
+  return {
+    success: false,
+    code: error.code,
+    key: error.key,
+    error: managedPolicyDenial(error.summary, 'this setting'),
+  };
+}
+
+/**
+ * Startup check for what the contract parser cannot see: each managed
+ * value against the settings file schema (`managedSettingsSchemaError`, the
+ * same check `station policy check` runs). A failure refuses startup with
+ * the policy marker.
  */
 export function assertManagedSettingsValid(
   loaded: LoadedManagedPolicy | null,
   validateAppConfig: (config: unknown) => void,
-  seed: Record<string, unknown>,
 ): void {
-  const managed = managedAppSettingsOf(loaded);
-  if (!loaded || !managed) return;
-  const probe: Record<string, unknown> = { ...seed };
-  for (const [key, entry] of managed.entries) probe[key] = entry.value;
-  try {
-    validateAppConfig(probe);
-  } catch (error) {
+  if (!loaded) return;
+  const problem = managedSettingsSchemaError(
+    loaded.document.settings,
+    validateAppConfig,
+  );
+  if (problem)
     throw new ManagedPolicyInvalidError(
       loaded.source.location,
-      `a managed setting does not match the settings schema (${error instanceof Error ? error.message : String(error)})`,
+      `a managed setting does not match the settings schema (${problem})`,
     );
-  }
 }

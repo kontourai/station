@@ -68,8 +68,24 @@ function fixture(
   };
   return {
     run,
+    root,
+    home,
+    writeApp: (value: Record<string, unknown>) =>
+      writeFileSync(appPath, JSON.stringify(value, null, 2)),
     stored: () => JSON.parse(readFileSync(appPath, 'utf8')),
   };
+}
+
+/** A local catalog `station registry` can read without a network. */
+function catalog(root: string, name: string, pluginId: string): string {
+  const path = join(root, `${name}.json`);
+  writeFileSync(
+    path,
+    JSON.stringify({
+      plugins: [{ id: pluginId, source: `./${pluginId}`, version: '1.0.0' }],
+    }),
+  );
+  return path;
 }
 
 describe('offline CLI writes under a managed policy', () => {
@@ -112,5 +128,79 @@ describe('offline CLI writes under a managed policy', () => {
     expect(refused.status).not.toBe(0);
     expect(refused.stderr).toContain(DENIAL);
     expect(f.stored()).not.toHaveProperty('registryUrl');
+  }, 120_000);
+});
+
+describe('offline CLI reads under a managed policy', () => {
+  test('station registry lists the locked registry, not the stored or legacy one', () => {
+    const f = fixture({});
+    const locked = catalog(f.root, 'locked', 'acme.locked-plugin');
+    const storedCatalog = catalog(f.root, 'stored', 'user.stored-plugin');
+    const legacy = catalog(f.root, 'legacy', 'user.legacy-plugin');
+    writeFileSync(
+      join(f.root, 'policy.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: { registryUrl: { value: locked, locked: true } },
+      }),
+    );
+    f.writeApp({ registryUrl: storedCatalog });
+    const listed = f.run('registry');
+    expect(listed.status, listed.stderr).toBe(0);
+    expect(listed.stdout).toContain(`Fetching registry from ${locked}`);
+    expect(listed.stdout).toContain('acme.locked-plugin');
+    expect(listed.stdout).not.toContain('user.stored-plugin');
+
+    // With nothing stored, the legacy file is not migrated past the lock.
+    f.writeApp({});
+    writeFileSync(
+      join(f.home, 'config.json'),
+      JSON.stringify({ registryUrl: legacy }),
+    );
+    const again = f.run('registry');
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain('acme.locked-plugin');
+    expect(f.stored()).not.toHaveProperty('registryUrl');
+  }, 180_000);
+
+  test('a managed registry default applies only where the user set none', () => {
+    const f = fixture({});
+    const managedDefault = catalog(f.root, 'default', 'acme.default-plugin');
+    const own = catalog(f.root, 'own', 'user.own-plugin');
+    writeFileSync(
+      join(f.root, 'policy.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: { registryUrl: { value: managedDefault, locked: false } },
+      }),
+    );
+    f.writeApp({});
+    expect(f.run('registry').stdout).toContain('acme.default-plugin');
+    f.writeApp({ registryUrl: own });
+    const mine = f.run('registry');
+    expect(mine.stdout).toContain('user.own-plugin');
+    expect(mine.stdout).not.toContain('acme.default-plugin');
+  }, 180_000);
+
+  test('an installed policy startup would refuse refuses the catalog read', () => {
+    const f = fixture({
+      approvalGuardian: { value: { enabled: 'false' }, locked: true },
+    });
+    f.writeApp({ registryUrl: catalog(f.root, 'own', 'user.own-plugin') });
+    const refused = f.run('registry');
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain('STATION_MANAGED_POLICY_INVALID');
+    expect(refused.stdout).not.toContain('user.own-plugin');
+  }, 120_000);
+
+  test('config get --offline prints the locked value, not the stored one', () => {
+    const f = fixture({ defaultMaxTurns: { value: 40, locked: true } });
+    const read = f.run('config', 'get', 'defaultMaxTurns', '--offline');
+    expect(read.status, read.stderr).toBe(0);
+    expect(read.stdout).toContain('40');
+    expect(read.stdout).not.toMatch(/\b7\b/);
+    expect(f.stored().defaultMaxTurns).toBe(7);
   }, 120_000);
 });

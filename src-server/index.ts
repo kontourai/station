@@ -18,7 +18,6 @@ import {
 } from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
-import { APP_CONFIG_SEED } from './domain/app-config-seed.js';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { assertManagedSettingsValid } from './domain/managed-settings.js';
@@ -220,10 +219,8 @@ async function main() {
     // the settings file schema, which the contract parser cannot see.
     if (managedPolicy?.document.settings) {
       const { validator } = await import('./domain/validator.js');
-      assertManagedSettingsValid(
-        managedPolicy,
-        (config) => validator.validateAppConfig(config),
-        APP_CONFIG_SEED,
+      assertManagedSettingsValid(managedPolicy, (config) =>
+        validator.validateAppConfig(config),
       );
     }
   } catch (error) {

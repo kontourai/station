@@ -57,7 +57,10 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import { ManagedSettingLockedError } from '../../domain/managed-settings.js';
+import {
+  ManagedSettingLockedError,
+  managedSettingRefusalBody,
+} from '../../domain/managed-settings.js';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -1281,6 +1284,10 @@ export function createProjectRoutes(
           409,
         );
       }
+      // #4517: the policy's own sentence, code and key, as `/config/app`
+      // sends them; `projectMutationMessage` would redact the support link.
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
@@ -1493,6 +1500,8 @@ export function createProjectRoutes(
           { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
           403,
         );
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),

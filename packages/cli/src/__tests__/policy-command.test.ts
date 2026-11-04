@@ -104,9 +104,6 @@ describe('station policy check', () => {
     expect(result.stdout).toMatch(
       /workspaceCheckpoints \([^)]+\): defaults to true where nothing closer is set; users can change it/,
     );
-    expect(result.stdout).toContain(
-      'Its structure is checked against the settings schema when Station starts.',
-    );
 
     const json = check(path, '--json');
     expect(json.status).toBe(0);
@@ -118,6 +115,39 @@ describe('station policy check', () => {
     // Paths only: no managed value reaches the summary.
     expect(JSON.stringify(report.summary)).not.toContain('40');
   }, 120_000);
+
+  // #4517: the composite structure startup checks (`schemas/app.schema.json`
+  // and `appConfigSemanticError`) is checked here too, with the same schema.
+  test.each([
+    [
+      'a composite field of the wrong type',
+      { approvalGuardian: { value: { enabled: 'false' }, locked: true } },
+      /\(\/approvalGuardian\/enabled: must be boolean\)/,
+    ],
+    [
+      'a composite with an unknown field',
+      { approvalGuardian: { value: { mode: 'sometimes' }, locked: true } },
+      /a managed setting does not match the settings schema/,
+    ],
+  ])(
+    'exits 1 for %s, as startup would refuse it',
+    (_label, settings, reason) => {
+      const path = write(
+        JSON.stringify({ schemaVersion: 1, organization: 'Acme', settings }),
+      );
+      const result = check(path);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Station would refuse to start.');
+      expect(result.stderr).toContain(
+        'a managed setting does not match the settings schema',
+      );
+      expect(result.stderr).toMatch(reason);
+      const json = check(path, '--json');
+      expect(json.status).toBe(1);
+      expect(JSON.parse(json.stdout)).toMatchObject({ valid: false, path });
+    },
+    120_000,
+  );
 
   test.each([
     ['invalid JSON', '{"schemaVersion":', 'it is not valid JSON'],

@@ -22,7 +22,7 @@ import type {
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
 import { Badge } from '@kontourai/ui/react';
-import { useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { Dialog } from '../../components/Dialog';
 import { InfoGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
@@ -56,6 +56,28 @@ export function isManagedLock(
   provenance: SettingProvenanceEntry | undefined,
 ): boolean {
   return provenance?.source === 'managed' && provenance.locked === true;
+}
+
+/**
+ * #4517: a bespoke editor's control area, disabled while the managed policy
+ * locks its setting. A disabled fieldset disables every native control
+ * inside it, whatever the editor's internal layout.
+ */
+export function ManagedFieldset({
+  provenance,
+  children,
+}: {
+  provenance: SettingProvenanceEntry | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset
+      className="setting-managed-fieldset"
+      disabled={isManagedLock(provenance)}
+    >
+      {children}
+    </fieldset>
+  );
 }
 
 /**

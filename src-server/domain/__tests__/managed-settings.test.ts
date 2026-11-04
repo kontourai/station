@@ -13,26 +13,34 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { summarizeManagedPolicy } from '@kontourai/station-contracts/managed-policy';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
   decodeManagedPolicy,
   type LoadedManagedPolicy,
   managedPolicyDigest,
 } from '@kontourai/station-shared/managed-policy';
 import { afterEach, describe, expect, test } from 'vitest';
+import { captureLoggerLines } from '../../__test-utils__/logger-capture.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
+import {
+  applyConfiguredLogLevel,
+  createLogger,
+  resolveLogLevel,
+  setGlobalLogLevel,
+} from '../../utils/logger.js';
 import { APP_CONFIG_SEED } from '../app-config-seed.js';
 import { ConfigLoader } from '../config-loader.js';
 import { observeAppConfigFile } from '../config-loader-app.js';
 import { FileStorageAdapter } from '../file-storage-adapter.js';
 import {
   assertManagedSettingsValid,
-  assertProjectOverridesUnlocked,
   installManagedAppSettings,
   ManagedSettingLockedError,
   managedAppSettingsOf,
   overlayManagedAppSettings,
+  projectUpdatesWithoutLockedFields,
   withoutLockedNoOps,
   withoutLockedProjectOverrides,
 } from '../managed-settings.js';
@@ -300,27 +308,22 @@ describe('route and project helpers', () => {
     );
     expect(record.defaultWorkspaceIsolation).toBe('worktree');
     expect(() =>
-      assertProjectOverridesUnlocked(
+      projectUpdatesWithoutLockedFields(
         { defaultWorkspaceIsolation: 'shared' },
         record,
         managed,
       ),
     ).toThrow(DENIAL);
-    expect(() =>
-      assertProjectOverridesUnlocked(
-        { defaultWorkspaceIsolation: null },
-        record,
-        managed,
-      ),
-    ).toThrow(ManagedSettingLockedError);
-    // Resending what is stored changes nothing.
-    expect(() =>
-      assertProjectOverridesUnlocked(
-        { defaultWorkspaceIsolation: 'worktree', name: 'x' },
-        record,
-        managed,
-      ),
-    ).not.toThrow();
+    // "No choice", as a form that saw the field hidden sends it, and the
+    // stored value itself are dropped: the stored record keeps its value.
+    for (const resent of [null, '', 'worktree'])
+      expect(
+        projectUpdatesWithoutLockedFields(
+          { defaultWorkspaceIsolation: resent, name: 'x' },
+          record,
+          managed,
+        ),
+      ).toEqual({ name: 'x' });
   });
 });
 
@@ -334,7 +337,6 @@ describe('assertManagedSettingsValid (startup)', () => {
           approvalGuardian: { value: { enabled: true }, locked: true },
         }),
         validate,
-        APP_CONFIG_SEED,
       ),
     ).not.toThrow();
   });
@@ -346,7 +348,6 @@ describe('assertManagedSettingsValid (startup)', () => {
           approvalGuardian: { value: { mode: 'sometimes' }, locked: true },
         }),
         validate,
-        APP_CONFIG_SEED,
       ),
     ).toThrow(
       /^STATION_MANAGED_POLICY_INVALID: .*a managed setting does not match the settings schema/,
@@ -415,5 +416,198 @@ describe('project overrides of a locked setting, through the real project servic
       defaultWorkspaceIsolation: 'shared',
       description: 'still editable',
     });
+  });
+});
+
+describe('a lock takes the whole project choice it outranks', () => {
+  async function storedProject(fields: Partial<ProjectConfig>) {
+    const home = makeTempDir('station-managed-project-pair-');
+    const storage = new FileStorageAdapter(home);
+    const service = new ProjectService(
+      storage,
+      new ProjectManifestStore(home, storage),
+    );
+    await service.createProject({ name: 'Pair', slug: 'pair' });
+    await service.updateProject('pair', fields);
+    const storedRecord = () =>
+      JSON.parse(
+        readFileSync(join(home, 'projects', 'pair', 'project.json'), 'utf8'),
+      );
+    return { storage, service, storedRecord };
+  }
+
+  const MODEL_CHOICE = {
+    defaultProviderId: 'project-provider',
+    defaultModel: 'project-model',
+    defaultModelSelection: 'last-used',
+  } as const;
+
+  for (const lockedKey of ['defaultModel', 'defaultLLMProvider'] as const) {
+    test(`locking ${lockedKey} hides the project's model, provider and model selection`, async () => {
+      const { storage, service, storedRecord } =
+        await storedProject(MODEL_CHOICE);
+      installManagedAppSettings(
+        policy({ [lockedKey]: { value: 'managed-value', locked: true } }),
+      );
+      const read = storage.getProject('pair');
+      for (const field of Object.keys(MODEL_CHOICE))
+        expect(read).not.toHaveProperty(field);
+      expect(
+        storage.listProjects().find((p) => p.slug === 'pair')
+          ?.defaultProviderId,
+      ).toBeUndefined();
+      // Either half of the pair is refused on write.
+      await expect(
+        service.updateProject('pair', { defaultProviderId: 'other' }),
+      ).rejects.toBeInstanceOf(ManagedSettingLockedError);
+      await expect(
+        service.updateProject('pair', { defaultModel: 'other' }),
+      ).rejects.toBeInstanceOf(ManagedSettingLockedError);
+      expect(storedRecord()).toMatchObject(MODEL_CHOICE);
+    });
+  }
+
+  test('locking defaultApprovalMode hides the project approval default and its selection', async () => {
+    const { storage, service, storedRecord } = await storedProject({
+      defaultApprovalMode: 'auto',
+      defaultApprovalModeSelection: 'last-used',
+    });
+    installManagedAppSettings(
+      policy({ defaultApprovalMode: { value: 'ask', locked: true } }),
+    );
+    const read = storage.getProject('pair');
+    expect(read).not.toHaveProperty('defaultApprovalMode');
+    expect(read).not.toHaveProperty('defaultApprovalModeSelection');
+    await expect(
+      service.updateProject('pair', { defaultApprovalMode: 'ask' }),
+    ).rejects.toThrow(DENIAL);
+    // Resending the stored (hidden) value changes nothing and is dropped.
+    await expect(
+      service.updateProject('pair', { defaultApprovalMode: 'auto' }),
+    ).resolves.not.toHaveProperty('defaultApprovalMode');
+    await expect(
+      service.updateProject('pair', {
+        defaultApprovalModeSelection: 'last-used',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      service.updateProject('pair', { defaultApprovalModeSelection: 'fixed' }),
+    ).rejects.toBeInstanceOf(ManagedSettingLockedError);
+    expect(storedRecord()).toMatchObject({
+      defaultApprovalMode: 'auto',
+      defaultApprovalModeSelection: 'last-used',
+    });
+  });
+
+  test('a successful project write answers with what readers see, not the stored override', async () => {
+    const { service, storedRecord } = await storedProject({
+      defaultWorkspaceIsolation: 'shared',
+      ...MODEL_CHOICE,
+    });
+    installManagedAppSettings(
+      policy({
+        defaultWorkspaceIsolation: { value: 'worktree', locked: true },
+        defaultModel: { value: 'managed-model', locked: true },
+      }),
+    );
+    // The project settings form's own save shape after a masked read.
+    const updated = await service.updateProject('pair', {
+      description: 'edited under the lock',
+      defaultWorkspaceIsolation: null,
+      defaultModelSelection: null,
+      defaultModel: '',
+      defaultProviderId: '',
+    } as never);
+    expect(updated.description).toBe('edited under the lock');
+    for (const field of [
+      'defaultWorkspaceIsolation',
+      ...Object.keys(MODEL_CHOICE),
+    ])
+      expect(updated).not.toHaveProperty(field);
+    expect(storedRecord()).toMatchObject({
+      defaultWorkspaceIsolation: 'shared',
+      ...MODEL_CHOICE,
+      description: 'edited under the lock',
+    });
+  });
+});
+
+describe('real environment readers keep the precedence', () => {
+  const ENV = ['STATION_LOG_LEVEL'] as const;
+  const saved = Object.fromEntries(
+    ENV.map((name) => [name, process.env[name]]),
+  );
+  afterEach(() => {
+    for (const name of ENV)
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    setGlobalLogLevel('info');
+  });
+
+  test('a logLevel lock outranks STATION_LOG_LEVEL in the logger itself', () => {
+    process.env.STATION_LOG_LEVEL = 'debug';
+    const capture = captureLoggerLines();
+    try {
+      // A logger created before the policy loads, as the entrypoint's are.
+      const early = createLogger({ name: 'managed-lock-early' });
+      early.debug('before the policy');
+      expect(capture.at('debug').map((line) => line.msg)).toEqual([
+        'before the policy',
+      ]);
+
+      installManagedAppSettings(
+        policy({ logLevel: { value: 'error', locked: true } }),
+      );
+      expect(resolveLogLevel()).toBe('error');
+      const late = createLogger({ name: 'managed-lock-late' });
+      for (const logger of [early, late]) {
+        logger.debug('dropped debug');
+        logger.warn('dropped warn');
+        logger.error('kept error');
+      }
+      // A configured-level change (the log-level route's path) cannot
+      // lower it either.
+      applyConfiguredLogLevel('trace', late);
+      late.debug('dropped after apply');
+      expect(capture.lines().map((line) => line.msg)).toEqual([
+        'before the policy',
+        'kept error',
+        'kept error',
+      ]);
+
+      installManagedAppSettings(null);
+      expect(resolveLogLevel()).toBe('debug');
+    } finally {
+      capture.stop();
+    }
+  });
+
+  test('a logLevel or terminalShell default loses to the variable its consumer reads', () => {
+    const managed = managedAppSettingsOf(
+      policy({
+        logLevel: { value: 'warn', locked: false },
+        terminalShell: { value: '/bin/managed-sh', locked: false },
+      }),
+    );
+    const withEnv = overlayManagedAppSettings(stored({}), managed, {
+      STATION_LOG_LEVEL: 'debug',
+      SHELL: '/bin/zsh',
+    });
+    expect(withEnv.logLevel).toBeUndefined();
+    expect(withEnv.terminalShell).toBeUndefined();
+    const provenance = buildAppConfigProvenance(stored({}), {
+      injected: {},
+      managed,
+    });
+    // Provenance reads this process's environment, like the overlay's default.
+    expect(provenance.terminalShell?.source === 'managed').toBe(
+      !process.env.SHELL,
+    );
+    // An invalid level is not a decision; the default applies.
+    expect(
+      overlayManagedAppSettings(stored({}), managed, {
+        STATION_LOG_LEVEL: 'loud',
+      }).logLevel,
+    ).toBe('warn');
   });
 });

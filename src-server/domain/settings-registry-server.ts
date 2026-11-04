@@ -27,7 +27,10 @@ import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
-import type { ManagedAppSettings } from './managed-settings.js';
+import {
+  type ManagedAppSettings,
+  managedDefaultApplies,
+} from './managed-settings.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
 
 export {
@@ -190,8 +193,7 @@ export function buildAppConfigProvenance(
   // actually got the value from (archive#1557).
   for (const [key, entry] of opts.managed?.entries ?? []) {
     if (entry.locked) continue;
-    const current = provenance[key];
-    if (current === undefined || current.source === 'default')
+    if (managedDefaultApplies(key, config, opts.managed))
       provenance[key] = managedProvenance(
         opts.managed as ManagedAppSettings,
         false,
