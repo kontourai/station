@@ -63,7 +63,7 @@ afterEach(() => {
 
 describe('ConnectionManagerModal under a managed pairing refusal', () => {
   it('replaces the host pairing panel with the explanation, so no code is offered or requested', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = vi.fn(async (_url: RequestInfo | URL) =>
       Response.json({ requests: [], devices: [] }),
     );
     vi.stubGlobal('fetch', fetch);

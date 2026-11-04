@@ -231,8 +231,8 @@ ports, the isolated repair relay) goes through one admission: a literal
 loopback bind, then the Tailscale Serve check for its port, closing it if
 refused. The entrypoint installs that admission before the runtime starts.
 The repair relay binds every interface without the limit, because a Docker
-container reaches the host through `host.docker.internal`. Docker Desktop and
-OrbStack forward that name to the host's loopback, so under the limit the
+container reaches the host through Docker's host alias. Docker Desktop and
+OrbStack forward the alias to the host's loopback, so under the limit the
 relay binds `127.0.0.1` there. Docker on Linux maps it to the bridge gateway,
 which loopback does not serve, so isolated repairs are refused on Linux under
 the limit rather than bound to a network interface.
