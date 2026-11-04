@@ -2,7 +2,8 @@
  * Replays terminal output through Station's Ghostty engine and prints the
  * plain text a person sees: scrollback and screen, as the accessibility
  * mirror reads them. Server process tests run it as a child, because the
- * server program has no WebAssembly types:
+ * server program has no WebAssembly types. It sits outside `fixtures/` so the
+ * path-read pin scanner resolves the suites that launch it:
  *
  *   node --import tsx <this file> <cols> <rows>   (output on stdin)
  *
@@ -10,8 +11,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TerminalEngine } from '../../../terminal-view/engine/terminal-engine';
-import { GhosttyVtModule } from '../../../terminal-view/engine/wasm';
+import { TerminalEngine } from '../../terminal-view/engine/terminal-engine';
+import { GhosttyVtModule } from '../../terminal-view/engine/wasm';
 
 const [cols, rows] = process.argv.slice(2).map(Number);
 if (!Number.isInteger(cols) || !Number.isInteger(rows))
@@ -24,7 +25,7 @@ const module = await WebAssembly.compile(
   readFileSync(
     fileURLToPath(
       new URL(
-        '../../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+        '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
         import.meta.url,
       ),
     ),

@@ -46,7 +46,7 @@ const REPO = fileURLToPath(new URL('../../../../', import.meta.url));
 /** The SDK's Ghostty replay, run as a child: it needs WebAssembly types. */
 const REPLAY = fileURLToPath(
   new URL(
-    '../../../../packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts',
+    '../../../../packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts',
     import.meta.url,
   ),
 );
