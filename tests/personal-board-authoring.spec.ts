@@ -1,5 +1,6 @@
+import { writeFile } from 'node:fs/promises';
 import type { PersonalBoardDocument } from '@kontourai/station-contracts/personal-board';
-import { mergeTests } from '@playwright/test';
+import { type Locator, mergeTests } from '@playwright/test';
 import {
   test as authenticatedTest,
   expect,
@@ -52,7 +53,7 @@ for (const width of [390, 1440]) {
         },
       );
       try {
-        await page.setViewportSize({ width, height: 900 });
+        await page.setViewportSize({ width, height: 844 });
         await page.emulateMedia({ colorScheme });
         await page.goto(`/boards/${slug}`);
         await dismissSetupLauncher(page);
@@ -75,6 +76,91 @@ for (const width of [390, 1440]) {
           path: testInfo.outputPath('projects-read-failed.png'),
           fullPage: true,
         });
+        const revealTemplate = async (target: Locator, label: string) => {
+          await page.mouse.move(width / 2, 400);
+          await page.mouse.wheel(0, 1200);
+          try {
+            await expect
+              .poll(() =>
+                target.evaluate((element) => {
+                  const rect = element.getBoundingClientRect();
+                  return [
+                    [rect.left + rect.width / 2, rect.top + 8],
+                    [rect.left + rect.width / 2, rect.bottom - 8],
+                    [rect.left + 8, rect.top + rect.height / 2],
+                    [rect.right - 8, rect.top + rect.height / 2],
+                  ].every(([x, y]) =>
+                    element.contains(
+                      element.ownerDocument.elementFromPoint(x, y),
+                    ),
+                  );
+                }),
+              )
+              .toBe(true);
+          } finally {
+            const metricsPath = testInfo.outputPath(
+              `${label}-scroll-boundaries.json`,
+            );
+            await writeFile(
+              metricsPath,
+              JSON.stringify(
+                await target.evaluate((element) => {
+                  const rect = (node: Element) =>
+                    node.getBoundingClientRect().toJSON();
+                  return {
+                    target: rect(element),
+                    scrollers: [
+                      '.personal-board-workspace',
+                      '.content-view',
+                    ].map((selector) => {
+                      const node =
+                        element.ownerDocument.querySelector<HTMLElement>(
+                          selector,
+                        )!;
+                      return {
+                        selector,
+                        clientHeight: node.clientHeight,
+                        scrollHeight: node.scrollHeight,
+                        scrollTop: node.scrollTop,
+                        rect: rect(node),
+                      };
+                    }),
+                    dock: Array.from(
+                      element.ownerDocument.querySelectorAll('.chat-dock'),
+                    ).map(rect),
+                  };
+                }),
+                null,
+                2,
+              ),
+            );
+            await testInfo.attach(`${label}-scroll-boundaries`, {
+              contentType: 'application/json',
+              path: metricsPath,
+            });
+            await page.screenshot({
+              path: testInfo.outputPath(`${label}-revealed.png`),
+            });
+          }
+          await target.click();
+          await expect(
+            page.getByRole('region', { name: 'Edit Board' }),
+          ).toBeVisible();
+        };
+        const cancelTemplate = async () => {
+          await workspace
+            .getByRole('button', { name: 'Cancel', exact: true })
+            .click();
+          await page
+            .getByRole('dialog', { name: 'Unsaved Changes' })
+            .getByRole('button', { name: 'Discard', exact: true })
+            .click();
+        };
+        await revealTemplate(
+          workspace.getByRole('button', { name: /Review desk/ }),
+          'review-desk',
+        );
+        await cancelTemplate();
         await workspace.getByRole('button', { name: /Start blank/ }).click();
         await page.getByLabel('Board name').fill('Keep my Board draft');
         await workspace
@@ -169,6 +255,43 @@ for (const width of [390, 1440]) {
         await expect(
           page.getByRole('textbox', { name: 'Note', exact: true }),
         ).toHaveValue('Keep this note through retry.');
+        await workspace
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        const templateSlug = `${slug}-template`;
+        expect(
+          (
+            await authenticatedRequest.post(`${API}/api/me/layouts`, {
+              data: { slug: templateSlug, name: 'Project watch scroll Board' },
+            })
+          ).status(),
+        ).toBe(201);
+        try {
+          await page.goto(`/boards/${templateSlug}`);
+          const setupProject = workspace.getByRole('combobox', {
+            name: 'Project for a Project watch',
+          });
+          await setupProject.selectOption(slug);
+          const projectWatch = workspace.getByRole('button', {
+            name: /Project watch/,
+          });
+          await expect(projectWatch).toBeEnabled();
+          await revealTemplate(projectWatch, 'project-watch');
+          await expect(
+            page
+              .getByRole('group', { name: 'Tasks', exact: true })
+              .getByRole('combobox', { name: 'Project', exact: true }),
+          ).toHaveValue(slug);
+          await cancelTemplate();
+        } finally {
+          expect(
+            (
+              await authenticatedRequest.delete(
+                `${API}/api/me/layouts/${templateSlug}`,
+              )
+            ).status(),
+          ).toBe(200);
+        }
       } finally {
         expect(
           (
