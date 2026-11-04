@@ -10,7 +10,6 @@
  * `mayGrantFullAccess` (security/coding-authority.ts) is the one derivation;
  * this only reads the request's granted scope and shapes the refusal.
  */
-import { MANAGED_POLICY_APPROVAL_CEILING_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { Context } from 'hono';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
@@ -22,6 +21,7 @@ import {
 import { fullAccessRefusalBody } from '../../security/full-access-refusal.js';
 import {
   ManagedApprovalCeilingRefusedError,
+  managedApprovalCeilingFailureBody,
   managedApprovalCeilingRefusalBody,
   managedCeilingRefuses,
 } from '../../security/managed-approval-ceiling.js';
@@ -70,24 +70,17 @@ export function managedApprovalCeilingRefusal(c: Context): Response {
 
 /**
  * The managed 403 when `error`, or any error in its `cause` chain, is a
- * ceiling refusal: a start the engine could only run above the ceiling
- * arrives wrapped by the dispatch path. Undefined otherwise.
+ * ceiling refusal that settled definitively (see
+ * `managedApprovalCeilingFailureBody`). Undefined otherwise, including when
+ * an indeterminate error is reached first, so the caller's indeterminate
+ * answer wins.
  */
 export function managedApprovalCeilingFailure(
   c: Context,
   error: unknown,
 ): Response | undefined {
-  for (
-    let current: unknown = error, depth = 0;
-    current && typeof current === 'object' && depth < 8;
-    current = (current as { cause?: unknown }).cause, depth += 1
-  )
-    if (
-      (current as { code?: unknown }).code ===
-      MANAGED_POLICY_APPROVAL_CEILING_CODE
-    )
-      return managedApprovalCeilingRefusal(c);
-  return undefined;
+  const body = managedApprovalCeilingFailureBody(error);
+  return body ? c.json(body, 403) : undefined;
 }
 
 /**

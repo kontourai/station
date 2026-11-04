@@ -236,7 +236,6 @@ import {
 } from '../../security/coding-authority.js';
 import {
   type ConfinementProvider,
-  ConfinementRefusedError,
   noMechanismConfinementRecord,
   readConfinementRecord,
   resolveConfinement,
@@ -11367,7 +11366,10 @@ export class OrchestrationService {
           error instanceof ReceiverExecutionRefusal ||
           error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
-          error instanceof ConfinementRefusedError
+          // #4518: so did any start the adapter settled as refused (the
+          // managed approval ceiling, a model the engine did not offer),
+          // reached here when a send lazily starts a dormant session.
+          error instanceof SessionStartRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -11419,7 +11421,10 @@ export class OrchestrationService {
           error instanceof TurnSubmissionUnsupportedError ||
           // #2494: the closed confinement refusal codes are a public
           // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
-          error instanceof ConfinementRefusedError
+          // #4518: every start refusal's code is a closed
+          // `ProviderFailureCode`, which the start route already forwards;
+          // a send that starts the session lazily forwards it the same way.
+          error instanceof SessionStartRefusedError
           ? error.code
           : error instanceof SendTurnRefusedError &&
               'code' in error &&
@@ -11427,7 +11432,8 @@ export class OrchestrationService {
             ? error.code
             : retryableAdapterRefusalCode(error),
         error instanceof SendTurnRefusedError ||
-          error instanceof ProviderRefusalError
+          error instanceof ProviderRefusalError ||
+          error instanceof SessionStartRefusedError
           ? error
           : undefined,
       );

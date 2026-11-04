@@ -64,7 +64,10 @@ import { ApprovalPosture } from '../../../services/orchestration/approval-postur
 import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import {
+  OrchestrationCommandDispatchError,
+  OrchestrationService,
+} from '../../../services/orchestration/orchestration-service.js';
 import { ProjectChatDefaultsService } from '../../../services/projects/project-chat-defaults.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -3008,8 +3011,66 @@ describe('#4518: the managed approval ceiling', () => {
     );
     expect(refused.status, refused.text).toBe(403);
     expect(refused.body.code).toBe(MANAGED_POLICY_APPROVAL_CEILING_CODE);
+    // #4570 live verification: the engine's reason leads, so an allowed Ask
+    // pick does not read as refused for no reason.
+    expect(refused.body.error).toContain(
+      'This engine can only run here without approval prompts (Auto).',
+    );
     expect(refused.body.error).toContain('https://help.acme.example/station');
     expect(refused.body.error).not.toContain('may have completed');
+  });
+
+  test('a dormant session whose recovery start the ceiling refuses is a definitive refusal carrying the managed code', async () => {
+    // #4570 delta review: the first send to a parked session starts its
+    // engine through lazy recovery, outside the start route. The start
+    // refusal must keep its code and its definitive classification there
+    // too, or the route cannot answer the managed 403.
+    const f = await fixture({ station: 'ask' });
+    f.claude.completeTurns = true;
+    f.claude.resumable = true;
+    f.claude.exitOnStop = true;
+    const { conversationId } = await f.chat(
+      f.bearer(f.operator.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(await f.service.sweepIdleSessions(Date.now() + 86_400_000)).toEqual([
+      threadId,
+    ]);
+    installCeiling('ask');
+    const reason = 'This engine runs here without approval prompts (Auto).';
+    const starts = f.claude.starts.length;
+    const startSpy = vi
+      .spyOn(f.claude, 'startSession')
+      .mockRejectedValue(new ManagedApprovalCeilingStartRefusedError(reason));
+
+    const refused = await f.service
+      .dispatch({ type: 'sendTurn', input: { threadId, input: 'again' } })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(startSpy).toHaveBeenCalled();
+    expect(refused).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = refused as OrchestrationCommandDispatchError;
+    expect(dispatchError.code).toBe(MANAGED_POLICY_APPROVAL_CEILING_CODE);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.failurePhase).toBe('refused');
+    expect(dispatchError.retryable).toBe(false);
+    expect(dispatchError.outcome).toBeUndefined();
+
+    // The route over the same path answers the managed 403 with the reason.
+    const continued = await f.request(
+      f.bearer(f.operator.credential),
+      `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+      { message: 'again' },
+    );
+    expect(continued.status, continued.text).toBe(403);
+    expect(continued.body.code).toBe(MANAGED_POLICY_APPROVAL_CEILING_CODE);
+    expect(continued.body.error).toContain(reason);
+    expect(continued.body.error).toContain('https://help.acme.example/station');
+    // No engine process was spawned for either send.
+    expect(f.claude.starts.length).toBe(starts);
   });
 
   test('a new chat that picks full access is refused before any engine starts', async () => {

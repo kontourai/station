@@ -140,3 +140,47 @@ export function managedApprovalCeilingRefusalBody(): {
     code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
   };
 }
+
+/**
+ * The managed 403 body when `error`, or any error in its `cause` chain,
+ * carries {@link MANAGED_POLICY_APPROVAL_CEILING_CODE}: a start the engine
+ * could only run above the ceiling arrives wrapped by the dispatch path.
+ * `undefined` otherwise, and `undefined` when an error reached before it is
+ * indeterminate (`kind`, `failurePhase` or `outcome` `indeterminate`, as a
+ * `SessionStartIndeterminateError` is): a start whose boundary is still
+ * active must be answered as indeterminate, not as a settled refusal.
+ *
+ * The body carries the matched error's own message: it may lead with why an
+ * allowed pick was still refused (an engine that can only run broader), which
+ * the generic sentence would drop. Station built that sentence, so callers
+ * must not pass it through the route sanitizer: the support link has to reach
+ * the person intact.
+ */
+export function managedApprovalCeilingFailureBody(
+  error: unknown,
+): ReturnType<typeof managedApprovalCeilingRefusalBody> | undefined {
+  for (
+    let current: unknown = error, depth = 0;
+    current && typeof current === 'object' && depth < 8;
+    current = (current as { cause?: unknown }).cause, depth += 1
+  ) {
+    const failure = current as {
+      code?: unknown;
+      kind?: unknown;
+      failurePhase?: unknown;
+      outcome?: unknown;
+    };
+    if (
+      failure.kind === 'indeterminate' ||
+      failure.failurePhase === 'indeterminate' ||
+      failure.outcome === 'indeterminate'
+    )
+      return undefined;
+    if (failure.code !== MANAGED_POLICY_APPROVAL_CEILING_CODE) continue;
+    const body = managedApprovalCeilingRefusalBody();
+    return current instanceof Error && current.message.trim() !== ''
+      ? { ...body, error: current.message }
+      : body;
+  }
+  return undefined;
+}
