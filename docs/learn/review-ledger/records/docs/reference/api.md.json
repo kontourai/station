@@ -680,7 +680,11 @@
 
     "src-server/capabilities/station-capability-flags.ts",
 
-    "packages/sdk/src/client/private-insights.ts"
+    "packages/sdk/src/client/private-insights.ts",
+
+    "src-server/providers/auth/claude-keychain-authentication.ts",
+
+    "src-server/providers/auth/__tests__/native-authentication-keychain.test.ts"
   ],
 
   "checks": [

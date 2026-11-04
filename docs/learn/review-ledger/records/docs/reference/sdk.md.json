@@ -862,7 +862,11 @@
 
     "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
 
-    "src-server/services/orchestration/create-request-claims.ts"
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/providers/auth/claude-keychain-authentication.ts",
+
+    "src-server/providers/auth/__tests__/native-authentication-keychain.test.ts"
   ],
 
   "checks": [
