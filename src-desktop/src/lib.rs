@@ -21,6 +21,8 @@ mod linux_webkit;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(not(mobile))]
+mod managed_update_policy;
 #[cfg(any(target_os = "ios", test))]
 mod mobile_recovery;
 #[cfg(target_os = "ios")]
@@ -14071,6 +14073,26 @@ fn desktop_updater_plugin_configured(
         })
 }
 
+/// The build-time updater endpoints (`plugins.updater.endpoints`), the
+/// URLs a managed mirror replaces (#4522). Empty when the build has none.
+#[cfg(not(mobile))]
+fn desktop_updater_endpoints(
+    plugins: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    plugins
+        .get("updater")
+        .and_then(|config| config.get("endpoints"))
+        .and_then(serde_json::Value::as_array)
+        .map(|endpoints| {
+            endpoints
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The desktop shell's own log file's name (no extension — matches
 /// `tauri_plugin_log::TargetKind::LogDir { file_name }`'s own vocabulary),
 /// within `app_log_dir()`. `run()`'s `LogDir` target registration (every
@@ -14179,6 +14201,13 @@ If a stable instance is running, this launch will focus its window and exit.",
     // registered at all, not merely how it behaves once running.
     #[cfg(not(mobile))]
     let updater_configured = desktop_updater_plugin_configured(&context.config().plugins.0);
+    // #4522: the managed policy's update route needs this build's own
+    // endpoints (a mirror replaces each one) and its channel (nightly may be
+    // refused).
+    #[cfg(not(mobile))]
+    let updater_endpoints = desktop_updater_endpoints(&context.config().plugins.0);
+    #[cfg(not(mobile))]
+    let updater_channel = native_app_channel(&context.config().identifier, cfg!(debug_assertions));
     #[cfg(mobile)]
     let log_dir_writable = true;
 
@@ -14589,8 +14618,21 @@ If a stable instance is running, this launch will focus its window and exit.",
             // Before any setup step that can end early: the update commands
             // read this managed state, and an unconfigured build still
             // answers them (as `disabled`).
+            // #4522: the shell reads the managed policy itself, so updates
+            // honor it even when the bundled server never starts, including
+            // when the server refuses to start because of that policy.
             #[cfg(not(mobile))]
-            desktop_update::manage(app.handle(), updater_configured);
+            let managed_update_route = managed_update_policy::route(
+                &managed_update_policy::load_installed(
+                    std::env::var(managed_update_policy::TEST_FILE_ENV)
+                        .ok()
+                        .as_deref(),
+                ),
+                updater_channel,
+                &updater_endpoints,
+            );
+            #[cfg(not(mobile))]
+            desktop_update::manage(app.handle(), updater_configured, managed_update_route);
 
             #[cfg(not(mobile))]
             {
