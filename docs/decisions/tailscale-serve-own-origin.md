@@ -34,15 +34,15 @@ An origin qualifies only when all of these hold:
 - no foreground `serve` session or raw TCP forward can replace it.
 
 Plain-HTTP spellings, other hosts, other ports, and shared origins are refused
-unless they are explicitly listed. Only a canonical `https://*.ts.net` Origin
-triggers a daemon lookup. The credential-free WebSocket verifier keeps the
+unless they are explicitly listed. Only a canonical HTTPS Origin on a MagicDNS
+name triggers a daemon lookup. The credential-free WebSocket verifier keeps the
 static list.
 
 ## Why
 
 Peer enrollment presents the receiver's own address as `Origin`. A Station
 published through Serve (for example, a desktop sidecar on `127.0.0.1:38141`
-published as `https://<node>.ts.net:3773`) refused every enrollment with
+published at its MagicDNS name on HTTPS port 3773) refused every enrollment with
 `origin_forbidden`. The cause was the runtime route-classification gate, which
 compared the origin only with the static list. The pairing check's same-origin
 fallback cannot help, because Serve terminates TLS and the API sees plain HTTP.
