@@ -54,6 +54,23 @@ byte-identical generated privacy artifacts. The inherited first figure contribut
 zero, the subsequent increase contributes 50,000, and lifetime accounting retains
 42,100,000. The corrected Codex fixture uses matched configuration metadata.
 
+## Codex fixture coverage control
+
+At committed clean head `5d6f95c49904`, disabled repeated-start detection and
+matched-native-identity detection while leaving the Claude-only marker check
+intact. The real Codex-shape fixtures then produced exactly **2 intended
+failures / 34 passes** in **17.69 seconds**:
+
+- Repeated resume: 9,120,000 day-two input versus expected 70,000.
+- Initially matched resume: 42,050,000 versus expected 50,000.
+
+Restored the original fold byte-for-byte and confirmed a clean tree. No mutation
+was committed. This is test-fidelity evidence for item 3; production behavior was
+already correct before replacing the inaccurate fixture marker.
+
+The initial focused green covered the restored production fold bytes. A new
+six-suite run also follows the clean merge of the then-current `origin/main`.
+
 ## Limits
 
 NOT_VERIFIED: real outside-CLI/native adoption or resume handoffs, live-provider
