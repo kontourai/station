@@ -66,6 +66,9 @@ export function foldPresentation(
     previewAngle ??
     fold.hingeAngle ??
     (fold.posture ? POSTURE_HINGE_ANGLE[fold.posture] : 180);
+  // Folding shut, the simulator reports the inner display at 0 degrees for a
+  // moment before it hands off to the cover; that display is not being seen.
+  if (previewAngle === null && angle <= 0) return FLAT;
   const bend = Math.min(180, Math.max(0, 180 - angle));
   const crease: FoldCrease =
     shown.width >= shown.height ? 'vertical' : 'horizontal';

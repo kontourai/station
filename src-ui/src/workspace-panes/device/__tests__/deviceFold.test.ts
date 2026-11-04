@@ -26,6 +26,15 @@ describe('foldPresentation', () => {
     ).toBeNull();
   });
 
+  test('the inner display reported shut (the moment before the cover takes over) is drawn flat', () => {
+    expect(
+      foldPresentation({ ...FOLD, hingeAngle: 0, posture: 'closed' }, WIDE)
+        .crease,
+    ).toBeNull();
+    // A hinge dragged to 0 still previews the fold.
+    expect(foldPresentation(FOLD, WIDE, 0).crease).toBe('vertical');
+  });
+
   test('the crease splits the longer side, whichever way the device is turned', () => {
     expect(foldPresentation(FOLD, WIDE).crease).toBe('vertical');
     expect(foldPresentation(FOLD, TALL).crease).toBe('horizontal');
