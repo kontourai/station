@@ -377,9 +377,7 @@ describe('public contribution surfaces', () => {
     const findings = findingsWith({
       '.github/pull_request_template.md': template,
     });
-    expect(findings).toContain(
-      "PR template is missing '### Agent sessions'.",
-    );
+    expect(findings).toContain("PR template is missing '### Agent sessions'.");
     expect(findings).toContain(
       "PR template is missing '<!-- agent-sessions:v1 -->'.",
     );
