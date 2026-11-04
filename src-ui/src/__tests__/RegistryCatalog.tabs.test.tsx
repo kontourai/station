@@ -45,6 +45,7 @@ function makeActions(): RegistryCatalogActions {
     managePlugins: vi.fn(),
     openProjects: vi.fn(),
     retryInstalled: vi.fn(),
+    retryCatalog: vi.fn(),
   };
 }
 
