@@ -47,7 +47,10 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
-import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
+import {
+  TURN_DISPATCH_ORIGINS,
+  type TurnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
@@ -124,6 +127,12 @@ export interface ThreadInboxPayload {
   readonly inputDigest?: string;
   /** Retains the fixed replay route's resource admission class at placement. */
   readonly automaticBackground?: true;
+  /**
+   * #4512: who caused this entry's turn, as the Station sender that queued it
+   * knows (a scheduled Automation run, a person's Continue). Written only by
+   * server code, never copied from a request; see `inboxTurnDispatchOrigin`.
+   */
+  readonly dispatchOrigin?: TurnDispatchOrigin;
   readonly ambientContext?: string;
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
@@ -132,19 +141,25 @@ export interface ThreadInboxPayload {
 
 /**
  * #4512: the `dispatchOrigin` an inbox placement records, from the entry's
- * own server-written facts. An Automation's entry is `automation`; a person's
- * (operator or paired device) is `interactive`; Station's own entry into a
- * Session bound to a Task (`taskBound`: its room execution binding) is
- * `task-dispatch`; anything else is `unknown`.
+ * own server-written facts, first match wins:
+ *
+ * 1. An Automation action's entry (`serverAutomationIntentId`) is `automation`.
+ * 2. The origin the Station sender wrote on the entry (`dispatchOrigin`): a
+ *    scheduled Automation run says `automation`.
+ * 3. A person's entry (operator or paired device) is `interactive`.
+ * 4. Station's own entry (`internal` actor) into a Session bound to a Task
+ *    (`taskBound`: its room execution binding) is `task-dispatch`.
+ * 5. Anything else is `unknown`.
  */
 export function inboxTurnDispatchOrigin(
   payload: Pick<
     ThreadInboxPayload,
-    'serverAutomationIntentId' | 'clientOrigin'
+    'serverAutomationIntentId' | 'dispatchOrigin' | 'clientOrigin'
   >,
   taskBound: boolean,
 ): TurnDispatchOrigin {
   if (payload.serverAutomationIntentId) return 'automation';
+  if (payload.dispatchOrigin) return payload.dispatchOrigin;
   const actor = payload.clientOrigin?.actor.kind;
   if (actor === 'operator' || actor === 'device') return 'interactive';
   if (actor === 'internal' && taskBound) return 'task-dispatch';
@@ -222,6 +237,11 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
       : {}),
     ...(typeof value.inputDigest === 'string'
       ? { inputDigest: value.inputDigest }
+      : {}),
+    // An origin this build does not know replays as none.
+    ...(typeof value.dispatchOrigin === 'string' &&
+    (TURN_DISPATCH_ORIGINS as readonly string[]).includes(value.dispatchOrigin)
+      ? { dispatchOrigin: value.dispatchOrigin as TurnDispatchOrigin }
       : {}),
     ...(typeof value.ambientContext === 'string'
       ? { ambientContext: value.ambientContext }

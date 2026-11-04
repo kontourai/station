@@ -415,9 +415,15 @@ export interface SessionCancellationRequestedEvent
  * #4512: the server-classified cause of a turn, stamped on `turn.started`.
  *
  * - `interactive`: a person's own send (an operator or paired-device client).
- * - `task-dispatch`: Station's own send into a Session dispatched for a Task.
+ * - `task-dispatch`: an entry Station itself queued on the conversation
+ *   inbox (an `internal` sender with no more specific origin, such as a Task
+ *   question wake) and placed on a Session whose room execution binding
+ *   names a Task.
  * - `delegation`: the first turn of a delegated Session, sent by Station.
- * - `automation`: a turn an Automation placed through the conversation inbox.
+ * - `automation`: a scheduled Automation run, queued on its target
+ *   conversation's inbox or starting its dedicated conversation, and an
+ *   Automation action's inbox entry. Never `task-dispatch`, even on a Task's
+ *   Session.
  * - `unknown`: anything else, and every turn persisted before the field.
  */
 export const TURN_DISPATCH_ORIGINS = [

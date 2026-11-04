@@ -2900,6 +2900,12 @@ describe('inbox turn dispatch origin (#4512)', () => {
     [by({ kind: 'operator' }), true, 'interactive'],
     [by({ kind: 'device', deviceId: 'phone' }), false, 'interactive'],
     [by({ kind: 'internal' }), true, 'task-dispatch'],
+    // A scheduled Automation run says so itself; never Task work.
+    [
+      { dispatchOrigin: 'automation', ...by({ kind: 'internal' }) },
+      true,
+      'automation',
+    ],
     // Station's own entry with no Task behind the Session says nothing.
     [by({ kind: 'internal' }), false, 'unknown'],
     [by({ kind: 'unknown' }), true, 'unknown'],

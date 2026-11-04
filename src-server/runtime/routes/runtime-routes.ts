@@ -809,7 +809,6 @@ import {
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
-import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,
@@ -1071,6 +1070,7 @@ import { createClientStreamPresence } from './client-stream-presence.js';
 import {
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  scheduledDedicatedStartPort,
 } from './conversation-start-ports.js';
 import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
@@ -6761,43 +6761,17 @@ export function configureRuntimeRoutes(
       turnTerminal: (sessionId, turnId) =>
         readStoredScheduledTurnTerminal(eventStore, sessionId, turnId),
       startDedicated: stationServerEntry(
-        async ({
-          agent,
-          workspace,
-          message,
-          clientTurnId,
-          conversationId,
-          actor,
-        }) => {
-          const handle = await executeExecutionTargetMessage(
-            {
-              target: {
-                environment: { kind: 'current' },
-                agent: agentId(agent),
-                ...(workspace ? { workspace } : {}),
-              },
-              message,
-              clientTurnId,
-              conversationId,
-              userId: actor.userId,
-              ...(actor.principal ? { principal: actor.principal } : {}),
-              ...(actor.ownerAttribution
-                ? { ownerAttribution: actor.ownerAttribution }
-                : {}),
-              clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
-              fullAccessGrant: null,
-              readAuthority: readAuthorityForExecution(actor.userId),
-            },
-            context.orchestrationService,
-            undefined,
-            remoteStations,
-          );
-          return {
-            conversationId: handle.conversationId,
-            sessionId: handle.sessionId,
-            turnId: handle.providerTurnId,
-          };
-        },
+        scheduledDedicatedStartPort({
+          execute: (input, foregroundContext) =>
+            executeExecutionTargetMessage(
+              input,
+              context.orchestrationService,
+              undefined,
+              remoteStations,
+              foregroundContext,
+            ),
+          readAuthorityForExecution,
+        }),
       ),
       isIndeterminateStart: isForegroundIndeterminateShape,
     });

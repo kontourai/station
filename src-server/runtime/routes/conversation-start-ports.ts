@@ -1,12 +1,14 @@
 /**
  * The start ports runtime routes hand to Station's own durable deliveries:
- * the conversation inbox's placement. It continues the conversation as the recorded sender and says, from the
+ * the conversation inbox's placement and a scheduled Automation's first
+ * run on a dedicated conversation. Each continues the conversation as the recorded sender and says, from the
  * server's own facts, who caused the turn (#4512 `dispatchOrigin`).
  *
  * Kept apart from `runtime-routes.ts` so the exact port production composes
  * is the one its tests drive.
  */
 import type { SessionStartResult } from '@kontourai/monument';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ClientOrigin,
   UNKNOWN_CLIENT_ORIGIN,
@@ -14,11 +16,16 @@ import {
 import type { ExecutionModelRequest } from '@kontourai/station-contracts/execution-target';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
+import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import type { ForegroundMessageContext } from '../../services/execution-target/execution-target-execution.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
+import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/station-turn-handoff.js';
 import {
   inboxTurnDispatchOrigin,
   type ThreadInboxPayload,
 } from '../../services/orchestration/thread-inbox.js';
+import type { ScheduledConversationRunsPorts } from '../../services/scheduling/scheduled-conversation-runs.js';
+import type { executeExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 
 /** What a continuation as the recorded sender is asked to send. */
 export interface RecordedActorContinuation {
@@ -89,4 +96,54 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
       },
       threadId,
     );
+}
+
+/**
+ * A scheduled Automation's first run on its dedicated conversation: a new
+ * conversation started through the foreground execution seam, as the job's
+ * recorded creator, with Station's framed origin and no full-access grant.
+ */
+export function scheduledDedicatedStartPort(deps: {
+  execute(
+    input: Parameters<typeof executeExecutionTargetMessage>[0],
+    context: ForegroundMessageContext,
+  ): ReturnType<typeof executeExecutionTargetMessage>;
+  readAuthorityForExecution(userId: string): SessionReadAuthority;
+}): ScheduledConversationRunsPorts['startDedicated'] {
+  return async ({
+    agent,
+    workspace,
+    message,
+    clientTurnId,
+    conversationId,
+    actor,
+  }) => {
+    const handle = await deps.execute(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId(agent),
+          ...(workspace ? { workspace } : {}),
+        },
+        message,
+        clientTurnId,
+        conversationId,
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+        clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
+        fullAccessGrant: null,
+        readAuthority: deps.readAuthorityForExecution(actor.userId),
+      },
+      // #4512: an Automation's run.
+      { dispatchOrigin: 'automation' },
+    );
+    return {
+      conversationId: handle.conversationId,
+      sessionId: handle.sessionId,
+      turnId: handle.providerTurnId,
+    };
+  };
 }

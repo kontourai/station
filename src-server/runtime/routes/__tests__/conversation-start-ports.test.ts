@@ -7,6 +7,7 @@ import type { ThreadInboxPayload } from '../../../services/orchestration/thread-
 import {
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  scheduledDedicatedStartPort,
 } from '../conversation-start-ports.js';
 
 /**
@@ -113,5 +114,41 @@ describe('conversation inbox start port (#4512)', () => {
       clientOrigin: origin({ kind: 'operator' }),
     });
     expect(placed.input.dispatchOrigin).toBe('interactive');
+  });
+});
+
+describe('scheduled Automation dedicated start port (#4512)', () => {
+  test("the first run's foreground send is classified automation, with Station's framed origin", async () => {
+    const calls: Array<{ input: Record<string, unknown>; context: unknown }> =
+      [];
+    const start = scheduledDedicatedStartPort({
+      execute: async (input, context) => {
+        calls.push({ input: input as never, context });
+        return {
+          conversationId: 'dedicated-1',
+          sessionId: 'dedicated-1',
+          providerTurnId: 'turn-1',
+        } as never;
+      },
+      readAuthorityForExecution: (userId) => ({ userId }) as never,
+    });
+    await expect(
+      start({
+        conversationId: 'dedicated-1',
+        agent: 'ops-bot',
+        message: 'run',
+        clientTurnId: 'scheduler:run-1',
+        actor: { userId: 'owner' },
+      }),
+    ).resolves.toEqual({
+      conversationId: 'dedicated-1',
+      sessionId: 'dedicated-1',
+      turnId: 'turn-1',
+    });
+    expect(calls[0]!.context).toEqual({ dispatchOrigin: 'automation' });
+    expect(calls[0]!.input).toMatchObject({
+      clientOrigin: { actor: { kind: 'internal' } },
+      fullAccessGrant: null,
+    });
   });
 });
