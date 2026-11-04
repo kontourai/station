@@ -2219,6 +2219,7 @@ describe('settings catalog completeness', () => {
             value={{
               status: 'account',
               saving: false,
+              retrying: false,
               waitingForConnection: false,
               error: false,
               conflict: false,
