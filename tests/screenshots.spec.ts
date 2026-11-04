@@ -2624,9 +2624,24 @@ function taskCapabilityScreens(): Screen[] {
           await expect(
             panel.getByText('Project permits source', { exact: true }),
           ).toBeVisible();
-          await panel
-            .getByRole('heading', { name: 'Capabilities and evidence' })
-            .scrollIntoViewIfNeeded();
+          const heading = panel.getByRole('heading', {
+            name: 'Capabilities and evidence',
+          });
+          const headingBox = await heading.boundingBox();
+          const tabBox = await page
+            .getByRole('tablist', { name: 'Task views' })
+            .boundingBox();
+          expect(headingBox).not.toBeNull();
+          expect(tabBox).not.toBeNull();
+          const top = tabBox!.y + tabBox!.height + 16;
+          await page.mouse.move(
+            viewport.width / 2,
+            (top + viewport.height) / 2,
+          );
+          await page.mouse.wheel(0, headingBox!.y - top);
+          await expect
+            .poll(async () => (await heading.boundingBox())?.y)
+            .toBeCloseTo(top, 0);
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth,
