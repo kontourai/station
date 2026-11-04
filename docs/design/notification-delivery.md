@@ -32,6 +32,10 @@ queued, or the app is hidden. Visibility uses viewport intersection and document
 visibility; it does not detect an overlapping dialog or another occluding surface.
 Actions that transfer from Station details close that dialog before reporting their
 outcome in a toast. Failed actions stay available to retry.
+[NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
+adds **Troubleshoot** to an error-tone toast that has fewer than two actions
+and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
+see [troubleshoot with an agent](troubleshoot-in-app.md).
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
