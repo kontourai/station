@@ -1503,13 +1503,13 @@ function BrowserSessionPane({
         agentActionsEnabled={experienceEnabled}
         onControlState={setControl}
         fullScreenButton
-        immersiveActions={
+        renderImmersiveActions={() => (
           <BrowserImmersiveNav
             host={hostOf(record.url)}
             disabled={!canDriveLive || history.isPending}
             onAction={(action) => history.mutate(action)}
           />
-        }
+        )}
         // Drawn by the live view, so it stays over the page in full screen.
         overlay={
           canDriveLive && pendingDialog ? (

@@ -43,6 +43,7 @@ import {
   liveSurfaceH264Offered,
 } from './liveSurfaceVideoDecoder';
 import {
+  clampSurfaceZoom,
   pinchSurfaceZoom,
   SURFACE_ZOOM_FIT,
   type SurfaceZoom,
@@ -155,7 +156,8 @@ export interface LiveSurfaceCanvasProps {
    * No input at all — not even a click or a key — until this viewer holds
    * control (through `claimControl`, the host's Take control). For a
    * surface that can sit under the pointer or in the tab order without
-   * anyone meaning to drive it.
+   * anyone meaning to drive it. Lifted in immersive mode: there the person
+   * chose to drive, and a touch on the surface is input.
    */
   inputRequiresLease?: boolean;
   /** This viewer may watch but must not send input. */
@@ -166,8 +168,13 @@ export interface LiveSurfaceCanvasProps {
    * held dialog belongs over the live view wherever the view is.
    */
   overlay?: ReactNode;
-  /** A host's own actions in the immersive bar (a browser's navigation). */
-  immersiveActions?: ReactNode;
+  /**
+   * The per-surface extension point of the full-screen bar: what this kind
+   * of surface adds to the shared chrome (a browser's navigation, a
+   * device's hardware buttons), given the same surface API as
+   * `renderHeader` so its input goes through this surface's lease.
+   */
+  renderImmersiveActions?: (surface: LiveSurfaceHeaderApi) => ReactNode;
   /** A Full screen button on the stage (a pane; the float has its pill). */
   fullScreenButton?: boolean;
 }
@@ -253,6 +260,8 @@ const TOUCH_PRESS_SLOP_PX = 8;
 /** Two taps this close in time and place, while zoomed, return to fit. */
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_SLOP_PX = 24;
+/** How far a watcher's double tap zooms in. */
+const DOUBLE_TAP_ZOOM = 2;
 
 function modifiersOf(event: {
   altKey: boolean;
@@ -582,9 +591,14 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const canInteract = inputReady && frameSize !== null && !props.readOnly;
 
   const holding = holdsControl(surface);
+  /**
+   * The host's lease-first rule, while it applies: not in immersive mode,
+   * where the person chose to drive the surface (so a touch on it is input).
+   */
+  const requiresLeaseRef = useRef(props.inputRequiresLease === true);
   /** A claiming interaction may be sent: always, unless the host requires the lease first. */
   const mayClaim = () =>
-    !props.inputRequiresLease || holdsControl(surfaceRef.current);
+    !requiresLeaseRef.current || holdsControl(surfaceRef.current);
 
   // Fit: the stage's size, measured, so the surface is the largest box at
   // the frame's aspect (a device screen is drawn exactly, never letterboxed).
@@ -731,6 +745,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const lastTouchDownRef = useRef<{ at: number; x: number; y: number } | null>(
     null,
   );
+  /** A mouse drag panning the zoomed picture (never input). */
+  const panRef = useRef<{
+    pointerId: number;
+    start: SurfaceZoom;
+    x: number;
+    y: number;
+  } | null>(null);
   const sendPressRef = useRef(sendPress);
   sendPressRef.current = sendPress;
 
@@ -809,12 +830,43 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         beginPinch(event);
         return;
       }
-      if (isDoubleTap(event) && zoomRef.current.scale > 1) {
-        event.preventDefault();
-        zoomPointersRef.current.add(event.pointerId);
-        setZoom(SURFACE_ZOOM_FIT);
-        return;
+      if (isDoubleTap(event)) {
+        // Zoomed: back to fit. At fit, and only while just watching (a
+        // driver's double tap is the page's double click): in, at the tap.
+        const watching = !canInteract || !mayClaim();
+        if (zoomRef.current.scale > 1 || watching) {
+          event.preventDefault();
+          zoomPointersRef.current.add(event.pointerId);
+          setZoom(
+            zoomRef.current.scale > 1
+              ? SURFACE_ZOOM_FIT
+              : scaleSurfaceZoomAt(
+                  zoomRef.current,
+                  stageLocal({ x: event.clientX, y: event.clientY }),
+                  DOUBLE_TAP_ZOOM,
+                  stageExtent(),
+                ),
+          );
+          return;
+        }
       }
+    }
+    if (
+      event.pointerType === 'mouse' &&
+      event.button === 0 &&
+      zoomRef.current.scale > 1 &&
+      (!canInteract || !mayClaim())
+    ) {
+      // Zoomed and just watching: a mouse drag pans the picture.
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      panRef.current = {
+        pointerId: event.pointerId,
+        start: zoomRef.current,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      return;
     }
     if (!canInteract || !mayClaim()) {
       // Not input: in immersive mode a tap on the picture shows the chrome.
@@ -855,6 +907,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     touchesRef.current.delete(event.pointerId);
+    if (panRef.current?.pointerId === event.pointerId) {
+      panRef.current = null;
+      return;
+    }
     if (zoomPointersRef.current.has(event.pointerId)) {
       zoomPointersRef.current.delete(event.pointerId);
       if (pinchRef.current?.ids.includes(event.pointerId)) {
@@ -952,6 +1008,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const onPointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     touchesRef.current.delete(event.pointerId);
+    if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
     zoomPointersRef.current.delete(event.pointerId);
     if (pinchRef.current?.ids.includes(event.pointerId)) {
       pinchRef.current = null;
@@ -969,6 +1026,20 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         x: event.clientX,
         y: event.clientY,
       });
+    const pan = panRef.current;
+    if (pan?.pointerId === event.pointerId) {
+      setZoom(
+        clampSurfaceZoom(
+          {
+            ...pan.start,
+            x: pan.start.x + event.clientX - pan.x,
+            y: pan.start.y + event.clientY - pan.y,
+          },
+          stageExtent(),
+        ),
+      );
+      return;
+    }
     const pinch = pinchRef.current;
     if (pinch?.ids.includes(event.pointerId)) {
       const [a, b] = pinch.ids.map((id) =>
@@ -1055,8 +1126,33 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       if (modifiers) input.modifiers = modifiers;
       sendInput([input]);
     };
+    // Safari reports a trackpad pinch as gesture events (a cumulative
+    // `scale`), not Ctrl+wheel. Same meaning: this view zooms.
+    let gestureStart: SurfaceZoom | null = null;
+    const onGesture = (event: Event) => {
+      const scale = (event as Event & { scale?: number }).scale;
+      if (typeof scale !== 'number' || !Number.isFinite(scale)) return;
+      event.preventDefault();
+      if (event.type === 'gesturestart') gestureStart = zoomRef.current;
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (!rect || !gestureStart) return;
+      const at = event as Event & { clientX?: number; clientY?: number };
+      const anchor = {
+        x: (at.clientX ?? rect.left + rect.width / 2) - rect.left,
+        y: (at.clientY ?? rect.top + rect.height / 2) - rect.top,
+      };
+      const next = scaleSurfaceZoomAt(gestureStart, anchor, scale, rect);
+      setZoom(event.type === 'gestureend' ? settleSurfaceZoom(next) : next);
+      if (event.type === 'gestureend') gestureStart = null;
+    };
     canvas.addEventListener('wheel', onWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', onWheel);
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+      canvas.addEventListener(type, onGesture, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
+      for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+        canvas.removeEventListener(type, onGesture);
+    };
   }, [toSurface, sendInput]);
 
   const sendKey = (type: 'down' | 'up', event: ReactKeyboardEvent) => {
@@ -1124,6 +1220,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   } = useImmersive(containerRef);
   const immersiveRef = useRef(immersive);
   immersiveRef.current = immersive;
+  const requiresLease = props.inputRequiresLease === true && !immersive;
+  requiresLeaseRef.current = requiresLease;
   const [chromeShown, setChromeShown] = useState(false);
   /** Any interaction with the chrome restarts its auto-hide. */
   const [chromeTouched, touchChrome] = useReducer((n: number) => n + 1, 0);
@@ -1384,10 +1482,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          readOnly={!canInteract || (props.inputRequiresLease && !holding)}
+          readOnly={!canInteract || (requiresLease && !holding)}
           // Out of the tab order until this viewer may drive: tabbing through
           // a floated surface must not land keys on an agent's page.
-          tabIndex={props.inputRequiresLease && !holding ? -1 : undefined}
+          tabIndex={requiresLease && !holding ? -1 : undefined}
           onKeyDown={(event) => sendKey('down', event)}
           onKeyUp={(event) => sendKey('up', event)}
           onInput={onKeyboardInput}
@@ -1475,7 +1573,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               }
               immersive
               onToggleImmersive={exitImmersive}
-              trailing={props.immersiveActions}
+              trailing={props.renderImmersiveActions?.({
+                surface,
+                inputReady,
+                sendInput,
+              })}
             />
           </div>
         ) : (

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
 import { ExpandGlyph, glyph, RestoreGlyph } from '../components/icons/Glyph';
 import type { LiveSurfaceControllerTone } from './LiveSurfaceCanvas';
@@ -32,6 +32,7 @@ export interface LiveSurfaceViewerControlsProps {
   /** The toolbar's accessible name, e.g. "Floating browser". */
   label: string;
   className?: string;
+  style?: CSSProperties;
   /** Added to every button this component draws (a host's size floor). */
   actionClassName?: string;
   /** The status line, shown as a badge; null hides it (e.g. Take control says it). */
@@ -53,6 +54,7 @@ export function LiveSurfaceViewerControls({
   id,
   label,
   className,
+  style,
   actionClassName,
   status,
   tone,
@@ -72,6 +74,7 @@ export function LiveSurfaceViewerControls({
     <div
       id={id}
       className={['live-surface-controls', className].filter(Boolean).join(' ')}
+      style={style}
       role="toolbar"
       aria-label={label}
       data-tone={tone}

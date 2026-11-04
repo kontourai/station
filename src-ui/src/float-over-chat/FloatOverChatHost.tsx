@@ -61,6 +61,7 @@ import {
   browserPaneApi,
   describeBrowserFailure,
 } from '../workspace-panes/browser-pane/browserPaneApi';
+import { DeviceImmersiveActions } from '../workspace-panes/device/DeviceImmersiveActions';
 import {
   DEVICE_PLACEHOLDER_ASPECT,
   deviceCornerRadius,
@@ -1017,13 +1018,13 @@ function BrowserFloat({
             inputRequiresLease
             agentActionsEnabled={agentActionsEnabled}
             onControlState={reportControl(onControlState)}
-            immersiveActions={
+            renderImmersiveActions={() => (
               <BrowserImmersiveNav
                 host={host}
                 disabled={control?.tone !== 'you' || navigate.isPending}
                 onAction={(action) => navigate.mutate(action)}
               />
-            }
+            )}
             // A dialog the page holds for the person driving from here is
             // answered here too: otherwise the float is a page that refuses
             // every click for no visible reason (#90). Drawn by the live
@@ -1157,6 +1158,9 @@ function DeviceFloat({
             inputRequiresLease
             onControlState={onControlState}
             onFrameSize={setFrameSize}
+            renderImmersiveActions={(api) => (
+              <DeviceImmersiveActions api={api} platform={platform} />
+            )}
           />
         )
       }
@@ -1666,6 +1670,9 @@ function FloatPlayer({
             <LiveSurfaceViewerControls
               id={pillId}
               className="float-over-chat__pill"
+              // As wide as the player allows (inset 4px a side), so the
+              // default player fits one row; a small one wraps.
+              style={{ maxWidth: Math.max(0, frame.width - 8) }}
               actionClassName="float-over-chat__action"
               label={`Floating ${noun}`}
               status={status}
