@@ -3478,6 +3478,14 @@ again, and if the service does not come back answering as the new release it
 restores the previous version and restarts the service on it. Any other installed service still
 blocks the upgrade, as in a source checkout.
 
+The machine's [managed policy](../guides/managed-policy.md#update-control) is
+read first. `upgrade` is refused, with exit status 1 and nothing changed, when
+the policy turns updates off, makes a nightly install's channel unavailable,
+or cannot be used. With a mirror, a packaged install's installer reads the
+mirror's copy of its ring's manifest and downloads from the mirror, an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` that names anything else is refused, and a
+source checkout (or a Windows install) is refused.
+
 A loose extracted archive has no installer-owned layout and still refuses
 `upgrade` without changing anything. Install through `install.sh`, or stop
 Station, extract the newer archive into its own directory and start it there;

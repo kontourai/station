@@ -14,7 +14,9 @@ endpoint/key configuration; an ordinary development build has none and reports
 no update channel. A configured app checks about 20 seconds after it starts and
 then hourly by wall-clock time while it runs, including tray-only (after the
 computer sleeps past a due check, it checks within about 30 seconds of
-waking); there is no OS job.
+waking); there is no OS job. A machine's
+[managed policy](managed-policy.md#update-control), read when the app starts,
+can turn these checks off or send them to an approved mirror.
 
 Updating has three separate steps:
 
