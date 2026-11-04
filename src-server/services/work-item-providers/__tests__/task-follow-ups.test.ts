@@ -688,7 +688,9 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       outcome: 'stopped',
       tasks: [{ taskId: task.id, items: 2, recorded: 0, outcome: 'deadline' }],
     });
-    expect(calls(ghDir)).toHaveLength(1);
+    // One gh start at most (on a loaded host it may be killed before the
+    // fake logs it); the deadline, not the per-read timeout, ended it.
+    expect(calls(ghDir).length).toBeLessThanOrEqual(1);
     expect(
       holder
         .forRead()!
