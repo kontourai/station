@@ -144,7 +144,8 @@ The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-ga
 uses injected identities and current grants with real PTYs. Its observer and
 revocation evidence qualifies that gateway/service boundary, not live pairing.
 The listener integration suite proves the registered gateway mounts and stops
-on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+on the API listener. Remote and native routes remain unqualified; the suite
+also runs on ConPTY (see [Verification](#verification)).
 
 The gateway evidence stops at b1. The public SDK's output-only
 [`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
@@ -227,8 +228,9 @@ records the admission and its residual risks.
 The real-socket evidence is in the
 [admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
 (platform-independent, real sockets and the SDK store, scripted PTY) and the
-POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
-Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+[real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts),
+which runs on POSIX PTYs and on ConPTY (see [Verification](#verification)).
+Physical iOS, Android and Desktop devices and a browser broker
 (DataChannel) route are not qualified: the broker route has no socket path and
 stays refused at the client. The legacy listener, port discovery and
 `TerminalService` are removed (Delivery 6).
@@ -271,8 +273,16 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
-other POSIX hosts and already-daemonized workloads are not newly qualified;
+On Windows the operation ends the shell's process tree with `taskkill /T /F`
+before the ConPTY closes, as the supervisor's workload host does: closing a
+ConPTY ends only processes attached to its console, so before this a
+descendant started detached from every console outlived close and a core
+stop (#3994). A tree `taskkill` could not end is reported. `taskkill` follows
+parent links, so a descendant whose parent already exited is not found
+(from its documented behavior; not exercised here).
+The real PTY tests qualify macOS cleanup of the tested descendants and, on
+ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
+hosts and already-daemonized workloads are not newly qualified;
 supervisor workload custody remains the route to stronger survival/cleanup.
 A fully detached `setsid` job that has lost both ancestry and its controlling
 tty is outside this census. A real-PTY negative control observes that survivor
@@ -926,13 +936,61 @@ verification.
   merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
+  On Windows this runs as
+  [`tests/live/terminal-restart-journey.mjs`](../../tests/live/terminal-restart-journey.mjs):
+  real Chromium against an isolated `station start` (own temp home and
+  ports), switching on terminal screen reader mode in Settings and reading
+  the rendered text from its mirror. See the Windows/ConPTY item for the run.
 - Retention and restore (#3994): the
   [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
-  runs real POSIX PTYs for restore after a host restart (new PID, same
+  runs real PTYs for restore after a host restart (new PID, same
   directory, divider, no re-run), no restore over a reattached or
   self-ended shell, age expiry, location migration, history off, the total
   budget, usage and clearing, stable ordinals, and a two-client race on a
-  real loopback server that yields one shell. ConPTY is not qualified there.
+  real loopback server that yields one shell.
+- Windows/ConPTY (#3994): the session, real-socket and retention suites type
+  into cmd.exe on ConPTY through a
+  [shared shell fixture](../../src-server/services/terminal/__tests__/fixtures/real-shell.ts),
+  beside the supervisor-host, command-session and
+  [real-supervisor handoff](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts)
+  suites that already did; the required Windows PR check runs all six
+  (`npm run test:windows:portable`). Cases built on POSIX job control (fork,
+  `setsid`, HUP, `ps`) and the agent-run and script-runner suite stay
+  POSIX-only. ConPTY is a renderer, not a byte pipe, and the suites assert the
+  differences: the journal records ConPTY's rendering (cursor moves at
+  wrapped rows, a title reset after each program, a whole-screen repaint
+  after a resize), so a newline-free 8 MiB stream becomes about 105,000 rows
+  and the 5000-line retention keeps the newest of them; and cmd's `type`
+  never hands ConPTY a file's 8-bit C1 controls.
+
+  Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
+  cmd.exe), revision `8d1c4f9`: `npm run test:focused --` with the seven
+  terminal process suites passed 99 tests (14 POSIX-only skipped), at a
+  saturated host's ×4 liveness scale. Fault injection, each reverted with
+  `git checkout` and rerun green: removing the Windows tree kill, making
+  ConPTY resize a no-op, skipping restore, starting a resumed channel one
+  record late, disabling the open-or-adopt reservation and writing the old
+  restore divider each failed the case that names the behavior.
+  `node tests/live/terminal-restart-journey.mjs` passed: a reload and
+  `station restart` (a supervisor handoff) kept the shell's PID, a program
+  printing 40 numbered lines across both lost none and the journal's
+  sequence stayed contiguous; a full stop and start restored the same
+  terminal under a new PID in the same directory, with the earlier output
+  and the divider above it in the rendered terminal.
+
+  Fixed on the way (#3994): the in-process host's close and core stop left a
+  shell's descendants without a console running (see
+  [whole-store retention](#whole-store-retention-and-process-custody)); and a
+  restored shell's divider and earlier output were erased from the rendered
+  terminal by the new ConPTY's first frame, which clears the screen and
+  paints from its top-left. On Windows the divider is now followed by a
+  screenful of line feeds, so both move into scrollback first.
+
+  Known on ConPTY, not fixed: the journal does not record resizes, so
+  replaying a resize repaint at another size can overwrite a scrolled row in
+  the rendered terminal (the journal still holds it); and node-pty 1.1's own
+  console-list helper prints `AttachConsole failed` when asked to end a
+  console that is already gone.
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
   subscribers and output never enters React state; the
@@ -941,12 +999,26 @@ verification.
   fail when a channel's events reach another session or output re-renders a
   panel.
 
-**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
-the iOS shell or the Android shell; the screen reader mode has not been used
-with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
-not qualified. The manual screen reader pass listed above has not happened.
-The browser broker (DataChannel) route is unsupported by design, not
-untested.
+**NOT_VERIFIED.** No journey has run on a physical phone, the iOS shell or
+the Android shell. No journey has run in the Desktop app: on the Windows machine above,
+`npm run build:desktop -- --debug --no-sign --features webdriver --config
+tauri.webdriver.conf.json --no-bundle` (the build the Desktop WebDriver lanes
+use) stops compiling `tauri-plugin-wdio-webdriver` 1.4.0, whose Windows code
+no longer type-checks against the `windows` and `webview2-com` crates in the
+lockfile. The required Windows check compiles Desktop without that feature,
+so it does not see this. The screen reader mode has not been used with
+real assistive technology (VoiceOver, NVDA, TalkBack): the Windows machine
+above has no NVDA, and the manual screen reader pass listed above has not
+happened. On Windows, other shells than cmd.exe (PowerShell, Git Bash), the
+agent-run and script-runner suite, and hosted runners other than the
+required check's are not exercised. The browser broker (DataChannel) route is
+unsupported by design, not untested.
+
+Known limits owned elsewhere: commands an ACP engine runs in a terminal are
+not under execution confinement
+([#2497](https://github.com/kontourai/station/issues/2497)), and automatic
+restore does not check again that a moved binding root still belongs to the
+binding ([#492](https://github.com/kontourai/station/issues/492)).
 
 ## Open questions
 
