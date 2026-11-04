@@ -371,10 +371,20 @@ describe('public contribution surfaces', () => {
   it('rejects incomplete PR evidence and prompt disclosure', () => {
     const template = readFileSync('.github/pull_request_template.md', 'utf8')
       .replace('## Risk and rollback', '## Risk')
-      .replace('Personal inspection performed:', 'Prompt used:');
+      .replace('Personal inspection performed:', 'Prompt used:')
+      .replace('### Agent sessions', '### Sessions')
+      .replace('<!-- agent-sessions:v1 -->', '')
+      .replace('<!-- /agent-sessions:v1 -->', '');
     const findings = findingsWith({
       '.github/pull_request_template.md': template,
     });
+    expect(findings).toContain("PR template is missing '### Agent sessions'.");
+    expect(findings).toContain(
+      "PR template is missing '<!-- agent-sessions:v1 -->'.",
+    );
+    expect(findings).toContain(
+      "PR template is missing '<!-- /agent-sessions:v1 -->'.",
+    );
     expect(findings).toContain(
       "PR template is missing '## Risk and rollback'.",
     );
@@ -434,6 +444,16 @@ npm run full:regression
     );
     expect(findings).toContain(
       'Public contribution guide must not duplicate commands or live delivery state.',
+    );
+  });
+
+  it('requires CONTRIBUTING to name the Agent-Session commit trailer', () => {
+    const contributing = readFileSync('CONTRIBUTING.md', 'utf8').replace(
+      '`Agent-Session:` trailer',
+      'session note',
+    );
+    expect(findingsWith({ 'CONTRIBUTING.md': contributing })).toContain(
+      "CONTRIBUTING must state '`Agent-Session:` trailer'.",
     );
   });
 
