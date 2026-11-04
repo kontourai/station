@@ -13,6 +13,7 @@ import { platform } from 'node:process';
 import {
   TROUBLESHOOT_CLI_COMMAND,
   type TroubleshootPrepareResponse,
+  type TroubleshootSeed,
   type TroubleshootSurface,
 } from '@kontourai/station-contracts/troubleshoot';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
@@ -59,7 +60,7 @@ const TROUBLESHOOT_OPENING_MESSAGE =
 export interface TroubleshootPrepareInput {
   role: TroubleshootCallerRole;
   surface: TroubleshootSurface;
-  seed?: { route?: string; errorSummary?: string };
+  seed?: TroubleshootSeed;
 }
 
 export interface TroubleshootServiceDeps {
@@ -136,6 +137,15 @@ function renderTroubleshootAmbientContext(
     ...(seed.errorSummary
       ? [`- Error shown: ${clip(seed.errorSummary, 600)}`]
       : []),
+    // Admitted against the id pattern (printable, no whitespace), so neither
+    // can break onto a line of its own.
+    ...(seed.conversationId
+      ? [
+          `- Conversation: ${seed.conversationId}${seed.turnId ? `; turn ${seed.turnId}` : ''}`,
+        ]
+      : seed.turnId
+        ? [`- Turn: ${seed.turnId}`]
+        : []),
   ];
   const text = lines.join('\n');
   if (text.length > MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH)

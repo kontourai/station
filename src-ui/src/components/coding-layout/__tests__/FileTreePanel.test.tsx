@@ -22,6 +22,7 @@ const createMutate = vi.fn();
 const renameMutate = vi.fn();
 const deleteMutate = vi.fn();
 const previewProjectWorkspaceFileMock = vi.fn();
+const refetchFiles = vi.fn();
 
 const filesState: { data: unknown; isLoading: boolean; error: unknown } = {
   data: [],
@@ -30,7 +31,7 @@ const filesState: { data: unknown; isLoading: boolean; error: unknown } = {
 };
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useCodingFilesQuery: () => filesState,
+  useCodingFilesQuery: () => ({ ...filesState, refetch: refetchFiles }),
   useCreateCodingFileMutation: () => ({ mutate: createMutate, error: null }),
   useRenameCodingFileMutation: () => ({ mutate: renameMutate, error: null }),
   useDeleteCodingFileMutation: () => ({ mutate: deleteMutate, error: null }),
@@ -86,6 +87,7 @@ beforeEach(() => {
   filesState.data = tree;
   filesState.isLoading = false;
   filesState.error = null;
+  refetchFiles.mockReset();
   attachState.files = [];
   createMutate.mockClear();
   renameMutate.mockClear();
@@ -148,6 +150,20 @@ describe('FileTreePanel', () => {
     expect(screen.getByText('src')).toBeTruthy();
     expect(screen.getByText('app.ts')).toBeTruthy();
     expect(screen.getByText('README.md')).toBeTruthy();
+  });
+
+  test('offers a retry of the file listing after a read failure', () => {
+    filesState.data = [];
+    filesState.error = new Error('The workspace could not be read');
+    renderPanel();
+
+    expect(screen.getByText('The workspace could not be read')).toBeTruthy();
+    expect(refetchFiles).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetchFiles).toHaveBeenCalledTimes(1);
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(renameMutate).not.toHaveBeenCalled();
+    expect(deleteMutate).not.toHaveBeenCalled();
   });
 
   test('the filter input prunes the tree to matches', () => {

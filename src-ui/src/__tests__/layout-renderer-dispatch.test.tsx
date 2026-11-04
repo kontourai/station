@@ -6,6 +6,7 @@ import { ConnectionsProvider } from '@kontourai/station-connect';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { JSX } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import type { LayoutDefinition } from '../types';
 
 const { getLayoutMock } = vi.hoisted(() => ({
@@ -278,6 +279,26 @@ describe('LayoutRenderer component dispatch', () => {
         'Builtin layout component "not-registered" is not supported.',
       ),
     ).toBeTruthy();
+  });
+
+  // #4470.
+  test('an unsupported layout tab offers Troubleshoot seeded with its detail', () => {
+    window.history.pushState({}, '', '/projects/demo/layouts/main');
+    const capture = captureTroubleshootSeeds();
+    try {
+      renderSingleTab({ kind: 'builtin-component', name: 'not-registered' });
+      fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+      expect(capture.seeds).toEqual([
+        {
+          route: '/projects/demo/layouts/main',
+          errorSummary:
+            'unsupported-layout-tab: Builtin layout component "not-registered" is not supported.',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
   });
 
   test('renders unsupported state for unknown component kinds', () => {

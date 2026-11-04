@@ -43,7 +43,12 @@ export interface FeedbackRatingDeleteInput {
 export async function fetchUsageStats(): Promise<any> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(`${apiBase}/api/analytics/usage`);
-  if (!response.ok) throw new Error('Failed to fetch usage');
+  if (!response.ok)
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      `Usage unavailable (HTTP ${response.status})`,
+    );
   const result = await response.json();
   return result.data;
 }
