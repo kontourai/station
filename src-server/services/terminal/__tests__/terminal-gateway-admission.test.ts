@@ -106,6 +106,10 @@ describe('terminal gateway admission (#3994)', () => {
             throw new Error('unknown profile');
           return { file: 'claude-cli', args: ['--mode', profile.mode] };
         },
+        resolveCommand: async (_principal, _scope, program) => ({
+          file: 'package-manager',
+          args: program.kind === 'script' ? ['run', program.name] : [],
+        }),
       },
     );
     tickets = new TerminalTickets<string>();
@@ -562,6 +566,64 @@ describe('terminal gateway admission (#3994)', () => {
       projectSlug: 'alpha-slug',
       terminalId: 'term-1700000000001',
       imported: true,
+    });
+  });
+
+  test('the SDK store lists a script session with its program, kind and exit code', async () => {
+    await start();
+    const { record } = await sessions.openCommand('operator', scope, {
+      program: { kind: 'script', name: 'test' },
+    });
+    expect(spawned.at(-1)?.launch).toEqual({
+      file: 'package-manager',
+      args: ['run', 'test'],
+    });
+    spawned.at(-1)!.write('exit');
+    const store = storeFor('operator');
+    await expect
+      .poll(async () =>
+        (await store.list(scope)).find(
+          (item) => item.terminalId === record.terminalId,
+        ),
+      )
+      .toMatchObject({
+        launch: { kind: 'script', name: 'test' },
+        kind: 'command',
+        status: 'exited',
+        exitCode: 7,
+      });
+  });
+
+  test('TerminalSession.restart() runs an ended script again by name in the same view, and refuses an agent command', async () => {
+    await start();
+    const { record } = await sessions.openCommand('operator', scope, {
+      program: { kind: 'script', name: 'test' },
+    });
+    spawned.at(-1)!.write('exit');
+    const store = storeFor('operator');
+    const view = store.attach(scope, record.terminalId);
+    await expect.poll(() => view.status).toBe('exited');
+    const before = spawned.length;
+    const { restartedAfterSeq } = await view.restart();
+    expect(restartedAfterSeq).toBeGreaterThanOrEqual(0);
+    expect(spawned).toHaveLength(before + 1);
+    expect(spawned.at(-1)?.launch).toEqual({
+      file: 'package-manager',
+      args: ['run', 'test'],
+    });
+    await expect.poll(() => view.status).toBe('running');
+    const [listed] = (await store.list(scope)).filter(
+      (item) => item.terminalId === record.terminalId,
+    );
+    expect(listed).toMatchObject({ status: 'running' });
+
+    const agentRun = await sessions.openCommand('operator', scope, {
+      program: { kind: 'run', command: 'echo hi' },
+    });
+    const agentView = store.attach(scope, agentRun.record.terminalId);
+    await expect.poll(() => agentView.state).toBe('ready');
+    await expect(agentView.restart()).rejects.toMatchObject({
+      code: 'refused',
     });
   });
 

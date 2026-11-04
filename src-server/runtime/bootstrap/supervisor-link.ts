@@ -600,14 +600,27 @@ export class SupervisorLink implements ListenerLink {
     const id = String(this.nextWorkloadRequest++);
     return new Promise((resolve, reject) => {
       this.workloadRequests.set(id, { resolve, reject });
-      if (!this.send({ type: 'workload.request', id, request })) {
+      const unavailable = (cause?: Error) => {
         this.workloadRequests.delete(id);
         reject(
-          Object.assign(new Error('the supervisor channel is closed'), {
-            code: 'unavailable',
-          }),
+          Object.assign(
+            new Error('the supervisor workload request could not be sent', {
+              cause,
+            }),
+            { code: 'unavailable' },
+          ),
         );
-      }
+      };
+      if (
+        !this.send(
+          { type: 'workload.request', id, request },
+          undefined,
+          (error) => {
+            if (error) unavailable(error);
+          },
+        )
+      )
+        unavailable();
     });
   }
 
@@ -659,7 +672,7 @@ export class SupervisorLink implements ListenerLink {
   private send(
     message: CoreToSupervisorMessage,
     handle?: unknown,
-    flushed?: () => void,
+    flushed?: (error: Error | null) => void,
   ): boolean {
     const send = this.proc.send;
     if (typeof send !== 'function' || this.proc.connected === false) {
@@ -668,10 +681,12 @@ export class SupervisorLink implements ListenerLink {
     try {
       // Always pass a callback: without one a closed channel is emitted as
       // an 'error' event on the process.
-      return send.call(this.proc, message, handle, undefined, (error) => {
+      send.call(this.proc, message, handle, undefined, (error) => {
         if (error) this.log(`send ${message.type} failed: ${error.message}`);
-        flushed?.();
+        flushed?.(error);
       });
+      // Node's false return can mean queued under backpressure, not rejected.
+      return true;
     } catch (error) {
       this.log(
         `send ${message.type} failed: ${error instanceof Error ? error.message : String(error)}`,
