@@ -9,7 +9,8 @@
  * `gh` executable answering with sanitized github.com GraphQL answers
  * (`fixtures/fake-gh-graphql.ts`).
  */
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -23,6 +24,7 @@ import {
   type TaskFollowUpPoller,
 } from '../task-follow-up-poller.js';
 import {
+  TaskFollowUpStore,
   TaskFollowUpStoreHolder,
   taskFollowUpStorePath,
 } from '../task-follow-up-store.js';
@@ -521,5 +523,17 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
         }),
       ]),
     );
+  });
+
+  test('a corrupt store file is refused on every open without leaking a file handle', () => {
+    const path = taskFollowUpStorePath(home);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, 'not a SQLite database '.repeat(200));
+    const open = () => readdirSync('/dev/fd').length;
+    const before = open();
+    for (let attempt = 0; attempt < 25; attempt += 1)
+      expect(() => new TaskFollowUpStore(path)).toThrow(/not a database/);
+    // A leak is one descriptor per attempt; allow the runner a little noise.
+    expect(open() - before).toBeLessThan(5);
   });
 });

@@ -186,10 +186,18 @@ export class TaskFollowUpStore {
 
   constructor(dbPath: string) {
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(dbPath);
-    this.db.exec('PRAGMA journal_mode = WAL');
-    this.db.exec('PRAGMA busy_timeout = 5000');
-    for (const statement of SCHEMA) this.db.exec(statement);
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec('PRAGMA journal_mode = WAL');
+      db.exec('PRAGMA busy_timeout = 5000');
+      for (const statement of SCHEMA) db.exec(statement);
+    } catch (error) {
+      // A corrupt or foreign file refuses here; release its handle, or each
+      // retry (one per poll) would leak a file descriptor.
+      db.close();
+      throw error;
+    }
+    this.db = db;
   }
 
   readCursor(
