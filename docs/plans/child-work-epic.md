@@ -11,7 +11,7 @@ normally before publication. Open one PR when the combined work is ready.
 background-status and scoped-hook selection passes 86 cases. The new real
 `ChatMessageList` interactive-banner case checks exactly one status region for
 singular/plural/last-known wording while the open button remains operable and
-settled tasks remove the affordance. Removing only its status sibling from a
+an empty task list removes the affordance. Removing only its status sibling from a
 clean checkpoint makes that case fail with 17 controls passing; byte-exact
 restoration passes the 86-case selection. UI types pass. This tests DOM/caller
 semantics, not physical screen-reader speech, keyboard behavior or whole-ChatDock
