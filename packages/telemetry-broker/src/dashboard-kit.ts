@@ -34,7 +34,7 @@ h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:650}
 .tile{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:1rem 1.1rem;min-width:0}
 .tile .label{color:var(--ink2);font-size:.85rem}
 .tile .value{font-size:1.9rem;font-weight:620;line-height:1.15;margin-top:.2rem}
-.tile.hero .value{font-size:3.4rem}
+.tile.hero .value{font-size:3.4rem}.tile .value.quiet{font-size:1.35rem;font-weight:500;color:var(--ink2);margin-top:.6rem}
 .tile .note{color:var(--muted);font-size:.8rem;margin-top:.2rem}
 svg.chart{display:block;width:100%;overflow:visible}
 svg.chart text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}

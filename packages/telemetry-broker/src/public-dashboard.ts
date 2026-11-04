@@ -63,8 +63,9 @@ const PAGE_JS = `
     // One cell, never a sum: networks whose ping that day was their first of the ISO week.
     var active = weeks.map(function (w) { return cell(w, 'first_active_this_week', 'true'); });
     var current = active[active.length - 1], prior = active.length > 1 ? active[active.length - 2] : null;
-    C.stat(tiles, 'Weekly active networks, week of ' + C.shortDay(latest), shown(current),
+    var hero = C.stat(tiles, 'Weekly active networks, week of ' + C.shortDay(latest), shown(current),
       prior !== null && prior > bound ? 'Previous week ≈ ' + C.compact(prior) : '', true);
+    if (!(current > bound)) hero.querySelector('.value').classList.add('quiet');
     function leader(label, dimension) {
       var ranked = values(latest, dimension).filter(function (c) { return c.value !== 'none'; })
         .sort(function (a, b) { return b.estimate - a.estimate; });
