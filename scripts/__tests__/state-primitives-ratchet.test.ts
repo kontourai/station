@@ -330,6 +330,56 @@ describe('state-primitives-ratchet', () => {
       ).toHaveLength(0);
     });
 
+    it.each([
+      '<Button pending={retrying} pendingLabel="Loading preferences…">Retry loading preferences</Button>',
+      "<Button pending={retrying} pendingLabel={'Loading preferences…'}>Retry loading preferences</Button>",
+    ])(
+      'does not count the canonical imported Button pending label: %s',
+      (jsx) => {
+        expect(
+          scanLoadingStringsFile(
+            'src-ui/src/views/settings/Example.tsx',
+            `import { Button } from '../../components/Button';\nconst view = ${jsx};`,
+          ),
+        ).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      '<p>Loading preferences…</p>',
+      "const WAIT_COPY = 'Loading preferences…'; const view = <Button pendingLabel={WAIT_COPY}>Retry</Button>;",
+      '<Button label="Loading preferences…">Retry</Button>',
+      '<Custom pendingLabel="Loading preferences…">Retry</Custom>',
+      '<div pendingLabel="Loading preferences…" />',
+      '<Button pendingLabel="Loading preferences…">Retry</Button>; const other = <p>Loading account…</p>',
+    ])(
+      'still counts noncanonical wait copy beside a canonical import: %s',
+      (jsx) => {
+        const findings = scanLoadingStringsFile(
+          'src-ui/src/views/settings/Example.tsx',
+          `import { Button } from '../../components/Button';\n${jsx}`,
+        );
+        expect(findings).toHaveLength(1);
+      },
+    );
+
+    it.each([
+      "import { Button } from './CustomButton'; const view = <Button pendingLabel='Loading preferences…'>Retry</Button>;",
+      "const Button = Custom; const view = <Button pendingLabel='Loading preferences…'>Retry</Button>;",
+      "import type { Button } from '../../components/Button'; const view = <Button pendingLabel='Loading preferences…'>Retry</Button>;",
+      "import { Button } from '../../components/Button'; function view(Button) { return <Button pendingLabel='Loading preferences…'>Retry</Button>; }",
+    ])(
+      'still counts a pendingLabel without the canonical runtime binding: %s',
+      (source) => {
+        expect(
+          scanLoadingStringsFile(
+            'src-ui/src/views/settings/Example.tsx',
+            source,
+          ),
+        ).toHaveLength(1);
+      },
+    );
+
     it('still counts a wait whose only alternative is nothing at all', () => {
       expect(
         scanLoadingStringsFile(

@@ -10,10 +10,13 @@ import {
   useEffect,
   useSyncExternalStore,
 } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { type LocaleContextValue, useLocale } from '../i18n/LocaleContext';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeTransitionStore } from './route-transition-store';
 
@@ -44,6 +47,22 @@ export function classifyRouteFailure(error: unknown): RouteFailureKind {
     }
   }
   return 'view';
+}
+
+/**
+ * The failure's code and message for the Troubleshoot action. The HTTP
+ * status is the code a Station error has; anything else uses its error name.
+ * The start flow keeps only the message's first line and redacts it.
+ */
+export function routeFailureTroubleshootRequest(error: unknown): {
+  code?: string;
+  message?: string;
+} {
+  if (error instanceof StationHttpError)
+    return { code: `HTTP ${error.status}`, message: error.message };
+  if (error instanceof Error)
+    return { code: error.name || 'Error', message: error.message };
+  return { code: 'view-failed' };
 }
 
 interface RouteErrorBoundaryState {
@@ -148,17 +167,34 @@ class RouteErrorBoundary extends Component<
             title={this.props.message('route.authority.title')}
             description={this.props.message('route.authority.description')}
             action={
-              <>
-                <Button
-                  variant="primary"
-                  onClick={() => openConnectionsModal()}
-                >
-                  {this.props.message('route.authority.reviewAction')}
-                </Button>
-                <Button variant="secondary" onClick={this.retry}>
-                  {this.props.message('route.retryAction')}
-                </Button>
-              </>
+              // #4470: two labelled actions at most (#3045); troubleshooting
+              // a refusal is the less likely remedy, so it is in the menu.
+              <ActionRow
+                overflowLabel={this.props.message('route.moreActions')}
+                primary={
+                  <Button
+                    variant="primary"
+                    onClick={() => openConnectionsModal()}
+                  >
+                    {this.props.message('route.authority.reviewAction')}
+                  </Button>
+                }
+                secondary={
+                  <Button variant="secondary" onClick={this.retry}>
+                    {this.props.message('route.retryAction')}
+                  </Button>
+                }
+                overflow={[
+                  {
+                    key: 'troubleshoot',
+                    label: this.props.message('route.troubleshootAction'),
+                    onSelect: () =>
+                      requestTroubleshoot(
+                        routeFailureTroubleshootRequest(this.state.error),
+                      ),
+                  },
+                ]}
+              />
             }
           />
         );
@@ -168,9 +204,21 @@ class RouteErrorBoundary extends Component<
           title={this.props.message('route.generic.title')}
           description={this.props.message('route.generic.description')}
           action={
-            <Button variant="primary" onClick={this.retry}>
-              {this.props.message('route.retryAction')}
-            </Button>
+            <ActionRow
+              overflowLabel={this.props.message('route.moreActions')}
+              primary={
+                <Button variant="primary" onClick={this.retry}>
+                  {this.props.message('route.retryAction')}
+                </Button>
+              }
+              secondary={
+                <TroubleshootAction
+                  request={routeFailureTroubleshootRequest(this.state.error)}
+                >
+                  {this.props.message('route.troubleshootAction')}
+                </TroubleshootAction>
+              }
+            />
           }
         />
       );
