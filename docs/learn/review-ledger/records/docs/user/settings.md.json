@@ -62,7 +62,11 @@
 
     "packages/agent-runtime/src/turn-retention.ts",
 
-    "src-server/runtime/conversation/stream-orchestrator.ts"
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
+
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
   ],
 
   "checks": [
