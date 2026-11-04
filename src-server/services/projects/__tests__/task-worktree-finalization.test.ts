@@ -27,6 +27,9 @@ import {
   WorktreeProvisioningService,
 } from '../worktree-provisioning-service.js';
 
+/** Finalization opens checked repository snapshots; slow on a loaded host. */
+const FINALIZED = { timeout: 15_000, interval: 50 };
+
 const makeTempDir = trackTempDirs();
 
 function git(cwd: string, ...args: string[]): string {
@@ -94,8 +97,9 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
 
     await f.graph.updateTaskStatus(f.taskId, 'done');
 
-    await vi.waitFor(async () =>
-      expect(await keptReason(f.graph, f.taskId)).toBe('unpushed'),
+    await vi.waitFor(
+      async () => expect(await keptReason(f.graph, f.taskId)).toBe('unpushed'),
+      FINALIZED,
     );
     expect(existsSync(join(f.worktree.path, 'feature.txt'))).toBe(true);
     expect(branchExists(f.workspace, f.worktree)).toBe(true);
@@ -108,8 +112,10 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
 
     await f.graph.updateTaskStatus(f.taskId, 'done');
 
-    await vi.waitFor(async () =>
-      expect(await keptReason(f.graph, f.taskId)).toBe('uncommitted'),
+    await vi.waitFor(
+      async () =>
+        expect(await keptReason(f.graph, f.taskId)).toBe('uncommitted'),
+      FINALIZED,
     );
     expect(existsSync(join(f.worktree.path, 'draft.txt'))).toBe(true);
     expect(branchExists(f.workspace, f.worktree)).toBe(true);
@@ -127,8 +133,9 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
 
     await f.graph.updateTaskStatus(f.taskId, 'done');
 
-    await vi.waitFor(() =>
-      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+    await vi.waitFor(
+      () => expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+      FINALIZED,
     );
     expect(existsSync(f.worktree.path)).toBe(false);
     expect(branchExists(f.workspace, f.worktree)).toBe(false);
@@ -140,16 +147,19 @@ describe('a done Task keeps a worktree that holds work (#4507)', () => {
 
     await f.graph.updateTaskStatus(f.taskId, 'done');
 
-    await vi.waitFor(async () =>
-      expect(await keptReason(f.graph, f.taskId)).toBe('session-running'),
+    await vi.waitFor(
+      async () =>
+        expect(await keptReason(f.graph, f.taskId)).toBe('session-running'),
+      FINALIZED,
     );
     expect(existsSync(f.worktree.path)).toBe(true);
 
     // The turn ends; the runtime retries deferred finalizations.
     running = false;
     await f.graph.retryDeferredTaskWorktreeFinalizations();
-    await vi.waitFor(() =>
-      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+    await vi.waitFor(
+      () => expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+      FINALIZED,
     );
     expect(existsSync(f.worktree.path)).toBe(false);
   });
@@ -159,8 +169,10 @@ describe('a deferred finalization survives a restart (#4507)', () => {
   test('the first retry after a restart finishes a finalization deferred before it', async () => {
     const f = await fixture({ busy: () => true });
     await f.graph.updateTaskStatus(f.taskId, 'done');
-    await vi.waitFor(async () =>
-      expect(await keptReason(f.graph, f.taskId)).toBe('session-running'),
+    await vi.waitFor(
+      async () =>
+        expect(await keptReason(f.graph, f.taskId)).toBe('session-running'),
+      FINALIZED,
     );
 
     // Station restarts: a new service over the same home, no turn running.
@@ -170,8 +182,9 @@ describe('a deferred finalization survives a restart (#4507)', () => {
     });
     await restarted.retryDeferredTaskWorktreeFinalizations();
 
-    await vi.waitFor(() =>
-      expect(restarted.readTaskWorktree(f.taskId)).toBeUndefined(),
+    await vi.waitFor(
+      () => expect(restarted.readTaskWorktree(f.taskId)).toBeUndefined(),
+      FINALIZED,
     );
     expect(existsSync(f.worktree.path)).toBe(false);
   });
@@ -193,8 +206,9 @@ describe('a Task finished while its worktree store was unreadable (#4507)', () =
     // Repaired in place, no restart: the next retry (a turn ending) runs it.
     writeFileSync(storePath, good);
     await f.graph.retryDeferredTaskWorktreeFinalizations();
-    await vi.waitFor(() =>
-      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+    await vi.waitFor(
+      () => expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+      FINALIZED,
     );
     expect(existsSync(f.worktree.path)).toBe(false);
   });
@@ -210,8 +224,9 @@ describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
 
     await f.graph.updateTaskStatus(f.taskId, 'done');
 
-    await vi.waitFor(() =>
-      expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+    await vi.waitFor(
+      () => expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
+      FINALIZED,
     );
     expect(branchExists(f.workspace, f.worktree)).toBe(true);
   });

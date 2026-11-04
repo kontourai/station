@@ -55,6 +55,9 @@ import {
 } from '../../../tools/station-control-delegation.js';
 import { createTaskRoutes } from '../tasks.js';
 
+/** Finalization opens checked repository snapshots; slow on a loaded host. */
+const FINALIZED = { timeout: 15_000, interval: 50 };
+
 const CURRENT_API = 'http://task-dispatch-worktree.test';
 const ENVIRONMENT_ID = 'environment-current';
 const OWNER = 'owner';
@@ -488,10 +491,12 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     // A canceled Task did not complete: its worktree and branch are kept
     // (`preserveOnFailure` defaults to true), and so is the record.
     await graph.updateTaskStatus(taskId, 'canceled');
-    await vi.waitFor(async () =>
-      expect(
-        (await graph.readTaskForOpen(taskId))?.taskWorktree?.kept?.reason,
-      ).toBe('policy'),
+    await vi.waitFor(
+      async () =>
+        expect(
+          (await graph.readTaskForOpen(taskId))?.taskWorktree?.kept?.reason,
+        ).toBe('policy'),
+      FINALIZED,
     );
     expect(existsSync(join(firstCwd, 'progress.txt'))).toBe(true);
     expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
@@ -642,8 +647,9 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     // Task records it, and it is the only worktree git has.
     release();
     await provisioning;
-    await vi.waitFor(() =>
-      expect(graph.readTaskWorktree(taskId)).toBeDefined(),
+    await vi.waitFor(
+      () => expect(graph.readTaskWorktree(taskId)).toBeDefined(),
+      FINALIZED,
     );
     const late = graph.readTaskWorktree(taskId)!;
     expect(late.owner).toEqual({ kind: 'task', taskId });
@@ -662,7 +668,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     await vi.waitFor(() => {
       expect(existsSync(late.path)).toBe(false);
       expect(graph.readTaskWorktree(taskId)).toBeUndefined();
-    });
+    }, FINALIZED);
     expect(linkedWorktrees(workspace)).toEqual([]);
     expect(git(workspace, 'branch', '--list', late.branch).trim()).toBe('');
   });

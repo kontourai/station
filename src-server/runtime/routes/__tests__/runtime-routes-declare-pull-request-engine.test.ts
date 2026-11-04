@@ -54,6 +54,9 @@ import {
 } from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
+/** Finalization opens checked repository snapshots; slow on a loaded host. */
+const FINALIZED = { timeout: 15_000, interval: 50 };
+
 const support = vi.hoisted(() => ({
   notificationService: undefined as unknown,
 }));
@@ -676,7 +679,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     await vi.waitFor(() => {
       expect(existsSync(worktree.path)).toBe(false);
       expect(e.taskGraph.readTaskWorktree(task.id)).toBeUndefined();
-    });
+    }, FINALIZED);
   });
 
   // A corrupt (or newer-version) worktree store reads as no entries: a
