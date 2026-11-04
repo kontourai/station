@@ -528,6 +528,11 @@ check loads current state again. Registry mutations still validate their preimag
 before publication, and successful mutations update the held snapshot.
 Snapshot lifetime is separate from registry-operation nesting, preserving the
 existing cadence-based credential-activity touch and its failure behavior.
+Both cache lifetimes retain an opaque identity for their originating Home span.
+If that span is released while the lexical cache remains active, entering a new
+same-Home span refuses before a cached read or callback. The identity witness
+is not a permission decision: fresh Home/reference and physical-lease checks
+remain required at entry.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
@@ -602,12 +607,14 @@ async context, so scheduled publisher work cannot inherit an expired grant.
 Token routes recheck their caller, person binding and required scope inside the
 held mutation, after any wait; reset or narrowed access refuses publication.
 Personal group composition explicitly selects the environment owner's canonical
-raw-grant facet. Within its synchronous observation region, contiguous wrapper
-entries before each raw read are omitted. Each raw read freshly validates both
-its originating Home context and its current physical-lease context. This changes the number of filesystem observations; it does not
-preserve failure injection at an eliminated redundant open. Both complete
-principal checks, independent request policy, signer reads and outer registry
-closing check remain. The raw reader checks uncertain publication before and
+raw-grant facet. Each complete assertion retains its outer authority entry and
+closing checks. Within that synchronous region, only contiguous inner wrapper
+entries before a raw read are omitted. Each raw read checks the exact originating
+span witness and freshly validates its current Home and physical lease; a new
+region cannot justify reusing a registry cache from an older span. This changes
+the number of filesystem observations; it does not preserve failure injection
+at an eliminated redundant open. Both complete principal checks, independent
+request policy, signer reads and the outer registry closing check remain. The raw reader checks uncertain publication before and
 after lookup. Facets from another environment, copied facets, expired regions
 and reads without an active Home span are refused. Callers without the facet
 retain the existing guarded public-method dispatch. No region or permission
