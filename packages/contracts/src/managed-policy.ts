@@ -229,7 +229,7 @@ export function duplicateJsonMemberPath(text: string): string | null {
     }
     // A value ended: close finished containers, then move to the next entry.
     for (;;) {
-      const frame = stack.at(-1);
+      const frame = stack[stack.length - 1];
       skipSpace();
       if (!frame) {
         if (i !== text.length) fail();

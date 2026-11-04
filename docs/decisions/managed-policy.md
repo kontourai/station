@@ -7,6 +7,8 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4515
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4516
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4522
 ---
 
 # Managed policy
@@ -69,9 +71,10 @@ looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
 Version 1 reserves `settings` (managed defaults and locks, #4517) and `limits`
-(#4518–#4522). This build accepts `settings` and `limits` only as empty
-objects. Any setting entry or limit key gets a "not supported by this version
-of Station" error. If Station accepted a key before it enforced that key, the
+(#4518–#4522). This build accepts `settings` only as an empty object, and
+`limits` with only `updates` (#4522, [update control](#update-control)). Any
+setting entry or other limit key gets a "not supported by this version of
+Station" error. If Station accepted a key before it enforced that key, the
 administrator would see the machine as managed while nothing was managed. Each
 enforcement slice adds its key to the parser in the same change that enforces
 it.
@@ -172,8 +175,82 @@ cover each branch. The startup tests in
 `src-server/__tests__/managed-policy-startup.process.test.ts` use the override
 to run the real server entrypoint.
 
+## Update control
+
+`limits.updates` (#4522) has three optional keys: `mode` (`auto` or `off`),
+`feedUrl` (a mirror) and `allowNightly`. The decisions:
+
+**Each update surface enforces it where it runs.** There are four: the
+server's core update routes and its own update coordinator, `station upgrade`,
+the Station service launcher's download step, and the desktop app updater.
+The server loads the policy at startup with the rest of the document.
+`station upgrade` and the launcher are separate processes that run without
+the server, so each reads the installed policy when it runs, and an installed
+policy it cannot use refuses the update, as it refuses server startup.
+
+**The desktop app reads the policy natively, not from the server.** The
+updater must obey the policy when the bundled server is not running, and in
+particular when the server refused to start because of the policy; asking the
+server would then have no answer, and treating no answer as "no policy" would
+update a machine whose administrator turned updates off. The desktop shell
+(`src-desktop/src/managed_update_policy.rs`) reads the same fixed path with
+the same source rules: a missing file means no policy; a link, a non-file, a
+file over 1 MiB, or (on macOS and Linux) a file or folder not owned by root or
+writable by group or others is unusable; a repeated key is unusable. It
+honors the test override under the same rule as the server. The shell enforces
+only `limits.updates`:
+
+- a policy it cannot use, a `schemaVersion` other than 1, or a
+  `limits.updates` with an unknown key or a bad value turns updates **off**,
+  because the shell cannot tell what the administrator allowed;
+- a usable `limits.updates` applies even when another part of the document is
+  something this build's server refuses. Otherwise the policy that stopped
+  the server would also stop the approved update that can enforce it.
+
+**A refusal stops before any network access.** `off`, and `allowNightly:
+false` on a nightly install, refuse the check as well as the download and the
+install: the server's check contacts nothing, its coordinator never checks or
+downloads on its own, and the desktop updater stays disabled and starts no
+check. Every server refusal carries `managed-policy-updates-refused`, mapped to
+`permission_denied`. Nightly means the install's own channel or ring is
+nightly. The policy controls Station's own updates; it does not stop someone
+from running the installer by hand, because the policy is not a sandbox.
+
+**A mirror reproduces the release download tree.** Station's update files all
+live at `https://github.com/kontourai/station/releases/download/<tag>/<file>`
+(the desktop feeds, the signed server manifests and the server archives), so
+one rule maps each of them: `<feedUrl>/<tag>/<file>`
+(`managedUpdateMirrorUrl` in `@kontourai/station-contracts/managed-policy`,
+mirrored by the desktop shell and `install.sh`). A URL outside that tree is
+refused instead of fetched from the default. The mapping keeps every signature
+check: the signed server manifest is served unchanged and binds each archive's
+size and SHA-256, and each desktop archive carries its own updater signature,
+so a mirror may rewrite `latest.json`'s download URLs without re-signing. The
+desktop updater and `install.sh` refuse a download outside the mirror. The feed
+URL has no query or fragment, because paths are appended to it, and must be in
+canonical form, so the text the administrator reviewed is the URL Station
+fetches.
+
+- The server check, `station upgrade` and the launcher read
+  `portable-<ring>/station-portable-<ring>-manifest.json` from the mirror
+  instead of the manifest the install recorded, and set
+  `STATION_INSTALL_MIRROR_URL` for `install.sh`. `install.sh` then requires the
+  manifest to come from the mirror, maps each archive into it, and refuses to
+  download Node.js or take the authenticated GitHub path.
+- A source checkout and a desktop bundle's server update compare against a git
+  remote, which the mirror does not serve. Both are refused under a mirror;
+  the desktop app updates a desktop bundle through its own updater instead.
+- The Windows installer (`install.ps1`) cannot follow a mirror yet, so on
+  Windows a mirrored `station upgrade` or launcher update is refused rather
+  than fetched from the default.
+
+**The feed URL never reaches clients.** It may carry an access token in its
+path, so the client summary reports `limits.updates` as `mode`, `allowNightly`
+and `mirror: true | false`. The parser still refuses a user name or password in
+it: every user on the machine can read the policy.
+
 ## Status of later slices
 
-Settings, limits, the macOS profile, the Windows registry, and
+Settings, the remaining limits, the macOS profile, the Windows registry, and
 `station policy templates` are tracked by #4517–#4524. Until each one lands, its
-keys are refused, as described above.
+keys are refused, as described above. `limits.updates` landed with #4522.

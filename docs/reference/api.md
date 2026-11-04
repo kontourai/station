@@ -3877,7 +3877,10 @@ With one:
 ```
 
 `source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+summary never contains a setting value. A policy with `limits.updates` reports
+`"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
+"allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
+itself is never returned. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy.
 
@@ -5294,6 +5297,19 @@ install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The machine's [managed policy](../guides/managed-policy.md#update-control) can
+refuse these routes (#4522). When its `limits.updates` turns updates off, makes
+this server's nightly ring unavailable, or names a mirror a desktop bundle or
+source checkout cannot update from, `GET /api/system/core-update` contacts
+nothing and returns `updateAvailable: false` with
+`managedPolicyCode: "managed-policy-updates-refused"` and the policy's sentence
+in `message` and `selfUpdateUnavailableReason`. `POST /api/system/core-update`
+and `PUT /api/system/core-update/apply-when-idle` answer 403 with
+`code: "managed-policy-updates-refused"`, and the server's own update
+coordinator neither checks nor downloads. With a mirror, an archive's check
+reads the mirror's copy of its ring's signed manifest instead of the one its
+install recorded.
 
 The server's own update routes (#3851):
 - `GET /api/system/core-update/state` returns its update state
