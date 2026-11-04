@@ -48,7 +48,14 @@ afterEach(() => {
 const SLUG = 'plugin-builder';
 const PLUGIN = 'builder-plugin';
 
-async function fixture(declared: string | undefined) {
+type MutationRunner = (
+  operation: (begin: () => void) => Promise<unknown>,
+) => Promise<unknown>;
+
+async function fixture(
+  declared: string | undefined,
+  runner: MutationRunner = async (operation) => operation(() => undefined),
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-plugin-agent-posture-'));
   roots.push(root);
@@ -161,8 +168,7 @@ async function fixture(declared: string | undefined) {
     createAgentRoutes(
       agentService,
       { listSkills: () => [] } as never,
-      (async (operation: (begin: () => void) => Promise<unknown>) =>
-        operation(() => undefined)) as never,
+      runner as never,
       () => undefined,
     ),
   );
@@ -415,6 +421,77 @@ test('plugin tool grants: removal and a subset need no full-access authority, un
       (await f.put(delegate.credential, { tools: { autoApprove: null } }))
         .status,
     ).toBe(200);
+    expect((await grants())?.autoApprove ?? []).toEqual([]);
+  } finally {
+    installManagedApprovalCeiling(null);
+  }
+});
+
+/**
+ * #4570 review: grants are re-checked inside the serialized mutation, so a
+ * "subset" validated against grants that a queued revoke then removes cannot
+ * restore them. The runner serializes in arrival order and, while `hold` is
+ * set, keeps every operation waiting until both requests have passed their
+ * early check against the old grants.
+ */
+test('a stale subset queued behind a revoke cannot restore the revoked grants', async () => {
+  let hold: Promise<void> | null = null;
+  let arrivals = 0;
+  const waiters: Array<() => void> = [];
+  let tail: Promise<unknown> = Promise.resolve();
+  const runner: MutationRunner = (operation) => {
+    arrivals += 1;
+    for (const wake of waiters.splice(0)) wake();
+    const gate = hold;
+    const run = tail.then(async () => {
+      if (gate) await gate;
+      return operation(() => undefined);
+    });
+    tail = run.catch(() => undefined);
+    return run;
+  };
+  const arrivedAt = (count: number) =>
+    new Promise<void>((resolve) => {
+      const check = () =>
+        arrivals >= count ? resolve() : void waiters.push(check);
+      check();
+    });
+
+  const f = await fixture('ask', runner);
+  expect(
+    (await f.put(f.operator.credential, { tools: { autoApprove: ['danger'] } }))
+      .status,
+  ).toBe(200);
+  const grants = async () => (await f.configLoader.loadAgent(SLUG)).tools;
+
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'auto' },
+    },
+  });
+  try {
+    let open!: () => void;
+    hold = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const before = arrivals;
+    // The revoke reaches the queue first; the stale resend passes its early
+    // check against ["danger"] (a subset) and queues behind it.
+    const revoke = f.put(f.operator.credential, { tools: { autoApprove: [] } });
+    await arrivedAt(before + 1);
+    const stale = f.put(f.operator.credential, {
+      tools: { autoApprove: ['danger'] },
+    });
+    await arrivedAt(before + 2);
+    hold = null;
+    open();
+    const [revoked, restored] = await Promise.all([revoke, stale]);
+    expect(revoked.status).toBe(200);
+    expect(restored.status).toBe(403);
+    expect(restored.body.code).toBe('managed-policy-approval-ceiling');
     expect((await grants())?.autoApprove ?? []).toEqual([]);
   } finally {
     installManagedApprovalCeiling(null);

@@ -58,6 +58,13 @@ function validateSkills(
   return null;
 }
 
+/** Carries the refusal out of the serialized mutation without writing. */
+class GrantWideningRefused extends Error {
+  constructor(readonly response: Response) {
+    super('plugin tool grant widening refused');
+  }
+}
+
 export function createAgentRoutes(
   agentService: AgentService,
   skillService: SkillService,
@@ -568,13 +575,18 @@ export function createAgentRoutes(
       // the Agent's current effective grants only narrows what runs without a
       // prompt, so it is allowed under the normal mutation authority, and
       // under a managed ceiling where no full-access authority exists.
-      if (
+      const touchesGrants =
         updates.tools &&
         typeof updates.tools === 'object' &&
         (Object.hasOwn(updates.tools, 'autoApprove') ||
           Object.hasOwn(updates.tools, 'unattendedAutoApprove')) &&
-        agentService.isPluginOwnedAgent(slug)
-      ) {
+        agentService.isPluginOwnedAgent(slug);
+      // Refuses a widening of the grants as they stand NOW. Checked here for
+      // a fast refusal and again inside the serialized mutation below, so a
+      // request validated against grants a concurrent revoke then removed
+      // cannot restore them (#4570 review).
+      const refuseWidenedGrants = async (): Promise<Response | null> => {
+        if (!touchesGrants) return null;
         const previous = await agentService.getAgent(slug);
         const widened = (
           ['autoApprove', 'unattendedAutoApprove'] as const
@@ -583,23 +595,32 @@ export function createAgentRoutes(
             Object.hasOwn(updates.tools!, field) &&
             !narrowsToolGrant(updates.tools![field], previous.tools?.[field]),
         );
-        if (widened) {
-          const refused = refuseUngrantedFullAccess(c, ['never']);
-          if (refused) return refused;
-        }
-      }
+        return widened ? refuseUngrantedFullAccess(c, ['never']) : null;
+      };
+      const earlyGrantRefusal = await refuseWidenedGrants();
+      if (earlyGrantRefusal) return earlyGrantRefusal;
       const skillError = validateSkills(updates.skills, skillService);
       if (skillError) {
         return c.json({ success: false, error: skillError }, 400);
       }
-      const mutation = await captureConfigurationMutation(
-        applyAgentConfigurationMutation,
-        (beginMutation) => {
-          beginMutation();
-          return agentService.updateAgent(slug, updates);
-        },
-        { resolveAgentSlug: () => slug, activationMode: 'defer' },
-      );
+      let mutation: Awaited<
+        ReturnType<typeof captureConfigurationMutation<AgentSpec>>
+      >;
+      try {
+        mutation = await captureConfigurationMutation(
+          applyAgentConfigurationMutation,
+          async (beginMutation) => {
+            const refused = await refuseWidenedGrants();
+            if (refused) throw new GrantWideningRefused(refused);
+            beginMutation();
+            return agentService.updateAgent(slug, updates);
+          },
+          { resolveAgentSlug: () => slug, activationMode: 'defer' },
+        );
+      } catch (error) {
+        if (error instanceof GrantWideningRefused) return error.response;
+        throw error;
+      }
       agentOps.add(1, { op: 'update' });
       const [validationOutcome, ownershipFinding] = await Promise.all([
         computeValidationOutcome(mutation.value),

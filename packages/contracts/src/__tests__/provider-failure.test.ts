@@ -107,6 +107,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['resource_engine_start_capacity', 'busy', true],
     ['session-reattach-conflict', 'conflict', false],
     ['session_ended', 'session_gone', false],
+    ['managed-policy-approval-ceiling', 'permission_denied', false],
     ['session_recovery_failed', 'unavailable', true],
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
