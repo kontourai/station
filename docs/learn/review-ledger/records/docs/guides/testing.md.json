@@ -258,7 +258,11 @@
 
     "scripts/install-playwright-browsers.mjs",
 
-    "scripts/__tests__/install-playwright-browsers.test.ts"
+    "scripts/__tests__/install-playwright-browsers.test.ts",
+
+    "tests/helpers/gallery-asset-diagnostics.ts",
+
+    "scripts/__tests__/gallery-asset-diagnostics.test.ts"
   ],
 
   "checks": [
