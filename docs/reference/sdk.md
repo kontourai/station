@@ -408,8 +408,12 @@ probe limits and the current lack of outbound producers.
 `apiBase`, optional principal pin, and request authority options. It provides
 `useOwnToolAccess`, `useToolLibrary`, `useToolRequests`,
 `useProjectAuthoredAgents`, and `useToolLibraryChange`. Hosts supply a React Query
-client; account-bound hosts pin the current principal. Queries are authority
-scoped and refetched while mounted. Callers must include `expectedActor` and, for
+client; account-bound hosts pin the current principal. Queries partition the
+request authority and supplied principal independently. Updating the principal
+pin retires the previous person's cached results and keeps a late response in
+its original partition. Hosts must update that pin when the account changes;
+unpinned readers remain authority-scoped. Queries refetch while mounted.
+Callers must include `expectedActor` and, for
 Project changes, the exact `projectId`; server authority remains decisive.
 
 The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog

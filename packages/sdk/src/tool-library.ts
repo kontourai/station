@@ -55,9 +55,8 @@ function key(client: ToolLibraryClient, path: string) {
   return [
     'tool-library',
     client.apiBase,
-    client.options?.requestScope?.authorityKey ??
-      client.principalId ??
-      'unbound',
+    client.options?.requestScope?.authorityKey ?? 'unbound',
+    client.principalId ?? 'unbound',
     path,
   ] as const;
 }
