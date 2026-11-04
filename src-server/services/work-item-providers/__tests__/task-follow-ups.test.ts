@@ -10,9 +10,10 @@
  * (`fixtures/fake-gh-graphql.ts`).
  */
 import {
+  closeSync,
   existsSync,
   mkdirSync,
-  readdirSync,
+  openSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -540,7 +541,14 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     const path = taskFollowUpStorePath(home);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, 'not a SQLite database '.repeat(200));
-    const open = () => readdirSync('/dev/fd').length;
+    // The next free descriptor number: the lowest unused one, so each
+    // leaked handle pushes it up by one. (No directory walk: a listing of
+    // /dev/fd counts as a real-tree scan to path-read-pin-boundary.)
+    const open = () => {
+      const fd = openSync(path, 'r');
+      closeSync(fd);
+      return fd;
+    };
     const before = open();
     for (let attempt = 0; attempt < 25; attempt += 1)
       expect(() => new TaskFollowUpStore(path)).toThrow(/not a database/);
