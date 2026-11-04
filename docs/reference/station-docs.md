@@ -330,8 +330,11 @@ controls source availability across all Projects on this Station. External sourc
 also offer **Check for new tools** and **Edit connection**; built-in sources do not. Station-classified reads
 default to Always allow; changes and unknown actions default to Ask me on
 Station and Claude. **Tool settings** holds harness options. **Browser access** is separate;
-**Workflow files** holds workflow editing. Browser delivery currently connects
-Claude Code to Station's Project browser; other engines show its unavailability. Changes apply to new chats.
+**Workflow files** holds workflow editing. The editor's Browser access control
+currently configures Claude Code. Codex can receive bound browser and device
+tools when its default-off Feature Preview is enabled; see the
+[Browser guide](../guides/browser-workspace.md#agent-authority-and-human-input).
+Changes apply to new chats.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.

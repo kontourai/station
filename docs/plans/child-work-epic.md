@@ -33,17 +33,55 @@ all four snapshot/depth and legacy/canonical controls return protected data;
 exact source restoration passes all 43 cases again. These results establish
 no latency or fsync saving.
 
-The finalizer matrix at `b2b18781082b` remains red: eight adverse checks pass,
-but the original journey times out at its unchanged 60-second limit. No
-unchanged rerun or deadline increase is counted as progress. Both original
-report-input callers passed earlier at `0a2ded30b1e`, before the latest main
-merge; that receipt is not combined-source qualification.
+Custody metadata admission at `e94bcaafbb7a` uses the existing synchronous
+publication check and resolves the principal plus final live currentness within
+one admission. Its real metadata caller measured nine physical Home holds before
+repair and passes an at-most-eight bound afterward; this is not a latency claim.
+The strengthened controls cover grant withdrawal after lease capture and failed
+physical retirement after the callback returns. Three separate clean-checkpoint
+mutations catch the extra hold, removal of final currentness, and loss of returned-
+cleanup uncertainty. Each source restoration is byte-exact; the final restored
+custody file passes nine cases, with server-test types passing.
+
+The uninstrumented finalizer matrix at `e94bcaafbb7a` reports eight adverse
+passes and one original-journey timeout at its unchanged 60-second limit.
+A later CPU-profile observer at `113bd9f49ccb` passes both original finalizer
+file cases with all 66 assertions and the deadline unchanged; the observer is
+removed byte-exactly. That diagnostic pass does not erase earlier timeouts or
+establish stable latency. Its sampled self time includes 16.1 seconds of fsync
+and 11.5 seconds idle, with report persistence and Home lifecycle prominent. A subsequent
+passive phase diagnostic at `2d47f13ad2a6` also times out; all 77 assertion calls
+and the original deadlines remain unchanged, and both instrumented files are
+restored exactly. Its inclusive phase timings are diagnostic, not isolated CPU
+attribution or proof of recoverable time. No unchanged rerun or deadline increase
+is counted as progress. Both original report-input callers passed earlier at
+`0a2ded30b1e`, before the latest main merge; that receipt is not combined-source
+qualification. At `113bd9f49ccb`, the core 16-file selection passes 584 cases.
+The original report-input file runs once: the three-seat caller passes, while
+the explicit-input caller fails later at report continuation with HTTP 503 after
+its input/sync steps. The source cause remains unresolved; no unchanged rerun
+is counted. Group/preset acceptance initially reports 222 passes and nine
+failures. Eight CLI fixture failures lack the newly required real create-claims
+store; adding that owner and correcting one obsolete option-error expectation
+passes all 37 cases in the two affected files, with no production guard change.
+
+A later preparation batching candidate measured 170 physical holds before repair
+and passed an at-most-167 isolated bound and server-test types. Its larger owner
+selection remained red: 65 cases pass and one existing delegated-task caller
+times out at its unchanged 60-second limit. The cause is not established. The
+candidate and evidence are retained outside the checkout, and its production,
+resource-manifest and test changes are removed exactly. That optimization is not
+adopted or counted as a caller-performance repair.
 
 Readiness at `b2b18781082b` reports one documentation-truth failure and one
 verification-policy warning. The documentation failure is the source-review
 binding assertion in `docs-index-reachability.test.ts`; the other fourteen
-documentation-truth lanes pass. Stale reviews must be substantively refreshed,
-not bypassed or marked current from narrow runtime evidence.
+documentation-truth lanes pass. The later 28-owner complete-body source reviews
+and corrected runtime/operations prose are recorded at `113bd9f49ccb`; their
+source-only limits do not renew historical execution receipts or clear all
+remaining reviews. The learning build still needs two obsolete Browser component
+ledger citations removed through their completed source review. Stale reviews must be substantively refreshed, not
+bypassed or marked current from narrow runtime evidence.
 
 The sealed composer visual approval remains bound to `f138f28e20b0` and its
 four hash-bound images. The SDK compatibility changeset is committed; older

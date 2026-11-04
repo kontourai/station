@@ -1843,7 +1843,8 @@ The same public module supplies `conversationKeyDecision` and
 host inspects the whole conversation before a successor Session can take the
 key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
-primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts use
+primitive adds no storage command or inbox. Recovery dispatch and storage are also
+supplied by Monument; Station retains credential/profile composition. Steer receipts use
 Monument over the existing EventStore connection, including host rollback and
 explicit thread deletion. The conversation inbox below separately persists steer text and placement. Separately, Station atomically records child-steer instructions and target-bound claims, retains key tombstones on Session deletion, and serves authorized instruction pages. See [child steering](../reference/session-api.md#lifecycle-control-commands) and [instruction reads](../reference/session-api.md#child-instructions-get-sessionsthreadidchild-workchildidinstructions).
 

@@ -78,10 +78,10 @@ The UI may describe an agent as a **Station agent** (run by Station's engine)
 or an **External agent** (run by any other engine), but engine selection is a
 property of the agent rather than a permanent type chosen from a type picker.
 
-The reserved agent named **Station** is a role, not the Station-engine category.
+The reserved agent named **Station Assistant** is a role, not the Station-engine category.
 It owns Station Control and Station Docs by definition, while its engine is a
 separate Station setting: Station's engine, Claude Code, Codex, or a capable
-custom engine may execute it. A label must therefore read like “Station ·
+custom engine may execute it. A label must therefore read like “Station Assistant ·
 OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
