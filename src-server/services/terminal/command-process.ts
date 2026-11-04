@@ -345,32 +345,30 @@ class CommandProcess implements IPtyProcess {
   }
 
   private signalGroup(signal: NodeJS.Signals): void {
-    if (this.child.pid === undefined) return;
+    const pid = this.child.pid;
+    if (pid === undefined) return;
     if (process.platform === 'win32') {
-      if (this.exit || this.leaderExited) return;
-      try {
-        this.child.kill(signal);
-      } catch {
-        // Already gone.
-      }
+      if (!this.leaderExited) this.signalLeader(signal);
       return;
     }
     // The command leads its own group; a negative pid reaches all of it. A
     // check immediately before the signal keeps it to a group still ours.
     if (!this.groupAlive()) return;
     try {
-      process.kill(-this.child.pid, signal);
+      process.kill(-pid, signal);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
-        if (this.leaderExited) this.groupGone = true;
-        return;
-      }
-      if (this.leaderExited) return;
-      try {
-        this.child.kill(signal);
-      } catch {
-        // Already gone.
-      }
+      const missing = (error as NodeJS.ErrnoException).code === 'ESRCH';
+      if (this.leaderExited) this.groupGone ||= missing;
+      else if (!missing) this.signalLeader(signal);
+    }
+  }
+
+  /** The leader alone, while Node still holds its handle. */
+  private signalLeader(signal: NodeJS.Signals): void {
+    try {
+      this.child.kill(signal);
+    } catch {
+      // Already gone.
     }
   }
 }

@@ -51,19 +51,22 @@ export function attributeWindowsProcesses(
       const known = owned.get(entry.pid)!;
       known.lastSeenUs = snapshotStartUs;
     }
+  /** Its parent pid provably named an owned process when it was created. */
+  const attributable = (entry: WindowsProcessEntry) => {
+    if (entry.pid === self || entry.pid === entry.ppid || same(entry))
+      return false;
+    const parent = owned.get(entry.ppid);
+    return (
+      parent !== undefined &&
+      entry.createdUs >= parent.createdUs &&
+      (alive.has(parent.pid) || entry.createdUs <= parent.lastSeenUs)
+    );
+  };
   let added = true;
   while (added) {
     added = false;
     for (const entry of table) {
-      if (entry.pid === self || entry.pid === entry.ppid || same(entry))
-        continue;
-      const parent = owned.get(entry.ppid);
-      if (
-        !parent ||
-        entry.createdUs < parent.createdUs ||
-        (!alive.has(parent.pid) && entry.createdUs > parent.lastSeenUs)
-      )
-        continue;
+      if (!attributable(entry)) continue;
       // A pid now naming a different process than the one recorded: the
       // record is replaced only by a process this snapshot proves is owned.
       owned.set(entry.pid, {
