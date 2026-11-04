@@ -23,11 +23,14 @@ export function buildTerminalSelectionHandoff({
   cwd,
 }: {
   selection: string;
-  cwd: string;
+  /** Absent when the viewer may not read the shell's host path. */
+  cwd: string | null | undefined;
 }): string {
   const fence = literalFence(selection);
   return [
-    `Terminal output (working directory: ${JSON.stringify(cwd)}):`,
+    cwd
+      ? `Terminal output (working directory: ${JSON.stringify(cwd)}):`
+      : 'Terminal output:',
     fence,
     selection,
     fence,

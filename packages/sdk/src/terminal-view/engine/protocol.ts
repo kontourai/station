@@ -7,11 +7,7 @@ import type {
   SearchState,
 } from './terminal-engine';
 
-export type ScrollTarget =
-  | { delta: number }
-  | { row: number }
-  | 'top'
-  | 'bottom';
+type ScrollTarget = { delta: number } | { row: number } | 'top' | 'bottom';
 
 /** Messages from the UI thread to the engine worker. */
 export type EngineRequest =
@@ -43,6 +39,8 @@ export type EngineRequest =
   | { type: 'select-all' }
   | { type: 'clear-selection' }
   | { type: 'clear' }
+  /** Back to a fresh terminal: the next output replays from the start. */
+  | { type: 'reset' }
   | { type: 'query'; id: number; query: EngineQuery }
   | { type: 'dispose' };
 

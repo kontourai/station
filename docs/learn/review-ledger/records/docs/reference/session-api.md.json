@@ -162,7 +162,9 @@
 
     "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
 
-    "src-ui/src/hooks/useDerivedSessions.ts"
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"
   ],
 
   "checks": [

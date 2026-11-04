@@ -135,6 +135,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Ask before deleting a conversation (`confirm-conversation-delete`) | Keep | User-controlled safeguard for one conversation; does not disable all destructive confirmations. | [source](../../src-ui/src/components/chat/ConversationHistory.tsx) |
 | Theme (`theme`) | Keep | Basic appearance preference; both themes need actual visual checks. | [source](../../src-ui/src/main.tsx) |
 | Haptic feedback (`haptic-feedback`) | Keep | Native mobile capability; omit on unsupported browser/desktop surfaces. | [source](../../src-ui/src/platform/native/haptics.ts) |
+| Terminal screen reader mode (`terminal-screen-reader`) | Keep | Accessibility preference, off by default because browsers report no screen reader; not yet used with real assistive technology. | [source](../../src-ui/src/components/coding-layout/TerminalPanel.tsx) |
 | Accent color (`accent-color`) | Keep | Basic appearance preference; contrast and keyboard focus still need verification. | [source](../../src-ui/src/main.tsx) |
 | Keyboard shortcuts (`keyboard-shortcuts`) | Keep | Rebinding has clear value; conflict, reset and platform reserved keys matter. | [source](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx) |
 | Push notifications (`push-notifications`) | Keep / qualify | Permission, subscription and actual delivery differ across browser/APNs/FCM; do not equate toggle-on with received alerts. | [source](../../src-ui/src/App.tsx) |

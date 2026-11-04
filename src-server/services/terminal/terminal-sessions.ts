@@ -510,6 +510,29 @@ export class TerminalSessions<Principal> {
   }
 
   /**
+   * Ends every running session of a deleted Project, in every binding. Their
+   * records and history stay, like any ended terminal's, until retention
+   * expires them; a deleted Project's shells are never restored.
+   */
+  endProject(projectId: string) {
+    return this.serialize(async () => {
+      await this.ready;
+      const records = [...this.records.values()].filter(
+        (record) =>
+          record.projectId === projectId && this.live.has(record.terminalId),
+      );
+      for (const record of records) {
+        await this.stop(record.terminalId);
+        if (record.status !== 'failed') record.status = 'exited';
+        record.endedAt ??= Date.now();
+        await (await this.journal(record)).flush();
+      }
+      if (records.length) await this.persist();
+      return records.length;
+    });
+  }
+
+  /**
    * A server-owned launch's journal, for the server component that started
    * it (an agent's ACP terminal); refuses an id outside `scope`.
    */
