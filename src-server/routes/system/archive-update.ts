@@ -146,7 +146,8 @@ const MANIFEST_FETCH_TIMEOUT_MS = 15_000;
  * a check that refuses redirects can never reach a real release. Hops are
  * followed by hand so each one must stay https; the count is bounded, and one
  * more than this is refused. The signature, not the path, is what vouches for
- * the bytes.
+ * the bytes. Under a managed mirror (#4522) a hop must also stay on the
+ * mirror's origin.
  */
 const MANIFEST_MAX_REDIRECTS = 5;
 
@@ -196,6 +197,8 @@ async function fetchVerifiedReleaseManifest(
       'the recorded release manifest URL is not a plain https URL',
     );
   }
+  const feedUrl = options.managedUpdates?.feedUrl;
+  const mirrorOrigin = feedUrl === undefined ? null : new URL(feedUrl).origin;
   const fetchFn = options.fetchFn ?? fetch;
   const signal = AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS);
   let url = manifestUrl;
@@ -237,6 +240,14 @@ async function fetchVerifiedReleaseManifest(
       throw new ReleaseCheckError(
         'unverified',
         'the release manifest redirect leaves https',
+      );
+    // #4522: under a mirror every hop stays on the mirror's origin (scheme,
+    // host and port). The policy approves that server, not wherever it
+    // points; a redirect to a CDN or the default release host is refused.
+    if (mirrorOrigin !== null && next.origin !== mirrorOrigin)
+      throw new ReleaseCheckError(
+        'unverified',
+        "the release manifest redirect leaves the managed policy's mirror",
       );
     url = next.href;
   }

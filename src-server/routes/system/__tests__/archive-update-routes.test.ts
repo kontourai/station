@@ -2598,6 +2598,50 @@ describe('the managed policy’s update limit (#4522)', () => {
     expect(fetchFn.mock.calls.at(-1)?.[0]).toBe(MIRRORED_MANIFEST);
   });
 
+  test('a mirror: a redirect hop is followed only on the mirror’s own origin', async () => {
+    const install = makeInstall();
+    const managedUpdates = { feedUrl: MIRROR };
+    const manifest = signedManifest(releasePayload(NEWER));
+    const redirectTo = (location: string) =>
+      fetchFn.mockImplementation(async (url: string) =>
+        url === MIRRORED_MANIFEST
+          ? new Response(null, { status: 302, headers: { location } })
+          : new Response(manifest, { status: 200 }),
+      );
+    const check = () =>
+      createApp(install, { extraDeps: { managedUpdates } }).request(
+        '/core-update',
+      );
+
+    const sameOrigin = 'https://mirror.example.test/elsewhere/manifest.json';
+    redirectTo(sameOrigin);
+    expect(await json(await check())).toMatchObject({
+      releaseCheck: 'verified',
+    });
+    expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+      MIRRORED_MANIFEST,
+      sameOrigin,
+    ]);
+
+    for (const escape of [
+      'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
+      'https://mirror.example.test:8443/station/t0ken/manifest.json',
+      'https://cdn.mirror.example.test/manifest.json',
+    ]) {
+      fetchFn.mockClear();
+      redirectTo(escape);
+      expect(await json(await check())).toMatchObject({
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+        technicalDetail:
+          "the release manifest redirect leaves the managed policy's mirror",
+      });
+      expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+        MIRRORED_MANIFEST,
+      ]);
+    }
+  });
+
   test('allowNightly: false refuses a nightly install and leaves another ring alone', async () => {
     const nightly = makeInstall({ ring: 'nightly' });
     expect(resolveInstallProvenance(nightly.moduleDir)).toMatchObject({
