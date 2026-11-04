@@ -363,6 +363,77 @@ export async function openOrAdoptProjectShell(
   };
 }
 
+/**
+ * `DELETE /api/projects/:slug/terminal-sessions/:id?bindingKey=` — ends a
+ * terminal session in any binding the caller may operate (a thread's agent
+ * command, say); its output stays readable.
+ */
+export async function closeProjectTerminalSession(
+  apiBase: string,
+  projectSlug: string,
+  terminalId: string,
+  bindingKey: string,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions/${encodeURIComponent(terminalId)}?bindingKey=${encodeURIComponent(bindingKey)}`,
+    'DELETE',
+    opts,
+  );
+  await unwrapOrThrow(response, 'Failed to stop the command');
+}
+
+/** A package script the script runner can start, by name. */
+export interface ProjectTerminalScript {
+  name: string;
+  /** The script's command line, for display. */
+  command: string;
+}
+
+/**
+ * `GET /api/projects/:slug/terminal-scripts` — the Project binding's package
+ * scripts and the package manager that runs them. Null when this Station
+ * predates the script runner (404).
+ */
+export async function listProjectTerminalScripts(
+  apiBase: string,
+  projectSlug: string,
+  opts?: ClientRequestOptions,
+): Promise<{
+  packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun';
+  scripts: ProjectTerminalScript[];
+} | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-scripts?bindingKey=project`,
+    opts,
+  );
+  if (response.status === 404) return null;
+  return unwrapOrThrow(response, 'Failed to list scripts');
+}
+
+/**
+ * `POST /api/projects/:slug/terminal-scripts` — runs one package script by
+ * name as a command terminal session in the Project binding.
+ */
+export async function runProjectTerminalScript(
+  apiBase: string,
+  projectSlug: string,
+  script: string,
+  opts?: ClientRequestOptions,
+): Promise<{ terminalId: string }> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-scripts`,
+    'POST',
+    opts,
+    { bindingKey: 'project', script },
+  );
+  const record = await unwrapOrThrow<{ terminalId: string }>(
+    response,
+    'Failed to run script',
+  );
+  return { terminalId: record.terminalId };
+}
+
 /** `POST /api/projects/:slug/file-preview` — bounded, project-bound file preview. */
 export async function previewProjectWorkspaceFile(
   apiBase: string,

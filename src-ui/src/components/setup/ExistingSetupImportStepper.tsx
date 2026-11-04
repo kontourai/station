@@ -15,13 +15,13 @@ import {
   useSetupImportSourcesQuery,
 } from '@kontourai/station-sdk/setup-imports-query';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { formatBytes } from '../../utils/formatBytes';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
-import { SkeletonBlock } from '../state';
+import { ErrorState, SkeletonBlock } from '../state';
 import './ExistingSetupImportStepper.css';
 
 const INVALID_SKILL_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
@@ -58,9 +58,16 @@ export function ExistingSetupImportStepper({
   const [targets, setTargets] = useState<Record<string, string>>({});
   const [receipt, setReceipt] = useState<ExistingSetupImportReceipt>();
   const [boundTargets, setBoundTargets] = useState<SetupImportTargetReview>();
+  const reviewVersion = useRef(0);
   const source = sources.data?.find((candidate) => candidate.id === sourceId);
   const preview = previewMutation.data;
-  const targetReview = boundTargets ?? reviewMutation.data;
+  const targetReview = boundTargets;
+
+  const invalidateReview = () => {
+    reviewVersion.current += 1;
+    setBoundTargets(undefined);
+    reviewMutation.reset();
+  };
 
   useEffect(() => {
     if (!preview) return;
@@ -77,6 +84,7 @@ export function ExistingSetupImportStepper({
       ),
     );
     setReceipt(undefined);
+    reviewVersion.current += 1;
     setBoundTargets(undefined);
     reviewMutation.reset();
   }, [preview, reviewMutation.reset]);
@@ -110,6 +118,7 @@ export function ExistingSetupImportStepper({
       )
     : undefined;
   const resetWorkflow = () => {
+    reviewVersion.current += 1;
     previewMutation.reset();
     applyMutation.reset();
     reviewMutation.reset();
@@ -125,7 +134,21 @@ export function ExistingSetupImportStepper({
       <SkeletonBlock count={compact ? 1 : 2} label="Checking existing setup" />
     );
   }
-  if (sources.isError || !source?.available) return null;
+  if (sources.isError) {
+    return (
+      <ErrorState
+        variant="compact"
+        title="Existing setup unavailable"
+        description={userFacingErrorMessage(sources.error)}
+        action={
+          <Button variant="secondary" onClick={() => sources.refetch()}>
+            Retry setup check
+          </Button>
+        }
+      />
+    );
+  }
+  if (!source?.available) return null;
 
   return (
     <section
@@ -196,8 +219,9 @@ export function ExistingSetupImportStepper({
                 <li key={entry.id} className="existing-setup-import__entry">
                   <Checkbox
                     checked={checked}
+                    disabled={applyMutation.isPending}
                     onChange={(next) => {
-                      reviewMutation.reset();
+                      invalidateReview();
                       setSelected((current) => ({
                         ...current,
                         [entry.id]: next,
@@ -236,7 +260,7 @@ export function ExistingSetupImportStepper({
                         className="editor-input"
                         aria-label={`New Station Skill name for ${entry.name}`}
                         value={target}
-                        disabled={!checked}
+                        disabled={!checked || applyMutation.isPending}
                         aria-invalid={renameInvalid || undefined}
                         aria-describedby={
                           renameInvalid
@@ -244,7 +268,7 @@ export function ExistingSetupImportStepper({
                             : undefined
                         }
                         onChange={(event) => {
-                          reviewMutation.reset();
+                          invalidateReview();
                           setTargets((current) => ({
                             ...current,
                             [entry.id]: event.target.value,
@@ -276,8 +300,10 @@ export function ExistingSetupImportStepper({
               variant="primary"
               pending={reviewMutation.isPending}
               pendingLabel="Binding targets…"
-              disabled={selectedCollisionInvalid}
-              onClick={() =>
+              disabled={selectedCollisionInvalid || applyMutation.isPending}
+              onClick={() => {
+                invalidateReview();
+                const version = reviewVersion.current;
                 reviewMutation.mutate(
                   {
                     previewId: preview.id,
@@ -289,13 +315,22 @@ export function ExistingSetupImportStepper({
                         : {}),
                     })),
                   },
-                  { onSuccess: setBoundTargets },
-                )
-              }
+                  {
+                    onSuccess: (review) => {
+                      if (reviewVersion.current === version)
+                        setBoundTargets(review);
+                    },
+                  },
+                );
+              }}
             >
               Review targets
             </Button>
-            <Button variant="ghost" onClick={resetWorkflow}>
+            <Button
+              variant="ghost"
+              disabled={applyMutation.isPending}
+              onClick={resetWorkflow}
+            >
               Start over
             </Button>
           </ResponsiveSurfaceActions>
@@ -303,6 +338,18 @@ export function ExistingSetupImportStepper({
             <p className="existing-setup-import__error" role="alert">
               {userFacingErrorMessage(reviewMutation.error)}
             </p>
+          )}
+          {applyMutation.isError && (
+            <ErrorState
+              variant="compact"
+              title="Import outcome unavailable"
+              description={
+                <>
+                  {userFacingErrorMessage(applyMutation.error)} Check installed
+                  Skills before starting another import.
+                </>
+              }
+            />
           )}
           {targetReview && (
             <ResponsiveSurfaceActions className="existing-setup-import__actions">

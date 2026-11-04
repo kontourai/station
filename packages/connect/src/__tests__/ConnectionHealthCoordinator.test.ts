@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConnectionHealthCoordinator } from '../core/ConnectionHealthCoordinator';
+import {
+  type ConnectionHealthCheckResult,
+  ConnectionHealthCoordinator,
+} from '../core/ConnectionHealthCoordinator';
 import { createAccessEndpoint } from '../core/environmentProfiles';
 
 afterEach(() => vi.useRealTimers());
@@ -372,24 +375,120 @@ describe('ConnectionHealthCoordinator', () => {
   });
 
   it('cancels cleanly when the final subscriber leaves during a check', async () => {
+    vi.useFakeTimers();
     let resolve!: (value: boolean) => void;
     const pending = new Promise<boolean>((done) => {
       resolve = done;
     });
     const endpoint = createAccessEndpoint('https://station.example.test');
+    const check = vi.fn(async () => pending);
+    const onSuccess = vi.fn();
+    const onFailure = vi.fn();
+    const listener = vi.fn();
     const coordinator = new ConnectionHealthCoordinator({
       endpoints: () => [endpoint],
       compatibility: () => ({ clientProtocol: 'https:', online: true }),
-      check: async () => pending,
+      check,
+      onSuccess,
+      onFailure,
     });
-    const unsubscribe = coordinator.subscribe(vi.fn());
+    const unsubscribe = coordinator.subscribe(listener);
+    const initialPublications = listener.mock.calls.length;
 
     unsubscribe();
     resolve(true);
     await pending;
     await Promise.resolve();
     expect(coordinator.getSnapshot().status).toBe('connecting');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(check).toHaveBeenCalledOnce();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(onFailure).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(initialPublications);
   });
+
+  it.each(['resolved', 'rejected'] as const)(
+    'checks and publishes for an immediate new subscriber after the aborted probe %s',
+    async (settlement) => {
+      vi.useFakeTimers();
+      let resolveOld!: (result: ConnectionHealthCheckResult) => void;
+      let rejectOld!: (error: Error) => void;
+      let resolveFresh!: (result: ConnectionHealthCheckResult) => void;
+      let oldSignal: AbortSignal | undefined;
+      const oldProbe = new Promise<ConnectionHealthCheckResult>(
+        (resolve, reject) => {
+          resolveOld = resolve;
+          rejectOld = reject;
+        },
+      );
+      const freshProbe = new Promise<ConnectionHealthCheckResult>((resolve) => {
+        resolveFresh = resolve;
+      });
+      const endpoint = createAccessEndpoint(
+        'https://reattached-station.example.test',
+      );
+      const check = vi
+        .fn()
+        .mockImplementationOnce((_endpoint: unknown, signal: AbortSignal) => {
+          oldSignal = signal;
+          return oldProbe;
+        })
+        .mockReturnValueOnce(freshProbe);
+      const onSuccess = vi.fn();
+      const onFailure = vi.fn();
+      const coordinator = new ConnectionHealthCoordinator({
+        endpoints: () => [endpoint],
+        compatibility: () => ({ clientProtocol: 'https:', online: true }),
+        check,
+        onSuccess,
+        onFailure,
+        pollIntervalMs: 1000,
+      });
+      const unsubscribeFirst = coordinator.subscribe(vi.fn());
+      let unsubscribeSecond: (() => void) | undefined;
+      const publishedStatuses: string[] = [];
+      try {
+        expect(check).toHaveBeenCalledOnce();
+        unsubscribeFirst();
+        expect(oldSignal?.aborted).toBe(true);
+        unsubscribeSecond = coordinator.subscribe(() => {
+          publishedStatuses.push(coordinator.getSnapshot().status);
+        });
+        expect(check).toHaveBeenCalledOnce();
+        if (settlement === 'resolved') {
+          resolveOld({ ok: true, bootId: 'cancelled-boot' });
+        } else {
+          rejectOld(new DOMException('Probe cancelled', 'AbortError'));
+        }
+        await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(2));
+        expect(onSuccess).not.toHaveBeenCalled();
+        expect(onFailure).not.toHaveBeenCalled();
+        resolveFresh({ ok: true, bootId: 'fresh-boot' });
+        await vi.waitFor(() =>
+          expect(coordinator.getSnapshot()).toMatchObject({
+            status: 'connected',
+            checking: false,
+            reason: null,
+            routes: [{ endpointId: endpoint.id, state: 'in-use' }],
+          }),
+        );
+        expect(publishedStatuses).toContain('connected');
+        expect(onSuccess).toHaveBeenCalledExactlyOnceWith(endpoint, {
+          ok: true,
+          bootId: 'fresh-boot',
+        });
+        unsubscribeSecond();
+        unsubscribeSecond = undefined;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(check).toHaveBeenCalledTimes(2);
+      } finally {
+        unsubscribeFirst();
+        unsubscribeSecond?.();
+        resolveOld(false);
+        resolveFresh(false);
+      }
+    },
+  );
 
   it('records only sustained failure windows and bounds their history', async () => {
     const endpoint = createAccessEndpoint('https://station.example.test');
