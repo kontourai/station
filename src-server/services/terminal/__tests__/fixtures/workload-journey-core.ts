@@ -14,7 +14,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
-import { SUPERVISOR_ENV } from '@kontourai/station-supervisor/protocol';
+import {
+  type CoreToSupervisorMessage,
+  SUPERVISOR_ENV,
+} from '@kontourai/station-supervisor/protocol';
 import { NodePtyAdapter } from '../../../../adapters/node-pty-adapter.js';
 import {
   allowHomeAccess,
@@ -24,6 +27,19 @@ import {
 } from '../../../../runtime/bootstrap/supervisor-link.js';
 import { createTerminalShellHost } from '../../supervisor-shell-host.js';
 import { TerminalSessions } from '../../terminal-sessions.js';
+
+const ipcSend = process.send;
+if (!ipcSend) throw new Error('the journey core requires IPC');
+let backpressuredAttaches = 0;
+// Still send over real IPC; exercise Node's queued-but-backpressured return at reattach.
+process.send = (message: CoreToSupervisorMessage, ...args: unknown[]) => {
+  const writable = Reflect.apply(ipcSend, process, [message, ...args]);
+  if (message.type === 'workload.request' && message.request.op === 'attach') {
+    backpressuredAttaches += 1;
+    return false;
+  }
+  return writable;
+};
 
 const link = await parkUnderSupervisor();
 if (!link) throw new Error('the journey core must run under the supervisor');
@@ -62,6 +78,7 @@ const server = http.createServer((req, res) => {
         generation: Number(process.env[SUPERVISOR_ENV.generation]),
         pid: process.pid,
         workloads: channel !== null,
+        backpressuredAttaches,
       };
     } else if (url.pathname === '/open') {
       const opened = await sessions.open('journey', scope, {
