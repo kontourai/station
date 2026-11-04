@@ -691,7 +691,7 @@ Station command and explicit user action.
  * instruction, so Windows never receives a multiline argument, and no flag,
  * so the agent keeps its normal approval mode.
  */
-export const INTERACTIVE_TRIAGE_INSTRUCTION =
+const INTERACTIVE_TRIAGE_INSTRUCTION =
   'Read playbook.md and context.json in this directory, then problem.md and related-issues.json. Follow the playbook, starting with its Terminal surface section, and start a troubleshooting conversation with me.';
 
 /** The argument list `station triage` passes to the selected agent. */
