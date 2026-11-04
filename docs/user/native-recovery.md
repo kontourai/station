@@ -101,7 +101,11 @@ have a backup and have selected the intended home.
 A [managed policy](https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md) error containing
 `STATION_MANAGED_POLICY_INVALID` is also fail-closed. Your organization's
 policy on this computer cannot be used, so the app reports the failure without
-restarting. Only an administrator can fix or remove the policy.
+restarting. Only an administrator can fix or remove the policy. When the
+policy allows only this computer to connect, the same marker also starts a
+refusal that names something on this computer to change, such as a Tailscale
+Serve route or a Tailscale install Station cannot check. Make that change,
+then open Station again.
 
 Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app
