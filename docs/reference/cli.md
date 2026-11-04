@@ -3708,7 +3708,11 @@ tsx. Doctor also compares every exact-pinned `@kontourai/*` dependency in the
 Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
-separately.
+separately. External-agent readiness reads the agent connections in effect,
+with the installed [managed policy](../guides/managed-policy.md) applied as the
+server applies it, so a connection the policy disables is not counted. An
+installed policy the server would refuse is a fail-level `Managed policy`
+check, and no stored connection counts as ready while it stands.
 
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
