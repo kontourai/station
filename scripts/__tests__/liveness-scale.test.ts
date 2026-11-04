@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -339,16 +339,74 @@ describe('consumers multiply their liveness bound', () => {
     }) as typeof setTimeout);
     const scratch = makeTempDir('liveness-fallow-');
     for (const scale of ['1', '3']) {
-      await runFallowAnalysis(
-        join(scratch, 'missing-root'),
-        'dead-code',
-        join(scratch, 'out.json'),
-        [],
-        { env: { STATION_LIVENESS_SCALE: scale } },
-      ).catch(() => undefined);
+      await expect(
+        runFallowAnalysis(
+          join(scratch, 'missing-root'),
+          'dead-code',
+          join(scratch, 'out.json'),
+          [],
+          { env: { STATION_LIVENESS_SCALE: scale } },
+        ),
+      ).rejects.toThrow(
+        `interruption=none, watchdogMs=${120_000 * Number(scale)}`,
+      );
     }
     expect(delays).toEqual([120_000, 360_000]);
   });
+
+  test.each(['watchdog', 'SIGINT', 'SIGTERM'] as const)(
+    'the fallow caller retains first interruption %s and its effective bound',
+    async (cause) => {
+      const scratch = makeTempDir('liveness-fallow-interrupted-');
+      const stationRoot = join(scratch, 'station-root');
+      const report = join(scratch, 'health.json');
+      vi.stubEnv('STATION_TEMP_ROOT', stationRoot);
+      const signalsBefore = ['SIGINT', 'SIGTERM'].map((signal) =>
+        process.listenerCount(signal),
+      );
+      const delays: number[] = [];
+      const realSetTimeout = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+        (callback, delay, ...args) => {
+          if (delay !== undefined && delay >= FALLOW_WATCHDOG_BASE_MS) {
+            delays.push(delay);
+            // Deliver the existing watchdog early, then race a second cause.
+            return realSetTimeout(() => {
+              if (cause === 'watchdog') {
+                callback(...args);
+                process.emit('SIGTERM');
+              } else {
+                process.emit(cause);
+                callback(...args);
+              }
+            }, 0);
+          }
+          return realSetTimeout(callback, delay, ...args);
+        },
+      );
+      const failure = await runFallowAnalysis(scratch, 'health', report, [], {
+        env: { STATION_LIVENESS_SCALE: '3' },
+      }).then(
+        () => null,
+        (error: Error) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure?.message).toContain(
+        `interruption=${cause}, watchdogMs=360000`,
+      );
+      const times = failure?.message.match(
+        /interruptionMs=(\d+), elapsedMs=(\d+)/,
+      );
+      expect(times).not.toBeNull();
+      expect(Number(times?.[2])).toBeGreaterThanOrEqual(Number(times?.[1]));
+      expect(delays).toEqual([360_000]);
+      expect(existsSync(report)).toBe(false);
+      expect(readdirSync(join(stationRoot, 'fallow'))).toEqual([]);
+      expect(
+        ['SIGINT', 'SIGTERM'].map((signal) => process.listenerCount(signal)),
+      ).toEqual(signalsBefore);
+    },
+  );
 
   test('the transfer capture liveness bound', () => {
     expect(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS).toBe(60_000);

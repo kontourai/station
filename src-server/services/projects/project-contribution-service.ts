@@ -19,6 +19,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { withoutLockedProjectOverrides } from '../../domain/managed-settings.js';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -746,7 +747,9 @@ export class ProjectContributionService {
         record.slug !== association.project.slug
       )
         throw unavailable();
-      projectIsolation = record.defaultWorkspaceIsolation;
+      // #4517: a managed lock outranks the project's override.
+      projectIsolation =
+        withoutLockedProjectOverrides(record).defaultWorkspaceIsolation;
     } catch {
       throw unavailable();
     }
@@ -868,7 +871,8 @@ export class ProjectContributionService {
         record.slug !== captured.projectSlug
       )
         throw unavailable();
-      currentProjectIsolation = record.defaultWorkspaceIsolation;
+      currentProjectIsolation =
+        withoutLockedProjectOverrides(record).defaultWorkspaceIsolation;
     } catch {
       policyReadable = false;
     }

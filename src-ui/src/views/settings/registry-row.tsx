@@ -19,7 +19,11 @@ import {
 } from './composite-editors';
 import type { RegistryRowComponentProps } from './registry-row-types';
 import { SettingDescription } from './SettingDescription';
-import { SettingRowStatus } from './SettingRowStatus';
+import {
+  isManagedLock,
+  ManagedSettingBadge,
+  SettingRowStatus,
+} from './SettingRowStatus';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import {
   settingsCatalogEntryForConfigKey,
@@ -74,6 +78,9 @@ export function renderSettingRow({
   const catalogEntry = settingsCatalogEntryForConfigKey(key);
   const row = catalogEntry ? settingsRow(catalogEntry.id) : undefined;
   const Custom = CUSTOM_ROW_RENDERERS[key];
+  // #4517: the server refuses a write to a locked setting; the row says so
+  // and disables its control rather than offering an edit that will fail.
+  const locked = isManagedLock(provenance);
   // #2144 slice 3: the composite rows (approval guardian, distribution
   // profile, built-in engine) get no scope badge, inheritance popover or
   // reset affordance. Each owns its own internal layout rather
@@ -82,16 +89,21 @@ export function renderSettingRow({
   if (Custom) {
     return (
       <div key={key} {...row} tabIndex={row ? -1 : undefined}>
-        <Custom
-          definition={
-            catalogEntry
-              ? { ...definition, label: catalogEntry.title }
-              : definition
-          }
-          value={value}
-          provenance={provenance}
-          onChange={onChange}
-        />
+        <ManagedSettingBadge provenance={provenance} />
+        {/* A disabled fieldset disables every native control inside the
+            custom editor, whatever its internal layout. */}
+        <fieldset className="setting-managed-fieldset" disabled={locked}>
+          <Custom
+            definition={
+              catalogEntry
+                ? { ...definition, label: catalogEntry.title }
+                : definition
+            }
+            value={value}
+            provenance={provenance}
+            onChange={onChange}
+          />
+        </fieldset>
       </div>
     );
   }
@@ -139,6 +151,7 @@ export function renderSettingRow({
               className="editor-input"
               aria-label={definition.label}
               value={(value as string) ?? ''}
+              disabled={locked}
               placeholder={effectiveDefaultPlaceholder(
                 definition,
                 runtimeDefault,
@@ -163,6 +176,7 @@ export function renderSettingRow({
           control={
             <Toggle
               checked={(value ?? definition.defaultValue) === true}
+              disabled={locked}
               onChange={(checked) => {
                 onChange(checked);
               }}
@@ -186,6 +200,7 @@ export function renderSettingRow({
               className="editor-input"
               aria-label={definition.label}
               value={value === undefined || value === null ? '' : String(value)}
+              disabled={locked}
               placeholder={effectiveDefaultPlaceholder(definition)}
               min={descriptor.min}
               max={descriptor.max}
@@ -212,6 +227,7 @@ export function renderSettingRow({
               className="editor-select"
               aria-label={definition.label}
               value={String(value ?? definition.defaultValue ?? '')}
+              disabled={locked}
               onChange={(event) => {
                 onChange(event.target.value);
               }}

@@ -2549,6 +2549,73 @@ function stationSwitcherScreens(): Screen[] {
 
 const SCREENS: Screen[] = [
   ...telemetryConsentScreens(),
+  ...[DESKTOP, MOBILE].map((viewport): Screen => {
+    const slug = 'gallery-project-retry-board';
+    const layout = {
+      id: slug,
+      slug,
+      type: 'custom',
+      name: 'Morning Board',
+      config: {},
+      createdAt: '2026-11-04T00:00:00.000Z',
+      updatedAt: '2026-11-04T00:00:00.000Z',
+    };
+    const document = {
+      layout,
+      revision: 'a'.repeat(64),
+      definition: null,
+      proposal: null,
+    } satisfies import('@kontourai/station-contracts/personal-board').PersonalBoardDocument;
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name: `personal-board-projects-unavailable-${viewport.width === 390 ? 'mobile' : 'desktop'}`,
+      title: 'Personal Board — Project list failure and retry',
+      path: `/boards/${slug}`,
+      viewport,
+      waitFor: '.personal-board-workspace [role="alert"]',
+      beforeGoto: async (page) => {
+        cleanups = [
+          await withRoute(page, `**/api/me/layouts/${slug}`, (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            return route.fulfill({ json: { success: true, data: layout } });
+          }),
+          await withRoute(page, `**/api/me/boards/${slug}`, (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            return route.fulfill({ json: { success: true, data: document } });
+          }),
+          await withRoute(page, '**/api/projects', (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            return route.fulfill({
+              status: 503,
+              json: {
+                success: false,
+                error: 'Project list temporarily unavailable',
+              },
+            });
+          }),
+        ];
+      },
+      afterGoto: async (page) => {
+        const board = page.locator('.personal-board-workspace');
+        await expect(board.getByRole('alert')).toContainText(
+          'Could not load Projects',
+        );
+        await expect(
+          board.getByRole('button', { name: 'Retry Projects' }),
+        ).toBeVisible();
+        await expect(
+          board.getByRole('button', { name: /Project watch/ }),
+        ).toBeDisabled();
+      },
+      cleanup: async () => {
+        for (const cleanup of cleanups) await cleanup();
+        cleanups = [];
+      },
+    };
+  }),
   {
     name: 'mobile-activity-compact',
     title: 'Mobile — Activity opened over Chat (#2549)',
