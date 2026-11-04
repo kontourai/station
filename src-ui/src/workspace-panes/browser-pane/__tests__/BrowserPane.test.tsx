@@ -64,6 +64,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
     onControlState?: (
       state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
     ) => void;
+    overlay?: import('react').ReactNode;
   }) => {
     useEffect(() => {
       canvasState.report = props.onControlState;
@@ -75,6 +76,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
         data-read-only={props.readOnly}
       >
         {props.label}
+        {props.overlay}
       </div>
     );
   },

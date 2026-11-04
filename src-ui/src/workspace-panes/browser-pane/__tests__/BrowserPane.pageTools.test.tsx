@@ -53,12 +53,14 @@ const controlHolder: { state: LiveSurfaceControlState | null } = {
 vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
   LiveSurfaceCanvas: (props: {
     onControlState?: (state: LiveSurfaceControlState) => void;
+    overlay?: import('react').ReactNode;
   }) => {
     const { onControlState } = props;
     useEffect(() => {
       if (controlHolder.state) onControlState?.(controlHolder.state);
     }, [onControlState]);
-    return <div data-testid="live-canvas" />;
+    // As the real canvas does: the host's overlay over the stage.
+    return <div data-testid="live-canvas">{props.overlay}</div>;
   },
 }));
 

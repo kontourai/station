@@ -71,6 +71,10 @@ previews**: **Annotate**, **Record** and **Network** need **Browser
 artifacts**; **Zoom**, **Appearance** and **Float over chat** need **Browser
 experience**. See [Browser shortcuts](keyboard-shortcuts.md#browser-shortcuts).
 
+The live page also has a corner **Full screen** button, and a pinch zooms your
+view without zooming the page. See
+[viewing a live surface](../reference/browser-and-devices.md#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
+
 - **Screenshot** saves or copies a PNG of the visible page, or attaches it to
   the active chat.
 - **Annotate** lets you select an element or draw boxes and marks, then

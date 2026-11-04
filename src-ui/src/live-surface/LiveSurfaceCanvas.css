@@ -77,6 +77,16 @@
   outline-offset: 2px;
 }
 
+/*
+ * The zoom layer fills the stage; pinch zoom is a transform on it, so the
+ * canvas's client rect (what pointer mapping reads) follows the zoom.
+ */
+.live-surface__zoom {
+  inset: 0;
+  position: absolute;
+  transform-origin: 0 0;
+}
+
 .live-surface__canvas {
   display: block;
   height: 100%;
@@ -128,8 +138,11 @@
  * exactly rather than letterboxed inside its own element.
  */
 .live-surface__stage--fit {
-  align-items: center;
   background: #000;
+}
+
+.live-surface__stage--fit > .live-surface__zoom {
+  align-items: center;
   display: flex;
   justify-content: center;
 }
@@ -209,4 +222,145 @@
   transform: translateX(-50%);
   width: min(24rem, calc(100% - 2 * var(--k-space-2)));
   z-index: 2;
+}
+
+/* Viewer chrome (the float's pill, the immersive bar): one compact row that
+   wraps only when it must. */
+.live-surface-controls {
+  align-items: center;
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+  padding: 4px;
+}
+
+/* Who is in control: a one-line caption over the buttons, so the buttons
+   keep one row (a status inline beside them wraps the bar onto the
+   picture). */
+.live-surface-controls__status {
+  color: var(--k-text-muted);
+  /* Takes the row's width, never sets it: the buttons decide how wide the
+     bar is, and a long status ellipsizes. */
+  contain: inline-size;
+  flex: 1 0 100%;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  margin: 0;
+  min-width: 0;
+  order: -1;
+  overflow: hidden;
+  padding: 0 calc(var(--k-space-1) / 2);
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface-controls__status[data-tone="agent"] {
+  color: var(--warning-text, var(--k-text));
+}
+
+.live-surface-controls__action {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.live-surface-controls__icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* Reset zoom, and a pane's Full screen: small, over the picture's corners.
+   Scoped under .live-surface so the shared ghost Button's transparent
+   background does not win on order: over any page, these need a backdrop. */
+.live-surface .live-surface__zoom-reset,
+.live-surface .live-surface__fullscreen {
+  background: rgb(0 0 0 / 0.55);
+  border-radius: var(--k-radius-sm);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  z-index: 2;
+}
+
+.live-surface__zoom-reset {
+  left: var(--k-space-1);
+  top: var(--k-space-1);
+}
+
+.live-surface__fullscreen {
+  bottom: var(--k-space-1);
+  right: var(--k-space-1);
+}
+
+/* On a fine pointer the pane's Full screen waits for hover or focus (the
+   component decides: a finger cannot hover, so there it always shows). */
+.live-surface .live-surface__fullscreen[data-pointer="fine"] {
+  opacity: 0;
+}
+
+.live-surface__stage:hover .live-surface__fullscreen[data-pointer="fine"],
+.live-surface .live-surface__fullscreen[data-pointer="fine"]:focus-visible {
+  opacity: 1;
+}
+
+/*
+ * Immersive: the surface over the whole viewport, inside the safe area. Just
+ * under the dialog layer, so a confirmation raised meanwhile still shows.
+ */
+.live-surface[data-immersive] {
+  background: #000;
+  box-sizing: border-box;
+  gap: 0;
+  height: auto;
+  inset: 0;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  position: fixed;
+  z-index: calc(var(--layer-dialog) - 1);
+}
+
+/* Pane diagnostics are not immersive chrome. */
+.live-surface[data-immersive] .live-surface__codec {
+  display: none;
+}
+
+.live-surface[data-immersive] .live-surface__stage {
+  background: #000;
+  border-radius: 0;
+}
+
+.live-surface__immersive-bar {
+  display: flex;
+  justify-content: center;
+  left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
+  pointer-events: none;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
+  z-index: 3;
+}
+
+.live-surface__immersive-bar > .live-surface-controls {
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+/* With the bar hidden: one quiet handle to bring it back. */
+.live-surface .live-surface__immersive-reveal {
+  background: rgb(0 0 0 / 0.55);
+  border-radius: var(--k-radius-sm);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
+  z-index: 3;
 }

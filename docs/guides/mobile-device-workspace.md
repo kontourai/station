@@ -29,6 +29,10 @@ Advanced → Device hosts**. See
 2. Choose the host and device, then start it or open its live session.
 3. Tap or type on the screen. While you hold control, Agents cannot send
    input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
+4. Pinch to zoom the view. The corner **Full screen** button fits the device
+   screen to yours; tap **⋯** there for Exit, control, the keyboard and the
+   device buttons. See
+   [viewing a live surface](../reference/browser-and-devices.md#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
 
 Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**,
 **Apps**, **Device settings**, **Recents** (Android), **Float over chat** and
