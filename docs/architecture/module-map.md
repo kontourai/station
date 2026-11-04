@@ -5464,9 +5464,11 @@ A producer may refuse an event for a reason the viewer can act on
 page dialog waits for its person), which reaches the viewer as that code
 rather than `dispatch-failed`. Any other producer error is logged (surface,
 input kind and type, bounded cause; never key or text) and reaches the viewer
-as `dispatch-failed`, which the canvas shows over the surface with a Retry
-that re-sends only the events the result says were not delivered. It cannot
-cancel an arbitrary producer effect already in flight.
+as `dispatch-failed`. The event that failed may already have applied, so the
+canvas says the input may not have reached the page and sends nothing again.
+Retry is offered only for a batch the host refused before dispatching any of it
+(`surface-busy`), kept whole as one gesture in the control lineage it was made
+in. The registry cannot cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the

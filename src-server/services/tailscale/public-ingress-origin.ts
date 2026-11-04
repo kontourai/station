@@ -299,8 +299,9 @@ interface PublicIngressOriginResolver {
    *
    * This is a security admission, so it never reads the 30-second suggestion
    * cache: it reads the daemon through its own single-flight lookup whose
-   * answer lives at most `admissionTtlMs` (1 s), and a lookup that fails or
-   * outlasts `admissionTimeoutMs` refuses (fail closed).
+   * answer is trusted for at most `admissionTtlMs` (1 s) counted from when
+   * the lookup started. A reply that arrives after that bound, a lookup that
+   * fails, or one that outlasts `admissionTimeoutMs` refuses (fail closed).
    */
   isOwnedOrigin(origin: string): Promise<boolean>;
 }
@@ -383,21 +384,29 @@ export function createPublicIngressOriginResolver(input: {
   const ownedForAdmission = async (): Promise<readonly string[]> => {
     if (now() - admittedAt < admissionTtlMs) return admitted;
     admissionInFlight ??= (async () => {
+      // Trust is bounded from when the evidence was asked for, not when it
+      // arrived: a slow daemon reply describes the configuration as it was
+      // at the start, so it can only shorten the window, never extend it.
+      const startedAt = now();
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<IngressLookup>((resolveDeadline) => {
         timer = setTimeout(() => resolveDeadline({}), admissionTimeoutMs);
         timer.unref?.();
       });
+      let owned: readonly string[] = [];
       try {
         const fresh = await Promise.race([lookup(), deadline]);
         // A fresh read also refreshes endpoint suggestions.
         cached = fresh;
         cachedAt = now();
-        admitted = fresh.ownedOrigins ?? [];
+        owned = fresh.ownedOrigins ?? [];
       } finally {
         clearTimeout(timer);
       }
-      admittedAt = now();
+      admittedAt = startedAt;
+      // Evidence already older than the bound admits nothing (fail closed);
+      // the next admission reads the daemon again.
+      admitted = now() - startedAt < admissionTtlMs ? owned : [];
       return admitted;
     })().finally(() => {
       admissionInFlight = undefined;

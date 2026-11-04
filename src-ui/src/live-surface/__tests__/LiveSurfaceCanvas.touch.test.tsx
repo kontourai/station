@@ -259,6 +259,22 @@ describe('a held-back touch press meets the eligibility of when it goes out', ()
     expect(h.events()).toEqual([]);
   });
 
+  test('control lost and regained during the hold never sends the press in the new control', async () => {
+    const h = canvasHarness();
+    await renderCanvas(h, {}, lease(1, MY_HOLD));
+    fireEvent.pointerDown(canvas(), touch(1, 100, 62.5));
+    await flush();
+    // An agent takes over, then this viewer takes control back, all within
+    // the hold: the press was made in control that has since ended.
+    await h.pushState(
+      lease(2, { kind: 'agent', principal: 'agent:coder', sessionId: 's' }),
+    );
+    await h.pushState(lease(3, MY_HOLD));
+    await wait(TOUCH_PRESS_HOLD_MS + 50);
+    await flush();
+    expect(h.events()).toEqual([]);
+  });
+
   test('losing control during the hold, where the lease comes first, cancels the press', async () => {
     const h = canvasHarness();
     await renderCanvas(h, { inputRequiresLease: true }, lease(0, MY_HOLD));

@@ -378,7 +378,7 @@ test('a requested device floats, read from ITS host with the chat’s Project, a
 
   fireEvent.click(dot);
   const pill = screen.getByRole('toolbar', { name: 'Floating device' });
-  within(pill).getByText('Someone else is in control');
+  within(pill).getByRole('img', { name: 'Someone else is in control' });
   const take = within(pill).getByRole('button', { name: 'Take control' });
   // One Take control on the page: the canvas's own is not drawn too.
   expect(screen.getAllByRole('button', { name: 'Take control' })).toHaveLength(

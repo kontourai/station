@@ -32,8 +32,10 @@ sign-in origin picker read it. It adds no setting.
 
 Ownership is an admission, so it does not ride the endpoint-suggestion
 resolver's 30-second cache. It reads the daemon through its own single-flight
-lookup. An answer is trusted for at most 1 second, and a lookup that fails or
-takes more than 3 seconds refuses. Re-reading on every admission was rejected
+lookup. An answer is trusted for at most 1 second, counted from when the
+lookup started, not from when the reply arrived. A reply that arrives after
+that second admits nothing, and a lookup that fails or takes more than 3
+seconds refuses. Re-reading on every admission was rejected
 because the UI sends `Origin` on every POST, which would mean two process
 spawns per API call. The 1-second answer coalesces a burst into one read, and
 sharing the origin or turning Funnel on stops admission within about a second.

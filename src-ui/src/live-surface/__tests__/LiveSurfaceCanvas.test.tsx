@@ -100,6 +100,8 @@ interface OpenStream {
   push(record: LiveSurfaceRecord): Promise<void>;
   /** Raw bytes, e.g. part of a large frame still in transit. */
   pushBytes(bytes: Uint8Array): Promise<void>;
+  /** Queue a record without settling it: it is read on the stream's own turn. */
+  enqueue(record: LiveSurfaceRecord): void;
   close(): Promise<void>;
   signal: AbortSignal | undefined;
   url: string;
@@ -143,6 +145,7 @@ function harness(
             signal: init?.signal ?? undefined,
             push: async () => {},
             pushBytes: async () => {},
+            enqueue: () => {},
             close: async () => {},
           });
           return Response.json(options.framesBody ?? { success: false }, {
@@ -168,6 +171,9 @@ function harness(
               controller.enqueue(encodeLiveSurfaceRecord(record));
               await new Promise((resolve) => setTimeout(resolve, 0));
             });
+          },
+          enqueue: (record) => {
+            controller.enqueue(encodeLiveSurfaceRecord(record));
           },
           pushBytes: async (bytes) => {
             await act(async () => {
@@ -1534,6 +1540,87 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     );
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(h.inputs).toHaveLength(1);
+  });
+
+  const AGENT_HOLD = {
+    kind: 'agent',
+    principal: 'agent:coder',
+    sessionId: 's',
+  } as const;
+  const keyboardInput = () =>
+    screen.getByLabelText('Keyboard input for Browser: example.com');
+  /** Every text the page was sent, with the epoch it went at. */
+  const sentText = (h: ReturnType<typeof harness>) =>
+    h.inputs.flatMap((batch) =>
+      (batch.events as { kind: string; text?: string }[])
+        .filter((event) => event.kind === 'text')
+        .map((event) => ({ epoch: batch.epoch, text: event.text })),
+    );
+
+  test('Retry pressed while a change of control is already queued never sends the kept input at the newer epoch', async () => {
+    const h = busyOnce();
+    const stream = await renderLive(h);
+    fireEvent.input(keyboardInput(), { target: { value: 'PAY' } });
+    await flush();
+    expect(sentText(h)).toEqual([{ epoch: 0, text: 'PAY' }]);
+    // The agent's takeover is already on the stream when the person taps
+    // Retry; the stream reads it on its own turn.
+    await act(async () => {
+      stream.enqueue(stateRecord(lease(2, AGENT_HOLD)));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    await flush();
+    expect(sentText(h).filter((sent) => sent.epoch !== 0)).toEqual([]);
+  });
+
+  test('a busy answer that arrives after control changed hands offers no Retry', async () => {
+    let answer!: (reply: Response) => void;
+    const h = harness({
+      inputReply: () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const stream = await renderLive(h);
+    fireEvent.input(keyboardInput(), { target: { value: 'PAY' } });
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+    await stream.push(stateRecord(lease(2, AGENT_HOLD)));
+    answer(busy());
+    await flush();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText(/The host is busy/)).toBeNull();
+    expect(h.inputs).toHaveLength(1);
+  });
+
+  test('a busy drag longer than one batch is kept whole: its release keeps Retry, and Retry sends the gesture once', async () => {
+    const h = busyOnce();
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    const canvas = screen.getByTestId('live-surface-canvas');
+    for (let step = 1; step <= 80; step += 1)
+      fireEvent.pointerMove(canvas, {
+        clientX: 10 + step,
+        clientY: 10,
+        pointerId: 1,
+      });
+    fireEvent.pointerUp(canvas, {
+      clientX: 90,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(
+      h.inputs[1]!.events.map((event) => (event as { type: string }).type),
+    ).toEqual(['down', 'move', 'up']);
   });
 
   test('Retry is not offered once this viewer may no longer send input', async () => {
