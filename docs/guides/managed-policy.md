@@ -80,7 +80,7 @@ Every key is optional; `"updates": {}` changes nothing. Any other key inside
 | Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. |
 | Server update (`/api/system/core-update` and the server's own background check and download) | The check contacts nothing and reports the policy; download, apply and update when idle are refused (403). | A prebuilt archive checks the mirror's copy of its ring's signed manifest. A desktop bundle's or source checkout's server update is refused, because it compares against a git remote the mirror does not serve; the desktop app updates a desktop bundle from the mirror. |
 | `station upgrade` | Refused before anything changes, and exits `1`. | A packaged install runs its installer against the mirror. A source checkout is refused. |
-| The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
+| The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring, or a ring this build does not ship, is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
 
 `limits.updates` governs these four, Station's own update paths. Running
 `install.sh` or `install.ps1` by hand is replacing Station, not updating it,
@@ -128,7 +128,11 @@ Station follows a redirect for a feed, manifest or archive only when it stays
 on the same scheme, host and port as `feedUrl`, at most five times; a redirect
 anywhere else, including a CDN or object storage on another host, is refused.
 This applies to the server's check, `install.sh` under
-`STATION_INSTALL_MIRROR_URL`, and the desktop updater. Without a mirror,
+`STATION_INSTALL_MIRROR_URL`, and the desktop updater. `install.sh` also
+refuses a redirect `Location`, or a download URL, that is not plain ASCII
+text: a backslash, a user name, whitespace or control characters, or `@` or
+`%` in the host part. It then downloads only the canonical form of the URL it
+checked. Without a mirror,
 Station follows the redirects GitHub serves release assets through, as before.
 
 The installer also refuses to download Node.js under a mirror. The service's

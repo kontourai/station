@@ -187,9 +187,10 @@ apply steps, and the desktop app updater. The launcher checks the policy on
 every update or apply request, so a version staged before the policy was
 installed is not applied under it. A nightly-numbered version or a nightly
 runtime channel counts as nightly whatever ring the install state records,
-and when the state records no ring and nothing marks it nightly,
-`allowNightly: false` still refuses, because a missing field must not pass a
-nightly refusal.
+and when the state records no ring, or a ring this build does not ship (only
+stable, preview and nightly are recognized), and nothing marks it nightly,
+`allowNightly: false` still refuses, because a missing or unknown field must
+not pass a nightly refusal.
 The server loads the policy at startup with the rest of the document.
 `station upgrade` and the launcher are separate processes that run without
 the server, so each reads the installed policy when it runs, and an installed
@@ -210,12 +211,17 @@ inode `lstat` saw; on macOS and Linux the file and both its literal and its
 resolved directory chains must be root's and not writable by group or others;
 the read stops one byte past 1 MiB and refuses rather than truncates; a UTF-8
 byte-order mark is dropped; a repeated key is unusable. It honors the test
-override under the same rule as the server. Two differences, both toward
-refusing: bytes that are not UTF-8 are refused (the server substitutes U+FFFD),
-and on Windows, where stable Rust exposes no file index, the identity check
-compares only size and type (the `lstat` link check still refuses links and
-junctions; Windows owners and ACLs are #4524 on both sides). The shell
-enforces only `limits.updates`:
+override under the same rule as the server. Bytes that are not UTF-8 are
+refused (the server substitutes U+FFFD). On Windows, where stable Rust exposes
+no file index, the shell opens the file with `FILE_FLAG_OPEN_REPARSE_POINT` and
+takes the identity from `GetFileInformationByHandle` (volume serial number and
+file index, which Node reports there as device and inode). It opens the path a
+second time the same way to stand in for the `lstat` identity, as libuv's own
+`lstat` does. Both handles must name the same file, neither may be a reparse
+point or a directory, and an identity Windows cannot report refuses the
+policy. Only the macOS and Linux behavior is executed in tests; the Windows
+path is compile-checked only. Windows owners and ACLs are #4524 on both
+sides. The shell enforces only `limits.updates`:
 
 - a policy it cannot use, a `schemaVersion` other than 1, or a
   `limits.updates` with an unknown key or a bad value turns updates **off**,
