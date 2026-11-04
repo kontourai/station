@@ -174,6 +174,7 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
+import { installManagedVoltAgentObservability } from './voltagent-observability.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
@@ -1081,6 +1082,9 @@ export async function initializeRuntime(
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
+  // #4521: before the first agent exists, which would otherwise build
+  // VoltAgent's remote-exporting default for itself.
+  const managedVoltAgentObservability = installManagedVoltAgentObservability();
   const agents = await initializeRuntimeAgents({
     configLoader: deps.configLoader as any,
     logger,
@@ -1250,6 +1254,9 @@ export async function initializeRuntime(
         agents,
         logger: logger as any,
         server: trackedServerFactory,
+        ...(managedVoltAgentObservability
+          ? { observability: managedVoltAgentObservability }
+          : {}),
       }),
   );
   onVoltAgentCreated(voltAgent);
