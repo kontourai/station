@@ -1,0 +1,7 @@
+{
+  "revision": "e4917ab5c060e97c96d924ed39c6de587874d29a",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Integration delta review after main0c61 at e4917ab5c060: branch adds a hidden Inspect an Ensemble palette entry mapping to existing Agents tab, canonical /agents?tab=ensembles roundtrip, and one delegated-child-work row in the representative e2e matrix. Inspected the complete campaign plan's ownership/routes, evidence limits and integration rules against those changes. Existing Agents/Connections and Attention lanes cover these entrypoints; palette aliases remain entrypaths, not separate root navigation. The matrix row explicitly limits fixture SSE/read-model evidence and excludes provider/native/group-accounting/physical-phone acceptance. No campaign prose correction required; issue4506 retains live lane ownership and this source review supplies no journey/epic approval.","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts","docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}
