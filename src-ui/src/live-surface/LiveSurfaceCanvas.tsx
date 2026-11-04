@@ -822,6 +822,14 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === 'touch') {
+      // The first finger of a new gesture: no other finger is down, whatever
+      // this canvas last heard (a finger a host captured, e.g. the float's
+      // drag, never lifts here). Without this a stale finger joins the pinch.
+      if (event.isPrimary) {
+        touchesRef.current.clear();
+        zoomPointersRef.current.clear();
+        pinchRef.current = null;
+      }
       touchesRef.current.set(event.pointerId, {
         x: event.clientX,
         y: event.clientY,

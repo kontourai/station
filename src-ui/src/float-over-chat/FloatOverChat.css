@@ -102,6 +102,12 @@
   border-radius: 0;
 }
 
+/* The pane's codec diagnostic has no room in a player (and a tap's sticky
+   hover would show it over the chat). */
+.float-over-chat__surface .live-surface__codec {
+  display: none;
+}
+
 .float-over-chat__chrome {
   position: absolute;
   right: 0;

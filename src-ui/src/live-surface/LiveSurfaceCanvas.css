@@ -224,13 +224,23 @@
   padding: 4px;
 }
 
+/* Who is in control: a one-line caption over the buttons, so the buttons
+   keep one row (a status inline beside them wraps the bar onto the
+   picture). */
 .live-surface-controls__status {
   color: var(--text-secondary);
-  flex: 0 1 auto;
+  /* Takes the row's width, never sets it: the buttons decide how wide the
+     bar is, and a long status ellipsizes. */
+  contain: inline-size;
+  flex: 1 0 100%;
   font-size: 0.75rem;
-  margin: 0 var(--space-1, 4px);
+  line-height: 1.25;
+  margin: 0;
   min-width: 0;
+  order: -1;
   overflow: hidden;
+  padding: 0 var(--space-1, 4px);
+  text-align: end;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -298,6 +308,11 @@
     env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
   position: fixed;
   z-index: calc(var(--layer-dialog) - 1);
+}
+
+/* Pane diagnostics are not immersive chrome. */
+.live-surface[data-immersive] .live-surface__codec {
+  display: none;
 }
 
 .live-surface[data-immersive] .live-surface__stage {

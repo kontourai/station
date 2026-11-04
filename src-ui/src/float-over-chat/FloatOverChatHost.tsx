@@ -1670,9 +1670,12 @@ function FloatPlayer({
             <LiveSurfaceViewerControls
               id={pillId}
               className="float-over-chat__pill"
-              // As wide as the player allows (inset 4px a side), so the
-              // default player fits one row; a small one wraps.
-              style={{ maxWidth: Math.max(0, frame.width - 8) }}
+              // One row where it can: it may reach left past the player
+              // over the chat (it is brief, and hides itself) rather than
+              // wrap onto the picture.
+              style={{
+                maxWidth: Math.max(0, frame.x + frame.width - FLOAT_EDGE_GAP),
+              }}
               actionClassName="float-over-chat__action"
               label={`Floating ${noun}`}
               status={status}

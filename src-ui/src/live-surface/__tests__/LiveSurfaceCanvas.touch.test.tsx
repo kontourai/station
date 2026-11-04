@@ -134,6 +134,25 @@ describe('pinch zoom', () => {
     ]);
   });
 
+  test('a finger a host captured (it never lifted here) does not join the next pinch', async () => {
+    const h = canvasHarness();
+    await renderCanvas(h, { inputRequiresLease: true });
+    // Finger 1 goes down here, then a host (the float's drag) captures it:
+    // its lift is never delivered to the canvas.
+    fireEvent.pointerDown(canvas(), { ...touch(1, 20, 20), isPrimary: true });
+    // A new gesture: two fresh fingers spread 100 -> 200 about the centre.
+    fireEvent.pointerDown(canvas(), { ...touch(5, 150, 125), isPrimary: true });
+    fireEvent.pointerDown(canvas(), {
+      ...touch(6, 250, 125),
+      isPrimary: false,
+    });
+    fireEvent.pointerMove(canvas(), touch(5, 100, 125));
+    fireEvent.pointerMove(canvas(), touch(6, 300, 125));
+    expect(screen.getByTestId('live-surface-zoom').style.transform).toBe(
+      'translate(-200px, -125px) scale(2)',
+    );
+  });
+
   test('a double tap while zoomed returns to fit and is not input', async () => {
     const h = canvasHarness();
     await renderCanvas(h, {}, lease(0, MY_HOLD));
