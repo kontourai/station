@@ -7,6 +7,7 @@
  */
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { access, mkdir, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import type {
   RegistryItem,
@@ -348,6 +349,91 @@ describe('plugin registries under limits.registries', () => {
     } finally {
       store.close();
     }
+  });
+});
+
+describe('unsignedPackages false through the registry install route', () => {
+  /**
+   * A package host that records every connection: a clone of the package
+   * source would connect (its TLS handshake then fails, which is fine).
+   */
+  async function packageHost() {
+    const requests: string[] = [];
+    const server = createServer((socket) => {
+      requests.push('connection');
+      socket.destroy();
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('no TCP');
+    return {
+      url: `https://127.0.0.1:${address.port}/unsigned-package.git`,
+      requests,
+      close: () =>
+        new Promise<void>((done) => server.close(() => done())),
+    };
+  }
+
+  async function installUnsigned(policy: boolean) {
+    const host = await packageHost();
+    try {
+      const { request } = setup();
+      registerPluginRegistryProvider(
+        {
+          registryKey: 'https://approved.example.com/registry.json',
+          listAvailable: async () => [
+            { id: 'unsigned-package', installed: false },
+          ],
+          listInstalled: async () => [],
+          // The registry's own claim shows the package is unsigned.
+          resolvePackage: async () => ({
+            source: host.url,
+            claim: {
+              packageSchema:
+                'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+              registryId: 'unsigned-package',
+              registryKey: 'https://approved.example.com/registry.json',
+              pluginName: 'unsigned-package',
+              packageVersion: '1.0.0',
+              source: host.url,
+              packageDigest: `sha256:${'0'.repeat(64)}`,
+            },
+          }),
+          install: async () => ({ success: false, message: 'n/a' }),
+          uninstall: async () => ({ success: false, message: 'n/a' }),
+        },
+        'Configured registry',
+      );
+      if (policy) installPolicy({ unsignedPackages: false });
+      const response = await request('/plugins/install', 'POST', {
+        id: 'unsigned-package',
+      });
+      return { response, requests: [...host.requests] };
+    } finally {
+      await host.close();
+    }
+  }
+
+  test('control: without a policy the install goes on to fetch the package', async () => {
+    const { response, requests } = await installUnsigned(false);
+    expect(response.status).not.toBe(403);
+    expect(requests.length).toBeGreaterThan(0);
+  });
+
+  test('an unsigned registry claim is refused with the managed body before any package byte is fetched', async () => {
+    const { response, requests } = await installUnsigned(true);
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      success: false,
+      code: MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+      reason: 'managed-signature-required',
+      retryable: false,
+    });
+    expect(String(body.error)).toBe(
+      "Acme's policy manages unsigned registry packages: it is turned off. Contact your administrator for help.",
+    );
+    expect(requests).toEqual([]);
   });
 });
 

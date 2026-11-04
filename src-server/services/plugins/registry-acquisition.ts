@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import {
   type AppliedRegistryTrustPolicy,
   isRegistryAcquisitionReceipt,
   type PluginRegistryTrust,
   type RegistryAcquisitionReceipt,
 } from '@kontourai/station-contracts/registry-trust';
+import { managedCapabilityDenial } from '../../security/managed-capability-limits.js';
 import {
   type RegistryPackageClaim,
   registryPackageSignaturePayload,
@@ -45,16 +47,26 @@ const REFUSALS = {
     'Registry verification is unavailable for this mutation path. Retained data has not been migrated.',
   'continuity-change':
     'Registry trust continuity changed. Retained installation data requires reviewed migration.',
-  // #4521: `limits.registries.unsignedPackages: false`.
+  // #4521: `limits.registries.unsignedPackages: false`. Answered with the
+  // managed sentence (organization and support link), see refusalMessage.
   'managed-signature-required':
     "Your organization's managed policy requires a registry package signed by a key this Station already trusts.",
 } as const;
+
+/** The subject of the managed sentence for `managed-signature-required`. */
+const MANAGED_SIGNATURE_SUBJECT = 'unsigned registry packages';
+
+function refusalMessage(reason: RegistryAcquisitionRefusalReason): string {
+  return reason === 'managed-signature-required'
+    ? managedCapabilityDenial(MANAGED_SIGNATURE_SUBJECT)
+    : REFUSALS[reason];
+}
 export type RegistryAcquisitionRefusalReason = keyof typeof REFUSALS;
 export class RegistryAcquisitionRefused extends Error {
   constructor(
     readonly reason: RegistryAcquisitionRefusalReason = 'continuity-change',
   ) {
-    super(REFUSALS[reason]);
+    super(refusalMessage(reason));
   }
 }
 export function isRegistryAcquisitionRefusal(error: unknown): boolean {
@@ -86,17 +98,36 @@ export function findRegistryAcquisitionRefusal(
   }
   return null;
 }
-/** Closed outward diagnostic; no claim fields, URLs, PEMs or arbitrary error text. */
+function refusalReason(error: unknown): RegistryAcquisitionRefusalReason {
+  return error instanceof RegistryAcquisitionRefused
+    ? error.reason
+    : 'policy-unavailable';
+}
+
+/**
+ * Closed outward diagnostic; no claim fields, URLs, PEMs or arbitrary error
+ * text. #4521: the managed signature requirement answers like every other
+ * managed refusal (the managed code and sentence), keeping its reason.
+ */
 export function registryAcquisitionRefusalDetails(error: unknown) {
-  const reason: RegistryAcquisitionRefusalReason =
-    error instanceof RegistryAcquisitionRefused
-      ? error.reason
-      : 'policy-unavailable';
+  const reason = refusalReason(error);
+  if (reason === 'managed-signature-required')
+    return {
+      code: MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+      reason,
+      error: refusalMessage(reason),
+      retryable: false as const,
+    };
   return {
     code: 'registry-trust-refused' as const,
     reason,
     error: REFUSALS[reason],
   };
+}
+
+/** The status a route answers a refusal with: 403 when the managed policy refused. */
+export function registryAcquisitionRefusalStatus(error: unknown): 403 | 409 {
+  return refusalReason(error) === 'managed-signature-required' ? 403 : 409;
 }
 export type RegistryPolicyAdmission = Awaited<
   ReturnType<RegistryTrustPolicyAuthority['captureAdmission']>

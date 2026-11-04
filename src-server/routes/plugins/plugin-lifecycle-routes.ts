@@ -91,6 +91,7 @@ import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.j
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
+  registryAcquisitionRefusalStatus,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
@@ -1145,7 +1146,7 @@ export function registerPluginLifecycleRoutes(
             success: false,
             ...registryAcquisitionRefusalDetails(error),
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       if (
         isContextSafetyError(error) ||

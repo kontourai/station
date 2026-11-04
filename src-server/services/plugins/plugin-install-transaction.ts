@@ -5242,6 +5242,12 @@ async function uninstallPluginUnderPublication(
   }
 }
 
+function registryClaimCarriesSignature(claim: unknown): boolean {
+  if (typeof claim !== 'object' || claim === null) return false;
+  const signature = Object.getOwnPropertyDescriptor(claim, 'signature')?.value;
+  return typeof signature === 'object' && signature !== null;
+}
+
 export async function resolvePluginRegistryInstall(
   id: string,
 ): Promise<{ source: string; registryKey: string } | null> {
@@ -5250,6 +5256,16 @@ export async function resolvePluginRegistryInstall(
     if (!match.source) {
       return null;
     }
+    // #4521: under `unsignedPackages: false` an entry whose registry claim
+    // carries no signature is refused here, before any package byte is
+    // fetched. A signed claim is checked against the host's trusted keys
+    // after the fetch (capturePluginRegistryAcquisition), because the
+    // signature covers the package bytes.
+    if (
+      managedPolicyRequiresSignedPackages() &&
+      !registryClaimCarriesSignature(match.claim)
+    )
+      throw new RegistryAcquisitionRefused('managed-signature-required');
     if (!match.provider.registryKey) {
       throw new Error(
         `Plugin registry provider for '${id}' does not expose a stable source identity`,

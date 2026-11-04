@@ -72,6 +72,7 @@ import {
   pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRefusalDetails,
+  registryAcquisitionRefusalStatus,
   registryAcquisitionRevision,
   verifyRetainedRegistryAcquisition,
 } from '../../services/plugins/registry-acquisition.js';
@@ -927,7 +928,7 @@ export function registerPluginInstallRoutes(
             components: [],
             conflicts: [],
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       if (error instanceof PluginPreviewUnsupportedDependencyError) {
         return c.json(
@@ -1107,7 +1108,7 @@ export function registerPluginInstallRoutes(
             success: false,
             ...registryAcquisitionRefusalDetails(error),
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       // #2998: a refused bundle, a newer build's record and unreadable
       // records are closed outcomes, never the generic 500.

@@ -13,6 +13,7 @@ import { observePluginGrantRevisions } from '../../services/plugins/plugin-permi
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
+  registryAcquisitionRefusalStatus,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -644,6 +645,11 @@ export function createRegistryRoutes(
         try {
           registryPlugin = await resolvePluginRegistryInstall(id);
         } catch (error: unknown) {
+          if (isRegistryAcquisitionRefusal(error))
+            return c.json(
+              { success: false, ...registryAcquisitionRefusalDetails(error) },
+              registryAcquisitionRefusalStatus(error),
+            );
           return c.json({ success: false, message: errorMessage(error) }, 500);
         }
         if (registryPlugin) {
@@ -701,6 +707,11 @@ export function createRegistryRoutes(
       try {
         registryPlugin = await resolvePluginRegistryInstall(id);
       } catch (error: unknown) {
+        if (isRegistryAcquisitionRefusal(error))
+          return c.json(
+            { success: false, ...registryAcquisitionRefusalDetails(error) },
+            registryAcquisitionRefusalStatus(error),
+          );
         return c.json({ success: false, message: errorMessage(error) }, 500);
       }
       if (registryPlugin) {
@@ -1481,7 +1492,7 @@ export function createRegistryRoutes(
             success: false,
             ...registryAcquisitionRefusalDetails(error),
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       if (error instanceof PluginInstallationPending)
         return c.json(
