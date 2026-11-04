@@ -460,6 +460,7 @@ function validatePrTemplate(source, findings) {
     'Personal inspection performed',
     '### Agent sessions',
     '<!-- agent-sessions:v1 -->',
+    '<!-- /agent-sessions:v1 -->',
     'Affected public docs and generated sources (exact repository-relative paths):',
     'No documentation impact (explicit reason; do not write "none", "N/A", or leave this blank):',
     'Intentional NOT_VERIFIED platform/UI claims retained or introduced (claim and reason, if applicable):',

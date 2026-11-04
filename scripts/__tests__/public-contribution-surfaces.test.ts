@@ -373,13 +373,17 @@ describe('public contribution surfaces', () => {
       .replace('## Risk and rollback', '## Risk')
       .replace('Personal inspection performed:', 'Prompt used:')
       .replace('### Agent sessions', '### Sessions')
-      .replace('<!-- agent-sessions:v1 -->', '');
+      .replace('<!-- agent-sessions:v1 -->', '')
+      .replace('<!-- /agent-sessions:v1 -->', '');
     const findings = findingsWith({
       '.github/pull_request_template.md': template,
     });
     expect(findings).toContain("PR template is missing '### Agent sessions'.");
     expect(findings).toContain(
       "PR template is missing '<!-- agent-sessions:v1 -->'.",
+    );
+    expect(findings).toContain(
+      "PR template is missing '<!-- /agent-sessions:v1 -->'.",
     );
     expect(findings).toContain(
       "PR template is missing '## Risk and rollback'.",
