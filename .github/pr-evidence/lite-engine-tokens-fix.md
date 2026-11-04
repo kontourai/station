@@ -70,6 +70,9 @@ The runtime test constructs the real telemetry service through the production
 runtime initializer and observes the outgoing next-day ping after changing its
 accounting source. It does not qualify live model execution or native shells.
 
+Final accounting, mounted UI and Node HTTP/PGlite broker confirmation: 105/105
+passed in 136.38 seconds, including the explicit cumulative-decrease example.
+
 ## Local qualification
 
 The six-file green run covered parser/notice, real canonical accounting and
@@ -83,6 +86,9 @@ at 390 pixels on the left and 1440 pixels on the right, light above and dark
 below. All combinations were inspected. Compare the prior
 [notice](lite-engine-tokens-after.png). Component renders do not qualify an
 installed application journey.
+
+Code-health audit attempt was interrupted with SIGTERM and produced no valid
+verdict; no green audit is inferred from that attempt.
 
 NOT_VERIFIED: live-provider accounting completeness, Codex cache inclusivity,
 installed/native behavior, Worker receiver execution, production receiver
