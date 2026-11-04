@@ -2425,7 +2425,9 @@ describe('Station default approval mode under a managed ceiling', () => {
     ceiling();
     try {
       const loader = createMockConfigLoader({ defaultApprovalMode: 'ask' });
-      const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
       for (const raised of ['auto', 'never']) {
         const response = await put(app, { defaultApprovalMode: raised });
         expect(response.status).toBe(403);
@@ -2446,7 +2448,9 @@ describe('Station default approval mode under a managed ceiling', () => {
     ceiling();
     try {
       const loader = createMockConfigLoader({ defaultApprovalMode: 'auto' });
-      const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
       const resent = await put(app, { defaultApprovalMode: 'auto' });
       expect(resent.status, await resent.clone().text()).toBe(200);
       const lowered = await put(app, { defaultApprovalMode: 'ask' });
@@ -2459,7 +2463,9 @@ describe('Station default approval mode under a managed ceiling', () => {
 
   test('control: without a ceiling the operator may raise it to Auto', async () => {
     const loader = createMockConfigLoader({ defaultApprovalMode: 'ask' });
-    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
     const response = await put(app, { defaultApprovalMode: 'auto' });
     expect(response.status, await response.clone().text()).toBe(200);
   });

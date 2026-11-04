@@ -295,8 +295,12 @@ function limitProblem(name: string): string | null {
     : 'unknown limit; this version of Station refuses keys it cannot enforce';
 }
 
+/**
+ * `record[key]` only when it is the record's own member. Not `Object.hasOwn`:
+ * the SDK, which imports this module, compiles against a library without it.
+ */
 function ownValue(record: Record<string, unknown>, key: string): unknown {
-  return Object.hasOwn(record, key) ? record[key] : undefined;
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
 }
 
 /** #4518: every problem with the `limits` object, keys and values. */
