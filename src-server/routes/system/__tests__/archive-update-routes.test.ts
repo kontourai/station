@@ -2623,13 +2623,13 @@ describe('the managed policy’s update limit (#4522)', () => {
       sameOrigin,
     ]);
 
-    for (const escape of [
+    for (const offMirror of [
       'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
       'https://mirror.example.test:8443/station/t0ken/manifest.json',
       'https://cdn.mirror.example.test/manifest.json',
     ]) {
       fetchFn.mockClear();
-      redirectTo(escape);
+      redirectTo(offMirror);
       expect(await json(await check())).toMatchObject({
         releaseCheck: 'unverified',
         updateAvailable: false,

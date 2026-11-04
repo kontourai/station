@@ -863,8 +863,15 @@ describe('staging under the managed update limit (#4522)', () => {
   function stagedLink(state: Record<string, unknown> | null) {
     const policyDir = makeTempDir('station-link-policy-');
     const policy = join(policyDir, 'policy.json');
-    const env = { PATH: process.env.PATH, STATION_MANAGED_POLICY_TEST_FILE: policy };
-    const harness = linkHarness('active', vi.fn(async () => '1.2.0'), env);
+    const env = {
+      PATH: process.env.PATH,
+      STATION_MANAGED_POLICY_TEST_FILE: policy,
+    };
+    const harness = linkHarness(
+      'active',
+      vi.fn(async () => '1.2.0'),
+      env,
+    );
     if (state)
       writeFileSync(
         join(harness.installRoot, '.station-release-state.json'),
@@ -892,7 +899,10 @@ describe('staging under the managed update limit (#4522)', () => {
   ])(
     'off installed after a version was staged: an %s request for it is refused and nothing is requested',
     async (_name, options) => {
-      const harness = stagedLink({ channel: 'stable', releaseChannel: 'stable' });
+      const harness = stagedLink({
+        channel: 'stable',
+        releaseChannel: 'stable',
+      });
       harness.installPolicy({ mode: 'off' });
       const request = writeServiceUpdateRequest(
         harness.installRoot,
