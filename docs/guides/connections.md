@@ -308,9 +308,9 @@ independently, so peer setup cannot prevent Device pairing.
 Peer enrollment presents the receiver's own address as its `Origin`. A receiver
 published through a local Tailscale Serve HTTPS mapping to its own API or
 UI-proxy port trusts that origin with no setting, in every distribution
-(desktop sidecar, service, CLI). This uses the
-[endpoint-suggestion resolver](#suggested-tailscale-endpoints), with stricter
-conditions: the mapping must be on the node's own MagicDNS name, every handler
+(desktop sidecar, service, CLI). This reads the same daemon facts as the
+[endpoint-suggestion resolver](#suggested-tailscale-endpoints), through its own
+read trusted for at most 1 second, with stricter conditions: the mapping must be on the node's own MagicDNS name, every handler
 on that origin must proxy to this Station, Funnel must be off, and no foreground
 `serve` session or raw TCP forward can replace it. Any other Tailscale endpoint
 (for example one that also serves another app), or a receiver older than this
@@ -2160,9 +2160,11 @@ returns at most eight canonical endpoints, or an empty list if the daemon cannot
 establish a mapping. The existing resolver caches reads for 30 seconds and
 checks this node's MagicDNS name and Serve mappings to the Station's configured
 API or UI-proxy port. This proves daemon configuration, not reachability from a
-phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The same cached
-lookup decides which Serve origins the HTTP origin gate trusts as this Station's
-own (see [Saved Station addresses](#saved-station-addresses)). The selected address
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. Which Serve origin is
+trusted as this Station's own (see [Saved Station addresses](#saved-station-addresses))
+does not use this 30-second cache: that admission has its own single-flight
+daemon read, trusted for at most 1 second, and refused when the daemon fails or
+takes more than 3 seconds. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 

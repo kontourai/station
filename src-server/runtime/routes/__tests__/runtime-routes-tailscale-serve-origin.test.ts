@@ -382,7 +382,7 @@ describe('runtime routes: the sign-in origin picker reads the same origin policy
     });
   }
 
-  test('offers this Station\'s own Serve origin as selectable with no ALLOWED_ORIGINS entry', async () => {
+  test("offers this Station's own Serve origin as selectable with no ALLOWED_ORIGINS entry", async () => {
     const uiPort = nextPort + 5_000;
     process.env.STATION_UI_PORT = String(uiPort);
     tailscale.status = STATUS_JSON;

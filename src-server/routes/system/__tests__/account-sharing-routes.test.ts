@@ -5,9 +5,9 @@ import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
+import { createStationOriginPolicy } from '../../../security/station-browser-origins.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
-import { createStationOriginPolicy } from '../../../security/station-browser-origins.js';
 import { accountSharingOriginOptions } from '../../../services/identity/account-sharing-origins.js';
 import {
   accountSharingSettingPath,

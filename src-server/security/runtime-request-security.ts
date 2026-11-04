@@ -1,4 +1,3 @@
-import type { StationOriginPolicy } from './station-browser-origins.js';
 import {
   CLIENT_ORIGIN_HEADER,
   CLIENT_ORIGIN_VERSION,
@@ -17,6 +16,7 @@ import {
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 import { isOperatorSessionRead } from '../services/identity/operator-sessions.js';
 import type { ClientProtocolPolicy } from './client-protocol-admission.js';
+import type { StationOriginPolicy } from './station-browser-origins.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';

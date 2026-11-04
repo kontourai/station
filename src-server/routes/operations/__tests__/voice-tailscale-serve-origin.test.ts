@@ -125,7 +125,7 @@ async function upgrade(port: number, origin: string): Promise<string> {
 }
 
 describe('voice websocket: one origin policy with the HTTP API', () => {
-  it('admits an upgrade from this Station\'s own Serve origin with no ALLOWED_ORIGINS entry', async () => {
+  it("admits an upgrade from this Station's own Serve origin with no ALLOWED_ORIGINS entry", async () => {
     const serverPort = nextServerPort++;
     tailscale.status = STATUS_JSON;
     tailscale.serve = serveJson(serverPort);

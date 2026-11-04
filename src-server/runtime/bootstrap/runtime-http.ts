@@ -52,7 +52,6 @@ import {
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
 import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
-import { createStationOriginPolicy } from '../../security/station-browser-origins.js';
 import { outsideAgentTokenAudience } from '../../security/outside-agent-token-audience.js';
 import {
   type ExternalSurfaceCapabilityRule,
@@ -85,6 +84,7 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import { createStationOriginPolicy } from '../../security/station-browser-origins.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   transferVerifiedNativeVirtualApplicationRequest,

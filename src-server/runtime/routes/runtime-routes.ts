@@ -654,8 +654,8 @@ import {
 } from '../../security/runtime-request-security.js';
 import {
   createStationOriginPolicy,
-  stationOriginPolicy,
   type StationOriginPolicy,
+  stationOriginPolicy,
 } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';

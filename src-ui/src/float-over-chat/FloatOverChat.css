@@ -160,7 +160,7 @@
 
 /* Who is in control, as the collapsed dot said it: a mark, not a line. */
 .float-over-chat__pill-status {
-  background: var(--text-muted);
+  background: var(--k-text-muted);
   border-radius: 50%;
   display: block;
   flex: none;
@@ -170,11 +170,11 @@
 }
 
 .float-over-chat__pill-status[data-tone="agent"] {
-  background: var(--warning-text, var(--accent-primary));
+  background: var(--warning-text, var(--k-action));
 }
 
 .float-over-chat__pill-status[data-tone="you"] {
-  background: var(--accent-primary);
+  background: var(--k-action);
 }
 
 .float-over-chat__handle {

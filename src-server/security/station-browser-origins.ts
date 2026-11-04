@@ -148,9 +148,9 @@ export function createCredentialFreeOriginVerifier(options: {
     const policy = options.origins;
     void (async () =>
       policy !== undefined &&
-      (await Promise.all(presented.map((origin) => policy.admits(origin)))).every(
-        Boolean,
-      ))().then(
+      (
+        await Promise.all(presented.map((origin) => policy.admits(origin)))
+      ).every(Boolean))().then(
       (admitted) => {
         if (admitted) {
           callback(true);
