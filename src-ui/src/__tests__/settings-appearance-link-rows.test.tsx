@@ -26,6 +26,7 @@ function renderThemeRow(values: Record<string, unknown>) {
       value={{
         status: 'account',
         saving: false,
+        retrying: false,
         waitingForConnection: false,
         error: false,
         conflict: false,
