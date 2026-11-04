@@ -1466,6 +1466,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   ...[
     '/api/projects/:slug/terminal-sessions',
     '/api/projects/:slug/terminal-sessions/:terminalId',
+    // The script runner's list of the binding's package scripts (#3994).
+    '/api/projects/:slug/terminal-scripts',
   ].flatMap((prefix) =>
     READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -1481,6 +1483,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   ...(
     [
       { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },
+      // Running a package script starts a process (#3994).
+      { method: 'POST', prefix: '/api/projects/:slug/terminal-scripts' },
       {
         method: 'POST',
         prefix: '/api/projects/:slug/terminal-sessions/:terminalId/input',
@@ -1700,6 +1704,29 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
     personalTokens: 'refused',
   },
+  // #3994: the commands agents asked to run in a conversation. Listing them
+  // shows a command and its directory, the observe tier; approving one runs
+  // it, and declining answers the same request, both the operate tier.
+  {
+    id: '/api/terminal/runs:GET:terminal-observe',
+    method: 'GET',
+    prefix: '/api/terminal/runs',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  ...['approve', 'decline'].map(
+    (action): PairingScopeRouteRule => ({
+      id: `/api/terminal/runs/:runId/${action}:POST:terminal-operate`,
+      method: 'POST',
+      prefix: `/api/terminal/runs/:runId/${action}`,
+      exact: true,
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
   {
     id: '/api/terminal/history:DELETE:terminal-operate',
     method: 'DELETE',
@@ -3698,6 +3725,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/job-proposals',
     },
+    // `terminal_run` and `terminal_read` (#3994): internal-only at the route
+    // (404 otherwise), on the verified caller's own conversation. A request
+    // runs nothing until a person approves it on `/api/terminal/runs`.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/terminal-runs',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/terminal-runs/:runId',
+    },
     // The person's own view of what an agent scheduled in a conversation, and
     // their Cancel and Decline. Deliberate family inheritance: the GET is
     // gated on reading the conversation, the POSTs on sending to it (the same
@@ -4249,6 +4287,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // tier, never weaker — locality changes redaction, not who may hit
     // the route.
     { method: 'GET', path: '/api/diagnostics/logs' },
+    // #4470: prepares an in-app troubleshooting conversation. It writes one
+    // owner-only run under this Station's own cache and returns bounded,
+    // redacted facts about this Station; it reads no other Station and
+    // changes no configuration. A mutating verb, so the family's
+    // orchestration:operate tier applies; read-only devices are refused.
+    // The handler refuses every agent caller itself.
+    { method: 'POST', path: '/api/diagnostics/troubleshoot/prepare' },
     { method: 'GET', path: '/api/diff-comments' },
     { method: 'GET', path: '/api/environments/ssh' },
     { method: 'POST', path: '/api/environments/ssh' },

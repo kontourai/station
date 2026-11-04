@@ -8,8 +8,10 @@ All delegation creates require `clientTurnId`. The separate
 [CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
 binds authenticated user/tenant/principal and verified calling Session to the
 request kind, key and input. Each intended request needs a unique key. Completed
-receipts replay for seven wall-clock days, then expire. Dead unmarked requests
-reclaim immediately, including resumed Sessions. A starting mark without confirmed
+receipts replay for seven days of elapsed host uptime, then expire. Wall-clock
+jumps do not change that duration; uptime resets conservatively preserve the
+remaining window. Dead unmarked requests reclaim immediately, including changed
+input and resumed Sessions; live, unknown or marked owners still refuse changed input. A starting mark without confirmed
 acceptance is indeterminate within its seven-day window. At expiry, the same key
 can reclaim only when no durable Session start record exists. Otherwise a compact
 tombstone keeps refusing it with its original Session reference.

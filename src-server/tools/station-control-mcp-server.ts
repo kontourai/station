@@ -50,6 +50,8 @@ import {
 import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
 import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
 import { registerTaskThreadTools } from './station-control-task-thread-tools.js';
+import { registerTerminalTools } from './station-control-terminal-tools.js';
+import { registerTroubleshootTools } from './station-control-troubleshoot-tools.js';
 import { registerWalkthroughTools } from './station-control-walkthrough-tools.js';
 import { registerWorkClaimTools } from './station-control-work-claim-tools.js';
 import { registerWorkDiscoveryTools } from './station-control-work-discovery-tools.js';
@@ -443,6 +445,7 @@ export function createSelectedStationControlMcpServer(
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerScheduleTools(registry);
+  registerTerminalTools(registry);
   registerPlatformTools(registry);
   registerAssessmentTools(registry);
   registerBasisTools(registry);
@@ -457,6 +460,8 @@ export function createSelectedStationControlMcpServer(
   registerNotifyTools(registry);
   registerWorkloadTools(registry);
   registerHtmlReplyTools(registry);
+  // #4470: the Station Assistant's troubleshooting playbook and report draft.
+  registerTroubleshootTools(registry);
   registerDeclarePullRequestTools(registry);
   // Epic #4003: the caller's own Task brief.
   registerTaskBriefTools(registry);

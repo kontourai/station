@@ -3389,7 +3389,8 @@ returns HTTP `409` (`client_turn_input_conflict` for foreground,
 `create_request_conflict` for delegation).
 
 A live owner holds its request lock. After its owner dies, a reservation with
-no starting mark is reclaimable immediately under the same key and input, even
+no starting mark is reclaimable immediately under the same key, including changed
+input, even
 when it targets an existing Session. The absence of this request's mark proves
 it did not invoke. Admission also frees abandoned unmarked reservations under
 other keys, without consulting Session existence. Station durably marks `starting` immediately before session
@@ -3404,19 +3405,29 @@ only if `hasSessionStartRecord` proves no durable start exists. A confirmed type
 rejection recorded through the request's rejection capability clears the mark.
 The original typed refusal is preserved.
 
-Completed receipts expire seven wall-clock days after completion; reusing one of
+Completed receipts expire after seven days of elapsed host uptime from completion; reusing one of
 those keys later is a new request. An expired starting claim is reclaimable only
 when `hasSessionStartRecord` finds no durable start. For the key being retried,
 Station retains its reserved Session identity and input proof for that reclaim.
 Otherwise it becomes a compact tombstone and keeps refusing the key with the
 original Session reference. A live or unverifiable owner prevents expiry while
-its request is running. Forward clock jumps can shorten elapsed retention.
+its request is running. The ledger persists remaining duration and the last uptime
+observation under its mutation lock. Forward and backward wall-clock jumps do
+not change the window. An uptime reset preserves the remaining duration without
+credit for the unobserved interval; repeated reboots can conservatively extend
+protection. Legacy timestamped claims start a full window on first observation;
+unfinished claims without a start time remain indeterminate. This clock is
+host-local, like the process-owner locks; it does not establish cross-host custody.
+The clock protection requires a current writer; older writers retain their
+wall-clock behavior. Without a durable Session start record, expiry can allow the
+same key to repeat an earlier effect whose record was lost.
 
 Tombstones are pruned only when a new admission would exceed the 1,024-record or
 4 MiB budget, oldest first. Live claims and completed receipts within their
 window are never pruned to admit a new request. If eligible tombstones cannot
 free enough capacity, HTTP 429 `create_request_capacity` refuses before effects.
-Each pending request reserves 3 KiB. An invalid or oversized returned receipt
+Each pending request reserves 3 KiB for its receipt plus bounded ledger
+bookkeeping, including retention observations. An invalid or oversized returned receipt
 remains indeterminate rather than overflowing storage.
 
 A pruned tombstone no longer protects its key. Retain the original Session
@@ -6334,9 +6345,25 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
 - `POST /:terminalId/restart` takes `{bindingKey?, subdirectory?}` and is the
   explicit restart the socket's `restart` command performs: same id, a new
   journal segment, a directory confined to the binding. It returns the record
-  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Agent
-  command sessions (`kind: "command"`) and server-owned launches are refused
-  (403).
+  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Command
+  sessions (`kind: "command"`) other than package scripts, and server-owned
+  launches, are refused (403); a script is resolved again by name.
+- `GET /api/projects/:slug/terminal-scripts?bindingKey=project`
+  (`terminal:observe`) lists the binding directory's `package.json` scripts,
+  `{packageManager, scripts: [{name, command}]}`, in file order; at most 200,
+  names starting with `-` omitted. `packageManager` is the `packageManager`
+  field's tool, else the one whose lockfile is beside it, else npm.
+- `POST /api/projects/:slug/terminal-scripts` (`terminal:operate`) takes
+  `{bindingKey?, script}` and runs that script by name as a command session
+  (`launch: {kind: "script", name}`): `<packageManager> run <name>` in the
+  binding's directory, with a 16 MiB output cap and no PTY. A name the
+  `package.json` does not declare now, or a package manager that is not
+  installed, is refused with 409 and the reason.
+
+Deleting a Project (`DELETE /api/projects/:slug`) ends its running terminal
+sessions in every binding, keeping their records and journals until retention
+expires them. A session that will not end is logged and does not fail the
+delete.
 
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
@@ -6363,7 +6390,8 @@ per-terminal and total sizes are the `terminalHistory*`
 Core session retention reserves each record's per-terminal history against the
 total, with 64 MiB of raw tail payload and 32 retained records as constructor
 budgets. Agent command sessions (`kind: 'command'`) have a separate pool of 16
-records and only expire one another. Ended/failed sessions eligible for the caller's operate authority
+records and only expire one another; a person's package script runs are
+retained with shells. Ended/failed sessions eligible for the caller's operate authority
 expire when a new slot is needed or once older than the maximum age; active
 sessions are pinned. Expired session ids are refused.
 
@@ -6377,6 +6405,55 @@ hosted Stations.
 The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
+
+### Agent terminal runs
+
+`terminal_run` and `terminal_read` (#3994) let an agent run a shell command in
+its chat's thread binding, and every run waits for a person: approving one
+command never approves the next (owner decision: ask each time, no
+remembered approval).
+
+The agent leaves under `/api/orchestration/station-control/terminal-runs` are
+internal only (404 to anything but Station's own station-control principal)
+and act for the verified caller's own conversation:
+
+- `POST` takes `{command, subdirectory?}` (a command of at most 8,192
+  characters; a relative directory). The run's directory is resolved when it
+  is requested, from the session's thread binding read as its recorded
+  owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
+  outside a Project is refused (409 `terminal_run_needs_project`), as is one
+  with no recorded owner (409 `terminal_run_owner_required`), and a fourth
+  waiting request (409 `terminal_run_limit_reached`). It answers
+  `{runId, state: "needs_approval", command, cwd, …}` at once.
+- `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
+  `waitSeconds` (0–50) waits for its state to change first. Once it started,
+  the answer carries one page of output (256 KiB) after `fromSeq`, `nextSeq`,
+  `lastSeq`, `reset` and `outputCapped`, plus `exitCode` and `signal` when it
+  has ended. Another conversation's run is 404.
+
+States are `needs_approval`, `declined`, `expired` (unanswered for ten
+minutes), `starting`, `running`, `exited` and `failed`. Requests are kept in
+memory: a Station restart forgets them.
+
+The person's leaves are on personal hosts only, refuse a request that may be an
+agent's, and require the operator (in person or on their own device):
+
+- `GET /api/terminal/runs?conversationId=` (`terminal:observe`, and reading the
+  conversation) lists its runs that wait, are starting or run, and approved
+  runs that exited or failed in the last minute.
+- `POST /api/terminal/runs/:runId/approve` (`terminal:operate`, and sending to
+  the conversation) claims that one request and starts it as a command session
+  (`launch: {kind: "run", command}`) in the `thread:<session id>` binding, as
+  the approving person: `/bin/sh -c <command>` (`cmd.exe /d /s /c` on
+  Windows). The person's terminal authority over the binding decides, and a
+  directory that no longer resolves to the one shown is refused (409, "Its
+  directory has changed"). A settled request answers 409
+  `terminal_run_settled`.
+- `POST /api/terminal/runs/:runId/decline` (`terminal:operate`) settles it
+  without running anything.
+
+The run's session can be ended like any other with
+`DELETE /api/projects/:slug/terminal-sessions/:id?bindingKey=thread:<id>`.
 
 ### Terminal socket (operator transport)
 

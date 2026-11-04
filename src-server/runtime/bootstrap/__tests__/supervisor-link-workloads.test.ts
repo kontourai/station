@@ -16,6 +16,7 @@ import {
 class FakeChannel extends EventEmitter {
   readonly env: NodeJS.ProcessEnv = { STATION_SUPERVISOR_IPC: '1' };
   connected = true;
+  writable = true;
   readonly sent: Array<{ type: string } & Record<string, unknown>> = [];
   readonly exit = vi.fn((_code: number) => {});
   readonly send = vi.fn(
@@ -27,7 +28,7 @@ class FakeChannel extends EventEmitter {
     ) => {
       this.sent.push(message);
       callback?.(null);
-      return true;
+      return this.writable;
     },
   );
 }
@@ -73,29 +74,89 @@ describe('supervisor workloads on the core link (protocol 1.3)', () => {
     installListenerLink(null);
   });
 
-  it('answers a request, and refuses with the workload error code', async () => {
-    const { channel, link } = await promoted(['workloads']);
-    const listed = link.requestWorkload({ op: 'list' });
-    const failed = link.requestWorkload({ op: 'attach', workloadId: 'gone' });
-    const [first, second] = channel.sent.filter(
-      (m) => m.type === 'workload.request',
-    );
-    channel.emit('message', {
-      type: 'workload.response',
-      id: second?.id,
-      ok: false,
-      code: 'not-found',
-      message: 'no such workload',
-    });
-    channel.emit('message', {
-      type: 'workload.response',
-      id: first?.id,
-      ok: true,
-      result: [],
-    });
-    await expect(listed).resolves.toEqual([]);
-    await expect(failed).rejects.toMatchObject({ code: 'not-found' });
-  });
+  it.each([true, false])(
+    'answers accepted requests when IPC is writable=%s, and preserves workload errors',
+    async (writable) => {
+      const { channel, link } = await promoted(['workloads']);
+      channel.writable = writable;
+      const listed = link.requestWorkload({ op: 'list' });
+      const failed = link.requestWorkload({ op: 'attach', workloadId: 'gone' });
+      const results = Promise.allSettled([listed, failed]);
+      const [first, second] = channel.sent.filter(
+        (m) => m.type === 'workload.request',
+      );
+      channel.emit('message', {
+        type: 'workload.response',
+        id: second?.id,
+        ok: false,
+        code: 'not-found',
+        message: 'no such workload',
+      });
+      channel.emit('message', {
+        type: 'workload.response',
+        id: first?.id,
+        ok: true,
+        result: [],
+      });
+      await expect(results).resolves.toEqual([
+        { status: 'fulfilled', value: [] },
+        {
+          status: 'rejected',
+          reason: expect.objectContaining({ code: 'not-found' }),
+        },
+      ]);
+      expect(
+        channel.sent.filter((m) => m.type === 'workload.request'),
+      ).toHaveLength(2);
+    },
+  );
+
+  it.each([true, false])(
+    'rejects an IPC send-callback failure with writable=%s',
+    async (writable) => {
+      const { channel, link } = await promoted(['workloads']);
+      let flushed: ((error: Error | null) => void) | undefined;
+      channel.send.mockImplementationOnce(
+        (_message, _handle, _options, callback) => {
+          flushed = callback;
+          return writable;
+        },
+      );
+      const settled = vi.fn();
+      const pending = link.requestWorkload({ op: 'list' }).then(
+        (result) => settled({ result }),
+        (error: unknown) => settled({ error }),
+      );
+      try {
+        expect(flushed).toBeTypeOf('function');
+        const cause = new Error('IPC write failed');
+        flushed?.(cause);
+        await Promise.resolve();
+        expect(settled).toHaveBeenCalledWith({
+          error: expect.objectContaining({ code: 'unavailable', cause }),
+        });
+      } finally {
+        channel.connected = false;
+        channel.emit('disconnect');
+        await pending;
+      }
+    },
+  );
+
+  it.each(['closed', 'throw'])(
+    'refuses a workload request when the IPC channel is %s',
+    async (failure) => {
+      const { channel, link } = await promoted(['workloads']);
+      if (failure === 'closed') channel.connected = false;
+      else
+        channel.send.mockImplementationOnce(() => {
+          throw new Error('IPC send threw');
+        });
+      await expect(link.requestWorkload({ op: 'list' })).rejects.toMatchObject({
+        code: 'unavailable',
+      });
+    },
+  );
 
   it('delivers an event the supervisor sent after a reply only once the requester has seen that reply', async () => {
     const { channel, link } = await promoted(['workloads']);

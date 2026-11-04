@@ -56,7 +56,7 @@ export async function* journalAgentStreamPrefix<T>(
         due = new Promise((resolve) => {
           timer = setTimeout(() => resolve('flush'), 16);
         });
-      if (pending.length >= 128 || bytes >= 64 * 1024) yield* await flush();
+      if (pending.length >= 1024 || bytes >= 64 * 1024) yield* await flush();
     }
     yield* await flush();
   } finally {

@@ -34,6 +34,10 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `get_troubleshoot_playbook` and `draft_troubleshoot_report` for an in-app
+  troubleshooting conversation: the bundled playbook, and a redacted,
+  bounded `troubleshoot-report.yml` issue link. Both are pure and send
+  nothing; see [troubleshoot with an agent](../design/troubleshoot-in-app.md)
 - `workload_status` for the calling Session's own workload memory budget and
   usage (limit, current, peak, swap, OOM kills), or why no budget is enforced;
   see [Linux service workload budgets](development.md#linux-service-workload-budgets)
@@ -146,6 +150,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `terminal_run` and `terminal_read` to run a shell command in a terminal in
+  the chat's working directory and read its exit and output. The person sees
+  the exact command and directory and approves or declines each run; no
+  approval carries over to the next. Personal hosts only, for a chat in a
+  Project ([agent terminal runs](../reference/api.md#agent-terminal-runs))
 
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass

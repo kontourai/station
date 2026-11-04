@@ -1375,6 +1375,14 @@ export interface StationCapabilityFlags {
    * older host is told apart from a Session that is not found.
    */
   sessionPersonReads?: boolean;
+  /**
+   * #4470: `POST /api/diagnostics/troubleshoot/prepare` prepares an in-app
+   * troubleshooting conversation on the Station Assistant, and the
+   * station-control tools `get_troubleshoot_playbook` and
+   * `draft_troubleshoot_report` exist. Clients offer "Troubleshoot with an
+   * agent" only on this flag.
+   */
+  troubleshootPrepare?: boolean;
 }
 
 export interface PublicStationHandshake {

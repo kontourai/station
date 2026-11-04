@@ -100,7 +100,21 @@
 
     "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
 
-    "src-server/services/orchestration/report-rounds-publication.ts"
+    "src-server/services/orchestration/report-rounds-publication.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts",
+
+    "packages/agent-runtime/src/turn-references.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
   ],
 
   "checks": [

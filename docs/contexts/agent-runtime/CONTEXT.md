@@ -195,3 +195,6 @@ tool refusal. The new Station adapter conformance exercises actual native loops
 with a scripted provider, separately from those helpers. It is not live-provider,
 physical-crash, cache-benefit or release qualification. Text input is the preview's
 supported admission form; unavailable configuration holds recovery.
+
+
+The opt-in agent-turn writer uses packed delta/frame blocks and shared native text while retaining logical frame and provider chunk boundaries. Writer 12 tracks typed body references under a private connection permit. Indexed expiry/garbage queues drain in bounded idle callbacks after admission or settlement, pausing while any turn is running. FULL SQLite commits remain synchronous, so the cooperative work budget is not a hard wall-clock guarantee. Every terminal state retains replay for seven days, then a compact identity tombstone synthesizes the refusing expiry frames. Uncertain nonterminal turns retain their evidence. See the private package README for migration, work budgets, typed corruption/capacity and real-stream steer replay contracts.

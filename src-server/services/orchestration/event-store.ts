@@ -7266,7 +7266,7 @@ export class EventStore {
   }
 
   /** A retry-capable publisher must leave the loop free for locked room-worker authorization. */
-  withImmediateWriteAttempt(publish: () => boolean): boolean {
+  withImmediateWriteAttempt<T>(publish: () => T): T {
     this.assertNoOuterTransactionForPublication();
     const { timeout } = this.db.prepare('PRAGMA busy_timeout').get() as {
       timeout: number;

@@ -1,6 +1,8 @@
 import {
   closeProjectTerminal,
+  listProjectTerminalScripts,
   openOrAdoptProjectShell,
+  runProjectTerminalScript,
   type TerminalSessionRecord,
 } from '@kontourai/station-sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -118,6 +120,8 @@ type TabPresentation = {
   label?: string;
   mode?: TerminalTab['mode'];
   agentSlug?: string;
+  /** An ended script's tab the reader closed. */
+  dismissed?: true;
 };
 type Presentation = Readonly<Record<string, TabPresentation>>;
 
@@ -163,7 +167,7 @@ function shellNumbers(
   const numbers = new Map<string, number>();
   let place = 0;
   for (const record of records) {
-    if (record.launch?.kind === 'agent') continue;
+    if (record.launch?.kind === 'agent' || record.kind === 'command') continue;
     place += 1;
     numbers.set(record.terminalId, record.ordinal ?? place);
   }
@@ -180,11 +184,40 @@ function sessionTabs(
   presentation: Presentation,
 ): TerminalTab[] {
   const numbers = shellNumbers(records);
+  // Each script's newest run, so earlier ended runs do not pile up as tabs.
+  const latestRun = new Map<string, string>();
+  for (const record of records)
+    if (record.launch?.kind === 'script')
+      latestRun.set(record.launch.name, record.terminalId);
   return records.flatMap((record): TerminalTab[] => {
     const agent = record.launch?.kind === 'agent' ? record.launch : undefined;
-    if (record.status !== 'running' && record.status !== 'starting') return [];
     const shown = presentation[record.terminalId] ?? {};
     const id = shown.tabId ?? `term-${record.terminalId}`;
+    // A script's run stays after it ends, with how it ended, until it is
+    // closed or the script runs again.
+    if (record.launch?.kind === 'script')
+      return shown.dismissed ||
+        (record.status !== 'running' &&
+          record.status !== 'starting' &&
+          latestRun.get(record.launch.name) !== record.terminalId)
+        ? []
+        : [
+            {
+              id,
+              type: 'script',
+              label: shown.label ?? record.launch.name,
+              terminalId: record.terminalId,
+              status: record.status,
+              ...(record.exitCode !== undefined && {
+                exitCode: record.exitCode,
+              }),
+            },
+          ];
+    if (
+      record.kind === 'command' ||
+      (record.status !== 'running' && record.status !== 'starting')
+    )
+      return [];
     if (agent)
       return [
         {
@@ -254,7 +287,31 @@ export function CodingTerminalPane({
     queryFn: () => store.list({ projectId: projectId!, bindingKey: 'project' }),
     enabled: Boolean(projectId),
     retry: false,
+    // A running script's tab shows how it ended once it does.
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (record) =>
+          record.launch?.kind === 'script' &&
+          (record.status === 'running' || record.status === 'starting'),
+      )
+        ? 2_000
+        : false,
   });
+  // The script runner: the Project's package scripts. A host without the
+  // runner answers none.
+  const scripts = useQuery({
+    queryKey: [
+      'coding-terminal-scripts',
+      apiBase,
+      connectionId ?? '',
+      projectSlug,
+    ],
+    queryFn: () => listProjectTerminalScripts(apiBase, projectSlug),
+    enabled: Boolean(projectId),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const projectScripts = scripts.data?.scripts ?? [];
   const listed = sessions.isSuccess;
   const records = sessions.data ?? [];
   const serverTabs = sessionTabs(records, presentation);
@@ -297,6 +354,7 @@ export function CodingTerminalPane({
   const [closeErrors, setCloseErrors] = useState<
     Readonly<Record<string, string>>
   >({});
+  const [scriptError, setScriptError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -398,9 +456,42 @@ export function CodingTerminalPane({
   );
 
   const openNewTerminal = () => {
-    if (shellIsTheOnlyKind) addTab('shell');
+    if (shellIsTheOnlyKind && projectScripts.length === 0) addTab('shell');
     else setShowNewTerminal(true);
   };
+
+  const runScript = async (name: string) => {
+    setScriptError(null);
+    try {
+      const { terminalId } = await runProjectTerminalScript(
+        apiBase,
+        projectSlug,
+        name,
+      );
+      if (projectId)
+        queryClient.setQueryData<TerminalSessionRecord[]>(
+          sessionsKey,
+          (current = []) => [
+            ...current.filter((record) => record.terminalId !== terminalId),
+            {
+              terminalId,
+              projectId,
+              bindingKey: 'project',
+              status: 'running',
+              createdAt: Date.now(),
+              kind: 'command',
+              launch: { kind: 'script', name },
+            },
+          ],
+        );
+      setActiveTabId(`term-${terminalId}`);
+      writeClosedLastTerminal(projectSlug, false);
+      void queryClient.invalidateQueries({ queryKey: sessionsKey });
+    } catch (error) {
+      setScriptError(`${name} did not start: ${userFacingErrorMessage(error)}`);
+    }
+  };
+
   // An open, empty terminal is a shell waiting to be asked for; it opens
   // one (U7). Once per mount, and never while the panel is closed, the
   // kinds are still unknown, or the server has not yet said which sessions
@@ -419,7 +510,7 @@ export function CodingTerminalPane({
     if (tabs.length > 0 || readClosedLastTerminal(projectSlug)) return;
     // The server opens it, or answers with the shell another view or device
     // opened at the same moment: one shell, not two. A host without that
-    // answer opens through the terminal socket as before.
+    // answer gets a local tab, which opens its shell through the socket.
     // Not cancelled by a re-render: once asked, the server's shell exists and
     // its tab must appear.
     void openOrAdoptProjectShell(apiBase, projectSlug, { cols: 80, rows: 24 })
@@ -506,9 +597,14 @@ export function CodingTerminalPane({
     });
     try {
       // A tab that never opened a session (or a chat-mode agent tab) has
-      // nothing on the server to end.
-      if (tab.terminalId)
+      // nothing on the server to end, and neither has an ended script.
+      const ended =
+        tab.type === 'script' &&
+        (tab.status === 'exited' || tab.status === 'failed');
+      if (tab.terminalId && !ended)
         await closeProjectTerminal(apiBase, projectSlug, tab.terminalId);
+      // An ended script stays listed by the server; this view stops showing it.
+      if (tab.type === 'script') updateTab(tab, { dismissed: true });
       removeClosedTab(tab);
     } catch (error) {
       setCloseErrors((current) => ({
@@ -584,6 +680,11 @@ export function CodingTerminalPane({
         onCloseTab={closeTab}
         closingTabIds={closingTabIds}
         closeErrors={closeErrors}
+        // The tab's badge reads the server's record of the new run.
+        onTabRestarted={() =>
+          void queryClient.invalidateQueries({ queryKey: sessionsKey })
+        }
+        notice={scriptError}
         onToggleTabMode={toggleTabMode}
         canTogglePTY={canTogglePTY}
         onOpenNewTerminal={openNewTerminal}
@@ -611,8 +712,11 @@ export function CodingTerminalPane({
       {showNewTerminal && (
         <NewTerminalModal
           connections={acpConnections || []}
+          scripts={projectScripts}
           onSelect={(type, slug, connectionId) => {
-            addTab(type, slug, connectionId);
+            if (type === 'script') {
+              if (slug) void runScript(slug);
+            } else addTab(type, slug, connectionId);
             setShowNewTerminal(false);
           }}
           onClose={() => setShowNewTerminal(false)}

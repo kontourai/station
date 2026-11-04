@@ -167,6 +167,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // One owned Node contender exercises cross-process home exclusion and bounded cleanup.
   'src-server/services/orchestration/__tests__/report-rounds-home-exclusion.test.ts',
 
+  // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
+  'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
   'src-server/services/identity/__tests__/account-sharing-setting.test.ts',
   // Isolated repair caller owns real Git children, private journals, and an actual Task graph.
@@ -212,6 +214,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Command sessions (output cap, exit, ACP agent terminals) and restart of
   // a real PTY, in private homes; no ports or host state.
   'src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts',
+  // Agent terminal runs and package scripts as real command sessions, in
+  // private homes; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-runs.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -236,6 +241,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Four bounded SIGKILL owner probes; private SQLite per child, no speed assertion.
+  'packages/agent-runtime/src/__tests__/turn-prefix-process.test.ts',
   // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
   'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',

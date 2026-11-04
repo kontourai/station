@@ -823,8 +823,9 @@ console.log(store.getActive()?.url); // 'http://192.168.1.10:3141'
 
 For a remote connection, Station Connect first fetches the public handshake
 without authorization. It then uses the saved credential for protected HTTP
-and fetch-SSE requests and the versioned first application frame for terminal
-and voice WebSockets. A `401` returns the connection to its masked
+and fetch-SSE requests and the versioned first application frame for voice
+WebSockets. The terminal socket is admitted by a single-use ticket minted over
+authenticated HTTP instead. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
 credential recovery is tracked in #303.
 
@@ -854,10 +855,11 @@ authority. Protocol refusals use a separate direct-socket-peer audit budget
 cap. Exhaustion suppresses only audits while every refusal receives 400/426.
 Refusals neither consult nor consume the authentication budget.
 The separate native Rust pairing exchange and direct fetch callers
-remain undeclared; legacy terminal/voice WebSockets are outside this HTTP check.
-The additive personal-operator terminal gateway runs its credential through
-HTTP admission; it has not acquired a Connect client or remote-device route.
-See the [terminal boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
+remain undeclared; the voice WebSocket is outside this HTTP check.
+The terminal socket's ticket is minted through ordinary HTTP admission
+(`POST /api/terminal/tickets`) and admits the operator's own paired devices;
+the browser broker route stays refused. See the
+[operator-device admission](../design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.

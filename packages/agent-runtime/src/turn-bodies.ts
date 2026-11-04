@@ -1,6 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { hash } from './encoding.js';
+import {
+  agentBodyRefs,
+  decodeAgentBody,
+  encodeAgentBody,
+} from './turn-body-codec.js';
 import { agentStatement } from './turn-statements.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 
@@ -14,6 +20,72 @@ export const bodyChunkDefinitions = [
   "CREATE TRIGGER agent_steps_body_chunks_no_update BEFORE UPDATE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
   "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ] as const;
+export const binaryBodyChunkDefinition = bodyChunkDefinitions[0].replace(
+  'wire TEXT',
+  'wire BLOB',
+);
+export const bodyNodeDefinitions = [
+  'CREATE TABLE agent_steps_body_nodes(digest BLOB PRIMARY KEY CHECK(length(digest)=32), wire BLOB NOT NULL, refs TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0)) STRICT',
+  "CREATE TRIGGER agent_steps_body_nodes_no_update BEFORE UPDATE ON agent_steps_body_nodes BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
+  "CREATE TRIGGER agent_steps_body_nodes_no_delete BEFORE DELETE ON agent_steps_body_nodes WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value='sha256:'||lower(hex(OLD.digest))) OR EXISTS(SELECT 1 FROM agent_steps_body_nodes n,json_each(n.refs) r WHERE r.value=lower(hex(OLD.digest))) BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
+];
+const knownNodes = new WeakMap<DatabaseSync, Set<string>>();
+export function readAgentBodyNode(
+  database: DatabaseSync,
+  digest: string | Uint8Array,
+) {
+  const ref =
+    typeof digest === 'string'
+      ? digest
+      : `sha256:${Buffer.from(digest).toString('hex')}`;
+  if (!/^sha256:[a-f0-9]{64}$/.test(ref))
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  const row = agentStatement(
+    database,
+    'SELECT wire,refs,byte_length FROM agent_steps_body_nodes WHERE digest=?',
+  ).get(Buffer.from(ref.slice(7), 'hex'));
+  if (!row || !(row.wire instanceof Uint8Array) || typeof row.refs !== 'string')
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  const wire = inflateSync(row.wire, { maxOutputLength: 128 * 1024 }).toString(
+    'utf8',
+  );
+  if (Buffer.byteLength(wire) !== row.byte_length || hash(wire) !== ref)
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  const refs = agentBodyRefs(JSON.parse(wire));
+  if (
+    refs.some((value) => !/^sha256:[a-f0-9]{64}$/.test(value)) ||
+    JSON.stringify(refs.map((value) => value.slice(7))) !== row.refs
+  )
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  return { wire, refs };
+}
+function putNode(database: DatabaseSync, wire: string, refs: string[]) {
+  const digest = hash(wire);
+  let known = knownNodes.get(database);
+  if (!known) {
+    known = new Set();
+    knownNodes.set(database, known);
+  }
+  if (known.has(digest)) return digest;
+  const stored = deflateSync(wire);
+  const inserted = agentStatement(
+    database,
+    'INSERT INTO agent_steps_body_nodes VALUES(?,?,?,?) ON CONFLICT(digest) DO NOTHING',
+  ).run(
+    Buffer.from(digest.slice(7), 'hex'),
+    stored,
+    JSON.stringify(refs.map((ref) => ref.slice(7))),
+    Buffer.byteLength(wire),
+  );
+  if (
+    inserted.changes !== 1 &&
+    readAgentBodyNode(database, digest).wire !== wire
+  )
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  if (known.size >= 8192) known.delete(known.values().next().value!);
+  known.add(digest);
+  return digest;
+}
 const CHUNK_UNITS = 16 * 1024;
 const chunkedSchema = z
   .object({
@@ -42,6 +114,28 @@ const caches = new WeakMap<
 export function clearAgentBodies(database: DatabaseSync) {
   caches.delete(database);
   knownChunks.delete(database);
+  knownNodes.delete(database);
+}
+export function forgetAgentBody(
+  database: DatabaseSync,
+  digest: string,
+  kind: 0 | 1 | 2,
+) {
+  if (kind === 1) {
+    knownNodes.get(database)?.delete(digest);
+    return;
+  }
+  if (kind === 2) {
+    knownChunks.get(database)?.delete(digest);
+    return;
+  }
+  const state = caches.get(database);
+  const value = state?.values.get(digest);
+  if (state && value) {
+    state.values.delete(digest);
+    state.wires.delete(value.wire);
+    state.size -= value.size;
+  }
 }
 function cache(database: DatabaseSync) {
   let state = caches.get(database);
@@ -92,14 +186,33 @@ export function readAgentBodyChunk(
     database,
     'SELECT wire,byte_length FROM agent_steps_body_chunks WHERE digest=?',
   ).get(digest);
+  return decodeAgentBodyChunk(row, digest);
+}
+function decodeAgentBodyChunk(
+  row: Record<string, unknown> | undefined,
+  digest: string,
+): string {
   if (
     !row ||
-    typeof row.wire !== 'string' ||
-    Buffer.byteLength(row.wire) !== row.byte_length ||
-    hash(row.wire) !== digest
+    (typeof row.wire !== 'string' && !(row.wire instanceof Uint8Array))
   )
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
-  const value = readAgentWire(row.wire);
+  let wire =
+    typeof row.wire === 'string'
+      ? row.wire
+      : inflateSync(row.wire, { maxOutputLength: 128 * 1024 }).toString('utf8');
+  if (wire.startsWith('{')) {
+    const packed = z
+      .object({ version: z.literal('agent-text/1'), payload: z.string() })
+      .strict()
+      .parse(JSON.parse(wire));
+    wire = inflateSync(Buffer.from(packed.payload, 'base64'), {
+      maxOutputLength: 128 * 1024,
+    }).toString('utf8');
+  }
+  if (Buffer.byteLength(wire) !== row.byte_length || hash(wire) !== digest)
+    throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
+  const value = readAgentWire(wire);
   if (typeof value !== 'string' || !value.length || value.length > CHUNK_UNITS)
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
   return value;
@@ -113,10 +226,25 @@ function putChunk(database: DatabaseSync, value: string): string {
     knownChunks.set(database, known);
   }
   if (known.has(digest)) return digest;
+  const format = agentStatement(
+    database,
+    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+  ).get()?.writer_format;
+  const compressed = deflateSync(encoded);
+  const legacy = JSON.stringify({
+    version: 'agent-text/1',
+    payload: compressed.toString('base64'),
+  });
+  const stored =
+    format === 'agent-steps/12'
+      ? compressed
+      : format === 'agent-steps/11' && legacy.length < encoded.length
+        ? legacy
+        : encoded;
   const inserted = agentStatement(
     database,
     'INSERT INTO agent_steps_body_chunks VALUES(?,?,?) ON CONFLICT(digest) DO NOTHING',
-  ).run(digest, encoded, Buffer.byteLength(encoded));
+  ).run(digest, stored, Buffer.byteLength(encoded));
   if (inserted.changes !== 1 && readAgentBodyChunk(database, digest) !== value)
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
   if (known.size >= 4096) known.delete(known.values().next().value!);
@@ -133,7 +261,13 @@ export function readAgentBody(database: DatabaseSync, digest: string): string {
   if (!row || typeof row.wire !== 'string')
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   let wire = row.wire;
-  if (wire.startsWith('{')) {
+  if (wire.startsWith('{') && JSON.parse(wire).version === 'agent-body/3') {
+    wire = decodeAgentBody(
+      wire,
+      (ref) => readAgentBodyChunk(database, ref),
+      (ref) => readAgentBodyNode(database, ref),
+    );
+  } else if (wire.startsWith('{')) {
     const descriptor = chunkedSchema.parse(JSON.parse(wire));
     if (
       descriptor.chunks.length !== Math.ceil(descriptor.codeUnits / CHUNK_UNITS)
@@ -164,8 +298,19 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
   }
   const digest = hash(wire);
   readAgentWire(wire);
+  const compact =
+    agentStatement(
+      database,
+      "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+    ).get()?.compact === 1;
   let stored = wire;
-  if (
+  if (compact)
+    stored = encodeAgentBody(
+      wire,
+      (value) => putChunk(database, value),
+      (value, refs) => putNode(database, value, refs),
+    );
+  else if (
     wire.length > CHUNK_UNITS &&
     agentStatement(
       database,
@@ -189,4 +334,51 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
   else if (readAgentBody(database, digest) !== wire)
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   return digest;
+}
+
+export function migrateBinaryAgentText(database: DatabaseSync) {
+  database.exec(
+    'DROP TRIGGER agent_steps_body_chunks_no_update; DROP TRIGGER agent_steps_body_chunks_no_delete; ALTER TABLE agent_steps_body_chunks RENAME TO agent_steps_body_chunks_legacy',
+  );
+  database.exec(binaryBodyChunkDefinition);
+  const insert = agentStatement(
+    database,
+    'INSERT INTO agent_steps_body_chunks VALUES(?,?,?)',
+  );
+  for (const row of agentStatement(
+    database,
+    'SELECT digest,wire,byte_length FROM agent_steps_body_chunks_legacy',
+  ).iterate()) {
+    const digest = String(row.digest);
+    const wire = agentWire(decodeAgentBodyChunk(row, digest));
+    insert.run(digest, deflateSync(wire), Buffer.byteLength(wire));
+  }
+  database.exec('DROP TABLE agent_steps_body_chunks_legacy');
+  database.exec(bodyChunkDefinitions[1]);
+  database.exec(bodyChunkDefinitions[2]);
+}
+
+export function repackAgentBodies(database: DatabaseSync) {
+  database.exec('DROP TRIGGER agent_steps_bodies_no_update');
+  try {
+    for (const row of agentStatement(
+      database,
+      'SELECT digest FROM agent_steps_bodies',
+    ).iterate()) {
+      const digest = String(row.digest);
+      const wire = readAgentBody(database, digest);
+      const stored = encodeAgentBody(
+        wire,
+        (value) => putChunk(database, value),
+        (value, refs) => putNode(database, value, refs),
+      );
+      agentStatement(
+        database,
+        'UPDATE agent_steps_bodies SET wire=? WHERE digest=?',
+      ).run(stored, digest);
+    }
+  } finally {
+    database.exec(bodyDefinitions[1]);
+  }
+  clearAgentBodies(database);
 }

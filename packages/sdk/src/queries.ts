@@ -774,6 +774,7 @@ export {
   useForceRefetchSystemStatus,
   useMonitoringMetricsQuery,
   useMonitoringStatsQuery,
+  usePrepareTroubleshootMutation,
   useRenewAuthMutation,
   useServerCapabilitiesQuery,
   useServerUpdateActionMutation,

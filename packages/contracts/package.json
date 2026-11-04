@@ -201,6 +201,7 @@
     "./scheduler": "./src/scheduler.ts",
     "./task-graph": "./src/task-graph.ts",
     "./tenancy": "./src/tenancy.ts",
+    "./troubleshoot": "./src/troubleshoot.ts",
     "./time": "./src/time.ts",
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",

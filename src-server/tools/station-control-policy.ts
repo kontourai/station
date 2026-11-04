@@ -626,6 +626,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'when-trust-all-tools',
     routes: [post('/api/orchestration/station-control/job-proposals')],
   },
+  // #3994: an agent's command in a terminal. The route keeps it to the
+  // caller's own conversation, thread binding and session Project, and runs
+  // nothing: a person approves each run (`/api/terminal/runs`), so the
+  // request itself is a bounded write.
+  terminal_run: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/terminal-runs')],
+  },
+  terminal_read: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/terminal-runs/:runId')],
+  },
   list_scheduler_providers: { ...READ, routes: [get('/scheduler/providers')] },
   get_scheduler_stats: { ...READ, routes: [get('/scheduler/stats')] },
   get_scheduler_status: { ...READ, routes: [get('/scheduler/status')] },
@@ -684,6 +699,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/monitoring/events')],
   },
+  // #4470: pure troubleshooting helpers. They answer from the tool (the
+  // bundled playbook; a redacted, bounded issue-form link) and call nothing.
+  get_troubleshoot_playbook: { ...READ, routes: [] },
+  draft_troubleshoot_report: { ...READ, routes: [] },
   // Delivered only to the owner's own Station clients (`/events`).
   navigate_to: {
     ...SELF_READ,

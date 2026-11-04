@@ -124,6 +124,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // refuses with its own typed answer, so an older host's 404 and an off
   // preview stay distinguishable.
   sessionPersonReads: true,
+  // #4470: POST /api/diagnostics/troubleshoot/prepare
+  // (src-server/routes/system/diagnostics.ts) and the station-control
+  // troubleshoot tools. Served in every deployment mode.
+  troubleshootPrepare: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */

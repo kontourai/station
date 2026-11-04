@@ -21,7 +21,7 @@ import type {
   FileAttachment,
 } from '../../types';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
-import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
@@ -162,7 +162,7 @@ interface ChatInputAreaProps {
   // Input state
   hasQuotedContext?: boolean;
   draftText?: string;
-  quoteContext?: readonly SavedAnswerQuote[];
+  quoteContext?: readonly DraftQuote[];
   input: string;
   workingDirectory?: string | null;
   /**
@@ -353,7 +353,7 @@ interface ChatInputAreaProps {
   onRestorePortableDraft?: (
     text: string,
     attachments: FileAttachment[],
-    quotes?: readonly SavedAnswerQuote[],
+    quotes?: readonly DraftQuote[],
   ) => void;
   updateFromInput: (value: string) => void;
   closeAll: () => void;

@@ -249,6 +249,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     chatFontSize,
     featureSettings,
     hapticsEnabled,
+    terminalScreenReader,
     developerToolsEnabled,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
@@ -1431,6 +1432,28 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    {/* #4470: TroubleshootHost (deferred overlays) runs the
+                        start flow, including the no-engine fallback. The
+                        event name is an inline literal for the HelpMenu
+                        entry-chunk reason; SettingsViewTroubleshoot.test.tsx
+                        binds it to OPEN_TROUBLESHOOT_EVENT. */}
+                    <PageRow
+                      {...settingsRow('diagnostics-troubleshoot')}
+                      description="Investigate a problem with the Station Assistant, then fix it, file it, or both."
+                      control={
+                        <button
+                          type="button"
+                          className="settings__secondary-btn"
+                          onClick={() =>
+                            window.dispatchEvent(
+                              new CustomEvent('station:open-troubleshoot'),
+                            )
+                          }
+                        >
+                          Troubleshoot
+                        </button>
+                      }
+                    />
                   </Section>
                 )}
               </section>
@@ -1527,6 +1550,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    <PageRow
+                      {...settingsRow('terminal-screen-reader')}
+                      description="Keep a text copy of each terminal for screen readers and announce new output."
+                      control={
+                        <Toggle
+                          checked={terminalScreenReader}
+                          onChange={(checked) =>
+                            setDeviceSetting('terminalScreenReader', checked)
+                          }
+                          label={settingsRow('terminal-screen-reader').title}
+                        />
+                      }
+                    />
                     <PageRow
                       {...settingsRow('accent-color')}
                       description="Choose an accent on the Appearance page."

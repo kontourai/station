@@ -1153,7 +1153,8 @@ non-operator members is a separate program and is not widened here.
   either. The agent's requested directory must lie inside its session's
   directory. `restart` requires `terminal:operate`, re-resolves the launch
   profile instead of storing a program, keeps the directory inside the
-  binding, and refuses command sessions and server-owned launches.
+  binding, and refuses server-owned launches and command sessions other than
+  package scripts, which it resolves again by name.
 - **History and restore (#3994).** `GET /api/terminal/history` needs
   `terminal:observe` and `DELETE` needs `terminal:operate`, both refusing
   personal tokens and requiring the same operator test; usage lists only
@@ -1165,6 +1166,17 @@ non-operator members is a separate program and is not widened here.
   command, agent or server-owned launch is replayed. `adopt` on the existing
   open route grants nothing new: it returns a running shell in the same
   binding under the same operate check.
+- **Scripts and agent runs (#3994).** Listing a binding's package scripts
+  needs `terminal:observe`; running one needs `terminal:operate` and runs only
+  a name the binding's `package.json` declares, through a package manager the
+  server finds. An agent's `terminal_run` records a request and runs nothing.
+  `POST /api/terminal/runs/:runId/approve` needs `terminal:operate`, the same
+  operator test and sending to the conversation, refuses personal tokens and
+  any request that may be an agent's, and starts that one command once as the
+  approving person in the agent's thread binding. It refuses a directory that
+  no longer resolves to the one shown, and remembers no approval. The command
+  is the agent's text, run by the platform shell with the person's authority,
+  so the exact command and directory on the card are the control.
 
 ### Owner-device standing (2026-11-02)
 
