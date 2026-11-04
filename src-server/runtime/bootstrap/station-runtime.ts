@@ -300,6 +300,7 @@ import {
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
   type MCPUIFrameServer,
+  McpUiFrameAdmissionRefused,
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -4981,26 +4982,26 @@ export class StationRuntime {
       );
       return;
     }
-    const frame = await startMcpUiFrameServer({
-      port,
-      stationPort: this.port,
-      stationHost: this.host,
-      logger: this.logger,
-    });
-    // #4519: the frame origin is a listener too; refused, it closes and
-    // startup stops with the managed refusal.
-    if (frame) {
-      const origin = new URL(frame.origin);
-      try {
-        await this.listenerAdmission.admit({
-          name: 'MCP Apps frame',
-          host: origin.hostname,
-          port: Number(origin.port),
-        });
-      } catch (error) {
-        await frame.close();
-        throw error;
-      }
+    // #4519: the frame origin is a listener too. Admission runs once it is
+    // bound and before it serves anything; refused, it closes and startup
+    // stops with the managed refusal.
+    let frame: Awaited<ReturnType<typeof startMcpUiFrameServer>>;
+    try {
+      frame = await startMcpUiFrameServer({
+        port,
+        stationPort: this.port,
+        stationHost: this.host,
+        logger: this.logger,
+        admit: ({ host, port: bound }) =>
+          this.listenerAdmission.admit({
+            name: 'MCP Apps frame',
+            host,
+            port: bound,
+          }),
+      });
+    } catch (error) {
+      if (error instanceof McpUiFrameAdmissionRefused) throw error.refusal;
+      throw error;
     }
     this.mcpUiFrameServer = frame;
   }

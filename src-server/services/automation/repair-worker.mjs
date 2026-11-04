@@ -57,7 +57,18 @@ export async function observeRepairWorker(
 export async function authorityRelay(backend, assertCurrent, signal, listener) {
   const capability = randomBytes(32).toString('hex');
   const pending = new Set();
+  // #4519: no request is handled until the bound port is admitted; on
+  // refusal every accepted socket is destroyed and nothing held is served.
+  let settleAdmission;
+  const admission = new Promise((resolve) => {
+    settleAdmission = resolve;
+  });
+  const accepted = new Set();
   const server = http.createServer(async (req, res) => {
+    if (!(await admission)) {
+      req.socket.destroy();
+      return;
+    }
     const received = Buffer.from(req.headers.authorization ?? '');
     const expected = Buffer.from(`Bearer ${capability}`);
     const refuse = () => {
@@ -137,6 +148,10 @@ export async function authorityRelay(backend, assertCurrent, signal, listener) {
       pending.delete(controller);
     }
   });
+  server.on('connection', (socket) => {
+    accepted.add(socket);
+    socket.once('close', () => accepted.delete(socket));
+  });
   server.maxConnections = 4;
   server.setTimeout(60_000, (socket) => socket.destroy());
   server.requestTimeout = 60_000;
@@ -148,10 +163,13 @@ export async function authorityRelay(backend, assertCurrent, signal, listener) {
   try {
     await listener?.admit(server.address().port);
   } catch (error) {
+    settleAdmission(false);
+    for (const socket of accepted) socket.destroy();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
     throw error;
   }
+  settleAdmission(true);
   return {
     baseUrl: `http://host.docker.internal:${server.address().port}`,
     capability,
