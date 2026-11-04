@@ -8256,10 +8256,12 @@ export class OrchestrationService {
             internal?.resourceAdmissionIntent ?? 'interactive_user',
             {
               binding: input.threadId,
+              signal: input.signal,
             },
           );
           let session: ProviderSession;
           try {
+            throwIfAborted(input.signal);
             const invoke = async () => {
               // #2873: the folder is decided again here, after every
               // preceding await. From the check to the adapter call nothing
