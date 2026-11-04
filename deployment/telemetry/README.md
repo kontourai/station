@@ -552,6 +552,13 @@ is not an emitted event, persisted metric, trace query or personal enrollment.
 
 ## Single-host Cloudflare Tunnel
 
+Kontour's own Lite receiver does not need this recipe. The
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md) serves
+the same Lite wire contract and public routes from one Durable Object, with no
+home server. It uses Workers rate-limit bindings instead of the WAF rule below.
+This recipe remains the self-hosted path for the PostgreSQL receiver, including
+its Full-tier routes.
+
 The separate [`compose.tunnel.yaml`](compose.tunnel.yaml) recipe runs only
 receiver, PostgreSQL 16 and cloudflared. It reuses the receiver/database service
 settings above, including persistent PostgreSQL storage and the numeric-loopback
@@ -629,7 +636,7 @@ connector key for both admission and contributors. With it, an invalid single-IP
 header falls back to that same peer key and increments the private
 `/v1/operator/diagnostics` counter; no header value is logged or stored.
 
-Before public exposure, add a Cloudflare WAF rate-limit rule matching:
+Before exposing the tunnel recipe publicly, add a Cloudflare WAF rate-limit rule matching:
 
 ```text
 http.host eq "telemetry.example.com" and starts_with(http.request.uri.path, "/v1/lite/")

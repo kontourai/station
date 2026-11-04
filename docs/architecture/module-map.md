@@ -6182,6 +6182,17 @@ post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
 returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
 for composition, fixed domains, key/publication custody and low-volume utility.
 
+[Lite core](../../packages/telemetry-broker/src/lite-core.ts) holds the
+storage-independent Lite rules: validation glue, normalization and marginals
+driven by `STATION_DAILY_FIELDS`, daily network keys, source parsing,
+publication cells, cursors and response shapes. It is shared with the
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md), whose
+[SQLite Durable Object](../../deploy/telemetry-worker/src/receiver.ts) stores
+the daily salt durably, erases closed days' salts and contributor keys from an
+hourly alarm, and adds an exact per-day insights view for its owner dashboard.
+Each receiver keeps only its storage adapter. The Worker implements the Lite
+and public routes, not the Full-tier, private-usage or publisher routes.
+
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
 operator credentials and composes the database pool separately from Station's

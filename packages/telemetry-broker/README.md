@@ -453,6 +453,16 @@ source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
 
+The storage-independent Lite rules live in
+[`src/lite-core.ts`](src/lite-core.ts). They cover validation glue, ping
+normalization and marginal values driven by `STATION_DAILY_FIELDS`, daily
+network keys and attempt budgets, source parsing, publication cells and
+cursors, response shapes and error status. This PostgreSQL receiver and the
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md) (one
+SQLite Durable Object) both use them and keep only their own storage adapters.
+A field added to `STATION_DAILY_FIELDS` appears in the operator marginals
+without edits here. Public release stays limited to `PUBLIC_FIELDS`.
+
 Feedback uses the shared `TelemetryFeedback` contract and strict
 `parseTelemetryFeedback` parser. Its only fields are `publisher`, `action`
 (`tier-lowered` or `plugin-uninstalled`) and a fixed reason enum (`privacy`,
@@ -722,7 +732,8 @@ and `nextCursor`. Follow `?cursor=<nextCursor>` until null. Cursors are bounded,
 HMAC-authenticated keyset positions scoped to the publisher, not filters.
 Unknown/duplicate query parameters, malformed or forged cursors return 400.
 Unverified cursors cannot occupy or evict a cached public page. There is no 10,000-row published cap. The dashboard
-follows every page and selects its week/dimension locally. It uses text nodes,
+follows every page and charts each published week's total plus
+per-dimension bars for the latest week. It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
 
 ### Finalization, migration and retention

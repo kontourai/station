@@ -196,7 +196,12 @@ Setting this variable is an **owner-gated activation**, separate from merging
 these workflows. After the owner has authorized the receiver and real data
 flow, an owner with repository administration access can open **Settings →
 Secrets and variables → Actions → Variables**, create the repository variable
-`STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. The
+`STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. For
+the [Kontour Worker receiver](../../deploy/telemetry-worker/README.md) that is
+`https://telemetry.kontourai.io/v1/lite/<source>`. Senders post the daily ping
+to this URL unchanged, and a Lite source accepts only its own channel. One
+variable shared by every ring therefore reaches only the ring whose channel
+matches the named source. The
 build requires a canonical HTTPS URL: input must equal its normalized URL,
 including a trailing slash for a bare host. It rejects shorthand such as
 `https:example.com`, credentials, queries, fragments and whitespace.
