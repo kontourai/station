@@ -124,6 +124,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
   MCPLocalConnectionCustody,
@@ -609,6 +610,12 @@ export interface StationRuntimeOptions {
   logger?: Logger;
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /**
+   * The managed policy the entrypoint loaded before construction (#4515);
+   * null or absent means none is installed. Fixed for the process lifetime:
+   * a changed policy takes effect on restart.
+   */
+  managedPolicy?: LoadedManagedPolicy | null;
 }
 
 /** How long session recovery may take before update readiness warns. */
@@ -662,6 +669,7 @@ export class StationRuntime {
   private appConfig!: AppConfig;
   private logger: Logger;
   private readonly buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  private readonly managedPolicy: LoadedManagedPolicy | null = null;
   /** One persistent grant store shared by default and persisted managed agents. */
   private readonly unattendedGrantStore: UnattendedGrantStore;
   private readonly discordGatewayService: DiscordGatewayService;
@@ -1546,6 +1554,7 @@ export class StationRuntime {
       }
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
+      this.managedPolicy = options.managedPolicy ?? null;
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -5207,6 +5216,7 @@ export class StationRuntime {
       port: this.port,
       host: this.host,
       buildProvenanceSnapshot: this.buildProvenanceSnapshot,
+      managedPolicy: this.managedPolicy,
       usageAggregator: this.usageAggregator,
       usageTelemetry: this.usageTelemetry,
       getUsageTelemetry: () => this.usageTelemetry,
