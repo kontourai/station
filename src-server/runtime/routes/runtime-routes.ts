@@ -801,6 +801,10 @@ import type { OrchestrationService } from '../../services/orchestration/orchestr
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import {
+  CONTINUE_UNATTENDED_AFTER_RESTART_PREVIEW_ID,
+  RestartContinuation,
+} from '../../services/orchestration/restart-continuation.js';
 import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
@@ -7025,6 +7029,44 @@ export function configureRuntimeRoutes(
         | undefined;
       if (event) memoryContinuation.observe(event);
     });
+
+  // #4512: after boot, unattended work a restart cut off (Task-dispatched or
+  // delegated turns) continues once through the same inbox, behind its
+  // preview. The person's Continue names the same inbox key.
+  if (threadInbox && context.orchestrationEventStore) {
+    // Offered only where it can run: hosted Stations have no inbox.
+    const restartContinuationPreview = context.featurePreviews.bind({
+      id: CONTINUE_UNATTENDED_AFTER_RESTART_PREVIEW_ID,
+      label: 'Continue unattended work after restart',
+      description:
+        'After a restart, continue Task and delegated work it cut off, once, with a note to check what already happened.',
+    });
+    const restartContinuation = new RestartContinuation({
+      enabled: () =>
+        restartContinuationPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      eventStore: context.orchestrationEventStore,
+      currentConversationSessionId: (conversationId) =>
+        context.orchestrationService.currentConversationSessionId(
+          conversationId,
+        ),
+      sessionRecordedOwnerId: (threadId) =>
+        context.orchestrationService.sessionRecordedOwnerId(threadId),
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      submit: (input) => threadInbox.submit(input),
+      logger: context.logger,
+    });
+    void context.orchestrationService
+      .whenInterruptedTurnsRecovered()
+      .then((turns) => restartContinuation.continueRecovered(turns))
+      .catch((error) => {
+        context.logger.warn('restart continuation did not run', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
 
   // Agent wake-ups ride the thread inbox: due ones are handed to it, so the
   // same placement rules (wait for a running turn, the live continuation's

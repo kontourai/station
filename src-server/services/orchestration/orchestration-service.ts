@@ -424,6 +424,7 @@ import {
   type DurableTurnHandoff,
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
+  type RecoveredInterruptedTurn,
 } from './interrupted-turn-recovery.js';
 import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
@@ -2635,6 +2636,20 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  /**
+   * #4512: settled once THIS runtime's boot interrupted-turn recovery has
+   * finished (or given up), with the turns it settled as interrupted.
+   */
+  private readonly interruptedTurnsSettled = (() => {
+    let settle: (turns: readonly RecoveredInterruptedTurn[]) => void = () => {};
+    const promise = new Promise<readonly RecoveredInterruptedTurn[]>(
+      (resolve) => {
+        settle = resolve;
+      },
+    );
+    return { promise, settle };
+  })();
+
   private readonly stopSessionDeletionNotifications?: () => void;
   private readonly sessionDeletionReaders = new Set<SessionReadScope>();
 
@@ -3799,12 +3814,19 @@ export class OrchestrationService {
         // recovery-intent reconciliation just above — a failure here must
         // never surface as an unhandled rejection after attachment state
         // has already settled; unwritten banners simply retry next boot.
-        void this.interruptedTurns.consume().catch((error) => {
-          this.options.logger.warn(
-            'Interrupted-turn boundary consumption did not complete',
-            { error: errorMessage(error) },
+        void this.interruptedTurns
+          .consume()
+          .catch((error) => {
+            this.options.logger.warn(
+              'Interrupted-turn boundary consumption did not complete',
+              { error: errorMessage(error) },
+            );
+          })
+          .finally(() =>
+            this.interruptedTurnsSettled.settle(
+              this.interruptedTurns.recoveredTurns(),
+            ),
           );
-        });
       });
   }
 
@@ -4397,6 +4419,17 @@ export class OrchestrationService {
    */
   whenSessionAttachmentSettled(): Promise<void> {
     return this.sessionAttachmentSettledSignal.promise;
+  }
+
+  /**
+   * #4512: the turns this runtime's boot recovery settled as interrupted
+   * (banner written, boundary resolved), once that recovery has finished.
+   * Never settles if `initialize()` is never called.
+   */
+  whenInterruptedTurnsRecovered(): Promise<
+    readonly RecoveredInterruptedTurn[]
+  > {
+    return this.interruptedTurnsSettled.promise;
   }
 
   /**
