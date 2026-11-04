@@ -82,21 +82,41 @@ Flags permit WAU/MAU estimates by counting first-active flags without identifier
 exactness requires complete daily delivery and deduplication and cannot be promised
 over network loss, uninstall/reinstall, or local-state resets.
 
-Daily token throughput is retained, canonically allocated engine input plus
-output, grouped by Station observation UTC day. The positive-only buckets are
-`1-10k` (1–10,000), `10k-100k` (10,001–100,000), `100k-1M`
-(100,001–1,000,000), `1M-10M` (1,000,001–10,000,000), and `10M+`
-(above 10,000,000). Powers of ten distinguish activity scales while withholding
-precise consumption. Zero or unreported engines are omitted; this is observed
-throughput, not billing completeness. Input/output retain the engine's own
-inclusion semantics; cache and reasoning breakdowns are never added separately
-because they can overlap. The shared accounting fold handles cumulative usage;
-child-work summaries are not added to parent usage. Unallocatable corrections,
-undeclared provider usage scopes and undated legacy events are omitted. Hosted tenant deployments omit these
-home-wide counts. The optional wire field preserves older-build admission;
-new senders always include the array, and the changed catalog re-shows the Lite
-notice. These buckets remain in exact operator marginals, outside the fixed
-public domain and its sensitivity calculation.
+Daily throughput decision (2026-11-04): token throughput covers only
+**conversations run in Station**. Outside CLI use is excluded, including all
+read-only-attached/followed Claude Code, Codex and OpenCode transcripts. Import
+observation times and first-seen outside cumulative totals cannot establish
+Station-run daily throughput.
+
+The positive-only buckets are `1-10k` (1–10,000), `10k-100k`
+(10,001–100,000), `100k-1M` (100,001–1,000,000), `1M-10M`
+(1,000,001–10,000,000), and `10M+` (above 10,000,000). Powers of ten
+withhold precise consumption. The shared canonical allocation uses Station's
+observation UTC day through the completed day's cutoff. The declared
+`cacheInclusivePromptTokens` rule adds cache reads/writes for disjoint providers
+such as Claude and Bedrock, then output is added. Other providers retain
+reported input without adding cache again. Codex's cache inclusivity remains
+`unverified` in the shared declaration; this change does not certify that
+provider or make billing-equivalent comparisons. Reasoning is included only
+where already present in reported output, never as an additional component.
+Child-work summaries are not added to parent usage.
+
+Cumulative resets or corrections can undercount daily tokens. The canonical
+fold cannot distinguish a reset from a downward correction, so it discards the
+thread's earlier dated figures and leaves the lower baseline unallocated.
+For example, 500,000 then 20,000 then 40,000 input tokens on one day contributes
+only the later 20,000 increase. Keeping the earlier 500,000 would overcount a
+correction; the shared fold is unchanged. Undated usage, undeclared scopes and
+hosted home-wide totals are also omitted. A failed accounting read omits only
+the throughput field. The history read runs outside the daily-state mutation
+lock. These are retained observations, not complete billing totals.
+
+The optional wire field preserves old-sender admission. Senders omit it when
+empty or unavailable. **Upgrade Lite receivers before senders emit nonempty
+`engine_tokens_today`**: older strict receivers reject the new key. Empty-field
+omission preserves idle pings but does not negotiate receiver support. The
+changed catalog re-shows the Lite notice. Token buckets remain in exact
+operator marginals, outside the fixed public domain and its sensitivity bound.
 
 Full keeps the classified startup, recovery, and engine-turn events and defines
 pane opened, plugin installed/removed, setting category changed, client connected,

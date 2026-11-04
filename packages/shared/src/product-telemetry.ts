@@ -383,7 +383,7 @@ export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
 export function liteTelemetryNoticeText(
   _publisher?: 'kontour' | 'operator',
 ): string {
-  return 'Station usage sharing: Anonymous usage counts are on by default when a destination is configured. One daily aggregate, including coarse input-plus-output token buckets per engine. No ID, no account, no content. Turn sharing off in Privacy & sharing, or run station telemetry set kontour off and station telemetry set operator off. Do Not Track stops all sharing. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.';
+  return 'Station usage sharing: Anonymous usage counts are on by default when a destination is configured. One daily aggregate, including coarse token buckets per engine from conversations run in Station; outside CLI use is excluded. No ID, no account, no content. Turn sharing off in Privacy & sharing, or run station telemetry set kontour off and station telemetry set operator off. Do Not Track stops all sharing. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.';
 }
 
 /** A sender must show the new notice whenever this revision changes. */

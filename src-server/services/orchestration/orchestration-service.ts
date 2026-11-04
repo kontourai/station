@@ -2806,21 +2806,30 @@ export class OrchestrationService {
         this.options.eventStore?.listUsageCoverageEvents(input) ?? [],
       searchConversationMessages: (input) =>
         this.options.eventStore?.searchConversationMessages(input) ?? [],
-      readSessionThreadIds: (authority) => {
+      readSessionThreadIds: (authority, stationOwnedOnly = false) => {
         if (authority === INTERNAL_SESSION_READ_SCOPE) {
-          return (this.options.eventStore?.readSessions() ?? []).map(
-            (persisted) => persisted.threadId,
-          );
+          return (this.options.eventStore?.readSessions() ?? [])
+            .filter(
+              (session) =>
+                !stationOwnedOnly || session.controlMode === 'station-owned',
+            )
+            .map((persisted) => persisted.threadId);
         }
         if (!isSessionReadAuthority(authority)) return [];
-        return (
+        const ids =
           this.options.eventStore?.readUsageSessionThreadIds({
             ownerUserId: authority.userId,
             ...(authority.mode === 'hosted' && authority.tenantExecutionContext
               ? { tenantId: authority.tenantExecutionContext.tenantId }
               : {}),
-          }) ?? []
-        );
+          }) ?? [];
+        return stationOwnedOnly
+          ? ids.filter(
+              (id) =>
+                this.options.eventStore?.readSessionByThread(id)
+                  ?.controlMode === 'station-owned',
+            )
+          : ids;
       },
       requireTenantExecutionContext: () =>
         this.options.requireTenantExecutionContext?.() === true,

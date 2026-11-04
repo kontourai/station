@@ -1,4 +1,7 @@
-# Daily engine token throughput: local evidence
+# Daily engine token throughput: initial local evidence
+
+**Historical initial implementation evidence.** The corrected scope, cache
+semantics and omission behavior are recorded in [the review fix evidence](lite-engine-tokens-fix.md).
 
 This is local source/component evidence. It does not qualify live providers,
 installed shells, production receivers, endpoint enablement, billing completeness,

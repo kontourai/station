@@ -1071,7 +1071,7 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
     expect(bodies[1]).toMatchObject({
       engine_tokens_today: [
         { engine: 'codex', bucket: '10k-100k' },
-        { engine: 'claude', bucket: '1-10k' },
+        { engine: 'claude', bucket: '10M+' },
         { engine: 'ollama', bucket: '10k-100k' },
       ],
     });
@@ -1119,6 +1119,25 @@ test('daily Lite usage excludes followed Claude, Codex and OpenCode histories wh
     );
   } finally {
     await service.shutdown();
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('a cumulative decrease leaves earlier dates unallocated and counts only later daily increases', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('reset', 'codex');
+    for (const [index, promptTokens] of [500_000, 20_000, 40_000].entries())
+      f.turn('reset', 'codex', `reset-${index}`, day1, { promptTokens });
+    expect(
+      f.reads
+        .listDailyUsage('2026-08-02', f.authority)
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(20_000);
+  } finally {
     f.store.close();
     vi.useRealTimers();
   }
