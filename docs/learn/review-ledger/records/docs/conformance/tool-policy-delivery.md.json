@@ -126,7 +126,13 @@
 
     "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
 
-    "packages/shared/src/tool-server-credential-store.ts"
+    "packages/shared/src/tool-server-credential-store.ts",
+
+    "src-server/runtime/frameworks/conduit-framework-adapter.ts",
+
+    "scripts/generate-runtime-conformance.mjs",
+
+    "pnpm-lock.yaml"
   ],
 
   "checks": [

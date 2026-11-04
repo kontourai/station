@@ -254,7 +254,9 @@
 
     "patches/vitest-runner-4.1.12.patch",
 
-    "scripts/__tests__/vitest-resource-manifest.test.ts"
+    "scripts/__tests__/vitest-resource-manifest.test.ts",
+
+    "package.json"
   ],
 
   "checks": [

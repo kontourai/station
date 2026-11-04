@@ -16,7 +16,9 @@
 
     "packages/sdk/package.json#/exports",
 
-    "packages/sdk/package.json#/scripts"
+    "packages/sdk/package.json#/scripts",
+
+    "packages/sdk/src/client/http.ts"
   ],
 
   "checks": [

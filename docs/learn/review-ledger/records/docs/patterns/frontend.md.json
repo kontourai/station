@@ -104,7 +104,9 @@
 
     "src-ui/src/hooks/useServerEventsListener.ts",
 
-    "src-ui/src/hooks/ServerEventsMount.tsx"
+    "src-ui/src/hooks/ServerEventsMount.tsx",
+
+    "packages/sdk/src/theme-signature.ts"
   ],
 
   "checks": [

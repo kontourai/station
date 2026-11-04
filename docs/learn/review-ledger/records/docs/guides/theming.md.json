@@ -122,7 +122,11 @@
 
     "src-ui/src/lib/color-theme-selection.ts",
 
-    "src-ui/src/lib/appearance-cache.ts"
+    "src-ui/src/lib/appearance-cache.ts",
+
+    "packages/sdk/src/theme-signature.ts",
+
+    "src-ui/src/components/ActionRow.tsx"
   ],
 
   "checks": [

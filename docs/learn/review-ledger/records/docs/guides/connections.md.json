@@ -428,7 +428,11 @@
 
     "src-server/services/connections/__tests__/connection-service-helpers.pure.test.ts",
 
-    "packages/contracts/src/tool.ts"
+    "packages/contracts/src/tool.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts"
   ],
 
   "checks": [

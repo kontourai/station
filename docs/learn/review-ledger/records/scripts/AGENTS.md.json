@@ -20,7 +20,9 @@
 
     "scripts/verification-lanes.mjs",
 
-    "scripts/vitest-resource-manifest.mjs"
+    "scripts/vitest-resource-manifest.mjs",
+
+    "scripts/dependency-lifecycle.mjs"
   ],
 
   "checks": [

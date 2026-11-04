@@ -38,7 +38,13 @@
 
     "packages/sdk/package.json#/types",
 
-    "packages/sdk/package.json#/peerDependencies"
+    "packages/sdk/package.json#/peerDependencies",
+
+    "src-server/runtime/frameworks/conduit-framework-adapter.ts",
+
+    "package.json",
+
+    "pnpm-lock.yaml"
   ],
 
   "checks": [

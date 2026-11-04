@@ -34,7 +34,9 @@
 
     "src-server/security/pairing-route-scopes.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "src-server/security/native-device-request-authority.ts"
   ],
 
   "checks": [

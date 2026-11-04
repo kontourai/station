@@ -30,7 +30,9 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx"
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "pnpm-lock.yaml"
   ],
 
   "checks": [

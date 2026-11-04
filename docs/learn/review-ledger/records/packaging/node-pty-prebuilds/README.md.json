@@ -26,7 +26,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "scripts/dependency-lifecycle.mjs"
   ],
 
   "checks": [

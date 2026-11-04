@@ -16,7 +16,9 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-ui/src/lib/local-ui-bootstrap.ts"
+    "src-ui/src/lib/local-ui-bootstrap.ts",
+
+    "src-server/security/runtime-request-security.ts"
   ],
 
   "checks": [
