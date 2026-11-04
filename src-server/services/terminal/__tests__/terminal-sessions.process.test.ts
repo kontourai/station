@@ -13,6 +13,7 @@ import {
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileTerminalHistoryStore } from '../../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
@@ -410,7 +411,11 @@ describe('durable terminal sessions with real node-pty', () => {
       files.map(async (name) => (await stat(join(directory, name))).size),
     );
     expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(4096);
-    const last = snapshot.journal.records.at(-1)!;
+    // The ended shell's final record: ConPTY resets the window title after
+    // the marker, so the marker's snapshot need not hold the last record.
+    const last = (
+      await sessions.read(request(), scope, opened.terminalId)
+    ).journal.records.at(-1)!;
     expect(
       (await sessions.read(request(), scope, opened.terminalId, last.seq))
         .journal.records,
@@ -1411,7 +1416,9 @@ exec /bin/ps "$@"
               existsSync(join(root, 'burst.done'))
             );
           },
-          { timeout: 30000 },
+          // ConPTY renders the burst through its screen buffer: ~12 s on an
+          // idle 2026 desktop, several times a POSIX PTY.
+          { timeout: scaleLivenessMs(windows ? 90_000 : 30_000) },
         )
         .toBe(true);
       expect(

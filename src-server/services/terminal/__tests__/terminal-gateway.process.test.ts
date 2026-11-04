@@ -15,6 +15,7 @@ import { TerminalOutputSession } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { InProcessShellHost } from '../shell-host.js';
@@ -113,7 +114,9 @@ class Client {
   }
   async wait(predicate: (frame: Control) => boolean) {
     await expect
-      .poll(() => this.controls.find(predicate), { timeout: 10_000 })
+      .poll(() => this.controls.find(predicate), {
+        timeout: scaleLivenessMs(10_000),
+      })
       .toBeDefined();
     return this.controls.find(predicate)!;
   }
