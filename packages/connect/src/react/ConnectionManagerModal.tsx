@@ -111,6 +111,8 @@ export interface ConnectionManagerModalProps {
   onPairingSucceeded?: () => void;
   /** Move a submitted approval request into persistent application chrome. */
   onApprovalPending?: (pending: PendingPairingExchange) => void;
+  /** The person stopped waiting on a request handed to `onApprovalPending`. */
+  onApprovalCancelled?: (pending: PendingPairingExchange) => void;
 }
 
 export function ConnectionManagerModal({
@@ -140,6 +142,7 @@ export function ConnectionManagerModal({
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
+  onApprovalCancelled,
 }: ConnectionManagerModalProps) {
   if (!isOpen) return null;
   return (
@@ -170,6 +173,7 @@ export function ConnectionManagerModal({
         returnFocusTarget={returnFocusTarget}
         onPairingSucceeded={onPairingSucceeded}
         onApprovalPending={onApprovalPending}
+        onApprovalCancelled={onApprovalCancelled}
       />
     </Suspense>
   );
