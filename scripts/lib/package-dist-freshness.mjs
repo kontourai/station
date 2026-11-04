@@ -29,7 +29,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSyncBounded } from './bounded-capture.mjs';
 
 /** Bumping this invalidates every existing stamp on purpose. */
@@ -329,7 +329,46 @@ export function sourceFiles(pkgDir) {
   const manifests = ['package.json', 'tsconfig.json'].filter((extra) =>
     existsSync(join(pkgDir, extra)),
   );
-  return { sources, manifests, all: [...sources, ...manifests].sort() };
+  const externals = externalDataInputs(pkgDir, sources);
+  return {
+    sources,
+    manifests,
+    externals,
+    all: [...sources, ...manifests, ...externals].sort(),
+  };
+}
+
+/** A relative module specifier naming a JSON file, in import or import(). */
+const RELATIVE_JSON_SPECIFIER =
+  /(?:\bfrom|\bimport\s*\(?)\s*['"](\.\.?\/[^'"]+\.json)['"]/g;
+
+/**
+ * JSON files outside the package that its sources import (#4517): a bundler
+ * inlines them into the build output, so a change to one makes the output
+ * stale exactly as a source change does. `packages/cli` bundles
+ * `schemas/app.schema.json`, which the server reads from disk; without this
+ * a schema change left the CLI's offline validation on the old schema with
+ * a fresh stamp. Code crossing a package boundary goes through a workspace
+ * package with its own dist check, so only data files are followed.
+ *
+ * Returned relative to `pkgDir` (`../../schemas/app.schema.json`), which is
+ * how `computeSourceDigest` reads every covered path.
+ */
+export function externalDataInputs(pkgDir, sources) {
+  const found = new Set();
+  const root = resolve(pkgDir);
+  for (const rel of sources) {
+    if (!/\.(?:[cm]?[jt]sx?)$/.test(rel)) continue;
+    const text = readFileSync(join(pkgDir, rel), 'utf8');
+    for (const match of text.matchAll(RELATIVE_JSON_SPECIFIER)) {
+      const target = resolve(dirname(join(root, rel)), match[1]);
+      const fromPackage = relative(root, target);
+      if (!fromPackage.startsWith('..')) continue;
+      if (!existsSync(target)) continue;
+      found.add(fromPackage.split(sep).join('/'));
+    }
+  }
+  return [...found].sort();
 }
 
 /** Content digest of a package's compiled source surface. */
