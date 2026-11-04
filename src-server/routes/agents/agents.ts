@@ -585,8 +585,8 @@ export function createAgentRoutes(
       // a fast refusal and again inside the serialized mutation below, so a
       // request validated against grants a concurrent revoke then removed
       // cannot restore them (#4570 review).
-      const refuseWidenedGrants = async (): Promise<Response | null> => {
-        if (!touchesGrants) return null;
+      const refuseWidenedGrants = async (): Promise<Response | undefined> => {
+        if (!touchesGrants) return undefined;
         const previous = await agentService.getAgent(slug);
         const widened = (
           ['autoApprove', 'unattendedAutoApprove'] as const
@@ -595,7 +595,7 @@ export function createAgentRoutes(
             Object.hasOwn(updates.tools!, field) &&
             !narrowsToolGrant(updates.tools![field], previous.tools?.[field]),
         );
-        return widened ? refuseUngrantedFullAccess(c, ['never']) : null;
+        return widened ? refuseUngrantedFullAccess(c, ['never']) : undefined;
       };
       const earlyGrantRefusal = await refuseWidenedGrants();
       if (earlyGrantRefusal) return earlyGrantRefusal;
