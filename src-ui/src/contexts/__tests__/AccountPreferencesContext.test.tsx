@@ -153,6 +153,46 @@ test('a real preference control saves account scope and preserves device storage
   view.unmount();
 });
 
+test('an initial preference read failure explains loading and retries without writing choices', async () => {
+  fixture.get.mockRejectedValueOnce(new Error('Preferences unavailable'));
+  const deviceRecord = localStorage.getItem('station-device-settings-v1');
+  const view = render(tree(client()));
+  try {
+    const failure = await screen.findByRole('alert');
+    expect(failure.textContent).not.toContain('Couldn’t confirm the save.');
+    expect(screen.getByLabelText('New Codex chats approval mode')).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(fixture.patch).not.toHaveBeenCalled();
+    fixture.get.mockResolvedValueOnce({
+      schemaVersion: 1,
+      values: {
+        theme: 'dark',
+        interactiveApprovalModes: { codex: 'auto' },
+      },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry loading preferences' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('New Codex chats approval mode'),
+      ).toHaveProperty('value', 'auto'),
+    );
+    expect(screen.getByLabelText('New Codex chats approval mode')).toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(fixture.get).toHaveBeenCalledTimes(2);
+    expect(fixture.patch).not.toHaveBeenCalled();
+    expect(localStorage.getItem('station-device-settings-v1')).toBe(deviceRecord);
+  } finally {
+    view.unmount();
+  }
+});
+
 test('switching accounts quarantines a late read and cannot import the previous account into the next', async () => {
   let finishA!: (value: AccountPreferencesView) => void;
   fixture.get.mockImplementationOnce(
