@@ -110,8 +110,10 @@ correction; this reset/correction rule is unchanged.
 
 Daily cumulative-engine usage withholds the whole first reported figure of each
 token component after every repeated session start, including a fresh start
-after a lost native session. An initially recorded native resume or adoption
-establishes the same baseline. The fold recognizes inherited-counter metadata
+after a lost native session. An initially recorded native resume
+establishes the same baseline. Conversations taken over from an outside Codex
+CLI session currently contribute no tokens: the Codex adapter withholds every
+usage update for sessions that run from the outside CLI's home. The fold recognizes inherited-counter metadata
 on either session start or configuration, including native forks. None of the
 baseline jump is assigned a day; only later component increases count. For
 example, 100k in Station, then 5M outside, then a resumed 5.15M report and a

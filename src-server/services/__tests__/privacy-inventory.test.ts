@@ -270,8 +270,13 @@ test.each([
       'including a fresh start after a lost native session',
     );
     expect(disclosure).toContain(
-      'resume or adoption withholds the whole first reported figure of each token component',
+      'native resume withholds the whole first reported figure of each token component',
     );
+    // Adopted outside Codex sessions never report usage, so they add nothing.
+    expect(disclosure).toContain(
+      'Conversations taken over from an outside Codex CLI session currently contribute no tokens',
+    );
+    expect(disclosure).not.toContain('resume or adoption withholds');
     expect(disclosure).toContain(
       'the whole first turn when the engine reports once per turn, or part of it when it reports more often',
     );
