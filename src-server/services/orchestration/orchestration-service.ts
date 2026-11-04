@@ -4456,7 +4456,10 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
-    this.stopEventConsumption();
+    // Revoke reattachment now; existing consumers still observe the room-parking exits below.
+    this.eventConsumptionStopped = true;
+    this.adapterRegistryUnsubscribe?.();
+    this.adapterRegistryUnsubscribe = undefined;
     this.stopCascadeDelivery();
     this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
@@ -13087,6 +13090,7 @@ export class OrchestrationService {
   ): Promise<void> {
     let lastThreadId: string | undefined;
     let restart = false;
+    let streamEnded = false;
     try {
       // Oversized deltas are split here, before publishing, so each chunk
       // gets its own #3560 publish retry and none is ever stored out of
@@ -13255,6 +13259,7 @@ export class OrchestrationService {
             );
         }
       }
+      streamEnded = true;
       if (!controller.signal.aborted && this.isAdapterCurrent(adapter))
         throw new SessionStartIndeterminateError(
           undefined,
@@ -13277,7 +13282,9 @@ export class OrchestrationService {
         pending.failure = unavailable;
         pending.resolve();
       }
-      restart = !(error instanceof AsyncEventQueueConsumerConflictError);
+      restart =
+        !streamEnded &&
+        !(error instanceof AsyncEventQueueConsumerConflictError);
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
       // failure: the agent connection was fine and our store was locked —
       // typically by another Station process using the same Station home
