@@ -1046,6 +1046,7 @@ No existing diagnostic code is renamed or removed.
 | `muse-turn-timeout` | `timeout` | `true` |
 | `principal_unresolved` | `auth` | `false` |
 | `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `managed_setting_locked` | `permission_denied` | `false` |
 | `provider_session_start_failed` | `unavailable` | `true` |
 | `provider_session_starting` | `busy` | `true` |
 | `provider_turn_in_progress` | `busy` | `true` |
