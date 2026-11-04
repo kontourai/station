@@ -1191,12 +1191,25 @@ function describeDescriptorViolation(
  * it) and the SDK/UI (`useConfigProvenanceQuery`, `ProvenanceBadge.tsx`,
  * which consume it) share one type instead of each declaring its own copy.
  */
-export type SettingProvenanceSource = 'file' | 'env' | 'default';
+export type SettingProvenanceSource = 'file' | 'env' | 'default' | 'managed';
 
 export interface SettingProvenanceEntry {
   source: SettingProvenanceSource;
   /** Which env var supplied the value, for `source: 'env'` only. */
   envVar?: string;
+  /**
+   * For `source: 'managed'` only (#4517): whether the machine's managed
+   * policy fixes the value (`true`, users cannot change it) or supplies a
+   * default because nothing closer chose one (`false`). Precedence is
+   * managed lock > project > Station > environment > managed default >
+   * built-in default; the entry names whichever of those the value came
+   * from, never a value.
+   */
+  locked?: boolean;
+  /** For `source: 'managed'` only: the organization the policy names. */
+  organization?: string;
+  /** For `source: 'managed'` only: the policy's support link, when it has one. */
+  supportUrl?: string;
   /**
    * WHICH stored document the value came from, for `source: 'file'`
    * (#2144 slice 2). `source` names the kind of origin; a Station file and a

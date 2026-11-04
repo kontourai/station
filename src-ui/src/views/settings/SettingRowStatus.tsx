@@ -48,6 +48,54 @@ const loadInheritanceLayers = () =>
 type CatalogScope = NonNullable<SettingsCatalogEntry['scope']>;
 
 /**
+ * #4517: whether the machine's managed policy fixes this value. The server
+ * decides (`source: 'managed'`, `locked: true`) and refuses a write to it;
+ * the row only reflects that, by disabling its control.
+ */
+export function isManagedLock(
+  provenance: SettingProvenanceEntry | undefined,
+): boolean {
+  return provenance?.source === 'managed' && provenance.locked === true;
+}
+
+/**
+ * The managed-policy chip: "Managed by <organization>" for a locked value,
+ * "<organization> default" for a managed default nothing closer overrode,
+ * and a help link when the policy names one and the value is locked.
+ */
+export function ManagedSettingBadge({
+  provenance,
+}: {
+  provenance: SettingProvenanceEntry | undefined;
+}) {
+  if (provenance?.source !== 'managed' || !provenance.organization) return null;
+  const locked = provenance.locked === true;
+  return (
+    <>
+      <Badge
+        value={
+          locked
+            ? `Managed by ${provenance.organization}`
+            : `${provenance.organization} default`
+        }
+        tone={locked ? 'active' : 'neutral'}
+        className="setting-row-status__managed"
+      />
+      {locked && provenance.supportUrl && (
+        <a
+          className="button button--link setting-row-status__support"
+          href={provenance.supportUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Get help
+        </a>
+      )}
+    </>
+  );
+}
+
+/**
  * The scope badge's text, or `undefined` for a row that has no single owner
  * to name.
  *
@@ -144,6 +192,7 @@ export function SettingRowStatus({
           className="setting-row-status__scope"
         />
       )}
+      <ManagedSettingBadge provenance={provenance} />
       <ProvenanceBadge provenance={provenance} />
       <button
         type="button"

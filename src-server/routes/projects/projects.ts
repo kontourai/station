@@ -57,6 +57,7 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import { ManagedSettingLockedError } from '../../domain/managed-settings.js';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -414,7 +415,9 @@ const logger = createLogger({ name: 'projects-routes' });
 function projectMutationStatus(
   error: unknown,
   fallback: 400 | 404 = 400,
-): 400 | 404 | 409 | 503 {
+): 400 | 403 | 404 | 409 | 503 {
+  // #4517: the managed policy locks a setting this write overrides.
+  if (error instanceof ManagedSettingLockedError) return 403;
   if (error instanceof FileStorageConflictError) return 409;
   if (error instanceof FileStorageNotFoundError) return 404;
   if (error instanceof FileStorageUnavailableError) return 503;

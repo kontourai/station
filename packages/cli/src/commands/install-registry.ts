@@ -12,6 +12,7 @@ import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { withRequestTimeout } from './core-api.js';
 import { PROJECT_HOME } from './helpers.js';
+import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
 
 interface RegistryManifestPlugin {
   id: string;
@@ -97,6 +98,9 @@ function readJsonStringField(path: string, field: string): string | undefined {
 
 /** Same-directory temp-file-then-rename so a concurrent reader never sees a torn write. */
 function persistRegistryUrl(registryUrl: string): void {
+  // #4517: `registryUrl` is a Station setting the managed policy can lock.
+  if (Object.keys(withoutManagedNoOpsOffline({ registryUrl })).length === 0)
+    return;
   const configDir = join(PROJECT_HOME, 'config');
   mkdirSync(configDir, { recursive: true });
   let config: Record<string, unknown> = {};

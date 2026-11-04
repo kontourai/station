@@ -80,6 +80,7 @@ import {
   isIndeterminateWriteFailure,
 } from './errors.js';
 import { PROJECT_HOME } from './helpers.js';
+import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
 
 const CONFIG_PATH = join(PROJECT_HOME, 'config', 'app.json');
 
@@ -324,6 +325,12 @@ function writeConfigOffline(key: string, rawValue: string): void {
     throw violationsError(violations);
   }
   printIgnoredKeysWarning(ignored);
+  // #4517: a locked key is refused; its own locked value writes nothing.
+  const writable = withoutManagedNoOpsOffline(accepted);
+  if (Object.hasOwn(accepted, key) && !Object.hasOwn(writable, key)) {
+    console.log(`  ✓ ${key} is already that value (managed by policy)`);
+    return;
+  }
 
   mergeConfigUpdate(config, accepted);
   writeConfigFileAtomically(config);

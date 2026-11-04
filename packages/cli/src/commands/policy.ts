@@ -9,6 +9,7 @@ import {
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   decodeManagedPolicy,
   loadInstalledManagedPolicy,
@@ -29,16 +30,49 @@ const USAGE =
   'Usage: station policy check <file> [--json] | station policy show [--json]';
 const MANAGED_POLICY_ROUTE = '/api/settings/managed-policy';
 
+const SETTING_VALUE_DISPLAY_MAX_CHARS = 80;
+
+function displaySettingValue(value: unknown): string {
+  const text = JSON.stringify(value);
+  return text.length > SETTING_VALUE_DISPLAY_MAX_CHARS
+    ? `${text.slice(0, SETTING_VALUE_DISPLAY_MAX_CHARS)}… (${text.length} characters)`
+    : text;
+}
+
+/** One line per managed setting saying what it does (#4517). */
+function describeSettings(document: ManagedPolicyDocument): string[] {
+  const entries = Object.entries(document.settings ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  if (entries.length === 0) return ['  Managed settings: none'];
+  const lines = [`  Managed settings: ${entries.length}`];
+  for (const [key, entry] of entries) {
+    const definition = APP_SETTINGS_REGISTRY.find(
+      (candidate) => candidate.key === key,
+    );
+    const label = definition ? ` (${definition.label})` : '';
+    lines.push(
+      entry.locked
+        ? `    ${key}${label}: locked to ${displaySettingValue(entry.value)}; users, projects and agents cannot change it`
+        : `    ${key}${label}: defaults to ${displaySettingValue(entry.value)} where nothing closer is set; users can change it`,
+    );
+    if (definition?.descriptor.kind === 'composite')
+      lines.push(
+        '      Its structure is checked against the settings schema when Station starts.',
+      );
+  }
+  return lines;
+}
+
 function describeEffect(
   document: ManagedPolicyDocument,
   summary: ManagedPolicySummary,
 ): string[] {
-  const settings = Object.keys(document.settings ?? {}).length;
   const limits = Object.keys(document.limits ?? {}).length;
   return [
     `  Organization: ${summary.organization} (users see "Managed by ${summary.organization}")`,
     `  Support link: ${summary.supportUrl ?? 'none'}`,
-    `  Managed settings: ${settings === 0 ? 'none' : settings}`,
+    ...describeSettings(document),
     `  Limits: ${limits === 0 ? 'none' : limits}`,
   ];
 }

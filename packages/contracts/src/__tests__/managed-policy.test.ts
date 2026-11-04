@@ -6,6 +6,7 @@ import {
   MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
   managedByLabel,
   managedPolicyDenial,
+  managedSettingsProblems,
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
@@ -78,7 +79,7 @@ describe('parseManagedPolicyDocument', () => {
     ).toEqual(['__proto__']);
   });
 
-  test('refuses every limit key and any managed setting until enforcement lands', () => {
+  test('refuses every limit key until enforcement lands', () => {
     for (const key of [
       'maxApprovalMode',
       'clients',
@@ -101,19 +102,6 @@ describe('parseManagedPolicyDocument', () => {
         },
       ]);
     }
-    expect(
-      problemsOf({
-        schemaVersion: 1,
-        organization: 'Acme',
-        settings: { telemetryTier: { value: 'off', locked: true } },
-      }),
-    ).toEqual([
-      {
-        path: 'settings.telemetryTier',
-        message:
-          'managed settings are not supported by this version of Station',
-      },
-    ]);
   });
 
   test('names the schemaVersion problem, including a newer one', () => {
@@ -314,6 +302,174 @@ describe('problem paths for huge keys', () => {
         message:
           'unknown key; this version of Station refuses keys it cannot enforce',
       },
+    ]);
+  });
+});
+
+describe('managed settings (#4517)', () => {
+  const policy = (settings: unknown) => ({
+    schemaVersion: 1,
+    organization: 'Acme',
+    settings,
+  });
+
+  test('accepts locks and defaults on registered settings, copying each entry', () => {
+    const value = { enabled: true, mode: 'review' };
+    const result = parseManagedPolicyDocument(
+      policy({
+        defaultMaxTurns: { value: 40, locked: true },
+        workspaceCheckpoints: { value: true, locked: false },
+        approvalGuardian: { value, locked: true },
+        builtinAgentEngineConnectionId: { value: null, locked: true },
+      }),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.problems));
+    expect(result.document.settings).toEqual({
+      defaultMaxTurns: { value: 40, locked: true },
+      workspaceCheckpoints: { value: true, locked: false },
+      approvalGuardian: {
+        value: { enabled: true, mode: 'review' },
+        locked: true,
+      },
+      builtinAgentEngineConnectionId: { value: null, locked: true },
+    });
+    // The document owns its values: mutating the input does not reach it.
+    value.enabled = false;
+    expect(result.document.settings?.approvalGuardian.value).toEqual({
+      enabled: true,
+      mode: 'review',
+    });
+    expect(summarizeManagedPolicy(result.document).lockedSettings).toEqual([
+      'approvalGuardian',
+      'builtinAgentEngineConnectionId',
+      'defaultMaxTurns',
+    ]);
+  });
+
+  test.each([
+    [
+      'an unknown path',
+      { noSuchSetting: { value: 1, locked: true } },
+      'settings.noSuchSetting',
+      'unknown setting; this version of Station refuses keys it cannot enforce',
+    ],
+    [
+      'a field inside a setting managed as a whole',
+      { 'approvalGuardian.enabled': { value: true, locked: true } },
+      'settings["approvalGuardian.enabled"]',
+      '"approvalGuardian" is managed as a whole; manage "approvalGuardian" instead of one field inside it',
+    ],
+    [
+      'a field inside a scalar setting',
+      { 'defaultMaxTurns.max': { value: 1, locked: true } },
+      'settings["defaultMaxTurns.max"]',
+      '"defaultMaxTurns" has no fields; manage "defaultMaxTurns" itself',
+    ],
+    [
+      'a device setting',
+      { theme: { value: 'dark', locked: true } },
+      'settings.theme',
+      'this is a device setting, stored on each client; the server cannot enforce it',
+    ],
+    [
+      'an environment variable',
+      { AWS_REGION: { value: 'us-east-1', locked: true } },
+      'settings.AWS_REGION',
+      'this is an environment variable, not a setting; manage "region" instead',
+    ],
+    [
+      'an internal field',
+      { runtime: { value: 'voltagent', locked: true } },
+      'settings.runtime',
+      'this is an internal field, not a setting a policy can manage',
+    ],
+    [
+      'a runtime-derived field',
+      { mcpUiFrameOrigin: { value: 'http://x', locked: true } },
+      'settings.mcpUiFrameOrigin',
+      'this value is derived at runtime and is not a stored setting',
+    ],
+    [
+      'a wrong type',
+      { defaultMaxTurns: { value: 'many', locked: true } },
+      'settings.defaultMaxTurns.value',
+      'defaultMaxTurns: expected a number',
+    ],
+    [
+      'an enum value the registry does not list',
+      { defaultWorkspaceIsolation: { value: 'vm', locked: false } },
+      'settings.defaultWorkspaceIsolation.value',
+      'defaultWorkspaceIsolation: expected one of shared|worktree',
+    ],
+    [
+      'null on a setting that cannot store null',
+      { defaultMaxTurns: { value: null, locked: true } },
+      'settings.defaultMaxTurns.value',
+      'value must not be null',
+    ],
+    [
+      'a blank string, which Station reads as unset',
+      { systemPrompt: { value: '   ', locked: true } },
+      'settings.systemPrompt.value',
+      'value must not be blank',
+    ],
+    [
+      'a missing value',
+      { defaultMaxTurns: { locked: true } },
+      'settings.defaultMaxTurns.value',
+      'is required',
+    ],
+    [
+      'a missing or non-boolean locked',
+      { defaultMaxTurns: { value: 4, locked: 'yes' } },
+      'settings.defaultMaxTurns.locked',
+      'must be true (a fixed value) or false (a default users can change)',
+    ],
+    [
+      'an unknown entry key',
+      { defaultMaxTurns: { value: 4, locked: true, force: true } },
+      'settings.defaultMaxTurns.force',
+      'unknown key; this version of Station refuses keys it cannot enforce',
+    ],
+    [
+      'an entry that is not an object',
+      { defaultMaxTurns: 4 },
+      'settings.defaultMaxTurns',
+      'must be an object with "value" and "locked"',
+    ],
+  ])('refuses %s', (_name, settings, path, message) => {
+    expect(problemsOf(policy(settings))).toEqual([{ path, message }]);
+  });
+
+  test('refuses a secret setting: every user on the machine can read the policy', () => {
+    // No registered setting is secret today; the rule is reached through a
+    // registry that declares one, with the production registry's shape.
+    const secret = {
+      key: 'productTelemetryKeyRef',
+      scope: 'station',
+      descriptor: { kind: 'string' },
+      label: 'Key',
+      help: 'A key.',
+      description: 'A key.',
+      secret: true,
+    } as const;
+    expect(
+      managedSettingsProblems(
+        { productTelemetryKeyRef: { value: 'k', locked: true } },
+        [secret],
+      ),
+    ).toEqual([
+      {
+        path: 'settings.productTelemetryKeyRef',
+        message:
+          'secret settings cannot be managed; every user on the machine can read the policy',
+      },
+    ]);
+  });
+
+  test('refuses a settings value that is not an object', () => {
+    expect(problemsOf(policy([]))).toEqual([
+      { path: 'settings', message: 'must be an object' },
     ]);
   });
 });

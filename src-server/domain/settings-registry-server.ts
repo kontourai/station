@@ -27,6 +27,7 @@ import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
+import type { ManagedAppSettings } from './managed-settings.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
 
 export {
@@ -59,6 +60,25 @@ export function isStoredValue(value: unknown): boolean {
   if (value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   return true;
+}
+
+/**
+ * The provenance entry for a value the managed policy supplied (#4517). It
+ * names the organization and support link so a row can explain the lock
+ * without a second request, and never carries the value.
+ */
+export function managedProvenance(
+  managed: ManagedAppSettings,
+  locked: boolean,
+): SettingProvenanceEntry {
+  return {
+    source: 'managed',
+    locked,
+    organization: managed.summary.organization,
+    ...(managed.summary.supportUrl
+      ? { supportUrl: managed.summary.supportUrl }
+      : {}),
+  };
 }
 
 const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
@@ -111,6 +131,13 @@ export function buildAppConfigProvenance(
      * for and cannot act on.
      */
     projectOverrides?: ProjectSettingsOverrides;
+    /**
+     * The managed policy's settings (#4517), when one is installed. `config`
+     * must then be the STORED config (`ConfigLoader.loadStoredAppConfig`):
+     * a managed default is reported only for a key nothing closer decided,
+     * and an effective config would show the default itself as stored.
+     */
+    managed?: ManagedAppSettings | null;
   },
 ): Record<string, SettingProvenanceEntry> {
   const provenance: Record<string, SettingProvenanceEntry> = {};
@@ -156,6 +183,21 @@ export function buildAppConfigProvenance(
     provenance[key] = { source: 'default' };
   }
 
+  // A managed default sits just above the built-in default: it applies only
+  // where neither this Station's file nor an accepted environment value
+  // decided the key. Same rule the `AppConfig` overlay applies
+  // (`managedDefaultApplies`), so the source named here is the one readers
+  // actually got the value from (archive#1557).
+  for (const [key, entry] of opts.managed?.entries ?? []) {
+    if (entry.locked) continue;
+    const current = provenance[key];
+    if (current === undefined || current.source === 'default')
+      provenance[key] = managedProvenance(
+        opts.managed as ManagedAppSettings,
+        false,
+      );
+  }
+
   // The project record is the innermost stored document, so it supersedes
   // whatever the Station file, the environment, or a registry default would
   // have reported. Placed last for that reason, and unconditional on what
@@ -168,6 +210,16 @@ export function buildAppConfigProvenance(
   // does, this precedence needs deciding rather than inheriting.
   for (const key of Object.keys(projectOverrides ?? {})) {
     provenance[key] = { source: 'file', scope: 'project' };
+  }
+
+  // A managed lock outranks everything, the project record included, so it
+  // is applied last and unconditionally.
+  for (const [key, entry] of opts.managed?.entries ?? []) {
+    if (entry.locked)
+      provenance[key] = managedProvenance(
+        opts.managed as ManagedAppSettings,
+        true,
+      );
   }
 
   return provenance;

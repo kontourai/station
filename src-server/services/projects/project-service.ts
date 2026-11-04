@@ -21,6 +21,7 @@ import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
+import { assertProjectOverridesUnlocked } from '../../domain/managed-settings.js';
 import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -418,6 +419,7 @@ export class ProjectService {
     reservedId?: string,
   ): Promise<ProjectConfig> {
     assertWritableProjectIcon(config.icon);
+    assertProjectOverridesUnlocked(config as Record<string, unknown>);
     const project = await this.prepareProjectConfig(config, reservedId);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
@@ -582,6 +584,11 @@ export class ProjectService {
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
+    // #4517: a managed lock outranks a project's override of that setting.
+    assertProjectOverridesUnlocked(
+      updates as Record<string, unknown>,
+      existing as unknown as Record<string, unknown>,
+    );
     if (
       updates.defaultApprovalMode === 'never' &&
       existing.defaultApprovalMode !== 'never' &&

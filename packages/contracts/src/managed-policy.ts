@@ -10,12 +10,21 @@
  *
  * The parser accepts only what this build enforces. A key it does not know
  * may be a restriction from a newer release, and a key it knows but does not
- * yet enforce (any `settings` entry and every `limits` key, until each
- * enforcement slice lands) would make the machine look managed when it is
- * not. Both are rejected with a problem that names the key.
+ * yet enforce (every `limits` key, until each enforcement slice lands) would
+ * make the machine look managed when it is not. Both are rejected with a
+ * problem that names the key. `settings` entries (#4517) are enforced: each
+ * key is a registered Station setting and each value is checked against
+ * that setting's registry definition (see {@link managedSettingsProblems}).
  */
 import { boundaryText, isRecord } from './contract-validation.js';
+import { DEVICE_SETTINGS_REGISTRY } from './device-settings.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
+import {
+  APP_SETTINGS_REGISTRY,
+  INTERNAL_APP_CONFIG_FIELDS,
+  type SettingDefinition,
+  sanitizeAppConfigUpdate,
+} from './settings-registry.js';
 
 export const MANAGED_POLICY_SCHEMA_VERSION = 1;
 
@@ -45,7 +54,10 @@ export interface ManagedPolicyDocument {
   organization: string;
   /** An https page users can visit for help with a managed control. */
   supportUrl?: string;
-  /** Keyed by setting path. Empty in this build: see the module comment. */
+  /**
+   * Keyed by setting path: a registered Station setting key, managed as a
+   * whole. See {@link managedSettingsProblems} for what is refused.
+   */
   settings?: Record<string, ManagedPolicySettingEntry>;
   limits?: ManagedPolicyLimits;
 }
@@ -282,6 +294,161 @@ function limitProblem(name: string): string | null {
     : 'unknown limit; this version of Station refuses keys it cannot enforce';
 }
 
+const DEVICE_SETTING_KEYS: ReadonlySet<string> = new Set(
+  DEVICE_SETTINGS_REGISTRY.map((definition) => definition.key as string),
+);
+const RUNTIME_DERIVED_KEYS: ReadonlySet<string> = new Set(
+  INTERNAL_APP_CONFIG_FIELDS,
+);
+
+/**
+ * Why the policy may not manage `path`, or null when it may.
+ *
+ * A setting is managed as a whole, at its registry key. Registry keys are
+ * top-level `AppConfig` fields, so a dotted path names a field inside one:
+ * refused, because a composite setting's fields are validated and resolved
+ * together and a partial lock would leave the rest to whoever writes next.
+ *
+ * Device settings are refused because they live on each client, not on the
+ * server that loads the policy; the server could not enforce them. Internal
+ * and runtime-derived fields are not choices a person makes, and a `secret`
+ * setting cannot go in a document every user on the machine can read.
+ * Environment variables are not settings: an administrator who names one is
+ * told which setting reads it.
+ */
+function managedSettingPathProblem(
+  path: string,
+  registry: readonly SettingDefinition[],
+): string | null {
+  const definition = registry.find((entry) => entry.key === path);
+  if (definition) {
+    if (definition.secret)
+      return 'secret settings cannot be managed; every user on the machine can read the policy';
+    if (definition.userFacing === false)
+      return 'this is an internal field, not a setting a policy can manage';
+    return null;
+  }
+  const dot = path.indexOf('.');
+  if (dot > 0) {
+    const head = path.slice(0, dot);
+    const parent = registry.find((entry) => entry.key === head);
+    if (parent)
+      return parent.descriptor.kind === 'composite'
+        ? `"${head}" is managed as a whole; manage "${head}" instead of one field inside it`
+        : `"${head}" has no fields; manage "${head}" itself`;
+  }
+  if (RUNTIME_DERIVED_KEYS.has(path))
+    return 'this value is derived at runtime and is not a stored setting';
+  if (DEVICE_SETTING_KEYS.has(path))
+    return 'this is a device setting, stored on each client; the server cannot enforce it';
+  const reader = registry.find(
+    (entry) => entry.envFallback === path || entry.envAliases?.includes(path),
+  );
+  if (reader)
+    return `this is an environment variable, not a setting; manage "${reader.key}" instead`;
+  return 'unknown setting; this version of Station refuses keys it cannot enforce';
+}
+
+/** Why `value` is not a valid managed value for `definition`, or null. */
+function managedSettingValueProblem(
+  definition: SettingDefinition,
+  value: unknown,
+): string | null {
+  if (value === null) {
+    // `null` in a settings update means "clear"; only a nullable setting
+    // stores it as a value. A policy must name a value.
+    return definition.nullable ? null : 'value must not be null';
+  }
+  if (typeof value === 'string' && value.trim().length === 0)
+    // Station reads a blank string as "not set", so a blank managed value
+    // would claim to manage the setting while every reader fell through it.
+    return 'value must not be blank';
+  // The registry's own sanitizer: the same type, range, pattern and
+  // template-variable checks a settings write runs. A composite value's
+  // structure is checked against the settings file schema when the server
+  // starts, because that schema lives with the server.
+  const { violations } = sanitizeAppConfigUpdate({
+    [definition.key]: value,
+  });
+  return violations.length > 0
+    ? violations.map((violation) => violation.message).join('; ')
+    : null;
+}
+
+const SETTING_ENTRY_KEYS = ['value', 'locked'] as const;
+
+/**
+ * Problems with the `settings` map, every one of them. `registry` defaults
+ * to this build's {@link APP_SETTINGS_REGISTRY}; tests pass another to reach
+ * a rule no registered setting triggers yet (no setting is `secret` today).
+ */
+export function managedSettingsProblems(
+  settings: unknown,
+  registry: readonly SettingDefinition[] = APP_SETTINGS_REGISTRY,
+): ManagedPolicyProblem[] {
+  if (settings === undefined) return [];
+  if (!isRecord(settings))
+    return [{ path: 'settings', message: 'must be an object' }];
+  const problems: ManagedPolicyProblem[] = [];
+  for (const key of Reflect.ownKeys(settings)) {
+    const path = describeKey('settings', String(key));
+    const pathProblem =
+      typeof key === 'string'
+        ? managedSettingPathProblem(key, registry)
+        : 'unknown setting';
+    if (pathProblem) {
+      problems.push({ path, message: pathProblem });
+      continue;
+    }
+    const entry = settings[key as string];
+    if (!isRecord(entry)) {
+      problems.push({
+        path,
+        message: 'must be an object with "value" and "locked"',
+      });
+      continue;
+    }
+    for (const entryKey of Reflect.ownKeys(entry)) {
+      if (!(SETTING_ENTRY_KEYS as readonly unknown[]).includes(entryKey))
+        problems.push({
+          path: describeKey(path, String(entryKey)),
+          message:
+            'unknown key; this version of Station refuses keys it cannot enforce',
+        });
+    }
+    if (typeof entry.locked !== 'boolean')
+      problems.push({
+        path: `${path}.locked`,
+        message:
+          'must be true (a fixed value) or false (a default users can change)',
+      });
+    if (!Object.hasOwn(entry, 'value')) {
+      problems.push({ path: `${path}.value`, message: 'is required' });
+      continue;
+    }
+    const definition = registry.find((entry) => entry.key === key);
+    const valueProblem = managedSettingValueProblem(
+      definition as SettingDefinition,
+      entry.value,
+    );
+    if (valueProblem)
+      problems.push({ path: `${path}.value`, message: valueProblem });
+  }
+  return problems;
+}
+
+/** The validated `settings` map, copied so the document owns its values. */
+function managedSettingsOf(
+  settings: Record<string, unknown>,
+): Record<string, ManagedPolicySettingEntry> {
+  const result: Record<string, ManagedPolicySettingEntry> = {};
+  for (const [key, entry] of Object.entries(settings)) {
+    const { value, locked } = entry as ManagedPolicySettingEntry;
+    result[key] = { value: structuredClone(value), locked };
+  }
+  return result;
+}
+
 /**
  * Parse an already-decoded JSON value as a v1 policy document. Every problem
  * is reported, not only the first, so `station policy check` can list them.
@@ -308,11 +475,7 @@ export function parseManagedPolicyDocument(
   for (const [path, message] of fieldProblems)
     if (message) problems.push({ path, message });
   problems.push(
-    ...reservedMapProblems(
-      'settings',
-      settings,
-      () => 'managed settings are not supported by this version of Station',
-    ),
+    ...managedSettingsProblems(settings),
     ...reservedMapProblems('limits', limits, limitProblem),
   );
 
@@ -322,7 +485,8 @@ export function parseManagedPolicyDocument(
     organization: organization as string,
   };
   if (supportUrl !== undefined) document.supportUrl = supportUrl as string;
-  if (settings !== undefined) document.settings = {};
+  if (settings !== undefined)
+    document.settings = managedSettingsOf(settings as Record<string, unknown>);
   if (limits !== undefined) document.limits = {};
   return { ok: true, document };
 }
