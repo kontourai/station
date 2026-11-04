@@ -1,5 +1,6 @@
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
+import type { WorktreeSessionMetadata } from './workspace-isolation.js';
 
 /**
  * Station's task status vocabulary (roadmap #581, part of epic #580).
@@ -597,6 +598,14 @@ export interface TaskRecord {
   dispatchedAt?: string;
   sessionId?: string;
   workspaceBinding?: TaskWorkspaceBinding;
+  /**
+   * #4507: the worktree this Task's Sessions run in when its Project
+   * resolves to worktree isolation, recorded when provisioning creates or
+   * adopts it and cleared when Task finalization removes it. Separate from
+   * `workspaceBinding`, which stays the Project checkout the Task was
+   * created against. Absent for a Task of a `shared` Project.
+   */
+  taskWorktree?: WorktreeSessionMetadata;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */

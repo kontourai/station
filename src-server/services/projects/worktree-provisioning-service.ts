@@ -12,6 +12,7 @@ import type {
   WorktreeCleanupPolicy,
   WorktreeIsolationPolicy,
   WorktreeSessionMetadata,
+  WorktreeTaskOwner,
 } from '@kontourai/station-contracts/workspace-isolation';
 import {
   worktreeCleanupTotal,
@@ -27,13 +28,34 @@ import {
   requireLiveRepository,
 } from './git-read-repository.js';
 
-type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
+export type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
 
 export interface WorktreeProvisionRequest {
   repoPath: string;
   threadId: string;
   providerKind: EngineId;
   isolation?: WorkspaceIsolationConfig;
+}
+
+/** #4507: provisioning a Task-owned worktree, one per Task. */
+export interface TaskWorktreeProvisionRequest {
+  repoPath: string;
+  taskId: string;
+  providerKind: EngineId;
+  isolation: WorkspaceIsolationConfig & { mode: 'worktree' };
+  /** The worktree the Task already records, if any. */
+  recorded?: WorktreeSessionMetadata;
+}
+
+export interface TaskWorktreeProvisionResult {
+  metadata: WorktreeSessionMetadata;
+  /**
+   * `reused`: the Task's recorded worktree, verified. `adopted`: a worktree
+   * at this Task's own path and branch that git has registered but the Task
+   * did not record yet (an earlier provisioning finished after its record
+   * could be written, or Station stopped in between). `created`: new.
+   */
+  provenance: 'reused' | 'adopted' | 'created';
 }
 
 interface WorktreeCleanupRequest {
@@ -57,6 +79,16 @@ export interface GitCommandRunner {
 }
 
 const DEFAULT_BRANCH_PREFIX = 'station/session';
+/** #4507: a Task-owned worktree's branch prefix unless the policy names one. */
+const DEFAULT_TASK_BRANCH_PREFIX = 'station/task';
+
+/**
+ * #4507: the identity a Task-owned worktree's path and branch are derived
+ * from. Prefixed so it can never equal a Session thread id's segment.
+ */
+export function taskWorktreeOwnerKey(taskId: string): string {
+  return `task-${taskId}`;
+}
 const DEFAULT_BASE_REF = 'HEAD';
 
 function shouldUseWorktreeIsolation(
@@ -100,6 +132,31 @@ function buildWorktreeBranchName(input: {
 
 /** Prove hostile persisted cleanup metadata still belongs to this session. */
 export function assertWorktreeMetadataSessionBinding(
+  metadata: WorktreeSessionMetadata,
+  threadId: string,
+): void {
+  // #4507: a Task-owned worktree belongs to no Session, so no Session's exit
+  // or continuation may claim it through this check.
+  if (metadata.owner !== undefined)
+    throw new Error('Worktree cleanup metadata is not bound to its session');
+  assertWorktreeNameBinding(metadata, threadId);
+}
+
+/** #4507: prove hostile persisted metadata belongs to exactly this Task. */
+export function assertWorktreeMetadataTaskBinding(
+  metadata: WorktreeSessionMetadata,
+  taskId: string,
+): void {
+  if (
+    !taskId ||
+    metadata.owner?.kind !== 'task' ||
+    metadata.owner.taskId !== taskId
+  )
+    throw new Error('Worktree metadata is not bound to its Task');
+  assertWorktreeNameBinding(metadata, taskWorktreeOwnerKey(taskId));
+}
+
+function assertWorktreeNameBinding(
   metadata: WorktreeSessionMetadata,
   threadId: string,
 ): void {
@@ -361,6 +418,15 @@ class SpawnGitCommandRunner implements GitCommandRunner {
 }
 
 export class WorktreeProvisioningService {
+  /**
+   * #4507: Task provisioning runs one at a time per repository in this
+   * process. `worktree add` changes the repository's shared state (the first
+   * one creates its `worktrees` directory), and creation refuses when the
+   * repository changed while it was preparing, so two concurrent creations
+   * in one repository would refuse each other.
+   */
+  private readonly repositoryQueue = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly git: GitCommandRunner = new SpawnGitCommandRunner(),
     /**
@@ -385,6 +451,112 @@ export class WorktreeProvisioningService {
     await this.assertRegisteredCleanupTarget(metadata);
   }
 
+  /** #4507: read-only proof that a Task's recorded worktree is still its own. */
+  async assertTaskWorkspace(
+    metadata: WorktreeSessionMetadata,
+    taskId: string,
+  ): Promise<void> {
+    assertWorktreeMetadataTaskBinding(metadata, taskId);
+    await this.assertRegisteredCleanupTarget(metadata);
+  }
+
+  /**
+   * #4507: the one worktree a Task's Sessions run in. Idempotent per Task:
+   * the recorded worktree is verified and reused; a registered worktree at
+   * the Task's own derived path and branch is adopted; otherwise one is
+   * created. Callers serialize calls for one Task and record the result on
+   * the Task before anything else can observe it.
+   */
+  async provisionForTask(
+    request: TaskWorktreeProvisionRequest,
+  ): Promise<TaskWorktreeProvisionResult> {
+    if (request.recorded) {
+      await this.assertTaskWorkspace(request.recorded, request.taskId);
+      return { metadata: request.recorded, provenance: 'reused' };
+    }
+    return await this.inRepositoryQueue(request.repoPath, () =>
+      this.provisionNewTaskWorktree(request),
+    );
+  }
+
+  private async provisionNewTaskWorktree(
+    request: TaskWorktreeProvisionRequest,
+  ): Promise<TaskWorktreeProvisionResult> {
+    const owner: WorktreeTaskOwner = { kind: 'task', taskId: request.taskId };
+    const ownerKey = taskWorktreeOwnerKey(request.taskId);
+    const policy = validateWorktreePolicy({
+      ...request.isolation.policy,
+      branchPrefix:
+        request.isolation.policy?.branchPrefix ?? DEFAULT_TASK_BRANCH_PREFIX,
+    });
+    const adopted = await this.registeredTaskWorktree(
+      request.repoPath,
+      ownerKey,
+      owner,
+      policy,
+    );
+    if (adopted) return { metadata: adopted, provenance: 'adopted' };
+    const startedAt = performance.now();
+    try {
+      const metadata = await this.createWorktree({
+        repoPath: request.repoPath,
+        ownerKey,
+        owner,
+        policy,
+      });
+      worktreeProvisionTotal.add(1, {
+        outcome: 'success',
+        provider_kind: request.providerKind,
+        reason: 'created',
+      });
+      return { metadata, provenance: 'created' };
+    } catch (error) {
+      worktreeProvisionTotal.add(1, {
+        outcome: 'failure',
+        provider_kind: request.providerKind,
+        reason: errorReason(error),
+      });
+      throw error;
+    } finally {
+      worktreeProvisionDuration.record(performance.now() - startedAt, {
+        provider_kind: request.providerKind,
+      });
+    }
+  }
+
+  private async inRepositoryQueue<T>(
+    repoPath: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const key = canonicalizePath(repoPath);
+    const previous = this.repositoryQueue.get(key) ?? Promise.resolve();
+    const next = previous.then(operation, operation);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.repositoryQueue.set(key, settled);
+    try {
+      return await next;
+    } finally {
+      if (this.repositoryQueue.get(key) === settled)
+        this.repositoryQueue.delete(key);
+    }
+  }
+
+  /** #4507: Task-terminal finalization of a Task-owned worktree. */
+  async finalizeForTask(request: {
+    metadata: WorktreeSessionMetadata;
+    taskId: string;
+    terminalState: WorktreeTerminalState;
+  }): Promise<'removed' | 'preserved'> {
+    assertWorktreeMetadataTaskBinding(request.metadata, request.taskId);
+    return await this.cleanup({
+      metadata: request.metadata,
+      terminalState: request.terminalState,
+    });
+  }
+
   async provision(
     request: WorktreeProvisionRequest,
   ): Promise<WorktreeSessionMetadata | null> {
@@ -395,8 +567,9 @@ export class WorktreeProvisioningService {
     const startedAt = performance.now();
     try {
       const metadata = await this.createWorktree({
-        ...request,
-        isolation: request.isolation,
+        repoPath: request.repoPath,
+        ownerKey: request.threadId,
+        policy: validateWorktreePolicy(request.isolation.policy),
       });
       worktreeProvisionTotal.add(1, {
         outcome: 'success',
@@ -539,12 +712,64 @@ export class WorktreeProvisioningService {
     }
   }
 
-  private async createWorktree(
-    request: WorktreeProvisionRequest & {
-      isolation: WorkspaceIsolationConfig & { mode: 'worktree' };
-    },
-  ): Promise<WorktreeSessionMetadata> {
-    const policy = validateWorktreePolicy(request.isolation.policy);
+  /**
+   * #4507: the worktree git has registered at this owner's derived path on
+   * its derived branch, if any. Only an exact path and branch match counts;
+   * anything else at that path is left for creation to refuse.
+   */
+  private async registeredTaskWorktree(
+    repoPath: string,
+    ownerKey: string,
+    owner: WorktreeTaskOwner,
+    policy: ReturnType<typeof validateWorktreePolicy>,
+  ): Promise<WorktreeSessionMetadata | undefined> {
+    const repoRoot = (
+      await this.git.run(['-C', repoPath, 'rev-parse', '--show-toplevel'])
+    ).stdout.trim();
+    if (!repoRoot) return undefined;
+    const branch = buildWorktreeBranchName({
+      threadId: ownerKey,
+      branchPrefix: policy.branchPrefix,
+    });
+    const worktreeBaseDir = resolveWorktreeBaseDir(
+      repoRoot,
+      policy.worktreeBaseDir,
+    );
+    const worktreePath = join(worktreeBaseDir, worktreeSessionSegment(ownerKey));
+    assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
+    if (!existsSync(worktreePath)) return undefined;
+    const registered = parseWorktreeList(
+      (await this.git.run(['-C', repoRoot, 'worktree', 'list', '--porcelain']))
+        .stdout,
+    );
+    const expectedPath = canonicalizePath(worktreePath);
+    if (
+      !registered.some(
+        (entry) => entry.path === expectedPath && entry.branch === branch,
+      )
+    )
+      return undefined;
+    return {
+      mode: 'worktree',
+      repoPath: repoRoot,
+      path: worktreePath,
+      branch,
+      baseRef: policy.baseRef,
+      cleanupPolicy: policy.cleanupPolicy,
+      preserveOnFailure: policy.preserveOnFailure,
+      createdAt: new Date().toISOString(),
+      owner,
+    };
+  }
+
+  private async createWorktree(request: {
+    repoPath: string;
+    /** The identity the branch and path are derived from. */
+    ownerKey: string;
+    owner?: WorktreeTaskOwner;
+    policy: ReturnType<typeof validateWorktreePolicy>;
+  }): Promise<WorktreeSessionMetadata> {
+    const policy = request.policy;
     // The Project's folder is member-writable: a `.git` file there can name
     // any repository on this computer, and provisioning would branch and
     // check out whichever one git finds. Only the folder's own repository
@@ -589,7 +814,7 @@ export class WorktreeProvisioningService {
       }
 
       const branch = buildWorktreeBranchName({
-        threadId: request.threadId,
+        threadId: request.ownerKey,
         branchPrefix: policy.branchPrefix,
       });
       const branchExists = await this.git.run(
@@ -627,7 +852,7 @@ export class WorktreeProvisioningService {
       );
       const worktreePath = join(
         worktreeBaseDir,
-        worktreeSessionSegment(request.threadId),
+        worktreeSessionSegment(request.ownerKey),
       );
       assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
       if (existsSync(worktreePath)) {
@@ -673,6 +898,7 @@ export class WorktreeProvisioningService {
         cleanupPolicy: policy.cleanupPolicy,
         preserveOnFailure: policy.preserveOnFailure,
         createdAt: new Date().toISOString(),
+        ...(request.owner ? { owner: request.owner } : {}),
       };
     } finally {
       await repository.dispose();

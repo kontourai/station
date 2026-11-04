@@ -6269,6 +6269,9 @@ function worktreeMetadataFromEvents(
     const worktree = (metadata as Record<string, unknown>).worktree;
     if (!worktree || typeof worktree !== 'object') continue;
     const candidate = worktree as Partial<WorktreeSessionMetadata>;
+    // #4507: a Task-owned worktree outlives its Sessions; the Task's own
+    // terminal transition finalizes it, so a Session exit leaves it alone.
+    if (candidate.owner !== undefined) return undefined;
     if (
       candidate.mode === 'worktree' &&
       typeof candidate.repoPath === 'string' &&
