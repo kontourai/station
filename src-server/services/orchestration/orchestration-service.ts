@@ -7621,11 +7621,11 @@ export class OrchestrationService {
     await scheduler.yield();
     if (signal?.aborted || !this.isAdapterCurrent(adapter))
       throw new SessionStartIndeterminateError();
+    if (pending.committed) return;
     if (pending.failure) throw pending.failure;
     const consumerFailure = this.eventConsumerFailures.get(adapter);
     if (consumerFailure)
       throw new SessionStartIndeterminateError(consumerFailure);
-    if (pending.committed) return;
     const blockedAdapter = [...this.observedRetryThreads.keys()].some(
       (thread) => this.sessionAdapters.get(thread) === adapter,
     );
@@ -7652,7 +7652,7 @@ export class OrchestrationService {
         if (signal?.aborted) aborted();
         pending.promise.then(resolve);
       });
-      if (pending.failure) throw pending.failure;
+      if (!pending.committed && pending.failure) throw pending.failure;
       if (!pending.committed || !this.isAdapterCurrent(adapter))
         throw new SessionStartIndeterminateError();
     } finally {
@@ -13270,9 +13270,11 @@ export class OrchestrationService {
         error,
         'Session event consumer is unavailable; inspect the session before retrying.',
       );
-      this.eventConsumerFailures.set(adapter, unavailable);
+      // Empty legacy streams have announced no start; preserve their deferred semantics.
+      if (!streamEnded) this.eventConsumerFailures.set(adapter, unavailable);
       for (const pending of this.startedSessionCommits.values()) {
-        if (pending.adapter !== adapter) continue;
+        if (pending.adapter !== adapter || (streamEnded && !pending.eventId))
+          continue;
         pending.failure = unavailable;
         pending.resolve();
       }

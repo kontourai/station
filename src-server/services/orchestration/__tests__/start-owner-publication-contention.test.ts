@@ -459,18 +459,33 @@ test('an echo that drops the owner leaves the session ownerless for commands too
   }
 });
 
-test('a start whose session.started settled before the start hook binds no interim owner', async () => {
-  const f = fixture({ echoUserId: null });
-  try {
-    f.release();
-    f.adapter.settledBeforeReturn = f.store;
-    await f.start('owner', { userId: 'owner' });
-    expect(f.store.findSessionOwnerUserId(threadId)).toBeUndefined();
-    expect(f.admits('owner')).toBe(false);
-  } finally {
-    await f.close();
-  }
-});
+test.each(['healthy', 'consumer-failed-after-commit'] as const)(
+  'a durably settled start binds no interim owner and retains accepted truth (%s)',
+  async (mode) => {
+    const f = fixture({ echoUserId: null });
+    if (mode === 'consumer-failed-after-commit') {
+      const stream = f.adapter.streamEvents.bind(f.adapter);
+      vi.spyOn(f.adapter, 'streamEvents').mockImplementation((options) => ({
+        async *[Symbol.asyncIterator]() {
+          for await (const event of stream(options)) {
+            yield event;
+            if (event.method === 'session.started')
+              throw new Error('later stream fault');
+          }
+        },
+      }));
+    }
+    try {
+      f.release();
+      f.adapter.settledBeforeReturn = f.store;
+      await f.start('owner', { userId: 'owner' });
+      expect(f.store.findSessionOwnerUserId(threadId)).toBeUndefined();
+      expect(f.admits('owner')).toBe(false);
+    } finally {
+      await f.close();
+    }
+  },
+);
 
 test('a session.started publish that gives up leaves no interim owner', async () => {
   const f = fixture({ contend: 'all' });
@@ -1308,6 +1323,51 @@ test('a start observed by the live service but settled by another service fails 
     ).toBeUndefined();
   } finally {
     stop.resolve();
+    await launch;
+    for (const service of services) await service.shutdown();
+    for (const store of stores) store.close();
+  }
+});
+
+test('a second service without a queue consumer fails its start immediately', async () => {
+  const adapter = new EchoingAdapter();
+  const stores = ['owner', 'refused'].map(
+    (name) =>
+      new EventStore(join(makeTempDir(`consumer-${name}-`), 'events.sqlite')),
+  );
+  const services = stores.map(
+    (eventStore) =>
+      new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(adapter),
+        eventBus: new EventBus(),
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+  );
+  let launch:
+    | ReturnType<(typeof services)[1]['sessionCommands']['execute']>
+    | undefined;
+  try {
+    services[0].initialize();
+    services[1].initialize();
+    launch = services[1].sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'consumer-refused',
+          provider: 'claude',
+          metadata: { userId: 'owner' },
+        },
+      },
+      { userId: 'owner' },
+    );
+    expect(
+      await Promise.race([launch, delay(500).then(() => 'budget burned')]),
+    ).toMatchObject({ status: 'indeterminate' });
+    expect(
+      stores[1].latestEventByMethod('consumer-refused', 'session.started'),
+    ).toBeUndefined();
+  } finally {
     await launch;
     for (const service of services) await service.shutdown();
     for (const store of stores) store.close();
