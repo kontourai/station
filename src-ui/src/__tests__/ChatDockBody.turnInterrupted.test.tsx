@@ -350,7 +350,7 @@ describe('ChatDockBody Continue after a restart', () => {
   // Pinned literals, not the shared constants: a drift in either is a
   // change in what the person's tap sends.
   const PROMPT =
-    'Station restarted while you were working and your last turn was cut off. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task\'s pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.';
+    "Station restarted while you were working and your last turn was cut off. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
   const BOUNDARY = 'turn-boundary:3f1c';
   const banner = {
     role: 'user',
