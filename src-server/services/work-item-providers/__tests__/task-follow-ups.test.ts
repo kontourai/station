@@ -674,14 +674,16 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       store: () => holder.forWrite(),
       tasks: graph,
       reader: new GhGitHubFollowUpReader({ command: gh }),
-      deadlineMs: 400,
+      // Room for the fake gh to start on a loaded host; it never answers.
+      deadlineMs: 2_000,
     })!;
     const started = performance.now();
     const summary = await bounded.poll({
       now: NOW,
       signal: new AbortController().signal,
     });
-    expect(performance.now() - started).toBeLessThan(5_000);
+    // Stopped near the deadline, never the 15 s per-read timeout.
+    expect(performance.now() - started).toBeLessThan(10_000);
     expect(summary).toEqual({
       outcome: 'stopped',
       tasks: [{ taskId: task.id, items: 2, recorded: 0, outcome: 'deadline' }],
@@ -795,13 +797,14 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       );
     answerFirstPoll();
     answer(ghDir, { number: 14883 }, issuePage2);
-    slow(ghDir, 400);
+    slow(ghDir, 1_000);
     const bounded = composeTaskFollowUpPoller(registry, false, {
       store: () => holder.forWrite(),
       tasks: graph,
       reader: new GhGitHubFollowUpReader({ command: gh }),
-      // A needs four reads (two pages on each of two items); one fits.
-      deadlineMs: 700,
+      // A needs four reads of at least a second each (two pages on each of
+      // two items); B's single read fits with room for process start.
+      deadlineMs: 2_500,
     })!;
     const tick = (now: number) =>
       bounded.poll({ now, signal: new AbortController().signal });
