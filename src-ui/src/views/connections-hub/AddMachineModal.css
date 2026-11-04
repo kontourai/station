@@ -39,12 +39,12 @@
 /* #4519: refused by the managed policy; says why, promises no action. */
 .add-machine-modal__option--refused,
 .add-machine-modal__option--refused:hover {
-  border-color: var(--border-primary);
+  border-color: var(--k-line);
   cursor: default;
 }
 
 .add-machine-modal__option--refused .add-machine-modal__option-title {
-  color: var(--text-muted);
+  color: var(--k-text-muted);
 }
 
 .add-machine-modal__option--refused .add-machine-modal__option-detail {
