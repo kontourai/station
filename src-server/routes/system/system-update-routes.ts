@@ -930,12 +930,12 @@ export function createSystemUpdateRoutes(
       return c.json({
         installKind: provenance.installKind,
         updateAvailable: false,
-        message: `${managed.message}.`,
+        message: `${managed.sentence}.`,
         managedPolicyCode: managed.code,
         serverIdentity,
         provenanceIssue,
         technicalDetail: null,
-        selfUpdateUnavailableReason: managed.message,
+        selfUpdateUnavailableReason: managed.sentence,
         selfUpdateUnavailableCode: null,
       });
     }
@@ -1205,7 +1205,7 @@ export function createSystemUpdateRoutes(
     const managed = managedRefusal(provenanceOfThisServer());
     if (managed)
       return c.json(
-        { success: false, error: `${managed.message}.`, code: managed.code },
+        { success: false, error: `${managed.sentence}.`, code: managed.code },
         403,
       );
     if (!deps.serverUpdate)
@@ -1251,7 +1251,7 @@ export function createSystemUpdateRoutes(
     const managed = managedRefusal(provenance);
     if (managed)
       return c.json(
-        { success: false, error: `${managed.message}.`, code: managed.code },
+        { success: false, error: `${managed.sentence}.`, code: managed.code },
         403,
       );
     if (provenance.installKind === 'desktop-bundle') {

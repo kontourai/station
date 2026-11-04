@@ -476,7 +476,7 @@ export async function applyArchiveUpdate(
     return {
       ok: false,
       status: 403,
-      error: `${managed.message}.`,
+      error: `${managed.sentence}.`,
       code: managed.code,
     };
   const method = archiveApplyMethod(provenance, options.env);

@@ -994,7 +994,7 @@ export class ServerUpdateCoordinator {
       return {
         ok: false,
         status: 403,
-        error: `${managed.message}.`,
+        error: `${managed.sentence}.`,
         code: managed.code,
       };
     const progress = readServiceUpdateProgress(archive.installRoot);

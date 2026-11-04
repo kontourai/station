@@ -20,7 +20,7 @@ import type { InstallProvenance } from './install-provenance.js';
 export interface ManagedUpdateRefusal {
   code: typeof MANAGED_POLICY_UPDATES_REFUSED_CODE;
   /** One sentence for the person asking; it never names the feed URL. */
-  message: string;
+  sentence: string;
 }
 
 /** The release channel an install updates from, when it has one. */
@@ -42,7 +42,7 @@ export function managedUpdateRefusalFor(
 ): ManagedUpdateRefusal | null {
   const refusal = managedUpdatesRefusal(updates, updateChannel(provenance));
   if (refusal)
-    return { code: MANAGED_POLICY_UPDATES_REFUSED_CODE, message: refusal };
+    return { code: MANAGED_POLICY_UPDATES_REFUSED_CODE, sentence: refusal };
   if (
     updates?.feedUrl !== undefined &&
     (provenance.installKind === 'desktop-bundle' ||
@@ -50,7 +50,7 @@ export function managedUpdateRefusalFor(
   )
     return {
       code: MANAGED_POLICY_UPDATES_REFUSED_CODE,
-      message:
+      sentence:
         provenance.installKind === 'desktop-bundle'
           ? "This machine's managed policy takes updates only from the organization's mirror; the desktop app updates this Station from it"
           : "This machine's managed policy takes updates only from the organization's mirror, which a source checkout cannot update from",

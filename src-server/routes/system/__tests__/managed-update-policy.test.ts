@@ -29,14 +29,14 @@ describe('managedUpdateRefusalFor (#4522)', () => {
     for (const provenance of [sourceCheckout, desktopBundle('stable')])
       expect(managedUpdateRefusalFor(provenance, { mode: 'off' })).toEqual({
         code: 'managed-policy-updates-refused',
-        message: "This machine's managed policy turns off Station updates",
+        sentence: "This machine's managed policy turns off Station updates",
       });
   });
 
   test('a disallowed nightly refuses a nightly desktop bundle only', () => {
     expect(
       managedUpdateRefusalFor(desktopBundle('nightly'), { allowNightly: false })
-        ?.message,
+        ?.sentence,
     ).toBe(
       "This machine's managed policy makes the nightly channel unavailable",
     );
@@ -50,7 +50,7 @@ describe('managedUpdateRefusalFor (#4522)', () => {
     for (const provenance of [sourceCheckout, desktopBundle('stable')]) {
       const refusal = managedUpdateRefusalFor(provenance, mirror);
       expect(refusal?.code).toBe('managed-policy-updates-refused');
-      expect(refusal?.message).not.toContain('secret');
+      expect(refusal?.sentence).not.toContain('secret');
     }
   });
 });
