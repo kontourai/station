@@ -569,6 +569,47 @@ export function isSeededAppConfigValue(
 }
 
 /**
+ * Whether a value is a DECISION rather than the absence of one.
+ *
+ * archive#1557 review fix (M4): the resolvers trim and treat a whitespace-only
+ * string as absent. Provenance used a bare truthiness test, so `AWS_REGION="  "`
+ * made Settings report "Set by operator: AWS_REGION" for a value the resolver
+ * discards. `null` IS a decision: `builtinAgentEngineConnectionId: null` is
+ * the stored choice "no built-in Agent engine connection".
+ *
+ * Lives here (#4517 round 2) so the server's resolver, provenance and managed
+ * overlay and the CLI's offline overlay share one definition of "absent".
+ */
+export function isStoredValue(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+/**
+ * Whether stored `config/app.json` carries a Station decision for `key`: a
+ * stored value ({@link isStoredValue}) that is not byte-equal to the seed the
+ * loader wrote for it ({@link isSeededAppConfigValue}). A managed default
+ * fills a key only when this is false. One implementation for the server
+ * overlay and the CLI's offline readers (#4517), so they cannot disagree
+ * about an explicit `null` or a factory seed.
+ */
+export function hasAppConfigStationDecision(
+  stored: object,
+  key: string,
+): boolean {
+  const value: unknown = Reflect.get(stored, key);
+  if (!isStoredValue(value)) return false;
+  return !(
+    (SEEDED_APP_CONFIG_KEYS as readonly string[]).includes(key) &&
+    isSeededAppConfigValue(
+      key as (typeof SEEDED_APP_CONFIG_KEYS)[number],
+      value,
+    )
+  );
+}
+
+/**
  * The rules `validateAppConfig` applies beyond `schemas/app.schema.json`,
  * or undefined when `config` passes them. One implementation for server
  * startup (`validator.ts`) and `station policy check`, so the two cannot

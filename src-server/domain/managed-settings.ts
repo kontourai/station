@@ -40,12 +40,8 @@ import {
   isConfigurableLogLevel,
   setManagedLogLevelLock,
 } from '../utils/logger.js';
-import {
-  isSeededAppConfigValue,
-  SEEDED_APP_CONFIG_KEYS,
-} from './app-config-seed.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
-import { isStoredValue } from './settings-stored-value.js';
+import { hasAppConfigStationDecision } from './settings-stored-value.js';
 
 export interface ManagedAppSettings {
   summary: ManagedPolicySummary;
@@ -59,7 +55,6 @@ const REGISTRY_BY_KEY = new Map(
     definition,
   ]),
 );
-const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
 
 let installed: ManagedAppSettings | null = null;
 
@@ -115,23 +110,6 @@ function lockedManagedSetting(
 }
 
 /**
- * Whether this Station's stored config carries a decision for `key`. A value
- * byte-equal to its loader-written seed is not one: the loader wrote it, and
- * the resolver and provenance already report it as the built-in default.
- */
-function hasStationDecision(stored: object, key: string): boolean {
-  const value: unknown = Reflect.get(stored, key);
-  if (!isStoredValue(value)) return false;
-  return !(
-    SEEDED_KEY_SET.has(key) &&
-    isSeededAppConfigValue(
-      key as (typeof SEEDED_APP_CONFIG_KEYS)[number],
-      value,
-    )
-  );
-}
-
-/**
  * Environment variables a setting's real consumer reads that the registry
  * does not declare as its `envFallback`. A managed default sits below the
  * environment, so it must not fill a key one of these supplies; a lock
@@ -184,7 +162,8 @@ export function managedDefaultApplies(
   const entry = managed?.entries.get(key);
   if (!entry || entry.locked) return false;
   return (
-    !hasStationDecision(stored, key) && !environmentSupplies(key, environment)
+    !hasAppConfigStationDecision(stored, key) &&
+    !environmentSupplies(key, environment)
   );
 }
 

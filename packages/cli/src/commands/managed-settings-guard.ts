@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { hasAppConfigStationDecision } from '@kontourai/station-contracts/config';
 import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import {
   type LoadedManagedPolicy,
@@ -55,16 +56,6 @@ export function withoutManagedNoOpsOffline<T extends Record<string, unknown>>(
   return kept as T;
 }
 
-/** Whether the stored file carries a value for a key. */
-function hasStoredValue(stored: Record<string, unknown>, key: string): boolean {
-  const value = stored[key];
-  return !(
-    value === undefined ||
-    value === null ||
-    (typeof value === 'string' && value.trim().length === 0)
-  );
-}
-
 /**
  * #4517: what an offline reader of `config/app.json` acts on (`config get
  * --offline`, the `station registry` catalog read): the stored file with the
@@ -86,7 +77,9 @@ export function effectiveAppConfigOffline<T extends Record<string, unknown>>(
   if (!settings) return stored;
   const effective: Record<string, unknown> = { ...stored };
   for (const [key, entry] of Object.entries(settings))
-    if (entry.locked || !hasStoredValue(stored, key))
+    // The server's own predicate: an explicit `null` is a decision and a
+    // loader-written seed is not (#4517 round 2).
+    if (entry.locked || !hasAppConfigStationDecision(stored, key))
       effective[key] = structuredClone(entry.value);
   return effective as T;
 }

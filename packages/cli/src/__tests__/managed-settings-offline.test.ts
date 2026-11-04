@@ -7,6 +7,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { APP_CONFIG_SEED } from '@kontourai/station-contracts/config';
 import { STATION_HOME_SCHEMA_VERSION } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
@@ -203,4 +204,49 @@ describe('offline CLI reads under a managed policy', () => {
     expect(read.stdout).not.toMatch(/\b7\b/);
     expect(f.stored().defaultMaxTurns).toBe(7);
   }, 120_000);
+
+  // #4517 round 2: the offline reader decides "is there a Station decision"
+  // with the server's predicate, so an explicit null and a loader-written
+  // seed resolve the way the server resolves them.
+  test('config get --offline keeps an explicit null over a managed default', () => {
+    const f = fixture({
+      builtinAgentEngineConnectionId: { value: 'codex', locked: false },
+    });
+    f.writeApp({ builtinAgentEngineConnectionId: null });
+    const read = f.run(
+      'config',
+      'get',
+      'builtinAgentEngineConnectionId',
+      '--offline',
+    );
+    expect(read.status, read.stderr).toBe(0);
+    expect(read.stdout.trim()).toBe('null');
+    // With the key absent, the managed default applies.
+    f.writeApp({});
+    const unset = f.run(
+      'config',
+      'get',
+      'builtinAgentEngineConnectionId',
+      '--offline',
+    );
+    expect(unset.status, unset.stderr).toBe(0);
+    expect(unset.stdout.trim()).toBe('codex');
+    expect(f.stored()).toEqual({});
+  }, 180_000);
+
+  test('config get --offline applies a managed prompt over the factory seed', () => {
+    const managedPrompt = 'You are the Acme assistant.';
+    const f = fixture({
+      systemPrompt: { value: managedPrompt, locked: false },
+    });
+    f.writeApp({ systemPrompt: APP_CONFIG_SEED.systemPrompt });
+    const read = f.run('config', 'get', 'systemPrompt', '--offline');
+    expect(read.status, read.stderr).toBe(0);
+    expect(read.stdout.trim()).toBe(managedPrompt);
+    // A prompt the user wrote is a decision and wins over the default.
+    f.writeApp({ systemPrompt: 'My own prompt.' });
+    const own = f.run('config', 'get', 'systemPrompt', '--offline');
+    expect(own.status, own.stderr).toBe(0);
+    expect(own.stdout.trim()).toBe('My own prompt.');
+  }, 180_000);
 });
