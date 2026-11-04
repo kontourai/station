@@ -328,6 +328,22 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <p>After an interruption, <strong>Resume exact check</strong> continues the recorded check. Failed or uncertain runs offer <strong>Inspect receipt</strong>. They are not restarted automatically. See <a href="https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check">Scheduler identity and recovery</a>.</p>
 <h2 id="when-something-goes-wrong">When Something Goes Wrong</h2>
 <p>Open the help menu and choose <strong>Troubleshoot with an agent</strong>, or search the command palette for <strong>Troubleshoot an issue</strong>. It is also under Settings → Diagnostics.</p>
+<p>Where Station shows an error, a <strong>Troubleshoot</strong> action starts the same conversation with that error already attached:</p>
+<ul>
+<li>a view that stopped working (under <strong>More actions</strong> when Station refused the view), and an error notification;
+</li>
+<li>a pane that is temporarily unavailable, and a layout tab Station can't show;
+</li>
+<li>an engine that isn't connected, and an agent that can't run;
+</li>
+<li>a local Station that stopped or failed when <strong>Restart Station</strong> isn't offered;
+</li>
+<li>a reply that failed (<strong>Troubleshoot this</strong>);
+</li>
+<li>a reply you rated thumbs-down, through <strong>This looks like a Station bug</strong>. Your rating is saved as usual; the bug report isn't added to it.
+</li>
+</ul>
+<p>The assistant receives the page you were on (without anything after <code>?</code> or <code>#</code>), the error's code and first line with known credential shapes, links and file paths removed, and for a reply, the conversation and turn ids. It never receives a stack trace.</p>
 <ol>
 <li>Describe what went wrong in your own words and choose <strong>Start troubleshooting</strong>. You can paste or drop screenshots into the chat.
 </li>
