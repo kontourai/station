@@ -1299,6 +1299,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4003: runs the GitHub work-item observer against a fake `gh`
   // executable, through the real process-group runner.
   'src-server/services/work-item-providers/__tests__/github-work-item-observer.test.ts',
+  // #4508: the Task follow-up poller reads through a fake `gh api graphql`
+  // executable, through the real process-group runner.
+  'src-server/services/work-item-providers/__tests__/task-follow-ups.test.ts',
   // #4003: get_task_brief's production route composition re-reads the
   // tracker through the real observer and a fake `gh` executable.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-task-brief.test.ts',

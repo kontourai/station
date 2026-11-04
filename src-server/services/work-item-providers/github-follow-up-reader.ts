@@ -29,12 +29,12 @@
 import { execGitContextCommand } from '../../utils/git-exec.js';
 
 /** About a thousand characters of any one author's text (decision 3). */
-export const FOLLOW_UP_EXCERPT_CHARS = 1000;
+const FOLLOW_UP_EXCERPT_CHARS = 1000;
 const INLINE_COMMENTS_PER_REVIEW = 100;
 const CHECK_SUITES_MAX = 20;
 const CHECK_RUNS_PER_SUITE = 50;
 /** Items per connection page. */
-export const FOLLOW_UP_PAGE_SIZE = 50;
+const FOLLOW_UP_PAGE_SIZE = 50;
 const GITHUB_HOST = 'github.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -128,7 +128,7 @@ const COMMENTS = `comments(first: $first, after: $commentsAfter) {
   pageInfo { hasNextPage endCursor }
   edges { cursor node { databaseId url body createdAt ${AUTHOR} } }
 }`;
-export const FOLLOW_UP_QUERY = `query($owner: String!, $name: String!, $number: Int!, $first: Int!, $commentsAfter: String, $reviewsAfter: String, $withChecks: Boolean!) {
+const FOLLOW_UP_QUERY = `query($owner: String!, $name: String!, $number: Int!, $first: Int!, $commentsAfter: String, $reviewsAfter: String, $withChecks: Boolean!) {
   repository(owner: $owner, name: $name) {
     issueOrPullRequest(number: $number) {
       __typename
@@ -192,7 +192,7 @@ function cut(text: string, limit: number): { text: string; cut: boolean } {
  * its login without the `[bot]` suffix REST shows; the suffix is added so
  * both read the same. A login outside GitHub's alphabet is not shown.
  */
-export function classifyGitHubAuthor(
+function classifyGitHubAuthor(
   author: unknown,
   association: unknown,
 ): {
@@ -394,7 +394,7 @@ function readChecks(value: unknown): FollowUpItem[] {
   return items;
 }
 
-export function parseFollowUpAnswer(
+function parseFollowUpAnswer(
   answer: unknown,
   withChecks: boolean,
 ): FollowUpReadResult {

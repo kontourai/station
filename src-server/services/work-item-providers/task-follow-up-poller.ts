@@ -51,8 +51,8 @@ import type {
 } from './task-follow-up-store.js';
 
 export const TASK_FOLLOW_UP_PREVIEW_ID = 'task-tracker-follow-ups';
-export const TASK_FOLLOW_UP_INTERVAL_MS = 5 * 60 * 1000;
-export const TASK_FOLLOW_UP_ENDED_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const TASK_FOLLOW_UP_INTERVAL_MS = 5 * 60 * 1000;
+const TASK_FOLLOW_UP_ENDED_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 /** Tasks polled per tick; the rest wait, oldest poll first. */
 const MAX_TASKS_PER_POLL = 10;
 /** Kept pull requests followed per Task, besides the primary item. */
@@ -81,7 +81,7 @@ const isEnded = (task: TaskRecord) =>
   task.status === 'done' || task.status === 'canceled';
 
 /** Whether decision 1 lets this Task be followed at `now`. */
-export function isTaskFollowable(task: TaskRecord, now: number): boolean {
+function isTaskFollowable(task: TaskRecord, now: number): boolean {
   if (task.workItemProvenance !== 'project-board') return false;
   if (
     !task.workItemRef ||
