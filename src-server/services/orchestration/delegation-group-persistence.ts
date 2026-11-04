@@ -1845,11 +1845,10 @@ export class StationDelegationPersistence {
       }
       return undefined;
     };
-    const read = (file: string): DelegationAuthorityLedgerV3 | null => {
-      const bytes = readBytes(
-        join(domain.directory, file),
-        AUTHORITY_V3_MAX_BYTES,
-      );
+    const read = (
+      file: string,
+      bytes = readBytes(join(domain.directory, file), AUTHORITY_V3_MAX_BYTES),
+    ): DelegationAuthorityLedgerV3 | null => {
       if (bytes === null) return null;
       const ledger = validateDelegationAuthorityLedgerV3(JSON.parse(bytes));
       requirePersistence(
@@ -1874,7 +1873,11 @@ export class StationDelegationPersistence {
                 ) === null,
                 'delegation_authority_custody_conflict',
               );
-              const previous = read(file);
+              const previousBytes = readBytes(
+                join(domain.directory, file),
+                AUTHORITY_V3_MAX_BYTES,
+              );
+              const previous = read(file, previousBytes);
               const next = await body(previous && structuredClone(previous));
               if (preparationCurrent !== finalizeCurrent)
                 assertCurrent(preparationCurrent);
@@ -1979,7 +1982,8 @@ export class StationDelegationPersistence {
                   AUTHORITY_V3_MAX_BYTES,
                 'delegation_settlement_capacity',
               );
-              if (!previous || !same(previous, ledger))
+              const changed = !previous || !same(previous, ledger);
+              if (changed)
                 await domain.publish(
                   file,
                   ledger,
@@ -1988,7 +1992,12 @@ export class StationDelegationPersistence {
                   commitWithin,
                 );
               requirePersistence(
-                same(read(file), ledger),
+                changed
+                  ? same(read(file), ledger)
+                  : readBytes(
+                      join(domain.directory, file),
+                      AUTHORITY_V3_MAX_BYTES,
+                    ) === previousBytes,
                 'delegation_commit_unconfirmed',
               );
               return next.result;
@@ -2012,8 +2021,10 @@ export class StationDelegationPersistence {
       }
       return undefined;
     };
-    const read = (file: string): DelegationRoundsJournal | null => {
-      const bytes = readBytes(join(domain.directory, file), ROUNDS_MAX_BYTES);
+    const read = (
+      file: string,
+      bytes = readBytes(join(domain.directory, file), ROUNDS_MAX_BYTES),
+    ): DelegationRoundsJournal | null => {
       if (bytes === null) return null;
       const journal: DelegationRoundsJournal = JSON.parse(bytes);
       projectDelegationRounds(journal);
@@ -2030,8 +2041,12 @@ export class StationDelegationPersistence {
             domain.locked(finalizeCurrent, async () => {
               if (preparationCurrent !== finalizeCurrent)
                 assertCurrent(preparationCurrent);
-              const file = address(groupId),
-                previous = read(file);
+              const file = address(groupId);
+              const previousBytes = readBytes(
+                join(domain.directory, file),
+                ROUNDS_MAX_BYTES,
+              );
+              const previous = read(file, previousBytes);
               requirePersistence(
                 readBytes(
                   join(this.#groups.directory, file),
@@ -2098,7 +2113,8 @@ export class StationDelegationPersistence {
                     ROUNDS_MAX_BYTES,
                 'delegation_group_capacity',
               );
-              if (!previous || !same(previous, next.journal))
+              const changed = !previous || !same(previous, next.journal);
+              if (changed)
                 await domain.publish(
                   file,
                   next.journal,
@@ -2107,7 +2123,12 @@ export class StationDelegationPersistence {
                   commitWithin,
                 );
               requirePersistence(
-                same(read(file), next.journal),
+                changed
+                  ? same(read(file), next.journal)
+                  : readBytes(
+                      join(domain.directory, file),
+                      ROUNDS_MAX_BYTES,
+                    ) === previousBytes,
                 'delegation_commit_unconfirmed',
               );
               return next.result;

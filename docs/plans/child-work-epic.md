@@ -7,6 +7,45 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** Normal merge `077c6e78334d` integrates main through
+`36b6db3a4f87`. Managed dependencies, 67 connection-health/stream tests, scoped
+Biome and readiness (zero failures/warnings) pass. Independent source review
+finds no P0–P2 merge defect. No push, PR or qualification-guard enablement.
+
+The controlled CLI journey at `985df6ef7f43` passes and exits naturally with
+runtime/listener/loader cleanup verified. Its browser viewer instead reports an
+indeterminate pairing outcome before a browser Device is minted. No automatic
+retry follows; owned preview and incognito windows close. That receipt does not
+qualify browser visibility, reload or a second viewer on the later merged source.
+
+One pass-through input diagnostic at `077c6e78334d` preserves all 123 assertions:
+the valid report enters at 101.943 seconds and returns 503 at 120.898 seconds.
+A separate targeted CPU capture completes that valid report in 16.120 seconds,
+with exactly one additional model call, but the original file later fails because
+the missing-terminal control never reaches its canonical read by 120.469 seconds.
+Both files are restored byte-exactly. These are diagnostic outcomes, not final
+caller acceptance or stable latency proof. The targeted profile samples 5.956
+seconds of fsync and 4.212 seconds in Flow credential screening; native SQLite
+I/O remains unmeasured. Product deadlines and all authority/durability guards stay.
+
+The no-op persistence candidate retains only this transaction's validated text
+and compares a fresh secure durable readback against it. Changed transactions
+retain full output and readback validation. Fourteen owner tests pass, including
+historical formatting and rewritten-format, truncation, invalid UTF-8, missing
+file, mode, hard-link and symlink controls for both rounds stores. Server-test
+types pass before the last test-only additions. Independent source review finds
+no P0–P2 defect, with cost, caller and final alias-control qualification still
+required. This candidate is not counted as a runtime repair yet.
+
+The initialized cold-start case remains held for #3558's separate stale-consumer
+fix: an old orchestration listener can consume a new runtime's start event after
+its database closes. No unchanged rerun or local synthetic-event workaround.
+Original finalizer/input acceptance, complete group/frontier/folded obligations,
+current browser/device journeys and final combined independent qualification
+remain open. Both production qualification guards remain false.
+
+### Historical delivery checkpoint at `985df6ef7f43`
+
 **NOT_READY.** Normal merge `2f3c8e6f6e83` integrates main through
 `4dc2b370a58b`, including #4467, #4502 and #4505. Managed dependencies and
 hooks pass. Independent source review found no P0–P2 merge integration defect;

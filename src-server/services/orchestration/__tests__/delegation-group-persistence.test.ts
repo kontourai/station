@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -577,6 +581,77 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
   };
   expect((await first.controller.create(command)).projection.revision).toBe(1);
   expect((await first.controller.create(command)).replayed).toBe(true);
+  const noOpReadbacks = [
+    {
+      directory: 'station-rounds-authorities-v3',
+      id: root.authority_id,
+      read: (duringRead: () => void) =>
+        first.store.transact(root.authority_id, async (ledger) => {
+          if (!ledger) throw Error('authority missing');
+          duringRead();
+          return { ledger, result: 'retained' };
+        }),
+    },
+    {
+      directory: 'station-delegation-rounds',
+      id: spec.groupId,
+      read: (duringRead: () => void) =>
+        first.rounds.transact(spec.groupId, async (journal) => {
+          if (!journal) throw Error('rounds missing');
+          duringRead();
+          return { journal, result: 'retained' };
+        }),
+    },
+  ];
+  for (const noOp of noOpReadbacks) {
+    const file = join(
+      f.root,
+      noOp.directory,
+      `${createHash('sha256').update(noOp.id).digest('hex')}.json`,
+    );
+    const formatted = `${JSON.stringify(JSON.parse(readFileSync(file, 'utf8')), null, 3)}\n\n`;
+    writeFileSync(file, formatted);
+    expect(await noOp.read(() => {})).toBe('retained');
+    expect(readFileSync(file, 'utf8')).toBe(formatted);
+    for (const fault of [
+      'rewritten-format',
+      'truncated',
+      'invalid-utf8',
+      'missing',
+      'permissions',
+      'hard-link',
+      'symlink',
+    ] as const) {
+      const alias = `${file}.readback-alias`;
+      let faultApplied = false;
+      try {
+        await expect(
+          noOp.read(() => {
+            faultApplied = true;
+            if (fault === 'rewritten-format')
+              writeFileSync(file, `${formatted} `);
+            else if (fault === 'truncated') writeFileSync(file, '{');
+            else if (fault === 'invalid-utf8')
+              writeFileSync(file, Buffer.from([0xff]));
+            else if (fault === 'missing') unlinkSync(file);
+            else if (fault === 'hard-link') linkSync(file, alias);
+            else if (fault === 'symlink') {
+              writeFileSync(alias, formatted, { mode: 0o600 });
+              unlinkSync(file);
+              symlinkSync(alias, file);
+            } else chmodSync(file, 0o644);
+          }),
+        ).rejects.toThrow();
+        expect(faultApplied).toBe(true);
+      } finally {
+        if (fault === 'symlink' && faultApplied) unlinkSync(file);
+        if (existsSync(alias)) unlinkSync(alias);
+        writeFileSync(file, formatted, { mode: 0o600 });
+        chmodSync(file, 0o600);
+      }
+    }
+    expect(await noOp.read(() => {})).toBe('retained');
+  }
   await expect(
     first.controller.create({
       ...command,

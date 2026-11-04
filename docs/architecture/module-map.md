@@ -2771,7 +2771,11 @@ append-only current rosters and origins/journal events, known charges, terminal
 observations and cancellation across writes. Its existing private-file publication seam checks
 current request authority at commit, performs readback and fsync, and refuses
 stale disclosure after lock release. These are cooperative host-custody checks;
-they do not isolate hostile processes sharing the host uid.
+they do not isolate hostile processes sharing the host uid. A no-op transaction
+retains its initially validated file text only until that transaction ends. Its
+fresh bounded, ownership-checked and fsynced readback must match that text
+exactly, including historical formatting. Changed records still receive full
+readback validation; no authority or parsed record is cached across transactions.
 
 The new store accepts newly issued v3 authority only. It offers no v2 import or
 transfer operation: legacy journals and charges are not reconstructed or reset.
