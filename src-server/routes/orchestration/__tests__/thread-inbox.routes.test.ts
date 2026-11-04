@@ -5,8 +5,10 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { TURN_INTERRUPTED_CONTINUE_PROMPT } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
+import { restartContinuationEntry } from '../../../services/orchestration/restart-continuation.js';
 import { turnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 
@@ -1605,5 +1607,76 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect((await firstAttempt).status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(sendsOf(world, 'and then this')).toHaveLength(1);
+  });
+});
+
+/**
+ * #4512 review: production order after a restart. Station's own continuation
+ * for an interrupted turn is queued (its engine start held back for
+ * capacity), and only then does the Session's owner tap Continue on the live
+ * `/chat`. Both name the same Continue key, so exactly one turn starts.
+ */
+describe('restart continuation and the person’s Continue (#4512)', () => {
+  const station = createInboxHarness();
+  const BOUNDARY = 'turn-boundary:restart-1';
+
+  test('a queued restart continuation and a live Continue tap start one turn', async () => {
+    const world = station();
+    const first = await world.send('first', 'read the file');
+    expect(first.status, await first.clone().text()).toBe(200);
+    await eventually(() => expect(world.adapter.turns).toHaveLength(1));
+    // The first placement is refused for engine-start capacity, as the
+    // resource admission refuses a queued background start.
+    const capacity = Promise.reject(
+      Object.assign(new Error('Engine start capacity is full.'), {
+        code: 'resource_engine_start_capacity',
+      }),
+    );
+    capacity.catch(() => {});
+    world.inboxStartGate.wait = capacity;
+    const entry = restartContinuationEntry({
+      conversationId: CONVERSATION,
+      boundaryId: BOUNDARY,
+      owner: OWNER,
+      origin: 'task-dispatch',
+    });
+    expect(world.inbox.submit(entry).outcome).toBe('queued');
+    await eventually(() => expect(world.inboxStartGate.wait).toBeUndefined());
+    expect(world.adapter.turns).toHaveLength(1);
+
+    // Another member's tap is refused, saying Station is on it.
+    const other = await world.as(READER, () =>
+      world.send(entry.clientTurnId, TURN_INTERRUPTED_CONTINUE_PROMPT),
+    );
+    expect(other.status, await other.clone().text()).toBe(409);
+    expect(await other.json()).toMatchObject({
+      code: 'inbox_key_held',
+      error: 'Station is already continuing this interrupted turn.',
+    });
+
+    // The owner's own tap, same key and note.
+    const tap = await world.send(
+      entry.clientTurnId,
+      TURN_INTERRUPTED_CONTINUE_PROMPT,
+    );
+    expect(tap.status, await tap.clone().text()).toBeLessThan(300);
+    await eventually(() =>
+      expect(
+        world.adapter.turns.filter(
+          (turn) => turn.clientTurnId === entry.clientTurnId,
+        ),
+      ).toHaveLength(1),
+    );
+    await world.inbox.idle();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(
+      world.adapter.turns.filter(
+        (turn) => turn.clientTurnId === entry.clientTurnId,
+      ),
+    ).toHaveLength(1);
+    expect(world.prompts()).toEqual([
+      'read the file',
+      TURN_INTERRUPTED_CONTINUE_PROMPT,
+    ]);
   });
 });

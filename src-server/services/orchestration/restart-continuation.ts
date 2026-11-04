@@ -128,6 +128,33 @@ interface Candidate {
   readonly order: string;
 }
 
+/**
+ * The inbox entry that continues one interrupted turn: the person's Continue
+ * key and note, sent as the Session's owner with Station's own origin.
+ */
+export function restartContinuationEntry(input: {
+  readonly conversationId: string;
+  readonly boundaryId: string;
+  readonly owner: string;
+  readonly origin: TurnDispatchOrigin;
+}): {
+  readonly conversationId: string;
+  readonly clientTurnId: string;
+  readonly payload: ThreadInboxPayload;
+} {
+  return {
+    conversationId: input.conversationId,
+    clientTurnId: turnInterruptedContinueClientTurnId(input.boundaryId),
+    payload: {
+      message: TURN_INTERRUPTED_CONTINUE_PROMPT,
+      actor: { userId: input.owner },
+      clientOrigin: RESTART_CONTINUATION_CLIENT_ORIGIN,
+      automaticBackground: true,
+      dispatchOrigin: input.origin,
+    },
+  };
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -221,19 +248,15 @@ export class RestartContinuation {
 
   private submit(candidate: Candidate): RestartContinuationOutcome {
     const { turn } = candidate;
-    const clientTurnId = turnInterruptedContinueClientTurnId(turn.boundaryId);
+    const entry = restartContinuationEntry({
+      conversationId: candidate.conversationId,
+      boundaryId: turn.boundaryId,
+      owner: candidate.owner,
+      origin: candidate.origin,
+    });
+    const { clientTurnId } = entry;
     try {
-      const submitted = this.ports.submit({
-        conversationId: candidate.conversationId,
-        clientTurnId,
-        payload: {
-          message: TURN_INTERRUPTED_CONTINUE_PROMPT,
-          actor: { userId: candidate.owner },
-          clientOrigin: RESTART_CONTINUATION_CLIENT_ORIGIN,
-          automaticBackground: true,
-          dispatchOrigin: candidate.origin,
-        },
-      });
+      const submitted = this.ports.submit(entry);
       if (submitted.outcome !== 'queued') {
         this.ports.logger.warn('restart continuation was not queued', {
           threadId: turn.threadId,
