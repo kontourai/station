@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, the script runner and agent terminal tools, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
+Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Also implemented: the script runner, agent terminal tools with per-run approval, and Add to chat as a composer chip (see [Agent integration](#agent-integration)). Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -91,7 +91,8 @@ filesystem persistence across service recreation, not power-loss qualification.
 The retention settings, clear-history actions and doctor reporting have since
 shipped (see [Journal](#journal) and [Migration](#migration)). Restart and
 command sessions have their server side (see Session kinds and Sessions below);
-the UI offers Restart shell for an exited shell, and no command-session UI.
+the UI offers Restart shell for an exited shell and runs package scripts as
+command sessions with their own tabs; ACP command sessions have no UI.
 `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
@@ -496,7 +497,7 @@ only additions to the host interface. Write, resize, signal and terminate
 stay on the process handle, and reads on its journal. The
 [supervisor design](process-supervisor.md) covers the protocol, kill-tree
 escalation and the evidence. Windows job objects per workload, Settings
-controls for the host, and the UI for command sessions are not implemented.
+controls for the host, and the UI for ACP command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead.
@@ -597,9 +598,10 @@ the journal is sealed so the next run starts a new segment (a journal reopened
 by a supervisor workload starts one too), and the record carries
 `restart: {count, afterSeq, at}`. The new run drops the previous run's end
 time and `hostStopped` marker, so its own exit dates age expiry and decides
-whether it is restored after a host restart. Command sessions and server-owned
-launches are refused: no program is stored for them. The Coding terminal
-offers Restart shell when its shell has exited
+whether it is restored after a host restart. A package script is resolved
+again by name; other command sessions and server-owned launches are refused:
+no program is stored for them. The Coding terminal
+offers Restart shell when its shell has exited, and Restart for an ended script
 (`TerminalSession.restart()`); Reconnect stays for a lost connection, and a
 watch-only view offers neither.
 
@@ -833,8 +835,36 @@ is the sample plugin.
 
   Both are recorded in the thread's activity.
 
-  The script runner and both agent tools are not implemented. An agent's own
-  ACP terminal commands run as command sessions (see Session kinds).
+**Implemented (#3994).**
+
+- **Script runner.** The Coding terminal's New terminal list offers the
+  binding directory's `package.json` scripts. Choosing one runs it by name as a
+  command session (`launch: {kind: 'script', name}`, no PTY), through the
+  package manager its `packageManager` field or lockfile names. The script's
+  tab shows Running, Exit N (positive for 0) or Failed. Restart resolves the script again
+  by name under the same id, so the earlier run stays above the new one. An
+  ended run keeps its tab until it is closed or the script runs again. The
+  view starts a new line at each bare line feed, since a program without a
+  PTY writes no carriage returns; the journal keeps its bytes. Script runs are
+  retained with shells, not in the agent command pool. Running scripts from
+  chat code blocks and the end-marker busy check remain open.
+- **Agent tools.** `terminal_run` records a request and returns at once; the
+  person sees a card above the composer with the exact command and the
+  absolute directory, and approves (Run) or declines that one run; for a
+  minute after an approved run ends, a note says how it ended. Owner
+  decision: ask each time, with no remembered approval. An approved run starts
+  as a command session in the agent's `thread:<id>` binding as the approving
+  person, under their terminal authority, and is refused if its directory no
+  longer resolves to the one shown. `terminal_read` follows a run's state and
+  pages its output by sequence. An unanswered request expires after ten
+  minutes, at most three wait per chat, and requests live in memory. Reading a
+  terminal the person shares with the thread is not implemented; an agent
+  reads only its own runs.
+- **Add to chat.** The terminal menu's Add to chat puts the selection in the
+  chat's composer as a terminal chip, after the credential scan. It names the
+  shell's directory when the host can read it; a supervisor workload's cannot
+  be read, so that chip names none. The chip is sent with the next message as
+  a literal fenced block. Line ranges are not recorded.
 
 ## Migration
 

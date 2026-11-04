@@ -46,6 +46,17 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // `EngineCredentialRefusedError`: two fixed sentences, never the key.
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 1',
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 2',
+  // The script runner's refusal (#3994). `error` is narrowed by `instanceof
+  // TerminalCommandUnavailable`, constructed only in `terminal-sessions.ts`
+  // from a literal ("Its directory has changed") or from a
+  // `TerminalProgramUnavailable`, whose messages are all authored in
+  // `terminal-command-programs.ts`; the only interpolations are the request's
+  // own script name and the package manager's name. A parse failure or any
+  // other caught error is never wrapped, so it reaches the generic 503.
+  //
+  // What would make this unsafe: wrapping a caught error's message in either
+  // class, or interpolating file contents or host paths into one.
+  'src-server/routes/projects/terminal-session-routes.ts :: function createTerminalSessionRoutes :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',

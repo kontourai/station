@@ -10,6 +10,7 @@ import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
+import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { PromptModal } from '../modals/PromptModal';
 import { activeTerminalWriter } from './activeTerminal';
@@ -28,7 +29,7 @@ import {
   type ContextMenuAction,
   contextMenuAnchor,
 } from '../ContextMenu';
-import { SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
 import { filterTree } from './fileTreeFilter';
 
 const EMPTY_TREE: FileEntry[] = [];
@@ -184,7 +185,9 @@ export function FileTreePanel({
   const {
     data: tree = EMPTY_TREE,
     isLoading: loading,
+    isFetching: refreshing,
     error: queryError,
+    refetch,
   } = useCodingFilesQuery(location, apiBase);
 
   const createMut = useCreateCodingFileMutation(location, apiBase);
@@ -448,7 +451,22 @@ export function FileTreePanel({
         {loading && (
           <SkeletonList count={5} withIcon={false} label="Loading files" />
         )}
-        {loadError && <div className="file-tree-panel__error">{loadError}</div>}
+        {loadError && (
+          <ErrorState
+            title="Could not load files"
+            description={loadError}
+            variant="compact"
+            action={
+              <Button
+                variant="secondary"
+                disabled={refreshing}
+                onClick={() => void refetch()}
+              >
+                Retry
+              </Button>
+            }
+          />
+        )}
         {!loading && !loadError && tree.length === 0 && (
           <div className="file-tree-panel__hint">
             {workingDir ? 'No files found' : 'No working directory configured'}

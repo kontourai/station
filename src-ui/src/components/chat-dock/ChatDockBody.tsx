@@ -151,6 +151,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { TerminalRunNotes, terminalRunRefreshKey } from './TerminalRunNotes';
 import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
 
@@ -2482,6 +2483,16 @@ export function ChatDockBody({
         <AgentScheduleNotes
           conversationId={activeSession.conversationId}
           refreshKey={agentScheduleRefreshKey(
+            activeSession.conversationActivity?.openTurn?.turnId,
+            activeSession.streamingMessage?.contentParts,
+          )}
+        />
+      ) : null}
+      {/* Commands an agent asked to run here, each waiting for its own Run. */}
+      {activeSession.conversationId && !activeSession.replay ? (
+        <TerminalRunNotes
+          conversationId={activeSession.conversationId}
+          refreshKey={terminalRunRefreshKey(
             activeSession.conversationActivity?.openTurn?.turnId,
             activeSession.streamingMessage?.contentParts,
           )}
