@@ -211,16 +211,14 @@ export async function authenticateEnsembleSessionGroup(
       if (!selection)
         throw new CliSessionGroupUnavailable('ensemble_binding_changed');
       assertSelection(selection);
-      if (Date.now() - selection.checkedAt >= 30_000) {
-        let observation = refreshing.get(seatId);
-        if (!observation) {
-          observation = observe(selection).finally(() =>
-            refreshing.delete(seatId),
-          );
-          refreshing.set(seatId, observation);
-        }
-        await observation;
+      let observation = refreshing.get(seatId);
+      if (!observation) {
+        observation = observe(selection).finally(() =>
+          refreshing.delete(seatId),
+        );
+        refreshing.set(seatId, observation);
       }
+      await observation;
       const checkedAt = selection.checkedAt;
       const assertCurrent = () => {
         if (

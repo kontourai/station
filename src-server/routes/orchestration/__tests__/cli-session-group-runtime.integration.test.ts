@@ -1538,7 +1538,7 @@ test('preset authentication fences unsupported and changed contexts and retains 
   expect(final.preset).toEqual(uploadedView.preset);
   expect(JSON.stringify(final)).not.toContain('Private addition');
   expect(f.adapter.turns).toHaveLength(3);
-  expect(f.adapter.authentications).toHaveLength(8);
+  expect(f.adapter.authentications).toHaveLength(11);
   expect(
     f.adapter.authentications.every(
       (observation) =>
@@ -1570,7 +1570,7 @@ test('preset authentication fences unsupported and changed contexts and retains 
     },
   );
   expect(replayed.status).toBe(200);
-  expect(f.adapter.authentications).toHaveLength(8);
+  expect(f.adapter.authentications).toHaveLength(11);
   expect(f.adapter.turns).toHaveLength(3);
   writeFileSync(path, `${bytes} `);
   await expect(
@@ -1605,6 +1605,79 @@ test('preset authentication fences unsupported and changed contexts and retains 
     writeFileSync(recordPath, originalRecord);
   }
 }, 30_000);
+
+test.each([11_000, 31_000])(
+  'a pending seat refreshes login before a %ims dispatch preparation while keeping the 30s launch fence',
+  async (preparationMs) => {
+    const { f, local, input } = await presetFixture();
+    const base = Date.now();
+    let now = base;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const group = await createEnsembleCliSessionGroup(f.apiBase, {
+      ...input,
+      operationId: `fresh-before-dispatch-${preparationMs}`,
+      maxConcurrent: 1,
+    });
+    f.adapter.onAuthentication = async () => {
+      // Later roster observations consume time without expiring the first one yet.
+      if (f.adapter.authentications.length === 2) now = base + 20_000;
+    };
+    let prepared = false;
+    f.setPreparation(async () => {
+      if (!prepared) {
+        prepared = true;
+        now += preparationMs;
+      }
+    });
+    const stop = new AbortController();
+    const headers = { Authorization: `Bearer ${local.credential}` };
+    const running = Promise.resolve(
+      f.app.request(`/api/orchestration/session-groups/${group.groupId}/run`, {
+        method: 'POST',
+        headers,
+        signal: stop.signal,
+      }),
+    );
+    void running.catch(() => {});
+    try {
+      const response = await running;
+      expect(response.status, await response.clone().text()).toBe(200);
+      const view = ((await response.json()) as { data: CliSessionGroupView })
+        .data;
+      const lead = view.members.find((member) => member.seatId === 'lead');
+      expect(prepared).toBe(true);
+      if (preparationMs === 11_000) {
+        expect(
+          lead?.handle,
+          'fresh login must survive the 11s preparation',
+        ).toBeDefined();
+        expect(f.adapter.turns).toHaveLength(3);
+      } else {
+        expect(lead?.handle).toBeUndefined();
+        expect(lead?.dispatchFailure).toBeDefined();
+        expect(f.groupWarnings).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              message: 'CLI group member dispatch refused',
+              meta: expect.objectContaining({
+                reason: expect.stringContaining('ensemble_auth_stale'),
+              }),
+            }),
+          ]),
+        );
+        expect(
+          f.adapter.turns.some(
+            (turn) => turn.threadId === lead?.reservedSessionId,
+          ),
+        ).toBe(false);
+      }
+    } finally {
+      stop.abort();
+      await Promise.allSettled([running]);
+    }
+  },
+  30_000,
+);
 
 test('preset authentication cancellation and changed start context stop member effects', async () => {
   const { f, local, input } = await presetFixture();

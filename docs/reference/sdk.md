@@ -6575,8 +6575,11 @@ before Flow claims and seat reservations. Unsupported observers or a failed
 member refuse the run without starting a member. Current Codex/Claude login
 observations are private to the exact saved intent and supervision lifetime;
 ACP/OpenCode presets currently refuse. Signals reach bounded login commands,
-and effect fences recheck configuration and permission currency. Login is not
-selected-model entitlement, portable authority or fiscal enforcement. Creation,
+and effect fences recheck configuration and permission currency. Each pending
+seat refreshes login before its start reservation, while concurrent preparation
+shares the probe. The closing launch fence still rejects observations aged
+30 seconds or more. Login is not selected-model entitlement, portable authority
+or fiscal enforcement. Creation,
 completed replay and zero-allowance execution do not probe login.
 The server retains a private continuation of the native executable, profile,
 launch environment and bounded local-file observation through actual spawn.

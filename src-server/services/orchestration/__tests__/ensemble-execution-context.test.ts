@@ -732,13 +732,14 @@ describe('production Ensemble preparation authentication', () => {
       expect(statusCount()).toBe(1);
       const initial = await admission.prepareDispatch('lead');
       initial();
+      expect(statusCount()).toBe(2);
       advance = 30_001;
       expect(initial).toThrow('ensemble_auth_stale');
       const refreshed = await Promise.all([
         admission.prepareDispatch('lead'),
         admission.prepareDispatch('lead'),
       ]);
-      expect(statusCount()).toBe(2);
+      expect(statusCount()).toBe(3);
       refreshed.forEach((assertCurrent) => assertCurrent());
       const statusCall = execFile.mock.calls.find((call) =>
         call[1].includes('status'),
@@ -773,11 +774,11 @@ describe('production Ensemble preparation authentication', () => {
       expect(refreshed[0]).toThrow(
         'Execution authentication executable changed',
       );
-      expect(statusCount()).toBe(2);
+      expect(statusCount()).toBe(3);
       controller.abort();
       expect(refreshed[0]).toThrow();
       await expect(admission.prepareDispatch('lead')).rejects.toThrow();
-      expect(statusCount()).toBe(2);
+      expect(statusCount()).toBe(3);
       f.assertNoInvocations();
     },
   );
