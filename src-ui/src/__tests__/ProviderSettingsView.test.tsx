@@ -13,6 +13,10 @@ let saveMutationOptions: {
   onError?: (error: Error) => void;
   onSuccess?: (saved: { id: string }, variables: unknown) => void;
 } = {};
+let deleteMutationOptions: {
+  onSuccess?: () => void;
+  onError?: (error: Error) => void;
+} = {};
 let modelConnections: unknown[] = [];
 let modelConnectionsError: Error | null = null;
 const refetchModelConnections = vi.fn();
@@ -50,10 +54,10 @@ vi.mock('@kontourai/station-sdk', () => ({
       isPending: saveMutationState.isPending,
     };
   },
-  useDeleteModelConnectionMutation: () => ({
-    mutate: deleteMutate,
-    isPending: false,
-  }),
+  useDeleteModelConnectionMutation: (options: typeof deleteMutationOptions) => {
+    deleteMutationOptions = options;
+    return { mutate: deleteMutate, isPending: false };
+  },
   useTestModelConnectionMutation: () => ({
     mutate: testMutate,
     isPending: false,
@@ -85,6 +89,7 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { ProviderSettingsView } from '../views/ProviderSettingsView';
 
@@ -105,6 +110,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     onNavigate.mockReset();
     saveMutationState = { isPending: false };
     saveMutationOptions = {};
+    deleteMutationOptions = {};
     modelConnections = [];
     acpRegistryData = [];
     modelConnectionsError = null;
@@ -396,7 +402,13 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
   // RT-17 — agent delete has always opened a confirm modal; provider delete
   // was a single click that removed the connection and its saved API key from
   // disk with no confirmation of any kind.
-  test('provider delete confirms before removing the connection', () => {
+  test('provider delete confirms, then leaves a dirty deleted connection without another discard decision', () => {
+    navigationStore.navigate('/connections/models/anthropic-1');
+    onNavigate.mockImplementation((view) => {
+      if (view.type === 'connections-models') {
+        navigationStore.navigate('/connections/models');
+      }
+    });
     modelConnections = [
       {
         id: 'anthropic-1',
@@ -417,6 +429,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       />,
     );
 
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Unsaved name' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(deleteMutate).not.toHaveBeenCalled();
 
@@ -427,6 +442,11 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(deleteMutate).not.toHaveBeenCalled();
     expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(
@@ -437,6 +457,44 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ) as HTMLElement,
     );
     expect(deleteMutate).toHaveBeenCalledWith('anthropic-1');
+
+    act(() => {
+      deleteMutationOptions.onError!(new Error('Deletion refused'));
+    });
+    expect(screen.getByText('Deletion refused')).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+    act(() => navigationStore.navigate('/connections/models'));
+    expect(
+      screen.getByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeTruthy();
+    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((button) =>
+          button.closest('.station-dialog__footer'),
+        ) as HTMLElement,
+    );
+    expect(deleteMutate).toHaveBeenCalledTimes(2);
+    act(() => {
+      deleteMutationOptions.onSuccess!();
+    });
+
+    expect(window.location.pathname).toBe('/connections/models');
+    expect(
+      screen.queryByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeNull();
+    expect(screen.queryByLabelText('Name')).toBeNull();
   });
 
   // The draft stays on `new` until it is created. It used to navigate to the

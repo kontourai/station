@@ -59,6 +59,7 @@ export function ProviderSettingsView({
   const [testError, setTestError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCompleted, setDeleteCompleted] = useState(false);
 
   const {
     data: providers = [],
@@ -125,6 +126,13 @@ export function ProviderSettingsView({
 
   const dirty = dirtyFields.current.size > 0;
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
+
+  // Let this editor's dirty guard unregister before leaving the deleted record.
+  useEffect(() => {
+    if (!deleteCompleted || dirty) return;
+    setDeleteCompleted(false);
+    onNavigate({ type: 'connections-models' });
+  }, [deleteCompleted, dirty, onNavigate]);
 
   // A created connection's route move waits for the form to be clean, so the
   // unsaved-changes guard cannot swallow it (see `saveMutation.onSuccess`).
@@ -287,10 +295,11 @@ export function ProviderSettingsView({
 
   const deleteMutation = useDeleteModelConnectionMutation({
     onSuccess: () => {
+      dirtyFields.current.clear();
       setShowDeleteModal(false);
       setForm(null);
       setIsNew(false);
-      onNavigate({ type: 'connections-models' });
+      setDeleteCompleted(true);
     },
     onError: (err: Error) => {
       setShowDeleteModal(false);
