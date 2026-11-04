@@ -59,7 +59,9 @@ sharing question itself is visible. Advanced saves still persist preferences
 when that question is offscreen, but record no built-in notice. A visible plugin
 row cannot supply that evidence. Hidden or covered questions cannot supply it either.
 DNT still refuses notice writes. CLI/headless starts are unchanged: printing
-the notice counts as showing it. A status fetch alone never records presentation. A current
+the notice counts as showing it. Under a managed policy with `limits.telemetry:
+false`, neither `station start` nor a headless server prints the notice or
+records it as shown. A status fetch alone never records presentation. A current
 notice prevents another prompt on remount; a changed notice revision prompts
 again. Off remains available in Settings. Resetting Station settings preserves
 sharing choices.
@@ -185,7 +187,7 @@ before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
-`policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
+`managed`, `policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
 `station telemetry set operator off` or `station telemetry set kontour lite`
 to save a single publisher choice. Requesting Full without its receipt remains
 Lite. These commands support the normal target/credential flags. The status API also
