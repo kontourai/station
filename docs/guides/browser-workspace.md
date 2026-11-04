@@ -127,6 +127,11 @@ for it.
 
 ## Troubleshooting
 
+A browser that exits at launch, or starts but does not answer within 30
+seconds, is reported as "The browser could not start, or stopped
+unexpectedly." Station's log has the reason (`browser: Chromium could not
+start`). The sandbox case below has its own message and a **How to fix** link.
+
 ### No usable sandbox on Linux
 
 The pane says the Station's Linux host blocks the browser sandbox. Chromium

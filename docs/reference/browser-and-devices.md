@@ -476,10 +476,15 @@ check below found no control under 44px.
 On narrow screens, editing the address hides its navigation buttons until
 editing ends, leaving room for the URL. Back and forward occupy space on a fine
 pointer only while the toolbar is hovered or focused. Touch takeover hints say
-**Tap**. Input the host did not deliver is named over the top of the page with
-**Retry**, which sends again only what did not arrive; later input that gets
-through clears it. A second finger's lift, or a lift after control changed
-hands, is not a failure. The console scrolls within its share of the pane; it does not force the
+**Tap**. Why input did not take effect is one line over the top of the page.
+**Retry** is offered only for input the host refused before dispatching any of
+it (`surface-busy`). It is sent once, at the control epoch it was meant for,
+and only while this viewer may still send input. A change of control drops it,
+and so does new input after the kept gesture ends. A kept tap's release joins
+it instead of going out alone. Any other failure (a dispatch error or timeout,
+or a lost response) may already have applied, so the line says the input "may
+not have reached the page" and nothing is sent again. A second finger's lift,
+or a lift after control changed hands, is not a failure. The console scrolls within its share of the pane; it does not force the
 live page beneath the dock. On the standalone Browser route, the page frame
 passes its available height through to both views. The actions menu fits between
 the current toolbar/banner stack and the dock, with its own scroll when needed.
