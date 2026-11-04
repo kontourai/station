@@ -224,6 +224,12 @@ stamp would let Claude spawn holding the bypass grant. An "Auto-accept file
 edits for this session" answer under a ceiling of `ask` is downgraded to a
 single accept, as it is for a caller without `setApprovalMode` authority.
 
+Everything else gated on that authority is closed too. Notably, a
+plugin-owned Agent's `autoApprove` and `unattendedAutoApprove` grants cannot
+be changed, removal included, while the ceiling is below `never`. Accepted:
+those grants let calls run without a prompt, and the route gates any change,
+so a narrower carve-out would need its own review.
+
 **One holder, installed by the entrypoint.** The ceiling is process state
 (`security/managed-approval-ceiling.ts`), installed right after the policy
 loads and before the runtime is built. The gates are reached from many

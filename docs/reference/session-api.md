@@ -806,6 +806,11 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A start or send on a chat whose recorded approval mode is above the machine's
+managed approval ceiling is refused before any engine effect with
+`code: "managed-policy-approval-ceiling"` until the mode is lowered
+([ceiling](../guides/managed-policy.md#approval-mode-ceiling)).
+
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
 `code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
@@ -1002,7 +1007,8 @@ taken it, as a `setApprovalMode` of Auto based on the decision standing
 before the answer would. If any decision was recorded after the answer was
 sent, that decision stands and nothing is recorded. It is not recorded over a
 standing Auto or full access. It then lasts until the next approval-mode
-decision. Through the delegated-task respond route for a task on this Station,
+decision. Under a managed approval ceiling of Ask it is sent as `accept` and
+records nothing, because Auto is above the ceiling. Through the delegated-task respond route for a task on this Station,
 or the inbox, the same answer is sent as `accept` and records nothing. A
 delegated answer for a task on a saved Environment reaches that Station as
 this command, and that Station applies the same rule. Where nothing can be
@@ -1247,7 +1253,10 @@ The remaining controls are defined by
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
-  observed. A stale basis refuses the change. An engine with no approval
+  observed. A stale basis refuses the change. A mode above the machine's
+  managed approval ceiling is refused with `403` and
+  `code: "managed-policy-approval-ceiling"`
+  ([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). An engine with no approval
   control refuses it; on ACP that is decided per connection, and only an
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
