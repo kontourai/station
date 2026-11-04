@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { join } from 'node:path';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -28,6 +29,8 @@ import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 const MAX_CLAIMS = 1024;
 const MAX_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_RECEIPT_BYTES = 3 * 1024;
+// Starting, completion and retention fields must fit after invocation.
+const RECEIPT_BOOKKEEPING_BYTES = 256;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MISSING = Symbol('missing-create-claims');
 type CreateHandle = DelegatedTaskHandle | ForegroundMessageHandle;
@@ -39,12 +42,29 @@ interface Claim {
   startedAt?: number;
   tombstoneAt?: number;
   completedAt?: number;
+  retention?: { remainingMs: number; observedUptimeMs: number };
   result?: CreateHandle;
 }
-function claimExpired(claim: Claim, now: number): boolean {
-  if (claim.tombstoneAt !== undefined) return false;
-  const since = claim.result ? claim.completedAt : claim.startedAt;
-  return since !== undefined && now - since >= RETENTION_MS;
+// Persist elapsed host uptime, never wall-clock deltas. Uptime reset (reboot)
+// conservatively preserves the remaining window; legacy rows start a full one.
+function observeRetention(claim: Claim, uptimeMs: number): void {
+  if (
+    claim.tombstoneAt !== undefined ||
+    (claim.result ? claim.completedAt : claim.startedAt) === undefined
+  )
+    return;
+  const previous = claim.retention;
+  claim.retention = {
+    remainingMs: Math.max(
+      0,
+      (previous?.remainingMs ?? RETENTION_MS) -
+        (previous ? Math.max(0, uptimeMs - previous.observedUptimeMs) : 0),
+    ),
+    observedUptimeMs: uptimeMs,
+  };
+}
+function claimExpired(claim: Claim): boolean {
+  return claim.tombstoneAt === undefined && claim.retention?.remainingMs === 0;
 }
 
 interface Ledger {
@@ -204,6 +224,12 @@ export class CreateRequestClaims {
         (claim.startedAt !== undefined && !Number.isFinite(claim.startedAt)) ||
         (claim.completedAt !== undefined &&
           !Number.isFinite(claim.completedAt)) ||
+        (claim.retention !== undefined &&
+          (!Number.isFinite(claim.retention.remainingMs) ||
+            claim.retention.remainingMs < 0 ||
+            claim.retention.remainingMs > RETENTION_MS ||
+            !Number.isFinite(claim.retention.observedUptimeMs) ||
+            claim.retention.observedUptimeMs < 0)) ||
         (claim.result !== undefined &&
           !isCreateRequestHandle(claim.result, claim))
       )
@@ -226,6 +252,9 @@ export class CreateRequestClaims {
   }
   async #update<T>(change: (ledger: Ledger) => T | Promise<T>): Promise<T> {
     return this.#withLockedLedger(async (ledger) => {
+      const uptimeMs = os.uptime() * 1000;
+      for (const row of Object.values(ledger.claims))
+        observeRetention(row, uptimeMs);
       const result = await change(ledger);
       await publishJsonFileWithOwnedLock(this.#file, ledger, {
         maxBytes: MAX_LEDGER_BYTES,
@@ -267,11 +296,26 @@ export class CreateRequestClaims {
       .digest('hex');
     const digest = chatTurnSubmissionDigest(input.intent);
     // Reject changed input before waiting for the live request's ownership lock.
-    const known = await this.#withLockedLedger((ledger) => ledger.claims[key]);
+    const known = await this.#update((ledger) => ledger.claims[key]);
+    let reclaimable = false;
     if (
       known &&
-      (!known.result || !claimExpired(known, Date.now())) &&
-      known.digest !== digest
+      !known.result &&
+      !known.starting &&
+      known.tombstoneAt === undefined
+    ) {
+      try {
+        const owner = inspectLock(`${this.#file}.${key}.owner`);
+        reclaimable = !owner || !lockOwnerAlive(owner.owner);
+      } catch {
+        // Unreadable ownership is not proof of a dead owner.
+      }
+    }
+    if (
+      known &&
+      (!known.result || !claimExpired(known)) &&
+      known.digest !== digest &&
+      !reclaimable
     )
       throw new CreateRequestConflictError();
 
@@ -285,8 +329,8 @@ export class CreateRequestClaims {
         for (const [id, row] of Object.entries(ledger.claims)) {
           const unmarked =
             !row.result && !row.starting && row.tombstoneAt === undefined;
-          if (unmarked && id === key) continue;
-          if (!unmarked && !claimExpired(row, now)) continue;
+          if (unmarked && id === key && row.digest === digest) continue;
+          if (!unmarked && !claimExpired(row)) continue;
           if (!row.result && id !== key) {
             const owner = inspectLock(`${this.#file}.${id}.owner`);
             if (owner && lockOwnerAlive(owner.owner)) continue;
@@ -300,9 +344,11 @@ export class CreateRequestClaims {
             row.tombstoneAt = now;
             delete row.starting;
             delete row.startedAt;
+            delete row.retention;
           } else if (id === key) {
             delete row.starting;
             delete row.startedAt;
+            delete row.retention;
           } else delete ledger.claims[id];
         }
         const existing = ledger.claims[key];
@@ -326,7 +372,7 @@ export class CreateRequestClaims {
             Object.values(ledger.claims).filter(
               (r) => !r.result && r.tombstoneAt === undefined,
             ).length *
-              (MAX_RECEIPT_BYTES + 128);
+              (MAX_RECEIPT_BYTES + RECEIPT_BOOKKEEPING_BYTES);
           return reservedBytes > MAX_LEDGER_BYTES ? 'bytes' : undefined;
         };
         let limit = capacity();
@@ -368,6 +414,7 @@ export class CreateRequestClaims {
             await this.#update((ledger) => {
               delete ledger.claims[key].starting;
               delete ledger.claims[key].startedAt;
+              delete ledger.claims[key].retention;
             });
             starting = false;
           },
@@ -376,6 +423,8 @@ export class CreateRequestClaims {
             await this.#update((ledger) => {
               ledger.claims[key].starting = true;
               ledger.claims[key].startedAt = Date.now();
+              delete ledger.claims[key].retention;
+              observeRetention(ledger.claims[key], os.uptime() * 1000);
             });
             starting = true;
           },
@@ -398,6 +447,7 @@ export class CreateRequestClaims {
           await this.#update((ledger) => {
             ledger.claims[key].starting = true;
             ledger.claims[key].startedAt ??= Date.now();
+            observeRetention(ledger.claims[key], os.uptime() * 1000);
           });
           starting = true;
           throw new CreateRequestIndeterminateError(
@@ -408,6 +458,8 @@ export class CreateRequestClaims {
         await this.#update((ledger) => {
           ledger.claims[key].result = receipt as T;
           ledger.claims[key].completedAt = Date.now();
+          delete ledger.claims[key].retention;
+          observeRetention(ledger.claims[key], os.uptime() * 1000);
         });
         return receipt as T;
       } catch (error) {

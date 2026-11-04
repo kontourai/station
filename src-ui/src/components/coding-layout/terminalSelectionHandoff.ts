@@ -9,27 +9,3 @@ import { containsKnownCredential } from '@kontourai/station-shared/redaction';
 export function selectionContainsCredential(selection: string): boolean {
   return containsKnownCredential(selection);
 }
-
-function literalFence(selection: string): string {
-  const longestBacktickRun = Math.max(
-    0,
-    ...[...selection.matchAll(/`+/g)].map((match) => match[0].length),
-  );
-  return '`'.repeat(Math.max(3, longestBacktickRun + 1));
-}
-
-export function buildTerminalSelectionHandoff({
-  selection,
-  cwd,
-}: {
-  selection: string;
-  cwd: string;
-}): string {
-  const fence = literalFence(selection);
-  return [
-    `Terminal output (working directory: ${JSON.stringify(cwd)}):`,
-    fence,
-    selection,
-    fence,
-  ].join('\n');
-}

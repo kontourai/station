@@ -306,7 +306,6 @@ interface ProjectRouteDeps {
   layoutCatalog?: DistributionProfileService;
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
   kitObservabilityRegistry?: StationKitObservabilityRegistry;
-  /** Project-scoped terminal termination; the route supplies the identity. */
   /**
    * #3994: a session id the terminal socket issued (a UUID) closes in
    * TerminalSessions, under the caller's own terminal authority and only
@@ -318,6 +317,8 @@ interface ProjectRouteDeps {
     projectId: string,
     terminalId: string,
   ) => Promise<boolean>;
+  /** #3994: ends a deleted Project's running terminal sessions. */
+  endProjectTerminals?: (projectId: string) => Promise<number | undefined>;
   /**
    * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
@@ -1500,8 +1501,22 @@ export function createProjectRoutes(
   app.delete('/:slug', async (c) => {
     try {
       const slug = param(c, 'slug');
+      let projectId: string | undefined;
+      try {
+        projectId = storageAdapter.getProject(slug).id;
+      } catch {
+        // The delete below reports the missing Project.
+      }
       await projectService.deleteProject(slug);
       projectOps.add(1, { op: 'delete' });
+      // The Project is gone either way; a shell that will not end is logged,
+      // not reported as a failed delete.
+      if (projectId && deps.endProjectTerminals)
+        await deps.endProjectTerminals(projectId).catch((error: unknown) =>
+          logger.error("Ending a deleted Project's terminals failed", {
+            error: errorMessage(error),
+          }),
+        );
       return c.json({ success: true }, 200);
     } catch (error: unknown) {
       return c.json(

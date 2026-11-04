@@ -10,6 +10,7 @@ import {
   validateInstallBrowsers,
   WITH_DEPS_FLAG,
 } from '../install-playwright-browsers.mjs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 const script = resolve(
   import.meta.dirname,
@@ -46,6 +47,7 @@ describe('classifyPlaywrightInstallFailure', () => {
       'Error: EACCES: permission denied, mkdir',
       'Error: ENOSPC: no space left on device',
       'Error: Unknown browser: sausage',
+      'Error: Invalid installation targets: station-invalid-browser',
     ]) {
       const verdict = classifyPlaywrightInstallFailure(output);
       expect(verdict.classification, output).toBe('permanent');
@@ -163,12 +165,7 @@ describe('runPlaywrightInstallWithRetry', () => {
   test('never passes --with-deps to the installer', async () => {
     const h = harness([{ exitCode: 0 }]);
     await h.run();
-    expect(h.calls[0].args).toEqual([
-      '--no',
-      'playwright',
-      'install',
-      'chromium',
-    ]);
+    expect(h.calls[0].args.slice(-2)).toEqual(['install', 'chromium']);
     expect(h.calls[0].args).not.toContain(WITH_DEPS_FLAG);
   });
 
@@ -264,6 +261,30 @@ describe('runPlaywrightInstallWithRetry', () => {
     ).rejects.toThrow(/attempts must be an integer from 1 through 5/);
   });
 });
+
+test.skipIf(process.platform !== 'win32')(
+  'Windows reaches the pinned Playwright CLI without npx on PATH',
+  () => {
+    const result = spawnSyncBounded(
+      process.execPath,
+      [script, 'station-invalid-browser'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: { ...process.env, PATH: '' },
+        timeout: 45_000,
+        maxBuffer: 256 * 1024,
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toContain('Invalid installation targets');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('failed permanently on attempt 1/3');
+    expect(result.stdout).not.toContain('ENOENT');
+  },
+  50_000,
+);
 
 // The exit status and the argv are the two things only a real run can prove:
 // this script sets `process.exitCode` rather than calling `process.exit()`,

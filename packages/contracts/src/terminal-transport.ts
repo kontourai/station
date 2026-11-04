@@ -55,8 +55,9 @@ export const TERMINAL_SUBDIRECTORY_MAX_LENGTH = 4096;
  * again under the same terminal id. Its journal continues in a new segment,
  * so output before the restart stays readable. `subdirectory` (relative)
  * moves it within its binding's root; without it the current directory is
- * kept if it is still inside that root. Requires operate authority. Commands
- * and server-owned launches are refused.
+ * kept if it is still inside that root. Requires operate authority. A
+ * package script is resolved again by name; other commands and server-owned
+ * launches are refused.
  *
  * Answered by `{ type: 'done', requestId, channel, restartedAfterSeq }`:
  * the new run's output follows `restartedAfterSeq` on the same channel.

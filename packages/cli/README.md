@@ -141,33 +141,45 @@ Commands using the shared target resolver select a Station in this order:
 
 ## Guided triage
 
-`station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues]` writes a bounded,
+`station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues]` writes a bounded,
 owner-only diagnostic hand-off under `$STATION_ROOT/cache/triage/<uuid>`.
-It contains redacted schema-v1 JSON, a readable summary, and Station's
-versioned read-only playbook. With an existing credential it uses the
-authenticated diagnostics-bundle seam, retaining only bounded allowlisted app,
-doctor, and log-tail facts; it never persists bearer values or bundle config.
-It never reads local-grant or pairing secrets, databases, arbitrary environment
-data, or full logs.
+It contains redacted schema-v2 JSON, a readable summary, and a Station-owned
+playbook. The context records the local runtime's log directory with the home
+directory shown as `~`, never as a raw absolute path. With an existing
+credential it uses the authenticated diagnostics-bundle seam, retaining only
+bounded allowlisted app, doctor, and log-tail facts; it never persists bearer
+values or bundle config. It never reads local-grant or pairing secrets,
+databases, arbitrary environment data, or full logs.
 
 Use `--context-only` when you want artifacts without agent probing or launch;
 the same read-only source and authenticated remote facts are still collected.
-Otherwise Station starts only Codex with approval disabled, its read-only
-sandbox, an ephemeral session, and user config ignored, or Claude in safe plan
-mode with only Read/Glob/Grep tools, using argv arrays and a run-local prompt
-file. With both available,
-select one explicitly. No available agent still
-leaves portable artifacts successfully. The bundled triage command does not
-collect local host filesystem diagnostics or run the source-only doctor report.
-`--search-issues` (or the equivalent TTY confirmation) authorizes a fixed,
-read-only Station issue search. Launching an agent separately makes the run files
-available to that agent and its configured model service; use `--context-only`
-to collect without launching one. The first 64 KiB of agent stdout is re-redacted
-into local `diagnosis.md` and `issue-draft.md`, including after an unsuccessful
-exit. Live stdout is forwarded before redaction and stderr is inherited directly.
-Stored-artifact redaction does not protect terminal output. Triage has no GitHub
-write or repair operation; its mode flags are requests to the installed agent,
-not independent proof of that agent's enforcement.
+When stdin and stdout are a terminal, Station starts Codex or Claude as an
+interactive troubleshooting conversation: the agent inherits the terminal,
+keeps its normal approval prompts, receives no mode or bypass flags, and
+follows the same troubleshooting playbook (v2) as the in-app Station
+Assistant. `--headless`, or input or output that is not a terminal, keeps the
+one-shot diagnosis: Codex with approval disabled, its read-only sandbox, an
+ephemeral session, and user config ignored, or Claude in safe plan mode with
+only Read/Glob/Grep tools, using argv arrays and a run-local prompt file. With
+both agents available, a terminal asks which to use; otherwise select one
+explicitly. No available agent still leaves portable artifacts successfully.
+The bundled triage command does not collect local host filesystem diagnostics
+or run the source-only doctor report. `--search-issues` (or the equivalent TTY
+confirmation) authorizes a fixed, read-only Station issue search. Launching an
+agent separately makes the run files available to that agent and its
+configured model service; use `--context-only` to collect without launching
+one. In headless mode the first 64 KiB of agent stdout is re-redacted into
+local `diagnosis.md` and `issue-draft.md`, including after an unsuccessful
+exit. Live stdout is forwarded before redaction and stderr is inherited
+directly. Stored-artifact redaction does not protect terminal output.
+
+`station triage draft-report < report.json` reads `{"title", "fields"}` JSON
+and prints the redacted report, its prefilled `troubleshoot-report.yml` link
+and any overflow fields, using the same drafter as the in-app tool. It sends
+nothing. Triage itself never repairs or posts to GitHub; an interactive agent
+acts only through its own approval prompts and the playbook's filing checks.
+Mode flags and playbook rules are requests to the installed agent, not
+independent proof of that agent's enforcement.
 
 The versioned store lives at `$STATION_ROOT/config/profiles.json` (default
 `~/.station/config/profiles.json`) and is shared with native Desktop. It
