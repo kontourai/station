@@ -84,7 +84,11 @@ infers one from a frame's shape.
 - **iOS dual-display simulators** (for example an iPhone Duo runtime):
   the managed helper (expo-device-hub 0.19.1) reports the hinge in its
   screen configuration. Every stand, a hinge angle and table mode can be
-  set. A `fold` input is settled by the helper's correlated reply, so a
+  set, and a simulator that supports physical orientation can be laid face
+  up or down (the hub reports face down as table mode; which way the device
+  faces is not otherwise reported, so these are actions, not a toggle).
+  Resting on some stands (tent) can leave the cover lit at a half-open angle;
+  the view draws whichever display is lit. A `fold` input is settled by the helper's correlated reply, so a
   stand the simulator refused is reported as a failed input, unlike a tap,
   whose success means only that the socket accepted it. Video streams
   the lit display's own panel and switches when the device hands off between
@@ -106,14 +110,18 @@ fold controls (stands, a hinge slider and table mode) send `fold` input
 through the surface's control lease like any other input. The slider bends
 the drawing while it moves, settles on a stand's angle within six degrees,
 and sends one angle when released. The drawing is a 2D projection, not a
-model of the device body.
+model of the device body; it is shrunk just enough to stay inside its box.
+The Device pane's **Full screen** view and the float over chat draw the same
+bent display, and the full-screen bar carries the same fold controls.
 
 `fold` input is also available to bound agents through `device_input`,
 under the same lease and authority checks as other input.
 
-No dual-display iOS simulator or foldable Android emulator was available when
-this support was written: its hub messages, panel streams and fold route are
-exercised by fixtures, not a device.
+The iOS behaviour was checked through Station against an iPhone Duo simulator
+(iOS 27.1, hub 0.19.1): the lit display's video and its handoff, every stand,
+hinge angle, table mode, face up/down, rotation of the inner display, and
+taps on the cover and on both bent halves. Rotation on the cover display and
+any Android foldable emulator have only fixture evidence.
 
 ## Screenshots, recordings and logs
 
