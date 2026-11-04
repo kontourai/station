@@ -2738,7 +2738,10 @@ export class TaskGraphService {
     });
     if (status === 'done' || status === 'canceled') {
       await this.releaseClaimForTask(taskId, `task status -> ${status}`);
-      await this.finalizeTaskWorktree(taskId);
+      // #4507: after the transition, not part of it: the outcome is
+      // recorded on the Task's worktree, and the status answer never waits
+      // on git.
+      void this.finalizeTaskWorktree(taskId);
     }
     return updated;
   }
@@ -2877,7 +2880,7 @@ export class TaskGraphService {
     });
     if (moved) {
       await this.releaseClaimForTask(input.taskId, 'task status -> done');
-      await this.finalizeTaskWorktree(input.taskId);
+      void this.finalizeTaskWorktree(input.taskId);
     }
     return moved;
   }

@@ -483,6 +483,11 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     // A canceled Task did not complete: its worktree and branch are kept
     // (`preserveOnFailure` defaults to true), and so is the record.
     await graph.updateTaskStatus(taskId, 'canceled');
+    await vi.waitFor(async () =>
+      expect(
+        (await graph.readTaskForOpen(taskId))?.taskWorktree?.kept?.reason,
+      ).toBe('policy'),
+    );
     expect(existsSync(join(firstCwd, 'progress.txt'))).toBe(true);
     expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
   });
@@ -562,9 +567,11 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     // And the Task finishing removes it (`cleanupOnCompletion` defaults to
     // true) and forgets it.
     await graph.updateTaskStatus(taskId, 'done');
-    expect(existsSync(late.path)).toBe(false);
+    await vi.waitFor(() => {
+      expect(existsSync(late.path)).toBe(false);
+      expect(graph.readTaskWorktree(taskId)).toBeUndefined();
+    });
     expect(linkedWorktrees(workspace)).toEqual([]);
     expect(git(workspace, 'branch', '--list', late.branch).trim()).toBe('');
-    expect(graph.readTaskWorktree(taskId)).toBeUndefined();
   });
 });

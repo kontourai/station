@@ -20,7 +20,10 @@ import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { TaskGraphService } from '../task-graph-service.js';
 import { TaskWorktreeStore } from '../task-worktree-store.js';
-import { WorktreeProvisioningService } from '../worktree-provisioning-service.js';
+import {
+  type GitCommandRunner,
+  WorktreeProvisioningService,
+} from '../worktree-provisioning-service.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -188,5 +191,95 @@ describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
     });
     // The branch's committed work is back in the checkout.
     expect(existsSync(join(f.worktree.path, 'feature.txt'))).toBe(true);
+  });
+});
+
+/** Settles with `pending`'s outcome, or 'still waiting' after `ms`. */
+function within<T>(pending: Promise<T>, ms: number) {
+  return Promise.race([
+    pending.then(
+      (value) => ({ settled: 'resolved' as const, value }),
+      (error: unknown) => ({ settled: 'rejected' as const, error }),
+    ),
+    new Promise<{ settled: 'still waiting' }>((resolve) =>
+      setTimeout(() => resolve({ settled: 'still waiting' }), ms),
+    ),
+  ]);
+}
+
+describe('a hung git command holds nothing up (#4507)', () => {
+  test('provisioning gives up on a git command that never ends, and the next one in the repository runs', async () => {
+    const f = await fixture();
+    const hung: GitCommandRunner = { run: () => new Promise(() => {}) };
+    const service = new WorktreeProvisioningService(hung, undefined, {
+      commandTimeoutMs: 100,
+    });
+    const request = (taskId: string) =>
+      service.provisionForTask({
+        repoPath: f.workspace,
+        taskId,
+        providerKind: 'codex',
+        isolation: { mode: 'worktree' },
+      });
+
+    const first = await within(request('task-hung-1'), 5_000);
+    const second = await within(request('task-hung-2'), 5_000);
+
+    expect(first).toMatchObject({ settled: 'rejected' });
+    expect(String((first as { error: unknown }).error)).toMatch(
+      /did not finish within 100 ms/,
+    );
+    // Queued behind the first in the same repository, and still answered.
+    expect(second).toMatchObject({ settled: 'rejected' });
+  });
+
+  test('a status change answers while its worktree finalization is still running', async () => {
+    const parent = realpathSync(makeTempDir('task-worktree-hung-'));
+    const home = join(parent, 'home');
+    const workspace = join(parent, 'repo');
+    mkdirSync(home);
+    mkdirSync(workspace);
+    git(workspace, 'init', '--quiet', '--initial-branch=main');
+    writeFileSync(join(workspace, 'README.md'), 'project\n');
+    git(workspace, 'add', 'README.md');
+    git(workspace, 'commit', '--quiet', '-m', 'initial');
+    const real = new WorktreeProvisioningService();
+    let finalizing = false;
+    const graph = new TaskGraphService(home, {
+      resolveProjectWorkspace: () => workspace,
+      worktreeProvisioning: {
+        provisionForTask: (request) => real.provisionForTask(request),
+        finalizeForTask: () => {
+          finalizing = true;
+          return new Promise(() => {});
+        },
+      },
+    });
+    const task = await graph.createTask({
+      projectId: 'project-alpha',
+      title: 'Finish while git hangs',
+    });
+    await graph.updateTaskStatus(task.id, 'in_progress');
+    const { metadata: worktree } = await real.provisionForTask({
+      repoPath: workspace,
+      taskId: task.id,
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+    });
+    await new TaskWorktreeStore(home).update(task.id, () => ({
+      taskCreatedAt: task.createdAt,
+      worktree,
+    }));
+
+    const answered = await within(
+      graph.updateTaskStatus(task.id, 'done'),
+      3_000,
+    );
+
+    expect(answered).toMatchObject({
+      settled: 'resolved',
+      value: { status: 'done' },
+    });
+    await vi.waitFor(() => expect(finalizing).toBe(true));
   });
 });

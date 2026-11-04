@@ -83,8 +83,73 @@ type GitCommandResult = {
 export interface GitCommandRunner {
   run(
     args: string[],
-    options?: { cwd?: string; allowCodes?: number[]; env?: NodeJS.ProcessEnv },
+    options?: {
+      cwd?: string;
+      allowCodes?: number[];
+      env?: NodeJS.ProcessEnv;
+      /** Stop the command when it runs longer than this. */
+      timeoutMs?: number;
+    },
   ): Promise<GitCommandResult>;
+}
+
+/**
+ * #4507: how long one git command (or opening a repository) may take before
+ * provisioning, adoption or finalization gives up on it. Generous, since a
+ * first checkout of a large repository is slow; its purpose is that a hung
+ * command cannot hold a Task's or a repository's queue forever.
+ */
+export const DEFAULT_GIT_COMMAND_TIMEOUT_MS = 300_000;
+
+const GIT_SUBCOMMANDS = new Set([
+  'branch',
+  'rev-list',
+  'rev-parse',
+  'status',
+  'worktree',
+]);
+
+/** The subcommand a git argument list runs, for messages (never its paths). */
+function gitSubcommand(args: readonly string[]): string {
+  return args.find((arg) => GIT_SUBCOMMANDS.has(arg)) ?? 'command';
+}
+
+class GitCommandTimeoutError extends Error {
+  constructor(label: string, timeoutMs: number) {
+    super(`${label} did not finish within ${timeoutMs} ms`);
+    this.name = 'GitCommandTimeoutError';
+  }
+}
+
+/**
+ * Settles with `pending`, or rejects once `timeoutMs` passes. A value that
+ * arrives after the deadline is handed to `onLate` (to release it).
+ */
+function withinDeadline<T>(
+  pending: Promise<T>,
+  timeoutMs: number,
+  label: string,
+  onLate?: (value: T) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      reject(new GitCommandTimeoutError(label, timeoutMs));
+    }, timeoutMs);
+    timer.unref?.();
+    pending.then(
+      (value) => {
+        clearTimeout(timer);
+        if (expired) onLate?.(value);
+        else resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        if (!expired) reject(error);
+      },
+    );
+  });
 }
 
 const DEFAULT_BRANCH_PREFIX = 'station/session';
@@ -383,6 +448,7 @@ class SpawnGitCommandRunner implements GitCommandRunner {
       cwd?: string;
       allowCodes?: number[];
       env?: NodeJS.ProcessEnv;
+      timeoutMs?: number;
     } = {},
   ): Promise<GitCommandResult> {
     const allowCodes = options.allowCodes ?? [0];
@@ -392,6 +458,14 @@ class SpawnGitCommandRunner implements GitCommandRunner {
         env: options.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      // A command past its time is stopped, so it does not outlive the
+      // caller that gave up on it.
+      const timer =
+        options.timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => child.kill('SIGKILL'), options.timeoutMs);
+      timer?.unref?.();
+      child.on('close', () => clearTimeout(timer));
       let stdout = '';
       let stderr = '';
 
@@ -435,21 +509,47 @@ export class WorktreeProvisioningService {
    * in one repository would refuse each other.
    */
   private readonly repositoryQueue = new Map<string, Promise<unknown>>();
+  private readonly git: GitCommandRunner;
+  private readonly ownRepository: (
+    folder: string,
+    projectRoot: string,
+    options: { newWorktree: true },
+  ) => Promise<LiveRepository>;
 
   constructor(
-    private readonly git: GitCommandRunner = new SpawnGitCommandRunner(),
+    git: GitCommandRunner = new SpawnGitCommandRunner(),
     /**
      * The repository a Project folder may be provisioned from, opened for
      * the checkout `worktree add` makes (`requireLiveRepository`: its own
      * git directory named, Station's judged copy of its config as the
      * common directory). Replaceable for tests that script the runner.
      */
-    private readonly ownRepository: (
+    ownRepository: (
       folder: string,
       projectRoot: string,
       options: { newWorktree: true },
     ) => Promise<LiveRepository> = requireLiveRepository,
-  ) {}
+    /** #4507: see {@link DEFAULT_GIT_COMMAND_TIMEOUT_MS}. */
+    options: { commandTimeoutMs?: number } = {},
+  ) {
+    const timeoutMs =
+      options.commandTimeoutMs ?? DEFAULT_GIT_COMMAND_TIMEOUT_MS;
+    this.git = {
+      run: (args, runOptions) =>
+        withinDeadline(
+          git.run(args, { ...runOptions, timeoutMs }),
+          timeoutMs,
+          `git ${gitSubcommand(args)}`,
+        ),
+    };
+    this.ownRepository = (folder, projectRoot, openOptions) =>
+      withinDeadline(
+        ownRepository(folder, projectRoot, openOptions),
+        timeoutMs,
+        'Opening the repository',
+        (late) => void late.dispose(),
+      );
+  }
 
   /** Read-only continuation proof, sharing cleanup's hostile-metadata checks. */
   async assertSessionWorkspace(
