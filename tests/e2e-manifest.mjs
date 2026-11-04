@@ -330,7 +330,7 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
     {
       path: 'tests/terminal-mobile-keyboard.spec.ts',
       journey:
-        '#3994: a phone soft keyboard types, deletes and sends a command in a real Coding shell, and a shell shown again after another shell's tab redraws its screen',
+        '#3994: a phone soft keyboard types, deletes and sends a command in a real Coding shell, and a shell shown again after a second shell tab redraws its screen',
     },
   ],
 };
