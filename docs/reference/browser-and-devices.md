@@ -526,14 +526,21 @@ chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
 for Android. This inventory is for simulators/emulators; do not infer physical
 phone support from it.
 
-Device tools additionally need a user-installed Node.js 24 or later with npm
-on the device host. Station resolves the first executable `node` from the user's
-PATH, follows version-manager shims to that installation, and runs its own npm
-CLI and the device hub with that absolute Node path. A later PATH entry cannot
-supply npm for a different installation. The user's PATH is preserved exactly.
-The desktop's private Node still runs Station's bundled services.
+Device tools need Node.js 24 or later with npm on the device host. Station
+first tries the first executable `node` on Station's PATH, following
+version-manager shims to that installation, and uses only the npm inside that
+installation; a later PATH entry cannot supply it. When that Node is missing,
+too old or has no npm, Station uses the Node.js it is running on. A prebuilt
+archive's `runtime/` carries the pinned distribution's own npm
+([archive staging](../../scripts/lib/portable-server-archive.mjs)), so an
+archive install needs no other Node.js or npm, as a service or a foreground
+`station start`. npm and the device hub run with the same absolute Node path.
+The user's PATH is preserved exactly. The desktop's private Node still runs
+Station's bundled services and is never used for device tools.
 
-If Node/npm is missing or Node is too old, setup explains the prerequisite.
+If neither offers a usable Node with npm (an archive built before its runtime
+carried npm, or the desktop app without a Node on PATH), setup asks to update
+Station first, then to install Node.js with npm.
 An installed helper stays blocked until **Check again** succeeds; it does not
 enter a crash/restart loop. Restart Station after changing its inherited PATH.
 An independently configured helper keeps its own prerequisites and lifecycle.

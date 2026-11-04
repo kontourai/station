@@ -161,7 +161,7 @@ function harness(
 }
 
 describe('device hub supervisor', () => {
-  test('a missing user runtime blocks setup without spawning or scheduling retries', async () => {
+  test('no PATH Node and no Station Node blocks setup without spawning or scheduling retries', async () => {
     const spawn = vi.fn();
     const timer = vi.fn();
     const supervisor = new DeviceHubSupervisor({
@@ -172,15 +172,16 @@ describe('device hub supervisor', () => {
         runDir: '/unused',
       }),
       env: { PATH: '' },
+      bundledNodePath: null,
       spawn,
       setTimer: timer,
     });
     await expect(supervisor.ensureStarted()).rejects.toThrow(
-      'Install Node.js 24 or later with npm',
+      'install Node.js 24 or later with npm',
     );
     expect(supervisor.state()).toMatchObject({
       state: 'blocked',
-      detail: expect.stringContaining('Install Node.js 24'),
+      detail: expect.stringContaining('Update Station on this computer'),
     });
     expect(spawn).not.toHaveBeenCalled();
     expect(timer).not.toHaveBeenCalled();

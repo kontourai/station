@@ -53,6 +53,7 @@ import {
 } from './device-hub-helpers.js';
 import {
   type DeviceToolRuntime,
+  type DeviceToolRuntimeOptions,
   DeviceToolRuntimeUnavailableError,
   resolveDeviceToolRuntime,
 } from './device-tool-runtime.js';
@@ -219,6 +220,8 @@ export interface DeviceHubSupervisorOptions {
   clearTimer?: (handle: unknown) => void;
   readyTimeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  /** As for the installer, so the hub runs on the Node that installed it. */
+  bundledNodePath?: DeviceToolRuntimeOptions['bundledNodePath'];
 }
 
 async function defaultProbeReady(
@@ -281,7 +284,10 @@ export class DeviceHubSupervisor {
       spawn: options.spawn ?? spawnOwnedHubChild,
       resolveRuntime:
         options.resolveRuntime ??
-        (() => resolveDeviceToolRuntime(options.env ?? process.env)),
+        (() =>
+          resolveDeviceToolRuntime(options.env ?? process.env, {
+            bundledNodePath: options.bundledNodePath,
+          })),
       probeReady: options.probeReady ?? defaultProbeReady,
       now: options.now ?? Date.now,
       setTimer: options.setTimer ?? ((fn, ms) => setTimeout(fn, ms)),

@@ -13,9 +13,9 @@ Limits, refusal codes, the single-frame API and evidence live in the
 1. Use a personal Station. Hosted Stations do not offer devices.
 2. On the device host, install Xcode with a simulator runtime (iOS) or the
    Android SDK with an emulator image (Android).
-3. Install Node.js 24 or later with npm, on the PATH Station starts with.
-4. Open **Device** and follow setup to turn on Station's device helper.
-   Restart Station if you change its PATH.
+3. Open **Device** and follow setup to turn on Station's device helper.
+   Station installs it with its own bundled Node.js and npm, so a current
+   Station needs no separate Node.js installation.
 
 To use another machine as a device host, add it under **Settings →
 Advanced → Device hosts**. See
