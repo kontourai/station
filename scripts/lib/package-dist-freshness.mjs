@@ -29,7 +29,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { spawnSyncBounded } from './bounded-capture.mjs';
 
 /** Bumping this invalidates every existing stamp on purpose. */
@@ -417,7 +417,11 @@ export function evaluateDist(pkg, distDir) {
     };
   }
   const covered = sourceFiles(pkg.dir);
-  const base = { distDir, coveredSources: covered.sources.length };
+  const base = {
+    distDir,
+    coveredSources: covered.sources.length,
+    externalInputs: covered.externals,
+  };
   if (covered.sources.length === 0) {
     return { ...base, status: 'unmeasurable', expected: null, recorded: null };
   }
@@ -562,10 +566,16 @@ export function formatReport({ packages, unreadableManifests = [] }) {
                 '      diagnostic at all — the installed command just runs old code.',
                 `      Fix: ${pkg.buildScript}`,
               ];
+      // #4517: name the files outside the package the build bundles, so a
+      // change to one of them is not mistaken for a change under src.
+      const external = dist.externalInputs?.length
+        ? `, including ${dist.externalInputs.map((rel) => posix.join(pkg.relDir, rel)).join(', ')} it bundles`
+        : '';
       failures.push(
-        [`FAIL: ${sentence} relative to ${pkg.relDir}/src.`, ...remedy].join(
-          '\n',
-        ),
+        [
+          `FAIL: ${sentence} relative to ${pkg.relDir}/src${external}.`,
+          ...remedy,
+        ].join('\n'),
       );
     }
   }

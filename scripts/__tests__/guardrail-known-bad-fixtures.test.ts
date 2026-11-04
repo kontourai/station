@@ -966,7 +966,9 @@ describe('dist:freshness rejects a build output that no longer matches its sourc
     );
     const result = runGuardrail(dir, SCRIPT);
     expect(result.status).toBe(1);
-    expect(result.output).toContain('FAIL: packages/thing/dist is STALE');
+    expect(result.output).toContain(
+      'FAIL: packages/thing/dist is STALE relative to packages/thing/src, including schemas/app.schema.json it bundles.',
+    );
 
     build(dir);
     expect(runGuardrail(dir, SCRIPT).status).toBe(0);
