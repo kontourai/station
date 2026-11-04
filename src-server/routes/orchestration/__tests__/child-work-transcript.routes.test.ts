@@ -3,7 +3,7 @@ import { join } from 'node:path';
  * #3163: the child transcript route, end to end: the persisted child-work
  * facts a REAL Claude capture produced (replayed through the adapter's own
  * mapper), a fresh transcript module holding no adapter state (a restarted
- * server), and the SDK's transcript reader over a transcript on disk.
+ * server), and the production bounded reader over a transcript on disk.
  */
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -69,6 +69,7 @@ function fixture(
     isRequestPrincipalCurrent: () => current,
   });
   return {
+    childWorkTranscripts,
     listChildWorkHistory,
     readChildSteerInstructions,
     request: (childId = TRANSCRIPT_AGENT_ID, query = '') =>
@@ -260,6 +261,30 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     await unavailable(await caller.request());
     expect(caller.listChildWorkHistory).not.toHaveBeenCalled();
   });
+
+  test.each(['session', 'caller'] as const)(
+    '%s revocation after the real transcript read refuses disclosure',
+    async (revoked) => {
+      const f = fixture();
+      const read = f.childWorkTranscripts.read.bind(f.childWorkTranscripts);
+      const observed = vi
+        .spyOn(f.childWorkTranscripts, 'read')
+        .mockImplementation(async (input) => {
+          const outcome = await read(input);
+          expect(outcome.status).toBe('found');
+          if (revoked === 'session') f.revokeSession();
+          else f.revokeCaller();
+          return outcome;
+        });
+      try {
+        await unavailable(await f.request());
+        expect(observed).toHaveBeenCalledOnce();
+        expect(f.listChildWorkHistory).toHaveBeenCalledOnce();
+      } finally {
+        observed.mockRestore();
+      }
+    },
+  );
 
   test('an app-home session’s transcript is read from the profile it ran under, not the server’s config home', async () => {
     // The session ran under its own profile; the server's global config home
