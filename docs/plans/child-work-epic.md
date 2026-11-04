@@ -7,6 +7,41 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** The controlled CLI/two-viewer journey now passes at exact
+`688c143d3d9e8de747507d0d8846075e174737be`. The real registered CLI creates one
+held synthetic-provider turn, the server projects running work with Directory
+context and no Project membership, and the UI shows Running followed by
+Just finished/Done after the task completes and the retained Session is ready.
+Two separately paired Chrome storage profiles load the exact retained output,
+directory and `CLI (reported)` provenance after reload. A transient history
+transport error in the second viewer resyncs before the final capture. This is
+controlled browser evidence, not physical second-device, native-shell,
+live-provider or responsive-theme certification.
+
+The original 16 product checks and 900-second journey budget remain unchanged.
+The owned browser windows close first, the preview then closes, and a guarded
+finish command confirms its listener refuses connections before stopping the
+runtime. Both lifecycle and journey processes exit naturally with code zero;
+runtime/watchers, model/control listeners and loader cleanup are verified. The
+source and snapshotted compiled inputs remain unchanged and the tree is clean.
+The earlier diagnostic's deadline and forced-exit failure remain retained;
+observations made in that failed run are not relabelled a qualifying journey.
+Activity's ephemeral selected row is not a new blocker: the live #2868 criteria
+require retained context after reload, while #928's current placement owner
+explicitly does not remember a consumed selection across remounts.
+
+The upstream Flow credential-scanning optimization is submitted separately as
+[flow-agents#1599](https://github.com/kontourai/flow-agents/pull/1599), head
+`a1f1e1086108089b3c7fa9532d41e54cc371f702`. Its build/docs, 188 targeted tests,
+required static readiness, independent source review and caught/restored guard
+mutation pass. Station still consumes published Flow Agents 9.11.0; local
+upstream source is not installed into this checkout. The finalizer's original
+60-second failure, initialized-start owner hold, complete group/frontier/folded
+acceptance and final combined qualification remain open. Both production
+qualification guards stay false; the combined Station PR is still unopened.
+
+### Historical delivery checkpoint at `688c143d3d9e`
+
 **NOT_READY.** Normal merge `077c6e78334d` integrates main through
 `36b6db3a4f87`. Managed dependencies, 67 connection-health/stream tests, scoped
 Biome and readiness (zero failures/warnings) pass. Independent source review
