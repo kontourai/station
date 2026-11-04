@@ -4,7 +4,7 @@
  * details for operate authority; the journal's storage location never
  * leaves the service. A scripted PTY, so this runs on every platform.
  */
-import { mkdir } from 'node:fs/promises';
+import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { terminalScopeAllows } from '@kontourai/station-contracts/terminal-transport';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -46,10 +46,12 @@ describe('terminal session views by authority', () => {
 
   async function start() {
     const home = temp('terminal-session-views-');
-    const root = join(home, 'project');
+    const project = join(home, 'project');
     // A custom history location, so records carry a journal root.
     const journals = join(home, 'custom-journals');
-    await mkdir(root);
+    await mkdir(project);
+    // The confined launch directory is a real path (/var is /private/var on macOS).
+    const root = await realpath(project);
     const host: ShellHost = {
       spawn: async (input) => new QuietPty(input.cwd),
     };
