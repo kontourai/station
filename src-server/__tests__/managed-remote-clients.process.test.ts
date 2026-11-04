@@ -15,6 +15,7 @@ import { type AddressInfo, createServer as createNetServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test } from 'vitest';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
 import {
@@ -222,6 +223,69 @@ describe('managed limit without remote clients at real server startup', () => {
       });
       expect(line).toContain(
         `Tailscale Serve forwards port ${framePort} to it`,
+      );
+    },
+    180_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses when Tailscale Serve forwards to a port an installed telemetry companion publishes',
+    async () => {
+      // Round 2, fix 3: the companion outlives Station, so its saved ports
+      // are part of the startup check even though Station never binds them.
+      const root = fixtureRoot();
+      const companionPort = 51_917;
+      const installationId = '01234567-89ab-4cde-8fab-0123456789ab';
+      const installations = join(
+        root,
+        'home',
+        'telemetry-companion',
+        'installations',
+      );
+      const directory = join(installations, installationId);
+      // A home the real schema gate created, as after an earlier run.
+      ensureStationHomeSchemaSync(join(root, 'home'));
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      for (const dir of [
+        join(root, 'home'),
+        join(root, 'home', 'telemetry-companion'),
+        installations,
+        directory,
+      ])
+        chmodSync(dir, 0o700);
+      writeFileSync(
+        join(installations, 'current.json'),
+        JSON.stringify({ installationId }),
+        { mode: 0o600 },
+      );
+      // The shape the installer writes (`telemetry-companion-install.ts`).
+      writeFileSync(
+        join(directory, 'deployment.json'),
+        JSON.stringify({
+          owner: '1'.repeat(24),
+          project: `station-telemetry-${'1'.repeat(24)}`,
+          endpoint: 'unix:///fixture.sock',
+          daemonId: 'daemon-fixture',
+          architecture: 'arm64',
+          imageId: `sha256:${'7'.repeat(64)}`,
+          manifestSha256: 'b'.repeat(64),
+          custody: 'c'.repeat(64),
+          homeCustody: { path: join(root, 'home'), device: '1', inode: '2' },
+          ports: [51_915, 51_916, companionPort],
+          containerIds: ['1', '2', '3', '4', '5', '6'].map((v) => v.repeat(64)),
+        }),
+        { mode: 0o600 },
+      );
+      const route = JSON.stringify({
+        TCP: { '8443': { TCPForward: `127.0.0.1:${companionPort}` } },
+      });
+      const tailscale = fakeTailscale(
+        root,
+        `if [ "$1" = serve ]; then echo '${route}'; else echo '{"BackendState":"Running"}'; fi`,
+      );
+      const line = await expectRefusal(managedEnv(root, tailscale));
+      expect(line).toContain(
+        `Tailscale Serve forwards port ${companionPort} to it`,
       );
     },
     180_000,

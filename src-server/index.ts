@@ -58,6 +58,7 @@ import {
   assertNoManagedTailscaleServeExposure,
   createManagedListenerAdmission,
   installManagedListenerAdmission,
+  localClientsOnly,
   ManagedNetworkExposureError,
   managedTailscaleCommand,
   resolveManagedListenHost,
@@ -71,6 +72,7 @@ import {
   initializeWorkloadResources,
   stopWorkloadResources,
 } from './services/infra/workload-resources.js';
+import { readTelemetryCompanionSavedPorts } from './services/telemetry-companion-control.js';
 import { lifecycleService } from './telemetry/metrics.js';
 import { createLogger, resolveLogLevel } from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
@@ -91,6 +93,26 @@ function flushLogSink(): void {
     getInstalledServerLogSink()?.flushSync();
   } catch {
     // best-effort; the crash path must never throw
+  }
+}
+
+/**
+ * The saved telemetry companion ports, for the startup Serve check. Under
+ * the limit a companion whose ports cannot be read refuses startup, since
+ * Station cannot show that nothing forwards to it.
+ */
+async function managedTelemetryCompanionPorts(
+  policy: LoadedManagedPolicy,
+  home: string,
+): Promise<number[]> {
+  try {
+    return await readTelemetryCompanionSavedPorts(home);
+  } catch (error) {
+    throw new ManagedNetworkExposureError(
+      policy,
+      `Station cannot read the telemetry companion's ports (${error instanceof Error ? error.message.slice(0, 200) : 'unreadable'})`,
+      'Repair or remove the telemetry-companion folder in the Station home, then start Station again.',
+    );
   }
 }
 
@@ -295,6 +317,11 @@ async function main() {
         port + 2,
         Number.isInteger(consentPort) ? consentPort : port + 3,
         ...(Number.isInteger(uiPort) && uiPort > 0 ? [uiPort] : []),
+        // Round 2: a telemetry companion outlives Station, so one already
+        // running publishes these now; Start admits them again.
+        ...(localClientsOnly(managedPolicy)
+          ? await managedTelemetryCompanionPorts(managedPolicy, projectHomeDir)
+          : []),
       ],
       managedTailscaleCommand(managedPolicy),
     );
