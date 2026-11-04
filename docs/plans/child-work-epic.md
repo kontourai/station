@@ -7,6 +7,36 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** At the merged-main test prefix `5a212193a67d`, the retention,
+background-status and scoped-hook selection passes 86 cases. The new real
+`ChatMessageList` interactive-banner case checks exactly one status region for
+singular/plural/last-known wording while the open button remains operable and
+settled tasks remove the affordance. Removing only its status sibling from a
+clean checkpoint makes that case fail with 17 controls passing; byte-exact
+restoration passes the 86-case selection. UI types pass. This tests DOM/caller
+semantics, not physical screen-reader speech, keyboard behavior or whole-ChatDock
+performance. Independent source review finds no P0–P2 test-effectiveness issue.
+
+The current captured-Claude adapter/projection/history/service selection passes
+130 cases. A distinct new transcript route case writes captured child facts and
+parent exit through a real SQLite EventStore, closes/reopens the store, clears
+the old in-memory array and supplies actual queried facts to a fresh route and
+production transcript reader over its disk fixture. Removing child-work methods
+from the real history SQL makes only the new case fail, with 13 existing route
+controls passing. Exact SQL restoration passes 53 route/reader/result-row cases;
+server-test types pass. Independent review finds no P0–P2 test-effectiveness
+issue. The readability toggle is a stub: this does not prove canonical ownership
+authorization, a process restart, returned-result semantics, native/provider
+execution or complete #1879 acceptance. Earlier fixture-only evidence is not
+relabeled actual storage proof.
+
+No production code, API or qualification flag is changed by these two tests.
+Main integration, registry-publication inconsistency, held initialized-start and
+finalizer failures, physical-device/live-provider evidence, full group/topology
+and folded requirements remain separate. The combined Station PR is unopened.
+
+### Historical delivery checkpoint at `fc15945d9a80`
+
 **NOT_READY.** The Ensemble inspector now derives workspace-isolation
 provenance from the resolved receiver and the same fenced Project observation:
 explicit directory configuration and Project settings are authored; an absent
