@@ -107,6 +107,7 @@ import {
   BrowserApiError,
   type BrowserFetch,
   type BrowserPaneApi,
+  browserFailureHelpUrl,
   browserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
@@ -716,6 +717,18 @@ function BrowserNewSession({
       {open.isError ? (
         <p className="browser-pane__notice" role="alert">
           {describeBrowserFailure(open.error, address)}
+          {browserFailureHelpUrl(open.error) ? (
+            <>
+              {' '}
+              <a
+                href={browserFailureHelpUrl(open.error)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                How to fix
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       <BrowserSessionList

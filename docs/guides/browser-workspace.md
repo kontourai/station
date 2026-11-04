@@ -120,3 +120,36 @@ Hiding or closing the pane does not stop the page; an Agent may keep working.
 Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
 for it.
+
+## Troubleshooting
+
+### No usable sandbox on Linux
+
+The pane says the Station's Linux host blocks the browser sandbox. Chromium
+needs unprivileged user namespaces for its sandbox, and Ubuntu 23.10 and later
+refuse them through AppArmor (`kernel.apparmor_restrict_unprivileged_userns =
+1`). Chromium then exits at launch with `FATAL ... No usable sandbox!`, and
+Station's log records it as `browser: Chromium could not start`. Station does
+not run Chromium without its sandbox.
+
+Fix it on the Station machine, not the device you view from. Allow user
+namespaces for the browser Station downloads with an AppArmor profile at
+`/etc/apparmor.d/station-chromium`:
+
+```text
+abi <abi/5.0>,
+include <tunables/global>
+
+profile station-chromium @{HOME}/.station/{,instances/*/}browser/chromium/*/chrome-linux64/chrome flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+  include if exists <local/station-chromium>
+}
+```
+
+Load it with `sudo apparmor_parser -r /etc/apparmor.d/station-chromium`, then
+open the page again. The path globs match every Station instance and Chromium
+version, so the profile survives browser updates. `@{HOME}` is AppArmor's
+home-directory variable; if your Station home is not `.station` in a home
+directory, change the path to match. Prefer this over turning the restriction
+off for the whole machine.

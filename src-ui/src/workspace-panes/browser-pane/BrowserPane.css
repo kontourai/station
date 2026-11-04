@@ -139,6 +139,12 @@
   color: var(--accent-warning, var(--text-primary));
 }
 
+/* A notice's "How to fix" guide link; the underline marks it as a link. */
+.browser-pane__notice a {
+  color: var(--k-action);
+  text-decoration: underline;
+}
+
 .browser-pane__panel {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 6px);
