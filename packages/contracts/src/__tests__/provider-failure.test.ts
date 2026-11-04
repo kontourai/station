@@ -9,6 +9,7 @@ import {
 // a contract decision, even when the replacement is another valid kind.
 const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
   [
+    ['async_event_queue_consumer_conflict', 'conflict', false],
     ['foreground_invocation_unavailable', 'conflict', false],
     ['delegation_attempt_capacity', 'busy', true],
     ['create_request_capacity', 'busy', true],

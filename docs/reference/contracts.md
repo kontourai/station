@@ -963,6 +963,10 @@ partial/background work; they do not fail or replay the completed turn. Generic 
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
+`async_event_queue_consumer_conflict` identifies an internal queue-ownership
+invariant violation, not a provider or caller error. Its `conflict` kind is
+non-retryable.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -985,6 +989,7 @@ No existing diagnostic code is renamed or removed.
 | `stage_incomplete` | `input_unsupported` | `false` |
 | `stage_invalid_upload` | `input_unsupported` | `false` |
 | `stage_capacity` | `busy` | `true` |
+| `async_event_queue_consumer_conflict` | `conflict` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `create_request_capacity` | `busy` | `true` |

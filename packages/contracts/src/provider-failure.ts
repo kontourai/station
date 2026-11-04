@@ -155,6 +155,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  // A second consumer violates Station's internal queue-ownership invariant.
+  async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
   delegation_attempt_capacity: 'busy',
   create_request_capacity: 'busy',
