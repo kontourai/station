@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-04T08:24:38Z | nightly-npm | 0.11.0-nightly.2499.41796352097 | `d6ec144` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41796352097) |
 | 2026-11-03T22:43:55Z | nightly-desktop | 0.1.11-nightly.2498.2 | `9870343` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
 | 2026-11-03T22:43:51Z | nightly-android | 0.1.11-nightly.2498.2 | `9870343` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
 | 2026-11-03T21:31:15Z | nightly-npm | 0.11.0-nightly.2498.41720227898 | `9870343` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
@@ -411,6 +412,35 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-04T08:24:38Z · nightly-npm · 0.11.0-nightly.2499.41796352097
+
+- Ship SHA: `d6ec144b4550a6d129da1bd95b24b615517d8385`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2499.41796352097 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `9870343` ([full sha](https://github.com/kontourai/station/commit/98703439f7606e50dabe7ccf91ce052eb5ce1571)):
+
+**Features**
+
+- [#4499](https://github.com/kontourai/station/pull/4499) feat(terminal): script runner, agent terminal tools, and Add to chat
+- [#4493](https://github.com/kontourai/station/pull/4493) feat(terminal): accessibility, shortcuts, replay on reattach, and docs truth pass
+- [#4477](https://github.com/kontourai/station/pull/4477) feat(troubleshoot): troubleshoot with an agent on the Station Assistant
+
+**Fixes**
+
+- [#4531](https://github.com/kontourai/station/pull/4531) fix(connections): preserve tool account sign-in retries
+- [#4528](https://github.com/kontourai/station/pull/4528) fix(chat): retain queued edits when durable saves fail
+- [#4529](https://github.com/kontourai/station/pull/4529) fix(knowledge): bind meeting capture results to submitted drafts
+- [#4527](https://github.com/kontourai/station/pull/4527) fix(registry): recover failed catalog reads
+- [#4525](https://github.com/kontourai/station/pull/4525) fix(sharing): recover temporary Task publication reads
+- [#4505](https://github.com/kontourai/station/pull/4505) fix(orchestration): observe enqueued Session start announcements
+- [#4503](https://github.com/kontourai/station/pull/4503) fix(runtime): preserve queued supervisor IPC requests
+- [#4502](https://github.com/kontourai/station/pull/4502) fix(orchestration): reclaim dead unmarked create claims and keep retention clock-safe
+- [#4467](https://github.com/kontourai/station/pull/4467) fix(runtime): compact replay storage and await Session-start commits
 
 ## 2026-11-03T22:43:55Z · nightly-desktop · 0.1.11-nightly.2498.2
 
