@@ -850,7 +850,9 @@
 
     "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
 
-    "src-server/services/orchestration/create-request-claims.ts"
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "packages/sdk/src/__tests__/tool-library-query.test.tsx"
   ],
 
   "checks": [
