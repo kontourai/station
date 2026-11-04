@@ -108,9 +108,9 @@ export interface ClientRawEgressPolicy {
   isCurrent: () => boolean;
 }
 
-export type ClientRawEgressPolicyResolver = () =>
-  | ClientRawEgressPolicy
-  | undefined;
+export type ClientRawEgressPolicyResolver = (
+  selector?: ClientRequestSelector,
+) => ClientRawEgressPolicy | undefined;
 
 let rawEgressPolicyResolver: ClientRawEgressPolicyResolver | undefined;
 
@@ -122,8 +122,10 @@ export function setClientRawEgressPolicyResolver(
 }
 
 /** Read the current explicit route policy without inspecting transport presence. */
-export function getClientRawEgressPolicy(): ClientRawEgressPolicy | undefined {
-  return rawEgressPolicyResolver?.();
+export function getClientRawEgressPolicy(
+  selector?: ClientRequestSelector,
+): ClientRawEgressPolicy | undefined {
+  return rawEgressPolicyResolver?.(selector);
 }
 
 export type ClientRawEgressChannel = 'attachment upload' | 'terminal' | 'voice';
@@ -144,7 +146,10 @@ export function assertClientRawEgressAllowed(
   channel: ClientRawEgressChannel,
   expected?: string | ApiRequestScope,
 ): void {
-  const policy = getClientRawEgressPolicy();
+  const policy = getClientRawEgressPolicy({
+    url: apiBase,
+    ...(typeof expected === 'object' ? { requestScope: { ...expected } } : {}),
+  });
   if (!policy) return;
   if (!policy.isCurrent()) throw new StationRequestAuthorityError();
   if (policy.kind === 'broker' && sameOrigin(apiBase, policy.apiBase)) {
@@ -664,10 +669,14 @@ export async function readJsonBody(response: Response): Promise<unknown> {
   }
 }
 
-export type ClientCredentialResolver = () =>
-  | ClientCredential
-  | undefined
-  | Promise<ClientCredential | undefined>;
+export interface ClientRequestSelector {
+  url: string;
+  requestScope?: ApiRequestScope;
+}
+
+export type ClientCredentialResolver = (
+  selector?: ClientRequestSelector,
+) => ClientCredential | undefined | Promise<ClientCredential | undefined>;
 
 let credentialResolver: ClientCredentialResolver | undefined;
 
@@ -836,13 +845,17 @@ function needsAuthorityGuard(
  * header builder and the reporters.
  */
 async function resolveRequestCredential(
+  url: string,
   opts?: ClientRequestOptions,
 ): Promise<ClientCredential | undefined> {
   // An explicitly supplied per-call credential opts OUT of the ambient
   // resolver: it carries no transport and no callbacks, and the ambient
   // connection it does not belong to must not be told anything about it.
   if (opts?.credential && opts.credentialOrigin) return undefined;
-  return credentialResolver?.();
+  return credentialResolver?.({
+    url,
+    ...(opts?.requestScope ? { requestScope: { ...opts.requestScope } } : {}),
+  });
 }
 
 function resolveRequestHeaders(
@@ -1272,7 +1285,7 @@ export async function getJson(
   return getJsonWithResolvedCredential(
     url,
     requestOptions,
-    await resolveRequestCredential(requestOptions),
+    await resolveRequestCredential(url, requestOptions),
   );
 }
 
@@ -1432,7 +1445,7 @@ async function mutateBody(
           ...(requestOptions?.headers || {}),
         }
       : undefined;
-  const configured = await resolveRequestCredential(requestOptions);
+  const configured = await resolveRequestCredential(url, requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
   const headers = withClientOriginHeaders(
     resolveRequestHeaders(url, configured, {
@@ -1923,6 +1936,11 @@ export function fetchSSE(
   url: string,
   opts: FetchSseOptions,
 ): FetchSseConnection {
+  opts = {
+    ...opts,
+    ...(opts.requestScope ? { requestScope: { ...opts.requestScope } } : {}),
+    ...(opts.headers ? { headers: { ...opts.headers } } : {}),
+  };
   const controller = new AbortController();
   const abort = () => controller.abort();
   // Resolve this once per browser-owned stream. A non-persisted pagehide is
