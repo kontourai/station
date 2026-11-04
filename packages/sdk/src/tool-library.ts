@@ -68,6 +68,7 @@ export function useLibraryQuery<T>(
   return useQuery({
     queryKey: key(client, path),
     queryFn: ({ signal }) => readToolLibrary<T>(client, path, signal),
+    placeholderData: undefined,
     enabled,
     gcTime: 0,
     staleTime: 0,

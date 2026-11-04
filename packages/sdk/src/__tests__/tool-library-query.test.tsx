@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import type { ToolLibraryView } from '@kontourai/station-contracts/tool-library';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -60,11 +64,18 @@ function Wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-test.each(['cached', 'pending'] as const)(
+test.each(['cached', 'pending', 'cached with host placeholders'] as const)(
   'a principal change on the same Station withholds the previous %s catalog',
   async (previousState) => {
     const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+      defaultOptions: {
+        queries: {
+          retry: false,
+          ...(previousState === 'cached with host placeholders'
+            ? { placeholderData: keepPreviousData }
+            : {}),
+        },
+      },
     });
     clients.push(client);
     activeClient = client;
@@ -100,7 +111,7 @@ test.each(['cached', 'pending'] as const)(
       },
     );
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    if (previousState === 'cached') {
+    if (previousState !== 'pending') {
       await act(async () => {
         previous.resolve(
           Response.json({
@@ -113,6 +124,21 @@ test.each(['cached', 'pending'] as const)(
       await waitFor(() => expect(hook.result.current.data).toEqual(alice));
     }
 
+    const previousObserver =
+      previousState === 'pending'
+        ? renderHook(
+            () =>
+              useToolLibrary(
+                {
+                  apiBase: scope.apiBase,
+                  principalId: 'person-a',
+                  options: { requestScope: scope },
+                },
+                'alpha',
+              ),
+            { wrapper: Wrapper },
+          )
+        : undefined;
     hook.rerender({ principalId: 'person-b' });
     expect(hook.result.current.data).toBeUndefined();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
@@ -127,6 +153,11 @@ test.each(['cached', 'pending'] as const)(
         );
       });
     }
+    if (previousObserver) {
+      await waitFor(() =>
+        expect(previousObserver.result.current.data).toEqual(alice),
+      );
+    }
     expect(hook.result.current.isPending).toBe(true);
     expect(hook.result.current.data).toBeUndefined();
     expect(
@@ -135,7 +166,7 @@ test.each(['cached', 'pending'] as const)(
         .findAll()
         .filter((query) => query.isActive())
         .map((query) => query.state.data),
-    ).toEqual([undefined]);
+    ).toEqual(previousObserver ? [alice, undefined] : [undefined]);
 
     await act(async () => {
       next.resolve(
@@ -150,6 +181,6 @@ test.each(['cached', 'pending'] as const)(
         .findAll()
         .filter((query) => query.isActive())
         .map((query) => query.state.data),
-    ).toEqual([bob]);
+    ).toEqual(previousObserver ? [alice, bob] : [bob]);
   },
 );

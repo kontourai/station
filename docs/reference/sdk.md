@@ -411,8 +411,10 @@ probe limits and the current lack of outbound producers.
 client; account-bound hosts pin the current principal. Queries partition the
 request authority and supplied principal independently. Updating the principal
 pin retires the previous person's cached results and keeps a late response in
-its original partition. Hosts must update that pin when the account changes;
-unpinned readers remain authority-scoped. Queries refetch while mounted.
+its original partition. These readers disable inherited previous-data
+placeholders, including a host's global `keepPreviousData` default. Hosts must
+update the pin when the account changes; unpinned readers remain
+authority-scoped. Queries refetch while mounted.
 Callers must include `expectedActor` and, for
 Project changes, the exact `projectId`; server authority remains decisive.
 
