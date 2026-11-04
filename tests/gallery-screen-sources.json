@@ -8,6 +8,12 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "personal-board-projects-unavailable-desktop": [
+      "src-ui/src/views/PersonalBoardView.tsx"
+    ],
+    "personal-board-projects-unavailable-mobile": [
+      "src-ui/src/views/PersonalBoardView.tsx"
+    ],
     "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],

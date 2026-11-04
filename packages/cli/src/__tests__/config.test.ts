@@ -635,6 +635,33 @@ describe('configGet', () => {
     );
   });
 
+  test('names the organization whose managed policy supplied the value (#4517)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { defaultMaxTurns: 40, checkoutStaleAfterDays: 9 },
+        provenance: {
+          defaultMaxTurns: {
+            source: 'managed',
+            locked: true,
+            organization: 'Acme',
+          },
+          checkoutStaleAfterDays: {
+            source: 'managed',
+            locked: false,
+            organization: 'Acme',
+          },
+        },
+      }),
+    );
+    const { configGet } = await import('../commands/config.js');
+    await configGet('defaultMaxTurns', NONE);
+    expect(consoleLog).toHaveBeenCalledWith('40');
+    expect(consoleError).toHaveBeenCalledWith(
+      '  (managed by Acme; it cannot be changed here)',
+    );
+  });
+
   test('prints no provenance note for a stored value, whatever the environment holds', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
