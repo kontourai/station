@@ -50,6 +50,7 @@
 </li>
 </ul>
 <p>If the message reappears after a restart, stop restarting blindly and collect the bounded diagnostics below. A data-home schema error containing <code>STATION_HOME_RESET_REQUIRED</code> is deliberately fail-closed: restart attempts do not repair it. Follow the exact <code>station home reset</code> conditions only after you have a backup and have selected the intended home.</p>
+<p>A <a href="https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md">managed policy</a> error containing <code>STATION_MANAGED_POLICY_INVALID</code> is also fail-closed. Your organization's policy on this computer cannot be used, so the app reports the failure without restarting. Only an administrator can fix or remove the policy.</p>
 <p>Some home or schema refusals occur before the supervisor starts. They show a separate <strong>Exit</strong>-only dialog and start no backend. Repeatedly launching the app does not repair the refused home.</p>
 <p>If Station's built-in Node component cannot start, its dialog asks you to reinstall the app. A helper timeout has a separate message: exit and try again, then collect desktop logs if it continues. A timeout alone does not establish that the installed component is damaged.</p>
 <h2 id="missing-saved-connections">Missing saved connections</h2>
