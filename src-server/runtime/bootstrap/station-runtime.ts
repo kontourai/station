@@ -1178,6 +1178,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private failedInitializationOrchestration?: OrchestrationService;
   private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -3995,6 +3996,12 @@ export class StationRuntime {
         });
       }
       await retire(() => this.retireSelfHostedBroker());
+      if (
+        this.failedInitializationOrchestration !== this.orchestrationService
+      ) {
+        this.failedInitializationOrchestration = this.orchestrationService;
+        await retire(() => this.orchestrationService?.shutdown());
+      }
       if (cleanupErrors.length)
         throw new AggregateError(
           [error, ...cleanupErrors],
@@ -4431,6 +4438,7 @@ export class StationRuntime {
             this.modelCatalog = core.modelCatalog;
           },
           onOrchestrationServiceCreated: (service) => {
+            this.failedInitializationOrchestration = undefined;
             this.orchestrationService = service;
           },
           onRouteServicesReady: async (services) => {
@@ -4810,6 +4818,7 @@ export class StationRuntime {
       }
     };
 
+    this.failedInitializationOrchestration = this.orchestrationService;
     await attempt(() => this.orchestrationService?.shutdown());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());

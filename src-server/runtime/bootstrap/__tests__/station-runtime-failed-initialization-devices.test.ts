@@ -196,38 +196,54 @@ describe('StationRuntime failed initialization (#2443)', () => {
   });
 });
 
-test('failed initialization revokes the orchestration listener before route services are ready', async () => {
-  const store = new EventStore(
-    join(temporaryHome('failed-orchestration-'), 'events.sqlite'),
-  );
-  const listeners = new Set<() => void>();
-  const adapter = new GateTestAdapter();
-  const service = new OrchestrationService({
-    adapterRegistry: {
-      ...createGateTestRegistry(adapter),
-      onChange: (listener) => {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
+test.each(['inner-bootstrap', 'post-composition'] as const)(
+  'failed initialization revokes the orchestration listener (%s)',
+  async (phase) => {
+    const store = new EventStore(
+      join(temporaryHome('failed-orchestration-'), 'events.sqlite'),
+    );
+    const listeners = new Set<() => void>();
+    const adapter = new GateTestAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: {
+        ...createGateTestRegistry(adapter),
+        onChange: (listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
       },
-    },
-    eventStore: store,
-    eventBus: new EventBus(),
-    logger: { debug: vi.fn(), warn: vi.fn() },
-  });
-  const { initializeRuntime } = await import('../runtime-initialize.js');
-  vi.mocked(initializeRuntime).mockImplementationOnce(async (deps) => {
-    deps.onOrchestrationServiceCreated?.(service);
-    service.initialize();
-    expect(listeners.size).toBe(1);
-    throw STARTUP_FAILURE;
-  });
-  try {
-    await expect(failingRuntime().initialize()).rejects.toBe(STARTUP_FAILURE);
-    expect(listeners.size).toBe(0);
-  } finally {
-    await service.shutdown();
-    store.close();
-  }
-});
+      eventStore: store,
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const { initializeRuntime } = await import('../runtime-initialize.js');
+    const runtime = failingRuntime();
+    if (phase === 'inner-bootstrap') {
+      vi.mocked(initializeRuntime).mockImplementationOnce(async (deps) => {
+        deps.onOrchestrationServiceCreated?.(service);
+        service.initialize();
+        expect(listeners.size).toBe(1);
+        throw STARTUP_FAILURE;
+      });
+    } else {
+      Object.assign(runtime, {
+        orchestrationService: service,
+        runInitialize: async () => {
+          service.initialize();
+          throw STARTUP_FAILURE;
+        },
+      });
+    }
+    const shutdown = vi.spyOn(service, 'shutdown');
+    try {
+      await expect(runtime.initialize()).rejects.toBe(STARTUP_FAILURE);
+      expect(listeners.size).toBe(0);
+      expect(shutdown).toHaveBeenCalledTimes(1);
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  },
+);
