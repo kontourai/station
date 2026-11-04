@@ -17,6 +17,8 @@ const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
 const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
 const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
 const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
+const ENGINE_START_WAIT_TIMEOUT_MS = 60_000;
+const ENGINE_START_MAX_WAITERS = 32;
 
 type CpuSnapshot = ReturnType<typeof cpus>;
 type CpuTimes = { idle: number; total: number; cpuCount: number };
@@ -256,7 +258,8 @@ export function createRuntimeResourcePostureController(
     async waitForEngineStart(signal) {
       signal?.throwIfAborted();
       if (!engineStartReserved) return lease();
-      if (waiters.length >= 32) throw new ConcurrentEngineStartCapacityError();
+      if (waiters.length >= ENGINE_START_MAX_WAITERS)
+        throw new ConcurrentEngineStartCapacityError();
       return await new Promise<RuntimeEngineStartLease>((resolve, reject) => {
         const cleanup = () => {
           clearTimeout(timer);
@@ -278,7 +281,7 @@ export function createRuntimeResourcePostureController(
         const timer = setTimeout(() => {
           remove();
           reject(new ConcurrentEngineStartCapacityError());
-        }, 60_000);
+        }, ENGINE_START_WAIT_TIMEOUT_MS);
         timer.unref?.();
         waiters.push(accept);
         signal?.addEventListener('abort', abort, { once: true });

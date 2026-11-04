@@ -133,6 +133,56 @@ describe('runtime resource diagnostics', () => {
     }
   });
 
+  test('grants waiting interactive starts in arrival order', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const first = controller.waitForEngineStart();
+    const second = controller.waitForEngineStart();
+    held.release();
+    const admitted = await Promise.race([
+      first.then((lease) => ({ name: 'first', lease })),
+      second.then((lease) => ({ name: 'second', lease })),
+    ]);
+    admitted.lease.release();
+    const remaining = await (admitted.name === 'first' ? second : first);
+    remaining.release();
+    expect(admitted.name).toBe('first');
+  });
+
+  test('refuses the 33rd interactive waiter without waiting for timeout', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const abort = new AbortController();
+    const waiters = Array.from({ length: 32 }, () =>
+      controller.waitForEngineStart(abort.signal),
+    );
+    const settledWaiters = Promise.allSettled(waiters);
+    const extra = controller.waitForEngineStart(abort.signal);
+    const outcome = extra.then(
+      () => 'admitted',
+      (error: unknown) =>
+        error instanceof ConcurrentEngineStartCapacityError
+          ? 'refused'
+          : 'aborted',
+    );
+    try {
+      expect(waiters).toHaveLength(32);
+      expect(
+        await Promise.race([
+          outcome,
+          new Promise<'pending'>((resolve) =>
+            setImmediate(() => resolve('pending')),
+          ),
+        ]),
+      ).toBe('refused');
+    } finally {
+      abort.abort();
+      await settledWaiters;
+      await outcome;
+      held.release();
+    }
+  });
+
   test('production server modules never import verification scripts', () => {
     const serverRoot = join(process.cwd(), 'src-server');
     const violations: string[] = [];
