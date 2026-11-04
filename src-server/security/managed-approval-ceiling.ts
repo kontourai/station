@@ -74,7 +74,7 @@ export function clampToManagedCeiling<M extends ApprovalMode>(
 }
 
 /** The managed refusal sentence; only meaningful while a ceiling is in force. */
-export function managedApprovalCeilingMessage(): string {
+function managedApprovalCeilingMessage(): string {
   return installed
     ? managedApprovalCeilingDenial(installed.summary, installed.ceiling)
     : 'The managed policy limits approval modes.';

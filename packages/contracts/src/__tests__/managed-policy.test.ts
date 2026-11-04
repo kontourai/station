@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
   approvalModeExceedsCeiling,
-  approvalModesWithinCeiling,
   canonicalManagedPolicyJson,
   clampApprovalModeToCeiling,
   duplicateJsonMemberPath,
@@ -450,7 +449,7 @@ describe('#4518: limits.maxApprovalMode', () => {
       ).not.toContain('settings.defaultApprovalMode.value');
   });
 
-  test('helpers: the ceiling, the comparison, the clamp and the modes left', () => {
+  test('helpers: the ceiling, the comparison and the clamp', () => {
     const limits = (maxApprovalMode?: 'ask' | 'auto' | 'never') => ({
       limits: maxApprovalMode ? { maxApprovalMode } : {},
     });
@@ -471,14 +470,6 @@ describe('#4518: limits.maxApprovalMode', () => {
       'connection-default',
     );
     expect(clampApprovalModeToCeiling('never', undefined)).toBe('never');
-
-    expect(approvalModesWithinCeiling('ask')).toEqual(['ask']);
-    expect(approvalModesWithinCeiling('auto')).toEqual(['ask', 'auto']);
-    expect(approvalModesWithinCeiling(undefined)).toEqual([
-      'ask',
-      'auto',
-      'never',
-    ]);
   });
 
   test('the denial names the organization, the ceiling and where to get help', () => {

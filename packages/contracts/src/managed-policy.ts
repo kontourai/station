@@ -17,7 +17,6 @@
 import { boundaryText, isRecord } from './contract-validation.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
 import {
-  APPROVAL_MODE_BREADTH_ORDER,
   type ApprovalMode,
   approvalModeBreadth,
   type ConcreteApprovalMode,
@@ -609,15 +608,6 @@ export function clampApprovalModeToCeiling<M extends ApprovalMode>(
 ): M | ConcreteApprovalMode {
   if (!isConcreteApprovalMode(mode) || ceiling === undefined) return mode;
   return approvalModeExceedsCeiling(mode, ceiling) ? ceiling : mode;
-}
-
-/** The postures at or below `ceiling`, strictest first; all of them without one. */
-export function approvalModesWithinCeiling(
-  ceiling: ConcreteApprovalMode | undefined,
-): ConcreteApprovalMode[] {
-  return APPROVAL_MODE_BREADTH_ORDER.filter(
-    (mode) => !approvalModeExceedsCeiling(mode, ceiling),
-  );
 }
 
 /**
