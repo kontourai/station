@@ -119,7 +119,10 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
   h.preparationOwners.sources = h.f.owner;
   h.owner = new StationReportGroupPreparation(h.preparationOwners);
   h.custodyOwners.persistence = new StationDelegationPersistence(reportRoot);
-  h.custody = new StationReportGroupCustody(h.custodyOwners);
+  h.custody = new StationReportGroupCustody({
+    ...h.custodyOwners,
+    canonicalLocalGrantOrigin: h.f.environment.canonicalLocalGrantOrigin(),
+  });
   const flow = await createReportFlow(h.f, 'lost-reappraisal', [
     { id: 'first' },
     {
