@@ -66,6 +66,10 @@ import type {
   TaskFollowUpStore,
   TaskIncarnation,
 } from './task-follow-up-store.js';
+import {
+  isWakeableFollowUp,
+  type TaskFollowUpWake,
+} from './task-follow-up-wake.js';
 
 export const TASK_FOLLOW_UP_PREVIEW_ID = 'task-tracker-follow-ups';
 const TASK_FOLLOW_UP_INTERVAL_MS = 5 * 60 * 1000;
@@ -93,6 +97,11 @@ export interface TaskFollowUpPollerOptions {
     listKeptDeclaredPullRequests(taskId: string): TaskKeptDeclaredPullRequest[];
   };
   reader: GitHubFollowUpReader;
+  /**
+   * The lead wake (decision 2). Absent: items are recorded and shown, never
+   * marked to wake.
+   */
+  wake?: () => TaskFollowUpWake | undefined;
   logger?: Pick<Logger, 'warn'>;
   /** Tests shorten these. */
   deadlineMs?: number;
@@ -163,6 +172,14 @@ export class TaskFollowUpPoller {
   private readonly closing = new AbortController();
 
   constructor(private readonly options: TaskFollowUpPollerOptions) {}
+
+  /** The preview's live choice. */
+  previewEnabled(): boolean {
+    return this.options.preview.select({
+      enabled: () => true,
+      disabled: () => false,
+    });
+  }
 
   /** Start a poll on its own single flight; never waits for it. */
   tick(input: { now: number; signal: AbortSignal }): void {
@@ -271,6 +288,8 @@ export class TaskFollowUpPoller {
             new Date(input.now).toISOString(),
             'deadline',
           );
+          // What it did record is delivered now; GitHub is not read again.
+          await this.options.wake?.()?.deliver(incarnation);
           summary.tasks.push({
             taskId: task.id,
             items: items.length,
@@ -290,6 +309,9 @@ export class TaskFollowUpPoller {
           },
         );
       store.markPolled(incarnation, new Date(input.now).toISOString(), outcome);
+      // One wake per Task per poll, for whatever this poll (or an earlier one
+      // that could not deliver) recorded as waking. Never throws.
+      await this.options.wake?.()?.deliver(incarnation);
       summary.tasks.push({
         taskId: task.id,
         items: items.length,
@@ -340,10 +362,21 @@ export class TaskFollowUpPoller {
         ...(comments.lastCursor ? { comments: comments.lastCursor } : {}),
         ...(reviews?.lastCursor ? { reviews: reviews.lastCursor } : {}),
       };
+      const wakes = this.options.wake?.() !== undefined;
+      const viewerLogin = result.page.viewerLogin;
       recorded += store.recordPage(
         task,
         itemRef,
-        { items, cursors },
+        {
+          items,
+          cursors,
+          ...(wakes
+            ? {
+                wakeable: (item: FollowUpItem) =>
+                  isWakeableFollowUp(item, viewerLogin),
+              }
+            : {}),
+        },
         recordedAt,
       );
       Object.assign(after, cursors);

@@ -89,6 +89,13 @@ const SCHEMA = [
     reason TEXT NOT NULL,
     PRIMARY KEY (task_id, task_created_at, item_ref)
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS follow_up_wake_routes (
+    client_turn_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    task_created_at TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS follow_up_polls (
     task_id TEXT NOT NULL,
     task_created_at TEXT NOT NULL,
@@ -170,6 +177,13 @@ function fromRow(row: ObservationRow): TaskFollowUpObservation {
   };
 }
 
+/** The lead conversation and owner a follow-up wake was queued for. */
+export interface TaskFollowUpWakeRoute extends TaskIncarnation {
+  clientTurnId: string;
+  ownerUserId: string;
+  conversationId: string;
+}
+
 /** A kept pull request the poller refused to follow, and why. */
 export interface TaskFollowUpNotFollowed {
   itemRef: string;
@@ -211,6 +225,16 @@ export class TaskFollowUpStore {
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA busy_timeout = 5000');
       for (const statement of SCHEMA) db.exec(statement);
+      // A store written before wake delivery has no wake column: add it, so
+      // its rows read as never-to-wake (`none`).
+      const columns = db
+        .prepare('PRAGMA table_info(follow_up_observations)')
+        .all()
+        .map((row) => row.name);
+      if (!columns.includes('wake'))
+        db.exec(
+          "ALTER TABLE follow_up_observations ADD COLUMN wake TEXT NOT NULL DEFAULT 'none'",
+        );
     } catch (error) {
       // A corrupt or foreign file refuses here; release its handle, or each
       // retry (one per poll) would leak a file descriptor.
@@ -246,12 +270,18 @@ export class TaskFollowUpStore {
     page: {
       items: readonly FollowUpItem[];
       cursors: Partial<Record<FollowUpStream, string>>;
+      /**
+       * Which items may wake the lead. Decided once, when the item is first
+       * recorded, in the same transaction: an item already recorded is never
+       * pending again, so a re-poll never re-wakes.
+       */
+      wakeable?: (item: FollowUpItem) => boolean;
     },
     recordedAt: string,
   ): number {
     const insert = this.db.prepare(
-      `INSERT INTO follow_up_observations (task_id, task_created_at, kind, github_id, item_ref, author, actor_class, association, occurred_at, url, excerpt, truncated, review_state, check_name, conclusion, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO follow_up_observations (task_id, task_created_at, kind, github_id, item_ref, author, actor_class, association, occurred_at, url, excerpt, truncated, review_state, check_name, conclusion, recorded_at, wake)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT DO NOTHING`,
     );
     const cursor = this.db.prepare(
@@ -279,6 +309,7 @@ export class TaskFollowUpStore {
           item.checkName ?? null,
           item.conclusion ?? null,
           recordedAt,
+          page.wakeable?.(item) ? 'pending' : 'none',
         );
         added += Number(result.changes);
       }
@@ -386,6 +417,7 @@ export class TaskFollowUpStore {
       'follow_up_cursors',
       'follow_up_not_followed',
       'follow_up_polls',
+      'follow_up_wake_routes',
     ] as const;
     const stale = new Map<string, TaskIncarnation>();
     for (const table of tables)
@@ -420,6 +452,94 @@ export class TaskFollowUpStore {
       throw error;
     }
     return stale.size;
+  }
+
+  /** Observations recorded to wake the lead and not yet settled, oldest first. */
+  pendingWakes(task: TaskIncarnation): TaskFollowUpObservation[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM follow_up_observations WHERE task_id = ? AND task_created_at = ? AND wake = 'pending'
+         ORDER BY occurred_at ASC, rowid ASC`,
+      )
+      .all(task.taskId, task.taskCreatedAt)
+      .map((raw) => fromRow(readRow(raw)));
+  }
+
+  /** Settle pending wakes: sent in a queued inbox entry, or skipped. */
+  settleWakes(
+    task: TaskIncarnation,
+    items: readonly Pick<TaskFollowUpObservation, 'kind' | 'githubId'>[],
+    state: 'sent' | 'skipped',
+  ): void {
+    const update = this.db.prepare(
+      `UPDATE follow_up_observations SET wake = ? WHERE task_id = ? AND task_created_at = ? AND kind = ? AND github_id = ? AND wake = 'pending'`,
+    );
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const item of items)
+        update.run(
+          state,
+          task.taskId,
+          task.taskCreatedAt,
+          item.kind,
+          item.githubId,
+        );
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** The wake state of one observation (tests and diagnostics). */
+  wakeState(
+    task: TaskIncarnation,
+    kind: string,
+    githubId: string,
+  ): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT wake FROM follow_up_observations WHERE task_id = ? AND task_created_at = ? AND kind = ? AND github_id = ?',
+      )
+      .get(task.taskId, task.taskCreatedAt, kind, githubId);
+    return typeof row?.wake === 'string' ? row.wake : undefined;
+  }
+
+  /** Where a wake was sent, for the inbox's placement re-check. */
+  recordWakeRoute(route: TaskFollowUpWakeRoute): void {
+    this.db
+      .prepare(
+        `INSERT INTO follow_up_wake_routes (client_turn_id, task_id, task_created_at, owner_user_id, conversation_id) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (client_turn_id) DO UPDATE SET owner_user_id = excluded.owner_user_id, conversation_id = excluded.conversation_id`,
+      )
+      .run(
+        route.clientTurnId,
+        route.taskId,
+        route.taskCreatedAt,
+        route.ownerUserId,
+        route.conversationId,
+      );
+  }
+
+  wakeRoute(clientTurnId: string): TaskFollowUpWakeRoute | undefined {
+    const row = this.db
+      .prepare('SELECT * FROM follow_up_wake_routes WHERE client_turn_id = ?')
+      .get(clientTurnId);
+    if (
+      !row ||
+      typeof row.task_id !== 'string' ||
+      typeof row.task_created_at !== 'string' ||
+      typeof row.owner_user_id !== 'string' ||
+      typeof row.conversation_id !== 'string'
+    )
+      return undefined;
+    return {
+      clientTurnId,
+      taskId: row.task_id,
+      taskCreatedAt: row.task_created_at,
+      ownerUserId: row.owner_user_id,
+      conversationId: row.conversation_id,
+    };
   }
 
   /** Every observation of the incarnation, newest first. */

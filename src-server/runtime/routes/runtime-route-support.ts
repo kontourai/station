@@ -50,6 +50,7 @@ import {
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
@@ -71,12 +72,17 @@ import { DevicePairingNotificationProvider } from '../../services/ssh/device-pai
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { GhGitHubFollowUpReader } from '../../services/work-item-providers/github-follow-up-reader.js';
 import { composeTaskFollowUpPoller } from '../../services/work-item-providers/task-follow-up-poller.js';
+import {
+  TaskFollowUpWake,
+  type TaskFollowUpWakePorts,
+} from '../../services/work-item-providers/task-follow-up-wake.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
+import { canUseTaskSource } from '../context-efficiency-runtime.js';
 import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
@@ -529,6 +535,10 @@ export function configureRuntimeSupportServices(
   // #4508: Task tracker follow-ups ride the same tick, behind their own
   // Feature Preview; the store is the runtime's, shared with Task briefs.
   const taskFollowUps = context.taskFollowUps;
+  // The lead wake (decision 2) needs the durable event store's lead reader
+  // and the conversation inbox; without them follow-ups are recorded only.
+  const followUpEventStore = context.orchestrationEventStore;
+  let taskFollowUpWake: TaskFollowUpWake | undefined;
   const taskFollowUpPoller = taskFollowUps
     ? composeTaskFollowUpPoller(
         context.featurePreviews,
@@ -537,10 +547,32 @@ export function configureRuntimeSupportServices(
           store: () => taskFollowUps.forWrite(),
           tasks: context.taskGraphService,
           reader: new GhGitHubFollowUpReader(),
+          wake: () => taskFollowUpWake,
           logger: context.logger,
         },
       )
     : undefined;
+  if (taskFollowUps && taskFollowUpPoller && followUpEventStore)
+    taskFollowUpWake = new TaskFollowUpWake({
+      store: () => taskFollowUps.forRead(),
+      enabled: () => taskFollowUpPoller.previewEnabled(),
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      readLead: createTaskLeadReader({
+        eventStore: followUpEventStore,
+        service: context.orchestrationService,
+      }),
+      conversationOf: (sessionId) =>
+        followUpEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      // The question wake's own re-check, with execute authority.
+      mayReadTask: (task, owner) =>
+        canUseTaskSource(context, task, owner, true),
+      get submit(): TaskFollowUpWakePorts['submit'] {
+        const inbox = options.threadInbox?.();
+        return inbox ? (input) => inbox.submit(input) : undefined;
+      },
+      logger: context.logger,
+    });
   const automationObservation = composeGitHubAutomationObservation(
     context.featurePreviews,
     isHostedTenantExecutionRequired(),
@@ -948,5 +980,7 @@ export function configureRuntimeSupportServices(
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,
+    /** #4508: the follow-up lead wake, for the inbox's placement re-check. */
+    taskFollowUpWake,
   };
 }

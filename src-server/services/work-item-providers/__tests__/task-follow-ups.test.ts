@@ -35,6 +35,7 @@ import {
   TaskFollowUpStoreHolder,
   taskFollowUpStorePath,
 } from '../task-follow-up-store.js';
+import { TaskFollowUpWake } from '../task-follow-up-wake.js';
 import {
   answer,
   calls,
@@ -856,5 +857,273 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
         '> github:acme/widgets#30011',
       ].join('\n'),
     );
+  });
+
+  describe('lead wake (decision 2)', () => {
+    type Submit = {
+      conversationId: string;
+      clientTurnId: string;
+      payload: { message: string; actor: { userId: string } };
+    };
+    let submits: Submit[];
+    let lead: {
+      conversationId: string;
+      lifecycleState: 'idle' | 'running' | 'completed';
+      ownerUserId: string | undefined;
+    };
+    let permitted: boolean;
+    let wakePoller: TaskFollowUpPoller;
+
+    beforeEach(() => {
+      submits = [];
+      lead = {
+        conversationId: 'conversation-lead',
+        lifecycleState: 'idle',
+        ownerUserId: 'owner-1',
+      };
+      permitted = true;
+      const wake = new TaskFollowUpWake({
+        store: () => holder.forRead(),
+        enabled: () => wakePoller.previewEnabled(),
+        // A dispatched Task records its lead Session.
+        readTask: (taskId) => {
+          const task = graph.readTaskView(taskId);
+          return task ? { ...task, sessionId: 'session-lead' } : task;
+        },
+        readLead: async () => lead,
+        conversationOf: (sessionId) =>
+          sessionId === 'session-lead' ? 'conversation-lead' : sessionId,
+        mayReadTask: () => permitted,
+        submit: (input) => {
+          submits.push(input as Submit);
+          return { outcome: 'queued', entry: {} as never };
+        },
+        logger: { warn: () => undefined },
+      });
+      wakePoller = composeTaskFollowUpPoller(registry, false, {
+        store: () => holder.forWrite(),
+        tasks: graph,
+        reader: new GhGitHubFollowUpReader({ command: gh }),
+        wake: () => wake,
+      })!;
+    });
+    const wakePoll = (now = NOW) =>
+      wakePoller.poll({ now, signal: new AbortController().signal });
+    const state = (task: TaskRecord, kind: string, id: string) =>
+      holder
+        .forRead()!
+        .wakeState(
+          { taskId: task.id, taskCreatedAt: task.createdAt },
+          kind,
+          id,
+        );
+    /** The second poll's answers: nothing new anywhere. */
+    function answerNothingNew() {
+      const emptyIssue = structuredClone(issuePage2);
+      emptyIssue.data.repository.issueOrPullRequest.comments = {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        edges: [],
+      };
+      answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C3 }, emptyIssue);
+      const emptyPr = structuredClone(prPage2);
+      emptyPr.data.repository.issueOrPullRequest.reviews = {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        edges: [],
+      };
+      // The same head commit: the same check-run ids are read again.
+      emptyPr.data.repository.issueOrPullRequest.commits =
+        prPage1.data.repository.issueOrPullRequest.commits;
+      answer(
+        ghDir,
+        { number: PR, commentsAfter: PR_C1, reviewsAfter: PR_R3 },
+        emptyPr,
+      );
+    }
+
+    test("a member's review comment on a kept pull request enqueues exactly one lead wake; a second poll enqueues none", async () => {
+      const task = await trackerTask();
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+
+      expect(submits).toHaveLength(1);
+      const [wake] = submits;
+      expect(wake.conversationId).toBe('conversation-lead');
+      expect(wake.clientTurnId).toMatch(/^tf-[0-9a-f]{40}$/);
+      expect(wake.payload.actor.userId).toBe('owner-1');
+      expect(wake.payload.message).toContain(
+        '- Review comment 4363072349 on github:acme/widgets#14804 by member-reviewer (member, MEMBER) at 2026-10-23T18:41:21Z\n> Synthetic single-line text 4.',
+      );
+      // Quoted data under who wrote it, never the user's words.
+      expect(wake.payload.message.split('\n')[0]).toContain(
+        'written by people or checks on GitHub, not by the user',
+      );
+      // Bots and other authors are in the store, never in the wake.
+      expect(wake.payload.message).not.toContain('github-actions[bot] (bot');
+      expect(wake.payload.message).not.toContain(
+        'copilot-pull-request-reviewer',
+      );
+      expect(wake.payload.message).not.toContain('outside-reporter');
+      expect(state(task, 'review_comment', '4363072349')).toBe('sent');
+
+      answerNothingNew();
+      await wakePoll(NOW + 6 * 60_000);
+      expect(submits).toHaveLength(1);
+    });
+
+    test('a [bot] comment, and an outside author, never wake the lead', async () => {
+      const task = await trackerTask('2026-10-01T09:00:00.000Z', {
+        keepPullRequest: false,
+      });
+      await enable();
+      // The issue's comments: a triage bot, an outside reporter, an Actions bot.
+      answer(ghDir, { number: ISSUE }, issuePage1);
+      answer(ghDir, { number: ISSUE, commentsAfter: ISSUE_C2 }, issuePage2);
+      await wakePoll();
+      expect(submits).toEqual([]);
+      expect(state(task, 'comment', '6583120030')).toBe('none');
+      expect(state(task, 'comment', '6575745983')).toBe('none');
+    });
+
+    test('a failing check wakes the lead unless the Task is blocked', async () => {
+      const open = await trackerTask();
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toHaveLength(1);
+      expect(submits[0].payload.message).toContain(
+        '- Check run 120612876932 on github:acme/widgets#14804 by github-actions (ci) at 2026-10-23T19:29:36Z: FAILURE\n> Check: lint',
+      );
+      expect(state(open, 'check_run', '120612876932')).toBe('sent');
+      // Passing checks never wake.
+      expect(state(open, 'check_run', '120578852247')).toBe('none');
+    });
+
+    test('a blocked Task is not woken by a failing check; member comments still wake it', async () => {
+      const task = await trackerTask();
+      await graph.updateTaskStatus(task.id, 'in_progress');
+      await graph.updateTaskStatus(task.id, 'blocked');
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toHaveLength(1);
+      expect(submits[0].payload.message).not.toContain('Check run');
+      expect(submits[0].payload.message).toContain('Review comment 4363072349');
+      const current = graph.readTask(task.id)!;
+      expect(state(current, 'check_run', '120612876932')).toBe('skipped');
+    });
+
+    test('a done Task is recorded but never wakes its lead', async () => {
+      const task = await trackerTask();
+      await endTask(task.id, new Date(NOW - 2 * DAY).toISOString());
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toEqual([]);
+      expect(state(task, 'review_comment', '4363072349')).toBe('skipped');
+      expect(graph.readTask(task.id)?.status).toBe('done');
+    });
+
+    test('a stopped lead is not woken', async () => {
+      const task = await trackerTask();
+      lead.lifecycleState = 'completed';
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toEqual([]);
+      expect(state(task, 'review_comment', '4363072349')).toBe('skipped');
+    });
+
+    test('an owner who may no longer read the Task gets nothing; the wake waits for the next poll', async () => {
+      const task = await trackerTask();
+      permitted = false;
+      await enable();
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toEqual([]);
+      expect(state(task, 'review_comment', '4363072349')).toBe('pending');
+      permitted = true;
+      answerNothingNew();
+      await wakePoll(NOW + 6 * 60_000);
+      expect(submits).toHaveLength(1);
+    });
+
+    test("the gh login's own comments never wake the lead it posts for", async () => {
+      const task = await trackerTask();
+      await enable();
+      answerFirstPoll();
+      // The poll runs as member-reviewer: an agent posting through gh.
+      const asViewer = structuredClone(prPage1);
+      asViewer.data.viewer = { login: 'member-reviewer' };
+      answer(ghDir, { number: PR }, asViewer);
+      await wakePoll();
+      expect(state(task, 'review_comment', '4363072349')).toBe('none');
+      expect(submits[0]?.payload.message ?? '').not.toContain(
+        'by member-reviewer',
+      );
+    });
+
+    test('a queued wake is re-checked at placement: preview, Task, owner and access', async () => {
+      const task = await trackerTask();
+      await enable();
+      answerFirstPoll();
+      let wake!: TaskFollowUpWake;
+      wakePoller = composeTaskFollowUpPoller(registry, false, {
+        store: () => holder.forWrite(),
+        tasks: graph,
+        reader: new GhGitHubFollowUpReader({ command: gh }),
+        wake: () => wake,
+      })!;
+      wake = new TaskFollowUpWake({
+        store: () => holder.forRead(),
+        enabled: () => wakePoller.previewEnabled(),
+        readTask: (taskId) => {
+          const t = graph.readTaskView(taskId);
+          return t ? { ...t, sessionId: 'session-lead' } : t;
+        },
+        readLead: async () => lead,
+        conversationOf: () => 'conversation-lead',
+        mayReadTask: () => permitted,
+        submit: (input) => {
+          submits.push(input as Submit);
+          return { outcome: 'queued', entry: {} as never };
+        },
+        logger: { warn: () => undefined },
+      });
+      await wakePoll();
+      const placed = {
+        clientTurnId: submits[0].clientTurnId,
+        conversationId: 'conversation-lead',
+        userId: 'owner-1',
+      };
+      expect(wake.placementRefusal(placed)).toBeUndefined();
+      // Not this wake's key: not its decision.
+      expect(
+        wake.placementRefusal({ ...placed, clientTurnId: 'tq-other' }),
+      ).toBeUndefined();
+      expect(
+        wake.placementRefusal({ ...placed, userId: 'someone-else' }),
+      ).toMatchObject({ reasonCode: 'task_follow_up_source_changed' });
+      permitted = false;
+      expect(wake.placementRefusal(placed)).toBeDefined();
+      permitted = true;
+      await registry.setEnabled(TASK_FOLLOW_UP_PREVIEW_ID, false);
+      expect(wake.placementRefusal(placed)).toBeDefined();
+      await enable();
+      expect(wake.placementRefusal(placed)).toBeUndefined();
+      await endTask(task.id, new Date(NOW).toISOString());
+      expect(wake.placementRefusal(placed)).toBeDefined();
+    });
+
+    test('with the preview off, nothing is polled and nothing wakes', async () => {
+      await trackerTask();
+      answerFirstPoll();
+      await expect(wakePoll()).resolves.toEqual({
+        outcome: 'disabled',
+        tasks: [],
+      });
+      expect(calls(ghDir)).toEqual([]);
+      expect(submits).toEqual([]);
+    });
   });
 });

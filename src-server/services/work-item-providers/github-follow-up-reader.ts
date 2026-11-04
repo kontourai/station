@@ -90,6 +90,11 @@ export interface FollowUpPage {
   reviews?: FollowUpStreamPage;
   /** Pull requests, on a read that asked for them. */
   checks?: FollowUpItem[];
+  /**
+   * The gh login this read ran as (GraphQL `viewer`). An agent posts its own
+   * tracker updates with this login, so its items never wake the lead.
+   */
+  viewerLogin?: string;
 }
 
 export type FollowUpReadResult =
@@ -134,6 +139,7 @@ const COMMENTS = `comments(first: $first, after: $commentsAfter) {
   edges { cursor node { databaseId url body createdAt ${AUTHOR} } }
 }`;
 const FOLLOW_UP_QUERY = `query($owner: String!, $name: String!, $number: Int!, $first: Int!, $commentsAfter: String, $reviewsAfter: String, $withChecks: Boolean!) {
+  viewer { login }
   repository(owner: $owner, name: $name) {
     issueOrPullRequest(number: $number) {
       __typename
@@ -438,11 +444,23 @@ function parseFollowUpAnswer(
           reason: 'GitHub could not answer the follow-up read.',
         };
   }
+  const viewer =
+    data && isRecord(data.viewer) && typeof data.viewer.login === 'string'
+      ? classifyGitHubAuthor(data.viewer, undefined).author
+      : undefined;
+  const viewerLogin =
+    viewer && viewer !== 'ghost' && viewer !== 'unknown'
+      ? { viewerLogin: viewer }
+      : {};
   try {
     if (item.__typename === 'Issue')
       return {
         status: 'read',
-        page: { typename: 'Issue', comments: readComments(item.comments) },
+        page: {
+          typename: 'Issue',
+          comments: readComments(item.comments),
+          ...viewerLogin,
+        },
       };
     if (item.__typename !== 'PullRequest')
       throw new Unreadable('GitHub returned an unknown item type.');
@@ -453,6 +471,7 @@ function parseFollowUpAnswer(
         comments: readComments(item.comments),
         reviews: readReviews(item.reviews),
         ...(withChecks ? { checks: readChecks(item.commits) } : {}),
+        ...viewerLogin,
       },
     };
   } catch (error) {

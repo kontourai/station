@@ -44,6 +44,10 @@ const fakeGh = await import(
   '../../../services/work-item-providers/__tests__/fixtures/fake-gh-graphql.js'
 );
 
+const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
+  '../../../services/identity/principal-resolver.js'
+);
+
 const makeTempDir = trackTempDirs();
 const closers: Array<() => Promise<unknown> | unknown> = [];
 
@@ -108,7 +112,9 @@ async function savePreviewEnabled() {
   await registry.setEnabled(TASK_FOLLOW_UP_PREVIEW_ID, true);
 }
 
-function compose() {
+type Lead = { submits: { conversationId: string; message: string }[] };
+
+function compose(lead?: Lead) {
   const featurePreviews = new FeaturePreviewRegistry(home, {
     info: () => undefined,
     error: () => undefined,
@@ -126,11 +132,48 @@ function compose() {
       configLoader: { getProjectHomeDir: () => home },
       featurePreviews,
       taskFollowUps: holder,
-      orchestrationEventStore: undefined,
+      orchestrationEventStore: lead
+        ? new Proxy(
+            { conversationForSession: () => undefined } as Record<
+              PropertyKey,
+              unknown
+            >,
+            { get: (target, key) => (key in target ? target[key] : stub()) },
+          )
+        : undefined,
+      ...(lead
+        ? {
+            // The lead Session the Task recorded, idle, owned by the operator.
+            orchestrationService: new Proxy(
+              {
+                currentConversationSessionId: (id: string) => id,
+                readSession: async () => ({
+                  session: {
+                    provider: 'codex',
+                    threadId: 'session-lead',
+                    status: 'ready',
+                    createdAt: TASK.createdAt,
+                    updatedAt: TASK.createdAt,
+                  },
+                  events: [],
+                }),
+                sessionRecordedOwnerId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+              } as Record<PropertyKey, unknown>,
+              { get: (target, key) => (key in target ? target[key] : stub()) },
+            ),
+            projectService: new Proxy(
+              {
+                listProjects: () => [{ id: 'project-a', slug: 'project-a' }],
+              } as Record<PropertyKey, unknown>,
+              { get: (target, key) => (key in target ? target[key] : stub()) },
+            ),
+          }
+        : {}),
       taskGraphService: new Proxy(
         {
           listTasks: () => [TASK],
           listKeptDeclaredPullRequests: () => [],
+          readTaskView: () => ({ ...TASK, sessionId: 'session-lead' }),
         } as Record<PropertyKey, unknown>,
         { get: (target, key) => (key in target ? target[key] : stub()) },
       ),
@@ -139,6 +182,23 @@ function compose() {
   );
   const services = configureRuntimeSupportServices(context as never, stub(), {
     webPushEnabled: false,
+    ...(lead
+      ? {
+          threadInbox: () => ({
+            submit: (input: {
+              conversationId: string;
+              payload: { message: string };
+            }) => {
+              lead.submits.push({
+                conversationId: input.conversationId,
+                message: input.payload.message,
+              });
+              return { outcome: 'queued', entry: {} } as never;
+            },
+            entry: () => undefined,
+          }),
+        }
+      : {}),
   });
   closers.push(() => services.notificationService.shutdown());
   const options = captured.options.at(-1) as {
@@ -146,7 +206,7 @@ function compose() {
   };
   const poller = options.builtin.automationPoller;
   closers.unshift(() => poller.close());
-  return { poller, featurePreviews };
+  return { poller, featurePreviews, services };
 }
 
 const within = <T>(promise: Promise<T>, ms: number) =>
@@ -212,4 +272,34 @@ test('the personal control: the same saved choice polls the Task', async () => {
   await vi.waitFor(() => expect(fakeGh.calls(ghDir)).toHaveLength(1), {
     timeout: 5_000,
   });
+});
+
+test("the composed poller wakes the Task's lead through the runtime's thread inbox", async () => {
+  await savePreviewEnabled();
+  // The followed item answers as a pull request with a member's review.
+  const page1 = fakeGh.fixture('pull-request-page-1');
+  const page2 = fakeGh.fixture('pull-request-page-2');
+  const last = (page: any, stream: string) =>
+    page.data.repository.issueOrPullRequest[stream].edges.at(-1).cursor;
+  fakeGh.answer(ghDir, { number: 14882 }, page1);
+  fakeGh.answer(
+    ghDir,
+    {
+      number: 14882,
+      commentsAfter: last(page1, 'comments'),
+      reviewsAfter: last(page1, 'reviews'),
+    },
+    page2,
+  );
+  const lead: Lead = { submits: [] };
+  const { poller, services } = compose(lead);
+  expect(services.taskFollowUpWake).toBeDefined();
+  await poller.poll({ now: Date.now(), signal: new AbortController().signal });
+  await vi.waitFor(() => expect(lead.submits).toHaveLength(1), {
+    timeout: 10_000,
+  });
+  expect(lead.submits[0]).toMatchObject({ conversationId: 'session-lead' });
+  expect(lead.submits[0].message).toContain(
+    'Review comment 4363072349 on github:acme/widgets#14882 by member-reviewer (member, MEMBER)',
+  );
 });

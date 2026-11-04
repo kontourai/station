@@ -955,6 +955,7 @@ import {
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
 import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import type { TaskFollowUpWake } from '../../services/work-item-providers/task-follow-up-wake.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1659,6 +1660,10 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
   let durableTaskQuestionWake: TaskQuestionWake | undefined;
+  /** #4508: assigned once the support services compose the follow-up wake. */
+  let durableTaskFollowUpWake:
+    | Pick<TaskFollowUpWake, 'placementRefusal'>
+    | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -6851,6 +6856,11 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
+        }) ??
+        durableTaskFollowUpWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -11596,6 +11606,7 @@ export function configureRuntimeRoutes(
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
+    taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
     focus: focusPresence,
@@ -11615,6 +11626,7 @@ export function configureRuntimeRoutes(
       ),
   });
   automationActions = runtimeAutomationActions;
+  durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
   const nativeInvocationRunReader =
