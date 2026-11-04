@@ -7,7 +7,7 @@
 
   "summary": "Reviewed the complete terminal proposal and its implemented personal-operator foundation boundary: in-process host handles, immutable Project/binding identity, cwd confinement, conservative replay filtering, sequence journal bounds, receipt-bound legacy import and durable ended-session recovery. Remaining transport, grants, SDK, Ghostty and supervisor work is explicitly proposed.",
 
-  "limits": "Focused real-PTY and journal tests establish only their executed seams. The legacy socket retains its old authority. Windows/ConPTY, native clients, remote/relay/hosted admission, supervisor survival, power-loss durability, retention Settings, aggregate/age retention, purge and manual ownership recovery remain unqualified or unimplemented. A source-reviewed proposal is not SDK-5 delivery.",
+  "limits": "Focused real-PTY and journal tests establish only their executed seams. The legacy socket retains its old authority. Windows/ConPTY is exercised by the session, socket, retention and supervisor suites and one live Windows browser journey, with cmd.exe only; native clients, remote/relay/hosted admission, supervisor survival, power-loss durability, retention Settings, aggregate/age retention, purge and manual ownership recovery remain unqualified or unimplemented. A source-reviewed proposal is not SDK-5 delivery.",
 
   "sources": [
     "src-server/services/terminal/shell-host.ts",
@@ -50,7 +50,15 @@
 
     "src-server/security/coding-authority.ts",
 
-    "src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts"
+    "src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts",
+
+    "src-server/adapters/node-pty-adapter.ts",
+
+    "src-server/services/terminal/__tests__/terminal-retention.process.test.ts",
+
+    "src-server/services/terminal/__tests__/fixtures/real-shell.ts",
+
+    "tests/live/terminal-restart-journey.mjs"
   ],
 
   "checks": [
@@ -58,6 +66,8 @@
 
     "REASONED: current personal-host/operator composition and the preserved legacy socket boundary; independent security review and fault receipts are recorded separately.",
 
-    "NOT_VERIFIED: Windows, native clients, remote/relay/hosted admission, supervisor survival, and power-loss durability."
+    "EXECUTED: on Windows 11 with cmd.exe on ConPTY, the seven terminal process suites, six fault injections and tests/live/terminal-restart-journey.mjs (reload, station restart, stop and start).",
+
+    "NOT_VERIFIED: the Desktop app, native clients, other Windows shells, remote/relay/hosted admission, and power-loss durability."
   ]
 }
