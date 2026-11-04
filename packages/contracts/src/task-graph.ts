@@ -130,6 +130,10 @@ export interface TaskWorktreeView {
 export function taskWorkingDirectory(
   task: Pick<TaskRecord, 'workspaceBinding' | 'taskWorktree'>,
 ): string | undefined {
+  // Returned as stored, never expanded: this module has no home directory
+  // to expand `~` against. Callers that read files with it expand it
+  // (`resolve(expandTilde(...))`); the keep route compares it with a value
+  // of the same provenance.
   return task.taskWorktree?.path ?? task.workspaceBinding?.workingDirectory;
 }
 
