@@ -4,10 +4,12 @@ import {
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { ErrorState } from '../../components/state';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -23,6 +25,31 @@ import { settingsRow } from './settings-catalog';
 export function AccountPreferencesSection() {
   const account = useAccountPreferences();
   const { aboveCeiling } = useManagedApprovalCeiling();
+  const recoveryRegion = useRef<HTMLElement>(null);
+  const retryTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const trigger = retryTrigger.current;
+    retryTrigger.current = null;
+    if (!account.retrying || !trigger) return;
+    const frame = requestAnimationFrame(() => {
+      const region = recoveryRegion.current;
+      if (
+        !document.hasFocus() ||
+        document.visibilityState !== 'visible' ||
+        !region?.isConnected ||
+        !trigger.isConnected
+      )
+        return;
+      applyReturnFocus([region], trigger);
+      if (document.activeElement === region)
+        region.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [account.retrying]);
   const [confirmEngine, setConfirmEngine] =
     useState<InteractiveApprovalEngine | null>(null);
   const engineRows = {
@@ -77,15 +104,6 @@ export function AccountPreferencesSection() {
       title="Your account preferences"
       id="section-account-preferences"
     >
-      <p role="status">
-        {account.status === 'account'
-          ? 'Your devices share these preferences on this Station.'
-          : account.status === 'loading'
-            ? 'Loading preferences…'
-            : account.status === 'error'
-              ? 'Sync unavailable. Reload to try again.'
-              : 'Saved on this device. Sign in to sync.'}
-      </p>
       <div className="settings__account-help">
         <details>
           <summary>About these preferences</summary>
@@ -182,14 +200,50 @@ export function AccountPreferencesSection() {
             : 'Saving account preferences…'}
         </p>
       )}
-      {(account.error || account.status === 'error') && (
-        <p role="alert">
-          {account.conflict
-            ? 'Changed on another device. Reload before trying again.'
-            : 'Couldn’t confirm the save.'}{' '}
-          <Button onClick={account.retry}>Reload saved preferences</Button>
-        </p>
-      )}
+      <section
+        ref={recoveryRegion}
+        aria-label="Account preference recovery"
+        tabIndex={-1}
+      >
+        {account.status !== 'error' && (
+          <p role="status">
+            {account.status === 'account'
+              ? 'Your devices share these preferences on this Station.'
+              : account.status === 'loading'
+                ? 'Loading preferences…'
+                : 'Saved on this device. Sign in to sync.'}
+          </p>
+        )}
+        {(account.error || account.status === 'error') && (
+          <ErrorState
+            variant="compact"
+            title={
+              account.status === 'error'
+                ? 'Couldn’t load your account preferences.'
+                : account.conflict
+                  ? 'Changed on another device. Reload before trying again.'
+                  : 'Couldn’t confirm the save.'
+            }
+            action={
+              <Button
+                onClick={(event) => {
+                  retryTrigger.current =
+                    document.activeElement === event.currentTarget
+                      ? event.currentTarget
+                      : null;
+                  account.retry();
+                }}
+                pending={account.retrying}
+                pendingLabel="Loading preferences…"
+              >
+                {account.status === 'error'
+                  ? 'Retry loading preferences'
+                  : 'Reload saved preferences'}
+              </Button>
+            }
+          />
+        )}
+      </section>
     </SettingsSection>
   );
 }
