@@ -5,6 +5,10 @@ export {
   type TaskWriteBackLog,
   useTaskWriteBackQuery,
 } from './query-domains/taskWriteBack';
+export {
+  ROOT_THEME_ATTRIBUTES,
+  rootThemeSignature,
+} from './theme-signature';
 
 // Re-export all types
 

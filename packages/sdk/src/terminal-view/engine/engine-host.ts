@@ -130,6 +130,9 @@ export class EngineHost {
       case 'clear':
         engine.clear();
         break;
+      case 'reset':
+        engine.reset();
+        break;
       case 'query':
         this.post({
           type: 'result',

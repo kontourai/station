@@ -371,10 +371,7 @@ export function CodingTerminalPanel({
                   {...(tab.type === 'script' && {
                     attachOnly: true,
                     command: true,
-                    ended: {
-                      message: scriptEndedText(tab),
-                      restartable: true,
-                    },
+                    ended: { message: scriptEndedText(tab) },
                     onRestarted: () => onTabRestarted?.(tab.id),
                   })}
                   legacyTerminalId={tab.legacyTerminalId}

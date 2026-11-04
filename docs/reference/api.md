@@ -5647,6 +5647,11 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   `package.json` does not declare now, or a package manager that is not
   installed, is refused with 409 and the reason.
 
+Deleting a Project (`DELETE /api/projects/:slug`) ends its running terminal
+sessions in every binding, keeping their records and journals until retention
+expires them. A session that will not end is logged and does not fail the
+delete.
+
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
 observe without changing its stored grant. Generic Project read/operate grants

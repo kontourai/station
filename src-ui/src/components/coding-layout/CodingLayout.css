@@ -380,6 +380,11 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .coding-terminal-connection .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .coding-layout__terminal {
     min-height: 0;
     max-height: none;
@@ -831,15 +836,6 @@
   padding: var(--k-space-2);
   flex-shrink: 0;
   border-bottom: var(--k-border-thin) solid var(--k-line);
-}
-
-.coding-terminal-connection button {
-  min-height: 44px;
-  min-width: 44px;
-  padding: var(--k-space-2);
-  background: var(--k-panel-raised);
   color: var(--k-text);
-  border: var(--k-border-thin) solid var(--k-line-strong);
-  border-radius: var(--k-radius-sm);
-  cursor: pointer;
+  font-size: var(--k-text-sm);
 }

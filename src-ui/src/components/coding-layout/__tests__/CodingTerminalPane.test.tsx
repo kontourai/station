@@ -146,7 +146,7 @@ vi.mock('../TerminalPanel', async () => {
       launch?: unknown;
       onOpened?: (terminalId: string) => void;
       viewKey?: string;
-      ended?: { message: string; restartable: boolean };
+      ended?: { message: string };
       onRestarted?: () => void;
     }) => {
       const projectId = target?.projectId;
@@ -171,7 +171,7 @@ vi.mock('../TerminalPanel', async () => {
         <div>
           Terminal renderer without a snapshot
           {/* The real view offers this once the program has ended. */}
-          {ended?.restartable && terminalId ? (
+          {ended && terminalId ? (
             <button
               type="button"
               onClick={async () => {

@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/ActiveChatsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -22,10 +23,12 @@ import {
   useOpenBrowserSessionInRegion,
   useOpenFilePreviewInRegion,
 } from '../../contexts/useOpenInRegion';
-import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { MAX_TERMINAL_QUOTE_CHARS } from '../../utils/answer-quotes';
 import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
+import { Button } from '../Button';
+import { ErrorState } from '../state';
 import { activeTerminalWriter } from './activeTerminal';
 import { terminalLinkRelativePath } from './terminalLinkPath';
 import { selectionContainsCredential } from './terminalSelectionHandoff';
@@ -73,9 +76,9 @@ export function TerminalPanel({
   readOnly?: boolean;
   /** A program without a terminal (a script), which writes bare line feeds. */
   command?: boolean;
-  /** What to say once the program ends, and how to run it again (a script). */
-  ended?: { message: string; restartable: boolean };
-  /** The session's program was run again (`ended.restartable`). */
+  /** What to say once the program ends, instead of the shell's words. */
+  ended?: { message: string };
+  /** The session's program was run again. */
   onRestarted?: () => void;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
@@ -86,7 +89,9 @@ export function TerminalPanel({
   const openFilePreview = useOpenFilePreviewInRegion();
   const openBrowserSession = useOpenBrowserSessionInRegion();
   const activeChat = useNavigation((state) => state.activeChat);
+  // Input only where the viewer may type; the session itself for reads.
   const sessionRef = useRef<TerminalSession | null>(null);
+  const shownRef = useRef<TerminalSession | null>(null);
   const [viewSession, setViewSession] = useState<TerminalViewSession | null>(
     null,
   );
@@ -94,7 +99,9 @@ export function TerminalPanel({
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
   const [exited, setExited] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const isMobile = useIsMobile();
+  const { terminalScreenReader } = useDeviceSettings();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
   // why, and what still works", never as a silent pane or a transport blip.
@@ -108,15 +115,6 @@ export function TerminalPanel({
   const projectId = target?.projectId;
   const bindingKey = target?.bindingKey;
   const key = viewKey ?? terminalId;
-  // Larger glyphs on a phone, by the app's one mobile breakpoint (including
-  // its landscape-phone clause). Read once per view, as before.
-  const [fontSize] = useState(() =>
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(MOBILE_MEDIA_QUERY).matches
-      ? 14
-      : 12,
-  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this view with the same terminal identity.
   useEffect(() => {
@@ -150,6 +148,7 @@ export function TerminalPanel({
                 }),
             });
       sessionRef.current = readOnly ? null : session;
+      shownRef.current = session;
       const view = session
         ? readOnly
           ? watchOnly(toTerminalViewSession(session))
@@ -167,6 +166,7 @@ export function TerminalPanel({
         intentRef.current.onOpened?.(current.terminalId);
       }
       setConnected(current.state === 'ready');
+      setExited(current.status === 'exited' || current.status === 'failed');
       if (current.state === 'failed') {
         // Saved history nobody can prove this Project owns stays on disk;
         // the tab still gets a fresh shell rather than a refusal.
@@ -186,11 +186,9 @@ export function TerminalPanel({
         return;
       }
       if (current.status === 'exited' || current.status === 'failed') {
-        setExited(true);
-        setWsError('The shell has exited.');
+        setWsError(null);
         return;
       }
-      setExited(false);
       setWsError(
         current.state === 'reconnecting' ? 'Terminal reconnecting…' : null,
       );
@@ -203,6 +201,7 @@ export function TerminalPanel({
       // shell keeps running and the next view resumes its output.
       session?.detach();
       sessionRef.current = null;
+      shownRef.current = null;
       setViewSession(null);
     };
   }, [
@@ -247,9 +246,9 @@ export function TerminalPanel({
       setHandoffError('Open a chat before sending terminal output to it.');
       return;
     }
-    // A host that cannot read a shell's directory (a supervisor workload)
-    // adds the output without one rather than naming a guessed directory.
-    const cwd = await sessionRef.current?.cwd().catch(() => null);
+    // A watch-only viewer may not read the host path, and a supervisor
+    // workload's is unknown; the output still goes, naming no directory.
+    const cwd = await shownRef.current?.cwd().catch(() => null);
     // A chip in the composer, sent with the next message the person sends;
     // nothing is dispatched here.
     try {
@@ -266,19 +265,6 @@ export function TerminalPanel({
         error instanceof Error
           ? error.message
           : 'Output was not added to chat.',
-      );
-    }
-  };
-
-  // The same session runs its program again; its new output follows here.
-  const restart = async () => {
-    try {
-      await sessionRef.current?.restart();
-      setHandoffError(null);
-      onRestarted?.();
-    } catch (error) {
-      setHandoffError(
-        `Unable to restart: ${error instanceof Error ? error.message : 'try again.'}`,
       );
     }
   };
@@ -312,7 +298,7 @@ export function TerminalPanel({
       }
       return;
     }
-    const cwd = await sessionRef.current?.cwd().catch(() => null);
+    const cwd = await shownRef.current?.cwd().catch(() => null);
     const path = terminalLinkRelativePath(workingDir, cwd ?? null, link.path);
     if (!path) {
       setHandoffError('That file is outside this Project.');
@@ -348,6 +334,26 @@ export function TerminalPanel({
     return () => activeTerminalWriter.clearActive(writerKey);
   }, [isActive, writerKey]);
 
+  // The same session runs its program again; its new output follows here.
+  const restart = async () => {
+    setRestarting(true);
+    try {
+      const session = sessionRef.current;
+      if (!session) throw new Error('This terminal could not restart.');
+      await session.restart();
+      setHandoffError(null);
+      onRestarted?.();
+    } catch (error) {
+      setHandoffError(
+        error instanceof Error && error.message
+          ? error.message
+          : 'This terminal could not restart.',
+      );
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   if (unavailableReason) {
     // Loud degradation (#1244): name the reason, then keep the user working
     // through the non-PTY command executor.
@@ -361,21 +367,37 @@ export function TerminalPanel({
 
   return (
     <div className="coding-terminal-shell">
-      {wsError ? (
+      {exited ? (
+        <div className="coding-terminal-connection">
+          <ErrorState
+            variant="compact"
+            title={ended?.message ?? 'The shell has exited.'}
+            action={
+              readOnly || viewSession?.readOnly ? undefined : (
+                <Button
+                  size="sm"
+                  disabled={restarting}
+                  onClick={() => void restart()}
+                >
+                  {restarting
+                    ? 'Restarting…'
+                    : ended
+                      ? 'Restart'
+                      : 'Restart shell'}
+                </Button>
+              )
+            }
+          />
+        </div>
+      ) : wsError ? (
         <div className="coding-terminal-connection" role="alert">
-          <span>{(exited && ended?.message) || wsError}</span>
-          {exited && ended?.restartable && sessionRef.current ? (
-            <button type="button" onClick={() => void restart()}>
-              Restart
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
-            >
-              Reconnect terminal
-            </button>
-          )}
+          <span>{wsError}</span>
+          <Button
+            size="sm"
+            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+          >
+            Reconnect terminal
+          </Button>
         </div>
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>
@@ -392,8 +414,8 @@ export function TerminalPanel({
         <TerminalView
           session={viewSession}
           label="Terminal"
-          fontSize={fontSize}
           touchKeys={isMobile}
+          screenReaderMode={terminalScreenReader}
           notices={false}
           onAddToChat={(text) => void sendSelectionToChat(text)}
           onOpenLink={(link) => void openLink(link)}
