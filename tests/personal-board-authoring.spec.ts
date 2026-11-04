@@ -77,9 +77,234 @@ for (const width of [390, 1440]) {
           fullPage: true,
         });
         const revealTemplate = async (target: Locator, label: string) => {
+          const initialPath = testInfo.outputPath(
+            `${label}-initial-state.json`,
+          );
+          const eligibility = await Promise.all(
+            ['Project watch', 'Review desk'].map(async (name) => ({
+              name,
+              enabled: await workspace
+                .getByRole('button', { name: new RegExp(name) })
+                .isEnabled(),
+            })),
+          );
+          const initialState = await workspace
+            .locator('.personal-board__templates')
+            .evaluate((templates) => {
+              const doc = templates.ownerDocument;
+              const view = doc.defaultView!;
+              const rect = (node: Element) =>
+                node.getBoundingClientRect().toJSON();
+              const identity = (node: Element) => ({
+                tag: node.tagName,
+                role: node.getAttribute('role'),
+                testId: node.getAttribute('data-testid'),
+                class: Array.from(node.classList),
+                ariaLabel: node.getAttribute('aria-label'),
+              });
+              return {
+                viewport: {
+                  width: view.innerWidth,
+                  height: view.innerHeight,
+                  scrollX: view.scrollX,
+                  scrollY: view.scrollY,
+                },
+                projectSelection: doc.querySelector<HTMLSelectElement>(
+                  '.personal-board__setup select',
+                )!.value,
+                projectsErrorPresent: !!doc.querySelector(
+                  '.personal-board-workspace [role="alert"]',
+                ),
+                dock: Array.from(doc.querySelectorAll('.chat-dock')).map(
+                  (node) => ({ identity: identity(node), rect: rect(node) }),
+                ),
+                targets: Array.from(templates.querySelectorAll('button'))
+                  .filter((button) =>
+                    ['Project watch', 'Review desk'].includes(
+                      button.querySelector('strong')!.textContent!,
+                    ),
+                  )
+                  .map((button) => {
+                    const bounds = button.getBoundingClientRect();
+                    const ancestors = [];
+                    for (
+                      let node = button.parentElement;
+                      node;
+                      node = node.parentElement
+                    ) {
+                      const style = view.getComputedStyle(node);
+                      ancestors.push({
+                        identity: identity(node),
+                        rect: rect(node),
+                        clientTop: node.clientTop,
+                        clientLeft: node.clientLeft,
+                        clientWidth: node.clientWidth,
+                        clientHeight: node.clientHeight,
+                        scrollWidth: node.scrollWidth,
+                        scrollHeight: node.scrollHeight,
+                        scrollLeft: node.scrollLeft,
+                        scrollTop: node.scrollTop,
+                        remainingX: Math.max(
+                          0,
+                          node.scrollWidth - node.clientWidth - node.scrollLeft,
+                        ),
+                        remainingY: Math.max(
+                          0,
+                          node.scrollHeight -
+                            node.clientHeight -
+                            node.scrollTop,
+                        ),
+                        overflowX: style.overflowX,
+                        overflowY: style.overflowY,
+                        height: style.height,
+                        minHeight: style.minHeight,
+                        maxHeight: style.maxHeight,
+                        flexBasis: style.flexBasis,
+                        flexGrow: style.flexGrow,
+                        flexShrink: style.flexShrink,
+                        scrollPaddingBottom: style.scrollPaddingBottom,
+                        paddingBottom: style.paddingBottom,
+                      });
+                    }
+                    const points = [
+                      {
+                        name: 'center',
+                        x: bounds.left + bounds.width / 2,
+                        y: bounds.top + bounds.height / 2,
+                      },
+                      {
+                        name: 'top',
+                        x: bounds.left + bounds.width / 2,
+                        y: bounds.top + 8,
+                      },
+                      {
+                        name: 'bottom',
+                        x: bounds.left + bounds.width / 2,
+                        y: bounds.bottom - 8,
+                      },
+                      {
+                        name: 'left',
+                        x: bounds.left + 8,
+                        y: bounds.top + bounds.height / 2,
+                      },
+                      {
+                        name: 'right',
+                        x: bounds.right - 8,
+                        y: bounds.top + bounds.height / 2,
+                      },
+                    ].map((point) => {
+                      const owner = doc.elementFromPoint(point.x, point.y);
+                      return {
+                        ...point,
+                        inViewport:
+                          point.x >= 0 &&
+                          point.x < view.innerWidth &&
+                          point.y >= 0 &&
+                          point.y < view.innerHeight,
+                        owner: owner
+                          ? {
+                              identity: identity(owner),
+                              belongsToTarget: button.contains(owner),
+                            }
+                          : null,
+                        stack: doc
+                          .elementsFromPoint(point.x, point.y)
+                          .slice(0, 8)
+                          .map((node) => ({
+                            identity: identity(node),
+                            belongsToTarget: button.contains(node),
+                          })),
+                      };
+                    });
+                    return {
+                      name: button.querySelector('strong')!.textContent,
+                      disabled: button.matches(':disabled'),
+                      ariaDisabled: button.getAttribute('aria-disabled'),
+                      inertAncestor: !!button.closest('[inert]'),
+                      rect: rect(button),
+                      ancestors,
+                      points,
+                    };
+                  }),
+              };
+            });
+          await writeFile(
+            initialPath,
+            JSON.stringify({ eligibility, ...initialState }, null, 2),
+          );
+          await testInfo.attach(`${label}-initial-state`, {
+            contentType: 'application/json',
+            path: initialPath,
+          });
+          await page.screenshot({
+            path: testInfo.outputPath(`${label}-initial-state.png`),
+          });
+          const featureScroll = initialState.targets[0].ancestors.find((node) =>
+            node.identity.class.includes('personal-board-workspace'),
+          )!;
+          const outerScroll = initialState.targets[0].ancestors.find((node) =>
+            node.identity.class.includes('content-view'),
+          )!;
+          const bottomDock = initialState.dock.find((node) =>
+            node.identity.class.includes('chat-dock--bottom'),
+          );
+          expect(
+            bottomDock,
+            'The journey has a visible bottom Dock',
+          ).toBeDefined();
+          expect(
+            featureScroll.rect.bottom,
+            'The Board scrollport ends above the bottom Dock',
+          ).toBeLessThanOrEqual(bottomDock!.rect.top + 1);
+          expect(
+            outerScroll.scrollHeight - outerScroll.clientHeight,
+            'The outer route does not add a second vertical scroll range',
+          ).toBeLessThanOrEqual(1);
+          if (width === 390) {
+            expect(
+              featureScroll.scrollHeight,
+              'The tall Board content scrolls inside its bounded viewport',
+            ).toBeGreaterThan(featureScroll.clientHeight);
+          }
+          for (const initialTarget of initialState.targets.filter(
+            (node) => !node.disabled,
+          )) {
+            for (const point of initialTarget.points.filter(
+              (sample) =>
+                sample.inViewport &&
+                sample.x >=
+                  featureScroll.rect.left + featureScroll.clientLeft &&
+                sample.x <
+                  featureScroll.rect.left +
+                    featureScroll.clientLeft +
+                    featureScroll.clientWidth &&
+                sample.y >= featureScroll.rect.top + featureScroll.clientTop &&
+                sample.y <
+                  featureScroll.rect.top +
+                    featureScroll.clientTop +
+                    featureScroll.clientHeight,
+            )) {
+              expect(
+                point.owner?.belongsToTarget,
+                `${initialTarget.name} ${point.name} owns its visible initial point`,
+              ).toBe(true);
+            }
+          }
           await page.mouse.move(width / 2, 400);
           await page.mouse.wheel(0, 1200);
           try {
+            if (width === 390) {
+              await expect
+                .poll(() => workspace.evaluate((node) => node.scrollTop))
+                .toBeGreaterThan(featureScroll.scrollTop);
+            }
+            await expect
+              .poll(() =>
+                page
+                  .locator('.content-view')
+                  .evaluate((node) => node.scrollTop),
+              )
+              .toBe(0);
             await expect
               .poll(() =>
                 target.evaluate((element) => {
