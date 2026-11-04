@@ -15,12 +15,14 @@ import { createConfigRoutes } from '../../../../src-server/routes/system/config.
 import { createLogger } from '../../../../src-server/utils/logger.js';
 
 const makeTempDir = trackTempDirs();
-const PLUGIN = `publisher:${'a'.repeat(24)}/writer`;
+const PLUGIN = 'publisher:writer';
+const NAMESPACED_PLUGIN = `publisher:${'a'.repeat(24)}/writer`;
 const STATUS = {
   publishers: {
     kontour: { tier: 'lite', reason: 'user' },
     operator: { tier: 'lite', reason: 'user' },
     [PLUGIN]: { tier: 'lite', reason: 'user' },
+    [NAMESPACED_PLUGIN]: { tier: 'lite', reason: 'user' },
   },
   liteInventoryRevision: 'fixture-revision',
 };
@@ -121,12 +123,14 @@ test.each(['kontour', 'operator'])(
 );
 
 test('plugin anonymous is refused and plugin lite remains accepted', async () => {
-  const refused = await run(['set', PLUGIN, 'anonymous']);
-  expect(refused.status).not.toBe(0);
-  expect(refused.stderr).toContain('Usage: station telemetry set');
-  expect(
-    (await loader.loadAppConfig()).telemetryTier?.[PLUGIN],
-  ).toBeUndefined();
+  for (const publisher of [PLUGIN, NAMESPACED_PLUGIN]) {
+    const refused = await run(['set', publisher, 'anonymous']);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain('Usage: station telemetry set');
+    expect(
+      (await loader.loadAppConfig()).telemetryTier?.[publisher],
+    ).toBeUndefined();
+  }
   const accepted = await run(['set', PLUGIN, 'lite']);
   expect(accepted.status, accepted.stderr).toBe(0);
   const saved = JSON.parse(readFileSync(join(home, 'config/app.json'), 'utf8'));
@@ -144,13 +148,14 @@ test.each([[], ['status']])(
     expect(result.stdout).toContain(
       'Additional destination: Anonymous usage counts (anonymous)',
     );
-    const pluginLine = result.stdout
-      .split('\n')
-      .find((line) => line.startsWith(`${PLUGIN.slice('publisher:'.length)}:`));
-    expect(pluginLine).toBe(
-      `${PLUGIN.slice('publisher:'.length)}: Plugin usage counts (lite)`,
-    );
-    expect(pluginLine?.toLowerCase()).not.toContain('anonymous');
+    for (const publisher of [PLUGIN, NAMESPACED_PLUGIN]) {
+      const label = publisher.slice('publisher:'.length);
+      const pluginLine = result.stdout
+        .split('\n')
+        .find((line) => line.startsWith(`${label}:`));
+      expect(pluginLine).toBe(`${label}: Plugin usage counts (lite)`);
+      expect(pluginLine?.toLowerCase()).not.toContain('anonymous');
+    }
   },
   60_000,
 );
