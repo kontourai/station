@@ -4526,8 +4526,6 @@ export class OrchestrationService {
     const recoveryResults = await Promise.allSettled(
       this.recoveryCoordinator ? [this.recoveryCoordinator.dispose()] : [],
     );
-    this.adapterRegistryUnsubscribe?.();
-    this.adapterRegistryUnsubscribe = undefined;
     const currentAdapters = this.options.adapterRegistry.list();
     const currentSessions = new Map(
       currentAdapters.map((adapter) => [

@@ -1025,21 +1025,25 @@ test.each([
     const consumingPriorEvent = consumerGate();
     const announced = consumerGate();
     const stream = adapter.streamEvents.bind(adapter);
-    vi.spyOn(adapter, 'streamEvents').mockImplementation((options) => ({
-      async *[Symbol.asyncIterator]() {
-        for await (const event of stream(options)) {
-          // Hold the real queue consumer on an earlier session's event.
-          if (
-            event.threadId === 'prior-session' &&
-            event.method === 'session.started'
-          ) {
-            consumingPriorEvent.resolve();
-            await held.promise;
+    vi.spyOn(adapter, 'streamEvents').mockImplementation(
+      (
+        options: AsyncEventStreamOptions<CanonicalRuntimeEvent> | undefined,
+      ) => ({
+        async *[Symbol.asyncIterator]() {
+          for await (const event of stream(options)) {
+            // Hold the real queue consumer on an earlier session's event.
+            if (
+              event.threadId === 'prior-session' &&
+              event.method === 'session.started'
+            ) {
+              consumingPriorEvent.resolve();
+              await held.promise;
+            }
+            yield event;
           }
-          yield event;
-        }
-      },
-    }));
+        },
+      }),
+    );
     const start = adapter.startSession.bind(adapter);
     vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
       const session = await start(input);
@@ -1176,8 +1180,11 @@ test('a closed-store service releases its real station-agent consumer and launch
     expect(outcome.status).toBe('accepted');
     expect(
       liveStore.latestEventByMethod('live-after-stale', 'session.started')
-        ?.payload.metadata,
-    ).toMatchObject({ userId: 'owner' });
+        ?.payload,
+    ).toMatchObject({
+      method: 'session.started',
+      metadata: { userId: 'owner' },
+    });
     expect(listeners.size).toBe(1);
   } finally {
     await live.shutdown();
