@@ -323,12 +323,71 @@ test('custody metadata admission keeps physical Home ownership bounded and refus
       holds <= 8,
       `custody metadata admission took ${holds} physical Home holds; maximum 8 (re-measure before changing the bound)`,
     );
-    h.f.environment.devicePairing.revokeDevice(
-      h.f.paired.device.id,
-      'operator-credential',
+    const capture = h.custody.captureRequestLease.bind(h.custody);
+    let captured = false;
+    let withdrawn = false;
+    let resolverEnteredAfterWithdrawal = false;
+    let metadataAdmissionReturned = false;
+    const runRequest = HomeWriterOwner.prototype.runRequest;
+    const requestAdmission = vi
+      .spyOn(HomeWriterOwner.prototype, 'runRequest')
+      .mockImplementation(function <Value>(
+        this: HomeWriterOwner,
+        signal: AbortSignal,
+        body: () => Value,
+      ): Promise<Value> {
+        return (runRequest<Value>).call(this, signal, () => {
+          const value = body();
+          if (withdrawn && resolverEnteredAfterWithdrawal)
+            metadataAdmissionReturned = true;
+          return value;
+        });
+      });
+    const identify = h.f.environment.identifyDevice.bind(h.f.environment);
+    const resolverRead = vi
+      .spyOn(h.f.environment, 'identifyDevice')
+      .mockImplementation((...args) => {
+        if (withdrawn) resolverEnteredAfterWithdrawal = true;
+        return identify(...args);
+      });
+    const admittedRead = vi.spyOn(
+      h.custodyOwners.persistence,
+      'readReportAdmission',
     );
-    await assert.rejects(read, { code: 'group_custody_unavailable' });
-    assert.equal(h.rawFetch.mock.calls.length, 0);
+    const captureBoundary = vi
+      .spyOn(h.custody, 'captureRequestLease')
+      .mockImplementation(async (...args) => {
+        const lease = await capture(...args);
+        captured = true;
+        h.f.environment.devicePairing.revokeDevice(
+          h.f.paired.device.id,
+          'operator-credential',
+        );
+        withdrawn = true;
+        return lease;
+      });
+    try {
+      await assert.rejects(read, { code: 'authorization_unavailable' });
+      assert.equal(captured, true);
+      assert.equal(withdrawn, true);
+      assert.equal(resolverEnteredAfterWithdrawal, true);
+      assert.equal(
+        metadataAdmissionReturned,
+        false,
+        'a principal resolved after withdrawal must not escape its Home admission',
+      );
+      assert.equal(
+        admittedRead.mock.calls.length,
+        0,
+        'withdrawal after lease capture must refuse before protected persistence',
+      );
+      assert.equal(h.rawFetch.mock.calls.length, 0);
+    } finally {
+      captureBoundary.mockRestore();
+      admittedRead.mockRestore();
+      resolverRead.mockRestore();
+      requestAdmission.mockRestore();
+    }
   } finally {
     observe.mockRestore();
     syncBuiltinESMExports();
