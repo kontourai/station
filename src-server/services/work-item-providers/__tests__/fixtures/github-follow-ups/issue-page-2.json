@@ -1,0 +1,31 @@
+{
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "Issue",
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpHPAAAAAYhicJ4="
+          },
+          "edges": [
+            {
+              "cursor": "Y3Vyc29yOnYyOpHPAAAAAYhicJ4=",
+              "node": {
+                "databaseId": 6583120030,
+                "url": "https://github.com/acme/widgets/issues/14882#issuecomment-6583120030",
+                "body": "Synthetic multi-line text 8.",
+                "createdAt": "2026-11-02T17:00:31Z",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "github-actions"
+                },
+                "authorAssociation": "CONTRIBUTOR"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

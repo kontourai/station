@@ -4,7 +4,8 @@
  * receives with its first turn, and that `get_task_brief` returns on demand.
  *
  * It composes two layers, in this order:
- * 1. the Task and its observed work item (facts Station read);
+ * 1. the Task and its observed work item (facts Station read), then what
+ *    the follow-up poller recorded on its followed GitHub items (#4508);
  * 2. the Task summary, in full (judgment: agents and people rewrite it);
  * 3. standing decisions, 4. open questions, 5. recent dead ends (judgment:
  *    keyed Task records; `on_topic` ones are only counted);
@@ -58,6 +59,10 @@ import {
   singleLine,
 } from '../orchestration/quoted-text.js';
 import type { DigestTurn } from '../orchestration/session-digest.js';
+import type {
+  TaskFollowUpBriefView,
+  TaskFollowUpObservation,
+} from '../work-item-providers/task-follow-up-store.js';
 import { TRACKER_GUIDANCE } from './task-brief-tracker-guidance.js';
 
 export class TaskContextAdmissionError extends Error {
@@ -200,6 +205,11 @@ export interface TaskBriefInput {
   observation?: TaskBriefObservation;
   workingContext?: ProjectWorkingContext;
   learningContext?: LearningReviewTaskContext;
+  /**
+   * What the follow-up poller recorded on the Task's followed GitHub items
+   * (#4508). Absent: nothing was ever polled, and the brief says nothing.
+   */
+  followUps?: TaskFollowUpBriefView;
 }
 
 /** What the brief counted instead of showing. */
@@ -374,6 +384,103 @@ function renderWorkItem(
       );
   } else lines.push('No newer comments.');
   return lines;
+}
+
+/** The follow-up section's share of the brief, at most. */
+const FOLLOW_UPS_MAX = 3600;
+/** Items the follow-up section considers; the store counts the rest. */
+export const TASK_BRIEF_FOLLOW_UPS_LISTED = 12;
+/** An excerpt is at most about 1,000 characters; quoting adds a little. */
+const FOLLOW_UP_QUOTED_MAX = 1200;
+const FOLLOW_UP_KIND_WORDS: Record<TaskFollowUpObservation['kind'], string> = {
+  comment: 'Comment',
+  review: 'Review',
+  review_comment: 'Review comment',
+  check_run: 'Check run',
+};
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?$/;
+const UPPER_WORD = /^[A-Z_]{1,32}$/;
+
+/**
+ * One follow-up: Station's line (what, where, who and their class, when),
+ * then what the author wrote, quoted. Only values Station checked (a GitHub
+ * login, an enum word, a canonical ref, a time) are on Station's line.
+ */
+function followUpEntry(item: TaskFollowUpObservation): string[] {
+  const ref = canonicalGitHubWorkItemRef(item.itemRef);
+  const who = GITHUB_LOGIN.test(item.author) ? item.author : 'unknown';
+  const association =
+    item.association && UPPER_WORD.test(item.association)
+      ? `, ${item.association}`
+      : '';
+  const word = (value: string | undefined) =>
+    value && UPPER_WORD.test(value) ? value : 'UNKNOWN';
+  const outcome =
+    item.kind === 'check_run'
+      ? `: ${word(item.conclusion)}`
+      : item.kind === 'review'
+        ? ` (${word(item.reviewState)})`
+        : '';
+  const line = `- ${FOLLOW_UP_KIND_WORDS[item.kind] ?? 'Item'}${ref ? ` on ${ref}` : ''} by ${who} (${item.actorClass}${association}) at ${stamp(item.occurredAt)}${outcome}${item.truncated ? ', cut to about 1,000 characters' : ''}`;
+  const text =
+    item.kind === 'check_run'
+      ? `Check: ${oneLine(item.checkName ?? '')}`
+      : item.excerpt;
+  return [
+    line,
+    ...(ref ? [] : [quotedLine(`Item: ${cut(oneLine(item.itemRef), 256)}`)]),
+    ...(text.trim()
+      ? quotedWithin(text, FOLLOW_UP_QUOTED_MAX, '(cut; read it on GitHub)')
+      : ['(no text)']),
+  ];
+}
+
+/** The follow-up section within `max` characters, newest first. */
+function renderFollowUps(
+  view: TaskFollowUpBriefView | undefined,
+  max: number,
+): string[] {
+  if (
+    !view ||
+    (!view.items.length && !view.passingChecks && !view.lastPolledAt)
+  )
+    return [];
+  const head = [
+    '## Tracker follow-ups (newest first)',
+    `Recorded from the Task's followed GitHub items${view.lastPolledAt ? `; last read ${stamp(view.lastPolledAt)}` : ''}. Classes: member (owner, member or collaborator), bot (GitHub App or [bot] login), other (anyone else), ci (check run).`,
+    BY_TRACKER,
+  ];
+  const entries = view.items.map((item) => followUpEntry(item).join('\n'));
+  const tailFor = (left: number) => [
+    ...(left
+      ? [
+          `(${count(left, 'older follow-up', 'older follow-ups')} left out; read the items on GitHub)`,
+        ]
+      : []),
+    ...(view.passingChecks
+      ? [
+          `(${count(view.passingChecks, 'passing, neutral or skipped check run', 'passing, neutral or skipped check runs')} counted, not shown)`,
+        ]
+      : []),
+  ];
+  // Room for the longest tail: every entry left out.
+  const reserve = tailFor(entries.length + view.more).join('\n').length + 1;
+  let used = head.join('\n').length + reserve;
+  const shown: string[] = [];
+  for (const entry of entries) {
+    if (used + entry.length + 1 > max) break;
+    shown.push(entry);
+    used += entry.length + 1;
+  }
+  if (!entries.length && !view.passingChecks)
+    shown.push('Nothing new on the followed items.');
+  const lines = [
+    ...head,
+    ...shown,
+    ...tailFor(entries.length - shown.length + view.more),
+  ];
+  // Too small for even the heading: say nothing rather than break the bound.
+  return lines.join('\n').length <= max ? lines : [];
 }
 
 function renderSummary(
@@ -637,6 +744,8 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     sessions: input.sessions,
     workingContext: input.workingContext ?? null,
     learningContext: input.learningContext ?? null,
+    // Only when present, so a brief without follow-ups keeps its digest.
+    ...(input.followUps ? { followUps: input.followUps } : {}),
   };
   const digest = createHash('sha256')
     .update(JSON.stringify([...scope, digestInput]))
@@ -799,7 +908,13 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     );
     shortfall = newestCost - budgetFor();
   }
-  const budget = Math.max(0, budgetFor());
+  // Follow-ups take what the fixed parts leave, up to their cap, but never
+  // the newest record's reserved line.
+  const followUps = renderFollowUps(
+    input.followUps,
+    Math.min(FOLLOW_UPS_MAX, Math.max(0, budgetFor() - newestCost) - 2),
+  );
+  const budget = Math.max(0, budgetFor() - block(followUps).length);
 
   const fitted = fitRecords(queues, budget, newest?.kind);
   for (const { kind } of RECORD_SECTIONS)
@@ -833,6 +948,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const text =
     block(head) +
     block(workItem) +
+    block(followUps) +
     block(workingContext) +
     block(learningContext) +
     block(document) +

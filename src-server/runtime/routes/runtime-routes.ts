@@ -954,6 +954,7 @@ import {
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1241,6 +1242,11 @@ export interface ConfigureRuntimeRoutesContext {
    * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /**
+   * The runtime's Task follow-up store (#4508): the poller writes it and the
+   * Task brief reads it. Absent: no follow-ups are polled or shown.
+   */
+  taskFollowUps?: TaskFollowUpStoreHolder;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -3396,6 +3402,7 @@ export function configureRuntimeRoutes(
       localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
+    ...(context.taskFollowUps ? { followUps: context.taskFollowUps } : {}),
     logger: context.logger,
   });
   context.orchestrationService.bindMandatoryTaskContextVerifier(

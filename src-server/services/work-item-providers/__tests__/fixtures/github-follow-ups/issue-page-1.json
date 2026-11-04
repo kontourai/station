@@ -1,0 +1,45 @@
+{
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "Issue",
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "Y3Vyc29yOnYyOpHPAAAAAYfx678="
+          },
+          "edges": [
+            {
+              "cursor": "Y3Vyc29yOnYyOpHPAAAAAYZHZao=",
+              "node": {
+                "databaseId": 6547793322,
+                "url": "https://github.com/acme/widgets/issues/14882#issuecomment-6547793322",
+                "body": "Synthetic multi-line text 6.",
+                "createdAt": "2026-10-31T19:00:32Z",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "triage-helper"
+                },
+                "authorAssociation": "NONE"
+              }
+            },
+            {
+              "cursor": "Y3Vyc29yOnYyOpHPAAAAAYfx678=",
+              "node": {
+                "databaseId": 6575745983,
+                "url": "https://github.com/acme/widgets/issues/14882#issuecomment-6575745983",
+                "body": "Synthetic single-line text 7.",
+                "createdAt": "2026-11-02T11:15:00Z",
+                "author": {
+                  "__typename": "User",
+                  "login": "outside-reporter"
+                },
+                "authorAssociation": "NONE"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

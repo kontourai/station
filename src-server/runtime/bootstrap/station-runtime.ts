@@ -78,6 +78,10 @@ import {
   GitHubWorkItemObserver,
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
+import {
+  TaskFollowUpStoreHolder,
+  taskFollowUpStorePath,
+} from '../../services/work-item-providers/task-follow-up-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { recordManagedModelContext } from '../context-efficiency-runtime.js';
@@ -1238,6 +1242,10 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
+  /** #4508: Task follow-ups; the scheduler's poller writes, briefs read. */
+  private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
+    taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
+  );
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -4642,6 +4650,7 @@ export class StationRuntime {
                   // the route context), so dispatch and get_task_brief
                   // read the tracker one way.
                   workItemObserver: this.workItemObserver,
+                  followUps: this.taskFollowUps,
                   logger: this.logger,
                 }),
                 // #4005: an engine-started Task Session runs as the Task's
@@ -5226,6 +5235,7 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
+      taskFollowUps: this.taskFollowUps,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,

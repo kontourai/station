@@ -69,6 +69,8 @@ import type { ScheduledConversationRunner } from '../../services/scheduling/sche
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
+import { GhGitHubFollowUpReader } from '../../services/work-item-providers/github-follow-up-reader.js';
+import { composeTaskFollowUpPoller } from '../../services/work-item-providers/task-follow-up-poller.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -524,6 +526,21 @@ export function configureRuntimeSupportServices(
     () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
   const automationStore = new AutomationStore(automationHome);
+  // #4508: Task tracker follow-ups ride the same tick, behind their own
+  // Feature Preview; the store is the runtime's, shared with Task briefs.
+  const taskFollowUps = context.taskFollowUps;
+  const taskFollowUpPoller = taskFollowUps
+    ? composeTaskFollowUpPoller(
+        context.featurePreviews,
+        isHostedTenantExecutionRequired(),
+        {
+          store: () => taskFollowUps.forWrite(),
+          tasks: context.taskGraphService,
+          reader: new GhGitHubFollowUpReader(),
+          logger: context.logger,
+        },
+      )
+    : undefined;
   const automationObservation = composeGitHubAutomationObservation(
     context.featurePreviews,
     isHostedTenantExecutionRequired(),
@@ -605,8 +622,10 @@ export function configureRuntimeSupportServices(
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
+          if (!input.signal.aborted) await taskFollowUpPoller?.poll(input);
         },
         async close() {
+          taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();
           automationObservation.poller?.close();
