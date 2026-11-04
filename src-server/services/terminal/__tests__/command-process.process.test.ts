@@ -110,7 +110,8 @@ setInterval(() => {}, 1000);
     const { proc, pidsOf } = await run(tree);
     const pids = await pidsOf(2);
     await proc.terminate();
-    for (const pid of [proc.pid, ...pids]) expect(alive(pid), `${pid}`).toBe(false);
+    for (const pid of [proc.pid, ...pids])
+      expect(alive(pid), `${pid}`).toBe(false);
   }, 120_000);
 
   it('keeps ending descendants until the process table shows none, and only proven ones', async () => {

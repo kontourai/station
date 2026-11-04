@@ -249,10 +249,7 @@ class CommandProcess implements IPtyProcess {
         .catch(() => undefined);
     }
     if (
-      !(await this.within(
-        this.closed,
-        Math.max(0, deadline - Date.now()) || 1,
-      ))
+      !(await this.within(this.closed, Math.max(0, deadline - Date.now()) || 1))
     )
       throw new Error('The command did not exit');
   }

@@ -99,10 +99,7 @@ export class TerminalRunRequests {
       if (run.state === 'needs_approval') unanswered++;
     // Open requests are never pruned, so a full store refuses instead of
     // growing past its bound.
-    if (
-      unanswered >= TERMINAL_RUN_MAX_PENDING ||
-      this.runs.size >= MAX_RECORDS
-    )
+    if (unanswered >= TERMINAL_RUN_MAX_PENDING || this.runs.size >= MAX_RECORDS)
       return { outcome: 'capacity-reached' };
     const at = this.now();
     const run: TerminalRun = {

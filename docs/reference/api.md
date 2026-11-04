@@ -5666,7 +5666,10 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
-  query for a non-default binding.
+  query for a non-default binding. A record carries its launch directory
+  (`cwd`) and a read its process id (`pid`) only for a caller who may operate
+  the terminal; an observer gets neither (`pid: null`). Where its history is
+  stored is never returned.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,

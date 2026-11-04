@@ -50,12 +50,7 @@ describe('attributeWindowsProcesses', () => {
   it('keeps attributing an orphan its exited parent started while seen alive', () => {
     const leader = entry(100, SELF, 10);
     const owned = seeded(leader, 50);
-    attributeWindowsProcesses(
-      owned,
-      [leader, entry(200, 100, 20)],
-      50n,
-      SELF,
-    );
+    attributeWindowsProcesses(owned, [leader, entry(200, 100, 20)], 50n, SELF);
     // The child exited; the grandchild it started at 40 (before it was last
     // seen alive at 50) remains, its parent pid naming a dead process.
     const alive = attributeWindowsProcesses(

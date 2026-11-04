@@ -274,7 +274,9 @@ export function createConfigRoutes(
   canSaveAuthorFull?: () => Promise<boolean>,
   // #3994: why terminal history can't be kept private in a directory, or
   // null. Production probes the location (Windows ACLs); absent, no probe.
-  terminalHistoryLocationProblem?: (directory: string) => Promise<string | null>,
+  terminalHistoryLocationProblem?: (
+    directory: string,
+  ) => Promise<string | null>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);

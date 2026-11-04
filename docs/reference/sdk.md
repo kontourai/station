@@ -52,6 +52,12 @@ run's output follows on the same session, with no reattach. It needs operate
 authority and rejects with `refused` for an agent's command or a server-owned
 launch. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
+An `output` listener that consumes output later (a renderer's worker) returns
+a promise that settles once it has; the host is credited for that output only
+after every such listener settled it, oldest first, so a fast program waits
+for its slowest view instead of queueing unbounded output in front of it.
+Unsubscribing releases what a listener still owed; a reconnect starts its
+credit afresh.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -138,7 +144,11 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. The view renders replayed output but answers none
+from before this attachment. It returns a promise that settles once the view's
+emulator parsed that output; a session should not hand the view more until it
+does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
+parsed: past that it resets its screen and subscribes again, replaying what the
+session retains, rather than rendering a stream with a gap. The view renders replayed output but answers none
 of its device queries and rings none of its bells. Terminal replies (device
 attributes, status reports) for live output are written back through
 `session.write` only while the session is `ready`. A `readOnly` session never

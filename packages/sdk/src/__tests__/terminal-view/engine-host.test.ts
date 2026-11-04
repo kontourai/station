@@ -92,7 +92,12 @@ describe('EngineHost frame pacing', () => {
       mode: 'replay',
     });
     expect(events.filter((e) => e.type === 'reply')).toHaveLength(0);
-    await h.handle({ type: 'write', id: 2, bytes: bytes('\x1b[6n'), mode: 'live' });
+    await h.handle({
+      type: 'write',
+      id: 2,
+      bytes: bytes('\x1b[6n'),
+      mode: 'live',
+    });
     expect(events.filter((e) => e.type === 'reply')).toHaveLength(1);
   });
 
@@ -146,7 +151,12 @@ describe('EngineHost frame pacing', () => {
       size: { cols: 20, rows: 4, cellWidth: 8, cellHeight: 16 },
       theme,
     });
-    await h.handle({ type: 'write', id: 1, bytes: bytes('early'), mode: 'live' });
+    await h.handle({
+      type: 'write',
+      id: 1,
+      bytes: bytes('early'),
+      mode: 'live',
+    });
     await h.handle({ type: 'query', id: 7, query: { kind: 'plain-text' } });
     await init;
     expect(events.find((e) => e.type === 'result')).toEqual({

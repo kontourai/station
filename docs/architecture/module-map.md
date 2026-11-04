@@ -6586,7 +6586,9 @@ its journal live in the supervisor's workload host
 ([PtyWorkloadHost](../../src-server/services/terminal/pty-workload-host.ts), built as
 `station-pty-host.js`), and a running session is reattached after a core restart.
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
-serialized sanitized records, bounded memory and append-only disk segments.
+serialized sanitized records, bounded memory and append-only disk segments;
+[journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
+keeps them private to Station's user on Windows, where file modes set no ACL.
 The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
 are composed by runtime routes and disposed at runtime shutdown. They admit
 the operator in person and the operator's own paired devices
@@ -6596,7 +6598,7 @@ Project terminal close and the process projections reach TerminalSessions; no
 other terminal service or listener remains. An ACP engine's terminals are
 `command` sessions opened through
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
-(pipes and an output cap, from
+(pipes, an output cap, and termination that ends what the command started, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
 on personal hosts only. `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
