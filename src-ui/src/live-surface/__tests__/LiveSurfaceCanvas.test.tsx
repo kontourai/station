@@ -963,7 +963,112 @@ describe('LiveSurfaceCanvas', () => {
       pointerId: 1,
     });
     await flush();
-    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+    expect(
+      screen.getByText("Your last tap or keystroke didn't reach the page."),
+    ).toBeTruthy();
+  });
+
+  test('Retry sends again only what the host did not deliver, and the notice clears once it gets through', async () => {
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        return {
+          success: true,
+          data:
+            call === 1
+              ? {
+                  ok: false,
+                  code: 'dispatch-failed',
+                  // The down reached the page; the up did not.
+                  accepted: 1,
+                  lease: lease(body.epoch, MY_HOLD),
+                }
+              : {
+                  ok: true,
+                  accepted: body.events.length,
+                  lease: lease(body.epoch, MY_HOLD),
+                },
+        };
+      },
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+    expect(h.inputs[0].events).toHaveLength(2);
+    const notice = screen.getByRole('alert');
+    expect(notice.textContent).toContain(
+      "Your last tap or keystroke didn't reach the page.",
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(h.inputs[1].events).toEqual([
+      expect.objectContaining({ kind: 'pointer', type: 'up' }),
+    ]);
+    expect(
+      screen.queryByText("Your last tap or keystroke didn't reach the page."),
+    ).toBeNull();
+    // Typing goes on where it stopped.
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Keyboard input for Browser: example.com'),
+    );
+  });
+
+  test('a failure that later input gets past clears without Retry', async () => {
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        return {
+          success: true,
+          data:
+            call === 1
+              ? {
+                  ok: false,
+                  code: 'dispatch-failed',
+                  accepted: 0,
+                  lease: lease(body.epoch, MY_HOLD),
+                }
+              : {
+                  ok: true,
+                  accepted: body.events.length,
+                  lease: lease(body.epoch, MY_HOLD),
+                },
+        };
+      },
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const press = () =>
+      fireEvent.pointerDown(screen.getByTestId('live-surface-canvas'), {
+        clientX: 10,
+        clientY: 10,
+        button: 0,
+        pointerId: 1,
+      });
+    press();
+    await flush();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    press();
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('losing focus releases held keys and buttons while this client holds control', async () => {
@@ -1288,11 +1393,11 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
       expect.objectContaining({ kind: 'pointer', type: 'down' }),
     ]);
     expect(
-      screen.getByText(
-        'The host is busy, so nothing was sent. Try again in a moment.',
-      ),
+      screen.getByText('The host is busy, so nothing was sent.'),
     ).toBeTruthy();
-    expect(screen.queryByText('Your input could not be delivered.')).toBeNull();
+    expect(
+      screen.queryByText("Your last tap or keystroke didn't reach the page."),
+    ).toBeNull();
   });
 
   test('the busy notice clears by itself when nothing newer answers', async () => {
@@ -1350,7 +1455,9 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     await renderLive(h);
     pressOnce();
     await flush();
-    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+    expect(
+      screen.getByText("Your last tap or keystroke didn't reach the page."),
+    ).toBeTruthy();
     expect(screen.queryByText(/The host is busy/)).toBeNull();
   });
 
@@ -1391,9 +1498,7 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     await flush();
     expect(claims).toEqual([{ action: 'claim' }]);
     expect(
-      screen.getByText(
-        'The host is busy, so nothing was sent. Try again in a moment.',
-      ),
+      screen.getByText('The host is busy, so nothing was sent.'),
     ).toBeTruthy();
   });
 });

@@ -440,7 +440,10 @@ check below found no control under 44px.
 On narrow screens, editing the address hides its navigation buttons until
 editing ends, leaving room for the URL. Back and forward occupy space on a fine
 pointer only while the toolbar is hovered or focused. Touch takeover hints say
-**Tap**. The console scrolls within its share of the pane; it does not force the
+**Tap**. Input the host did not deliver is named over the top of the page with
+**Retry**, which sends again only what did not arrive; later input that gets
+through clears it. A second finger's lift, or a lift after control changed
+hands, is not a failure. The console scrolls within its share of the pane; it does not force the
 live page beneath the dock. On the standalone Browser route, the page frame
 passes its available height through to both views. The actions menu fits between
 the current toolbar/banner stack and the dock, with its own scroll when needed.
