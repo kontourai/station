@@ -147,6 +147,11 @@ test('header edits the title and offers only permitted status transitions, shari
   fireEvent.click(
     screen.getByRole('button', { name: 'Edit title: Make the Task the room' }),
   );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: 'Task title' }),
+    ),
+  );
   fireEvent.change(screen.getByRole('textbox', { name: 'Task title' }), {
     target: { value: 'A calmer room' },
   });
@@ -159,6 +164,27 @@ test('header edits the title and offers only permitted status transitions, shari
       { title: 'A calmer room', expectedCreatedAt: task.createdAt },
     ),
   );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', {
+        name: 'Edit title: Make the Task the room',
+      }),
+    ),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit title: Make the Task the room' }),
+  );
+  const titleInput = screen.getByRole('textbox', { name: 'Task title' });
+  fireEvent.change(titleInput, { target: { value: 'Discard this title' } });
+  fireEvent.keyDown(titleInput, { key: 'Escape' });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', {
+        name: 'Edit title: Make the Task the room',
+      }),
+    ),
+  );
+  expect(mocks.rename).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Task actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Task details' }));
   expect(details).toHaveBeenCalledOnce();
