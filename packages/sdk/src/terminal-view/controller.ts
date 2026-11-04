@@ -615,16 +615,20 @@ export class TerminalController {
       input.value = '';
     });
     // Soft keyboards often report key 229/Unidentified and deliver text here.
+    // The keyboard's own edit is left to happen: an Android keyboard tracks
+    // what it believes the field holds, and when its insertions were
+    // cancelled it later deletes from an empty field, which fires no event
+    // and loses the Backspace (#3994). The field is emptied when a line is
+    // sent, which the keyboard does see.
     on(input, 'beforeinput', (event: InputEvent) => {
       if (this.composing || event.isComposing) return;
       if (event.inputType === 'insertText' && event.data) {
-        event.preventDefault();
         this.sendText(event.data);
       } else if (event.inputType === 'insertLineBreak') {
         event.preventDefault();
         this.sendText('\r');
+        input.value = '';
       } else if (event.inputType === 'deleteContentBackward') {
-        event.preventDefault();
         this.sendKey('Backspace', 'Backspace');
       }
     });
@@ -682,6 +686,9 @@ export class TerminalController {
     }
     this.typed();
     this.engine?.send({ type: 'key', input: key });
+    // The line is sent: start the keyboard's view of the field afresh.
+    if (key.code === 'Enter' || key.code === 'NumpadEnter')
+      this.elements.input.value = '';
   }
 
   private runViewAction(action: NonNullable<ViewKeyAction>): void {

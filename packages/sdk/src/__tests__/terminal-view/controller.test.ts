@@ -381,3 +381,74 @@ describe('TerminalController', () => {
     controller.dispose();
   });
 });
+
+/**
+ * The events Gboard sends Android Chrome, as recorded from a real emulator
+ * (#3994): every letter is a keydown 229 then `beforeinput insertText`; the
+ * Send key and a Backspace on an empty field are real keydowns with `key`
+ * set and `code` empty; a Backspace over text the keyboard typed is a
+ * keydown 229 then `beforeinput deleteContentBackward`.
+ */
+describe('TerminalController with an Android soft keyboard', () => {
+  const keydown = (key: string, keyCode: number) => {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      code: '',
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'keyCode', { value: keyCode });
+    return event;
+  };
+  const beforeinput = (inputType: string, data: string | null = null) =>
+    new InputEvent('beforeinput', {
+      inputType,
+      data,
+      bubbles: true,
+      cancelable: true,
+    });
+  const written = (session: { write: { mock: { calls: unknown[][] } } }) =>
+    session.write.mock.calls
+      .map(([bytes]) => new TextDecoder().decode(bytes as Uint8Array))
+      .join('');
+
+  it('runs a typed command with the Send key and deletes with Backspace', async () => {
+    const { controller, session } = await startController();
+    const input = document.querySelector('textarea')!;
+    const kept: boolean[] = [];
+    for (const char of 'echo hix') {
+      input.dispatchEvent(keydown('Unidentified', 229));
+      const insert = beforeinput('insertText', char);
+      input.dispatchEvent(insert);
+      kept.push(!insert.defaultPrevented);
+      // What the browser does with an insertion nobody cancelled.
+      input.value += char;
+    }
+    // The keyboard's edits are left in the field, so its view of the field
+    // stays true and its later deletes reach the page.
+    expect(kept.every(Boolean)).toBe(true);
+    input.dispatchEvent(keydown('Unidentified', 229));
+    const remove = beforeinput('deleteContentBackward');
+    input.dispatchEvent(remove);
+    expect(remove.defaultPrevented).toBe(false);
+    input.value = input.value.slice(0, -1);
+    // The field the keyboard believes empty: a real Backspace with no code.
+    input.dispatchEvent(keydown('Backspace', 8));
+    input.dispatchEvent(keydown('Enter', 13));
+    await vi.waitFor(() =>
+      expect(written(session)).toBe('echo hix\x7f\x7f\r'),
+    );
+    // The line went; the next one starts from an empty field.
+    expect(input.value).toBe('');
+    controller.dispose();
+  });
+
+  it('sends Tab and arrows that name no code', async () => {
+    const { controller, session } = await startController();
+    const input = document.querySelector('textarea')!;
+    input.dispatchEvent(keydown('Tab', 9));
+    input.dispatchEvent(keydown('ArrowUp', 38));
+    await vi.waitFor(() => expect(written(session)).toBe('\t\x1b[A'));
+    controller.dispose();
+  });
+});
