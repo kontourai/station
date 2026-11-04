@@ -57,6 +57,14 @@ vi.mock('../lib/compatibilityLoader', () => ({
 }));
 vi.mock('../lib/serverHealth', () => ({ checkServerHealthDetailed: vi.fn() }));
 
+// #4519: the managed limit, set per test.
+const managed = vi.hoisted(() => ({
+  refusal: undefined as string | undefined,
+}));
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsRefusal: () => managed.refusal,
+}));
+
 import { AddMachineModal } from '../views/connections-hub/AddMachineModal';
 
 describe('AddMachineModal', () => {
@@ -99,6 +107,34 @@ describe('AddMachineModal', () => {
     // owner flips `isOpen`; here `onClose` is a stub, so the chooser itself
     // is still rendered — assert the handoff, not the owner's close).
     expect(onClose).toHaveBeenCalled();
+  });
+
+  test('#4519: under the managed limit the control choice is disabled and says why', async () => {
+    const { consumePendingConnectionsModal } = await import(
+      '../lib/connectionModalEvents'
+    );
+    managed.refusal =
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+    try {
+      render(<AddMachineModal isOpen onClose={vi.fn()} />);
+      const option = screen
+        .getByText('Control this Station from another device')
+        .closest('button') as HTMLButtonElement;
+      expect(option.disabled).toBe(true);
+      expect(option.textContent).toContain(managed.refusal);
+      fireEvent.click(option);
+      expect(consumePendingConnectionsModal()).toBeNull();
+      // The other choices are unaffected.
+      expect(
+        (
+          screen
+            .getByText('Connect a Station')
+            .closest('button') as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    } finally {
+      managed.refusal = undefined;
+    }
   });
 
   test('Station setup hands off to the stable shell without adding or selecting an address', async () => {

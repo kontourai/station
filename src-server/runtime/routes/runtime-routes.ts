@@ -1214,6 +1214,8 @@ export interface ConfigureRuntimeRoutesContext {
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
   /** The managed policy loaded at startup (#4515); null when none. */
   managedPolicy?: LoadedManagedPolicy | null;
+  /** #4519: admits listeners opened after startup; see StationRuntime. */
+  listenerAdmission?: import('../../security/managed-network-exposure.js').ManagedListenerAdmission;
   getReviewedTariffConfiguration?: () =>
     | import('../../analytics/reviewed-tariff-config.js').ReviewedTariffConfigurationService
     | undefined;

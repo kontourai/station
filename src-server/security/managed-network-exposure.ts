@@ -24,6 +24,7 @@ import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-poli
 import {
   createTailscaleCommand,
   inspectTailscaleServeExposure,
+  inspectTrustedTailscaleServeExposure,
   type TailscaleCommand,
 } from '../services/tailscale/serve-exposure.js';
 
@@ -43,16 +44,20 @@ export function managedTailscaleCommand(
 ): TailscaleCommand | undefined {
   const override = env[MANAGED_POLICY_TEST_TAILSCALE_CLI_ENV];
   if (policy?.source.kind !== 'test-override' || !override) return undefined;
-  return createTailscaleCommand(process.platform, undefined, [override]);
+  return createTailscaleCommand([override]);
 }
 
 /** The host Station binds when the limit applies and none is configured. */
 export const MANAGED_LOOPBACK_HOST = '127.0.0.1';
 
-/** `localhost`, `127.0.0.0/8` or `::1` (bracketed or not). */
-export function isLoopbackListenHost(host: string): boolean {
+/**
+ * A literal loopback address: `127.0.0.0/8` or `::1` (bracketed or not).
+ * Names are not loopback here, `localhost` included: a name is resolved
+ * again when the listener binds, and a hosts file or resolver can map it to
+ * any interface (#4519 round 1).
+ */
+export function isLiteralLoopbackAddress(host: string): boolean {
   const bare = host.replace(/^\[|\]$/g, '').toLowerCase();
-  if (bare === 'localhost') return true;
   if (isIP(bare) === 4) return bare.split('.')[0] === '127';
   if (isIP(bare) === 6)
     return bare === '::1' || /^(0{0,4}:){7}0{0,3}1$/.test(bare);
@@ -77,16 +82,23 @@ export function localClientsOnly(policy: LoadedManagedPolicy | null): boolean {
 
 /**
  * The host to bind. Without the limit, the configured host (or `undefined`,
- * which the listeners read as every interface). Under it, a loopback host;
- * a non-loopback configured host throws.
+ * which the listeners read as every interface). Under it, a literal loopback
+ * address: unset and `localhost` both become `127.0.0.1` (Station binds one
+ * host, IPv4), so no name is resolved at bind time, and any other host
+ * throws, another name included.
  */
 export function resolveManagedListenHost(
   policy: LoadedManagedPolicy | null,
   configuredHost: string | undefined,
 ): string | undefined {
   if (!localClientsOnly(policy) || !policy) return configuredHost;
-  if (configuredHost === undefined) return MANAGED_LOOPBACK_HOST;
-  if (isLoopbackListenHost(configuredHost)) return configuredHost;
+  if (
+    configuredHost === undefined ||
+    configuredHost.trim().toLowerCase() === 'localhost'
+  )
+    return MANAGED_LOOPBACK_HOST;
+  if (isLiteralLoopbackAddress(configuredHost))
+    return configuredHost.replace(/^\[|\]$/g, '');
   throw new ManagedNetworkExposureError(
     policy,
     `STATION_HOST is ${JSON.stringify(configuredHost.slice(0, 100))}`,
@@ -106,7 +118,7 @@ export function assertManagedAdoptedListenersLoopback(
 ): void {
   if (!policy || !localClientsOnly(policy)) return;
   const exposed = addresses.find(
-    (address) => address === null || !isLoopbackListenHost(address),
+    (address) => address === null || !isLiteralLoopbackAddress(address),
   );
   if (exposed === undefined) return;
   throw new ManagedNetworkExposureError(
@@ -141,7 +153,9 @@ export async function assertNoManagedTailscaleServeExposure(
   command?: TailscaleCommand,
 ): Promise<void> {
   if (!policy || !localClientsOnly(policy)) return;
-  const exposure = await inspectTailscaleServeExposure(ports, command);
+  const exposure = command
+    ? await inspectTailscaleServeExposure(ports, command)
+    : await inspectTrustedTailscaleServeExposure(ports);
   if (exposure.state === 'clear') return;
   if (exposure.state === 'mapped')
     throw new ManagedNetworkExposureError(
@@ -152,6 +166,88 @@ export async function assertNoManagedTailscaleServeExposure(
   throw new ManagedNetworkExposureError(
     policy,
     `Station cannot tell whether Tailscale Serve forwards to it: ${exposure.detail}`,
-    'Start Tailscale and sign in, stop it, or uninstall it, then start Station again.',
+    exposure.remedy ??
+      'Start Tailscale and sign in, stop it, or uninstall it, then start Station again.',
   );
+}
+
+/**
+ * #4519 round 1: admission for every listener Station opens, the dynamic
+ * ones included (the MCP Apps frame origin, the repair worker's relay).
+ * Under the limit a listener must bind a literal loopback address, and no
+ * Tailscale Serve route may forward to its port. A listener on an ephemeral
+ * port is admitted once it is bound, and closed by its owner if refused.
+ * Without the limit `admit` does nothing.
+ *
+ * The startup check covers the ports known before binding; `admit` is for
+ * the rest. Like the startup check it is one look: a Serve route added
+ * afterwards is not seen (the guide says so).
+ */
+export interface ManagedListenerAdmission {
+  readonly localClientsOnly: boolean;
+  admit(listener: { name: string; host: string; port: number }): Promise<void>;
+}
+
+export function createManagedListenerAdmission(
+  policy: LoadedManagedPolicy | null,
+  command?: TailscaleCommand,
+): ManagedListenerAdmission {
+  const limited = localClientsOnly(policy);
+  return {
+    localClientsOnly: limited,
+    async admit({ name, host, port }) {
+      if (!policy || !limited) return;
+      if (!isLiteralLoopbackAddress(host))
+        throw new ManagedNetworkExposureError(
+          policy,
+          `its ${name} listener would bind ${JSON.stringify(host.slice(0, 100))}`,
+          'This build cannot confine that listener to this computer; report this to your administrator.',
+        );
+      await assertNoManagedTailscaleServeExposure(policy, [port], command);
+    },
+  };
+}
+
+/** Thrown by the repair relay under the limit on Linux; see `managedRepairRelayHost`. */
+export const MANAGED_REPAIR_RELAY_REFUSED = 'repair-network-local-only';
+
+/**
+ * The host the isolated-repair relay binds. Without the limit, every
+ * interface (the worker container must reach it). Under it, loopback where
+ * Docker's `host.docker.internal` reaches the host's loopback (Docker
+ * Desktop and OrbStack on macOS and Windows); on Linux the worker reaches
+ * the host through the bridge gateway, which loopback does not serve, so
+ * the repair is refused rather than bound to a network interface.
+ */
+export function managedRepairRelayHost(
+  admission: Pick<ManagedListenerAdmission, 'localClientsOnly'> | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (!admission?.localClientsOnly) return '0.0.0.0';
+  if (platform === 'linux') throw new Error(MANAGED_REPAIR_RELAY_REFUSED);
+  return MANAGED_LOOPBACK_HOST;
+}
+
+let processAdmission: ManagedListenerAdmission | undefined;
+
+/**
+ * The entrypoint installs its admission once, before the runtime starts, so
+ * helpers that open loopback listeners on demand (the browser egress proxy,
+ * SSH forwards, the telemetry companion's published ports) admit them
+ * without each being handed it. Tests and embedders that never install one
+ * admit nothing, as without the limit.
+ */
+export function installManagedListenerAdmission(
+  admission: ManagedListenerAdmission | undefined,
+): void {
+  processAdmission = admission;
+}
+
+/** Admit `listener` through the installed admission; see above. */
+export async function admitManagedListener(listener: {
+  name: string;
+  host: string;
+  port: number;
+}): Promise<void> {
+  await processAdmission?.admit(listener);
 }

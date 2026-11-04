@@ -1,9 +1,10 @@
 import { Button } from '../../components/Button';
+import { ManagedRemoteClientsNote } from '../../components/managed/ManagedRemoteClientsNote';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { useManagedRemoteClientsRefusal } from '../../hooks/useManagedRemoteClientsRefusal';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
@@ -18,8 +19,8 @@ export function PairingSection() {
   const { isMobile } = profile;
   const canInviteDevice = hasLocalStationForProfile(profile);
   // #4519: the Station's managed policy allows no remote clients.
-  const policyRefusal = useManagedRemoteClientsRefusal();
-  const managedRefusal = canInviteDevice ? policyRefusal : undefined;
+  const policyLimit = useManagedRemoteClientsLimit();
+  const managedRefusal = canInviteDevice ? policyLimit : undefined;
   const { openLastStationOnLaunch } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   return (
@@ -84,13 +85,19 @@ export function PairingSection() {
           </SettingsToggle>
         </div>
       )}
-      <p className="settings__section-note" id="pairing-managed-refusal">
-        {managedRefusal
-          ? managedRefusal
-          : canInviteDevice
+      {managedRefusal ? (
+        <ManagedRemoteClientsNote
+          summary={managedRefusal}
+          className="settings__section-note"
+          id="pairing-managed-refusal"
+        />
+      ) : (
+        <p className="settings__section-note">
+          {canInviteDevice
             ? 'Invite a phone or another device to the selected Station.'
             : 'Scan a pairing code to connect this phone to another Station.'}
-      </p>
+        </p>
+      )}
       {/* #3557: a person's own tokens, beside the device they act from. It
           renders nothing unless this device is tied to a person. */}
       <OwnAccessTokensPanel />

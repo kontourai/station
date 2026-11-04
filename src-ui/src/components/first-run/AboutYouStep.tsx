@@ -56,6 +56,8 @@ interface AboutYouStepProps {
    * the write did not land
    */
   error?: string | null;
+  /** #4519: why this Station cannot pair another device; disables that exit. */
+  pairingRefusal?: string;
 }
 
 export function AboutYouStep({
@@ -63,6 +65,7 @@ export function AboutYouStep({
   onComplete,
   saving,
   error,
+  pairingRefusal,
 }: AboutYouStepProps) {
   const roleGroupId = useId();
   const comfortGroupId = useId();
@@ -163,11 +166,17 @@ export function AboutYouStep({
         you write and send a message.
       </p>
       {saving ? <p role="status">Saving your answers…</p> : null}
-      <p className="first-run-chapter__lede">
-        Want to use this Station on your phone too? Connect another device with
-        a QR invitation. Both devices use the same Station server. This is
-        optional—you can also do it later from Connections.
-      </p>
+      {pairingRefusal ? (
+        <p className="first-run-chapter__lede" id="first-run-pairing-refusal">
+          {pairingRefusal}
+        </p>
+      ) : (
+        <p className="first-run-chapter__lede">
+          Want to use this Station on your phone too? Connect another device
+          with a QR invitation. Both devices use the same Station server. This
+          is optional—you can also do it later from Connections.
+        </p>
+      )}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         {(['devices', 'tour', 'chat'] as const).map((destination) => (
           <button
@@ -178,7 +187,15 @@ export function AboutYouStep({
                 ? 'editor-btn editor-btn--primary'
                 : 'editor-btn'
             }
-            disabled={saving}
+            disabled={
+              saving ||
+              (destination === 'devices' && pairingRefusal !== undefined)
+            }
+            aria-describedby={
+              destination === 'devices' && pairingRefusal
+                ? 'first-run-pairing-refusal'
+                : undefined
+            }
             onClick={() => {
               if (saving) return;
               void onComplete(

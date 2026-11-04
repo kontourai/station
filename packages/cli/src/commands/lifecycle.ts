@@ -144,7 +144,10 @@ import {
   type PackagedRuntimeChannel,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
-import { installedRemoteClientsLimit } from './managed-remote-clients.js';
+import {
+  assertManagedInheritedStationHost,
+  installedRemoteClientsLimit,
+} from './managed-remote-clients.js';
 import {
   captureStableProcessFingerprint,
   createAppShortcut,
@@ -4797,6 +4800,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       `${managedRemoteClientsDenial(remoteLimit)} Station listens only on this computer; --host=${host} is not supported.`,
     );
   }
+  // The child's STATION_HOST is this launcher's host, so an inherited one
+  // would be dropped without a word; under the limit it is refused.
+  assertManagedInheritedStationHost(remoteLimit);
   if (watch && !isLoopbackHost(host)) {
     throw new Error(
       `--watch serves the Vite dev server, which is loopback-only; --host=${host} is not supported.`,

@@ -12,6 +12,11 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentityAsync,
 } from '@kontourai/station-shared/process-identity';
+import {
+  MANAGED_REPAIR_RELAY_REFUSED,
+  type ManagedListenerAdmission,
+  managedRepairRelayHost,
+} from '../../security/managed-network-exposure.js';
 import type { Logger } from '../../utils/logger.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { sourceGrantsRuleAction } from './automation-config-validation.js';
@@ -82,6 +87,8 @@ interface RepairControllerOptions {
   worker?: (input: RepairWorkerInput) => Promise<RepairWorkerEvidence>;
   observeWorker?: typeof observeRepairWorker;
   publisher?: Pick<RepairPublisherDependencies, 'fetch'>;
+  /** #4519: the runtime's listener admission; the relay binds under it. */
+  listenerAdmission?: ManagedListenerAdmission;
 }
 
 /** One durable controller; neither Task completion nor review comments confer publication authority. */
@@ -495,7 +502,31 @@ export class IsolatedRepairController {
         bindingDigest,
       }));
       await assertCurrent();
+      // #4519: under the managed limit the relay binds loopback (or the
+      // repair is refused on Linux) and passes listener admission.
+      const admission = this.options.listenerAdmission;
+      const relay = {
+        host: managedRepairRelayHost(admission),
+        admit: async (port: number) => {
+          try {
+            await admission?.admit({
+              name: 'repair relay',
+              host: relay.host,
+              port,
+            });
+          } catch (error) {
+            this.options.logger.warn(
+              'Repair relay refused by the managed policy',
+              {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            throw new Error(MANAGED_REPAIR_RELAY_REFUSED);
+          }
+        },
+      };
       const evidence = await (this.options.worker ?? executeDockerRepair)({
+        relay,
         ...this.identity(run),
         home: this.options.home,
         profile,

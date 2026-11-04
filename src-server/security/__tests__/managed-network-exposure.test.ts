@@ -10,7 +10,7 @@ import {
   assertManagedAdoptedListenersLoopback,
   assertNoManagedRelayConnector,
   assertNoManagedTailscaleServeExposure,
-  isLoopbackListenHost,
+  isLiteralLoopbackAddress,
   resolveManagedListenHost,
 } from '../managed-network-exposure.js';
 
@@ -36,8 +36,13 @@ const MARKER =
 describe('resolveManagedListenHost', () => {
   test('binds loopback under the limit and refuses any other host', () => {
     expect(resolveManagedListenHost(local, undefined)).toBe('127.0.0.1');
-    for (const host of ['127.0.0.1', '127.8.0.1', 'localhost', '::1', '[::1]'])
+    for (const host of ['127.0.0.1', '127.8.0.1', '::1'])
       expect(resolveManagedListenHost(local, host)).toBe(host);
+    // A bracketed literal is bound bare; `localhost` is never handed to the
+    // listener, which would resolve it again (round 1, finding 1).
+    expect(resolveManagedListenHost(local, '[::1]')).toBe('::1');
+    for (const host of ['localhost', 'LOCALHOST', ' localhost '])
+      expect(resolveManagedListenHost(local, host)).toBe('127.0.0.1');
     for (const host of ['0.0.0.0', '::', '192.168.1.20', 'station.local']) {
       expect(() => resolveManagedListenHost(local, host)).toThrow(MARKER);
       expect(() => resolveManagedListenHost(local, host)).toThrow(
@@ -53,10 +58,11 @@ describe('resolveManagedListenHost', () => {
     }
   });
 
-  test('loopback is 127.0.0.0/8, ::1 and localhost only', () => {
-    expect(isLoopbackListenHost('0:0:0:0:0:0:0:1')).toBe(true);
-    expect(isLoopbackListenHost('::ffff:127.0.0.1')).toBe(false);
-    expect(isLoopbackListenHost('128.0.0.1')).toBe(false);
+  test('a literal loopback address is 127.0.0.0/8 or ::1; no name is one', () => {
+    expect(isLiteralLoopbackAddress('0:0:0:0:0:0:0:1')).toBe(true);
+    expect(isLiteralLoopbackAddress('::ffff:127.0.0.1')).toBe(false);
+    expect(isLiteralLoopbackAddress('128.0.0.1')).toBe(false);
+    expect(isLiteralLoopbackAddress('localhost')).toBe(false);
   });
 });
 

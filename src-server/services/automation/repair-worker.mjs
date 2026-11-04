@@ -50,8 +50,11 @@ export async function observeRepairWorker(
     throw new Error('repair-worker-stop-unverified');
 }
 
-/** Front capability contains no host credential and rechecks authority before every broker request. */
-async function authorityRelay(backend, assertCurrent, signal) {
+/**
+ * Front capability contains no host credential and rechecks authority before every broker request.
+ * `listener` (#4519) sets the bind host and admits the bound port; without it, every interface.
+ */
+export async function authorityRelay(backend, assertCurrent, signal, listener) {
   const capability = randomBytes(32).toString('hex');
   const pending = new Set();
   const server = http.createServer(async (req, res) => {
@@ -140,8 +143,15 @@ async function authorityRelay(backend, assertCurrent, signal) {
   server.headersTimeout = 15_000;
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '0.0.0.0', resolve);
+    server.listen(0, listener?.host ?? '0.0.0.0', resolve);
   });
+  try {
+    await listener?.admit(server.address().port);
+  } catch (error) {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    throw error;
+  }
   return {
     baseUrl: `http://host.docker.internal:${server.address().port}`,
     capability,
@@ -187,7 +197,12 @@ export async function executeDockerRepair(input) {
       requestBindingDigest: `sha256:${input.bindingDigest}`,
       initializeLedger: true,
     });
-    relay = await authorityRelay(backend, input.assertCurrent, signal);
+    relay = await authorityRelay(
+      backend,
+      input.assertCurrent,
+      signal,
+      input.relay,
+    );
     await input.assertCurrent();
     const receipt = await runCodexDockerWorker({
       image: profile.image,

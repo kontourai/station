@@ -18,6 +18,7 @@ vi.mock('../hooks/useFeatureSettings', () => ({
 
 // #4519: tested in PairingSection.test; it needs a query client.
 vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsLimit: () => undefined,
   useManagedRemoteClientsRefusal: () => undefined,
 }));
 

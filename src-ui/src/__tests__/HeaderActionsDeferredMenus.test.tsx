@@ -34,6 +34,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   useAttentionQuery: () => ({ data: { items: [], pendingCount: 0 } }),
 }));
 

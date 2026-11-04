@@ -17,6 +17,11 @@ export interface RepairWorkerInput extends RepairWorkerIdentity {
   budget: IsolatedRepairBudget;
   signal: AbortSignal;
   assertCurrent(): Promise<void>;
+  /**
+   * #4519: where the front relay binds (default every interface) and the
+   * admission it must pass once bound; a refusal closes it.
+   */
+  relay?: { host: string; admit(port: number): Promise<void> };
 }
 export interface RepairWorkerEvidence {
   receipt: {

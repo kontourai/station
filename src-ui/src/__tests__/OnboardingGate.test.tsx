@@ -348,6 +348,8 @@ vi.mock('../components/PendingPairingReconciler', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   authenticatedFetch: vi.fn(),
   getJson: vi.fn(),
   mutateJson: vi.fn(),

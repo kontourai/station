@@ -56,6 +56,9 @@ import {
   assertManagedAdoptedListenersLoopback,
   assertNoManagedRelayConnector,
   assertNoManagedTailscaleServeExposure,
+  createManagedListenerAdmission,
+  installManagedListenerAdmission,
+  ManagedNetworkExposureError,
   managedTailscaleCommand,
   resolveManagedListenHost,
 } from './security/managed-network-exposure.js';
@@ -298,6 +301,14 @@ async function main() {
   } catch (error) {
     refuseStartup(error);
   }
+  // The same two checks for every listener opened later (the MCP Apps
+  // frame origin, the repair relay), which StationRuntime admits as each
+  // binds.
+  const listenerAdmission = createManagedListenerAdmission(
+    managedPolicy,
+    managedTailscaleCommand(managedPolicy),
+  );
+  installManagedListenerAdmission(listenerAdmission);
 
   const connector = loadSelfHostedBrokerConnectorConfig({
     homeDir: projectHomeDir,
@@ -316,6 +327,7 @@ async function main() {
     logger,
     buildProvenanceSnapshot,
     managedPolicy,
+    listenerAdmission,
     ...(connector
       ? {
           relayInvitationOwner: connector.invitationOwner,
@@ -441,6 +453,8 @@ async function main() {
     }
     await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
+    // A listener refused by admission is the same one-line managed refusal.
+    if (error instanceof ManagedNetworkExposureError) refuseStartup(error);
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
     console.error('Failed to start Station:', error);

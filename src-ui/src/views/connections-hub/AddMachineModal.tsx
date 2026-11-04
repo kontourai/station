@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { Dialog } from '../../components/Dialog';
+import { useManagedRemoteClientsRefusal } from '../../hooks/useManagedRemoteClientsRefusal';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './AddMachineModal.css';
@@ -63,6 +64,9 @@ export function AddMachineModal({
   returnFocusTarget,
 }: AddMachineModalProps) {
   const [goal, setGoal] = useState<AddMachineGoal | null>(null);
+  // #4519: pairing this Station with another device is refused under the
+  // managed limit, so that choice is disabled and says why.
+  const pairingRefusal = useManagedRemoteClientsRefusal();
   const { isTauri } = usePlatformProfile();
 
   function close() {
@@ -120,13 +124,18 @@ export function AddMachineModal({
               key={option.goal}
               type="button"
               className="add-machine-modal__option"
+              disabled={
+                option.goal === 'control' && pairingRefusal !== undefined
+              }
               onClick={() => chooseGoal(option.goal)}
             >
               <span className="add-machine-modal__option-title">
                 {option.title}
               </span>
               <span className="add-machine-modal__option-detail">
-                {option.detail}
+                {option.goal === 'control' && pairingRefusal
+                  ? pairingRefusal
+                  : option.detail}
               </span>
               <span className="add-machine-modal__option-unlocks">
                 {option.unlocks}

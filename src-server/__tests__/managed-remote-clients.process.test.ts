@@ -11,7 +11,10 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { type AddressInfo, createServer as createNetServer } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
 import {
@@ -88,10 +91,14 @@ function isolatedEnv(root: string, policyPath: string) {
   };
 }
 
-function startServer(env: Record<string, string>) {
+function startServer(
+  env: Record<string, string>,
+  preloads: readonly string[] = [],
+) {
   const owned: Owned = executeOwnedCommand(
     process.execPath,
     [
+      ...preloads.flatMap((preload) => ['--import', preload]),
       '--import',
       import.meta.resolve('tsx'),
       join(repoRoot, 'src-server/index.ts'),
@@ -186,6 +193,38 @@ describe('managed limit without remote clients at real server startup', () => {
       );
     },
     120_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses when Tailscale Serve forwards to the MCP Apps frame origin, a listener opened after startup',
+    async () => {
+      const root = fixtureRoot();
+      // Round 1, finding 4: the frame origin is not in the startup port
+      // list, so only its own admission sees this route.
+      const probe = createNetServer();
+      await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+      const framePort = (probe.address() as AddressInfo).port;
+      await new Promise<void>((done) => probe.close(() => done()));
+      const route = JSON.stringify({
+        Web: {
+          'n.example.ts.net:443': {
+            Handlers: { '/': { Proxy: `http://127.0.0.1:${framePort}` } },
+          },
+        },
+      });
+      const tailscale = fakeTailscale(
+        root,
+        `if [ "$1" = serve ]; then echo '${route}'; else echo '{"BackendState":"Running"}'; fi`,
+      );
+      const line = await expectRefusal({
+        ...managedEnv(root, tailscale),
+        MCP_UI_FRAME_PORT: String(framePort),
+      });
+      expect(line).toContain(
+        `Tailscale Serve forwards port ${framePort} to it`,
+      );
+    },
+    180_000,
   );
 
   test('binds loopback without STATION_HOST and refuses pairing offers, access requests and nearby discovery', async () => {
@@ -307,5 +346,68 @@ describe('managed limit without remote clients at real server startup', () => {
       code: REMOTE_CODE,
       error: expect.stringContaining("Acme's policy manages remote access"),
     });
+  }, 300_000);
+
+  test('binds 127.0.0.1 for STATION_HOST=localhost even when the resolver maps localhost to another address', async () => {
+    const root = fixtureRoot();
+    // Round 1, finding 1: a resolver (hosts file, DNS) controls `localhost`.
+    // This preload maps it to every interface for any lookup in the server
+    // process, so passing the name to listen() would bind 0.0.0.0.
+    const preload = join(root, 'localhost-resolver.mjs');
+    writeFileSync(
+      preload,
+      [
+        "import dns from 'node:dns';",
+        'const real = dns.lookup;',
+        'dns.lookup = function (host, options, callback) {',
+        "  if (String(host).toLowerCase() !== 'localhost') return real.apply(this, arguments);",
+        "  const done = typeof options === 'function' ? options : callback;",
+        "  const all = typeof options === 'object' && options !== null && options.all;",
+        "  process.nextTick(() => all ? done(null, [{ address: '0.0.0.0', family: 4 }]) : done(null, '0.0.0.0', 4));",
+        '};',
+      ].join('\n'),
+    );
+    const env: Record<string, string> = {
+      ...managedEnv(root, join(root, 'no-tailscale')),
+      STATION_HOST: 'localhost',
+    };
+    const { owned } = startServer(env, [pathToFileURL(preload).href]);
+    const child = owned.child;
+    if (!('stdout' in child) || !child.stdout)
+      throw new Error('Station stdout unavailable');
+    let pending = '';
+    const ready = new Promise<{ port: number; host: string }>(
+      (resolveReady) => {
+        child.stdout?.on('data', (chunk: Buffer) => {
+          pending += chunk.toString('utf8');
+          const lines = pending.split('\n');
+          pending = lines.pop() ?? '';
+          for (const line of lines)
+            if (line.startsWith(readyPrefix)) resolveReady(JSON.parse(line));
+        });
+      },
+    );
+    const early = owned.completion.then((result) => {
+      throw new Error(`Station exited before listening (${result.status})`);
+    });
+    void early.catch(() => {});
+    const { port, host } = await bounded(
+      Promise.race([ready, early]),
+      'readiness',
+      150_000,
+    );
+    expect(host).toBe('127.0.0.1');
+    // Reachable on loopback, and on no other interface of this machine.
+    const handshake = '/.well-known/station/v1';
+    expect((await fetch(`http://127.0.0.1:${port}${handshake}`)).ok).toBe(true);
+    const lan = Object.values(networkInterfaces())
+      .flat()
+      .find((entry) => entry && entry.family === 'IPv4' && !entry.internal);
+    if (lan)
+      await expect(
+        fetch(`http://${lan.address}:${port}${handshake}`, {
+          signal: AbortSignal.timeout(5_000),
+        }),
+      ).rejects.toThrow();
   }, 300_000);
 });

@@ -108,3 +108,27 @@ describe('AboutYouStep — the reach is stated', () => {
     ).toBeTruthy();
   });
 });
+
+describe('AboutYouStep — managed limit without remote clients (#4519)', () => {
+  test('"Connect another device" is disabled and the managed sentence replaces the invitation', () => {
+    const onComplete = vi.fn();
+    const refusal =
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+    render(<AboutYouStep onComplete={onComplete} pairingRefusal={refusal} />);
+    const devices = screen.getByRole('button', {
+      name: 'Connect another device',
+    }) as HTMLButtonElement;
+    expect(devices.disabled).toBe(true);
+    expect(screen.getByText(refusal).id).toBe(
+      devices.getAttribute('aria-describedby'),
+    );
+    expect(screen.queryByText(/QR invitation/)).toBeNull();
+    fireEvent.click(devices);
+    expect(onComplete).not.toHaveBeenCalled();
+    // The other exits still work.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start your first chat' }),
+    );
+    expect(onComplete).toHaveBeenCalledWith(undefined, 'chat');
+  });
+});

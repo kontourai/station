@@ -4,18 +4,21 @@
  *
  * Serve runs inside `tailscaled`, so it can forward only while the daemon
  * runs and is logged in. "Nothing forwards" is therefore proven by any of:
- * no Tailscale CLI, a daemon that reports it is not running, a backend state
- * that is not `Running` (stopped or logged out), or a Serve configuration
- * whose every target is another port. Anything else, including a CLI that
- * times out, exits with an error it does not explain, or prints a shape this
- * build does not know, is `unverifiable`: the caller refuses to start, since
- * it cannot show that nothing forwards.
+ * no Tailscale on the machine at all, a trusted CLI that reports the daemon
+ * is not running, a backend state that is not `Running` (stopped or logged
+ * out), or a Serve configuration whose every target is another port.
+ * Anything else, including a CLI that times out, exits with an error it
+ * does not explain, or prints a shape this build does not know, is
+ * `unverifiable`: the caller refuses to start, since it cannot show that
+ * nothing forwards. Which CLI is trusted, and what "no Tailscale" means, is
+ * `tailscale-authority.ts`.
  */
 import { execFile } from 'node:child_process';
+import { inspectServePort } from './public-ingress-origin.js';
 import {
-  inspectServePort,
-  TAILSCALE_MACOS_APP_CLI,
-} from './public-ingress-origin.js';
+  resolveTailscaleAuthority,
+  type TailscaleAuthority,
+} from './tailscale-authority.js';
 
 export interface TailscaleCommandResult {
   /** `null` when the command did not exit normally (a timeout, a signal). */
@@ -36,7 +39,7 @@ export type TailscaleServeExposure =
       reason: 'not-installed' | 'not-running' | 'logged-out' | 'no-route';
     }
   | { state: 'mapped'; ports: number[] }
-  | { state: 'unverifiable'; detail: string };
+  | { state: 'unverifiable'; detail: string; remedy?: string };
 
 /**
  * What the CLI prints when it cannot reach a daemon that is not running
@@ -46,23 +49,27 @@ export type TailscaleServeExposure =
  */
 const DAEMON_NOT_RUNNING = /doesn't appear to be running/i;
 
-/** Backend states in which no Serve route forwards traffic. */
-const IDLE_BACKEND_STATES: Readonly<
-  Record<string, 'not-running' | 'logged-out'>
-> = {
-  Stopped: 'not-running',
-  NoState: 'not-running',
-  NeedsLogin: 'logged-out',
-  NeedsMachineAuth: 'logged-out',
-};
+/**
+ * Backend states in which no Serve route forwards traffic. A switch, not an
+ * object lookup: `constructor` or `__proto__` must not find an inherited
+ * member and read as idle (#4519 round 1).
+ */
+function idleBackendState(
+  state: string,
+): 'not-running' | 'logged-out' | undefined {
+  switch (state) {
+    case 'Stopped':
+    case 'NoState':
+      return 'not-running';
+    case 'NeedsLogin':
+    case 'NeedsMachineAuth':
+      return 'logged-out';
+    default:
+      return undefined;
+  }
+}
 
 const COMMAND_TIMEOUT_MS = 5_000;
-
-function candidates(platform: NodeJS.Platform): readonly string[] {
-  return platform === 'darwin'
-    ? [TAILSCALE_MACOS_APP_CLI, 'tailscale']
-    : ['tailscale'];
-}
 
 function runOnce(
   executable: string,
@@ -94,15 +101,13 @@ function runOnce(
 }
 
 /**
- * The first installed reviewed executable answers; an absent one is skipped.
- * Unlike the origin resolver's CLI, a failing installed executable is the
- * answer (with its stderr), not a reason to try the next one: the macOS app
- * bundle and a PATH install talk to the same daemon.
+ * Test seam only: a command that runs `executables` in order, the first
+ * installed one answering (with its failure, if it fails). Production never
+ * builds one; it runs the trusted CLI `resolveTailscaleAuthority` finds.
  */
 export function createTailscaleCommand(
-  platform: NodeJS.Platform = process.platform,
+  executables: readonly string[],
   run: typeof runOnce = runOnce,
-  executables: readonly string[] = candidates(platform),
 ): TailscaleCommand {
   return async (args) => {
     for (const executable of executables) {
@@ -127,10 +132,35 @@ function failureDetail(
     : `\`tailscale ${command}\` exited ${result.exitCode}${said ? ` (${said})` : ''}`;
 }
 
-/** Whether Tailscale Serve forwards any of `ports`; see the module comment. */
+/**
+ * The production check: asks only the Tailscale `resolveTailscaleAuthority`
+ * trusts. No Tailscale at all is clear; signs of one without a trusted CLI
+ * are unverifiable, with what to install or stop.
+ */
+export async function inspectTrustedTailscaleServeExposure(
+  ports: readonly number[],
+  resolveAuthority: () => Promise<TailscaleAuthority> = resolveTailscaleAuthority,
+): Promise<TailscaleServeExposure> {
+  const authority = await resolveAuthority();
+  if (authority.kind === 'absent')
+    return { state: 'clear', reason: 'not-installed' };
+  if (authority.kind === 'untrusted')
+    return {
+      state: 'unverifiable',
+      detail: `Tailscale may be installed (${authority.signs.slice(0, 4).join('; ').slice(0, 400)}), but there is no Tailscale CLI it can trust`,
+      remedy: authority.remedy,
+    };
+  return inspectTailscaleServeExposure(ports, authority.command);
+}
+
+/**
+ * Whether Tailscale Serve forwards any of `ports`, asking `command`; see the
+ * module comment. `command` is the trusted CLI, or a test's stand-in, whose
+ * "no executable" answer is taken as Tailscale being absent.
+ */
 export async function inspectTailscaleServeExposure(
   ports: readonly number[],
-  command: TailscaleCommand = createTailscaleCommand(),
+  command: TailscaleCommand,
 ): Promise<TailscaleServeExposure> {
   const status = await command(['status', '--json']);
   if (status.unavailable === true)
@@ -155,7 +185,7 @@ export async function inspectTailscaleServeExposure(
       state: 'unverifiable',
       detail: '`tailscale status --json` did not report a backend state',
     };
-  const idle = IDLE_BACKEND_STATES[backendState];
+  const idle = idleBackendState(backendState);
   if (idle) return { state: 'clear', reason: idle };
   if (backendState !== 'Running')
     return {

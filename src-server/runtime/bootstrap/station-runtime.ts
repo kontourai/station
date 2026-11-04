@@ -169,6 +169,10 @@ import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-h
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import {
+  createManagedListenerAdmission,
+  type ManagedListenerAdmission,
+} from '../../security/managed-network-exposure.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
@@ -620,6 +624,11 @@ export interface StationRuntimeOptions {
    * a changed policy takes effect on restart.
    */
   managedPolicy?: LoadedManagedPolicy | null;
+  /**
+   * #4519: admits each listener opened after startup (loopback bind, no
+   * Tailscale Serve route). Built from `managedPolicy` when absent.
+   */
+  listenerAdmission?: ManagedListenerAdmission;
 }
 
 /** How long session recovery may take before update readiness warns. */
@@ -674,6 +683,7 @@ export class StationRuntime {
   private logger: Logger;
   private readonly buildProvenanceSnapshot?: BuildProvenanceSnapshot;
   private readonly managedPolicy: LoadedManagedPolicy | null = null;
+  private readonly listenerAdmission: ManagedListenerAdmission;
   /** One persistent grant store shared by default and persisted managed agents. */
   private readonly unattendedGrantStore: UnattendedGrantStore;
   private readonly discordGatewayService: DiscordGatewayService;
@@ -1558,6 +1568,9 @@ export class StationRuntime {
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
       this.managedPolicy = options.managedPolicy ?? null;
+      this.listenerAdmission =
+        options.listenerAdmission ??
+        createManagedListenerAdmission(this.managedPolicy);
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -1568,6 +1581,9 @@ export class StationRuntime {
         localClientsOnly: !managedPolicyAllowsRemoteClients(
           this.managedPolicy?.summary,
         ),
+        ...(this.managedPolicy
+          ? { managedOrganization: this.managedPolicy.summary.organization }
+          : {}),
       });
 
       const agentPluginLoader = new AgentPluginLoader({
@@ -1759,6 +1775,15 @@ export class StationRuntime {
       this.discordGatewayService = new DiscordGatewayService({
         homeDir: projectHomeDir,
         logger: this.logger,
+        // #4519: Discord commands come from off this machine.
+        ...(this.managedPolicy &&
+        !managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+          ? {
+              managedRefusal: managedRemoteClientsDenial(
+                this.managedPolicy.summary,
+              ),
+            }
+          : {}),
         eventBus: this.eventBus,
         // Discord supplies only the bound Station conversation. The shared
         // continuation resolves that conversation's persisted target and then
@@ -4098,6 +4123,7 @@ export class StationRuntime {
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
+    this.logManagedCredentialSuspension();
     this.stationEnvironmentId = identity.environmentId;
     try {
       await this.loadProjectSharing(identity.environmentId);
@@ -4904,6 +4930,31 @@ export class StationRuntime {
   }
 
   /**
+   * #4519: one line at startup naming what the managed limit suspends, so an
+   * operator can tell why earlier devices stopped working. Nothing records
+   * an earlier run's limit, so lifting it is not announced: without the
+   * limit nothing is suspended and this logs nothing.
+   */
+  private logManagedCredentialSuspension(): void {
+    if (
+      !this.managedPolicy ||
+      managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+    )
+      return;
+    const inventory =
+      this.environmentSecurityService.devicePairing.managedSuspensionInventory();
+    this.logger.info(
+      'Managed policy allows no remote clients; earlier remote credentials are suspended, not revoked',
+      {
+        organization: this.managedPolicy.summary.organization,
+        suspendedDevices: inventory.devices,
+        suspendedRelayAliases: inventory.relayAliases,
+        suspendedPersonalTokens: inventory.personalTokens,
+      },
+    );
+  }
+
+  /**
    * Dedicated MCP Apps sandbox-proxy origin. It starts on an ephemeral port by
    * default; MCP_UI_FRAME_PORT may pin one for deployments. A bind failure is
    * non-fatal and degrades to the opaque-origin native/static fallback.
@@ -4927,12 +4978,28 @@ export class StationRuntime {
       );
       return;
     }
-    this.mcpUiFrameServer = await startMcpUiFrameServer({
+    const frame = await startMcpUiFrameServer({
       port,
       stationPort: this.port,
       stationHost: this.host,
       logger: this.logger,
     });
+    // #4519: the frame origin is a listener too; refused, it closes and
+    // startup stops with the managed refusal.
+    if (frame) {
+      const origin = new URL(frame.origin);
+      try {
+        await this.listenerAdmission.admit({
+          name: 'MCP Apps frame',
+          host: origin.hostname,
+          port: Number(origin.port),
+        });
+      } catch (error) {
+        await frame.close();
+        throw error;
+      }
+    }
+    this.mcpUiFrameServer = frame;
   }
 
   private async startTaskRoomAcceptanceControlIfConfigured(): Promise<void> {
@@ -5221,6 +5288,7 @@ export class StationRuntime {
       host: this.host,
       buildProvenanceSnapshot: this.buildProvenanceSnapshot,
       managedPolicy: this.managedPolicy,
+      listenerAdmission: this.listenerAdmission,
       usageAggregator: this.usageAggregator,
       usageTelemetry: this.usageTelemetry,
       getUsageTelemetry: () => this.usageTelemetry,

@@ -1101,6 +1101,20 @@ export interface PairedDevice {
    * It is not persisted with a paired device and never includes session ids.
    */
   connectedClients?: ConnectedClientProjection | null;
+  /**
+   * #4519: device lists only. Present while a managed policy that allows no
+   * remote clients keeps this unrevoked device from authenticating. It is
+   * not revocation and is never persisted: `revocation` is unchanged, and
+   * the device works again once the policy allows remote clients.
+   */
+  suspended?: PairedDeviceSuspension;
+}
+
+/** #4519: why a paired device cannot authenticate now, though not revoked. */
+export interface PairedDeviceSuspension {
+  readonly by: 'managed-policy';
+  /** The policy's organization, for "Suspended by <organization>'s policy". */
+  readonly organization: string;
 }
 
 /**

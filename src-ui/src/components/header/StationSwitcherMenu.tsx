@@ -15,6 +15,7 @@ import {
 import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { useManagedRemoteClientsRefusal } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   forgetStationProbe,
@@ -76,6 +77,8 @@ export function StationSwitcherMenu({
   onManage: () => void;
   onPairPhone?: () => void;
 }) {
+  // #4519: under the managed limit "Pair phone" is disabled and says why.
+  const pairPhoneRefusal = useManagedRemoteClientsRefusal();
   const conditions = useStationConditions();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -470,6 +473,9 @@ export function StationSwitcherMenu({
                 type="button"
                 role="menuitem"
                 className="menu-row"
+                disabled={pairPhoneRefusal !== undefined}
+                title={pairPhoneRefusal}
+                aria-description={pairPhoneRefusal}
                 onClick={() => {
                   onClose();
                   onPairPhone();

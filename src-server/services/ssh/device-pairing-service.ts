@@ -515,6 +515,15 @@ interface DevicePairingServiceOptions {
    * limit restores them.
    */
   localClientsOnly?: boolean;
+  /** #4519: the policy's organization, named on suspended devices. */
+  managedOrganization?: string;
+}
+
+/** #4519: what `localClientsOnly` keeps from authenticating, for one log line. */
+export interface ManagedSuspensionInventory {
+  devices: number;
+  relayAliases: number;
+  personalTokens: number;
 }
 
 export class DevicePairingError extends Error {
@@ -1230,6 +1239,7 @@ export class DevicePairingService {
   readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
   readonly #ownerDeviceStanding: boolean;
   readonly #localClientsOnly: boolean;
+  readonly #managedOrganization: string;
   /** #3557: personal access tokens, resolved as headless devices. */
   readonly #tokens: PersonalTokenStore;
   /**
@@ -1253,6 +1263,8 @@ export class DevicePairingService {
     this.#capScope = options.capScope ?? ((device) => device.scope);
     this.#ownerDeviceStanding = options.ownerDeviceStanding === true;
     this.#localClientsOnly = options.localClientsOnly === true;
+    this.#managedOrganization =
+      options.managedOrganization ?? 'your organization';
     this.#tokens = new PersonalTokenStore({
       securityDir: join(options.homeDir, 'security'),
       ...(options.now ? { now: options.now } : {}),
@@ -2326,7 +2338,43 @@ export class DevicePairingService {
   listDevices(): PairedDevice[] {
     return this.#registry.devices
       .filter((device) => device.pendingEnrollmentId === undefined)
-      .map(publicDevice);
+      .map((device) => {
+        const listed = publicDevice(device);
+        // #4519: an unrevoked device the limit keeps out says so; its
+        // revocation state stays what it is.
+        return device.revokedAt === null && this.#signedOutByPolicy(device)
+          ? {
+              ...listed,
+              suspended: {
+                by: 'managed-policy' as const,
+                organization: this.#managedOrganization,
+              },
+            }
+          : listed;
+      });
+  }
+
+  /**
+   * #4519: how many unrevoked credentials `localClientsOnly` keeps from
+   * authenticating: paired devices (pending relay ones included), their
+   * live relay aliases, and personal access tokens. Zero without the limit.
+   */
+  managedSuspensionInventory(): ManagedSuspensionInventory {
+    if (!this.#localClientsOnly)
+      return { devices: 0, relayAliases: 0, personalTokens: 0 };
+    const now = this.#now();
+    let devices = 0;
+    let relayAliases = 0;
+    for (const device of this.#registry.devices) {
+      if (device.revokedAt !== null) continue;
+      if (this.#signedOutByPolicy(device)) devices += 1;
+      for (const alias of device.credentialAliases ?? [])
+        if (alias.revokedAt === null && alias.expiresAt > now)
+          relayAliases += 1;
+    }
+    // `list()` holds only active (unrevoked, unexpired) tokens.
+    const personalTokens = this.#tokens.list().length;
+    return { devices, relayAliases, personalTokens };
   }
 
   /**

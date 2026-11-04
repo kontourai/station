@@ -239,6 +239,52 @@ export function managedPolicyDirectoryProblem(
   return null;
 }
 
+/**
+ * Why a file outside the policy (a program Station trusts to answer for the
+ * system, #4519) cannot be trusted the way a policy file is, or `null`.
+ * `undefined` when nothing is at `path`. The literal entry and the file it
+ * resolves to must belong to `ownership.ownerUid`; the resolved file must be
+ * a regular file nobody else can write. With `directories`, both directory
+ * chains are held to `managedPolicyDirectoryProblem` as well; a caller that
+ * cannot hold a chain to that (a macOS app under the admin-writable
+ * `/Applications`) needs a second authority, such as a code signature.
+ */
+export function managedTrustedFileProblem(
+  path: string,
+  ownership: ManagedPolicyFileOwnership,
+  options: { directories: boolean },
+): string | null | undefined {
+  let literal: Stats;
+  try {
+    literal = lstatSync(path);
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT') return undefined;
+    return `${path} cannot be inspected (${errnoCode(error) ?? 'unknown error'})`;
+  }
+  const literalProblem = ownershipProblem(
+    path,
+    literal,
+    ownership,
+    !literal.isSymbolicLink(),
+  );
+  if (literalProblem) return literalProblem;
+  let real: string;
+  let stats: Stats;
+  try {
+    real = realpathSync(path);
+    stats = lstatSync(real);
+  } catch (error) {
+    return `${path} cannot be resolved (${errnoCode(error) ?? 'unknown error'})`;
+  }
+  if (!stats.isFile()) return `${real} is not a regular file`;
+  const fileProblem = ownershipProblem(real, stats, ownership, true);
+  if (fileProblem || !options.directories) return fileProblem;
+  return (
+    managedPolicyDirectoryProblem(dirname(path), ownership) ??
+    managedPolicyDirectoryProblem(dirname(real), ownership)
+  );
+}
+
 const SYMLINK_REASON =
   'it is a symbolic link or reparse point; install the policy as a regular file';
 

@@ -31,6 +31,7 @@
  * has (loopback is not user-isolated) and, for a Project admin profile, much
  * less. Station listeners stay refused either way.
  */
+
 import { lookup as dnsLookup } from 'node:dns/promises';
 import {
   createServer,
@@ -42,6 +43,7 @@ import {
 } from 'node:http';
 import { connect, isIP, type Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
+import { admitManagedListener } from '../../security/managed-network-exposure.js';
 import {
   decideEgress,
   type EgressPolicy,
@@ -171,8 +173,20 @@ export class BrowserEgressProxy {
         resolve();
       });
     });
+    const port = (server.address() as { port: number }).port;
+    try {
+      // #4519: under the managed limit, no Tailscale Serve route to it.
+      await admitManagedListener({
+        name: 'browser egress proxy',
+        host: '127.0.0.1',
+        port,
+      });
+    } catch (error) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      throw error;
+    }
     this.server = server;
-    this.listeningPort = (server.address() as { port: number }).port;
+    this.listeningPort = port;
     return this.listeningPort;
   }
 

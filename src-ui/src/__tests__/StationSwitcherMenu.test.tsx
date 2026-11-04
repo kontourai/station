@@ -9,6 +9,15 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StationSwitcherMenu } from '../components/header/StationSwitcherMenu';
+
+// #4519: the managed limit, set per test.
+const managed = vi.hoisted(() => ({
+  refusal: undefined as string | undefined,
+}));
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsRefusal: () => managed.refusal,
+}));
+
 import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
 import {
@@ -461,4 +470,46 @@ test('arrow keys step between Stations, beside a filter that sits outside the me
   laptopRow.focus();
   fireEvent.keyDown(laptopRow, { key: 'ArrowDown' });
   expect(document.activeElement).toBe(row(/^Build box/));
+});
+
+test('#4519: under the managed limit "Pair phone" is disabled and carries the managed sentence', () => {
+  const sentence =
+    "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+  const anchor = document.createElement('button');
+  document.body.append(anchor);
+  unregister.push(() => anchor.remove());
+  const pair = vi.fn();
+  const renderWith = () =>
+    render(
+      <StationSwitcherMenu
+        anchor={anchor}
+        connections={[station]}
+        activeConnectionId="one"
+        activeStatus="connected"
+        activeStatusLabel="Connected"
+        onSelect={vi.fn(async () => {})}
+        onForget={vi.fn(async () => {})}
+        canForget={() => true}
+        onClose={vi.fn()}
+        onManage={vi.fn()}
+        onPairPhone={pair}
+      />,
+    );
+  managed.refusal = sentence;
+  try {
+    const { unmount } = renderWith();
+    const item = screen.getByRole('menuitem', { name: 'Pair phone' });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+    expect(item.getAttribute('title')).toBe(sentence);
+    fireEvent.click(item);
+    expect(pair).not.toHaveBeenCalled();
+    unmount();
+  } finally {
+    managed.refusal = undefined;
+  }
+  renderWith();
+  const enabled = screen.getByRole('menuitem', { name: 'Pair phone' });
+  expect((enabled as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(enabled);
+  expect(pair).toHaveBeenCalledOnce();
 });

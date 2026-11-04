@@ -589,6 +589,16 @@ export function managedPolicyAllowsRemoteClients(
 export const MANAGED_POLICY_REMOTE_CLIENTS_CODE =
   'managed-policy-remote-clients' as const;
 
+/**
+ * #4519: the refusal without its help tail, for a surface that renders the
+ * policy's support link itself ("Get help").
+ */
+export function managedRemoteClientsStatement(
+  summary: ManagedPolicySummary,
+): string {
+  return `${summary.organization}'s policy manages remote access: only this computer can connect to Station.`;
+}
+
 /** The sentence every surface uses to refuse remote access under the limit. */
 export function managedRemoteClientsDenial(
   summary: ManagedPolicySummary,

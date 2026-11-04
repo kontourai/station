@@ -137,6 +137,14 @@ describe('inspectTailscaleServeExposure', () => {
       ['not JSON', cli(ok('Tailscale is starting…'))],
       ['no backend state', cli(ok('{}'))],
       ['an unknown backend state', cli(ok('{"BackendState":"Rebooting"}'))],
+      // Round 1, finding 5: names an object lookup would find inherited.
+      ...['constructor', 'toString', '__proto__', 'hasOwnProperty'].map(
+        (state) =>
+          [
+            `the backend state ${state}`,
+            cli(ok(JSON.stringify({ BackendState: state }))),
+          ] as [string, ReturnType<typeof cli>],
+      ),
       [
         'a failing serve status',
         cli(running, { exitCode: 1, stdout: '', stderr: 'access denied\n' }),
@@ -167,28 +175,28 @@ describe('inspectTailscaleServeExposure', () => {
   });
 });
 
-describe('createTailscaleCommand', () => {
+describe('createTailscaleCommand (test seam)', () => {
   test('skips an absent executable, answers with the first installed one, even when it fails', async () => {
     const tried: string[] = [];
-    const command = createTailscaleCommand('darwin', async (executable) => {
-      tried.push(executable);
-      return executable === 'tailscale'
-        ? { exitCode: 1, stdout: '', stderr: 'boom' }
-        : { exitCode: null, stdout: '', stderr: '', unavailable: true };
-    });
+    const command = createTailscaleCommand(
+      ['/absent/tailscale', '/stand-in/tailscale'],
+      async (executable) => {
+        tried.push(executable);
+        return executable === '/stand-in/tailscale'
+          ? { exitCode: 1, stdout: '', stderr: 'boom' }
+          : { exitCode: null, stdout: '', stderr: '', unavailable: true };
+      },
+    );
     expect(await command(['status', '--json'])).toEqual({
       exitCode: 1,
       stdout: '',
       stderr: 'boom',
     });
-    expect(tried).toEqual([
-      '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
-      'tailscale',
-    ]);
+    expect(tried).toEqual(['/absent/tailscale', '/stand-in/tailscale']);
   });
 
   test('reports unavailable only when no executable exists', async () => {
-    const command = createTailscaleCommand('linux', async () => ({
+    const command = createTailscaleCommand(['/absent/tailscale'], async () => ({
       exitCode: null,
       stdout: '',
       stderr: '',
