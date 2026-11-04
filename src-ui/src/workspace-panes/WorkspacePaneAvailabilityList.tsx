@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { PlugGlyph } from '../components/icons/Glyph';
 import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
@@ -117,6 +118,16 @@ function WorkspacePaneAvailabilityCard({
     presentation.action !== undefined &&
     presentation.actionLabel !== undefined &&
     canExecuteAction?.(entry, presentation.action) === true;
+  // #4470: an outage, not a setup or permission state, can be diagnosed.
+  // Extension access is a known cause with its own remedy above. Offered
+  // beside the reason in the explanation, not in the action row, which holds
+  // at most two actions (#3045).
+  const troubleshootable =
+    !isAvailable &&
+    !open &&
+    !reviewActionAvailable &&
+    !presentation.pending &&
+    presentation.state === 'temporarily-unavailable';
 
   return (
     <li
@@ -277,6 +288,21 @@ function WorkspacePaneAvailabilityCard({
                 </p>
               )}
             {actionNotice && <p role="status">{actionNotice}</p>}
+            {troubleshootable && (
+              <button
+                type="button"
+                className="workspace-pane-availability-list__remedy workspace-pane-availability-list__troubleshoot"
+                onClick={() =>
+                  requestTroubleshoot({
+                    code: `pane-${presentation.reasonCode}`,
+                    message: `${entry.descriptor.name}: ${presentation.reasonLabel}`,
+                  })
+                }
+                disabled={pending}
+              >
+                Troubleshoot
+              </button>
+            )}
           </div>
         )}
       </div>

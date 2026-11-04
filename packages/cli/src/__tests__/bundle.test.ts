@@ -352,7 +352,7 @@ describe('published CLI bundle', () => {
     const result = runBundle(['triage', '--help']);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      'station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
+      'station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
     );
     // #1795 reworded this guarantee rather than dropping it: the phrase
     // 'does not inspect local files' was replaced by the sentence below,

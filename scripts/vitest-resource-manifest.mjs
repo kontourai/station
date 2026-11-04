@@ -311,6 +311,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/self-hosted-connector-identity.test.ts',
   // Boots the normal source Station against an owned metadata broker.
   'scripts/__tests__/self-hosted-connector-startup.test.ts',
+  // #4516: boots the source Station with injected managed policies (refused
+  // and accepted) and runs `station policy show` against it; private homes.
+  'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4516: runs `station policy check` as a CLI child on private fixtures.
+  'packages/cli/src/__tests__/policy-command.test.ts',
+  // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
+  'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
   'scripts/__tests__/device-connection-trust.test.ts',
   'scripts/__tests__/pending-pairing-journal.browser.test.ts',
