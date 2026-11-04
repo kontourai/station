@@ -412,19 +412,32 @@ export interface SessionCancellationRequestedEvent
 }
 
 /**
- * #4512: the server-classified cause of a turn, stamped on `turn.started`.
+ * #4512: the server-classified cause of a turn, stamped on `turn.started`
+ * when Station admits the send. Never accepted from a client or an engine.
  *
- * - `interactive`: a person's own send (an operator or paired-device client).
+ * - `interactive`: a person's own send (an operator or paired-device
+ *   client), and Station sends a person triggered: their memory-exhaustion
+ *   Continue and their Task review send.
  * - `task-dispatch`: an entry Station itself queued on the conversation
- *   inbox (an `internal` sender with no more specific origin, such as a Task
- *   question wake) and placed on a Session whose room execution binding
- *   names a Task.
- * - `delegation`: the first turn of a delegated Session, sent by Station.
+ *   inbox with no more specific origin (a Task question wake, an automatic
+ *   memory continuation, a check-back) and placed on a Session whose room
+ *   execution binding names a Task. Off a Task's Session those are
+ *   `unknown`.
+ * - `delegation`: a delegated Session's first turn, a send carrying the
+ *   server-resolved delegation context (Station Control `send_message`),
+ *   and a delegated child's result delivered into its parent, on a Task's
+ *   Session too.
  * - `automation`: a scheduled Automation run, queued on its target
  *   conversation's inbox or starting its dedicated conversation, and an
  *   Automation action's inbox entry. Never `task-dispatch`, even on a Task's
  *   Session.
- * - `unknown`: anything else, and every turn persisted before the field.
+ * - `unknown`: coordinator and Project supervision wakes (a person's
+ *   coordinator), anything else, and every turn persisted before the field.
+ *
+ * It is the claim of the Station that admitted the turn. A `turn.started`
+ * mirrored from another Station carries that Station's classification, so
+ * anything that acts on this field (restart recovery) must act only on this
+ * Station's own Sessions.
  */
 export const TURN_DISPATCH_ORIGINS = [
   'interactive',

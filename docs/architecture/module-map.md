@@ -2239,25 +2239,49 @@ Each `turn.started` a send produces records who caused the turn
 (`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
 `automation` or `unknown`. Station classifies it when it admits the
 `sendTurn`, never from a request body or an engine. A server caller passes
-its own classification in the dispatch's internal options (`dispatchOrigin`):
-the delegation start sends `delegation`, and the conversation inbox's
-placement uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
-(an Automation's entry is `automation`, a person's `interactive`, Station's
-own entry into a Session whose room execution binding names a Task
-`task-dispatch`). Without one, `classifyTurnDispatchOrigin` in the
+its own classification in the dispatch's internal options
+(`dispatchOrigin`); without one, `classifyTurnDispatchOrigin` in the
 [orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
 reads a person's client (operator or paired device) as `interactive` and
-anything else as `unknown`. [`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
+anything else as `unknown`. Who passes what:
+
+- The delegation start, and any foreground send carrying the
+  server-resolved delegation context (`executeExecutionTargetMessage`;
+  Station Control `send_message` arrives through `/chat/delegated`), pass
+  `delegation`.
+- A scheduled Automation's first run on its dedicated conversation passes
+  `automation` ([`scheduledDedicatedStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts)).
+- The conversation inbox's placement ([`inboxPlacementStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts))
+  uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
+  over the entry and the placing Session's room execution binding, first
+  match wins: an Automation action's entry is `automation`; then the
+  origin the Station sender wrote on the entry (`dispatchOrigin`: a
+  scheduled run's `automation`, a person's memory Continue or Task review
+  send `interactive`, coordinator and Project supervision wakes `unknown`);
+  then a person's entry is `interactive`; a delegated child's result
+  (server-stamped `delegation-result` sender, also delivered through
+  `delegationResultStartPort`) is `delegation`; Station's other entries (a
+  Task question wake, an automatic memory continuation, a check-back) are
+  `task-dispatch` on a Session bound to a Task and `unknown` elsewhere.
+
+[`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
 stamps the value. A classified origin holds an early start back until the
 send is accepted, as a client origin does, and an engine-supplied value is
 dropped. Readers use `turnDispatchOrigin` from
 `@kontourai/station-contracts/runtime-events`, which reads a missing or
 unrecognised value, including every event persisted before the field, as
-`unknown`. Steers and engine-opened turns carry none. Nothing acts on the
-field yet. Evidence: `turn-dispatch-origin.test.ts` (real service and event
+`unknown`. Steers and engine-opened turns carry none. The value is the
+admitting Station's claim: a `turn.started` mirrored from another Station
+carries that Station's, so restart recovery must act only on this Station's
+own Sessions. Nothing acts on the field yet; restart recovery will continue
+only `task-dispatch` and `delegation` turns, and Automations keep their own
+recovery. Evidence: `turn-dispatch-origin.test.ts` (real service and event
 store, early engine start), `client-origin-propagation.test.ts`,
-`task-dispatch-agent-binding.routes.test.ts` (a real dispatched Task Session
-through `continueExecutionTargetMessage`) and the classifier table in
+`conversation-start-ports.test.ts` (the production start ports over a real
+room binding), `scheduled-conversation-run-dispatch.test.ts` (a scheduled
+run into a Task-bound chat reads `automation`), `coordinator-wake-dispatch.test.ts`,
+`task-review-send.test.ts`, `task-dispatch-agent-binding.routes.test.ts`
+(a real dispatched Task Session) and the classifier table in
 `thread-inbox.test.ts`.
 
 ## SessionLifecycleModule
