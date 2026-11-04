@@ -140,7 +140,7 @@ namespaces for the browser Station downloads with an AppArmor profile at
 abi <abi/5.0>,
 include <tunables/global>
 
-profile station-chromium /home/*/.station/{,instances/*/}browser/chromium/*/chrome-linux64/chrome flags=(unconfined) {
+profile station-chromium @{HOME}/.station/{,instances/*/}browser/chromium/*/chrome-linux64/chrome flags=(unconfined) {
   userns,
   @{exec_path} mr,
   include if exists <local/station-chromium>
@@ -149,6 +149,7 @@ profile station-chromium /home/*/.station/{,instances/*/}browser/chromium/*/chro
 
 Load it with `sudo apparmor_parser -r /etc/apparmor.d/station-chromium`, then
 open the page again. The path globs match every Station instance and Chromium
-version, so the profile survives browser updates. If your Station home is not
-under `/home/*/.station`, change the path to match. Prefer this over turning
-the restriction off for the whole machine.
+version, so the profile survives browser updates. `@{HOME}` is AppArmor's
+home-directory variable; if your Station home is not `.station` in a home
+directory, change the path to match. Prefer this over turning the restriction
+off for the whole machine.
