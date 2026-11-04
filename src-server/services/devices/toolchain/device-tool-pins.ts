@@ -10,7 +10,11 @@
  * dist.integrity`. `requiredIntegrity` below repeats that value so a lockfile
  * edited out of step with its pin fails closed (see `assertPinnedLock`).
  *
- * Version choice: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
+ * Version choice: expo-device-hub 0.19.1 (bumped 2026-11-04 from 0.10.1, with
+ * its lockfile generated the same way) for foldable support: serve-sim's
+ * hinge control and per-display panel streams, and serve-emu's `/api/fold`.
+ * Its hub-level route strings match 0.10.1's apart from a new `/healthz`.
+ * Earlier: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
  * used. Both were started on loopback with `--port 0` and answered `/readyz`
  * and `/api/devices` with the same device-list shape `LocalMobileDeviceHost`
  * parses; 0.10.1 is the version another shipping integration pins.
@@ -18,9 +22,11 @@
  * integration pins.
  *
  * Disclosed limitation — WebRTC is unsupported. expo-device-hub depends on
- * node-datachannel, a native addon whose install script would download a
- * prebuilt binary; `--ignore-scripts` skips it, so no native binary is
- * installed. serve-emu's WebRTC path would try to fetch one at runtime with
+ * node-datachannel, a native addon. Up to hub 0.10.1 its install script
+ * downloaded a prebuilt binary, which `--ignore-scripts` skips; from the
+ * 0.19.1 tree its prebuilt binaries are per-platform OPTIONAL packages,
+ * which the install omits (`--omit=optional`). Either way no native binary
+ * is installed; the hub loads node-datachannel only for WebRTC. serve-emu's WebRTC path would try to fetch one at runtime with
  * prebuild-install (unpinned); Station prevents that three ways: the hub
  * guard refuses the WebRTC offer routes, refuses to spawn prebuild-install,
  * and the hub's npm proxy settings point at a dead loopback port. Streams
@@ -55,6 +61,8 @@ export interface PinnedLockfile {
       integrity?: string;
       dependencies?: Record<string, string>;
       bin?: unknown;
+      /** npm marks platform-specific prebuilt packages optional. */
+      optional?: boolean;
     }
   >;
 }

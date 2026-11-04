@@ -101,8 +101,8 @@ async function installOutcome(tamper: InstallTamper) {
 }
 
 describe('device toolchain: pins', () => {
-  test('the real pins are expo-device-hub 0.10.1 and agent-device 0.21.12, and are sound', () => {
-    expect(DEVICE_TOOL_PINS['expo-device-hub'].version).toBe('0.10.1');
+  test('the real pins are expo-device-hub 0.19.1 and agent-device 0.21.12, and are sound', () => {
+    expect(DEVICE_TOOL_PINS['expo-device-hub'].version).toBe('0.19.1');
     expect(DEVICE_TOOL_PINS['agent-device'].version).toBe('0.21.12');
     expect(
       assertPinnedLock(DEVICE_TOOL_PINS['expo-device-hub']),
@@ -201,6 +201,64 @@ describe('device toolchain: install', () => {
       'node_modules/dep was recorded with integrity',
     );
     expect(outcome.published).toBe(false);
+  });
+
+  /** A pin whose lock lists a platform-specific optional package. */
+  function withOptionalPlatformPackage(): SyntheticTool {
+    const tool = syntheticTool('expo-device-hub');
+    tool.pin.lock.packages['node_modules/@native/other-os'] = {
+      version: '1.0.0',
+      resolved:
+        'https://registry.npmjs.org/@native/other-os/-/other-os-1.0.0.tgz',
+      integrity: `sha512-${'B'.repeat(86)}==`,
+      optional: true,
+    };
+    return tool;
+  }
+
+  async function optionalOutcome(record: NonNullable<InstallTamper['record']>) {
+    const home = tempHome();
+    const tool = withOptionalPlatformPackage();
+    const installer: DeviceToolInstaller = {
+      run: async ({ dir }) => writeFakeInstall(dir, tool, { record }),
+    };
+    const toolchain = new DeviceToolchain({
+      stationHome: home,
+      installer,
+      pins: { ...pins, 'expo-device-hub': tool.pin },
+    });
+    await toolchain.install('expo-device-hub', { consent: true }).completion;
+    return toolchain.state('expo-device-hub', true);
+  }
+
+  test('an optional platform package the install omitted is not a mismatch', async () => {
+    const state = await optionalOutcome((packages) => {
+      delete packages['node_modules/@native/other-os'];
+    });
+    expect(state).toMatchObject({ state: 'installed' });
+  });
+
+  test('an optional package that IS installed must still match its pin', async () => {
+    const state = await optionalOutcome((packages) => {
+      packages['node_modules/@native/other-os'] = {
+        version: '1.0.0',
+        integrity: `sha512-${'C'.repeat(86)}==`,
+      };
+    });
+    expect(state).toMatchObject({
+      state: 'failed',
+      reason: 'integrity-mismatch',
+    });
+  });
+
+  test('a REQUIRED package missing from the installed tree is still a mismatch', async () => {
+    const state = await optionalOutcome((packages) => {
+      delete packages['node_modules/dep'];
+    });
+    expect(state).toMatchObject({
+      state: 'failed',
+      reason: 'integrity-mismatch',
+    });
   });
 
   test('a changed file in the installed tool fails content verification', async () => {
@@ -526,6 +584,7 @@ describe('npm ci installer', () => {
       'ci',
       '--ignore-scripts',
       '--omit=dev',
+      '--omit=optional',
       '--no-audit',
       '--no-fund',
       '--no-update-notifier',
