@@ -2711,6 +2711,8 @@ hold an otherwise eligible PR. A demonstrated product defect still needs an
 explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
 and exact-SHA promotion receipts establish different things.
 
+For asset-load failures, inspect `gallery/diagnostics/asset-network.json`: it retains capped, sanitized metadata for same-origin public JavaScript requests, emitted-file hashes and references, and allowlisted server lifecycle events. Inspect its dropped, pending, metadata-error and incomplete fields; `capture.json`'s `assetDiagnosticsRetention: RETAINED` reports a successful write, not complete diagnostics or a successful capture. Disk-cache use, UI-process lifecycle and the collector's checkout SHA remain unknown. `workflowEventSha` identifies the workflow event; establish the candidate checkout from the hosted checkout record. Preserve the original capture failure and avoid inferring its cause from a later passing run.
+
 Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
 reusing a verdict or skipping capture. Run it in the exact candidate checkout
 against the downloaded artifact and that checkout's baseline:
