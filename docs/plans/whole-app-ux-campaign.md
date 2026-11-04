@@ -165,6 +165,11 @@ allocations; user ports 3141 and 3000 are unavailable. Native work follows the
 repository's Tauri skill. Do not bypass an approval rejection, alter governance,
 skip hooks, inflate timeouts or rerun blindly to green.
 
+For this campaign, the user authorized isolated T3-managed C-drive worktrees;
+never use the primary checkout. Preserve recovery data in
+`E:/pnpm-store/v11/projects` and the remaining C-drive store entries: no cleanup,
+store pruning or traversal through their project links.
+
 Readiness evaluates frozen inputs: complete content/review commits before starting
 it. A mutation during the run invalidates the receipt. Diagnose actual failures;
 source review cannot turn a failed or incomplete gate green. Hosted required
@@ -191,6 +196,9 @@ Every implemented journey has appropriate caller/user-action proof and recovery,
 persistence and accessibility checks, or an exact external prerequisite with a
 next action. No critical finding is left untriaged. Each fix has a reviewable PR,
 exact head and evidence limits; integration state comes from GitHub, not this plan.
+Required reproduced-defect fixes must land, and cross-workflow acceptance must
+pass at the exact integrated revision, except for explicitly recorded external
+prerequisites. An open PR or a triaged known defect is not delivered work.
 Retain a concrete unexecuted set. Do not declare whole-app completion from test
 counts, route screenshots, a clean source scan or merged fixes alone.
 
