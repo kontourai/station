@@ -1,5 +1,8 @@
 # Daily throughput: second review fix evidence
 
+Historical round-2 evidence; adoption handling is superseded by
+[round 3](lite-engine-tokens-round3.md).
+
 This supersedes the first review's resume behavior and tokens-only Lite option
 copy. It is local source/component evidence, not live-provider, installed-shell,
 receiver-deployment, billing or release qualification.
@@ -10,13 +13,17 @@ The Lite daily projection opts into conservative resume baselines in the existin
 canonical observation fold. Every repeated cumulative-engine session start
 (resume/reattach), explicit recorded resume, or initially matched native resume
 withholds the first reported value of each token component from dated usage.
-Later component increases count normally. Fresh starts and per-turn engines keep
-their first turn. Default lifetime accounting is unchanged.
+Later component increases count normally. Every repeated session start withholds
+a baseline, including a fresh start after a lost native session. Only an initial
+fresh start and per-turn engines keep their first figure. Default lifetime
+accounting is unchanged. This clarification corrects the original round-2
+claim that all fresh starts retained their first turn; the code is unchanged.
 
-The first resumed report can include work done in an outside terminal. It cannot
-separate that work from the resumed first turn, so the policy deliberately
-undercounts that turn. Sparse components establish their baseline when first
-reported. The earlier reset/correction undercount is unchanged.
+The first resumed report can include work done in an outside terminal. The whole
+first reported figure of each token component is withheld: the whole first turn
+when the engine reports once per turn, or part of it when it reports more often.
+A repeated fresh start therefore undercounts, never leaks outside usage. Sparse
+components establish their baseline when first reported. The earlier reset/correction undercount is unchanged.
 
 ## Red before repair
 

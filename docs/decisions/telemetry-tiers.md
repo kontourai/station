@@ -108,13 +108,17 @@ For example, 500,000 then 20,000 then 40,000 input tokens on one day contributes
 only the later 20,000 increase. Keeping the earlier 500,000 would overcount a
 correction; this reset/correction rule is unchanged.
 
-Daily cumulative-engine usage also withholds the first reported component after
-every repeated session start (resume or reattach), or an initially recorded
-native resume. That report establishes a new baseline; none of its jump is
-assigned a day. Later component increases count normally. For example, 100k
-in Station, then 5M outside, then a resumed 5.15M report and a 5.20M report
-contributes 50k after the resume. This deliberately misses the first resumed
-turn's consumption because its jump cannot be separated from outside work.
+Daily cumulative-engine usage withholds the whole first reported figure of each
+token component after every repeated session start, including a fresh start
+after a lost native session. An initially recorded native resume or adoption
+establishes the same baseline. The fold recognizes inherited-counter metadata
+on either session start or configuration, including native forks. None of the
+baseline jump is assigned a day; only later component increases count. For
+example, 100k in Station, then 5M outside, then a resumed 5.15M report and a
+5.20M report contributes 50k after the resume. Withholding can undercount the
+whole first turn when the engine reports once per turn, or part of it when it
+reports more often. Withholding after a repeated fresh start is an undercount,
+never an outside-usage leak.
 Sparse components establish their baselines when first reported. The policy
 is opt-in for the Lite daily projection; lifetime accounting keeps its existing
 canonical totals. Undated usage, undeclared scopes and

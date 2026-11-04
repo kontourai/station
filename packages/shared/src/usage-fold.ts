@@ -397,6 +397,13 @@ class UsageObservationCollector {
       this.withholdResumedCumulativeUsage &&
       CUMULATIVE_USAGE_PROVIDERS.has(event.provider)
     ) {
+      if (
+        (event.method === 'session.started' ||
+          event.method === 'session.configured') &&
+        (event.metadata?.usageAvailability === 'unavailable' ||
+          event.metadata?.continuation === 'native-fork')
+      )
+        this.withholdNextCumulativeFigures();
       if (event.method === 'session.started') {
         if (
           this.cumulativeStarts.has(event.provider) ||
