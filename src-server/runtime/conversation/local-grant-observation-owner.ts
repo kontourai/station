@@ -164,8 +164,7 @@ async function captureExistingLocalGrant(
     if (after.environmentId !== environmentId) refuse();
     const assertCurrent = () => {
       try {
-        const region = raw?.borrowedRegion();
-        const check = () => {
+        const check = (region?: object) => {
           if (region) checkPrincipal(region);
           else requirePrincipal();
           if (
@@ -178,10 +177,9 @@ async function captureExistingLocalGrant(
           if (region) checkPrincipal(region);
           else requirePrincipal();
         };
-        // Within the canonical region, the raw reader owns the contiguous
-        // entry fence. Independent policy and signer checkpoints stay live.
-        if (region) check();
-        else withAuthority(check);
+        // Keep the original outer authority entry/closing fence. Only the
+        // adjacent principal-wrapper/raw-reader prefix borrows that span.
+        withAuthority(() => check(raw?.borrowedRegion()));
       } catch {
         refuse();
       }

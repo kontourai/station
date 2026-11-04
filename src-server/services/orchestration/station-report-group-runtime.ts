@@ -239,6 +239,7 @@ export class StationReportGroupRuntime {
       persistence,
       environment: owners.runtime.environmentSecurityService,
       security: owners.runtime.requestSecurity,
+      canonicalLocalGrantOrigin: owners.runtime.canonicalLocalGrantOrigin,
     });
     const sources = new LocalSourceAdmissionOwner(
       home,

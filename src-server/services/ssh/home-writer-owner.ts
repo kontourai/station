@@ -50,6 +50,18 @@ export interface HomeWriterLease {
   assertCurrent(): void;
   release(): Promise<void>;
 }
+const synchronousSpanWitnessBrand = Symbol('HomeSynchronousSpanWitness');
+export interface HomeSynchronousSpanWitness {
+  readonly [synchronousSpanWitnessBrand]: true;
+}
+const synchronousSpanWitnesses = new WeakMap<
+  HomeSynchronousSpanWitness,
+  {
+    owner: HomeWriterOwner;
+    core: Core;
+    span: Span;
+  }
+>();
 const cores = new Map<string, Promise<Core>>();
 const leases = new WeakMap<HomeWriterLease, Holder>();
 const spans = new AsyncLocalStorage<ReadonlyMap<Core, Span>>();
@@ -238,12 +250,42 @@ export class HomeWriterOwner {
     }
   }
 
-  assertSynchronous(): void {
+  /** Identity capture only; this makes no currentness or permission decision. */
+  captureSynchronousSpan(): HomeSynchronousSpanWitness {
+    const witness: HomeSynchronousSpanWitness = Object.freeze({
+      [synchronousSpanWitnessBrand]: true as const,
+    });
+    const span = spans.getStore()?.get(this.#core);
+    if (span)
+      synchronousSpanWitnesses.set(witness, {
+        owner: this,
+        core: this.#core,
+        span,
+      });
+    return witness;
+  }
+
+  assertSynchronous(witness?: HomeSynchronousSpanWitness): void {
     this.assertCurrent();
     const span = spans.getStore()?.get(this.#core);
+    if (witness !== undefined) this.assertSynchronousSpanIdentity(witness);
     if (!span?.active)
       throw new HomeWriterUnavailableError('borrow-unavailable');
     span.lease.assertCurrent();
+  }
+
+  /** Identity only. Callers must separately retain their fresh physical guard. */
+  assertSynchronousSpanIdentity(witness: HomeSynchronousSpanWitness): void {
+    const captured = synchronousSpanWitnesses.get(witness);
+    const span = spans.getStore()?.get(this.#core);
+    if (
+      !captured ||
+      captured.owner !== this ||
+      captured.core !== this.#core ||
+      captured.span !== span ||
+      !captured.span.active
+    )
+      throw new HomeWriterUnavailableError('borrow-unavailable');
   }
 
   #span<T>(lease: FileMutationLease, body: () => T): T {

@@ -160,6 +160,7 @@ export class StationReportGroupCustody {
       persistence: StationDelegationPersistence;
       environment: EnvironmentSecurityService;
       security: CurrentRuntimeRequestPrincipalSecurity;
+      canonicalLocalGrantOrigin?: import('../ssh/environment-security-service.js').CanonicalLocalGrantOrigin;
     },
   ) {
     this.owners = Object.freeze({ ...owners });
@@ -192,12 +193,14 @@ export class StationReportGroupCustody {
             this.owners.environment,
             this.owners.security,
             admit,
+            this.owners.canonicalLocalGrantOrigin,
           )
         : captureEnvironmentLocalGrantObservationOwner(
             context.req.raw,
             this.owners.environment,
             this.owners.security,
             admit,
+            this.owners.canonicalLocalGrantOrigin,
           ).then((observation) =>
             admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
           ),
@@ -266,6 +269,7 @@ export class StationReportGroupCustody {
       this.owners.environment,
       this.owners.security,
       admit,
+      this.owners.canonicalLocalGrantOrigin,
     );
     const readPrepared = () => {
       const lease = authority.requireCurrentLocalGrant(context.req.raw);

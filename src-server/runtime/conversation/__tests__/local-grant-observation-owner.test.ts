@@ -1315,3 +1315,116 @@ test.each(['snapshot', 'after-release'] as const)(
     }
   },
 );
+
+test.each(['legacy', 'canonical'] as const)(
+  'a fresh SDK read cannot reuse an outer registry snapshot after Home release and peer revocation (%s)',
+  async (originMode) => {
+    const h = await setup();
+    const peer = new EnvironmentSecurityService({ homeDir: h.home });
+    await peer.initialize();
+    assert.equal(
+      peer.devicePairing.verifyCredential(h.paired.credential),
+      true,
+    );
+    const owner = await captureEnvironmentLocalGrantObservationOwner(
+      h.request,
+      h.environment,
+      h.environment,
+      undefined,
+      originMode === 'canonical'
+        ? h.environment.canonicalLocalGrantOrigin()
+        : undefined,
+    );
+    const credential = h
+      .store(owner)
+      .captureSdkCredential(h.request, 'selected');
+    assert.equal(
+      readObservedSdkProviderCredential(credential, 'anthropic', h.request)
+        .apiKey,
+      'synthetic-provider-key',
+    );
+    const other = await setup();
+    const writerB = await HomeWriterOwner.forHome(other.home);
+    const writerA = await HomeWriterOwner.forHome(h.home);
+    const leaseA = await writerA.acquire();
+    let released: Promise<void> | undefined;
+    let notificationReached = false;
+    let withdrawalCommitted = false;
+    let reachedNewSpan = false;
+    let credentialReturned = false;
+    let secretBodyEffects = 0;
+    let readRefusal: unknown;
+    let callbackFailure: unknown;
+    let closingFailure: unknown;
+    try {
+      try {
+        writerA.runWithLease(leaseA, () =>
+          owner.withObservationScope(h.request, () => {
+            released = leaseA.release();
+            writerB.runSynchronous(() =>
+              writerB.afterRelease(() => {
+                notificationReached = true;
+                // Notifications swallow throws; retain every outcome for assertions
+                // after the original region and its closing checks have unwound.
+                try {
+                  peer.devicePairing.revokeDevice(
+                    h.paired.device.id,
+                    'operator-credential',
+                  );
+                  assert.equal(
+                    peer.devicePairing.verifyCredential(h.paired.credential),
+                    false,
+                  );
+                  withdrawalCommitted = true;
+                  writerA.runSynchronous(() => {
+                    reachedNewSpan = true;
+                    try {
+                      const value = readObservedSdkProviderCredential(
+                        credential,
+                        'anthropic',
+                        h.request,
+                      );
+                      credentialReturned = true;
+                      if (value.apiKey === 'synthetic-provider-key')
+                        secretBodyEffects++;
+                    } catch (error) {
+                      readRefusal = error;
+                    }
+                  });
+                } catch (error) {
+                  callbackFailure = error;
+                }
+              }),
+            );
+          }),
+        );
+      } catch (error) {
+        closingFailure = error;
+      }
+      assert.equal(notificationReached, true);
+      assert.equal(callbackFailure, undefined);
+      assert.equal(withdrawalCommitted, true);
+      assert.equal(
+        reachedNewSpan,
+        true,
+        'the replacement Home span must acquire',
+      );
+      assert.equal(
+        credentialReturned,
+        false,
+        'the inner SDK read must refuse before returning a protected credential',
+      );
+      assert.equal(secretBodyEffects, 0);
+      assert.ok(readRefusal instanceof ProviderCredentialObservationError);
+      assert.equal(readRefusal.code, 'observation_unavailable');
+      assert.ok(closingFailure, 'the original released scope must also fail');
+      assert.equal(
+        peer.devicePairing.verifyCredential(h.paired.credential),
+        false,
+      );
+    } finally {
+      await released;
+      await leaseA.release();
+    }
+  },
+);

@@ -557,7 +557,10 @@ export class EnvironmentSecurityService {
       [canonicalLocalGrantOriginBrand]: true as const,
     });
     const regions = new AsyncLocalStorage<object>();
-    const active = new WeakMap<object, () => void>();
+    const active = new WeakMap<
+      object,
+      ReturnType<typeof reads.captureBorrowedScope>
+    >();
     const requireOwner = () => {
       if (!this.#initialized || this.#devicePairingService !== pairing)
         throw new HomeWriterUnavailableError('identity-unavailable');
@@ -571,24 +574,26 @@ export class EnvironmentSecurityService {
         ? currentRegion
         : undefined;
     };
+    const withinCurrentAuthority = <Value>(check: () => Value): Value => {
+      requireOwner();
+      if (!reads.isRegistryScopeActive())
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+      const region = Object.freeze({});
+      active.set(region, reads.captureBorrowedScope());
+      try {
+        return regions.run(region, check);
+      } finally {
+        active.delete(region);
+      }
+    };
     const operations: CanonicalLocalGrantOriginOperations = Object.freeze({
       withCurrentAuthority: <Value>(check: () => Value): Value => {
         requireOwner();
-        return reads.withCurrentRegistry(check);
+        return reads.withCurrentRegistry(() => withinCurrentAuthority(check));
       },
       withObservationScope: <Value>(check: () => Value): Value => {
         requireOwner();
-        return reads.withCurrentRegistry(() => {
-          const region = Object.freeze({});
-          // A release notification can clear Home context independently.
-          const originalContext = AsyncLocalStorage.snapshot();
-          active.set(region, () => originalContext(reads.assertBorrowedScope));
-          try {
-            return regions.run(region, check);
-          } finally {
-            active.delete(region);
-          }
-        });
+        return reads.withCurrentRegistry(() => withinCurrentAuthority(check));
       },
       readUnboundScope: (candidate: string) => {
         requireOwner();
@@ -596,17 +601,10 @@ export class EnvironmentSecurityService {
       },
       borrowedRegion,
       readBorrowedUnboundScope: (candidate: string, region: object) => {
-        const assertOriginal = active.get(region);
-        if (borrowedRegion() !== region || !assertOriginal)
+        const witness = active.get(region);
+        if (borrowedRegion() !== region || !witness)
           throw new HomeWriterUnavailableError('borrow-unavailable');
-        try {
-          assertOriginal();
-        } catch (error) {
-          throw new HomeWriterUnavailableError('borrow-unavailable', false, {
-            cause: error,
-          });
-        }
-        return reads.readBorrowedUnboundScope(candidate);
+        return reads.readBorrowedUnboundScope(candidate, witness);
       },
     });
     canonicalLocalGrantOrigins.set(origin, { owner: this, operations });

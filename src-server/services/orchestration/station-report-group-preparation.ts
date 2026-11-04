@@ -172,6 +172,8 @@ export class StationReportGroupPreparation {
       context.req.raw,
       this.owners.runtime.environmentSecurityService,
       this.owners.runtime.requestSecurity,
+      undefined,
+      this.owners.runtime.canonicalLocalGrantOrigin,
     );
     const lease = authority.requireCurrentLocalGrant(context.req.raw);
     lease.assertCurrent();

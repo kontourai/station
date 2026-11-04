@@ -80,6 +80,7 @@ import {
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
 import {
+  type HomeSynchronousSpanWitness,
   type HomeWriterLease,
   HomeWriterOwner,
   HomeWriterUnavailableError,
@@ -1217,8 +1218,11 @@ const pairingConstructionKey = Symbol('PairingConstruction');
 interface CanonicalPairingReadOperations {
   withCurrentRegistry<Value>(check: () => Value): Value;
   readUnboundScope(candidate: string): string | undefined;
-  readBorrowedUnboundScope(candidate: string): string | undefined;
-  assertBorrowedScope(): void;
+  readBorrowedUnboundScope(
+    candidate: string,
+    witness: HomeSynchronousSpanWitness,
+  ): string | undefined;
+  captureBorrowedScope(): HomeSynchronousSpanWitness;
   isRegistryScopeActive(): boolean;
 }
 const canonicalPairingReads = new WeakMap<
@@ -1255,6 +1259,7 @@ export class DevicePairingService {
   readonly #writer: HomeWriterOwner;
   #registrySpanDepth = 0;
   #registrySnapshotActive = false;
+  #registryScopeWitness: HomeSynchronousSpanWitness | undefined;
   #registryOutcomeUnconfirmed = false;
   #environmentId: string;
   readonly #now: () => number;
@@ -1348,11 +1353,14 @@ export class DevicePairingService {
           this.#withCurrentRegistry(check),
         readUnboundScope: (candidate: string) =>
           this.#writer.runSynchronous(() => this.#readUnboundScope(candidate)),
-        readBorrowedUnboundScope: (candidate: string) => {
-          this.#writer.assertSynchronous();
+        readBorrowedUnboundScope: (
+          candidate: string,
+          witness: HomeSynchronousSpanWitness,
+        ) => {
+          this.#writer.assertSynchronous(witness);
           return this.#readUnboundScope(candidate);
         },
-        assertBorrowedScope: () => this.#writer.assertSynchronous(),
+        captureBorrowedScope: () => this.#writer.captureSynchronousSpan(),
         isRegistryScopeActive: () =>
           this.#registrySnapshotActive || this.#registrySpanDepth > 0,
       }),
@@ -3691,6 +3699,7 @@ export class DevicePairingService {
   }
 
   #readUnboundScope(candidate: string): string | undefined {
+    this.#assertRegistryScopeIdentity();
     if (this.#registryOutcomeUnconfirmed)
       throw new HomeWriterUnavailableError('cleanup-required', true);
     let scope: string | undefined;
@@ -4176,9 +4185,13 @@ export class DevicePairingService {
 
   #withCurrentRegistry<T>(check: () => T): T {
     return this.#writer.runSynchronous(() => {
+      this.#assertRegistryScopeIdentity();
       if (this.#registrySnapshotActive || this.#registrySpanDepth)
         return check();
+      const witness = this.#writer.captureSynchronousSpan();
       this.#refreshRegistry();
+      this.#writer.assertSynchronousSpanIdentity(witness);
+      this.#registryScopeWitness = witness;
       this.#registrySnapshotActive = true;
       try {
         const result = check();
@@ -4190,6 +4203,7 @@ export class DevicePairingService {
         return result;
       } finally {
         this.#registrySnapshotActive = false;
+        this.#registryScopeWitness = undefined;
       }
     });
   }
@@ -4202,17 +4216,32 @@ export class DevicePairingService {
     this.#registry = this.#loadRegistry();
   }
 
+  #assertRegistryScopeIdentity(): void {
+    if (!this.#registrySnapshotActive && !this.#registrySpanDepth) return;
+    if (!this.#registryScopeWitness)
+      throw new HomeWriterUnavailableError('borrow-unavailable');
+    this.#writer.assertSynchronousSpanIdentity(this.#registryScopeWitness);
+  }
+
   #withRegistrySpan<T>(operation: () => T): T {
     return this.#writer.runSynchronous(() => {
+      this.#assertRegistryScopeIdentity();
       if (this.#registryOutcomeUnconfirmed)
         throw new HomeWriterUnavailableError('cleanup-required', true);
       if (this.#registrySpanDepth) return operation();
-      if (!this.#registrySnapshotActive) this.#refreshRegistry();
+      if (!this.#registrySnapshotActive) {
+        const witness = this.#writer.captureSynchronousSpan();
+        this.#refreshRegistry();
+        this.#writer.assertSynchronousSpanIdentity(witness);
+        this.#registryScopeWitness = witness;
+      }
       this.#registrySpanDepth++;
       try {
         return operation();
       } finally {
         this.#registrySpanDepth--;
+        if (!this.#registrySnapshotActive && !this.#registrySpanDepth)
+          this.#registryScopeWitness = undefined;
       }
     });
   }
