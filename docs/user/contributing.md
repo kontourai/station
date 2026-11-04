@@ -23,8 +23,10 @@ excerpt that explains the problem.
 If you submit a pull request, explain the user outcome, the related issue and
 closure condition, the evidence you obtained, anything `NOT_VERIFIED`, the
 risk and rollback plan, and what you personally inspected. If AI tools helped,
-identify the tools and material areas, then personally inspect the submitted
-change; do not disclose prompts or private context.
+identify the tools and material areas, list the agent sessions (resumable
+session identifiers, models, session count, and token totals), then personally
+inspect the submitted change; do not disclose prompts, transcripts, or private
+context.
 
 ## External forks
 
