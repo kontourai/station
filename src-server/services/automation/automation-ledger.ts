@@ -1139,13 +1139,16 @@ class SqliteAutomationLedger implements AutomationLedger {
             WHERE state = 'closed' AND updated_ms < ? LIMIT ?)`,
       )
       .run(now - limits.closedEpisodeRetentionMs, PRUNE_BATCH);
+    // One accepted delivery can add a decision for each of up to `maxRules`
+    // rules, so each pass may delete that many: expiry keeps pace with the
+    // largest insert a single write can make.
     this.db
       .prepare(
         `DELETE FROM automation_rule_decisions WHERE rowid IN (
            SELECT rowid FROM automation_rule_decisions
             WHERE decided_ms < ? ORDER BY decided_ms LIMIT ?)`,
       )
-      .run(now - limits.deliveryRetentionMs, PRUNE_BATCH);
+      .run(now - limits.deliveryRetentionMs, limits.maxRules);
     // A live episode stays open until `closeOn`; an observe marker is also
     // dropped after the closed-episode retention, so it cannot outlive the
     // decisions that explain it indefinitely.
