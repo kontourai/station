@@ -35,6 +35,7 @@ const makeTempDir = trackTempDirs();
 function linkHarness(
   role: 'active' | 'trial',
   stage = vi.fn(async () => '1.1.0'),
+  env?: NodeJS.ProcessEnv,
 ) {
   const installRoot = makeTempDir('station-link-');
   const context: ServiceLauncherContext = {
@@ -62,6 +63,7 @@ function linkHarness(
       handOffLiveness,
       stage,
       log: () => undefined,
+      ...(env ? { env } : {}),
     },
     gone,
   );
@@ -854,6 +856,117 @@ describe('staging under the managed update limit (#4522)', () => {
     await expect(
       stageServiceUpdate({ installRoot, version: '1.0.0', env }),
     ).rejects.toThrow(/STATION_MANAGED_POLICY_INVALID/);
+    expect(existsSync(dump)).toBe(false);
+  });
+
+  /** A staged 1.2.0 in a link harness, whose policy is written afterwards. */
+  function stagedLink(state: Record<string, unknown> | null) {
+    const policyDir = makeTempDir('station-link-policy-');
+    const policy = join(policyDir, 'policy.json');
+    const env = { PATH: process.env.PATH, STATION_MANAGED_POLICY_TEST_FILE: policy };
+    const harness = linkHarness('active', vi.fn(async () => '1.2.0'), env);
+    if (state)
+      writeFileSync(
+        join(harness.installRoot, '.station-release-state.json'),
+        JSON.stringify(state),
+      );
+    const staged = join(harness.installRoot, 'versions', '1.2.0');
+    mkdirSync(join(staged, 'bin'), { recursive: true });
+    writeFileSync(join(staged, 'bin', 'station.mjs'), '');
+    writeFileSync(join(staged, '.station-install-complete'), 'abc\n');
+    const installPolicy = (updates: Record<string, unknown>) =>
+      writeFileSync(
+        policy,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { updates },
+        }),
+      );
+    return { ...harness, installPolicy };
+  }
+
+  test.each([
+    ['apply', { mode: 'apply' as const }],
+    ['update', {}],
+  ])(
+    'off installed after a version was staged: an %s request for it is refused and nothing is requested',
+    async (_name, options) => {
+      const harness = stagedLink({ channel: 'stable', releaseChannel: 'stable' });
+      harness.installPolicy({ mode: 'off' });
+      const request = writeServiceUpdateRequest(
+        harness.installRoot,
+        '1.2.0',
+        options,
+      );
+      harness.link.tick();
+      await vi.waitFor(() =>
+        expect(harness.result()).toMatchObject({
+          requestId: request.id,
+          status: 'failed',
+          reason: "This machine's managed policy turns off Station updates.",
+        }),
+      );
+      expect(harness.sent).toEqual([]);
+      expect(harness.stage).not.toHaveBeenCalled();
+    },
+  );
+
+  test('allowNightly: false refuses applying a staged nightly-numbered version on an install state with no ring', async () => {
+    const harness = stagedLink(null);
+    harness.installPolicy({ allowNightly: false });
+    const staged = join(harness.installRoot, 'versions', '1.3.0-nightly.7');
+    mkdirSync(join(staged, 'bin'), { recursive: true });
+    writeFileSync(join(staged, 'bin', 'station.mjs'), '');
+    writeFileSync(join(staged, '.station-install-complete'), 'abc\n');
+    const request = writeServiceUpdateRequest(
+      harness.installRoot,
+      '1.3.0-nightly.7',
+      { mode: 'apply' },
+    );
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({
+        requestId: request.id,
+        status: 'failed',
+        reason:
+          "This machine's managed policy makes the nightly channel unavailable.",
+      }),
+    );
+    expect(harness.sent).toEqual([]);
+  });
+
+  test('a staged stable version is still applied when the policy allows it', async () => {
+    const harness = stagedLink({ channel: 'stable', releaseChannel: 'stable' });
+    harness.installPolicy({ allowNightly: false });
+    writeServiceUpdateRequest(harness.installRoot, '1.2.0', { mode: 'apply' });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.sent).toMatchObject([
+        { type: 'request-update', targetVersion: '1.2.0' },
+      ]),
+    );
+  });
+
+  test('allowNightly: false refuses a stage whose install state names no ring', async () => {
+    const { installRoot, env, dump } = stagingFixture('stable', {
+      allowNightly: false,
+    });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({ channel: 'stable' }),
+    );
+    await expect(
+      stageServiceUpdate({ installRoot, version: '1.0.0', env }),
+    ).rejects.toThrow(
+      "This machine's managed policy makes the nightly channel unavailable, and Station cannot tell which release channel this install updates from.",
+    );
+    // A nightly-numbered installed version is nightly even with no ring.
+    await expect(
+      stageServiceUpdate({ installRoot, version: '1.0.0-nightly.3', env }),
+    ).rejects.toThrow(
+      "This machine's managed policy makes the nightly channel unavailable.",
+    );
     expect(existsSync(dump)).toBe(false);
   });
 });
