@@ -138,7 +138,13 @@ record mutation routes cannot write directly into this root. Review decisions,
 distillation and erasure are separate work and are not provided by this preview.
 Optional `provenance.source_refs` identify transcript sources for attribution;
 they neither grant transcript access nor serve as review evidence. Station checks
-the Corpus root binding when opening the registered root and before cached reads.
+the Corpus adapter binding when opening a root and before cached reads, but does
+not pin that identity across a Station restart. Replacing the store directory can
+therefore cause a reopened registration to adopt a different store. Durable host
+binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
+Proposals submitted through this preview are attributed to the operator; Corpus
+refuses that same person as an approver. The preview provides no decision route.
+An agent-backed proposal and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index
 

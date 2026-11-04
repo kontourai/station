@@ -98,6 +98,11 @@ test('memory routes require the preview and owner, and expose proposals only exp
   });
   expect(proposed.status).toBe(201);
   const id = ((await proposed.json()) as { data: { id: string } }).data.id;
+  const registeredRoot = await manager.findRoot(owner, () => {});
+  expect(registeredRoot).not.toBeNull();
+  await expect(
+    manager.applyCreate(owner, registeredRoot!, () => {}, id),
+  ).rejects.toMatchObject({ code: 'SELF_APPROVAL' });
   const replay = await app.request('/memory/proposals', {
     method: 'POST',
     headers,

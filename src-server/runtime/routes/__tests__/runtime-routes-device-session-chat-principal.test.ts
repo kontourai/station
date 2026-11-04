@@ -3988,7 +3988,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(direct.status).toBe(404);
     });
 
-    test('private memory preview keeps pending proposals out of search and away from delegation peers', async () => {
+    test('private memory preview keeps pending proposals out of search', async () => {
       const embedded: string[][] = [];
       const {
         app,
