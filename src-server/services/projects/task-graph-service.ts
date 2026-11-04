@@ -120,6 +120,7 @@ import {
   validateRelationshipState,
   validTaskIdentity,
 } from './task-relationship-state.js';
+import { TaskWorktreeStore } from './task-worktree-store.js';
 import {
   WorktreeProvisioningService,
   type WorktreeTerminalState,
@@ -659,20 +660,7 @@ const TASK_RECORD_KEYS = [
   'workItemObservedAt',
   'workItemProvenance',
   'closeOnMerge',
-  'taskWorktree',
   'dispatchReservation',
-] as const;
-const TASK_WORKTREE_KEYS = [
-  'mode',
-  'repoPath',
-  'path',
-  'branch',
-  'baseRef',
-  'baseCommit',
-  'cleanupPolicy',
-  'preserveOnFailure',
-  'createdAt',
-  'owner',
 ] as const;
 const DISPATCH_RESERVATION_KEYS = [
   'generation',
@@ -1014,63 +1002,6 @@ function validateTaskGraphStoreData(
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
-    if (
-      task.taskWorktree !== undefined &&
-      validateExactObject(
-        task.taskWorktree,
-        TASK_WORKTREE_KEYS,
-        [
-          'mode',
-          'repoPath',
-          'path',
-          'branch',
-          'baseRef',
-          'cleanupPolicy',
-          'preserveOnFailure',
-          'createdAt',
-          'owner',
-        ],
-        `${at}.taskWorktree`,
-        problems,
-      )
-    ) {
-      const worktree = task.taskWorktree;
-      if (worktree.mode !== 'worktree')
-        problems.push(`${at}.taskWorktree.mode: must be 'worktree'`);
-      for (const key of ['repoPath', 'path', 'branch', 'baseRef'] as const)
-        validateNonBlankString(
-          worktree[key],
-          `${at}.taskWorktree.${key}`,
-          problems,
-        );
-      validateOptionalText(
-        worktree.baseCommit,
-        `${at}.taskWorktree.baseCommit`,
-        problems,
-      );
-      if (
-        worktree.cleanupPolicy !== 'cleanup' &&
-        worktree.cleanupPolicy !== 'preserve'
-      )
-        problems.push(`${at}.taskWorktree.cleanupPolicy: invalid value`);
-      if (typeof worktree.preserveOnFailure !== 'boolean')
-        problems.push(`${at}.taskWorktree.preserveOnFailure: must be boolean`);
-      validateCanonicalTimestamp(
-        worktree.createdAt,
-        `${at}.taskWorktree.createdAt`,
-        problems,
-      );
-      // The record belongs to exactly this Task; a transplanted record is
-      // corruption, not a worktree this Task may finalize.
-      const owner = worktree.owner;
-      if (
-        !isPlainObject(owner) ||
-        owner.kind !== 'task' ||
-        owner.taskId !== task.id ||
-        Object.keys(owner).length !== 2
-      )
-        problems.push(`${at}.taskWorktree.owner: must name this Task`);
-    }
     if (task.workspaceBinding === undefined) {
       problems.push(`${at}.workspaceBinding: required`);
     } else if (
@@ -1786,10 +1717,16 @@ export class TaskGraphService {
    * dispatch and its Task finishing) never race on the same checkout.
    */
   private readonly taskWorktreeCustody = new Map<string, Promise<unknown>>();
+  /** #4507: Task-owned worktree records, kept out of the task store. */
+  private readonly taskWorktrees: TaskWorktreeStore;
 
   constructor(projectHomeDir: string, deps: TaskGraphServiceDeps = {}) {
     this.worktreeProvisioning =
       deps.worktreeProvisioning ?? new WorktreeProvisioningService();
+    this.taskWorktrees = new TaskWorktreeStore(
+      projectHomeDir,
+      deps.acquireMutationLock,
+    );
     this.orchestrationService = deps.orchestrationService;
     this.projectService = deps.projectService;
     this.localProjectIdFor = deps.localProjectIdFor;
@@ -4938,12 +4875,24 @@ export class TaskGraphService {
    * a no-op).
    */
   /**
+   * #4507: the worktree this Task's Sessions run in, if it has one: the
+   * record in the Task worktree store for this Task incarnation.
+   */
+  readTaskWorktree(taskId: string): WorktreeSessionMetadata | undefined {
+    const task = this.readStore().tasks.find((item) => item.id === taskId);
+    return task
+      ? this.taskWorktrees.read(taskId, task.createdAt)?.worktree
+      : undefined;
+  }
+
+  /**
    * #4507: the Task's one worktree, provisioned or reused under its custody
-   * queue and recorded on the Task before the queue moves on. Recording is
-   * not tied to any dispatch's deadline: a dispatch that stops waiting
-   * still leaves the checkout owned by the Task, so its next dispatch reuses
-   * it and its terminal transition finalizes it. A Task that finished (or
-   * was removed) while the checkout was being made has it finalized here.
+   * queue and recorded in the Task worktree store before the queue moves
+   * on. Recording is not tied to any dispatch's deadline: a dispatch that
+   * stops waiting still leaves the checkout owned by the Task, so its next
+   * dispatch reuses it and its terminal transition finalizes it. A Task
+   * that finished (or was removed) while the checkout was being made has
+   * it finalized here.
    */
   private async provisionTaskWorktree(
     taskId: string,
@@ -4954,41 +4903,35 @@ export class TaskGraphService {
       if (!task) throw new Error(`Task not found: ${taskId}`);
       if (isTerminalTaskStatus(task.status))
         throw new Error(`Task is ${task.status}`);
+      const recorded = this.taskWorktrees.read(taskId, task.createdAt);
       const provisioned = await this.worktreeProvisioning.provisionForTask({
         repoPath: agentStart.cwd,
         taskId,
         providerKind: agentStart.provider,
         isolation: { ...agentStart.workspaceIsolation, mode: 'worktree' },
-        ...(task.taskWorktree ? { recorded: task.taskWorktree } : {}),
+        ...(recorded ? { recorded: recorded.worktree } : {}),
       });
-      if (provisioned.provenance === 'reused') return provisioned.metadata;
-      const recorded = await this.mutateStore<TaskStatus | 'recorded' | null>(
-        (data) => {
-          const current = data.tasks.find((item) => item.id === taskId);
-          if (!current || isTerminalTaskStatus(current.status))
-            return { data, result: current?.status ?? null };
-          return {
-            data: {
-              ...data,
-              tasks: data.tasks.map((item) =>
-                item.id === taskId
-                  ? { ...item, taskWorktree: provisioned.metadata }
-                  : item,
-              ),
-            },
-            result: 'recorded' as const,
-          };
-        },
+      if (provisioned.provenance !== 'reused')
+        await this.taskWorktrees.update(taskId, () => ({
+          taskCreatedAt: task.createdAt,
+          worktree: provisioned.metadata,
+        }));
+      const current = this.readStore().tasks.find(
+        (item) => item.id === taskId,
       );
-      if (recorded !== 'recorded') {
-        await this.worktreeProvisioning.finalizeForTask({
-          metadata: provisioned.metadata,
+      if (
+        !current ||
+        current.createdAt !== task.createdAt ||
+        isTerminalTaskStatus(current.status)
+      ) {
+        await this.finalizeRecordedTaskWorktree(
           taskId,
-          terminalState: taskWorktreeTerminalState(recorded ?? 'done'),
-        });
+          task.createdAt,
+          current?.createdAt === task.createdAt ? current.status : 'done',
+        );
         throw new Error(
-          recorded
-            ? `Task is ${recorded}`
+          current?.createdAt === task.createdAt
+            ? `Task is ${current.status}`
             : `Task was removed while its worktree was being provisioned`,
         );
       }
@@ -5005,29 +4948,12 @@ export class TaskGraphService {
     try {
       await this.withTaskWorktreeCustody(taskId, async () => {
         const task = this.readStore().tasks.find((item) => item.id === taskId);
-        const worktree = task?.taskWorktree;
-        if (!task || !worktree || !isTerminalTaskStatus(task.status)) return;
-        const outcome = await this.worktreeProvisioning.finalizeForTask({
-          metadata: worktree,
+        if (!task || !isTerminalTaskStatus(task.status)) return;
+        await this.finalizeRecordedTaskWorktree(
           taskId,
-          terminalState: taskWorktreeTerminalState(task.status),
-        });
-        if (outcome !== 'removed') return;
-        await this.mutateStore((data) => ({
-          data: {
-            ...data,
-            tasks: data.tasks.map((item) => {
-              if (
-                item.id !== taskId ||
-                item.taskWorktree?.path !== worktree.path
-              )
-                return item;
-              const { taskWorktree: _removed, ...rest } = item;
-              return rest;
-            }),
-          },
-          result: undefined,
-        }));
+          task.createdAt,
+          task.status,
+        );
       });
     } catch (error) {
       this.logger?.warn('Task worktree could not be finalized', {
@@ -5035,6 +4961,25 @@ export class TaskGraphService {
         error: errorMessage(error),
       });
     }
+  }
+
+  /** Runs inside the Task's custody queue. */
+  private async finalizeRecordedTaskWorktree(
+    taskId: string,
+    taskCreatedAt: string,
+    status: TaskStatus,
+  ): Promise<void> {
+    const entry = this.taskWorktrees.read(taskId, taskCreatedAt);
+    if (!entry) return;
+    const outcome = await this.worktreeProvisioning.finalizeForTask({
+      metadata: entry.worktree,
+      taskId,
+      terminalState: taskWorktreeTerminalState(status),
+    });
+    if (outcome !== 'removed') return;
+    await this.taskWorktrees.update(taskId, (current) =>
+      current?.worktree.path === entry.worktree.path ? undefined : current,
+    );
   }
 
   private async withTaskWorktreeCustody<T>(

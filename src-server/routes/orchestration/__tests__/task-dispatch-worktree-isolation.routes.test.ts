@@ -415,18 +415,31 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
 
     // The Task records its worktree, on a branch derived from the Task, and
     // the start records the real binding rather than `shared`.
-    const firstTask = graph.readTaskView(first)!;
-    expect(firstTask.taskWorktree).toMatchObject({
+    const firstWorktree = graph.readTaskWorktree(first);
+    expect(firstWorktree).toMatchObject({
       mode: 'worktree',
       path: firstCwd,
       owner: { kind: 'task', taskId: first },
     });
-    expect(firstTask.taskWorktree!.branch).toMatch(
+    expect(firstWorktree!.branch).toMatch(
       new RegExp(`^station/task/task-${first}-[0-9a-f]{32}$`),
     );
     expect(
       registered.find((entry) => entry.path === realpathSync(firstCwd))?.branch,
-    ).toBe(firstTask.taskWorktree!.branch);
+    ).toBe(firstWorktree!.branch);
+    // The record lives in its own file. The task store keeps only the
+    // fields an older Station's reader accepts, so a downgrade can still
+    // read every Task.
+    const taskStore = JSON.parse(
+      readFileSync(join(home, 'task-graph.json'), 'utf8'),
+    ) as { tasks: Record<string, unknown>[] };
+    expect(taskStore.tasks).toHaveLength(2);
+    for (const task of taskStore.tasks)
+      expect(Object.keys(task)).not.toContain('taskWorktree');
+    expect(
+      JSON.parse(readFileSync(join(home, 'task-worktrees.json'), 'utf8'))
+        .entries[first].worktree,
+    ).toEqual(firstWorktree);
     expect(startOf(claude, firstSession)).toMatchObject({
       workspaceIsolation: { mode: 'worktree' },
       metadata: expect.objectContaining({
@@ -449,7 +462,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
 
     const firstSession = await dispatch(app, taskId);
     const firstCwd = startOf(claude, firstSession).cwd!;
-    const recorded = graph.readTaskView(taskId)!.taskWorktree!;
+    const recorded = graph.readTaskWorktree(taskId)!;
     writeFileSync(join(firstCwd, 'progress.txt'), 'work so far\n');
 
     // Re-dispatch: the Task leaves in_progress through blocked.
@@ -462,7 +475,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     expect(readFileSync(join(secondCwd, 'progress.txt'), 'utf8')).toBe(
       'work so far\n',
     );
-    expect(graph.readTaskView(taskId)!.taskWorktree).toEqual(recorded);
+    expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
     expect(linkedWorktrees(workspace)).toEqual([
       { path: realpathSync(firstCwd), branch: recorded.branch },
     ]);
@@ -471,7 +484,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     // (`preserveOnFailure` defaults to true), and so is the record.
     await graph.updateTaskStatus(taskId, 'canceled');
     expect(existsSync(join(firstCwd, 'progress.txt'))).toBe(true);
-    expect(graph.readTaskView(taskId)!.taskWorktree).toEqual(recorded);
+    expect(graph.readTaskWorktree(taskId)).toEqual(recorded);
   });
 
   test('a shared Project dispatches in its shared checkout, unchanged', async () => {
@@ -488,7 +501,7 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       workspaceIsolation: { mode: 'shared' },
     });
     expect(start.metadata?.worktree).toBeUndefined();
-    expect(graph.readTaskView(taskId)!.taskWorktree).toBeUndefined();
+    expect(graph.readTaskWorktree(taskId)).toBeUndefined();
     expect(linkedWorktrees(workspace)).toEqual([]);
   });
 
@@ -526,16 +539,16 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
       status: before.status,
       updatedAt: before.updatedAt,
     });
-    expect(graph.readTaskView(taskId)!.taskWorktree).toBeUndefined();
+    expect(graph.readTaskWorktree(taskId)).toBeUndefined();
 
     // The checkout finishes after the dispatch gave up. It is owned: the
     // Task records it, and it is the only worktree git has.
     release();
     await provisioning;
     await vi.waitFor(() =>
-      expect(graph.readTaskView(taskId)!.taskWorktree).toBeDefined(),
+      expect(graph.readTaskWorktree(taskId)).toBeDefined(),
     );
-    const late = graph.readTaskView(taskId)!.taskWorktree!;
+    const late = graph.readTaskWorktree(taskId)!;
     expect(late.owner).toEqual({ kind: 'task', taskId });
     expect(linkedWorktrees(workspace)).toEqual([
       { path: realpathSync(late.path), branch: late.branch },
@@ -552,6 +565,6 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     expect(existsSync(late.path)).toBe(false);
     expect(linkedWorktrees(workspace)).toEqual([]);
     expect(git(workspace, 'branch', '--list', late.branch).trim()).toBe('');
-    expect(graph.readTaskView(taskId)!.taskWorktree).toBeUndefined();
+    expect(graph.readTaskWorktree(taskId)).toBeUndefined();
   });
 });
