@@ -32,12 +32,15 @@ import {
   managedDefaultApplies,
 } from './managed-settings.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
+import { isStoredValue } from './settings-stored-value.js';
 
 export {
   type SanitizeAppConfigUpdateResult,
   sanitizeAppConfigUpdate,
 } from '@kontourai/station-contracts/settings-registry';
-
+// `isStoredValue` lives in a leaf module so `managed-settings.ts` can use it
+// without a cycle through this one (#4517); re-exported for existing callers.
+export { isStoredValue } from './settings-stored-value.js';
 // `SettingProvenanceSource`/`SettingProvenanceEntry` moved to
 // `@kontourai/station-contracts/settings-registry` in slice 3 so the SDK and
 // UI can share them without depending on server-side domain code — re-export
@@ -46,31 +49,11 @@ export {
 export type { SettingProvenanceEntry, SettingProvenanceSource };
 
 /**
- * Whether a value is a DECISION rather than the absence of one.
- *
- * archive#1557 review fix (M4): the resolvers trim and treat a whitespace-only
- * string as absent. Provenance used a bare truthiness test, so `AWS_REGION="  "`
- * made Settings report "Set by operator: AWS_REGION" for a value the resolver
- * discards — the surface re-deriving "absent" for itself, which is the entire
- * thing the shared resolver exists to stop.
- *
- * Exported for `settings-effective.ts` (#2144 slice 2). An effective-value
- * resolver and a provenance builder that disagreed about what "absent" means
- * would report a source for a value the other one discards, which is the
- * defect this predicate was written to fix in the first place.
- */
-export function isStoredValue(value: unknown): boolean {
-  if (value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  return true;
-}
-
-/**
  * The provenance entry for a value the managed policy supplied (#4517). It
  * names the organization and support link so a row can explain the lock
  * without a second request, and never carries the value.
  */
-export function managedProvenance(
+function managedProvenance(
   managed: ManagedAppSettings,
   locked: boolean,
 ): SettingProvenanceEntry {

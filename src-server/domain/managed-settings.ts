@@ -45,7 +45,7 @@ import {
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
-import { isStoredValue } from './settings-registry-server.js';
+import { isStoredValue } from './settings-stored-value.js';
 
 export interface ManagedAppSettings {
   summary: ManagedPolicySummary;
@@ -92,7 +92,7 @@ export function installManagedAppSettings(
 }
 
 /** The keys the installed (or given) policy locks. */
-export function lockedManagedSettingKeys(
+function lockedManagedSettingKeys(
   managed: ManagedAppSettings | null = installed,
 ): string[] {
   if (!managed) return [];
@@ -106,7 +106,7 @@ export function installedManagedAppSettings(): ManagedAppSettings | null {
 }
 
 /** The locked entry for `key`, if the policy fixes it. */
-export function lockedManagedSetting(
+function lockedManagedSetting(
   key: string,
   managed: ManagedAppSettings | null = installed,
 ): ManagedPolicySettingEntry | undefined {
@@ -119,7 +119,7 @@ export function lockedManagedSetting(
  * byte-equal to its loader-written seed is not one: the loader wrote it, and
  * the resolver and provenance already report it as the built-in default.
  */
-export function hasStationDecision(stored: object, key: string): boolean {
+function hasStationDecision(stored: object, key: string): boolean {
   const value: unknown = Reflect.get(stored, key);
   if (!isStoredValue(value)) return false;
   return !(
