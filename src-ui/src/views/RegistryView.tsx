@@ -118,6 +118,7 @@ export function RegistryView({
     error: availableError,
     isLoading: loadingAvailable,
     dataUpdatedAt: availableUpdatedAt,
+    refetch: refetchAvailable,
   } = useRegistryItemsQuery<RegistryItem>(
     activeTab === 'kits' ? 'agents' : activeTab,
     { enabled: activeTab !== 'kits' },
@@ -629,6 +630,9 @@ export function RegistryView({
             openProjects: () => showSurface('home'),
             retryInstalled: () => {
               void refetchInstalled();
+            },
+            retryCatalog: () => {
+              void refetchAvailable();
             },
             renderKits: () => <KitCatalog />,
           }}
