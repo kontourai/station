@@ -10,11 +10,11 @@ import { resolveEffectiveDeviceSetting } from '../views/settings/effective-devic
 describe('resolveEffectiveDeviceSetting', () => {
   test('an absent key resolves to the registry default', () => {
     expect(resolveEffectiveDeviceSetting('theme', {})).toEqual({
-      value: 'dark',
+      value: 'system',
       source: 'default',
     });
     expect(resolveEffectiveDeviceSetting('theme', undefined)).toEqual({
-      value: 'dark',
+      value: 'system',
       source: 'default',
     });
   });
@@ -51,8 +51,8 @@ describe('resolveEffectiveDeviceSetting', () => {
     expect(
       resolveEffectiveDeviceSetting('theme', {
         theme: undefined,
-      } as Partial<{ theme: 'light' | 'dark' }>),
-    ).toEqual({ value: 'dark', source: 'default' });
+      } as Partial<{ theme: 'light' | 'dark' | 'system' }>),
+    ).toEqual({ value: 'system', source: 'default' });
   });
 
   test('an unregistered key has no honest answer', () => {

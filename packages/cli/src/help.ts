@@ -392,21 +392,29 @@ const VERBS: Record<string, VerbSpec> = {
   },
   triage: {
     group: 'Stations',
-    summary: 'Create a bounded, read-only diagnostic hand-off',
+    summary: 'Troubleshoot with an agent or collect diagnostics',
     usage: [
-      'station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]',
+      'station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]',
+      'station triage draft-report < report.json',
     ],
     detail: [
       'Creates owner-only portable artifacts below <STATION_ROOT>/cache/triage.',
       '--context-only skips agent probing and launch, but retains read-only',
-      'source-doctor and authenticated remote diagnostics. Without it,',
-      'Station launches only hardened Codex read-only mode or Claude safe plan mode.',
+      'source-doctor and authenticated remote diagnostics.',
+      'When stdin and stdout are a terminal, starts Codex or Claude as an',
+      'interactive troubleshooting conversation with its normal approval',
+      'prompts. --headless, or input or output that is not a terminal, runs',
+      'the one-shot diagnosis in hardened Codex read-only mode or Claude safe',
+      'plan mode and saves diagnosis.md and issue-draft.md.',
       '--problem adds a bounded redacted symptom. --search-issues explicitly',
       'authorizes sending it to the fixed read-only Station issue search.',
       'When both agents are available, a TTY asks; a non-interactive shell',
       'requires --agent=codex or --agent=claude.',
       'The packaged client uses remote diagnostics; station doctor reports target, access and service state.',
-      'Triage never repairs, changes Station state, patches source, or posts to GitHub.',
+      'Triage itself never repairs, changes Station state, patches source, or posts to GitHub;',
+      'an interactive agent acts only through its own approval prompts.',
+      'draft-report reads {"title","fields"} JSON on stdin and prints the',
+      'redacted report, its prefilled issue-form URL and any overflow fields.',
     ],
   },
   setup: {
@@ -488,6 +496,22 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Configuration',
     detail: [
       'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
+  policy: {
+    summary:
+      'Check a managed policy file, or show the installed policy and whether the running server loaded it',
+    usage: [
+      'station policy check <file> [--json]',
+      'station policy show [--json]',
+    ],
+    actions: ['check', 'show'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'check is offline: it runs the same validation as server startup, exits 1 with each problem, or prints what the policy does.',
+      'show reads the installed system policy and its fingerprint, compares it with what the running server loaded, and says when a restart is needed. Only a target on this machine is compared. It exits 1 when the installed policy is invalid.',
+      'See docs/guides/managed-policy.md.',
     ],
   },
   telemetry: {

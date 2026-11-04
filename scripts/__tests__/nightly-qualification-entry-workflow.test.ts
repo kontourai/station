@@ -6,6 +6,7 @@ import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
 
 type Step = {
   id?: string;
+  if?: string;
   name?: string;
   run?: string;
   uses?: string;
@@ -38,6 +39,16 @@ const qualification = read('main-qualification.yml');
 const nightly = read('nightly.yml');
 const expr = (inner: string) => `\${{ ${inner} }}`;
 describe('independent scheduled delivery and full qualification', () => {
+  it('does not arm a pnpm cache save when the exact CLI source is already published', () => {
+    const steps = nightly.jobs['nightly-cli'].steps ?? [];
+    const decision = steps.findIndex((step) => step.id === 'cli_source_decide');
+    const cache = steps.findIndex((step) => step.with?.cache === 'pnpm');
+    expect(decision).toBeGreaterThanOrEqual(0);
+    expect(cache).toBeGreaterThan(decision);
+    expect(steps[cache].if).toBe(
+      "steps.cli_source_decide.outputs.build == 'true'",
+    );
+  });
   it('warms the version-bound Chromium cache only inside the admitted main source gate', () => {
     const gate = nightly.jobs['test-gate'];
     expect(gate.if).toBe(

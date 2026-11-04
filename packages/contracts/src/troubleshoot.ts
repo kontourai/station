@@ -25,10 +25,39 @@ export interface TroubleshootPrepareRequest {
   /** Where the person is looking at Station from. Display-only. */
   readonly surface?: TroubleshootSurface;
   /** Optional error context, for entry points that start from an error. */
-  readonly seed?: {
-    readonly route?: string;
-    readonly errorSummary?: string;
-  };
+  readonly seed?: TroubleshootSeed;
+}
+
+/**
+ * Seed limits. The host refuses a longer value with 400; it never truncates
+ * one. Entry points build seeds that fit (`src-ui/src/lib/troubleshootSeed.ts`).
+ */
+export const MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH = 512;
+export const MAX_TROUBLESHOOT_SEED_ERROR_LENGTH = 2_000;
+/** Matches the conversation-id bound the scheduler and system routes use. */
+export const MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH = 256;
+/** Matches the turn-id bound the feedback rating route uses. */
+export const MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH = 200;
+/**
+ * A seed id is printable ASCII with no whitespace. The ids are written into
+ * the model-facing seed, so a newline or control character could forge a
+ * line of it.
+ */
+export const TROUBLESHOOT_SEED_ID_PATTERN = /^[\x21-\x7e]+$/;
+
+/**
+ * Error context an entry point passes to prepare. The host refuses a value
+ * over its limit or, for ids, outside {@link TROUBLESHOOT_SEED_ID_PATTERN}.
+ */
+export interface TroubleshootSeed {
+  /** The in-app path, starting with a single "/". Query and fragment are dropped. */
+  readonly route?: string;
+  /** A short error code and message, never a token, query string or stack. */
+  readonly errorSummary?: string;
+  /** The conversation a failed turn or rated reply belongs to. */
+  readonly conversationId?: string;
+  /** The failed or rated turn, when the UI knows it. */
+  readonly turnId?: string;
 }
 
 export interface TroubleshootPrepareResponse {

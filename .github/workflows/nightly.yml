@@ -217,8 +217,6 @@ jobs:
       - name: Setup pinned pnpm
         uses: kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - id: cli_source_decide
         name: Skip CLI publication when nightly already names this source
         env:
@@ -231,6 +229,9 @@ jobs:
           else
             echo 'build=true' >> "$GITHUB_OUTPUT"
           fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.cli_source_decide.outputs.build == 'true'
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - id: identity
         name: Build exact-SHA CLI nightly identity
         if: steps.cli_source_decide.outputs.build == 'true'

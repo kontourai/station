@@ -23,6 +23,7 @@ function fixture(
   canManage = true,
   engineId = 'claude',
   personalAccount = false,
+  accountRequest?: (url: URL, init?: RequestInit) => Promise<Response>,
 ) {
   const source: ToolLibrarySource = {
     id: 'station-docs',
@@ -83,6 +84,8 @@ function fixture(
     'fetch',
     vi.fn(async (input: string, init?: RequestInit) => {
       const url = new URL(input);
+      if (url.pathname.includes('/accounts/') && accountRequest)
+        return accountRequest(url, init);
       let data: unknown;
       if (init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
@@ -320,4 +323,98 @@ test('an ACP engine cannot attach a personal account source', async () => {
   await screen.findByText('Station, Claude Code or Codex required');
   expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
   expect(h.latest().tools.mcpServers).toEqual([]);
+});
+
+test('a refused account sign-in keeps the returned URL editable for retry without changing the Agent draft', async () => {
+  let attempts = 0;
+  let connected = false;
+  const callbacks: string[] = [];
+  const h = fixture(true, true, true, 'station', true, async (url, init) => {
+    if (!init?.method)
+      return Response.json({
+        success: true,
+        data: { connectedAs: connected ? 'you' : 'none' },
+        principalId: 'alice',
+      });
+    if (url.pathname.endsWith('/authorize'))
+      return Response.json({
+        success: true,
+        data: { authorizationUrl: 'https://accounts.example/authorize' },
+      });
+    if (url.pathname.endsWith('/callback')) {
+      callbacks.push(JSON.parse(String(init.body)).callbackUrl);
+      if (++attempts === 1)
+        return Response.json(
+          {
+            success: false,
+            error: 'Sign-in could not be verified. Try again.',
+          },
+          { status: 503 },
+        );
+      connected = true;
+      return Response.json({ success: true, data: { connected: true } });
+    }
+    throw new Error(`Unexpected account request: ${url.pathname}`);
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'View Station Docs tools' }),
+  );
+  fireEvent.click(screen.getByText('About this source'));
+  fireEvent.click(screen.getByRole('button', { name: 'Connect your account' }));
+  const input = await screen.findByRole('textbox', {
+    name: 'Returned sign-in URL',
+  });
+  const returnedUrl = 'http://127.0.0.1/callback?code=disposable&state=fixture';
+  fireEvent.change(input, { target: { value: returnedUrl } });
+  fireEvent.click(screen.getByRole('button', { name: 'Finish sign-in' }));
+  await screen.findByText('Could not finish sign-in.');
+  expect((input as HTMLInputElement).value).toBe(returnedUrl);
+  const correctedUrl = returnedUrl.replace('disposable', 'corrected');
+  fireEvent.change(input, { target: { value: correctedUrl } });
+  fireEvent.click(screen.getByRole('button', { name: 'Finish sign-in' }));
+  await screen.findByText('Your account is connected.');
+  expect(callbacks).toEqual([returnedUrl, correctedUrl]);
+  expect(
+    screen.queryByRole('textbox', { name: 'Returned sign-in URL' }),
+  ).toBeNull();
+  expect(h.latest().name).toBe('Unsaved analyst');
+  expect(h.latest().tools.mcpServers).toEqual([]);
+});
+
+test('starting account sign-in prevents another activation while authorization is pending', async () => {
+  let finishAuthorization: ((response: Response) => void) | undefined;
+  let starts = 0;
+  fixture(true, true, true, 'station', true, async (url, init) => {
+    if (!init?.method)
+      return Response.json({
+        success: true,
+        data: { connectedAs: 'none' },
+        principalId: 'alice',
+      });
+    if (url.pathname.endsWith('/authorize')) {
+      starts++;
+      return new Promise<Response>((resolve) => {
+        finishAuthorization = resolve;
+      });
+    }
+    throw new Error(`Unexpected account request: ${url.pathname}`);
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'View Station Docs tools' }),
+  );
+  fireEvent.click(screen.getByText('About this source'));
+  const connect = screen.getByRole('button', { name: 'Connect your account' });
+  fireEvent.click(connect);
+  await waitFor(() => expect(starts).toBe(1));
+  expect((connect as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(connect);
+  expect(starts).toBe(1);
+  finishAuthorization?.(
+    Response.json({
+      success: true,
+      data: { authorizationUrl: 'https://accounts.example/authorize' },
+    }),
+  );
+  await screen.findByRole('link', { name: 'Open sign-in' });
+  expect((connect as HTMLButtonElement).disabled).toBe(false);
 });
