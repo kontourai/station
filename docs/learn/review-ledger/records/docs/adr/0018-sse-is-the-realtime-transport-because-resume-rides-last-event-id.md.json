@@ -120,8 +120,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
