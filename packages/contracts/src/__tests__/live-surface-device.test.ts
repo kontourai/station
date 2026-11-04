@@ -126,6 +126,8 @@ describe('foldables', () => {
     { kind: 'fold', hingeAngle: 112.5 },
     { kind: 'fold', hingeAngle: 180 },
     { kind: 'fold', tableMode: true },
+    { kind: 'fold', facing: 'up' },
+    { kind: 'fold', facing: 'down' },
   ])('fold input %o', (value) => {
     expect(parseLiveSurfaceInput(value)).toEqual(value);
   });
@@ -138,6 +140,8 @@ describe('foldables', () => {
     { kind: 'fold', hingeAngle: Number.NaN },
     { kind: 'fold', hingeAngle: '90' },
     { kind: 'fold', tableMode: 'yes' },
+    { kind: 'fold', facing: 'sideways' },
+    { kind: 'fold', facing: 'down', tableMode: true },
     // Exactly one control per event.
     { kind: 'fold', posture: 'book', hingeAngle: 90 },
     { kind: 'fold', posture: 'book', extra: 1 },
@@ -180,6 +184,7 @@ describe('foldables', () => {
     { ...fold, postures: ['closed', 'sideways'] },
     { ...fold, angleControl: 'yes' },
     { ...fold, tableMode: 1 },
+    { ...fold, facingControl: 'yes' },
     { ...fold, extra: true },
   ])('refuses fold state %o', (value) => {
     expect(parseLiveSurfaceFold(value)).toBeNull();

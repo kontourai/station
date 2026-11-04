@@ -101,7 +101,10 @@ function lease(
   };
 }
 
-let push: (holder: LiveSurfaceControlLease['holder']) => Promise<void>;
+let push: (
+  holder: LiveSurfaceControlLease['holder'],
+  status?: Record<string, unknown>,
+) => Promise<void>;
 let pushFrame: () => Promise<void>;
 let calls: string[] = [];
 /** What the host's session route answers: the rows this viewer may view. */
@@ -180,7 +183,7 @@ function transport() {
           controller.error(new DOMException('aborted', 'AbortError'));
         } catch {}
       });
-      push = async (holder) => {
+      push = async (holder, status = {}) => {
         await act(async () => {
           controller.enqueue(
             encodeLiveSurfaceRecord({
@@ -195,6 +198,7 @@ function transport() {
                   maxHeight: 1280,
                 },
                 viewer: ME,
+                ...status,
               },
             }),
           );
@@ -797,4 +801,26 @@ test('LOW-1: floating the same device again as a NEW session, while its old one 
   expect(getFloatingSource('conversation-1')?.surfaceId).toBe(SURFACE_2);
   // Never re-attached to the ended s1 from the old float's cached list.
   expect(framesOf(SURFACE)).toBe(deadBefore);
+});
+
+test('a floated foldable is drawn bent at its hinge, from the fold its stream reports', async () => {
+  renderChat();
+  await floatDevice();
+  await screen.findByTestId('live-surface-canvas');
+  await push(null, {
+    fold: {
+      activeDisplay: 'inner',
+      hingeAngle: 90,
+      posture: 'book',
+      postures: ['closed', 'open', 'book', 'laptop', 'tent'],
+      angleControl: true,
+    },
+  });
+  await pushFrame();
+  const view = await screen.findByTestId('device-fold-view');
+  // The floated frame is taller than wide: the crease lies across it.
+  expect(view.dataset.crease).toBe('horizontal');
+  expect(
+    [...view.querySelectorAll('canvas')].map((half) => half.dataset.turn),
+  ).toEqual(['45', '45']);
 });

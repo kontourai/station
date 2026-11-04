@@ -125,7 +125,11 @@ export type LiveSurfaceInput =
 export type LiveSurfaceFoldInput =
   | { kind: 'fold'; posture: LiveSurfacePosture }
   | { kind: 'fold'; hingeAngle: number }
-  | { kind: 'fold'; tableMode: boolean };
+  | { kind: 'fold'; tableMode: boolean }
+  /** Lay the device on its back (`up`) or on its face (`down`). */
+  | { kind: 'fold'; facing: LiveSurfaceFacing };
+
+export type LiveSurfaceFacing = 'up' | 'down';
 
 /**
  * Named stands of a foldable. `closed` and `open` (flat) are fold states;
@@ -167,6 +171,11 @@ export interface LiveSurfaceFold {
   angleControl: boolean;
   /** Present when the device reports a table mode. */
   tableMode?: boolean;
+  /**
+   * A `fold` input with `facing` is accepted (laying the device face up or
+   * down). The device does not report which way it faces.
+   */
+  facingControl?: boolean;
 }
 
 export const LIVE_SURFACE_HINGE_ANGLE_MAX = 180;
@@ -587,6 +596,10 @@ export function parseLiveSurfaceInput(value: unknown): LiveSurfaceInput | null {
         return typeof record.tableMode === 'boolean'
           ? { kind: 'fold', tableMode: record.tableMode }
           : null;
+      if (keys[0] === 'facing')
+        return record.facing === 'up' || record.facing === 'down'
+          ? { kind: 'fold', facing: record.facing }
+          : null;
       return null;
     }
     default:
@@ -1006,6 +1019,7 @@ export function parseLiveSurfaceFold(value: unknown): LiveSurfaceFold | null {
       'postures',
       'angleControl',
       'tableMode',
+      'facingControl',
     ]) ||
     !LIVE_SURFACE_DISPLAYS.includes(
       record.activeDisplay as LiveSurfaceDisplay,
@@ -1020,7 +1034,9 @@ export function parseLiveSurfaceFold(value: unknown): LiveSurfaceFold | null {
       LIVE_SURFACE_POSTURES.includes(posture as LiveSurfacePosture),
     ) ||
     typeof record.angleControl !== 'boolean' ||
-    (record.tableMode !== undefined && typeof record.tableMode !== 'boolean')
+    (record.tableMode !== undefined && typeof record.tableMode !== 'boolean') ||
+    (record.facingControl !== undefined &&
+      typeof record.facingControl !== 'boolean')
   )
     return null;
   return {
@@ -1032,6 +1048,9 @@ export function parseLiveSurfaceFold(value: unknown): LiveSurfaceFold | null {
     ...(record.tableMode === undefined
       ? {}
       : { tableMode: record.tableMode as boolean }),
+    ...(record.facingControl === undefined
+      ? {}
+      : { facingControl: record.facingControl as boolean }),
   };
 }
 

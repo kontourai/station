@@ -123,3 +123,8 @@
   font-variant-numeric: tabular-nums;
   min-width: 3ch;
 }
+
+.device-fold-controls__facing {
+  display: flex;
+  gap: var(--k-space-1);
+}

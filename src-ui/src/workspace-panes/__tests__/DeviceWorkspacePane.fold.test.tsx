@@ -228,4 +228,45 @@ describe('a foldable device', () => {
     });
     expect(log.inputs.flatMap((batch) => batch.events)).toHaveLength(2);
   });
+
+  test('full screen keeps the bent view current and offers the stands in its bar', async () => {
+    const { log, stream, surfaceId } = await live(BOOK);
+    await click(screen.getByRole('button', { name: 'Full screen' }));
+    // The pane's header is gone in full screen; the fold still updates
+    // from the stream while the bar is hidden.
+    await stream.push(
+      stateRecord(surfaceId, {
+        inputChannel: 'connected',
+        fold: { ...BOOK, hingeAngle: 120, posture: null },
+      }),
+    );
+    expect(
+      [
+        ...screen.getByTestId('device-fold-view').querySelectorAll('canvas'),
+      ].map((half) => half.dataset.turn),
+    ).toEqual(['30', '30']);
+    const reveal = screen.queryByRole('button', { name: 'Show controls' });
+    if (reveal) await click(reveal);
+    // The stands sit in the full-screen bar, not the (unmounted) pane header.
+    expect(
+      screen
+        .getByRole('radio', { name: 'Tent' })
+        .closest('.live-surface__immersive-bar'),
+    ).not.toBeNull();
+    await click(screen.getByRole('radio', { name: 'Tent' }));
+    await waitFor(() => expect(log.inputs).toHaveLength(1));
+    expect(log.inputs[0]!.events).toEqual([{ kind: 'fold', posture: 'tent' }]);
+  });
+
+  test('a device that can be laid face up or down offers both as actions', async () => {
+    const { log } = await live({ ...BOOK, facingControl: true });
+    await click(screen.getByRole('button', { name: 'Lay face down' }));
+    await waitFor(() => expect(log.inputs).toHaveLength(1));
+    expect(log.inputs[0]!.events).toEqual([{ kind: 'fold', facing: 'down' }]);
+  });
+
+  test('without the helper saying so, face up/down is not offered', async () => {
+    await live(BOOK);
+    expect(screen.queryByRole('button', { name: 'Lay face down' })).toBeNull();
+  });
 });

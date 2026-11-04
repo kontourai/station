@@ -167,6 +167,22 @@ export function DeviceFoldControls({
           Table mode
         </label>
       ) : null}
+      {fold.facingControl ? (
+        // Actions, not a toggle: the device does not report which way it faces.
+        <div className="device-fold-controls__facing">
+          {(['up', 'down'] as const).map((facing) => (
+            <Button
+              disabled={!inputReady}
+              key={facing}
+              onClick={() => sendInput([{ kind: 'fold', facing }])}
+              size="sm"
+              variant="ghost"
+            >
+              {facing === 'up' ? 'Lay face up' : 'Lay face down'}
+            </Button>
+          ))}
+        </div>
+      ) : null}
     </fieldset>
   );
 }

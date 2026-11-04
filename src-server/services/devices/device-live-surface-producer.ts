@@ -703,6 +703,11 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         'fold-unsupported',
         'this device takes named stands only',
       );
+    if ('facing' in input && fold.facingControl !== true)
+      throw new DeviceInputError(
+        'fold-unsupported',
+        'this device cannot be laid face up or down',
+      );
     if ('posture' in input && !fold.postures.includes(input.posture))
       throw new DeviceInputError(
         'fold-unsupported',

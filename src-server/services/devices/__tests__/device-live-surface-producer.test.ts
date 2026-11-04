@@ -1391,6 +1391,39 @@ describe('iOS foldable (dual display)', () => {
     await table;
   });
 
+  test('face up/down is the physical hinge control, offered only when the helper supports it', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    socket.emit('message', screenConfig(DUO_INNER_BOOK), true);
+    expect(h.producer.status().fold?.facingControl).toBeUndefined();
+    await expect(
+      h.producer.dispatch({ kind: 'fold', facing: 'down' }),
+    ).rejects.toMatchObject({ code: 'fold-unsupported' });
+    expect(socket.sent).toHaveLength(1);
+    socket.emit(
+      'message',
+      screenConfig({ ...DUO_INNER_BOOK, supportsPhysicalOrientation: true }),
+      true,
+    );
+    expect(h.producer.status().fold?.facingControl).toBe(true);
+    const done = h.producer.dispatch({ kind: 'fold', facing: 'down' });
+    await until(() => socket.sent.length === 2, 'physical command');
+    const [tag, body] = socket.packets()[1] as [
+      number,
+      { requestId: number; command: unknown },
+    ];
+    expect([tag, body.command]).toEqual([
+      0x10,
+      { control: 'physical', value: 'facedown' },
+    ]);
+    socket.emit(
+      'message',
+      hingeReply({ requestId: body.requestId, ok: true }),
+      true,
+    );
+    await done;
+  });
+
   test('a device that does not fold refuses fold input before sending anything', async () => {
     const h = track(harness());
     const socket = await openInput(h);

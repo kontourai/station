@@ -404,19 +404,28 @@ export function iosFoldFromScreenConfig(
     ...(typeof config.tableMode === 'boolean'
       ? { tableMode: config.tableMode }
       : {}),
+    ...(config.supportsPhysicalOrientation === true
+      ? { facingControl: true }
+      : {}),
   };
 }
 
 export type IosHingeCommand =
   | { control: 'pose'; value: LiveSurfacePosture }
   | { control: 'angle'; value: number }
-  | { control: 'table'; value: boolean };
+  | { control: 'table'; value: boolean }
+  | { control: 'physical'; value: 'faceup' | 'facedown' };
 
 /** A `fold` input as the iOS helper's hinge command. */
 export function iosHingeCommand(input: LiveSurfaceFoldInput): IosHingeCommand {
   if ('posture' in input) return { control: 'pose', value: input.posture };
   if ('hingeAngle' in input)
     return { control: 'angle', value: Math.round(input.hingeAngle) };
+  if ('facing' in input)
+    return {
+      control: 'physical',
+      value: input.facing === 'up' ? 'faceup' : 'facedown',
+    };
   return { control: 'table', value: input.tableMode };
 }
 
