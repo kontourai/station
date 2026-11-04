@@ -4,6 +4,7 @@
  * node-pty shells in a private home: `/bin/sh` on POSIX, cmd.exe on ConPTY
  * on Windows.
  */
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import {
   mkdir,
@@ -18,8 +19,6 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { TerminalEngine } from '../../../../packages/sdk/src/terminal-view/engine/terminal-engine.js';
-import { GhosttyVtModule } from '../../../../packages/sdk/src/terminal-view/engine/wasm.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import type { IPtyProcess } from '../../../domain/pty-adapter.js';
@@ -43,9 +42,11 @@ import {
   windows,
 } from './fixtures/real-shell.js';
 
-const GHOSTTY_VT = fileURLToPath(
+const REPO = fileURLToPath(new URL('../../../../', import.meta.url));
+/** The SDK's Ghostty replay, run as a child: it needs WebAssembly types. */
+const REPLAY = fileURLToPath(
   new URL(
-    '../../../../packages/sdk/src/terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+    '../../../../packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts',
     import.meta.url,
   ),
 );
@@ -101,21 +102,35 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
   }
 
   /** Scrollback and screen after replaying `data` at the shell's size. */
-  async function rendered(data: string) {
-    const vt = await GhosttyVtModule.instantiate(
-      await WebAssembly.compile(await readFile(GHOSTTY_VT)),
+  async function rendered(data: string): Promise<string> {
+    const child = spawn(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        REPLAY,
+        String(dimensions.cols),
+        String(dimensions.rows),
+      ],
+      { cwd: REPO, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
     );
-    const engine = new TerminalEngine(
-      vt,
-      { ...dimensions, cellWidth: 8, cellHeight: 16 },
-      { reply: () => {}, bell: () => {}, title: () => {} },
-    );
-    try {
-      engine.write(new TextEncoder().encode(data), 'replay');
-      return engine.plainText();
-    } finally {
-      engine.dispose();
-    }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    child.stdin.end(data);
+    const code = await new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    });
+    if (code !== 0)
+      throw new Error(`terminal replay exited ${code}: ${stderr.slice(-2000)}`);
+    const { text } = JSON.parse(stdout) as { text: string };
+    return text;
   }
 
   async function output(id: string, marker: string) {
