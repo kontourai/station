@@ -3859,6 +3859,44 @@ An empty query returns `[]`. A caught provider failure also returns `[]` with
 failure returns 404 with `{alias, name: alias, error}`; its message is the
 formatted failure, not necessarily the literal `User not found`.
 
+## Managed policy
+
+### Get the loaded managed policy
+
+`GET /api/settings/managed-policy`
+([route](../../src-server/routes/system/managed-policy-routes.ts)) reports the
+[managed policy](../guides/managed-policy.md) this server loaded at startup.
+It needs the same credential as `GET /api/settings/registry` and is fixed for
+the process lifetime. Without a policy:
+
+```json
+{ "success": true, "data": { "state": "none" } }
+```
+
+With one:
+
+```json
+{
+  "success": true,
+  "data": {
+    "state": "loaded",
+    "source": { "kind": "file", "location": "/etc/station/policy.json" },
+    "digest": "sha256:<64 hex>",
+    "summary": {
+      "organization": "Example Corp",
+      "supportUrl": "https://help.example.com/station",
+      "lockedSettings": [],
+      "limits": {}
+    }
+  }
+}
+```
+
+`source.kind` is `file`, or `test-override` for an isolated test instance. The
+summary never contains a setting value. There is no error state: a server that
+cannot load its policy does not start. Older servers answer 404, which
+`station policy show` reports as a server too old to report a policy.
+
 ## Branding
 
 ### Get Branding Config

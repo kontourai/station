@@ -689,11 +689,15 @@ alone cannot enable it.
   `examples/meeting-transcription/`), then writes the structured result as a `compiled` record whose
   `links` includes `{ target_id: <raw record's id>, kind: 'source' }` and whose
   `provenance.source_ids` names the same raw record. The ordinary workflow saves
-  first, then compiles using the retained ID. The compile call does not re-read
-  or lock that source record, so this reference is not proof that the source
-  still exists or that its text matches the current textarea. An external edit
-  or a late save response can break that correspondence; inspect the saved raw
-  record when checking the compiled note's provenance.
+  first, then compiles using the retained ID. Each request keeps its submitted
+  root, text and source ID. Editing or switching roots clears the saved IDs;
+  late responses cannot enable Compile or label the changed draft. A pending
+  compile can still finish writing its originally submitted note. The compile
+  call does not re-read or lock the stored source, so external edits or deletion
+  remain outside this guarantee. Inspect the raw record when checking provenance.
+
+An unreadable transcript upload shows an error and preserves the current text.
+Reading a file does not overwrite edits made while that read was pending.
 
 Both writes go through the K2 store seam described above — nothing about capture bypasses the
 adapter contract or invents a parallel storage format. See

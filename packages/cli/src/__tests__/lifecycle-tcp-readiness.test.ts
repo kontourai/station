@@ -174,4 +174,44 @@ describe('start failure names its cause (#4382)', () => {
       `Server log: ${missing}`,
     ]);
   });
+
+  test('names a managed-policy refusal over the generic fatal line after it', () => {
+    const dir = makeTempDir('station-start-policy-failure-');
+    const log = join(dir, 'station-x.log');
+    const refusal =
+      'STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it is not valid JSON (x). Station will not start until an administrator fixes or removes it.';
+    writeFileSync(
+      log,
+      [
+        '--- 2026-10-31T19:00:00.000Z station lifecycle start instance=x build=a pid=1 ---',
+        'STATION_MANAGED_POLICY_INVALID: an earlier boot',
+        '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 ---',
+        `\u001b[31m${refusal}\u001b[39m`,
+        // The logger's copy follows, with the path redacted (the real
+        // server log's shape); the server's own line must win.
+        '[2026-10-31 19:16:29.300 +0000] \u001b[41mFATAL\u001b[49m (station): Failed to start Station',
+        '    err: {',
+        '      "type": "Error",',
+        '      "message": "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at [REDACTED_PATH] it is not valid JSON (x).",',
+        '      "stack":',
+        '          ManagedPolicyInvalidError: STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at [REDACTED_PATH] it is not valid JSON (x).',
+        '              at decodeManagedPolicy ([REDACTED_URL]',
+        '      "name": "ManagedPolicyInvalidError"',
+        '    }',
+        '',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBe(refusal);
+
+    // A marker from an earlier start is not this start's cause.
+    writeFileSync(
+      log,
+      [
+        'STATION_MANAGED_POLICY_INVALID: an earlier boot',
+        '--- 2026-10-31T19:20:00.000Z station lifecycle start instance=x build=a pid=4 ---',
+        'starting',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBeNull();
+  });
 });

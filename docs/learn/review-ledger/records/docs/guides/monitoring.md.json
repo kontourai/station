@@ -192,7 +192,9 @@
 
     "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx",
 
-    "src-server/services/orchestration/canonical-terminal-outcome.ts"
+    "src-server/services/orchestration/canonical-terminal-outcome.ts",
+
+    "src-ui/src/contexts/AnalyticsContext.tsx"
   ],
 
   "checks": [

@@ -11,7 +11,7 @@ const occupants: Plugin = {
     const modules: Record<string, string> = {
       ChatDock: `import React from 'react'; export const ChatWorkspacePane=()=> <div style={{padding:16}}><h2>Build the workspace</h2><p>Chat and tools keep their own state.</p><textarea aria-label="Message" placeholder="Message your agent" /></div>;`,
       KeyboardShortcutsContext:
-        'export const useKeyboardShortcuts=()=>({isMac:false});',
+        'export const useKeyboardShortcuts=()=>({isMac:false}); export const getShortcutContext=()=>false;',
       useKeyboardShortcut: 'export const useKeyboardShortcut=()=>{};',
       useShowSurface: 'export const useShowSurface=()=>()=>{};',
     };
@@ -30,6 +30,7 @@ const occupants: Plugin = {
 const fixture = `
 import React from 'react';
 import {createRoot} from 'react-dom/client';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
 import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
 import {navigationStore} from './src-ui/src/contexts/navigation-store';
@@ -46,7 +47,7 @@ navigationStore.navigate('/projects/demo/layouts/coding');
 function App(){const selection=useCodingStackSelection();const wide=useCodingWide();
 return <div style={{height:'100dvh',display:'flex',flexDirection:'column'}}><CodingWorkbench projectId="demo" projectSlug="demo" stackName="Coding" drillInOrder={[]} centerChat wide={wide} location={resolveCodingStackLocation(scope,instances,selection.pane,selection.paneScope)} scope={scope} instances={instances} hostDocument={()=>null} paneLabel={i=>i===files?'Files':'Terminal'} hostOpen={null} onOpenCatalog={()=>{}}><div role="region" aria-label="File contents" style={{height:'100%',overflow:'auto',padding:16}}><ToolControls><label>Find in file <input aria-label="Find in file" /></label></ToolControls><pre>{Array.from({length:100},(_,i)=>'Line '+(i+1)).join('\\n')}</pre></div></CodingWorkbench></div>;
 }
-createRoot(document.getElementById('root')).render(<NavigationProvider><DialogHistoryHostBoundary><App/></DialogHistoryHostBoundary></NavigationProvider>);
+createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><NavigationProvider><DialogHistoryHostBoundary><App/></DialogHistoryHostBoundary></NavigationProvider></QueryClientProvider>);
 `;
 
 for (const theme of ['dark', 'light']) {
@@ -55,6 +56,7 @@ for (const theme of ['dark', 'light']) {
       occupants,
     ]);
     try {
+      expect(errors).toEqual([]);
       await page.addStyleTag({
         content: resolveCssImports(
           resolve(import.meta.dirname, '../index.css'),

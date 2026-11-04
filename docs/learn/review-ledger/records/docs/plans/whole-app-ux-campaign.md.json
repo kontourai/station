@@ -1,0 +1,35 @@
+{
+  "path": "docs/plans/whole-app-ux-campaign.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed campaign scope, lane ownership routes, preview distinctions, evidence boundaries, resource leases and integrated acceptance against the source inventory and owner reports; GitHub issue 4506 owns live execution state.",
+
+  "limits": "Execution plan and source routing only. This record does not qualify any product, provider, native or physical-device journey. Lane evidence and exact revisions remain in issue 4506. Independent root review requested integrated-delivery and recovery-data safeguards, now included.",
+
+  "sources": [
+    "src-ui/src/app-shell/destination-registry.ts",
+
+    "src-ui/src/app-shell/routing.ts",
+
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
+
+    "src-ui/src/views/settings/settings-catalog.ts",
+
+    "src-ui/src/hooks/developer-features.ts",
+
+    "src-server/services/feature-previews/feature-preview-registry.ts",
+
+    "tests/e2e-manifest.mjs",
+
+    "docs/guides/e2e-coverage-matrix.md",
+
+    "docs/guides/feature-previews.md"
+  ],
+
+  "checks": [
+    "Source inspection and independent root plan review; no runtime qualification. docs:index:check passed and docs:links:check validated 555 Markdown files before this record was added."
+  ]
+}
