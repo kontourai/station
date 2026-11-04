@@ -18110,10 +18110,10 @@ export class EventStore {
   }
 
   close(): OperationalEventSubscriptionCloseOutcome {
+    this.messageSearchBackfillClosed = true;
     for (const listener of this.closingListeners) listener();
     this.closingListeners.clear();
     this.packageMcpAdmissionJournal?.closeAdmission();
-    this.messageSearchBackfillClosed = true;
     if (this.storeClosed) return { kind: 'closed' };
     if (
       this.isolatedTranscriptReads &&

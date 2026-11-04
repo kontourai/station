@@ -3695,8 +3695,6 @@ export class OrchestrationService {
       this.initializeEventConsumption();
     } catch (error) {
       this.stopEventConsumption();
-      if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
-      this.idleSweepTimer = undefined;
       throw error;
     }
   }
@@ -4537,9 +4535,7 @@ export class OrchestrationService {
         this.captureAdapterSessions(adapter),
       ]),
     );
-    for (const adapter of this.adapterEventControllers.keys()) {
-      this.stopAdapterEventConsumer(adapter);
-    }
+    this.stopEventConsumption();
     const cleanupResults = await Promise.allSettled([
       ...(transcriptRetirement
         ? [
@@ -13766,6 +13762,14 @@ export class OrchestrationService {
     if (!controller) return;
     this.adapterEventControllers.delete(adapter);
     controller.abort(new Error(`${adapter.provider} adapter retired.`));
+    for (const pending of this.startedSessionCommits.values()) {
+      if (pending.adapter !== adapter) continue;
+      pending.failure = new SessionStartIndeterminateError(
+        undefined,
+        'Session event consumer was retired.',
+      );
+      pending.resolve();
+    }
   }
 
   /**
