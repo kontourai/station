@@ -230,6 +230,13 @@ browser egress proxy, SSH forwards, the telemetry companion's published
 ports, the isolated repair relay) goes through one admission: a literal
 loopback bind, then the Tailscale Serve check for its port, closing it if
 refused. The entrypoint installs that admission before the runtime starts.
+An ephemeral port is known only once bound, and the kernel completes
+connections from then on, so a listener holds every request, upgrade and
+CONNECT until admission succeeds; refused, it drops them and destroys every
+socket it accepted (round 2: a request during a pending check had been
+served). The telemetry companion is admitted again before every Start, not
+only at installation, and its saved ports join the startup check, since a
+running companion outlives Station.
 The repair relay binds every interface without the limit, because a Docker
 container reaches the host through Docker's host alias. Docker Desktop and
 OrbStack forward the alias to the host's loopback, so under the limit the
@@ -240,7 +247,9 @@ the limit rather than bound to a network interface.
 **The UI dev server is checked where it resolves.** `vite dev` takes `--host`
 from its CLI, which overrides the config's loopback default, so a Vite plugin
 checks the final resolved `server.host` and `preview.host`, and then the
-address actually bound, against the installed policy.
+address actually bound, against the installed policy. The bound port then
+goes through the server's own admission, held as above, so a Serve route
+(HTTP or TCP) to Vite's loopback port refuses it too.
 
 **Startup refusals, not runtime switches.** The relay connector
 (`STATION_BROKER_CONFIG_FILE`) is an opt-in to remote clients, so it refuses
@@ -274,6 +283,23 @@ only when nothing looks like Tailscale: no `tailscale` or `tailscaled` on
 or a process list that cannot be read, refuses startup and names what to
 install or stop.
 
+**The trusted CLI is re-verified, and speaks for one daemon.** A verified
+CLI is reused by later admissions, so its identity (device, inode, size,
+modification and change times, plus the macOS bundle's code-signing
+manifest) is captured at verification and compared before every run; a
+change re-runs the full trust check, signature included. What remains is the
+moment between that comparison and the exec. Swapping the file in it needs
+write access to the bundle or a root-owned bin folder, that is, a local
+administrator, whom the limit does not defend against. The CLI answers for
+the system daemon only, and a second `tailscaled` (a user's userspace one
+with its own socket) could forward while it reports stopped. So any running
+`tailscaled` that is not the system daemon refuses startup, by executable
+path and the kernel's real uid: on macOS every `tailscaled`, since the app's
+daemon is a system extension; on Linux one not owned by root or not at a
+system path. launchd jobs are not listed separately: a loaded job that is
+not running forwards nothing, and a running one is in the process list.
+Windows is not inspected yet.
+
 "Nothing forwards" is proven only by: no Tailscale at all (as above), a
 trusted CLI's non-zero exit that says the daemon is not running, a backend state of `Stopped`,
 `NoState`, `NeedsLogin` or `NeedsMachineAuth`, or a Serve configuration whose
@@ -303,9 +329,11 @@ there is none. If a later release offers a relay-only remote path, that is
 the place to add one.
 
 **Out of scope.** Port forwarding with other tools (`ssh -L`/`-R`, reverse
-proxies, tunnel services) connects from loopback and reads as local. A tunnel
-is not detected; the credential layer still refuses earlier devices and new
-pairing through it. Inbound webhooks (`/api/webhooks/inbound`) carry their
+proxies, tunnel services such as ngrok or cloudflared) connects from loopback
+and reads as local. A userspace `tailscaled` a user runs is the same class:
+one under that name refuses startup, but a renamed copy is not detected. A
+tunnel is not detected; the credential layer still refuses new pairing
+through it and keeps earlier devices suspended. Inbound webhooks (`/api/webhooks/inbound`) carry their
 own HMAC and grant authority, are not device authentication, and get their
 own switch (#4521).
 

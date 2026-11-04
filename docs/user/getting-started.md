@@ -667,7 +667,7 @@ while a draft is open returns you to it. To resume earlier work, choose it in
 the dock’s chat list.
 
 At the end of first-run setup, **Take the tour** and **Connect another device**
-are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
+are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
 On a phone, the dock starts at **Inbox** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the

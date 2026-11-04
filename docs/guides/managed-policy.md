@@ -191,9 +191,12 @@ Without `remote`:
   `127.0.0.1`.
 - **Every other listener stays on this computer too.** Each listener Station
   opens later binds a loopback address and is checked against Tailscale
-  Serve as it starts (see below). That covers the MCP Apps frame origin, the
-  browser egress proxy, SSH forwards, the telemetry companion's ports and
-  the isolated repair relay. On Linux the repair worker container reaches
+  Serve as it starts (see below). It serves nothing until that check passes,
+  and a refused one closes every connection it accepted. That covers the MCP
+  Apps frame origin, the browser egress proxy, SSH forwards, the isolated
+  repair relay and the UI development server (`vite dev` and `vite
+  preview`). The telemetry companion's ports are checked at every Start, and
+  at Station's startup too, since a running companion outlives Station. On Linux the repair worker container reaches
   Station through Docker's bridge rather than loopback, so isolated repairs
   are refused there (`repair-network-local-only`).
 - **Nothing new can pair.** Pairing codes, access requests, relay setup and
@@ -244,7 +247,18 @@ Station asks only a Tailscale command it can trust, never whatever
 | Windows | `C:\Program Files\Tailscale\tailscale.exe` (Tailscale's installer) | Its owner and ACLs are not checked yet (#4524). |
 
 Station runs it with a fixed, minimal environment. A Homebrew install on macOS
-does not qualify: its files belong to the Homebrew user.
+does not qualify: its files belong to the Homebrew user. Before each run
+Station checks that the file is the one it verified (same file, size and
+times, and on macOS the same code-signing manifest); if it changed, Station
+checks it again in full, signature included, before it runs it.
+
+The trusted command answers for the system's Tailscale daemon only. A second
+`tailscaled`, such as a userspace one a user starts with its own socket,
+could forward while the system daemon reports stopped. So Station does not
+start while any `tailscaled` other than the system daemon is running, and
+names it: on macOS, where the app runs its daemon as a system extension, any
+`tailscaled`; on Linux, one that is not owned by root or not in a system bin
+folder. Windows is not checked for this yet.
 
 Station starts when the trusted command says Tailscale is not running or is
 signed out, or when nothing on the machine looks like Tailscale: no trusted
@@ -273,9 +287,10 @@ Devices still cannot pair or sign in through such a route.
   computer, so Station sees them as local. Devices paired earlier stay
   suspended and nothing new can pair through them, but a person who has this
   computer's sign-in link or desktop credentials could still use them.
-  Control those tools separately. The same applies to a Tailscale daemon
-  that a user runs under their own account with a renamed program and
-  socket: Station cannot see it.
+  Control those tools separately. A userspace `tailscaled` that a user
+  runs under their own account is in the same group: Station refuses to
+  start while one runs under that name, but a renamed copy, or any other
+  forwarder, is not detected.
 
 ## What a managed policy does not do
 
