@@ -172,6 +172,7 @@ async function layOut(
       ) as HTMLElement | null;
       return {
         stage: box('.live-surface__stage'),
+        canvas: box('canvas'),
         notice: noticeBox,
         retry: box('.live-surface__input-notice button'),
         controls: box('.live-surface__immersive-bar .live-surface-controls'),
@@ -207,8 +208,9 @@ test.each([
       `input-notice-${theme}-${viewport.width}`,
     );
     const hidden = await layOut(without, viewport, theme);
-    // Over the picture, not pushing it down.
+    // Over the picture, not pushing it (or the stage) down.
     expect(shown.stage).toEqual(hidden.stage);
+    expect(shown.canvas).toEqual(hidden.canvas);
     const { stage, notice, retry } = shown;
     if (!stage || !notice || !retry) throw new Error('not rendered');
     expect(notice.top - stage.top).toBeLessThanOrEqual(12);
