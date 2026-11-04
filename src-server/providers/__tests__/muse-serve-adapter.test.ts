@@ -34,7 +34,7 @@ import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-ha
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   installManagedApprovalCeiling,
-  ManagedApprovalCeilingRefusedError,
+  ManagedApprovalCeilingStartRefusedError,
 } from '../../security/managed-approval-ceiling.js';
 import {
   installSessionTmpDirPolicy,
@@ -1133,7 +1133,7 @@ describe('#4518 muse: the exec fallback stays within a managed ceiling', () => {
       modelOptions: { approvalMode: 'ask' },
     });
     await expect(started).rejects.toBeInstanceOf(
-      ManagedApprovalCeilingRefusedError,
+      ManagedApprovalCeilingStartRefusedError,
     );
     await expect(started).rejects.toMatchObject({
       code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
@@ -1160,7 +1160,7 @@ describe('#4518 muse: the exec fallback stays within a managed ceiling', () => {
     });
     await expect(
       h.adapter.startSession({ provider: 'muse', threadId: THREAD }),
-    ).rejects.toBeInstanceOf(ManagedApprovalCeilingRefusedError);
+    ).rejects.toBeInstanceOf(ManagedApprovalCeilingStartRefusedError);
     expect(h.hosts).toEqual([]);
   });
 

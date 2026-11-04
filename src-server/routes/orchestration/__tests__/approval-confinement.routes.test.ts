@@ -56,6 +56,7 @@ import { fullAccessGrantForTesting } from '../../../security/coding-authority.js
 import {
   installManagedApprovalCeiling,
   ManagedApprovalCeilingRefusedError,
+  ManagedApprovalCeilingStartRefusedError,
 } from '../../../security/managed-approval-ceiling.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -2985,6 +2986,31 @@ describe('#4518: the managed approval ceiling', () => {
       "Acme's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.acme.example/station",
   };
   afterEach(() => installManagedApprovalCeiling(null));
+
+  test('an engine that refuses to start under the ceiling answers the managed 403, not an indeterminate start', async () => {
+    // #4570 verification: Muse refuses at start when its only runtime would
+    // run above the ceiling. Raised inside the start boundary, it must stay
+    // a definitive refusal carrying the managed code and the support link.
+    const f = await fixture({ station: 'ask' });
+    installCeiling('ask');
+    vi.spyOn(f.codex, 'startSession').mockRejectedValueOnce(
+      new ManagedApprovalCeilingStartRefusedError(
+        'This engine can only run here without approval prompts (Auto).',
+      ),
+    );
+    const refused = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+      },
+    );
+    expect(refused.status, refused.text).toBe(403);
+    expect(refused.body.code).toBe(MANAGED_POLICY_APPROVAL_CEILING_CODE);
+    expect(refused.body.error).toContain('https://help.acme.example/station');
+    expect(refused.body.error).not.toContain('may have completed');
+  });
 
   test('a new chat that picks full access is refused before any engine starts', async () => {
     const f = await fixture();

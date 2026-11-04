@@ -10,6 +10,7 @@
  * `mayGrantFullAccess` (security/coding-authority.ts) is the one derivation;
  * this only reads the request's granted scope and shapes the refusal.
  */
+import { MANAGED_POLICY_APPROVAL_CEILING_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { Context } from 'hono';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
@@ -65,6 +66,28 @@ export function requestedApprovalMode(options: unknown): unknown {
  */
 export function managedApprovalCeilingRefusal(c: Context): Response {
   return c.json(managedApprovalCeilingRefusalBody(), 403);
+}
+
+/**
+ * The managed 403 when `error`, or any error in its `cause` chain, is a
+ * ceiling refusal: a start the engine could only run above the ceiling
+ * arrives wrapped by the dispatch path. Undefined otherwise.
+ */
+export function managedApprovalCeilingFailure(
+  c: Context,
+  error: unknown,
+): Response | undefined {
+  for (
+    let current: unknown = error, depth = 0;
+    current && typeof current === 'object' && depth < 8;
+    current = (current as { cause?: unknown }).cause, depth += 1
+  )
+    if (
+      (current as { code?: unknown }).code ===
+      MANAGED_POLICY_APPROVAL_CEILING_CODE
+    )
+      return managedApprovalCeilingRefusal(c);
+  return undefined;
 }
 
 /**

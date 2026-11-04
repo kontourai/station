@@ -31,7 +31,10 @@ import {
   type ConcreteApprovalMode,
   isConcreteApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import { SendTurnRefusedError } from '../providers/adapter-shape.js';
+import {
+  SendTurnRefusedError,
+  SessionStartRefusedError,
+} from '../providers/adapter-shape.js';
 
 interface InstalledCeiling {
   readonly summary: ManagedPolicySummary;
@@ -103,6 +106,25 @@ export class ManagedApprovalCeilingRefusedError extends SendTurnRefusedError {
       'permission_denied',
     );
     this.name = 'ManagedApprovalCeilingRefusedError';
+  }
+}
+
+/**
+ * The same refusal raised while a session STARTS (an engine whose only
+ * available runtime would run above the ceiling). A
+ * `SessionStartRefusedError`, so the start boundary settles it as a
+ * definitive refusal with nothing to inspect, never an indeterminate start,
+ * and routes answer the managed 403 by its code.
+ */
+export class ManagedApprovalCeilingStartRefusedError extends SessionStartRefusedError {
+  constructor(reason?: string) {
+    super(
+      reason
+        ? `${reason} ${managedApprovalCeilingMessage()}`
+        : managedApprovalCeilingMessage(),
+      MANAGED_POLICY_APPROVAL_CEILING_CODE,
+    );
+    this.name = 'ManagedApprovalCeilingStartRefusedError';
   }
 }
 

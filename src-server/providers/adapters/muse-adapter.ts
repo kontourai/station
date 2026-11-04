@@ -29,7 +29,7 @@ import type {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
-  ManagedApprovalCeilingRefusedError,
+  ManagedApprovalCeilingStartRefusedError,
   managedCeilingRefuses,
 } from '../../security/managed-approval-ceiling.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
@@ -1154,7 +1154,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     // override, or a failed serve start) is refused before it exists, rather
     // than reporting a posture above the ceiling.
     if (!serveStarted && managedCeilingRefuses('auto')) {
-      throw new ManagedApprovalCeilingRefusedError(
+      throw new ManagedApprovalCeilingStartRefusedError(
         serveUnavailable
           ? 'Muse Code could not start `muse serve`, and its fallback, `muse exec`, runs tools without approval prompts (Auto).'
           : 'Muse Code runs here through `muse exec`, which runs tools without approval prompts (Auto).',
