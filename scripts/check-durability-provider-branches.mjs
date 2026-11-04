@@ -247,6 +247,13 @@ const REVIEWED_PROTOCOL_BRANCHES = [
   },
   {
     file: 'src-server/services/orchestration/orchestration-service.ts',
+    expression: "session?.provider !== 'claude'",
+    count: 1,
+    reason:
+      'Selects the sole implemented native no-tools context-sync restart protocol: Claude Code 2.1.308 with a private generation/client-turn restriction and exact native session/binding. Runtime qualification and current ownership remain independently required; this does not supply generic durability fidelity or enable another adapter.',
+  },
+  {
+    file: 'src-server/services/orchestration/orchestration-service.ts',
     expression: "provider === 'station-agent'",
     count: 1,
     reason:
