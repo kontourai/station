@@ -25,8 +25,10 @@ overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
 For a new Session that announces `session.started` before its adapter start
-returns, an accepted start awaits that event’s durable commit. A per-thread
-commit signal yields while publication retries. If the announcement settles
+returns, an accepted start awaits that event’s durable commit. Built-in adapter
+queues report the announcement synchronously at enqueue, so an earlier event
+blocking the consumer cannot bypass the wait. A per-thread commit signal yields
+while publication retries. If the announcement settles
 without a durable append, or five seconds pass without confirmation, the command
 returns `indeterminate`, attempts provider cleanup, and retains no in-memory
 start-owner send authority. Event settlement and failed-start cleanup share the
