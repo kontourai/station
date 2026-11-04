@@ -75,7 +75,9 @@ describe('runtime routes: device toolchain personal-host gate', () => {
     expect(
       deviceMounts.map((node) => node.getText(source).split('(')[0]),
     ).toEqual([
-      // D12 principal priming runs before every device route.
+      // Artifact routes resolve their human caller at their own boundary.
+      'context.app.route',
+      // D12 principal priming for the remaining device routes.
       'context.app.use',
       // Devices and sessions, SSH device hosts (#1973), the Tools drawer
       // (#1971), and the toolchain/shares/hub proxy (#1970).

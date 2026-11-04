@@ -40,6 +40,7 @@ import {
   relative,
   resolve,
 } from 'node:path';
+import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
@@ -4646,6 +4647,25 @@ export function lastFatalServerLogLine(logFile: string): string | null {
     if (LIFECYCLE_START_HEADER.test(lines[index])) {
       from = index + 1;
       break;
+    }
+  }
+  // A fail-closed refusal names its own cause; a later generic logger line
+  // (`FATAL … (station)`) must not hide it. The server writes the refusal
+  // as its own line, then the logger repeats it with paths redacted, so a
+  // line that starts with the marker wins over a later copy inside one.
+  const marker = `${MANAGED_POLICY_INVALID_MARKER}:`;
+  for (const own of [true, false]) {
+    for (let index = lines.length - 1; index >= from; index -= 1) {
+      const text = lines[index].trimStart();
+      const at = own
+        ? text.startsWith(marker)
+          ? 0
+          : -1
+        : text.indexOf(marker);
+      if (at >= 0) {
+        const line = text.slice(at).trim();
+        return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+      }
     }
   }
   for (let index = lines.length - 1; index >= from; index -= 1) {
