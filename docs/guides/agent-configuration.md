@@ -68,6 +68,11 @@ the Agent draft. Sources that need configuration open setup before attachment.
 Tool-providing plugins use the existing package permission review. Catalogs mark
 these with `providesTools: true`; this is a browsing hint, not a permission grant.
 
+For a Task, the default-off **Task capabilities** Feature Preview adds
+**Overview → Inspect Project tools**. It searches this same Project catalog
+without changing an Agent's selection or approval rules. See the
+[Task journey](starter-work.md#start-your-first-task) for the work and evidence path.
+
 ### Shared Projects
 
 The Station operator installs and connects sources. Project Admins and Owners

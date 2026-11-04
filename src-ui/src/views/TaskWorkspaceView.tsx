@@ -73,6 +73,7 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskCapabilityPath } from './task-workspace/TaskCapabilityPath';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
@@ -668,6 +669,18 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        {tab === 'Overview' && (
+          <TaskCapabilityPath
+            taskId={graph.task.id}
+            taskCreatedAt={graph.task.createdAt}
+            projectId={projectId}
+            projectSlug={projectSlug}
+            onView={(view) => {
+              if (view === 'Details') setActiveExperienceId('direct');
+              setTab(view);
+            }}
+          />
+        )}
         {supervisionAuthority && (
           <TaskSupervisionPanel
             taskId={graph.task.id}

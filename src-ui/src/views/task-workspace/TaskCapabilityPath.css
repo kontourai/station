@@ -1,0 +1,105 @@
+.task-capability-path {
+  display: grid;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-4);
+  border-block-end: 1px solid var(--k-line);
+  min-width: 0;
+}
+
+.task-capability-path h3,
+.task-capability-path p {
+  margin: 0;
+}
+
+.task-capability-path__steps {
+  display: grid;
+  grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(100%, calc(var(--k-space-6) * 6)), 1fr)
+    );
+  gap: var(--k-space-3);
+  padding-inline-start: var(--k-space-5);
+  margin: 0;
+}
+
+.task-capability-path__steps span {
+  display: block;
+  color: var(--k-text-muted);
+  margin-block-start: var(--k-space-2);
+}
+
+.task-capability-path__catalog,
+.task-capability-path__sources,
+.task-capability-path__sources details {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+
+.task-capability-path__search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--k-space-3);
+  margin-block: var(--k-space-3);
+}
+
+.task-capability-path__search label {
+  display: grid;
+  flex: 1;
+  gap: var(--k-space-2);
+  min-width: min(100%, calc(var(--k-space-6) * 6));
+}
+
+.task-capability-path input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.task-capability-path input:focus-visible,
+.task-capability-path summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-capability-path__sources {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.task-capability-path__sources > li {
+  border-block-start: 1px solid var(--k-line);
+  padding-block: var(--k-space-2);
+  overflow-wrap: anywhere;
+}
+
+.task-capability-path__sources summary {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  align-content: center;
+  cursor: pointer;
+}
+
+.task-capability-path__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-inline-start: var(--k-space-2);
+}
+
+.task-capability-path__sources details > ul {
+  display: grid;
+  gap: var(--k-space-3);
+  padding-inline-start: var(--k-space-5);
+}
+
+.task-capability-path__sources code {
+  margin-inline: var(--k-space-2);
+}
