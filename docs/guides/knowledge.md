@@ -620,7 +620,7 @@ currently unavailable through the public SDK: the optional recording component
 requires `useSTT`, which this checkout does not export. Browser speech support
 alone cannot enable it.
 
-- **Save transcript** trims surrounding whitespace, then writes the text as a `raw` Kit record
+- **Save transcript** writes the submitted text as a `raw` Kit record
   (`provenance.agent: 'station.meeting-notes.capture'`).
 - **Compile** sends that transcript to a plugin-contributed agent (the same "extract the key action
   items, decisions made, and any important points" prompt already dogfooded by
@@ -634,6 +634,8 @@ alone cannot enable it.
   call does not re-read or lock the stored source, so external edits or deletion
   remain outside this guarantee. Inspect the raw record when checking provenance.
 
+Loading a transcript file names it in a status notice and asks you to review
+the transcript before saving. Loading does not save a record.
 An unreadable transcript upload shows an error and preserves the current text.
 Reading a file does not overwrite edits made while that read was pending.
 
