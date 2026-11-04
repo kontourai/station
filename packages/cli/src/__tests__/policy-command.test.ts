@@ -157,7 +157,7 @@ describe('station policy check', () => {
     'exits 1 promptly on a FIFO instead of waiting for a writer',
     () => {
       const path = join(fixture(), 'policy.json');
-      execFileSync('mkfifo', [path]);
+      execFileSync('mkfifo', [path], { windowsHide: true });
       const started = Date.now();
       const result = check(path);
       // A blocking open would hang until the 60 s kill (status null).

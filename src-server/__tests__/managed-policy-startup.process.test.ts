@@ -226,7 +226,7 @@ describe('managed policy at real server startup', () => {
     'refuses to start promptly on a FIFO instead of blocking on open',
     async () => {
       const { stderr } = await expectRefusal((path) =>
-        execFileSync('mkfifo', [path]),
+        execFileSync('mkfifo', [path], { windowsHide: true }),
       );
       expect(stderr).toContain('it is not a regular file');
     },

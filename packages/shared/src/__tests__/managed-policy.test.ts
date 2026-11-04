@@ -273,7 +273,7 @@ describe('symbolic links', () => {
 describe('special files', () => {
   test.skipIf(!posix)('a FIFO is refused as not a regular file', () => {
     const path = join(dir(), 'policy.json');
-    execFileSync('mkfifo', [path]);
+    execFileSync('mkfifo', [path], { windowsHide: true });
     // Hold a write end open so that, if the non-blocking open regressed,
     // this in-process read would fail the assertion instead of hanging the
     // worker. The non-blocking open itself is proven by the CLI and server
