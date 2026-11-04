@@ -255,3 +255,25 @@ test('privacy disclosure retains the conservative dated-usage limit on cumulativ
     'Cumulative resets or corrections can undercount daily tokens',
   );
 });
+
+test.each([
+  ['privacy policy', renderPrivacyPolicy],
+  ['Play data safety', renderPlayDataSafety],
+])(
+  '%s discloses repeated-start and adoption baselines without understating the undercount',
+  (_name, render) => {
+    const disclosure = render();
+    expect(disclosure).toContain(
+      'Every repeated cumulative-engine session start',
+    );
+    expect(disclosure).toContain(
+      'including a fresh start after a lost native session',
+    );
+    expect(disclosure).toContain(
+      'resume or adoption withholds the whole first reported figure of each token component',
+    );
+    expect(disclosure).toContain(
+      'the whole first turn when the engine reports once per turn, or part of it when it reports more often',
+    );
+  },
+);

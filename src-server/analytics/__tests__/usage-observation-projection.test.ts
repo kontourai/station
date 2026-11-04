@@ -1153,7 +1153,9 @@ test('daily cumulative throughput excludes outside jumps on each Station resume 
       promptTokens: 100_000,
     });
     vi.setSystemTime('2026-08-02T12:00:00Z');
-    f.start('resumed-codex', 'codex', day2, 'model-a', {}, true);
+    f.start('resumed-codex', 'codex', day2, 'model-a', {
+      nativeResumeIdentity: 'matched',
+    });
     f.turn('resumed-codex', 'codex', 'first-after-terminal', day2, {
       promptTokens: 5_150_000,
     });
@@ -1229,3 +1231,102 @@ test('first observed native resume baselines cumulative components while per-tur
     vi.useRealTimers();
   }
 });
+
+test.each([
+  {
+    name: 'native adoption with both adapter lifecycle events',
+    started: {
+      continuation: 'native-fork',
+      continuationBoundaryTurnId: 'outside-turn',
+      continuationBoundaryObservedEventId: 'outside-observation',
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+    configured: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+  },
+  {
+    name: 'source-affinity start without a fork marker',
+    started: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+    configured: {},
+  },
+  {
+    name: 'source-affinity configuration without a start marker',
+    started: {},
+    configured: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+  },
+  {
+    name: 'native fork without availability metadata',
+    started: { continuation: 'native-fork' },
+    configured: {},
+  },
+])(
+  'daily Codex usage baselines inherited counters for $name',
+  ({ started, configured }) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(day2);
+    const f = fixture();
+    const threadId = 'adopted-codex';
+    try {
+      f.store.upsertSession({
+        provider: 'codex',
+        threadId,
+        status: 'ready',
+        controlMode: 'station-owned',
+        model: 'model-a',
+        createdAt: day2,
+        updatedAt: day2,
+      });
+      f.store.appendEvent({
+        ...f.event(threadId, 'codex', day2),
+        eventId: 'adoption-start',
+        method: 'session.started',
+        sessionId: threadId,
+        initialState: 'created',
+        metadata: {
+          userId: 'reader',
+          codexThreadId: 'native-child',
+          ...started,
+        },
+      });
+      f.store.appendEvent({
+        ...f.event(threadId, 'codex', day2),
+        eventId: 'adoption-configured',
+        method: 'session.configured',
+        sessionId: threadId,
+        model: 'model-a',
+        metadata: { codexThreadId: 'native-child', ...configured },
+      });
+      const dailyInput = () =>
+        f.reads
+          .listDailyUsage('2026-08-02', f.authority)
+          .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0);
+      f.turn(threadId, 'codex', 'first-station-report', day2, {
+        promptTokens: 42_050_000,
+      });
+      expect(dailyInput()).toBe(0);
+      f.turn(threadId, 'codex', 'later-station-report', day2, {
+        promptTokens: 42_100_000,
+      });
+      expect(dailyInput()).toBe(50_000);
+      expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
+        42_100_000,
+      );
+    } finally {
+      f.store.close();
+      vi.useRealTimers();
+    }
+  },
+);
