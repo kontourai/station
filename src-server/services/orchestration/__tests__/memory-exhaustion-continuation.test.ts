@@ -219,6 +219,22 @@ describe('automatic continuation after a memory kill', () => {
     },
   );
 
+  test("#4512: a person's Continue is queued as interactive; the automatic one names no origin", () => {
+    const continuation = coordinator();
+    killedTurn('thread-a');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-a',
+        actor: { userId: 'person-1' },
+      }).kind,
+    ).toBe('queued');
+    expect(submissions.at(-1)!.payload.dispatchOrigin).toBe('interactive');
+    killedTurn('thread-b');
+    continuation.observe(exited('thread-b'));
+    expect(submissions.at(-1)!.conversationId).toBe('thread-b');
+    expect(submissions.at(-1)!.payload).not.toHaveProperty('dispatchOrigin');
+  });
+
   test('continues once, with the continuation text under the dead-turn key', () => {
     const continuation = coordinator();
     const turnId = killedTurn('thread-a');

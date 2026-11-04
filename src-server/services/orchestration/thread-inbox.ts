@@ -145,13 +145,18 @@ export interface ThreadInboxPayload {
  *
  * 1. An Automation action's entry (`serverAutomationIntentId`) is `automation`.
  * 2. The origin the Station sender wrote on the entry (`dispatchOrigin`): a
- *    scheduled Automation run says `automation`.
+ *    scheduled Automation run says `automation`; a person's memory Continue
+ *    and a person's Task review send say `interactive`; coordinator and
+ *    Project supervision wakes say `unknown` (a person's coordinator is not
+ *    unattended work).
  * 3. A person's entry (operator or paired device) is `interactive`.
  * 4. A delegated child's result (`sender.kind` `delegation-result`, which
  *    the server stamps) is `delegation`, on a Task's Session too: the cause
  *    is the delegation, and both are unattended work.
  * 5. Station's own entry (`internal` actor) into a Session bound to a Task
- *    (`taskBound`: its room execution binding) is `task-dispatch`.
+ *    (`taskBound`: its room execution binding) is `task-dispatch`: a Task
+ *    question wake, an automatic memory continuation, or a check-back the
+ *    agent scheduled for itself. Off a Task's Session those are `unknown`.
  * 6. Anything else is `unknown`.
  */
 export function inboxTurnDispatchOrigin(

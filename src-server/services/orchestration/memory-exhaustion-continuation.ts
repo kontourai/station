@@ -370,6 +370,10 @@ export class MemoryExhaustionContinuation {
         message: MEMORY_CONTINUATION_TEXT,
         actor,
         clientOrigin: MEMORY_CONTINUATION_CLIENT_ORIGIN,
+        // #4512: a person's Continue is theirs, though Station composes it;
+        // the automatic one says nothing and is classified like any of
+        // Station's own entries.
+        ...(by === 'person' ? { dispatchOrigin: 'interactive' as const } : {}),
       },
     });
     if (submitted.outcome !== 'queued')
