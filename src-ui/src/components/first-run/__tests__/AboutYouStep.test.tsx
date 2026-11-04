@@ -1,3 +1,4 @@
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 /**
  * @vitest-environment jsdom
  */
@@ -110,18 +111,26 @@ describe('AboutYouStep — the reach is stated', () => {
 });
 
 describe('AboutYouStep — managed limit without remote clients (#4519)', () => {
-  test('"Connect another device" is disabled and the managed sentence replaces the invitation', () => {
+  const limit = {
+    organization: 'Acme',
+    supportUrl: 'https://help.acme.example/station',
+    lockedSettings: [],
+    limits: { clients: ['desktop', 'local-browser'] },
+  } as ManagedPolicySummary;
+
+  test('"Connect another device" is disabled, and the managed sentence and a Get help link replace the invitation', () => {
     const onComplete = vi.fn();
-    const refusal =
-      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
-    render(<AboutYouStep onComplete={onComplete} pairingRefusal={refusal} />);
+    render(<AboutYouStep onComplete={onComplete} pairingLimit={limit} />);
     const devices = screen.getByRole('button', {
       name: 'Connect another device',
     }) as HTMLButtonElement;
     expect(devices.disabled).toBe(true);
-    expect(screen.getByText(refusal).id).toBe(
-      devices.getAttribute('aria-describedby'),
-    );
+    const note = screen.getByText(/Acme.s policy manages remote access/);
+    expect(note.id).toBe(devices.getAttribute('aria-describedby'));
+    // Round 2, item 8: the same visible Get help link as every other entry point.
+    const help = screen.getByRole('link', { name: 'Get help' });
+    expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
+    expect(note.contains(help)).toBe(true);
     expect(screen.queryByText(/QR invitation/)).toBeNull();
     fireEvent.click(devices);
     expect(onComplete).not.toHaveBeenCalled();

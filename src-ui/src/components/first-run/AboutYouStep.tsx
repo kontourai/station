@@ -25,6 +25,7 @@
  * only ever open inside a chapter the person is already in.
  */
 
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 import {
   buildUserProfileContextBlock,
   USER_PROFILE_COMFORT_LABELS,
@@ -37,6 +38,7 @@ import {
   type UserProfileSettings,
 } from '@kontourai/station-contracts/user-profile';
 import { useId, useState } from 'react';
+import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './AboutYouStep.css';
 
@@ -56,8 +58,11 @@ interface AboutYouStepProps {
    * the write did not land
    */
   error?: string | null;
-  /** #4519: why this Station cannot pair another device; disables that exit. */
-  pairingRefusal?: string;
+  /**
+   * #4519: the policy that keeps this Station from pairing another device;
+   * disables that exit and shows its sentence and Get help link.
+   */
+  pairingLimit?: ManagedPolicySummary;
 }
 
 export function AboutYouStep({
@@ -65,7 +70,7 @@ export function AboutYouStep({
   onComplete,
   saving,
   error,
-  pairingRefusal,
+  pairingLimit,
 }: AboutYouStepProps) {
   const roleGroupId = useId();
   const comfortGroupId = useId();
@@ -166,10 +171,12 @@ export function AboutYouStep({
         you write and send a message.
       </p>
       {saving ? <p role="status">Saving your answers…</p> : null}
-      {pairingRefusal ? (
-        <p className="first-run-chapter__lede" id="first-run-pairing-refusal">
-          {pairingRefusal}
-        </p>
+      {pairingLimit ? (
+        <ManagedRemoteClientsNote
+          summary={pairingLimit}
+          className="first-run-chapter__lede"
+          id="first-run-pairing-refusal"
+        />
       ) : (
         <p className="first-run-chapter__lede">
           Want to use this Station on your phone too? Connect another device
@@ -189,10 +196,10 @@ export function AboutYouStep({
             }
             disabled={
               saving ||
-              (destination === 'devices' && pairingRefusal !== undefined)
+              (destination === 'devices' && pairingLimit !== undefined)
             }
             aria-describedby={
-              destination === 'devices' && pairingRefusal
+              destination === 'devices' && pairingLimit
                 ? 'first-run-pairing-refusal'
                 : undefined
             }

@@ -15,7 +15,7 @@ import {
 import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { useManagedRemoteClientsRefusal } from '../../hooks/useManagedRemoteClientsRefusal';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   forgetStationProbe,
@@ -26,6 +26,7 @@ import {
   readRecentStations,
   type StationReachability,
 } from '../../lib/stationSwitcher';
+import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
 import { useStationConditions } from '../notifications/StationConditions';
 import { openStationDetails } from '../notifications/stationDetailsEvents';
 import { FilteredEmpty } from '../state';
@@ -77,8 +78,11 @@ export function StationSwitcherMenu({
   onManage: () => void;
   onPairPhone?: () => void;
 }) {
-  // #4519: under the managed limit "Pair phone" is disabled and says why.
-  const pairPhoneRefusal = useManagedRemoteClientsRefusal();
+  // #4519: under the managed limit "Pair phone" is disabled, and the
+  // policy's sentence and Get help link show below it, as on every other
+  // pairing entry point.
+  const remoteClientsLimit = useManagedRemoteClientsLimit();
+  const pairPhoneNoteId = useId();
   const conditions = useStationConditions();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -472,10 +476,11 @@ export function StationSwitcherMenu({
               <button
                 type="button"
                 role="menuitem"
-                className={`menu-row${pairPhoneRefusal ? ' station-switcher__row--refused' : ''}`}
-                disabled={pairPhoneRefusal !== undefined}
-                title={pairPhoneRefusal}
-                aria-description={pairPhoneRefusal}
+                className={`menu-row${remoteClientsLimit ? ' station-switcher__row--refused' : ''}`}
+                disabled={remoteClientsLimit !== undefined}
+                aria-describedby={
+                  remoteClientsLimit ? pairPhoneNoteId : undefined
+                }
                 onClick={() => {
                   onClose();
                   onPairPhone();
@@ -497,6 +502,14 @@ export function StationSwitcherMenu({
               Manage
             </button>
           </div>
+          {onPairPhone && remoteClientsLimit && (
+            <div role="none" className="station-switcher__managed-note">
+              <ManagedRemoteClientsNote
+                summary={remoteClientsLimit}
+                id={pairPhoneNoteId}
+              />
+            </div>
+          )}
         </div>
       </div>
     </>,

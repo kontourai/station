@@ -38,7 +38,7 @@ import {
   firstRunChapterPresence,
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
-import { useManagedRemoteClientsRefusal } from '../../hooks/useManagedRemoteClientsRefusal';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
@@ -165,7 +165,7 @@ export function FirstRunHomeChapter({
 }) {
   const explicitSetup = useRef(false);
   // #4519: under the managed limit the "Connect another device" exit is off.
-  const pairingRefusal = useManagedRemoteClientsRefusal();
+  const pairingLimit = useManagedRemoteClientsLimit();
   const config = useConfig();
   const { updateConfig, recordFirstRunDecision } = useConfigActions();
   const configSettled = useConfigSettled();
@@ -599,7 +599,7 @@ export function FirstRunHomeChapter({
               />
             ) : (
               <AboutYouStep
-                pairingRefusal={pairingRefusal}
+                pairingLimit={pairingLimit}
                 initial={config?.userProfile}
                 saving={saving}
                 error={saveError}
