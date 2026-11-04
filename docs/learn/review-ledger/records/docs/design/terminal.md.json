@@ -60,7 +60,7 @@
 
     "tests/live/terminal-restart-journey.mjs",
 
-    "packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts"
+    "packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts"
   ],
 
   "checks": [
