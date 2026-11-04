@@ -1,0 +1,13 @@
+/* A frame whose host asks it to fill (`fill`): the host is a flex column
+   with a height of its own, and the pane under the frame fills it. Without
+   this the frame held content height and the Coding terminal collapsed to a
+   16px strip. Only hosts that ask get it: as a flex container the frame
+   would stop its pane's block margins collapsing, which moved Home's
+   actions under the phone dock. */
+.workspace-pane-frame--fill {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}

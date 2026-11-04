@@ -42,6 +42,7 @@ import {
   createLocalBrowserHostResolver,
 } from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
+import type { BrowserNetworkEntry } from '../browser-network-log.js';
 import { BrowserProjectSettingsStore } from '../browser-project-settings.js';
 import {
   type BrowserSessionActor,
@@ -246,6 +247,19 @@ async function harness(
     humanHoldMs?: number;
     /** The lease's clock. Tests that lapse a hold drive it by hand. */
     leaseNow?: () => number;
+    networkFor?: (
+      id: string,
+      after?: number,
+      limit?: number,
+    ) => Promise<
+      | {
+          generation: number;
+          entries: BrowserNetworkEntry[];
+          dropped: number;
+          latestSeq: number;
+        }
+      | undefined
+    >;
   } = {},
 ) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-auto-'));
@@ -284,6 +298,9 @@ async function harness(
     agentActionsEnabled: () => true,
     dialogWaitingForPerson: (id) => binder.pendingDialogFor(id) !== undefined,
     settings,
+    ...(options.networkFor
+      ? { networkFor: options.networkFor, networkPreviewEnabled: () => true }
+      : {}),
     locatorEngine: async () => undefined,
     sleep: async () => {},
     ...(options.stepDeadlineMs
@@ -324,6 +341,63 @@ const kindsOf = (
     .map((e) => e.kind);
 
 describe('BrowserAutomation: a session id is only a selector', () => {
+  test('network refuses without evaluation permission before reading and labels page content when allowed', async () => {
+    const networkFor = vi.fn(async () => ({
+      generation: 1,
+      entries: [],
+      dropped: 0,
+      latestSeq: 0,
+    }));
+    const h = await harness({ networkFor });
+    const session = await h.open();
+    const authority = await authorityFor();
+    expect(
+      await h.automation.network(authority, session.browserSessionId),
+    ).toMatchObject({ ok: false, code: 'not-permitted' });
+    expect(networkFor).not.toHaveBeenCalled();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    expect(
+      await h.automation.network(authority, session.browserSessionId),
+    ).toMatchObject({ ok: true, pageContent: PAGE_CONTENT_NOTICE });
+    expect(networkFor).toHaveBeenCalledOnce();
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  });
+  test('network withholds page data if the bound grant expires during capture', async () => {
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const networkFor = vi.fn(async () => {
+      enter();
+      await waiting;
+      return { generation: 1, entries: [], dropped: 0, latestSeq: 0 };
+    });
+    const h = await harness({ networkFor });
+    const session = await h.open();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    let current = true;
+    const decided = await authorizeBrowserAgentCaller(
+      caller(),
+      authorizePrincipal,
+      () => current,
+    );
+    if (!decided.ok) throw new Error(decided.refusal.code);
+    const result = h.automation.network(
+      decided.authority,
+      session.browserSessionId,
+    );
+    await entered;
+    current = false;
+    release();
+    expect(await result).toMatchObject({ ok: false, code: 'not-authorized' });
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  });
   test('a successful agent click publishes target geometry on its live surface', async () => {
     const h = await harness();
     scriptButton(h.fake);

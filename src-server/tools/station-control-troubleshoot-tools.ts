@@ -63,6 +63,20 @@ export function registerTroubleshootTools(
         .describe('Issue-form field values keyed by field id.'),
     },
     async ({ title, fields }) => {
+      // The schema rejects these before an agent call arrives; a direct
+      // invocation without it gets the same typed refusal, never a throw.
+      if (
+        typeof title !== 'string' ||
+        typeof fields !== 'object' ||
+        fields === null ||
+        Array.isArray(fields)
+      ) {
+        return jsonToolResult({
+          success: false,
+          code: 'invalid_troubleshoot_report',
+          error: 'A report needs a string title and an object of fields.',
+        });
+      }
       const redactedTitle = redactTroubleshootReportText(title);
       const redacted: TroubleshootReportFields = {};
       for (const id of TROUBLESHOOT_REPORT_FIELD_IDS) {

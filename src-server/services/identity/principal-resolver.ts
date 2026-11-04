@@ -180,7 +180,16 @@ export class PrincipalUnresolvedError extends Error {
  */
 export type OperatorAuthorityFact =
   | { readonly locality: CredentialLocality }
-  | { readonly verifiedOperatorCredential: true };
+  | { readonly verifiedOperatorCredential: true }
+  /**
+   * Owner-device standing: one of the owner's own
+   * paired devices on a personal Station, verified by the pairing store at
+   * the auth boundary (`RuntimeAuthenticatedRequestPrincipal.standing`). The
+   * device is one more position of the one principal (principals.md §2(a)),
+   * so it resolves to the same `human:local:operator`. Its acts stay
+   * attributable to the device through the request's client origin (R1).
+   */
+  | { readonly ownerDevice: true };
 
 /**
  * The single, well-known principal id for Station's local single-operator
@@ -260,7 +269,9 @@ export function resolvePrincipal(
     // without first narrowing on which one is present.
     ('locality' in operatorAuthority
       ? operatorAuthority.locality === 'home-possession'
-      : operatorAuthority.verifiedOperatorCredential === true)
+      : 'ownerDevice' in operatorAuthority
+        ? operatorAuthority.ownerDevice === true
+        : operatorAuthority.verifiedOperatorCredential === true)
   ) {
     // station#4075 stage 1: `humanPrincipal` REFUSES to
     // mint `LOCAL_OPERATOR_PROVIDER` for any caller — that reservation is

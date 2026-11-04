@@ -2,7 +2,10 @@ import {
   useStartDeviceRecordingMutation,
   useTasksQuery,
 } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { useRef } from 'react';
 import { TaskPicker } from '../../components/chat/TaskPicker';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
@@ -95,7 +98,12 @@ export function DeviceRecordingPicker({
         };
       }}
       successMessage={(task) => `Recording started for “${task.title}”.`}
-      failureMessage="Could not start recording. Update Station or try again."
+      failureMessage={
+        start.error instanceof StationHttpError &&
+        start.error.code === 'recording-unavailable'
+          ? start.error.message
+          : 'Could not start recording. Update Station or try again.'
+      }
       submitLabel="Start recording"
       pendingLabel="Starting…"
     />

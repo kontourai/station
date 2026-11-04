@@ -202,6 +202,22 @@
     ],
     "station-switcher-forget-dark-desktop": [
       "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
+    "new-chat-dark-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-dark-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
     ]
   }
 }

@@ -82,6 +82,11 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
+| `terminalHistoryEnabled` | boolean | `true` | Whether terminals opened afterwards write their output to disk. Off keeps only the in-memory tail. See [Journal](../design/terminal.md#journal). |
+| `terminalHistoryDirectory` | absolute path | `<home>/terminal-journals` | Where terminal history is kept. Ended terminals' history moves there on the next open, usage read or start; a running one moves after it ends. A relative path is refused, and an agent cannot change it. |
+| `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
+| `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
+| `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
 | `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 | `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
@@ -89,8 +94,9 @@ additional first-run, workspace, approval, contribution, and preview settings.
 ### nearby discovery
 
 `lanDiscoveryEnabled` is a Station boolean, default `false`, saved in
-`config/app.json`. Changing it requires the bound local operator; an ordinary
-remote `access:manage` grant does not suffice. **Settings → Pairing → Discover
+`config/app.json`. Changing it requires the bound Station owner (the local
+operator, or one of the owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)); an `access:manage` grant alone does not suffice. **Settings → Pairing → Discover
 this Station nearby** changes that intent without changing listener binding,
 ports or firewall rules.
 
@@ -250,8 +256,9 @@ file mode `0600` when opening a day file. Failure leaves the durable sink
 unwritable while redacted stdout logging continues. The Windows branch skips
 those POSIX checks; this code is not a Windows ACL guarantee.
 
-Diagnostics chooses its rendering from the request's bound
-[`home-possession` locality](../../src-server/security/runtime-request-security.ts),
+Diagnostics chooses its rendering from the request's bound owner authority:
+[`home-possession` locality](../../src-server/security/runtime-request-security.ts)
+or [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02),
 not from a caller-supplied query or the socket address alone. That locality is
 minted through local-grant secret possession or a qualifying same-machine
 UI-bootstrap exchange. Pairing codes, access requests, operator credentials,
@@ -327,12 +334,13 @@ The write side above has a matching self-read path — Station can answer "what 
 
 - **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (inclusive bounds; send ISO 8601 timestamps, although the current route accepts any string `Date.parse` can parse and returns 400 only when parsing fails), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches found in its bounded backward scan, ordered by parsed timestamp** (it does not scan the entire history to prove the globally newest timestamps), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). The pairing-scope gate still applies; agent callers also need the grant below.
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
-- **Redaction on egress:** without bound home-possession, the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound home-possession, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
+- **Redaction on egress:** without bound owner authority (home-possession or owner-device standing), the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound owner authority, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
 
 Agent log reads are denied by default, including calls made with the internal
 token and no verified caller. An operator may grant one verified **bound**
-session through `POST /api/agents/unattended-grants` with an operator credential
-and `access:manage`. Use `toolName: "station-control:read_logs"` and a
+session through `POST /api/agents/unattended-grants` as the owner in person (the
+operator credential, a home-possession credential or a device with owner-device
+standing) and `access:manage`. Use `toolName: "station-control:read_logs"` and a
 `principalKey` that is the JSON string for
 `{"kind":"diagnostics-session","sessionId":"<session-id>"}`. Revoke the
 same pair through `POST /api/agents/unattended-grants/revoke`. This grant can
@@ -371,8 +379,8 @@ substring search, not a structured join or a complete transcript.
 
 Remote log redaction can replace a secret-shaped binding value, while the
 monitoring path does not use that same log-redaction pass. Such a value cannot
-be joined reliably from the remote log output; local home-possession reads
-retain it.
+be joined reliably from the remote log output; owner reads (home-possession or
+owner-device standing) retain it.
 
 | Correlation key | Log binding field | Monitoring event field | Bound at |
 |---|---|---|---|

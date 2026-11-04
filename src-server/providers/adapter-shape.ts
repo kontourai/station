@@ -41,6 +41,7 @@ import type {
   SessionGoalControlResult,
   SessionGoalRead,
 } from '@kontourai/station-contracts/session-goal';
+import type { ModelOption } from '@kontourai/station-contracts/tool';
 import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
@@ -338,13 +339,7 @@ export interface ProviderAdapterMetadata {
 }
 
 export interface ProviderAdapterModelCatalog {
-  models: Array<{
-    id: string;
-    name: string;
-    originalId: string;
-    /** Concrete catalog identity for an alias; not per-turn served-model proof. */
-    resolvedModel?: string;
-  }>;
+  models: ModelOption[];
   /** True when a bounded entry limit omitted additional adapter results. */
   truncated?: boolean;
 }

@@ -256,6 +256,13 @@ function ChatDockInboxPanelImpl({
               if (item.kind === 'task') {
                 navigationStore.navigate(
                   `/tasks/${encodeURIComponent(item.id)}`,
+                  {
+                    dock: null,
+                    chat: null,
+                    maximize: null,
+                    surface: null,
+                    taskView: 'overview',
+                  },
                 );
                 return;
               }

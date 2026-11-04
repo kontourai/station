@@ -71,6 +71,13 @@
   min-width: 0;
 }
 
+/* #4401: "Inbox" is short and always the same word; the crumbs shrank in
+   proportion, so it truncated ("I…") while the chat title still had room to
+   give. The title crumb is the one that yields. */
+.coding-workbench__crumb:first-child {
+  flex: none;
+}
+
 .coding-workbench__crumb + .coding-workbench__crumb::before {
   content: "/";
   flex: none;

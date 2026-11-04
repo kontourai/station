@@ -21,10 +21,14 @@ import type {
 } from '../services/browser/browser-access.js';
 import type { BrowserConsoleSnapshot } from '../services/browser/browser-console-log.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../services/browser/browser-human-recording.js';
+import type { HumanTaskPreparation } from '../services/browser/browser-human-task-clip.js';
 import {
   LocalTargetError,
   type LocalTargetStore,
 } from '../services/browser/browser-local-targets.js';
+import type { BrowserNetworkSnapshot } from '../services/browser/browser-network-log.js';
+import { pickBrowserElement } from '../services/browser/browser-pick.js';
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
@@ -33,6 +37,7 @@ import {
   BrowserSessionError,
   type BrowserSessionRecord,
   type BrowserSessionRegistry,
+  browserEffectiveViewport,
   browserProfileFor,
   browserViewportProblem,
   isValidBrowserProjectId,
@@ -70,6 +75,25 @@ const EXPERIENCE_DISABLED = {
   settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
 } as const;
 
+interface CapturedView {
+  viewport: BrowserViewport;
+  zoomFactor?: number;
+}
+
+/** A capture is valid only for the viewport and zoom it was taken at. */
+const sameView = (a: CapturedView, b: CapturedView) =>
+  a.viewport.width === b.viewport.width &&
+  a.viewport.height === b.viewport.height &&
+  (a.zoomFactor ?? 1) === (b.zoomFactor ?? 1);
+
+const ARTIFACTS_DISABLED = {
+  success: false,
+  error: 'Enable Browser artifacts in Feature previews.',
+  code: 'feature_preview_disabled',
+  previewId: 'browser-artifacts',
+  settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+} as const;
+
 /** A Project as the routes see it: canonical ID plus its current slug. */
 export interface BrowserRouteProject {
   id: string;
@@ -91,8 +115,11 @@ export interface BrowserRoutesDeps {
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
+    | 'captureAnnotationScreenshot'
   > &
-    Partial<Pick<BrowserSessionRegistry, 'setZoom' | 'setColorScheme'>>;
+    Partial<
+      Pick<BrowserSessionRegistry, 'liveTarget' | 'setZoom' | 'setColorScheme'>
+    >;
   browserExperienceEnabled?(): boolean;
   withHumanControl?(
     context: Context,
@@ -132,6 +159,19 @@ export interface BrowserRoutesDeps {
     browserSessionId: string,
     after?: number,
   ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
+  networkFor?(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<BrowserNetworkSnapshot | undefined>;
+  networkPreviewEnabled?: () => boolean;
+  humanRecordings?: BrowserHumanRecording;
+  recordingAdmissionKey?(context: Context): string | undefined;
+  prepareHumanTaskClip?(
+    request: Request,
+    conversationId: string,
+    browser: BrowserSessionRecord,
+  ): Promise<HumanTaskPreparation>;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -510,6 +550,199 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         ? denied
         : { success: false, code: 'not-found' };
 
+  const recordingAccess = async (request: Request, id: string) => {
+    const found = await sessionFor(request, id, 'view');
+    if (found.status !== 200) return found;
+    if (
+      !deps.isRequestPrincipalCurrent(request) ||
+      !deps.networkPreviewEnabled?.() ||
+      !deps.isAgentRequest ||
+      deps.isAgentRequest(request)
+    )
+      return { status: 403 as const };
+    return { ...found, owner: JSON.stringify(found.actor) };
+  };
+
+  const recordingPreview = async (c: Context, next: () => Promise<void>) => {
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    await next();
+  };
+  app.use('/sessions/:browserSessionId/recordings', recordingPreview);
+  app.use('/sessions/:browserSessionId/recordings/*', recordingPreview);
+
+  app.post('/sessions/:browserSessionId/recordings', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const body = await readJsonObject(c.req.raw, [
+      'generation',
+      'taskSessionId',
+    ]);
+    if (
+      !body ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.taskSessionId !== undefined &&
+        (typeof body.taskSessionId !== 'string' ||
+          body.taskSessionId.length < 1 ||
+          body.taskSessionId.length > 256))
+    )
+      return c.json(invalid, 400);
+    if (
+      found.session.state !== 'live' ||
+      body.generation !== found.session.generation
+    )
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    if (!deps.humanRecordings)
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    try {
+      const taskSessionId = body.taskSessionId;
+      const recordingId = deps.humanRecordings.start({
+        session: found.session,
+        owner: found.owner,
+        admissionKey: deps.recordingAdmissionKey?.(c) ?? found.owner,
+        ...(typeof taskSessionId === 'string' && deps.prepareHumanTaskClip
+          ? {
+              prepareTask: () =>
+                deps.prepareHumanTaskClip!(
+                  c.req.raw,
+                  taskSessionId,
+                  found.session,
+                ),
+            }
+          : {}),
+        authorize: async () => {
+          const again = await recordingAccess(c.req.raw, id);
+          return (
+            again.status === 200 &&
+            again.owner === found.owner &&
+            again.session.generation === found.session.generation
+          );
+        },
+      });
+      return c.json({ success: true, data: { recordingId } }, 201);
+    } catch {
+      return c.json({ success: false, code: 'recording-unavailable' }, 503);
+    }
+  });
+
+  app.get('/sessions/:browserSessionId/recordings/:recordingId', async (c) => {
+    const id = c.req.param('browserSessionId');
+    const found = await recordingAccess(c.req.raw, id);
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    const result = deps.humanRecordings?.status(
+      c.req.param('recordingId'),
+      found.owner,
+      id,
+      found.session.generation,
+    );
+    return result
+      ? c.json({ success: true, data: result })
+      : c.json({ success: false, code: 'not-found' }, 404);
+  });
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/stop',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      return deps.humanRecordings?.stop(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.delete(
+    '/sessions/:browserSessionId/recordings/:recordingId',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      return deps.humanRecordings?.cancel(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      )
+        ? c.json({ success: true })
+        : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/task',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      const publication = deps.humanRecordings?.publishTask(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+        c.req.raw,
+      );
+      if (!publication)
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      try {
+        return c.json({ success: true, data: await publication });
+      } catch {
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      }
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/frames',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const frames = deps.humanRecordings?.contact(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      return frames
+        ? c.json({ success: true, data: { frames } })
+        : c.json({ success: false, code: 'contact-unavailable' }, 409);
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/video',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const bytes = deps.humanRecordings?.video(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      if (!bytes) return c.json({ success: false, code: 'not-found' }, 404);
+      c.header('X-Content-Type-Options', 'nosniff');
+      return c.body(new Uint8Array(bytes), 200, {
+        'Content-Type': 'video/webm',
+        'Content-Disposition': 'attachment; filename="browser-recording.webm"',
+      });
+    },
+  );
+
   // `?view=summary` is what a pane polls (the latest few actions); the full
   // history is read on demand without it.
   app.get('/sessions/:browserSessionId', async (c) => {
@@ -814,6 +1047,151 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     });
   });
 
+  app.get('/sessions/:browserSessionId/network', async (c) => {
+    const after = c.req.query('after');
+    if (after !== undefined && !CONSOLE_AFTER.test(after))
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(found.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
+    if (found.session.state !== 'live')
+      return c.json({ success: false, code: 'not-live' }, 409);
+    const snapshot = await deps.networkFor?.(
+      found.session.browserSessionId,
+      after === undefined ? undefined : Number(after),
+    );
+    if (
+      !deps.isRequestPrincipalCurrent(c.req.raw) ||
+      !deps.networkPreviewEnabled?.()
+    )
+      return c.json(denied, 403);
+    const current = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (current.status !== 200)
+      return c.json(refuse(current.status), current.status);
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(current.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
+    if (!snapshot)
+      return c.json({ success: false, code: 'network-unavailable' }, 503);
+    if (
+      current.session.generation !== found.session.generation ||
+      snapshot.generation !== current.session.generation
+    )
+      return c.json({ success: false, code: 'network-unavailable' }, 409);
+    return c.json({ success: true, data: snapshot });
+  });
+
+  app.post('/sessions/:browserSessionId/pick', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw))
+      return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
+    const body = await readJsonObject(c.req.raw, [
+      'x',
+      'y',
+      'generation',
+      'screenshot',
+      'expectedScroll',
+    ]);
+    if (
+      !body ||
+      typeof body.x !== 'number' ||
+      typeof body.y !== 'number' ||
+      typeof body.generation !== 'number' ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.screenshot !== undefined && typeof body.screenshot !== 'boolean')
+    )
+      return c.json(invalid, 400);
+    const scroll = body.expectedScroll;
+    if (
+      scroll !== undefined &&
+      (!scroll ||
+        typeof scroll !== 'object' ||
+        Array.isArray(scroll) ||
+        Object.keys(scroll).some((key) => key !== 'x' && key !== 'y') ||
+        typeof (scroll as { x?: unknown }).x !== 'number' ||
+        typeof (scroll as { y?: unknown }).y !== 'number' ||
+        !Number.isFinite((scroll as { x: number }).x) ||
+        !Number.isFinite((scroll as { y: number }).y))
+    )
+      return c.json(invalid, 400);
+    if (found.session.generation !== body.generation)
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    const live = deps.registry.liveTarget?.(found.session.browserSessionId);
+    if (!live || live.generation !== body.generation)
+      return c.json({ success: false, code: 'not-live' }, 409);
+    try {
+      const picked = await pickBrowserElement(
+        live,
+        browserEffectiveViewport(
+          found.session.viewport,
+          found.session.zoomFactor ?? 1,
+        ),
+        { x: body.x, y: body.y },
+        body.screenshot !== false,
+        scroll as { x: number; y: number } | undefined,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      const target = deps.registry.liveTarget?.(found.session.browserSessionId);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId ||
+        current.session.generation !== body.generation ||
+        !sameView(current.session, found.session)
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          ...picked,
+          browserSessionId: found.session.browserSessionId,
+          targetId: live.target.targetId,
+          generation: live.generation,
+          viewport: browserEffectiveViewport(
+            found.session.viewport,
+            found.session.zoomFactor ?? 1,
+          ),
+        },
+      });
+    } catch {
+      return c.json({ success: false, code: 'pick-unavailable' }, 409);
+    }
+  });
+
   // A still of the page for a person to save or copy. The same standing as
   // watching it: the stream already shows them every pixel.
   app.get('/sessions/:browserSessionId/screenshot', async (c) => {
@@ -824,6 +1202,39 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (c.req.query('annotation') === '1') {
+      if (
+        !deps.networkPreviewEnabled?.() ||
+        !deps.isAgentRequest ||
+        deps.isAgentRequest(c.req.raw)
+      )
+        return c.json(denied, 403);
+      const shot = await deps.registry.captureAnnotationScreenshot(
+        found.session.browserSessionId,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        current.session.generation !== found.session.generation ||
+        !sameView(current.session, found.session)
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          image: shot.data.toString('base64'),
+          mimeType: shot.mimeType,
+          scroll: shot.scroll,
+        },
+      });
+    }
     const shot = await deps.registry.captureScreenshot(
       found.session.browserSessionId,
     );

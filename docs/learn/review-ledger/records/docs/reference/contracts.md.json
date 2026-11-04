@@ -396,7 +396,15 @@
 
     "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
 
-    "src-ui/src/hooks/useDerivedSessions.ts"
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "packages/contracts/src/tool.ts",
+
+    "packages/contracts/src/__tests__/provider-model-options.test.ts",
+
+    "src-server/providers/llm/effective-model-metadata.ts",
+
+    "src-server/providers/llm/__tests__/effective-model-metadata.test.ts"
   ],
 
   "checks": [

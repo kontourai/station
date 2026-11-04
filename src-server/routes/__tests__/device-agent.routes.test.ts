@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { realpath, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, expect, test, vi } from 'vitest';
+import { ZipFile } from 'yazl';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
   mintStationControlMcpToken,
@@ -12,12 +16,14 @@ import {
   authorizeDeviceAgentCaller,
   mintDeviceAgentGrant,
 } from '../../services/devices/device-agent-authority.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import {
   DeviceToolsService,
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
+import type { DeviceInstallOutcome } from '../../services/devices/hosts/device-app-install.js';
 import {
   claimAgentControl,
   claimHumanControl,
@@ -33,6 +39,7 @@ import { createDeviceAgentRoutes } from '../device-agent.js';
 import { createDeviceToolsRoutes } from '../device-tools.js';
 import { createMobileDeviceRoutes } from '../mobile-device.js';
 
+const makeTempDir = trackTempDirs();
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -58,6 +65,7 @@ function harness(
     idleEndMs?: number;
     remote?: boolean;
     taskCapture?: 'unbound' | 'mismatch';
+    projectRoot?: string;
     operatorDevice?: boolean;
   } = {},
 ) {
@@ -221,9 +229,29 @@ function harness(
         readAt: new Date().toISOString(),
       }),
     ),
+    appAction: vi.fn(
+      async (
+        target: Parameters<DeviceToolsService['appAction']>[0],
+        action: Parameters<DeviceToolsService['appAction']>[1],
+        options: Parameters<DeviceToolsService['appAction']>[2],
+      ) => {
+        await options?.beforeRun?.();
+        return {
+          ...target,
+          appId: action.appId,
+          action: action.type,
+          observed:
+            action.type === 'terminate'
+              ? ('not-running' as const)
+              : ('foreground' as const),
+          observedAt: new Date().toISOString(),
+        };
+      },
+    ),
   };
   const remoteTools = {
     foreground: localTools.foreground,
+    appAction: vi.fn(localTools.appAction.getMockImplementation()!),
     logs: vi.fn(
       async (
         target: Parameters<DeviceToolsService['logs']>[0],
@@ -242,7 +270,36 @@ function harness(
       truncated: true,
     })),
   };
+  const artifacts = new DeviceArtifactStaging();
+  const installApp = vi.fn(
+    async (input: {
+      hostId: string;
+      platform: 'ios' | 'android';
+      digest: string;
+      beforeInstall: () => Promise<boolean>;
+      signal: AbortSignal;
+    }): Promise<DeviceInstallOutcome> => {
+      if (!(await input.beforeInstall()))
+        return { ok: false, code: 'interrupted', effect: 'none' };
+      return {
+        ok: true,
+        digest: input.digest,
+        metadata: {
+          platform: input.platform,
+          abi: 'universal',
+          appId: 'com.example.app',
+          version: '1',
+          build: '1',
+          revision: null,
+          urlSchemes: [],
+        },
+      };
+    },
+  );
   const automation = new DeviceAutomation({
+    artifacts,
+    installApp,
+    projectRoot: () => options.projectRoot,
     host,
     sessions,
     surfaces,
@@ -404,6 +461,7 @@ function harness(
   disposals.push(async () => {
     revokeStationControlMcpToken(sessionId);
     for (const extra of extraTokens) revokeStationControlMcpToken(extra);
+    await artifacts.dispose();
     await sessions.dispose();
     await remoteSessions?.dispose();
     await surfaces.dispose();
@@ -422,6 +480,8 @@ function harness(
       }),
     access,
     automation,
+    artifacts,
+    installApp,
     device,
     humanAction: () =>
       humanTools.request(
@@ -554,6 +614,95 @@ test('opening an existing device while a person drives preserves their lease', a
   expect(await h.open()).toBe(id);
   expect(entry.lease.snapshot()).toEqual(before);
   expect(h.packets).toEqual([]);
+});
+
+test('app tools use the selected host and refuse a human-held lease', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const localId = await h.open();
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: 'local', observed: 'foreground' },
+  });
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const remoteId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_open_url', {
+        deviceSessionId: remoteId,
+        appId: 'com.example.app',
+        url: 'example://page',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    result: { hostId: h.remoteDevice.hostId, observed: 'foreground' },
+  });
+  expect(h.remoteSessions!.actionHistory(remoteId)).toEqual([
+    expect.objectContaining({
+      action: 'open-url',
+      actor: 'agent',
+      outcome: 'success',
+    }),
+  ]);
+  expect(
+    JSON.stringify(h.remoteSessions!.actionHistory(remoteId)),
+  ).not.toContain('example://page');
+  expect(h.remoteTools.appAction).toHaveBeenCalledOnce();
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+  await h.take(localId);
+  expect(
+    parsed(
+      await h.run('device_terminate_app', {
+        deviceSessionId: localId,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false });
+  expect(h.localTools.appAction).toHaveBeenCalledOnce();
+});
+
+test('human takeover aborts an in-flight app action and cannot report success', async () => {
+  const h = harness();
+  const id = await h.open();
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let aborted = false;
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      started();
+      return await new Promise<never>((_resolve, reject) =>
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            reject(new Error('aborted'));
+          },
+          { once: true },
+        ),
+      );
+    },
+  );
+  const pending = h.run('device_launch_app', {
+    deviceSessionId: id,
+    appId: 'com.example.app',
+  });
+  await ready;
+  await h.take(id);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+  });
+  expect(aborted).toBe(true);
 });
 
 test('record-to-task validates its preview, bounds, binding and recorder availability', async () => {
@@ -1385,4 +1534,197 @@ test('device_capture_to_task exposes Task-capture refusals as MCP errors', async
     code: 'capture-unavailable',
   });
   expect(h.host.capture).not.toHaveBeenCalled();
+});
+
+async function apkFixture(): Promise<Buffer> {
+  const archive = new ZipFile();
+  const chunks: Buffer[] = [];
+  const bytes = new Promise<Buffer>((resolve, reject) => {
+    archive.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    archive.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.outputStream.on('error', reject);
+  });
+  archive.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  archive.end();
+  return await bytes;
+}
+
+test('install tool binds staged artifacts to the Project and the selected device host', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const apk = await apkFixture();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const other = await h.artifacts.stageUpload(
+    'another-project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const deviceSessionId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: other.handle,
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.installApp).not.toHaveBeenCalled();
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: staged.handle,
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    digest: staged.digest,
+    metadata: { appId: 'com.example.app' },
+  });
+  expect(h.installApp).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: h.remoteDevice.hostId,
+      digest: staged.digest,
+    }),
+  );
+});
+
+test('human takeover cancels installation and reports an unknown effect', async () => {
+  const h = harness();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    await apkFixture(),
+    'android',
+    async () => true,
+  );
+  const deviceSessionId = await h.open();
+  let ready!: () => void;
+  const started = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  h.installApp.mockImplementationOnce(async (input) => {
+    expect(await input.beforeInstall()).toBe(true);
+    ready();
+    return await new Promise<never>((_resolve, reject) =>
+      input.signal.addEventListener(
+        'abort',
+        () => reject(new Error('cancelled')),
+        { once: true },
+      ),
+    );
+  });
+  const pending = h.run('device_install_app', {
+    deviceSessionId,
+    artifactHandle: staged.handle,
+  });
+  await started;
+  await h.take(deviceSessionId);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+    effect: 'unknown',
+  });
+});
+
+test.skipIf(process.platform === 'win32')(
+  'install tool stages only the bound Project workspace while holding the device lease',
+  async () => {
+    const root = await realpath(makeTempDir('station-device-agent-app-'));
+    await writeFile(join(root, 'sample.apk'), await apkFixture());
+    const h = harness('sdk-in-process', { projectRoot: root });
+    const deviceSessionId = await h.open();
+    const refused = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: '../sample.apk',
+      }),
+    );
+    expect(refused).toMatchObject({
+      ok: false,
+      code: 'invalid-source',
+      effect: 'none',
+    });
+    expect(h.installApp).not.toHaveBeenCalled();
+    const installed = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: 'sample.apk',
+      }),
+    );
+    expect(installed).toMatchObject({
+      ok: true,
+      source: 'workspace',
+      hostId: 'local',
+      metadata: { appId: 'com.example.app', revision: null },
+    });
+    expect(h.sessions.latestInstallation(deviceSessionId)).toMatchObject({
+      source: 'workspace',
+      digest: installed.digest,
+      metadata: { build: '1', revision: null },
+    });
+    await h.take(deviceSessionId);
+    expect(
+      parsed(
+        await h.run('device_install_app', {
+          deviceSessionId,
+          workspacePath: 'sample.apk',
+        }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(h.installApp).toHaveBeenCalledOnce();
+  },
+);
+
+test('agent history records unknown when authorization fails after app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      options?.onDispatch?.();
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'unknown' });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'unknown' }),
+  );
+});
+
+test('agent history records failed when authorization fails before app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'failed' }),
+  );
 });

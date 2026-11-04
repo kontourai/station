@@ -240,6 +240,46 @@ describe('buildRuntimeCatalogStatus live catalogs', () => {
     });
   });
 
+  test('preserves provider tier identities and defaults through the connection catalog', () => {
+    const catalog = buildRuntimeCatalogStatus({
+      adapter,
+      liveDiscoveryFailed: false,
+      allowBuiltInOnDiscoveryFailure: false,
+      now: 0,
+      liveCatalog: {
+        models: [
+          {
+            id: 'model',
+            originalId: 'model',
+            name: 'Model',
+            capabilities: {
+              serviceTiers: [
+                { id: 'default', name: 'Standard' },
+                {
+                  id: 'ultrafast',
+                  name: 'Ultrafast',
+                  description: 'Higher cost, lower latency.',
+                },
+              ],
+              defaultServiceTier: 'ultrafast',
+            },
+          },
+        ],
+      },
+    });
+    expect(catalog?.models[0]?.capabilities).toEqual({
+      serviceTiers: [
+        { id: 'default', name: 'Standard' },
+        {
+          id: 'ultrafast',
+          name: 'Ultrafast',
+          description: 'Higher cost, lower latency.',
+        },
+      ],
+      defaultServiceTier: 'ultrafast',
+    });
+  });
+
   test('visible models for a live catalog ignore leftover built-ins', () => {
     expect(
       visibleRuntimeCatalogModels({

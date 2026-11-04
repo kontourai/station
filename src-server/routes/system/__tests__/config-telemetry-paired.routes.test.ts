@@ -2,9 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../../__test-utils__/owner-standing.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -42,7 +44,7 @@ test.each([
   { tier: undefined, legacy: 'true', dnt: '' },
   { tier: 'lite', legacy: 'true', dnt: '1' },
 ])(
-  'a real STANDARD paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
+  'a real ungranted paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
   async ({ tier, legacy, dnt }) => {
     vi.stubEnv('STATION_CHANNEL', 'nightly');
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -79,7 +81,7 @@ test.each([
     const pairing = security.devicePairing;
     const offer = pairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString('standard'),
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const pending = pairing.requestPairing({
       requesterPosition: 'off-box',
@@ -93,7 +95,7 @@ test.each([
       proof: offer.challenge,
       requestId: pending.requestId,
     });
-    expect(paired.device.scope).toBe(pairingScopePresetString('standard'));
+    expect(paired.device.scope).toBe(DEVICE_WITHOUT_HOST_SHELL);
     const logger = createLogger({
       name: 'paired-telemetry-test',
       level: 'error',
@@ -248,7 +250,7 @@ async function authorAdmissionFixture(capability = true) {
       requestId: pending.requestId,
     });
   };
-  const standard = pair(pairingScopePresetString('standard'));
+  const standard = pair(DEVICE_WITHOUT_HOST_SHELL);
   const managing = pair(
     `${pairingScopePresetString('standard')} access:manage`,
   );
@@ -474,12 +476,22 @@ test.each([
     },
   },
   {
-    preset: 'standard',
+    preset: 'operate-only',
     expected: {
       acknowledge: false,
       recordNotice: false,
       lower: true,
       raise: false,
+    },
+  },
+  {
+    // The owner's own Standard device holds owner-device standing.
+    preset: 'standard',
+    expected: {
+      acknowledge: true,
+      recordNotice: true,
+      lower: true,
+      raise: true,
     },
   },
   {
@@ -526,7 +538,9 @@ test.each([
     const scope =
       preset === 'standard+access:manage'
         ? `${pairingScopePresetString('standard')} access:manage`
-        : pairingScopePresetString(preset);
+        : preset === 'operate-only'
+          ? DEVICE_WITHOUT_HOST_SHELL
+          : pairingScopePresetString(preset);
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
       scope,
@@ -643,7 +657,7 @@ test.each([
  * Under Do Not Track the EFFECTIVE tier is Off, but the config route compares
  * a write against the saved choice or, with none saved, the default with DNT
  * ignored. The disclosure reports that baseline (`capabilities.defaults`), and
- * the route's lower/raise answer for a standard device agrees with it,
+ * the route's lower/raise answer for an ungranted device agrees with it,
  * including when the environment default or the operator's destination
  * policy (`telemetryPublisherPolicy`) makes it something other than Lite.
  */
@@ -707,7 +721,7 @@ test.each([
     await security.initialize();
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString('standard'),
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const pending = security.devicePairing.requestPairing({
       requesterPosition: 'off-box',

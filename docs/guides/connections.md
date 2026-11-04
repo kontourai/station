@@ -1380,13 +1380,16 @@ then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
 connections without a default are ambiguous; readiness does not silently choose
 one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
-The chat model picker shows the resolved connection and model. Open it to
-search across ready Model connections and Engines, filter by connection or
-Favorites or Recent, and choose the exact model for this chat. Open Options
-for capability filters and the selected model's supported runtime controls.
-Connections that still
-need setup remain visible with their status, but cannot create an invalid
-selection.
+Search models or browse Favorites, Recent and provider collections. Filter by
+capability and adjust settings beside the list; on phones, switch between
+**Models** and **Settings**. Thinking effort and **Speed** are independent.
+Codex speed choices follow its catalog, including Ultrafast when reported.
+**Standard** selects standard routing; **Model default** clears the speed
+override, and **Model default** under Thinking effort clears that override.
+When the catalog reports a default speed, its name and description appear
+beside the choices; local CLI configuration can supply a different default.
+Choosing a model closes the picker; runtime changes keep it open. Connections
+needing setup stay visible but cannot be selected.
 
 Favorites, recent choices, hidden models, and model order are saved for your verified person on this Station and follow that person across devices. Without a person-bound preference scope, they remain on this device. If account preferences are unavailable, changes are refused until they can be reloaded. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
@@ -2010,7 +2013,9 @@ never granted this way. A phone or browser that uses Station's **Request
 access** screen asks for full device access: Standard plus **Run commands**
 and **Skip approval prompts**. Whoever approves sees "asks for full device
 access" and approves it as asked, or opens **Limit access** to untick
-permissions first; only the operator can approve the two elevated ones. In
+permissions first; only the operator (including one of the owner's own devices
+with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+can approve the two elevated ones. In
 **Needs attention** the request is one line with **Review**, which opens the
 details. A paired browser can sign in with an enrolled operator passkey and
 confirm an ordinary pairing request on the consent origin; the request remains

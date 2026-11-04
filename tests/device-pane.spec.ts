@@ -133,6 +133,15 @@ function devicePane(page: Page): Locator {
   return surfaceDockShell(page, 'Device');
 }
 
+/**
+ * On a phone the Device surface joins the single dock region, labelled
+ * "Dock" whichever pane it shows (#4451), so `surfaceDockShell` finds nothing
+ * there (see its note in helpers/region-placement.ts).
+ */
+function phoneDevicePane(page: Page): Locator {
+  return page.getByRole('region', { name: 'Dock' });
+}
+
 test.describe('Device pane', () => {
   test('answers the real route: an unconfigured Station renders the setup card, not an empty list', async ({
     page,
@@ -148,11 +157,11 @@ test.describe('Device pane', () => {
     await expect(pane).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
 
     await expect(
-      pane.getByText('Set up device inspection', { exact: true }),
+      pane.getByText('Set up devices to start a simulator', { exact: true }),
       'an unconfigured Station must say it is unconfigured',
     ).toBeVisible();
     await expect(
-      pane.getByText(/This Station is not running a device hub yet/),
+      pane.getByText(/Choose Set up devices, or set Device helper URL/),
     ).toBeVisible();
     // The way out is the managed hub's setup wizard (#1970).
     await expect(
@@ -202,7 +211,7 @@ test.describe('Device pane at 390x844', () => {
   }) => {
     await seedDeviceRoutes(page, READY_INVENTORY);
     await page.goto('/?surface=device');
-    const pane = devicePane(page);
+    const pane = phoneDevicePane(page);
     await expect(pane).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
 
     expect(
@@ -328,13 +337,32 @@ test.describe('Device Tools drawer at 390x844', () => {
   }) => {
     await seedDrawerRoutes(page);
     await page.goto('/?surface=device');
-    const pane = devicePane(page);
+    const pane = phoneDevicePane(page);
     await expect(pane).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await pane.getByRole('button', { name: `Open ${IOS_NAME}` }).click();
-    await pane.getByRole('button', { name: 'Tools', exact: true }).click();
-    const drawer = pane.getByRole('complementary', { name: 'Tools' });
+    // The ⋯ menu opens the tools one view at a time: Apps shows what the
+    // device reported, Device settings holds the folded settings sections.
+    const chooseFromMenu = async (name: string) => {
+      await pane
+        .getByRole('button', { name: `More ${IOS_NAME} actions` })
+        .click();
+      await page.getByRole('menuitem', { name }).click();
+    };
+    await chooseFromMenu('Apps');
+    const apps = pane.getByRole('complementary', { name: 'Apps' });
+    await expect(apps).toBeVisible();
+    await expect(apps.getByText('com.apple.Preferences')).toBeVisible();
+    await apps.getByRole('button', { name: 'Close apps' }).click();
+    await chooseFromMenu('Device settings');
+    const drawer = pane.getByRole('complementary', { name: 'Device settings' });
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByText('com.apple.Preferences')).toBeVisible();
+    // Unfold every section so the measurement below covers the whole drawer.
+    // Bounded: the fixture reports five settings sections.
+    const folded = drawer.locator('button[aria-expanded="false"]');
+    for (let opened = 0; (await folded.count()) > 0; opened++) {
+      expect(opened, 'settings sections should unfold').toBeLessThan(5);
+      await folded.first().click();
+    }
 
     // Below 560px of pane width the drawer OVERLAYS the stage.
     await expect(drawer).toHaveAttribute('data-layout', 'overlay');

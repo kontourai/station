@@ -49,11 +49,18 @@
   margin: 0;
 }
 
-/* Pane diagnostics: the codec this viewer draws. Quiet, never a notice. */
+/* Pane diagnostics: the codec this viewer draws. Shown only while the
+   pointer or focus is on the live view, so it is never resting chrome. */
 .live-surface__codec {
   color: var(--k-text-muted);
   font-size: 0.75rem;
   margin: 0;
+  visibility: hidden;
+}
+
+.live-surface:hover .live-surface__codec,
+.live-surface:focus-within .live-surface__codec {
+  visibility: visible;
 }
 
 .live-surface__stage {

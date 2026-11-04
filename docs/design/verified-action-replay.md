@@ -56,7 +56,7 @@ replays a sequence.
   `obscured`.
 - **Refs do not last.** A human takeover expires snapshot refs. A snapshot
   taken without a bound lease, or one that overlaps a human hold, returns no
-  usable refs ([guide](../guides/browser-workspace.md#agent-authority-and-human-input)).
+  usable refs ([guide](../reference/browser-and-devices.md#agent-authority-and-human-input)).
   A recording therefore cannot store a ref.
 - **Action history is not a recording.** History keeps at most 200 actor and
   lifecycle entries (`BROWSER_SESSION_HISTORY_LIMIT` in the
@@ -73,7 +73,7 @@ replays a sequence.
 - **Device input is coordinate-based.** `device_input` sends pointer, text and
   key batches. `device_snapshot` reads a bounded accessibility tree, but input
   does not target elements. An accepted write proves only that the hub socket
-  accepted bytes ([Device guide](../guides/mobile-device-workspace.md#view-control-and-end-a-session)).
+  accepted bytes ([Device guide](../reference/browser-and-devices.md#view-control-and-end-a-session)).
 - **"Replay" already means something else.** [Session tape replay](session-tape-replay.md)
   re-folds recorded chat events into a read-only view and runs no actions. The
   glossary calls that view **History**. Task captures, Browser
@@ -186,7 +186,7 @@ Recordings would live under `<STATION_HOME>`, outside Project roots (as Task
 captures do), in an owner-only store. They are keyed by:
 
 - canonical Project ID and principal: the same pair that keys a
-  [browser profile](../guides/browser-workspace.md#profiles-and-network-reach);
+  [browser profile](../reference/browser-and-devices.md#profiles-and-network-reach);
 - Agent;
 - target origin;
 - a digest of the goal and a digest of its parameters;

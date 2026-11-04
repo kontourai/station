@@ -2726,7 +2726,7 @@ const SCREENS: Screen[] = [
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
       await expect(
-        page.getByRole('heading', { name: 'What would you like to do?' }),
+        page.getByRole('heading', { name: 'Start your first conversation' }),
       ).toBeVisible();
       await expect(
         page.getByRole('heading', { name: "What's next?" }),
@@ -3681,6 +3681,42 @@ const SCREENS: Screen[] = [
   // row (`overlay-mobile-sheet` above is deliberately empty-state), so
   // those states would be invisible in the build gallery. These
   // three make them visible.
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map(
+      (viewport): Screen => ({
+        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        title: `New chat — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            await expect(
+              draft.getByRole('heading', {
+                name: /What would you like to do.*Demo Project/,
+              }),
+            ).toBeVisible();
+            await expect(
+              draft.getByRole('textbox', { name: 'What would you like done?' }),
+            ).toBeVisible();
+            const location = draft.locator('.start-composer__location');
+            await expect(location).toBeInViewport();
+            const bounds = await location.boundingBox();
+            expect(bounds).not.toBeNull();
+            expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+              viewport.height,
+            );
+          },
+        ),
+      }),
+    ),
+  ),
   {
     name: 'overlay-dock-project-bound',
     title: 'New chat — Project chosen before starting',

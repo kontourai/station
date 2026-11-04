@@ -1,5 +1,6 @@
 import {
   closeProjectTerminal,
+  openOrAdoptProjectShell,
   type TerminalSessionRecord,
 } from '@kontourai/station-sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -152,19 +153,35 @@ function readSaved(projectSlug: string): {
 }
 
 /**
+ * Each shell's "Shell N": the stable number the server stored when it opened
+ * (#3994), so evicting the oldest ended sessions renames no other. A host
+ * that predates stored numbers is numbered by place in its list.
+ */
+function shellNumbers(
+  records: readonly TerminalSessionRecord[],
+): Map<string, number> {
+  const numbers = new Map<string, number>();
+  let place = 0;
+  for (const record of records) {
+    if (record.launch?.kind === 'agent') continue;
+    place += 1;
+    numbers.set(record.terminalId, record.ordinal ?? place);
+  }
+  return numbers;
+}
+
+/**
  * The binding's running sessions as tabs. Default names come from the
- * server's list, which keeps ended sessions, so every view and device names a
- * shell alike and closing one renames no other: the Nth shell this binding
- * opened is "Shell N".
+ * server, so every view and device names a shell alike and closing one
+ * renames no other.
  */
 function sessionTabs(
   records: readonly TerminalSessionRecord[],
   presentation: Presentation,
 ): TerminalTab[] {
-  let shells = 0;
+  const numbers = shellNumbers(records);
   return records.flatMap((record): TerminalTab[] => {
     const agent = record.launch?.kind === 'agent' ? record.launch : undefined;
-    if (!agent) shells += 1;
     if (record.status !== 'running' && record.status !== 'starting') return [];
     const shown = presentation[record.terminalId] ?? {};
     const id = shown.tabId ?? `term-${record.terminalId}`;
@@ -185,7 +202,7 @@ function sessionTabs(
       {
         id,
         type: 'shell',
-        label: shown.label ?? `Shell ${shells}`,
+        label: shown.label ?? `Shell ${numbers.get(record.terminalId)}`,
         terminalId: record.terminalId,
       },
     ];
@@ -241,9 +258,7 @@ export function CodingTerminalPane({
   const listed = sessions.isSuccess;
   const records = sessions.data ?? [];
   const serverTabs = sessionTabs(records, presentation);
-  const shellsOpened = records.filter(
-    (record) => record.launch?.kind !== 'agent',
-  ).length;
+  const shellsOpened = Math.max(0, ...shellNumbers(records).values());
   let pendingShells = 0;
   const tabs = [
     ...serverTabs,
@@ -345,6 +360,11 @@ export function CodingTerminalPane({
                           mode: tab.agentMode || tab.agentSlug || '',
                         }
                       : { kind: 'shell' },
+                  // Until the list is read again, the name it was shown with.
+                  ...(tab.type === 'shell' &&
+                    /^Shell \d+$/.test(tab.label) && {
+                      ordinal: Number(tab.label.slice(6)),
+                    }),
                 },
               ],
       );
@@ -397,8 +417,54 @@ export function CodingTerminalPane({
     // closed, while another Project's empty panel still opens one. Opening
     // one again forgets it.
     if (tabs.length > 0 || readClosedLastTerminal(projectSlug)) return;
-    addTab('shell');
-  }, [addTab, listed, open, projectSlug, shellIsTheOnlyKind, tabs.length]);
+    // The server opens it, or answers with the shell another view or device
+    // opened at the same moment: one shell, not two. A host without that
+    // answer opens through the terminal socket as before.
+    // Not cancelled by a re-render: once asked, the server's shell exists and
+    // its tab must appear.
+    void openOrAdoptProjectShell(apiBase, projectSlug, { cols: 80, rows: 24 })
+      .then((opened) => {
+        if (!opened || !projectId) {
+          addTab('shell');
+          return;
+        }
+        queryClient.setQueryData<TerminalSessionRecord[]>(
+          sessionsKey,
+          (current = []) =>
+            current.some((record) => record.terminalId === opened.terminalId)
+              ? current
+              : [
+                  ...current,
+                  {
+                    terminalId: opened.terminalId,
+                    projectId,
+                    bindingKey: 'project',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    launch: { kind: 'shell' },
+                    ...(opened.ordinal !== undefined && {
+                      ordinal: opened.ordinal,
+                    }),
+                  },
+                ],
+        );
+        setActiveTabId(`term-${opened.terminalId}`);
+        writeClosedLastTerminal(projectSlug, false);
+        void queryClient.invalidateQueries({ queryKey: sessionsKey });
+      })
+      .catch(() => addTab('shell'));
+  }, [
+    addTab,
+    apiBase,
+    listed,
+    open,
+    projectId,
+    projectSlug,
+    queryClient,
+    sessionsKey,
+    shellIsTheOnlyKind,
+    tabs.length,
+  ]);
 
   const removeClosedTab = (tab: TerminalTab) => {
     const current = tabsRef.current;

@@ -1391,25 +1391,7 @@
     {
       "file": "src-server/runtime/routes/runtime-routes.ts",
       "rule": "as-unknown",
-      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/runtime/routes/runtime-routes.ts",
-      "rule": "as-unknown",
       "fingerprint": "1b611671e3ca8ef47ce4865b3ff535bd55ae87232ecae6e5ea3349119e0d0212",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/runtime/routes/runtime-routes.ts",
-      "rule": "as-unknown",
-      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/runtime/routes/runtime-routes.ts",
-      "rule": "as-unknown",
-      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
       "reason": "legacy-cast"
     },
     {

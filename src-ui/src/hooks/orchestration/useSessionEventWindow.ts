@@ -13,7 +13,9 @@ import {
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS,
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
@@ -85,7 +87,7 @@ async function fetchConversationWindow(
   conversationId: string,
   apiBase: string,
   input: { cursor?: string; turnLimit?: number },
-  options: { signal: AbortSignal },
+  options: { signal: AbortSignal; requestScope?: ApiRequestScope },
   legacySessionId?: string,
 ) {
   try {
@@ -152,7 +154,7 @@ async function readConversationWindow(
         args[0],
         args[1],
         args[2],
-        { signal: controller.signal },
+        { ...args[3], signal: controller.signal },
         args[4],
       ),
       cancelled,
@@ -243,12 +245,19 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
-  const observation = useWorkObservation(threadId);
+  const target = useChatRequestTarget();
+  const requestScope = target?.requestScope;
+  const observation = useWorkObservation(target ? null : threadId);
   const { namespace } = useAuthorityPersistence();
   const readingNamespace = useRef(namespace);
   readingNamespace.current = namespace;
   const readerKey = threadId
-    ? JSON.stringify([apiBase, threadId, legacySessionId])
+    ? JSON.stringify([
+        apiBase,
+        threadId,
+        legacySessionId,
+        requestScope?.authorityKey,
+      ])
     : undefined;
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
@@ -326,7 +335,9 @@ export function useSessionEventWindow(
     setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
     try {
-      const capability = await fetchSessionEventWindowCapability(apiBase);
+      const capability = requestScope
+        ? true
+        : await fetchSessionEventWindowCapability(apiBase);
       if (
         requestGeneration !== generation.current ||
         requestSerial !== requestSerialRef.current ||
@@ -362,7 +373,7 @@ export function useSessionEventWindow(
         threadId,
         apiBase,
         { turnLimit: 10 },
-        { signal: controller.signal },
+        { signal: controller.signal, requestScope },
         legacySessionId,
       );
       if (
@@ -374,16 +385,17 @@ export function useSessionEventWindow(
       read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
-      activeChatsStore.applyConversationActivity(
-        page.session?.conversationActivity,
-      );
+      if (!requestScope)
+        activeChatsStore.applyConversationActivity(
+          page.session?.conversationActivity,
+        );
       setCurrentSessionId(page.currentSessionId);
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
       setMemoryContinuation(page.memoryContinuation);
       const next = page.events;
-      if (namespace) {
+      if (namespace && !requestScope) {
         void saveOfflineReading(
           namespace,
           threadId,
@@ -479,7 +491,14 @@ export function useSessionEventWindow(
       }
     }
     if (fill) void fillRef.current(fill.cursor, fill.floor);
-  }, [apiBase, legacySessionId, observation, threadId, namespace]);
+  }, [
+    apiBase,
+    legacySessionId,
+    observation,
+    threadId,
+    namespace,
+    requestScope,
+  ]);
 
   /**
    * Read one older page at `pageCursor` and merge it. `adoptCursor` moves the
@@ -514,7 +533,7 @@ export function useSessionEventWindow(
           threadId,
           apiBase,
           { cursor: pageCursor, turnLimit: 20 },
-          { signal: controller.signal },
+          { signal: controller.signal, requestScope },
           legacySessionId,
         );
         if (
@@ -569,7 +588,7 @@ export function useSessionEventWindow(
           setLoading(false);
       }
     },
-    [apiBase, legacySessionId, observation, threadId],
+    [apiBase, legacySessionId, observation, threadId, requestScope],
   );
 
   const loadOlder = useCallback(async () => {

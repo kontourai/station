@@ -111,7 +111,7 @@ describe('shared dialog header (station#1825 item 1)', () => {
     // specificity, so checking only the first occurrence (as this used to)
     // would pass even if a later, conflicting block reintroduced the bug.
     const rules = [
-      ...indexCss.matchAll(/\.responsive-dialog-header\s*\{([^}]*)\}/g),
+      ...indexCss.matchAll(/^[ \t]*\.responsive-dialog-header\s*\{([^}]*)\}/gm),
     ];
     expect(
       rules.length,

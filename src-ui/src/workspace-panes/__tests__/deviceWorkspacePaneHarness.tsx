@@ -12,7 +12,7 @@ import type {
 } from '@kontourai/station-contracts/mobile-device';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { vi } from 'vitest';
 
@@ -199,7 +199,8 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
       // Route on the PATH: a Project's requests carry `?projectSlug=`.
       const path = new URL(url).pathname;
       const method = (init?.method ?? 'GET').toUpperCase();
-      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      const body =
+        typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
       log.requests.push({ method, url, body });
       if (path.endsWith('/api/feature-previews') && method === 'GET')
         return json({
@@ -286,7 +287,11 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
             sessions: sessions.filter((session) => session.hostId === 'local'),
           },
         });
-      if (plan.tools && /\/devices\/(ios|android)\/[^/]+\/tools/.test(path)) {
+      if (
+        plan.tools &&
+        (/\/devices\/(ios|android)\/[^/]+\/tools/.test(path) ||
+          /\/projects\/[^/]+\/device-artifacts\//.test(path))
+      ) {
         const answer = plan.tools({
           method,
           path,
@@ -444,6 +449,50 @@ export async function click(element: Element) {
   await act(async () => {
     await Promise.resolve();
   });
+}
+
+/**
+ * Open the live Device pane's ⋯ menu (`More <device> actions`) with a click.
+ * Waits for the trigger (the session may still be opening) and for the
+ * portalled `role="menu"`; returns both.
+ */
+export async function openDeviceMenu(deviceName?: string) {
+  const trigger = await screen.findByRole('button', {
+    name: deviceName ? `More ${deviceName} actions` : /^More .+ actions$/,
+  });
+  if (trigger.getAttribute('aria-expanded') !== 'true') await click(trigger);
+  const menu = await screen.findByRole('menu');
+  return { trigger, menu };
+}
+
+/**
+ * Choose one ⋯ menu row the way a user does: click the trigger, then click
+ * the row. A disabled row fails here rather than being clicked silently.
+ */
+export async function chooseDeviceMenuItem(
+  name: string | RegExp,
+  deviceName?: string,
+) {
+  const { trigger, menu } = await openDeviceMenu(deviceName);
+  const item = within(menu).getByRole('menuitem', { name });
+  if ((item as HTMLButtonElement).disabled)
+    throw new Error(`The ⋯ menu row ${String(name)} is disabled`);
+  await click(item);
+  return trigger;
+}
+
+/** Unfold a Device settings section by its DisclosureToggle (starts folded). */
+export async function openDeviceSettingsSection(
+  drawer: HTMLElement,
+  title: string,
+) {
+  const toggle = await within(drawer).findByRole('button', { name: title });
+  if (toggle.getAttribute('aria-expanded') !== 'false')
+    throw new Error(`The ${title} section was not folded`);
+  await click(toggle);
+  if (toggle.getAttribute('aria-expanded') !== 'true')
+    throw new Error(`The ${title} section did not open`);
+  return toggle;
 }
 
 export function renderInQueryClient(element: ReactElement) {

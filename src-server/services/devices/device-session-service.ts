@@ -27,6 +27,7 @@ import {
   type DeviceLiveSurfaceProducerOptions,
 } from './device-live-surface-producer.js';
 import type { DeviceVideoDecoderProvider } from './h264-jpeg-decoder.js';
+import type { DeviceInstallOutcome } from './hosts/device-app-install.js';
 
 /**
  * Device sessions (#1970): one surface, lease and input channel per open device
@@ -55,8 +56,33 @@ export class DeviceSessionError extends Error {
   }
 }
 
+export type DeviceHistoryAction =
+  | 'input'
+  | 'capture-to-task'
+  | 'screenshot'
+  | 'snapshot'
+  | 'logs'
+  | 'install-app'
+  | 'launch'
+  | 'terminate'
+  | 'open-url'
+  | 'record-to-task'
+  | 'tool-action';
+export type DeviceHistoryEntry = {
+  at: string;
+  action: DeviceHistoryAction;
+  actor: 'agent' | 'person';
+  outcome: 'success' | 'failed' | 'unknown';
+};
+
+export type DeviceInstallation = Extract<DeviceInstallOutcome, { ok: true }> & {
+  source: 'workspace' | 'upload';
+};
+
 interface SessionEntry {
   summary: DeviceSessionSummary;
+  history: DeviceHistoryEntry[];
+  installation?: DeviceInstallation;
   producer: DeviceLiveSurfaceProducer;
   unregister: () => Promise<void>;
   open: boolean;
@@ -160,6 +186,39 @@ export class DeviceSessionService {
   get(sessionId: string): DeviceSessionSummary | undefined {
     const entry = this.sessions.get(sessionId);
     return entry?.open ? { ...entry.summary } : undefined;
+  }
+
+  /** Bounded session-local action metadata; input values are never retained. */
+  noteAction(
+    sessionId: string,
+    action: DeviceHistoryAction,
+    actor: DeviceHistoryEntry['actor'],
+    outcome: DeviceHistoryEntry['outcome'],
+  ): void {
+    const entry = this.sessions.get(sessionId);
+    if (!entry?.open) return;
+    entry.history.push({
+      at: new Date(this.options.now?.() ?? Date.now()).toISOString(),
+      action,
+      actor,
+      outcome,
+    });
+    if (entry.history.length > 100) entry.history.shift();
+  }
+
+  actionHistory(sessionId: string): DeviceHistoryEntry[] | undefined {
+    const entry = this.sessions.get(sessionId);
+    return entry?.open ? entry.history.map((item) => ({ ...item })) : undefined;
+  }
+
+  noteInstallation(sessionId: string, installation: DeviceInstallation): void {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.open) entry.installation = structuredClone(installation);
+  }
+
+  latestInstallation(sessionId: string): DeviceInstallation | undefined {
+    const installation = this.sessions.get(sessionId)?.installation;
+    return installation ? structuredClone(installation) : undefined;
   }
 
   /** The open session on a device, if any. */
@@ -362,6 +421,7 @@ export class DeviceSessionService {
     )(producerOptions);
     const entry: SessionEntry = {
       summary,
+      history: [],
       producer,
       unregister: async () => {},
       open: true,

@@ -35,6 +35,7 @@ category.
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (archive#1423)
 - [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
 - [automations.md](automations.md) — Station Automations
+- [browser-device-ux-pass.md](browser-device-ux-pass.md) — Browser and Device UX pass
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (archive#1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (archive#1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer

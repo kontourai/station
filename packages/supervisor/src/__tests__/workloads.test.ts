@@ -159,6 +159,9 @@ describe('supervisor workloads (real processes)', () => {
     );
     const status = await supervisor.status();
     expect(status.supervisor.protocol).toEqual({ major: 1, minor: 3 });
+    // `station doctor` reads the grant and the host from status (#3994).
+    expect(status.active?.capabilities).toEqual(['workloads']);
+    expect(status.workloadHost).toEqual({ available: true });
     expect(status.workloads).toEqual([
       {
         workloadId: 'shell-1',
@@ -190,6 +193,9 @@ describe('supervisor workloads (real processes)', () => {
     });
     // A core that did not announce `workloads` (a 1.2 core) is not granted it.
     expect((await httpJson(quiet.port, '/boot')).granted).toEqual([]);
+    const quietStatus = await quiet.status();
+    expect(quietStatus.active?.capabilities).toBeUndefined();
+    expect(quietStatus.workloadHost).toEqual({ available: true });
     const reply = await httpJson(quiet.port, '/workload', { op: 'list' });
     expect(reply).toMatchObject({ ok: false, code: 'bad-request' });
 
@@ -199,6 +205,9 @@ describe('supervisor workloads (real processes)', () => {
       env: { FAKE_CORE_WORKLOADS: '1' },
     });
     expect((await httpJson(hostless.port, '/boot')).granted).toEqual([]);
+    const hostlessStatus = await hostless.status();
+    expect(hostlessStatus.active?.capabilities).toBeUndefined();
+    expect(hostlessStatus.workloadHost).toEqual({ available: false });
   });
 
   it('ends its workloads and its host when it stops', async () => {

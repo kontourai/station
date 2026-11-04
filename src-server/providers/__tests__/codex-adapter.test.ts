@@ -3581,6 +3581,87 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test.each(['thread/start', 'thread/resume'] as const)(
+    'applies an Ultrafast tier on %s and changes speed independently of effort',
+    async (method) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      try {
+        const started = adapter.startSession({
+          provider: 'codex',
+          threadId: 'speed-tiers',
+          cwd: '/tmp/project',
+          modelOptions: {
+            serviceTier: 'ultrafast',
+            fastMode: true,
+            effort: 'high',
+          },
+          ...(method === 'thread/resume'
+            ? { resumeCursor: { codexThreadId: 'native-speed' } }
+            : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, 'speed-tiers', {
+          id: '1',
+          result: { userAgent: 'test' },
+        });
+        await flushIo();
+        const startRequest = processHandle.stdin.lines
+          .map(parseLine)
+          .find((line) => line.method === method);
+        expect(startRequest.params.serviceTier).toBe('ultrafast');
+        writeServerMessage(adapter, 'speed-tiers', {
+          id: '2',
+          result: { thread: { id: 'native-speed' } },
+        });
+        await withTimeout(started, 'speed start');
+
+        const choices = [
+          [{ serviceTier: 'priority', effort: 'high' }, 'priority'],
+          [{ serviceTier: 'flex' }, 'flex'],
+          [{ serviceTier: 'default', fastMode: true }, 'default'],
+          [{ serviceTier: 'ultrafast' }, 'ultrafast'],
+          [{ fastMode: true }, 'fast'],
+          [{ fastMode: false }, undefined],
+          [{}, undefined],
+          [{ serviceTier: null }, null],
+        ] as const;
+        for (const [index, [modelOptions, expectedTier]] of choices.entries()) {
+          const sent = adapter.sendTurn({
+            threadId: 'speed-tiers',
+            input: 'Continue',
+            modelOptions,
+          });
+          await flushIo();
+          const request = processHandle.stdin.lines
+            .map(parseLine)
+            .filter((line) => line.method === 'turn/start')
+            .at(-1);
+          expect(request.params.serviceTier).toBe(expectedTier);
+          if ('effort' in modelOptions)
+            expect(request.params.effort).toBe('high');
+          writeServerMessage(adapter, 'speed-tiers', {
+            id: request.id,
+            result: { turn: { id: `speed-${index}` } },
+          });
+          await withTimeout(sent, 'speed turn');
+          writeServerMessage(adapter, 'speed-tiers', {
+            method: 'turn/completed',
+            params: {
+              threadId: 'native-speed',
+              turn: { id: `speed-${index}`, status: 'completed', items: [] },
+            },
+          });
+          await flushIo();
+        }
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
   test('normalizes an empty effort override to the provider default', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -4290,8 +4371,14 @@ describe('CodexAdapter', () => {
               ],
               serviceTiers: [
                 { id: 'standard', name: 'Standard', description: '' },
-                { id: 'fast', name: 'Fast', description: '' },
+                { id: 'priority', name: 'Fast', description: '' },
+                {
+                  id: 'ultrafast',
+                  name: 'Ultrafast',
+                  description: 'Higher cost, lower latency.',
+                },
               ],
+              defaultServiceTier: 'ultrafast',
             },
           ],
           nextCursor: 'next-page',
@@ -4307,6 +4394,12 @@ describe('CodexAdapter', () => {
             {
               model: 'gpt-5.5',
               displayName: 'GPT-5.5',
+            },
+            {
+              model: 'legacy-speed',
+              displayName: 'Legacy speed',
+              additionalSpeedTiers: ['fast', 'ultrafast'],
+              defaultServiceTier: 'ultrafast',
             },
           ],
           nextCursor: null,
@@ -4325,12 +4418,41 @@ describe('CodexAdapter', () => {
           effortLabels: { low: 'Fast', high: 'Thorough' },
           supportsFastMode: true,
           fastModeLabel: 'Fast',
+          serviceTiers: [
+            { id: 'standard', name: 'Standard' },
+            { id: 'priority', name: 'Fast' },
+            {
+              id: 'ultrafast',
+              name: 'Ultrafast',
+              description: 'Higher cost, lower latency.',
+            },
+          ],
+          defaultServiceTier: 'ultrafast',
         },
       },
       {
         id: 'gpt-5.5',
         name: 'GPT-5.5',
         originalId: 'gpt-5.5',
+      },
+      {
+        id: 'legacy-speed',
+        name: 'Legacy speed',
+        originalId: 'legacy-speed',
+        capabilities: {
+          supportsFastMode: true,
+          fastModeLabel: 'Fast',
+          serviceTiers: [
+            { id: 'default', name: 'Standard' },
+            { id: 'fast', name: 'Fast' },
+            {
+              id: 'ultrafast',
+              name: 'Ultrafast',
+              description: 'Lower latency, higher cost.',
+            },
+          ],
+          defaultServiceTier: 'ultrafast',
+        },
       },
     ]);
     // #2482: selector validation skips the catalog read on this declaration,

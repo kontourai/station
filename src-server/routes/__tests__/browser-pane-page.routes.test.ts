@@ -19,6 +19,7 @@ import {
   type CdpTransport,
   createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../../services/browser/browser-human-recording.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../../services/browser/cdp-pipe-transport.js';
@@ -27,7 +28,7 @@ import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
 } from '../../tools/station-control-shared.js';
-import { createBrowserRoutes } from '../browser.js';
+import { type BrowserRoutesDeps, createBrowserRoutes } from '../browser.js';
 import { createLiveSurfaceRoutes } from '../live-surface.js';
 
 const PAGE = 'S1';
@@ -143,7 +144,7 @@ function fakeHost() {
 
 const makeTempDir = trackTempDirs();
 
-type Role = 'operator' | 'nobody';
+type Role = 'operator' | 'admin' | 'operator-device' | 'nobody';
 const roleOf = (request: Request) =>
   (request.headers.get('x-test-role') ?? 'nobody') as Role;
 
@@ -154,15 +155,21 @@ function harness(
     dispatchTimeoutMs?: number;
     /** The Project's `browserEvaluate` (D4); absent: no settings store. */
     browserEvaluate?: boolean;
+    networkPreview?: boolean;
+    humanRecordings?: BrowserHumanRecording;
+    prepareHumanTaskClip?: BrowserRoutesDeps['prepareHumanTaskClip'];
     /** The live-surface lease's clock and holds (test seam). */
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
 ) {
   const stationHome = makeTempDir('station-browser-page-');
   const fake = fakeHost();
+  let networkPreview = options.networkPreview === true;
+  let principalCurrent = true;
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
+    experienceEnabled: () => true,
     hostResolver: createLocalBrowserHostResolver(() => fake.host),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
@@ -173,8 +180,18 @@ function harness(
       ? { screenshotDeadlineMs: options.screenshotDeadlineMs }
       : {}),
   });
-  const authorizeProject: BrowserProjectAuthorizer = async (request) =>
-    roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
+  const authorizeProject: BrowserProjectAuthorizer = async (
+    request,
+    _project,
+    purpose,
+  ) =>
+    roleOf(request) === 'operator'
+      ? { kind: 'operator' }
+      : roleOf(request) === 'admin'
+        ? { kind: 'project-admin', principalId: 'admin' }
+        : roleOf(request) === 'operator-device' && purpose === 'view'
+          ? { kind: 'operator-device' }
+          : undefined;
   const surfaces = new LiveSurfaceRegistry(
     options.lease ? { lease: options.lease } : {},
   );
@@ -182,6 +199,7 @@ function harness(
     sessions,
     surfaces,
     authorizeProject,
+    networkPreviewEnabled: () => networkPreview,
     ...(options.dispatchTimeoutMs !== undefined
       ? { dispatchTimeoutMs: options.dispatchTimeoutMs }
       : {}),
@@ -209,6 +227,14 @@ function harness(
     answerDialog: (id, dialogId, answer, actor) =>
       binder.answerDialog(id, dialogId, answer, actor),
     consoleFor: (id, after) => binder.consoleFor(id, after),
+    networkFor: (id, after, limit) => binder.networkFor(id, after, limit),
+    networkPreviewEnabled: () => networkPreview,
+    ...(options.humanRecordings
+      ? { humanRecordings: options.humanRecordings }
+      : {}),
+    ...(options.prepareHumanTaskClip
+      ? { prepareHumanTaskClip: options.prepareHumanTaskClip }
+      : {}),
     ...(options.browserEvaluate !== undefined
       ? {
           projectSettings: {
@@ -226,7 +252,7 @@ function harness(
     authorizeOperator: async (request) => roleOf(request) === 'operator',
     resolveProject: (slug) =>
       slug === 'alpha' ? { id: 'alpha', slug: 'alpha' } : undefined,
-    isRequestPrincipalCurrent: () => true,
+    isRequestPrincipalCurrent: () => principalCurrent,
   });
   const browser = (
     method: string,
@@ -291,12 +317,16 @@ function harness(
     );
     expect(response.status).toBe(200);
   };
-  const open = () =>
+  const open = (
+    actor:
+      | { kind: 'operator' }
+      | { kind: 'project-admin'; principalId: string } = { kind: 'operator' },
+  ) =>
     sessions.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
       url: 'https://example.com/',
-      actor: { kind: 'operator' },
+      actor,
     });
   return {
     fake,
@@ -308,8 +338,463 @@ function harness(
     clickResponse,
     surfaceRoutes,
     open,
+    setPrincipalCurrent: (value: boolean) => {
+      principalCurrent = value;
+    },
+    setNetworkPreview: (enabled: boolean) => {
+      networkPreview = enabled;
+    },
   };
 }
+
+describe('Browser pane: network diagnostics', () => {
+  test('recording routes require a person and current Browser authority', async () => {
+    const recorder = {
+      start: vi.fn(() => 'recording-id'),
+      status: vi.fn(() => ({ id: 'recording-id', state: 'recording' })),
+      stop: vi.fn(() => true),
+      video: vi.fn(() => Buffer.from('webm')),
+      contact: vi.fn(() => [
+        {
+          data: 'AQID',
+          atMs: 0,
+          capturedAt: '2026-01-01T00:00:00Z',
+          url: 'https://example.test/',
+          viewport: { width: 640, height: 480 },
+        },
+      ]),
+      cancel: vi.fn(() => true),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      const body = { generation: session.generation };
+      h.setNetworkPreview(false);
+      const disabled = await h.browser('POST', path, { body });
+      expect(disabled.status).toBe(404);
+      expect((await disabled.json()).code).toBe('feature_preview_disabled');
+      h.setNetworkPreview(true);
+      expect(
+        (await h.browser('POST', path, { agent: true, body })).status,
+      ).toBe(403);
+      expect(
+        (await h.browser('POST', path, { role: 'nobody', body })).status,
+      ).toBe(403);
+      expect(recorder.start).not.toHaveBeenCalled();
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation + 1 },
+          })
+        ).status,
+      ).toBe(409);
+      expect((await h.browser('POST', path, { body })).status).toBe(201);
+      expect((await h.browser('GET', `${path}/recording-id`)).status).toBe(200);
+      const frames = await h.browser('GET', `${path}/recording-id/frames`);
+      expect(frames.status).toBe(200);
+      expect(await frames.json()).toMatchObject({
+        success: true,
+        data: { frames: [{ url: 'https://example.test/', atMs: 0 }] },
+      });
+      expect(
+        (await h.browser('GET', `${path}/recording-id/frames`, { agent: true }))
+          .status,
+      ).toBe(403);
+      expect(
+        (await h.browser('POST', `${path}/recording-id/stop`, { body: {} }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/recording-id/video`)).headers.get(
+          'content-type',
+        ),
+      ).toBe('video/webm');
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('recording start passes a live authority closure and protects another owner and DELETE', async () => {
+    let authorization: (() => Promise<boolean>) | undefined;
+    const jobs = new Map<string, string>();
+    const recorder = {
+      start: vi.fn(
+        ({
+          owner,
+          authorize,
+        }: {
+          owner: string;
+          authorize: () => Promise<boolean>;
+        }) => {
+          authorization = authorize;
+          jobs.set('r1', owner);
+          return 'r1';
+        },
+      ),
+      status: vi.fn((id: string, owner: string) =>
+        jobs.get(id) === owner ? { id, state: 'recording' } : undefined,
+      ),
+      cancel: vi.fn((id: string, owner: string) => {
+        if (jobs.get(id) !== owner) return false;
+        jobs.delete(id);
+        return true;
+      }),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open({
+        kind: 'project-admin',
+        principalId: 'admin',
+      });
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            role: 'admin',
+            body: { generation: session.generation },
+          })
+        ).status,
+      ).toBe(201);
+      expect(await authorization?.()).toBe(true);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      h.setPrincipalCurrent(false);
+      expect(await authorization?.()).toBe(false);
+      h.setPrincipalCurrent(true);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(404);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('Task preparation is bound to the recording start and publication rechecks the owner', async () => {
+    let prepareTask: (() => Promise<unknown>) | undefined;
+    const recorder = {
+      start: vi.fn((input: { prepareTask?: () => Promise<unknown> }) => {
+        prepareTask = input.prepareTask;
+        return 'r1';
+      }),
+      publishTask: vi.fn(async () => ({ walkthroughId: 'clip-a' })),
+    };
+    const prepare = vi.fn(async () => ({
+      kind: 'unavailable' as const,
+      reason: 'Commit or stash changes to add recordings to the Task.',
+    }));
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+      prepareHumanTaskClip: prepare,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation, taskSessionId: 'chat-a' },
+          })
+        ).status,
+      ).toBe(201);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(await prepareTask?.()).toMatchObject({ kind: 'unavailable' });
+      expect(prepare).toHaveBeenCalledWith(
+        expect.any(Request),
+        'chat-a',
+        expect.objectContaining({ browserSessionId: session.browserSessionId }),
+      );
+      const result = await h.browser('POST', `${path}/r1/task`, { body: {} });
+      expect(await result.json()).toMatchObject({
+        success: true,
+        data: { walkthroughId: 'clip-a' },
+      });
+      expect(
+        (await h.browser('POST', `${path}/r1/task`, { body: {}, agent: true }))
+          .status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+
+  test('an operator device may view artifacts while its drive standing remains refused', async () => {
+    const h = harness({ networkPreview: true });
+    try {
+      const session = await h.open();
+      h.fake.handle('Page.getLayoutMetrics', () => ({
+        cssVisualViewport: { pageX: 0, pageY: 0 },
+      }));
+      h.fake.handle('Page.captureScreenshot', () => ({ data: PNG_1X1 }));
+      expect(
+        (
+          await h.browser(
+            'GET',
+            `/sessions/${session.browserSessionId}/network`,
+            { role: 'operator-device' },
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await h.browser(
+            'GET',
+            `/sessions/${session.browserSessionId}/screenshot?annotation=1`,
+            { role: 'operator-device' },
+          )
+        ).status,
+      ).toBe(200);
+      const picked = await h.browser(
+        'POST',
+        `/sessions/${session.browserSessionId}/pick`,
+        {
+          role: 'operator-device',
+          body: {
+            x: 1,
+            y: 1,
+            generation: session.generation,
+            screenshot: false,
+          },
+        },
+      );
+      expect(picked.status).toBe(409);
+      expect(
+        h.fake.sent.some((item) => item.method === 'Page.getFrameTree'),
+      ).toBe(true);
+      expect(
+        (
+          await h.browser('DELETE', `/sessions/${session.browserSessionId}`, {
+            role: 'operator-device',
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test.each([false, true])(
+    'agent network read requires evaluation permission: %s',
+    async (browserEvaluate) => {
+      const h = harness({ browserEvaluate, networkPreview: true });
+      try {
+        const { browserSessionId: id } = await h.open();
+        expect(
+          (await h.browser('GET', `/sessions/${id}/network`, { agent: true }))
+            .status,
+        ).toBe(browserEvaluate ? 200 : 403);
+      } finally {
+        await h.binder.dispose();
+        await h.sessions.shutdown();
+      }
+    },
+  );
+  test('refuses an agent network read if evaluation permission is revoked during capture setup', async () => {
+    const options = { browserEvaluate: true, networkPreview: true };
+    const h = harness(options);
+    try {
+      const { browserSessionId: id } = await h.open();
+      h.fake.handle('Network.enable', () => {
+        options.browserEvaluate = false;
+        return {};
+      });
+      expect(
+        (await h.browser('GET', `/sessions/${id}/network`, { agent: true }))
+          .status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test.each([false, true])(
+    'an agent cannot use the human element picker (evaluation permission: %s)',
+    async (browserEvaluate) => {
+      const h = harness({ browserEvaluate });
+      try {
+        const { browserSessionId: id, generation } = await h.open();
+        h.setNetworkPreview(true);
+        const body = { x: 1, y: 1, generation, screenshot: false };
+        const response = await h.browser('POST', `/sessions/${id}/pick`, {
+          agent: true,
+          body,
+        });
+        expect(response.status).toBe(403);
+        expect(h.fake.sent.map((item) => item.method)).not.toContain(
+          'Page.getFrameTree',
+        );
+        // The same person's request reaches CDP; this fixture lacks frame data.
+        expect(
+          (await h.browser('POST', `/sessions/${id}/pick`, { body })).status,
+        ).toBe(409);
+        expect(h.fake.sent.map((item) => item.method)).toContain(
+          'Page.getFrameTree',
+        );
+      } finally {
+        await h.binder.dispose();
+        await h.sessions.shutdown();
+      }
+    },
+  );
+  test('picks using the zoomed target viewport rather than the nominal size', async () => {
+    const h = harness({ networkPreview: true });
+    try {
+      const session = await h.open();
+      await h.sessions.setZoom(session.browserSessionId, 2, {
+        actor: { kind: 'operator' },
+        generation: session.generation,
+        guard: () => {},
+      });
+      h.fake.handle('Page.getFrameTree', () => ({
+        frameTree: {
+          frame: {
+            id: 'frame',
+            loaderId: 'loader',
+            url: 'https://example.com/',
+          },
+        },
+      }));
+      h.fake.handle('DOM.getNodeForLocation', () => ({ backendNodeId: 1 }));
+      h.fake.handle('Page.createIsolatedWorld', () => ({
+        executionContextId: 1,
+      }));
+      h.fake.handle('DOM.resolveNode', () => ({
+        object: { objectId: 'node' },
+      }));
+      h.fake.handle('Runtime.callFunctionOn', () => ({
+        result: {
+          value: {
+            selector: 'button',
+            tagName: 'button',
+            name: '',
+            role: '',
+            attributes: [],
+            styles: {},
+            rect: { x: 590, y: 40, width: 40, height: 30 },
+          },
+        },
+      }));
+      h.fake.handle('Accessibility.getPartialAXTree', () => ({ nodes: [] }));
+      const path = `/sessions/${session.browserSessionId}/pick`;
+      const inside = await h.browser('POST', path, {
+        body: {
+          x: 600,
+          y: 50,
+          generation: session.generation,
+          screenshot: false,
+        },
+      });
+      expect(inside.status).toBe(200);
+      expect(await inside.json()).toMatchObject({
+        data: {
+          viewport: { width: 640, height: 400 },
+          rect: { x: 590, y: 40 },
+        },
+      });
+      const count = h.fake.sent.filter(
+        (call) => call.method === 'DOM.getNodeForLocation',
+      ).length;
+      const outside = await h.browser('POST', path, {
+        body: {
+          x: 640,
+          y: 50,
+          generation: session.generation,
+          screenshot: false,
+        },
+      });
+      expect(outside.status).toBe(409);
+      expect(
+        h.fake.sent.filter((call) => call.method === 'DOM.getNodeForLocation'),
+      ).toHaveLength(count);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('requires preview and viewing authority, captures redacted metadata and stops when disabled', async () => {
+    const h = harness();
+    try {
+      const { browserSessionId: id } = await h.open();
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        404,
+      );
+      expect(h.fake.sent.map((item) => item.method)).not.toContain(
+        'Network.enable',
+      );
+      h.setNetworkPreview(true);
+      expect(
+        (await h.browser('GET', `/sessions/${id}/network`, { role: 'nobody' }))
+          .status,
+      ).toBe(403);
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        200,
+      );
+      h.fake.emit('Network.requestWillBeSent', {
+        requestId: '1',
+        request: {
+          method: 'GET',
+          url: 'https://example.com/?token=secret',
+          postData: 'private',
+        },
+        type: 'XHR',
+        timestamp: 1,
+      });
+      h.fake.emit('Network.responseReceived', {
+        requestId: '1',
+        response: { status: 503, headers: { cookie: 'private' } },
+        type: 'XHR',
+      });
+      h.fake.emit('Network.loadingFinished', {
+        requestId: '1',
+        timestamp: 1.1,
+        encodedDataLength: 42,
+      });
+      const result = await (
+        await h.browser('GET', `/sessions/${id}/network`)
+      ).json();
+      expect(result.data.entries).toEqual([
+        expect.objectContaining({
+          method: 'GET',
+          status: 503,
+          bytes: 42,
+          type: 'XHR',
+        }),
+      ]);
+      expect(JSON.stringify(result)).not.toMatch(/secret|private/);
+      h.setNetworkPreview(false);
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        404,
+      );
+      h.fake.emit('Network.requestWillBeSent', {
+        requestId: '2',
+        request: { url: 'https://example.com/' },
+      });
+      h.setNetworkPreview(true);
+      const after = await (
+        await h.browser('GET', `/sessions/${id}/network`)
+      ).json();
+      expect(after.data.entries).toEqual([]);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+});
 
 describe('Browser pane: page dialogs a person answers', () => {
   test('a confirm the page opens while a person is in control is shown to them, not answered, and their answer reaches the page', async () => {
@@ -613,6 +1098,106 @@ describe('Browser pane: screenshots', () => {
       (await h.browser('GET', `/sessions/${id}/screenshot`, { role: 'nobody' }))
         .status,
     ).toBe(403);
+  });
+
+  test('annotation screenshot carries a stable viewport origin and refuses a scroll during capture', async () => {
+    const h = harness({ networkPreview: true });
+    const { browserSessionId: id } = await h.open();
+    let y = 25;
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 12, pageY: y },
+    }));
+    h.fake.handle('Page.captureScreenshot', () => ({ data: PNG_1X1 }));
+    const response = await h.browser(
+      'GET',
+      `/sessions/${id}/screenshot?annotation=1`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: { scroll: { x: 12, y: 25 }, image: PNG_1X1, mimeType: 'image/png' },
+    });
+    h.fake.handle('Page.captureScreenshot', () => {
+      y = 26;
+      return { data: PNG_1X1 };
+    });
+    expect(
+      (await h.browser('GET', `/sessions/${id}/screenshot?annotation=1`))
+        .status,
+    ).toBe(409);
+  });
+
+  test('refuses an annotation screenshot when zoom changes during capture', async () => {
+    const h = harness({ networkPreview: true });
+    const session = await h.open();
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 0, pageY: 0 },
+    }));
+    h.fake.handle('Page.captureScreenshot', async () => {
+      enter();
+      await waiting;
+      return { data: PNG_1X1 };
+    });
+    const capture = h.browser(
+      'GET',
+      `/sessions/${session.browserSessionId}/screenshot?annotation=1`,
+    );
+    await entered;
+    await h.sessions.setZoom(session.browserSessionId, 2, {
+      actor: { kind: 'operator' },
+      generation: session.generation,
+      guard: () => {},
+    });
+    release();
+    expect((await capture).status).toBe(409);
+  });
+
+  test('annotation waits for an earlier screenshot before measuring its own origin', async () => {
+    const h = harness({ networkPreview: true });
+    const { browserSessionId: id } = await h.open();
+    let release!: () => void;
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let y = 0;
+    let shots = 0;
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 0, pageY: y },
+    }));
+    h.fake.handle('Page.captureScreenshot', async () => {
+      if (++shots === 1) {
+        enter();
+        await gate;
+      }
+      return { data: PNG_1X1 };
+    });
+    const previous = h.browser('GET', `/sessions/${id}/screenshot`);
+    await entered;
+    const annotation = h.browser(
+      'GET',
+      `/sessions/${id}/screenshot?annotation=1`,
+    );
+    y = 50;
+    release();
+    expect((await previous).status).toBe(200);
+    const response = await annotation;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { scroll: { x: 0, y: 50 } },
+    });
+    expect(shots).toBe(2);
   });
 
   test('a closed session has no screenshot (409)', async () => {

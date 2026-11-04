@@ -38,6 +38,7 @@ import {
   acpAdvertisedModels,
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
+  resolveBindingStatus,
   resolveEffectiveModel,
   resolveGlobalProviderManagedExecution,
   resolveProjectProviderManagedExecution,
@@ -446,9 +447,10 @@ export function useNewChatSelectionModel({
       // and the shared picker can expose its provider rail.
       return stationEligibleModels(modelConnections);
     }
-    const connectionModels = connection
-      ? runtimeCatalogVisibleModels(connection)
-      : [];
+    const bindingModels = resolveBindingStatus({
+      agent,
+      runtimeConnection: connection,
+    }).visibleModels;
     // #3028: an ACP engine's catalog arrives on the connection's served
     // `advertisedModels` (its model config option, else its #352 `models`
     // list), a channel neither the runtime catalog nor agent.modelOptions
@@ -458,12 +460,7 @@ export function useNewChatSelectionModel({
       acpConnections,
       agent.execution?.agentConnectionId,
     );
-    const models =
-      connectionModels.length > 0
-        ? connectionModels
-        : agent.modelOptions?.length
-          ? (agent.modelOptions as SelectableModel[])
-          : acpModelOptions;
+    const models = bindingModels.length > 0 ? bindingModels : acpModelOptions;
     return models.map((model) => ({
       ...model,
       providerId: connection?.id,
