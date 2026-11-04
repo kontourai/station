@@ -693,3 +693,18 @@ test('a pre-#4509 file with enabled: true still dispatches as a live rule (#4509
   });
   expect(w.graph.listTasks()).toHaveLength(1);
 });
+
+test('a pending live intent is refused, not dispatched, once its rule is switched to observe (#4509)', async () => {
+  const w = await world();
+  const [intent] = w.ledger.listActionIntents();
+  expect(intent?.state).toBe('pending');
+  await setRuleMode(w, w.rule.id, 'observe');
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.adapter.sends).toEqual([]);
+});
