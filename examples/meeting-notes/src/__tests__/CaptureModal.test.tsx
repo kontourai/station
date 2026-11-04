@@ -344,4 +344,51 @@ describe('CaptureModal', () => {
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  test('a compiled note still displays its submitted source after the same draft is saved again', async () => {
+    let completeCompile!: (value: unknown) => void;
+    createKnowledgeRecordMock
+      .mockResolvedValueOnce({ id: 'raw-original' })
+      .mockResolvedValueOnce({ id: 'raw-second-save' })
+      .mockResolvedValueOnce({ id: 'compiled-original' });
+    invokeAgentMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeCompile = resolve;
+        }),
+    );
+    renderCaptureModal();
+    fireEvent.change(screen.getByLabelText('Knowledge root'), {
+      target: { value: 'root:personal' },
+    });
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Original transcript' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+    await screen.findByTestId('mn-raw-record');
+    fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+    await waitFor(() => expect(invokeAgentMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('mn-raw-record').textContent).toContain(
+        'raw-second-save',
+      ),
+    );
+    await act(async () => {
+      completeCompile({
+        success: true,
+        response: { title: 'Note', summary: 'Summary', actionItems: [] },
+      });
+    });
+    const compiled = await screen.findByTestId('mn-compiled-record');
+    expect(compiled.textContent).toContain('raw-original');
+    expect(compiled.textContent).not.toContain('raw-second-save');
+    expect(createKnowledgeRecordMock).toHaveBeenLastCalledWith(
+      'http://localhost:3141',
+      'root:personal',
+      expect.objectContaining({
+        links: [{ target_id: 'raw-original', kind: 'source' }],
+      }),
+    );
+  });
 });

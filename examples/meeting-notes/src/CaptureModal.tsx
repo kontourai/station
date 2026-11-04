@@ -126,7 +126,10 @@ export function CaptureModal(_props: LayoutComponentProps) {
   const [rootId, setRootId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
   const [rawRecordId, setRawRecordId] = useState<string | null>(null);
-  const [compiledRecordId, setCompiledRecordId] = useState<string | null>(null);
+  const [compiledRecord, setCompiledRecord] = useState<{
+    id: string;
+    rawRecordId: string;
+  } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const draftRevision = useRef(0);
 
@@ -142,7 +145,7 @@ export function CaptureModal(_props: LayoutComponentProps) {
     onSuccess: (id, request) => {
       if (request.revision !== draftRevision.current) return;
       setRawRecordId(id);
-      setCompiledRecordId(null);
+      setCompiledRecord(null);
       setNotice({
         kind: 'success',
         text: `Saved raw transcript record ${id}.`,
@@ -169,7 +172,7 @@ export function CaptureModal(_props: LayoutComponentProps) {
     },
     onSuccess: (id, request) => {
       if (request.revision !== draftRevision.current) return;
-      setCompiledRecordId(id);
+      setCompiledRecord({ id, rawRecordId: request.rawRecordId });
       setNotice({
         kind: 'success',
         text: `Compiled note ${id}, linked to raw transcript ${request.rawRecordId}.`,
@@ -188,7 +191,7 @@ export function CaptureModal(_props: LayoutComponentProps) {
     draftRevision.current += 1;
     setRootId(newRootId);
     setRawRecordId(null);
-    setCompiledRecordId(null);
+    setCompiledRecord(null);
     setNotice(null);
   }, []);
 
@@ -196,7 +199,7 @@ export function CaptureModal(_props: LayoutComponentProps) {
     draftRevision.current += 1;
     setTranscript(text);
     setRawRecordId(null);
-    setCompiledRecordId(null);
+    setCompiledRecord(null);
     setNotice(null);
   }, []);
 
@@ -313,10 +316,11 @@ export function CaptureModal(_props: LayoutComponentProps) {
           Raw transcript record: <code>{rawRecordId}</code>
         </p>
       )}
-      {compiledRecordId && (
+      {compiledRecord && (
         <p className="mn-record-link" data-testid="mn-compiled-record">
-          Compiled note record: <code>{compiledRecordId}</code> — links to{' '}
-          <code>{rawRecordId}</code> (<code>kind: "source"</code>)
+          Compiled note record: <code>{compiledRecord.id}</code> — links to{' '}
+          <code>{compiledRecord.rawRecordId}</code> (<code>kind: "source"</code>
+          )
         </p>
       )}
     </div>
