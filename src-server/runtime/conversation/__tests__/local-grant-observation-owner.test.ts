@@ -1316,10 +1316,21 @@ test.each(['snapshot', 'after-release'] as const)(
   },
 );
 
-test.each(['legacy', 'canonical'] as const)(
-  'a fresh SDK read cannot reuse an outer registry snapshot after Home release and peer revocation (%s)',
-  async (originMode) => {
-    const h = await setup();
+test.each([
+  ['legacy', 'snapshot'],
+  ['canonical', 'snapshot'],
+  ['legacy', 'span'],
+  ['canonical', 'span'],
+] as const)(
+  'a fresh SDK read cannot reuse an outer registry snapshot after Home release and peer revocation (%s, %s)',
+  async (originMode, registryMode) => {
+    let clockBody: (() => void) | undefined;
+    const h = await setup('local-grant', undefined, () => {
+      const body = clockBody;
+      clockBody = undefined;
+      body?.();
+      return Date.now();
+    });
     const peer = new EnvironmentSecurityService({ homeDir: h.home });
     await peer.initialize();
     assert.equal(
@@ -1356,10 +1367,22 @@ test.each(['legacy', 'canonical'] as const)(
     let readRefusal: unknown;
     let callbackFailure: unknown;
     let closingFailure: unknown;
+    const inRegistryScope = (check: () => void) => {
+      if (registryMode === 'snapshot') {
+        owner.withObservationScope(h.request, check);
+        return;
+      }
+      clockBody = check;
+      try {
+        h.environment.devicePairing.credentialLocality(h.paired.credential);
+      } finally {
+        clockBody = undefined;
+      }
+    };
     try {
       try {
         writerA.runWithLease(leaseA, () =>
-          owner.withObservationScope(h.request, () => {
+          inRegistryScope(() => {
             released = leaseA.release();
             writerB.runSynchronous(() =>
               writerB.afterRelease(() => {
