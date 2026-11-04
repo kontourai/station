@@ -17,6 +17,7 @@ import {
   HomeWriterUnavailableError,
 } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { withReportRoundsPublication } from '../report-rounds-publication.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { recoveryFixture } from './report-recovery-fixture.js';
@@ -278,6 +279,59 @@ test.each([
       await probe.close();
     }
   } finally {
+    try {
+      await orchestration.shutdown();
+    } finally {
+      eventStore.close();
+      await runtimeOwner.shutdown();
+    }
+  }
+});
+
+test('custody metadata admission keeps physical Home ownership bounded and refuses withdrawn grants', async () => {
+  const { h, orchestration, eventStore, runtimeOwner, owners } =
+    await recoveryFixture();
+  const lock = join(h.f.home, 'security', '.home-writer.mutation');
+  const link = fs.linkSync;
+  let holds = 0;
+  const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+    if (String(to) === lock) holds++;
+    return link(from, to);
+  });
+  syncBuiltinESMExports();
+  try {
+    const read = () =>
+      withReportRoundsPublication(
+        {
+          participant: owners.publicationParticipant,
+          home: h.f.home,
+          signal: h.f.req.signal,
+        },
+        (publication) =>
+          h.custody.inspectForMutation(
+            h.f.context(),
+            'missing-metadata-group',
+            publication,
+          ),
+      );
+    assert.equal(await read(), null);
+    assert.ok(
+      holds > 0,
+      'the observer must see actual physical Home acquisition',
+    );
+    assert.ok(
+      holds <= 8,
+      `custody metadata admission took ${holds} physical Home holds; maximum 8 (re-measure before changing the bound)`,
+    );
+    h.f.environment.devicePairing.revokeDevice(
+      h.f.paired.device.id,
+      'operator-credential',
+    );
+    await assert.rejects(read, { code: 'group_custody_unavailable' });
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    observe.mockRestore();
+    syncBuiltinESMExports();
     try {
       await orchestration.shutdown();
     } finally {

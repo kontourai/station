@@ -364,7 +364,7 @@ export class StationReportGroupCustody {
     );
     const admit = <Value>(check: () => Value): Promise<Value> =>
       publication
-        ? publication.withHome(
+        ? publication.check(
             {
               owner: writer,
               current: () => {
@@ -372,16 +372,11 @@ export class StationReportGroupCustody {
                 return undefined;
               },
             },
-            async (scope) => scope.check(check),
+            check,
           )
         : writer.runRequest(context.req.raw.signal, check);
     await admit(() => this.#request(context, method));
     const lease = await this.captureRequestLease(context, admit);
-    const principal = await admit(() =>
-      createOrchestrationRequestPrincipalResolver({
-        environmentSecurityService: this.owners.environment,
-      })(context),
-    );
     const current = (): undefined => {
       return this.owners.environment.withCurrentAuthority(() => {
         lease.assertCurrent();
@@ -389,7 +384,13 @@ export class StationReportGroupCustody {
         return undefined;
       });
     };
-    await admit(current);
+    const principal = await admit(() => {
+      const principal = createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: this.owners.environment,
+      })(context);
+      current();
+      return principal;
+    });
     return { lease, principal, current };
   }
 
