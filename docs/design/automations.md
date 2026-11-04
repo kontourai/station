@@ -169,10 +169,12 @@ Limits and gaps:
   passed, not that a Task would have started.
 - Observe markers are pruned after the closed-episode retention (31 days),
   while a real episode stays open until `closeOn`.
-- As with disable and re-enable before this change, a `live` intent still
-  pending when its rule moves to `observe` and back to `live` keeps its
-  fingerprint. If no tick refused it in between (actions preview off), it can
-  still dispatch within its 72-hour window.
+- Both consumers refuse a pending intent whose rule is not `live` on their
+  next tick (`policy_changed`). A consumer whose preview is off does not tick,
+  though. If a rule moves to `observe` or `off` and back to `live` while that
+  preview stays off, its pending intent keeps a matching fingerprint and can
+  still dispatch within its 72-hour window. Disable and re-enable behaved the
+  same way before this change.
 
 Task creation and Session seeding alone do not start a repair turn. The actions
 runtime submits the framed prompt to the existing durable inbox, retaining the

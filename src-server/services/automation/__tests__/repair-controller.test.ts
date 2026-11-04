@@ -880,3 +880,59 @@ test('an observe isolated-repair rule records would-start and starts no intent o
   ).toEqual([original.id]);
   expect(context.worker).toHaveBeenCalledTimes(1);
 });
+
+test('a retained live repair intent is refused when its rule is switched off and never dispatches after it returns to live (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const second = await context.policy.createRule({
+    ...original,
+    name: 'second repair',
+  });
+  const setMode = (mode: 'off' | 'observe' | 'live') =>
+    context.policy.setEnabled({
+      kind: 'rule',
+      id: second.id,
+      expectedFingerprint:
+        context.controller.automationConfiguration().fingerprint,
+      mode,
+    });
+  await setMode('live');
+  const source = context.policy.read().sources[0]!;
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555557,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  recordAutomationEvent({
+    ledger: context.ledger,
+    source,
+    rules: context.policy
+      .actionableRules(source.id)
+      .filter((rule) => rule.id === second.id),
+    event: normalized.event,
+    transportId: normalized.event.semanticKey,
+    now: Date.now(),
+  });
+  const intent = context.ledger
+    .listActionIntents()
+    .find((candidate) => candidate.ruleId === second.id);
+  expect(intent?.state).toBe('pending');
+  await setMode('off');
+  await context.controller.tick();
+  expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  await setMode('live');
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});

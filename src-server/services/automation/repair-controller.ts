@@ -311,10 +311,18 @@ export class IsolatedRepairController {
           continue;
         const config = this.options.policy.read();
         const rule = config.rules.find((r) => r.id === intent.ruleId);
-        // `current()` refuses a non-live rule at start; skipping here avoids
-        // claiming admission for a rule that may not act.
-        if (rule?.mode !== 'live' || rule.action.kind !== 'isolated-repair')
+        if (rule?.action.kind !== 'isolated-repair') continue;
+        // A rule that is not `live` may not act. Its retained intent is
+        // refused now, as the native Task runtime does, so it cannot dispatch
+        // a stale repair if the rule is switched back to `live` later.
+        if (rule.mode !== 'live') {
+          ledger.updateIntent(
+            intent.intentId,
+            { state: 'refused', reason: 'policy_changed' },
+            Date.now(),
+          );
           continue;
+        }
         const claim = ledger.claimAction({
           episodeKey: intent.episodeKey,
           expectedEpisodeId: intent.episodeId,
