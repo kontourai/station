@@ -5,6 +5,7 @@ import {
   runOpenCommand,
 } from './commands/local-browser.js';
 import { runMediaToolsCommand } from './commands/media-tools.js';
+import { runPolicyCommand } from './commands/policy.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -118,7 +119,11 @@ import {
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
-import { runTriageCommand } from './commands/triage.js';
+import {
+  runTriageCommand,
+  runTriageDraftReport,
+  type TriageDependencies,
+} from './commands/triage.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
@@ -364,6 +369,11 @@ export interface CliDependencies {
   }) => Promise<PlaybookSkillMigrationSummary>;
   /** Source-only diagnostic callback for `station triage`; never bundled. */
   collectTriageDoctorReport?: () => Promise<unknown>;
+  /** Test seam: `station triage` agent probe, launch and consent prompt. */
+  triage?: Pick<
+    TriageDependencies,
+    'confirmIssueSearch' | 'launchAgent' | 'probeAgent'
+  >;
   /** Exact source revision supplied by the checkout launcher when available. */
   sourceRevision?: () => string | undefined;
 }
@@ -460,6 +470,7 @@ const INDIVIDUAL_COMMANDS = [
   'config',
   'telemetry',
   'media-tools',
+  'policy',
   'checkpoints',
   'environment',
   'export',
@@ -797,9 +808,16 @@ function buildProgram(
   register('target', (rawArgs) => runTargetCommand(rawArgs));
   register('open', (rawArgs) => runOpenCommand(rawArgs));
   register('triage', async (rawArgs) => {
+    if (rawArgs[0] === 'draft-report') {
+      await runTriageDraftReport(rawArgs.slice(1));
+      return;
+    }
     await runTriageCommand(rawArgs, {
+      ...dependencies.triage,
       collectSourceDoctorReport: dependencies.collectTriageDoctorReport,
-      isInteractive: interactive,
+      // `interactive` reflects stdin only; an interactive agent also needs
+      // stdout to be a terminal.
+      isInteractive: interactive && Boolean(process.stdout.isTTY),
       sourceRevision: dependencies.sourceRevision,
     });
   });
@@ -1309,6 +1327,7 @@ function buildProgram(
 
   register('telemetry', runTelemetryCommand);
   register('media-tools', runMediaToolsCommand);
+  register('policy', runPolicyCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

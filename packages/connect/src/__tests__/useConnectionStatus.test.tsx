@@ -10,6 +10,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
 import { ConnectionStore } from '../core/ConnectionStore';
 import type { StorageAdapter } from '../core/types';
 import { ConnectionsProvider } from '../react/ConnectionsContext';
@@ -138,6 +139,79 @@ describe('useConnectionStatus', () => {
     await waitFor(() => expect(result.current.header.status).toBe('connected'));
     expect(result.current.banner.status).toBe('connected');
     expect(checkHealth).toHaveBeenCalledOnce();
+  });
+
+  it('shares fresh outcomes with a later consumer after StrictMode subscription replay', async () => {
+    vi.useFakeTimers();
+    let denyRecheck = false;
+    let finishRecheck!: (result: ConnectionHealthCheckResult) => void;
+    const signals: AbortSignal[] = [];
+    const probeEndpoint = vi.fn(
+      (
+        _url: string,
+        _credential: string | undefined,
+        _environment: string | null,
+        signal: AbortSignal,
+      ): Promise<ConnectionHealthCheckResult> => {
+        signals.push(signal);
+        return denyRecheck
+          ? new Promise((resolve) => {
+              finishRecheck = resolve;
+            })
+          : Promise.resolve({ ok: true });
+      },
+    );
+    const checkHealth = vi.fn().mockResolvedValue(false);
+    const store = storeWithUrl('https://strict-shared-station.example.test');
+    const Provider = wrapper(store);
+    const options = { checkHealth, probeEndpoint, pollInterval: 60_000 };
+    const first = renderHook(() => useConnectionStatus(options), {
+      wrapper: Provider,
+      reactStrictMode: true,
+    });
+    let unmountSecond: (() => void) | undefined;
+    try {
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      expect(signals[0]?.aborted).toBe(true);
+      expect(first.result.current.status).toBe('connected');
+      const initialChecks = probeEndpoint.mock.calls.length;
+      expect(initialChecks).toBeGreaterThan(0);
+      const second = renderHook(() => useConnectionStatus(options), {
+        wrapper: Provider,
+      });
+      unmountSecond = second.unmount;
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      expect(second.result.current.status).toBe('connected');
+      expect(probeEndpoint).toHaveBeenCalledTimes(initialChecks);
+
+      denyRecheck = true;
+      act(() => first.result.current.recheck());
+      expect(probeEndpoint).toHaveBeenCalledTimes(initialChecks + 1);
+      await act(async () => {
+        finishRecheck({ ok: false, reason: 'authentication-failed' });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      for (const consumer of [first, second]) {
+        expect(consumer.result.current).toMatchObject({
+          status: 'error',
+          checking: false,
+          reason: 'authentication-failed',
+          blocked: true,
+        });
+      }
+      await act(async () => vi.advanceTimersByTimeAsync(10 * 60_000));
+      expect(probeEndpoint).toHaveBeenCalledTimes(initialChecks + 1);
+      second.unmount();
+      unmountSecond = undefined;
+      first.unmount();
+      await act(async () => vi.advanceTimersByTimeAsync(60_000));
+      expect(probeEndpoint).toHaveBeenCalledTimes(initialChecks + 1);
+      expect(checkHealth).not.toHaveBeenCalled();
+    } finally {
+      unmountSecond?.();
+      first.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it('starts as connecting, resolves to connected when health check passes', async () => {

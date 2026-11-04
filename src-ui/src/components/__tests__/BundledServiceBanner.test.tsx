@@ -14,6 +14,7 @@ import {
   bannerStore,
 } from '../../contexts/banner-store';
 import { BundledServiceBanner } from '../BundledServiceBanner';
+import { captureTroubleshootSeeds } from '../troubleshoot/__tests__/captureTroubleshootSeeds';
 
 const baseStatus = {
   phase: 'stopped' as const,
@@ -143,6 +144,74 @@ describe('BundledServiceBanner (station#3079)', () => {
 
     const labels = calls[0]!.actions?.map((action) => action.label) ?? [];
     expect(labels).toContain('Restart Station');
+  });
+
+  // #4470. The banner renderer calls the presented action's `onClick`; this
+  // calls that same handler.
+  test('a stopped Station with no Restart to offer offers Troubleshoot seeded with the banner message', () => {
+    window.history.pushState({}, '', '/settings/diagnostics');
+    const capture = captureTroubleshootSeeds();
+    try {
+      const calls = presented();
+      render(
+        <BundledServiceBanner
+          status={{ ...baseStatus, ownership: 'none' as const }}
+          onRestart={vi.fn()}
+          onOpenConnections={vi.fn()}
+        />,
+      );
+      const labels = calls[0]!.actions?.map((action) => action.label);
+      expect(labels).toEqual(['Manage Stations', 'Troubleshoot']);
+      calls[0]!.actions!.find((action) => action.label === 'Troubleshoot')!
+        .onClick!();
+      expect(capture.seeds).toEqual([
+        {
+          route: '/settings/diagnostics',
+          errorSummary:
+            "local-station-stopped: Station's local Station is stopped. Restart it to use local server actions.",
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a failed fail-closed home offers Troubleshoot beside Manage Stations', () => {
+    const calls = presented();
+    render(
+      <BundledServiceBanner
+        status={{
+          ...baseStatus,
+          phase: 'failed' as const,
+          ownership: 'sidecar' as const,
+          failClosed: true,
+        }}
+        onRestart={vi.fn()}
+        onOpenConnections={vi.fn()}
+      />,
+    );
+    expect(calls[0]!.actions?.map((action) => action.label)).toEqual([
+      'Manage Stations',
+      'Troubleshoot',
+    ]);
+  });
+
+  test('a banner that offers Restart keeps two actions and no Troubleshoot', () => {
+    for (const phase of ['failed', 'stopped', 'starting'] as const) {
+      vi.restoreAllMocks();
+      const calls = presented();
+      render(
+        <BundledServiceBanner
+          status={{ ...baseStatus, phase, ownership: 'sidecar' as const }}
+          onRestart={vi.fn()}
+          onOpenConnections={vi.fn()}
+        />,
+      );
+      const labels = calls[0]!.actions?.map((action) => action.label) ?? [];
+      expect(labels).not.toContain('Troubleshoot');
+      expect(labels.length).toBeLessThanOrEqual(2);
+    }
   });
 
   test('an unowned home offers no Restart either, and keeps its detail', () => {

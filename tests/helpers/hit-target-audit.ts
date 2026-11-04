@@ -105,9 +105,20 @@ export const HIT_TARGET_AUDIT = `(() => {
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const x = { lo: -Infinity, hi: Infinity, reach: null };
     const y = { lo: -Infinity, hi: Infinity, reach: null };
+    const painted = { l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
       const ar = a.getBoundingClientRect();
+      const scaleX = ar.width / a.offsetWidth, scaleY = ar.height / a.offsetHeight;
+      // Overlap uses today's painted area; target size still credits scroll reach.
+      if (clips(cs.overflowX) || scrolls(cs.overflowX)) {
+        painted.l = Math.max(painted.l, ar.left + a.clientLeft * scaleX);
+        painted.r = Math.min(painted.r, ar.left + (a.clientLeft + a.clientWidth) * scaleX);
+      }
+      if (clips(cs.overflowY) || scrolls(cs.overflowY)) {
+        painted.t = Math.max(painted.t, ar.top + a.clientTop * scaleY);
+        painted.b = Math.min(painted.b, ar.top + (a.clientTop + a.clientHeight) * scaleY);
+      }
       step(x, cs.overflowX, ar.left, ar.right, a.scrollWidth > a.clientWidth + 1);
       step(y, cs.overflowY, ar.top, ar.bottom, a.scrollHeight > a.clientHeight + 1);
       if (a === root) break;
@@ -134,7 +145,7 @@ export const HIT_TARGET_AUDIT = `(() => {
       if (cs.position === 'fixed' || cs.position === 'sticky') pinned = a;
     }
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, painted,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -169,7 +180,7 @@ export const HIT_TARGET_AUDIT = `(() => {
   const overlapPairs = [];
   for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
     const a = zones[i], b = zones[j];
-    const ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+    const ox = Math.min(a.painted.r, b.painted.r) - Math.max(a.painted.l, b.painted.l), oy = Math.min(a.painted.b, b.painted.b) - Math.max(a.painted.t, b.painted.t);
     if (ox > 1 && oy > 1) {
       overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
       // Layered: a third element is on top at either centre (a dialog over
@@ -177,7 +188,7 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
-      const mx = (Math.max(a.l, b.l) + Math.min(a.r, b.r)) / 2, my = (Math.max(a.t, b.t) + Math.min(a.b, b.b)) / 2;
+      const mx = (Math.max(a.painted.l, b.painted.l) + Math.min(a.painted.r, b.painted.r)) / 2, my = (Math.max(a.painted.t, b.painted.t) + Math.min(a.painted.b, b.painted.b)) / 2;
       const meet = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementFromPoint(mx, my) : null;
       const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b, meet) || pinnedOver(b, a, meet);
       overlapPairs.push({

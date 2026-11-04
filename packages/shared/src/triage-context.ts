@@ -24,25 +24,45 @@ import {
   realpathSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import {
+  buildTroubleshootIssueFormUrl,
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
+  TROUBLESHOOT_REPORT_FIELD_IDS,
+  TROUBLESHOOT_SEED_ID_PATTERN,
+  type TroubleshootIssueFormLink,
+  TroubleshootReportBoundsError,
+  type TroubleshootReportFields,
+} from '@kontourai/station-contracts/troubleshoot';
 import { redactDeep, redactSecrets, sanitizeFreeText } from './redaction.js';
-import { resolveStationRoot } from './runtime-path-resolver.js';
+import {
+  resolveRuntimeHome,
+  resolveStationRoot,
+} from './runtime-path-resolver.js';
 import {
   assertWindowsPathsTrusted,
   ensureWindowsDirectoriesTrusted,
   runWindowsTrustCommand,
 } from './windows-path-trust.js';
 
-export const TRIAGE_CONTEXT_SCHEMA_VERSION = 1;
+export const TRIAGE_CONTEXT_SCHEMA_VERSION = 2;
 export const MAX_TRIAGE_CONTEXT_BYTES = 96 * 1024;
 export const MAX_TRIAGE_DOCTOR_CHECKS = 32;
 export const MAX_TRIAGE_TEXT_LENGTH = 1_024;
 export const MAX_TRIAGE_LOG_TAIL_LENGTH = 4_096;
 export const MAX_TRIAGE_REMOTE_RESPONSE_BYTES = 512 * 1024;
 
-/** In-app seed context limits. Longer input is refused, never truncated. */
-export const MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH = 512;
-export const MAX_TROUBLESHOOT_SEED_ERROR_LENGTH = 2_000;
+/** In-app seed context limits, owned by the contract. Longer input is refused, never truncated. */
+export {
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
+};
 
 const TRIAGE_RUN_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -318,9 +338,98 @@ export type TriageAgentAvailability =
   | 'unavailable'
   | 'not-probed';
 
-/** The `station triage` CLI's context.json, schema v1. */
+/**
+ * Where this machine's Station runtime keeps its logs, for an agent working
+ * in a terminal. The directory is shown with the home directory as `~`; a
+ * directory outside the home directory is withheld (`null`) rather than
+ * persisted as a raw absolute path.
+ */
+export interface TriageLocalLogs {
+  directory: string | null;
+  status: 'present' | 'absent';
+}
+
+/**
+ * The local runtime home's log directory (the durable server log store is its
+ * `server/` subdirectory). This is the default runtime for the caller's
+ * environment, which is not necessarily the Station the run targets.
+ */
+/** Resolves symlinks through the nearest existing ancestor of `path`. */
+function canonicalPath(path: string): string {
+  const missing: string[] = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return path;
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * `path` as `~/…` relative to the current user's real home directory, or null
+ * when it is outside that home (another user's home, a system path, or a
+ * symlink leading out). Compared on resolved paths, not on a name pattern.
+ */
+function currentUserHome(): string | null {
+  try {
+    return homedir() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function homeRelativePath(
+  path: string,
+  userHome: string | null = currentUserHome(),
+): string | null {
+  if (!userHome) return null;
+  const rel = relative(canonicalPath(userHome), canonicalPath(path));
+  if (rel === '') return '~';
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    return null;
+  }
+  return `~/${rel.split(sep).join('/')}`;
+}
+
+export function localTriageLogFacts(
+  runtimeHome?: string,
+  userHome?: string,
+): TriageLocalLogs {
+  let home: string;
+  try {
+    home = runtimeHome ?? resolveRuntimeHome();
+  } catch {
+    return { directory: null, status: 'absent' };
+  }
+  const directory = join(home, 'logs');
+  const shown = homeRelativePath(directory, userHome);
+  return {
+    directory: shown !== null && isHomeRelativeDirectory(shown) ? shown : null,
+    status: existsSync(directory) ? 'present' : 'absent',
+  };
+}
+
+/** `~` or `~/a/b`: no other user's `~name`, no `.`/`..` segments, bounded. */
+function isHomeRelativeDirectory(value: string): boolean {
+  if (value.length > MAX_TRIAGE_TEXT_LENGTH) return false;
+  if (value === '~') return true;
+  // The producer always writes `/`; a backslash is a Windows separator that
+  // could hide a `..` segment from the split below.
+  if (!value.startsWith('~/') || value.includes('\\')) return false;
+  return value
+    .slice(2)
+    .split('/')
+    .every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+}
+
+/** The `station triage` CLI's context.json, schema v2. */
 export interface TriageContext {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
   runId: string;
   cli: {
@@ -361,6 +470,7 @@ export interface TriageContext {
           | { status: 'unavailable'; reason: string };
       }
     | { status: 'unavailable'; reason: string };
+  localLogs: TriageLocalLogs;
   launch: {
     requested: TriageAgent | null;
     selected: TriageAgent | null;
@@ -380,7 +490,7 @@ export interface TriageContext {
   };
 }
 
-/** Refuses any CLI context outside schema v1's exact keys and bounded values. */
+/** Refuses any CLI context outside schema v2's exact keys and bounded values. */
 export function validateTriageContext(value: TriageContext): void {
   const allowed = [
     'schemaVersion',
@@ -392,6 +502,7 @@ export function validateTriageContext(value: TriageContext): void {
     'doctor',
     'agents',
     'remote',
+    'localLogs',
     'launch',
     'limits',
   ];
@@ -401,7 +512,9 @@ export function validateTriageContext(value: TriageContext): void {
     !/^\d{4}-\d{2}-\d{2}T/.test(value.generatedAt) ||
     !/^[0-9a-f-]{36}$/i.test(value.runId)
   ) {
-    throw new Error('Triage context did not satisfy schema v1.');
+    throw new Error(
+      `Triage context did not satisfy schema v${TRIAGE_CONTEXT_SCHEMA_VERSION}.`,
+    );
   }
   if (!['source', 'packaged'].includes(value.cli.distribution)) {
     throw new Error('Triage context has an invalid distribution identity.');
@@ -444,6 +557,7 @@ export function validateTriageContext(value: TriageContext): void {
           !hasExactKeys(value.remote.logs, ['status', 'reason'])))) ||
     (value.remote.status === 'unavailable' &&
       !hasExactKeys(value.remote, ['status', 'reason'])) ||
+    !hasExactKeys(value.localLogs, ['directory', 'status']) ||
     !hasExactKeys(value.launch, [
       'requested',
       'selected',
@@ -452,7 +566,9 @@ export function validateTriageContext(value: TriageContext): void {
     ]) ||
     !hasExactKeys(value.limits, ['contextBytes', 'doctorChecks', 'textLength'])
   ) {
-    throw new Error('Triage context contains fields outside schema v1.');
+    throw new Error(
+      `Triage context contains fields outside schema v${TRIAGE_CONTEXT_SCHEMA_VERSION}.`,
+    );
   }
   if (
     !['available', 'unavailable'].includes(
@@ -469,6 +585,11 @@ export function validateTriageContext(value: TriageContext): void {
       value.capabilities.remoteReadFacts,
     ) ||
     !['available', 'unavailable'].includes(value.capabilities.recentLogs) ||
+    !['present', 'absent'].includes(value.localLogs.status) ||
+    // Only a home-relative location may be persisted; never a raw path.
+    (value.localLogs.directory !== null &&
+      (typeof value.localLogs.directory !== 'string' ||
+        !isHomeRelativeDirectory(value.localLogs.directory))) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.codex) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.claude) ||
     ![
@@ -542,7 +663,12 @@ export interface TroubleshootContext {
     agentRead: 'requires-operator-grant';
   };
   /** `route` is the in-app path without its leading "/". */
-  seed: { route: string | null; errorSummary: string | null };
+  seed: {
+    route: string | null;
+    errorSummary: string | null;
+    conversationId: string | null;
+    turnId: string | null;
+  };
   limits: {
     contextBytes: number;
     doctorChecks: number;
@@ -553,7 +679,11 @@ export interface TroubleshootContext {
 export type TroubleshootSeedRefusal =
   | 'route-too-long'
   | 'route-not-in-app'
-  | 'error-summary-too-long';
+  | 'error-summary-too-long'
+  | 'conversation-id-too-long'
+  | 'conversation-id-invalid'
+  | 'turn-id-too-long'
+  | 'turn-id-invalid';
 
 export class TroubleshootSeedError extends Error {
   constructor(
@@ -573,9 +703,23 @@ export class TroubleshootSeedError extends Error {
 export function admitTroubleshootSeed(input: {
   route?: string | null;
   errorSummary?: string | null;
+  conversationId?: string | null;
+  turnId?: string | null;
 }): TroubleshootContext['seed'] {
   const route = input.route ?? null;
   const errorSummary = input.errorSummary ?? null;
+  const conversationId = admitSeedId(
+    input.conversationId ?? null,
+    MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+    'conversation-id',
+    'conversation id',
+  );
+  const turnId = admitSeedId(
+    input.turnId ?? null,
+    MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
+    'turn-id',
+    'turn id',
+  );
   if (route !== null) {
     if (route.length > MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH)
       throw new TroubleshootSeedError(
@@ -606,7 +750,38 @@ export function admitTroubleshootSeed(input: {
     errorSummary: errorSummary?.trim()
       ? sanitizeFreeText(errorSummary, MAX_TRIAGE_TEXT_LENGTH * 2)
       : null,
+    conversationId,
+    turnId,
   };
+}
+
+function admitSeedId(
+  value: string | null,
+  limit: number,
+  code: 'conversation-id' | 'turn-id',
+  label: string,
+): string | null {
+  if (value === null) return null;
+  if (value.length > limit)
+    throw new TroubleshootSeedError(
+      `${code}-too-long`,
+      `Seed ${label} exceeds ${limit} characters.`,
+    );
+  if (!TROUBLESHOOT_SEED_ID_PATTERN.test(value))
+    throw new TroubleshootSeedError(
+      `${code}-invalid`,
+      `Seed ${label} must be printable characters with no spaces.`,
+    );
+  return value;
+}
+
+function validSeedId(value: unknown, limit: number): boolean {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      value.length <= limit &&
+      TROUBLESHOOT_SEED_ID_PATTERN.test(value))
+  );
 }
 
 /** Refuses any in-app context outside schema v1's exact keys and bounded values. */
@@ -644,7 +819,12 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
     ]) ||
     !hasExactKeys(value.caller, ['role', 'surface']) ||
     !hasExactKeys(value.logs, ['serverLogStore', 'agentRead']) ||
-    !hasExactKeys(value.seed, ['route', 'errorSummary']) ||
+    !hasExactKeys(value.seed, [
+      'route',
+      'errorSummary',
+      'conversationId',
+      'turnId',
+    ]) ||
     !hasExactKeys(value.limits, ['contextBytes', 'doctorChecks', 'textLength'])
   ) {
     throw new Error('Troubleshoot context contains fields outside schema v1.');
@@ -665,6 +845,11 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
       value.seed.route.length > MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH) ||
     (value.seed.errorSummary !== null &&
       value.seed.errorSummary.length > MAX_TRIAGE_TEXT_LENGTH * 2) ||
+    !validSeedId(
+      value.seed.conversationId,
+      MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+    ) ||
+    !validSeedId(value.seed.turnId, MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH) ||
     value.limits.contextBytes !== MAX_TRIAGE_CONTEXT_BYTES ||
     value.limits.doctorChecks !== MAX_TRIAGE_DOCTOR_CHECKS ||
     value.limits.textLength !== MAX_TRIAGE_TEXT_LENGTH
@@ -793,4 +978,32 @@ export function redactTroubleshootReportText(text: string): string {
   for (const pattern of HOME_PATH_PATTERNS)
     result = result.replace(pattern, '~');
   return result;
+}
+
+export interface TroubleshootReportDraft extends TroubleshootIssueFormLink {
+  readonly title: string;
+  readonly fields: TroubleshootReportFields;
+}
+
+/**
+ * Redacts a report's title and fields, then builds its prefilled issue-form
+ * link. The in-app drafting tool and `station triage draft-report` both call
+ * this, so the two surfaces produce the same text and link. An unknown field
+ * id or an over-limit value throws {@link TroubleshootReportBoundsError}.
+ */
+export function draftTroubleshootReport(input: {
+  readonly title: string;
+  readonly fields: TroubleshootReportFields;
+}): TroubleshootReportDraft {
+  for (const id of Object.keys(input.fields)) {
+    if (!(TROUBLESHOOT_REPORT_FIELD_IDS as readonly string[]).includes(id))
+      throw new TroubleshootReportBoundsError(`Unknown report field: ${id}.`);
+  }
+  const title = redactTroubleshootReportText(input.title);
+  const fields: TroubleshootReportFields = {};
+  for (const id of TROUBLESHOOT_REPORT_FIELD_IDS) {
+    const value = input.fields[id];
+    if (value !== undefined) fields[id] = redactTroubleshootReportText(value);
+  }
+  return { title, fields, ...buildTroubleshootIssueFormUrl({ title, fields }) };
 }

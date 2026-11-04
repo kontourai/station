@@ -67,6 +67,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -166,6 +167,16 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
   const LIBS = ['gate-scope.mjs', 'ratchet-utils.mjs'];
   const GATE = 'state-primitives';
 
+  function runStatePrimitives(dir: string) {
+    mkdirSync(join(dir, 'node_modules'), { recursive: true });
+    symlinkSync(
+      realpathSync(resolve('node_modules/typescript-api')),
+      join(dir, 'node_modules/typescript-api'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    return runGuardrail(dir, SCRIPT);
+  }
+
   /**
    * Stand-ins for the guardrail's own hardcoded exclusion lists.
    *
@@ -224,7 +235,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
       libs: LIBS,
       files: cleanFiles(),
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.output).not.toContain('FAIL:');
     expect(result.status).toBe(0);
   });
@@ -241,7 +252,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
         ),
       },
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).toBe(1);
     expect(result.output).toContain(
       'FAIL: 1 untriaged file(s) with a live bespoke *__empty className',
@@ -261,7 +272,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
         ),
       },
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).toBe(1);
     expect(result.output).toContain(
       'ad-hoc "No X" occurrence(s) exceed the recorded ceiling 0',
@@ -282,7 +293,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
     const files = cleanFiles();
     delete (files as Record<string, string>)['src-ui/src/App.tsx'];
     const dir = scratchRepo({ script: SCRIPT, libs: LIBS, files });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).not.toBe(0);
     expect(result.output).toContain('src-ui/src/App.tsx');
   });

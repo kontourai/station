@@ -93,10 +93,12 @@ export async function runFallowAnalysis(
   args = [],
   options = {},
 ) {
+  const watchdogMs = scaleLivenessMs(FALLOW_WATCHDOG_BASE_MS, options.env);
   // `fallow audit` leaves a full base checkout in its temp directory for every
   // base commit: give each run a private one under Station's temp root and
   // remove it when the run ends (#2529).
   const fallowRun = prepareFallowRun();
+  const startedAt = performance.now();
   const execution = executeOwnedCommand(
     process.execPath,
     [
@@ -127,21 +129,23 @@ export async function runFallowAnalysis(
       terminationForceMs: 2000,
       waitForSuiteSettlement,
     });
-  let interrupted = false;
-  const onSignal = () => {
-    interrupted = true;
+  let interruption;
+  const interrupt = (reason) => {
+    interruption ??= {
+      reason,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    };
     void stop();
   };
+  const onSigint = () => interrupt('SIGINT');
+  const onSigterm = () => interrupt('SIGTERM');
   const capture = captureOwnedProcessOutput(execution, {
     maxBytes: 128 * 1024,
     onOverflow: stop,
   });
-  const timeout = setTimeout(
-    onSignal,
-    scaleLivenessMs(FALLOW_WATCHDOG_BASE_MS, options.env),
-  );
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  const timeout = setTimeout(() => interrupt('watchdog'), watchdogMs);
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
   try {
     const result = await execution.completion;
     if (execution.isAlive()) await stop();
@@ -149,7 +153,7 @@ export async function runFallowAnalysis(
     // Exit 1 can be a finding verdict. It is usable only with a complete,
     // separately written JSON report; a truncated stdout is never parsed.
     if (
-      interrupted ||
+      interruption ||
       result.error ||
       result.signal ||
       ![0, 1].includes(result.status) ||
@@ -167,7 +171,7 @@ export async function runFallowAnalysis(
         }
       }
       throw new Error(
-        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, errorCode=${typeof result.error?.code === 'string' ? redactVerificationOutput(result.error.code).slice(0, 80) : 'none'}, interrupted=${interrupted}, truncated=${output.truncated}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
+        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, errorCode=${typeof result.error?.code === 'string' ? redactVerificationOutput(result.error.code).slice(0, 80) : 'none'}, interrupted=${Boolean(interruption)}, truncated=${output.truncated}, interruption=${interruption?.reason ?? 'none'}, watchdogMs=${watchdogMs}, interruptionMs=${interruption?.elapsedMs ?? 'none'}, elapsedMs=${Math.round(performance.now() - startedAt)}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
       );
     }
     if (statSync(outputFile).size > 32 * 1024 * 1024)
@@ -175,8 +179,8 @@ export async function runFallowAnalysis(
     return JSON.parse(readFileSync(outputFile, 'utf8'));
   } finally {
     clearTimeout(timeout);
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
     if (execution.isAlive()) await stop();
     fallowRun.release();
   }
