@@ -319,6 +319,116 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
   const bar =
     '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
 
+  it('does not overlap a clipped scrollport tail with a dock outside its painted area', async () => {
+    await render(
+      '<div id="clipped-pane" style="position:fixed;inset:0 0 54px;overflow:auto;background:white"><div style="height:740px"></div><button class="clipped-tail" aria-label="Clipped tail" style="display:block;box-sizing:border-box;width:390px;height:80px" onclick="this.dataset.clicked=1">Clipped tail</button><div style="height:400px"></div></div><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:54px;background:#111;z-index:2"><button class="dock-action" aria-label="Dock action" style="display:block;box-sizing:border-box;width:390px;height:54px">Dock</button></section>',
+    );
+    const tail = page.getByRole('button', {
+      name: 'Clipped tail',
+      exact: true,
+    });
+    const geometry = await tail.evaluate((button) => {
+      const pane = button.parentElement!;
+      const dock = document.querySelector('.chat-dock')!;
+      const targetRect = button.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      const dockRect = dock.getBoundingClientRect();
+      const centerX = targetRect.left + targetRect.width / 2;
+      const centerY = targetRect.top + targetRect.height / 2;
+      return {
+        target: targetRect.toJSON(),
+        pane: paneRect.toJSON(),
+        dock: dockRect.toJSON(),
+        viewportWidth: innerWidth,
+        remaining: pane.scrollHeight - pane.clientHeight - pane.scrollTop,
+        centerOwned: button.contains(
+          document.elementFromPoint(centerX, centerY),
+        ),
+        tailOwnedByDock: dock.contains(
+          document.elementFromPoint(centerX, targetRect.bottom - 4),
+        ),
+      };
+    });
+    expect(geometry.pane.width).toBe(geometry.viewportWidth);
+    expect(geometry.pane.bottom).toBe(geometry.dock.top);
+    expect(geometry.target.top + geometry.target.height / 2).toBeLessThan(
+      geometry.pane.bottom,
+    );
+    expect(geometry.target.bottom).toBeGreaterThan(geometry.dock.top);
+    expect(geometry.centerOwned).toBe(true);
+    expect(geometry.tailOwnedByDock).toBe(true);
+    expect(geometry.remaining).toBeGreaterThan(0);
+    const audit = await auditGalleryScreen(page, 'clipped-scrollport-tail');
+    await page.mouse.move(195, 400);
+    await page.mouse.wheel(0, 200);
+    await expect
+      .poll(() =>
+        tail.evaluate((button) => {
+          const targetRect = button.getBoundingClientRect();
+          const paneRect = button.parentElement!.getBoundingClientRect();
+          return (
+            targetRect.top >= paneRect.top &&
+            targetRect.bottom <= paneRect.bottom
+          );
+        }),
+      )
+      .toBe(true);
+    await tail.click();
+    expect(await tail.getAttribute('data-clicked')).toBe('1');
+    expect(
+      audit.findings.filter((finding) =>
+        finding.identity.startsWith('hit-target:overlap:'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps a painted overlap inside a scaled scrolling clip', async () => {
+    await render(
+      '<div id="scaled-pane" style="position:absolute;left:0;top:0;width:195px;height:422px;overflow:auto;transform-origin:0 0;transform:scale(2);background:white"><div style="height:300px"></div><button class="scaled-control" aria-label="Scaled control" style="display:block;box-sizing:border-box;width:100%;height:44px">Scaled control</button><div style="height:400px"></div></div><section class="scaled-fixed-bar" style="position:fixed;left:0;top:620px;width:390px;height:44px;background:#333;z-index:2"><button class="scaled-bar-action" aria-label="Fixed bar action" style="display:block;box-sizing:border-box;width:390px;height:44px">Fixed bar action</button></section>',
+    );
+    const geometry = await page
+      .getByRole('button', { name: 'Scaled control', exact: true })
+      .evaluate((button) => {
+        const pane = button.parentElement!;
+        const bar = document.querySelector('.scaled-fixed-bar')!;
+        return {
+          clip: pane.getBoundingClientRect().toJSON(),
+          clientWidth: pane.clientWidth,
+          clientHeight: pane.clientHeight,
+          transform: getComputedStyle(pane).transform,
+          target: button.getBoundingClientRect().toJSON(),
+          bar: bar.getBoundingClientRect().toJSON(),
+          pointOwnedByBar: bar.contains(document.elementFromPoint(100, 642)),
+          targetPaintedAtPoint: document
+            .elementsFromPoint(100, 642)
+            .some((node) => node === button || button.contains(node)),
+        };
+      });
+    expect(geometry.clientHeight).toBe(422);
+    expect(geometry.clip.width).toBe(390);
+    expect(geometry.clip.height).toBe(844);
+    expect(geometry.target.top).toBe(600);
+    expect(geometry.target.bottom).toBe(688);
+    expect(geometry.bar.top).toBe(620);
+    expect(geometry.bar.bottom).toBe(664);
+    expect(geometry.clip.top).toBeLessThanOrEqual(geometry.bar.top);
+    expect(geometry.clip.bottom).toBeGreaterThanOrEqual(geometry.bar.bottom);
+    expect(geometry.pointOwnedByBar).toBe(true);
+    expect(geometry.targetPaintedAtPoint).toBe(true);
+    const audit = await auditGalleryScreen(page, 'scaled-scrollport-overlap');
+    expect(
+      audit.findings.filter((finding) =>
+        finding.identity.startsWith('hit-target:overlap:'),
+      ),
+    ).toEqual([
+      {
+        identity:
+          'hit-target:overlap:button.scaled-control[Scaled control] / button.scaled-bar-action[Fixed bar action]',
+        detail: 'touch targets overlap',
+      },
+    ]);
+  });
+
   it('keeps a below-fold action reachable without overlapping the input beneath its scroller', async () => {
     expect(
       await overlaps(
