@@ -175,6 +175,15 @@ describe('runtime resource diagnostics', () => {
       controller.waitForEngineStart(abort.signal),
     );
     const settledWaiters = Promise.allSettled(waiters);
+    // All 32 must still be queued before the 33rd arrives; a lower cap would
+    // refuse one of them here.
+    let refusedWithinCap = 0;
+    for (const waiter of waiters)
+      waiter.catch(() => {
+        refusedWithinCap += 1;
+      });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(refusedWithinCap).toBe(0);
     const extra = controller.waitForEngineStart(abort.signal);
     const outcome = extra.then(
       () => 'admitted',
