@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { type CDPSession, devices, type Locator } from '@playwright/test';
+import { PNG } from 'pngjs';
 import {
   type AuthenticatedE2ERequest,
   expect,
@@ -32,6 +33,12 @@ const { defaultBrowserType: _defaultBrowserType, ...pixel } =
   devices['Pixel 7'];
 test.use({ ...pixel, reducedMotion: 'reduce' });
 
+declare global {
+  interface Window {
+    __terminalHaptics?: number;
+  }
+}
+
 const SLUG = `e2e-terminal-mobile-keyboard-${process.pid}`;
 
 interface TerminalSessionRecord {
@@ -57,6 +64,32 @@ async function shellOutput(request: AuthenticatedE2ERequest, id: string) {
   };
   const text = body.data.journal.records.map((record) => record.data).join('');
   return stripVTControlCharacters(text).replace(/\r/g, '');
+}
+
+/**
+ * How much of a capture is drawn: pixels clearly off its most common colour
+ * (the background). Text on screen is thousands; a blank or cursor-only
+ * screen, what a view that lost its WebGL context drew, is next to none.
+ * Counted rather than compared byte for byte, since a restored context may
+ * rasterize the same text with sub-pixel differences.
+ */
+function ink(capture: Buffer) {
+  const { data } = PNG.sync.read(capture);
+  const counts = new Map<number, number>();
+  for (let i = 0; i < data.length; i += 4) {
+    const rgb = (data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!;
+    counts.set(rgb, (counts.get(rgb) ?? 0) + 1);
+  }
+  const background = [...counts].sort((a, b) => b[1] - a[1])[0]![0];
+  let drawn = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const distance =
+      Math.abs(data[i]! - ((background >> 16) & 0xff)) +
+      Math.abs(data[i + 1]! - ((background >> 8) & 0xff)) +
+      Math.abs(data[i + 2]! - (background & 0xff));
+    if (distance > 96) drawn += 1;
+  }
+  return drawn;
 }
 
 /** One letter the way Gboard commits it: keydown 229, then the text. */
@@ -150,6 +183,14 @@ test.describe('Coding terminal on a phone keyboard', () => {
     );
     expect(layout.ok()).toBe(true);
 
+    // Count the haptic tick a long touch gives when it starts a selection.
+    await page.addInitScript(() => {
+      window.__terminalHaptics = 0;
+      navigator.vibrate = () => {
+        window.__terminalHaptics = (window.__terminalHaptics ?? 0) + 1;
+        return true;
+      };
+    });
     const terminal: Locator = await openShell(page);
     const input = terminal.getByRole('textbox', { name: 'Terminal input' });
     // A tap on the screen focuses the input, which raises the soft keyboard.
@@ -191,19 +232,29 @@ test.describe('Coding terminal on a phone keyboard', () => {
     await expect(terminal).toHaveAttribute('data-renderer', 'webgl2');
     const first = page.getByRole('tabpanel', { name: 'Shell 1' });
     const canvas = first.locator('.station-terminal canvas');
-    // Unfocused, so the cursor is drawn the same way in both captures.
+    // Unfocused, so the cursor is drawn as an outline in both captures.
     await input.blur();
     await expect(input).not.toBeFocused();
-    // Settled: two captures in a row agree.
-    let shown = await canvas.screenshot();
+    // Settled: the redraw after the blur has landed.
+    let shown = ink(await canvas.screenshot());
     await expect
       .poll(async () => {
-        const next = await canvas.screenshot();
-        const same = next.equals(shown);
+        const next = ink(await canvas.screenshot());
+        const settled = Math.abs(next - shown) <= shown * 0.01;
         shown = next;
-        return same;
+        return settled;
       })
       .toBe(true);
+    // The command, its output and two prompts are on screen.
+    expect(shown).toBeGreaterThan(500);
+    const drawsTheSameScreen = async () => {
+      // A tapped tab may focus its terminal: compare with the outline cursor.
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur(),
+      );
+      const now = ink(await canvas.screenshot());
+      return now > shown * 0.9 && now < shown * 1.1;
+    };
     await page.getByRole('button', { name: 'New terminal', exact: true }).tap();
     const tabs = page.getByRole('tablist', { name: 'Terminal tabs' });
     // A Project with package scripts offers them beside Shell; this one has
@@ -221,19 +272,43 @@ test.describe('Coding terminal on a phone keyboard', () => {
         .locator('.station-terminal[data-state="ready"]'),
     ).toBeVisible({ timeout: 60_000 });
     await tabs.getByRole('tab', { name: 'Shell 1' }).tap();
-    await expect
-      .poll(async () => (await canvas.screenshot()).equals(shown), {
-        timeout: 15_000,
-      })
-      .toBe(true);
+    await expect.poll(drawsTheSameScreen, { timeout: 15_000 }).toBe(true);
 
     // Closing the second shell leaves the first, still drawn.
     await page
       .getByRole('button', { name: 'Close Shell 2', exact: true })
       .tap();
     await expect(tabs.getByRole('tab')).toHaveCount(1);
+    await expect.poll(drawsTheSameScreen).toBe(true);
+
+    // A long touch on the output selects the word under it, and the menu
+    // offers it to chat. Ghostty refused the selection gesture's options, so
+    // the long press stopped the terminal ("could not start") instead.
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('the terminal has no box');
+    const touch = { x: box.x + 40, y: box.y + box.height * 0.12 };
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [touch],
+    });
+    // The phone buzzes when a held touch starts selecting.
     await expect
-      .poll(async () => (await canvas.screenshot()).equals(shown))
-      .toBe(true);
+      .poll(() => page.evaluate(() => window.__terminalHaptics ?? 0))
+      .toBeGreaterThan(0);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await expect(first.locator('.station-terminal')).toHaveAttribute(
+      'data-state',
+      'ready',
+    );
+    await terminal.getByRole('textbox', { name: 'Terminal input' }).focus();
+    await page.keyboard.press('Shift+F10');
+    const menu = page.getByRole('menu', { name: 'Terminal actions' });
+    await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeEnabled();
+    await expect(
+      menu.getByRole('menuitem', { name: 'Add to chat' }),
+    ).toBeEnabled();
   });
 });
