@@ -38,7 +38,12 @@ With the **Task tracker follow-ups** Feature Preview on (off by default; not
 offered in hosted mode), the built-in scheduler's minute tick reads the
 followed GitHub items of each eligible Task, at most once every five minutes
 per Task and ten Tasks per tick, oldest poll first. There is no timer, daemon
-or webhook of its own.
+or webhook of its own. The tick starts the follow-up poll on its own single
+flight and does not wait for it, so automation observations, actions and
+repairs on the same tick never wait on GitHub. Each poll stops its `gh`
+process after 60 seconds; Tasks it did not finish stay due. When `gh` is
+missing, not signed in or rate limited, the poll stops at that first answer
+and backs off for 15 minutes (a restart tries again).
 
 - **Eligible Tasks.** A Task whose `workItemRef` is a github.com ref the
   Project's board offered (`workItemProvenance: 'project-board'`), live or
@@ -64,9 +69,10 @@ or webhook of its own.
   numbers. The cursor of the last item read is stored in the same
   transaction as the page's items, so a later poll resumes exactly after it.
   An empty page's null `endCursor` never replaces a stored cursor. A
-  pending review (the gh login's own draft) is passed over and not recorded;
-  submitting it gives it a later submitted time, which sorts it after any
-  stored cursor.
+  pending review (the gh login's own draft) is passed over, not recorded,
+  and never supplies the cursor: GitHub gives it `[null, created time, id]`,
+  so the stored cursor stays on the last submitted review and the draft is
+  read again once submitted.
 - **Storage.** One SQLite file, `task-follow-ups/task-follow-ups.sqlite` in
   the Station home, keyed by Task incarnation and idempotent by GitHub kind
   and id, at most 500 observations per Task. Each excerpt is cut to 1,000
@@ -77,7 +83,9 @@ or webhook of its own.
   conclusion), then the author's text quoted under the public-tracker label.
   Passing, neutral and skipped check runs are counted, not listed. The
   section takes at most 3,600 characters and never the newest record's
-  reserved line; items that do not fit are counted.
+  reserved line; items that do not fit are counted. A Task with nothing
+  recorded gets no section, and the brief's digest never includes the poll
+  time, so a poll that records nothing new leaves the digest unchanged.
 - **Bounds.** Five pages of 50 per item per poll (a longer history resumes
   next poll), the first 100 inline comments of a review (the rest are
   counted in the review's excerpt), and 20 check suites of 50 runs.
