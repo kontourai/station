@@ -50,6 +50,7 @@ interface EnvironmentSecurityServiceInstance {
   pseudonymizePairingAuditSource(source: string): string;
   signRevisionEvidenceAuthorityBinding(binding: string): string;
   identifyDevice(candidate: string): { id: string; name: string } | null;
+  credentialHasOwnerStanding(candidate: string): boolean;
   authorizeCredential(
     candidate: string,
     request: {
