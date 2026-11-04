@@ -492,6 +492,7 @@ import {
   type SessionCommandModule,
   type SessionCommandOutcome,
 } from './session-command-module.js';
+import { readSessionDispatchFacts } from './session-dispatch-facts.js';
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
@@ -5801,6 +5802,24 @@ export class OrchestrationService {
       authority,
       requested,
     );
+  }
+
+  /**
+   * #4512: what a Session's own record says about whom it works for (Task
+   * binding, Station-derived delegated child, its newest non-result turn's
+   * origin). Without a store it says nothing unattended.
+   */
+  sessionDispatchFacts(
+    threadId: string,
+  ): ReturnType<typeof readSessionDispatchFacts> {
+    const store = this.options.eventStore;
+    if (!store)
+      return {
+        taskBound: false,
+        delegatedChild: false,
+        priorOrigin: () => 'unknown',
+      };
+    return readSessionDispatchFacts(store, threadId);
   }
 
   currentConversationSessionId(conversationId: string): string {

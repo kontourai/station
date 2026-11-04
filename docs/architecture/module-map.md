@@ -2248,8 +2248,12 @@ anything else as `unknown`. Who passes what:
 - The delegation start, and any foreground send carrying a delegation
   context Station derived or attested (`executeExecutionTargetMessage`, by
   its `caller-derived`/`runtime-attested` provenance; Station Control
-  `send_message` arrives through `/chat/delegated`), pass `delegation`. A
-  requester's own `direct-claim` context does not.
+  `send_message` arrives through `/chat/delegated`), pass `delegation` when
+  it starts a new conversation or the conversation's current Session is
+  itself unattended (`OrchestrationService.sessionDispatchFacts`: bound to a
+  Task, or a Station-derived delegated child); an agent's message into a
+  person's own chat passes `unknown`. A requester's own `direct-claim`
+  context never counts.
 - A scheduled Automation's first run on its dedicated conversation passes
   `automation` ([`scheduledDedicatedStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts)).
 - The conversation inbox's placement ([`inboxPlacementStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts))

@@ -428,7 +428,8 @@ export interface SessionCancellationRequestedEvent
  * - `delegation`: a delegated Session's first turn, a send carrying a
  *   delegation context Station derived or attested (Station Control
  *   `send_message`; a requester's own `direct-claim` context does not
- *   count), and a delegated child's result delivered into a parent that is
+ *   count) into a new conversation or one whose current Session is itself
+ *   unattended (an agent messaging a person's own chat is `unknown`), and a delegated child's result delivered into a parent that is
  *   itself unattended: a Task's Session or a delegated child Station
  *   derived. A result delivered into anyone else's chat takes that chat's
  *   own classification (a person's chat stays `interactive`).

@@ -54,6 +54,7 @@ import {
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
   type TokenUsageUpdatedEvent,
+  type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -6596,6 +6597,23 @@ export async function delegateTask(
  * CLI/UI/MCP callers never receive or construct the target Environment's
  * apiBase, SSH tunnel, credential, or engine connection binding.
  */
+/**
+ * #4512: the origin a delegated send records: `delegation` for a new
+ * conversation (the delegated child it starts) or one whose current Session
+ * is itself unattended, else `unknown`.
+ */
+function delegatedTargetOrigin(
+  orchestrationService: OrchestrationService | undefined,
+  conversationId: string | undefined,
+): TurnDispatchOrigin {
+  if (!conversationId) return 'delegation';
+  if (!orchestrationService) return 'unknown';
+  const facts = orchestrationService.sessionDispatchFacts(
+    orchestrationService.currentConversationSessionId(conversationId),
+  );
+  return facts.taskBound || facts.delegatedChild ? 'delegation' : 'unknown';
+}
+
 export async function executeExecutionTargetMessage(
   input: AuthorityBearingForegroundMessageInput,
   orchestrationService?: OrchestrationService,
@@ -7433,15 +7451,26 @@ export async function executeExecutionTargetMessage(
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
   // #4512: a send carrying a delegation context Station itself derived from
   // the calling Session or its own runtime attested (a Station Control
-  // `send_message`) is a delegated turn. A `direct-claim` context is a
-  // requester's own word, so a person's send that names one stays theirs.
-  const turnContext: ForegroundMessageContext | undefined =
+  // `send_message`) is a delegated turn, but only into a Session that is
+  // itself unattended. Into an existing conversation it counts only when that
+  // conversation's current Session is bound to a Task or is a delegated child
+  // Station derived; an agent messaging a person's own chat leaves that chat
+  // the person's (`unknown`). A `direct-claim` context is a requester's own
+  // word and never counts.
+  const delegatedSend =
     input.delegation &&
     (input.delegationProvenance === 'caller-derived' ||
       input.delegationProvenance === 'runtime-attested') &&
-    !context?.dispatchOrigin
-      ? { ...context, dispatchOrigin: 'delegation' }
-      : context;
+    !context?.dispatchOrigin;
+  const turnContext: ForegroundMessageContext | undefined = delegatedSend
+    ? {
+        ...context,
+        dispatchOrigin: delegatedTargetOrigin(
+          orchestrationService,
+          input.conversationId,
+        ),
+      }
+    : context;
   return executeResolvedForegroundMessage(
     input,
     resolverDependencies,

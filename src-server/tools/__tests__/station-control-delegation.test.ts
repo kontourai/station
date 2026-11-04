@@ -256,6 +256,12 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // #4512: an ordinary conversation's Session works for its person.
+    sessionDispatchFacts: vi.fn((_threadId: string) => ({
+      taskBound: false,
+      delegatedChild: false,
+      priorOrigin: () => 'interactive' as const,
+    })),
     getProviderAdapter: vi.fn(() => ({
       metadata: {
         modelLaunch: {
@@ -2303,6 +2309,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
   test('derives delegated/background admission from server-carried delegation metadata', async () => {
     installCurrentStationFetch();
     const service = localService();
+    // The conversation is a delegated child Station derived.
+    service.sessionDispatchFacts.mockImplementation(() => ({
+      taskBound: false,
+      delegatedChild: true,
+      priorOrigin: () => 'delegation' as const,
+    }));
     const { executeExecutionTargetMessage } = await import(
       '../station-control-delegation.js'
     );

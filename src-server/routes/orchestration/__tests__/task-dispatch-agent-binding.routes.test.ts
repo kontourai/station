@@ -16,6 +16,7 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  agentId,
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
@@ -36,6 +37,7 @@ import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runti
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { RestartContinuation } from '../../../services/orchestration/restart-continuation.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { inboxTurnDispatchOrigin } from '../../../services/orchestration/thread-inbox.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
@@ -43,6 +45,7 @@ import { TaskGraphService } from '../../../services/projects/task-graph-service.
 import {
   assertTaskDispatchAgentExists,
   continueExecutionTargetMessage,
+  executeExecutionTargetMessage,
   resolveTaskDispatchAgentStart,
 } from '../../../tools/station-control-delegation.js';
 import { createTaskRoutes } from '../tasks.js';
@@ -559,6 +562,155 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
       actor: { kind: 'operator' },
     } as never);
     expect(person.dispatchOrigin).toBe('interactive');
+  });
+
+  test("#4512 review: an agent's send_message into a person's own chat is not delegated work, and is not continued after a restart", async () => {
+    installCurrentStation(workspace);
+    const { app, claude, eventStore, service } = compose();
+    // Turns report their start from inside sendTurn and then finish.
+    const events = (
+      claude as unknown as { events: AsyncEventQueue<CanonicalRuntimeEvent> }
+    ).events;
+    claude.sendTurn.mockImplementation(async (input: ProviderSendTurnInput) => {
+      const turnId = `turn-${claude.sendTurn.mock.calls.length}`;
+      const base = {
+        provider: 'claude',
+        threadId: input.threadId,
+        turnId,
+        ...(input.invocationId ? { invocationId: input.invocationId } : {}),
+      };
+      events.push({
+        ...base,
+        eventId: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+      } as CanonicalRuntimeEvent);
+      queueMicrotask(() =>
+        events.push({
+          ...base,
+          eventId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+        } as CanonicalRuntimeEvent),
+      );
+      return { threadId: input.threadId, turnId };
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      OWNER,
+      undefined,
+      undefined,
+    );
+    const target = {
+      environment: { kind: 'current' as const },
+      agent: agentId('task-lead'),
+      workspace: {
+        kind: 'project' as const,
+        projectSlug: 'project-alpha',
+        ...(workspace ? { cwd: workspace } : {}),
+      },
+    };
+    const originsOf = (threadId: string) =>
+      eventStore
+        .listEventsByMethods(threadId, ['turn.started'])
+        .map((event) => event.payload as Record<string, unknown>);
+    const idle = (threadId: string) =>
+      vi.waitFor(() => expect(service.hasActiveTurn(threadId)).toBe(false));
+
+    // Chat B: the person's own chat.
+    const own = await executeExecutionTargetMessage(
+      {
+        target,
+        message: 'Help me plan the release',
+        clientTurnId: 'person-1',
+        userId: OWNER,
+        readAuthority: authority,
+      },
+      service,
+    );
+    const chatB = own.conversationId;
+    await idle(own.sessionId);
+    // An agent in chat A messages chat B with Station's derived context.
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('task-lead'),
+      rootAgentSlug: agentId('task-lead'),
+    };
+    const sent = await executeExecutionTargetMessage(
+      {
+        target,
+        message: 'Here is what I found.',
+        clientTurnId: 'agent-1',
+        conversationId: chatB,
+        userId: OWNER,
+        readAuthority: authority,
+        delegation,
+        delegationProvenance: 'caller-derived',
+      },
+      service,
+    );
+    await vi.waitFor(() =>
+      expect(originsOf(sent.sessionId).map((p) => p.turnId)).toContain(
+        sent.providerTurnId,
+      ),
+    );
+    const agentTurn = originsOf(sent.sessionId).find(
+      (payload) => payload.turnId === sent.providerTurnId,
+    )!;
+    expect(agentTurn.dispatchOrigin).toBe('unknown');
+
+    // A restart cut that turn off: the boot continuation leaves it.
+    const outcomes = new RestartContinuation({
+      enabled: () => true,
+      eventStore,
+      currentConversationSessionId: (id) =>
+        service.currentConversationSessionId(id),
+      sessionRecordedOwnerId: (id) => service.sessionRecordedOwnerId(id),
+      readTask: () => null,
+      submit: () => {
+        throw new Error('nothing may be queued');
+      },
+      logger: { warn: vi.fn() },
+    }).continueRecovered([
+      {
+        threadId: sent.sessionId,
+        boundaryId: 'turn-boundary:b',
+        turnId: sent.providerTurnId,
+      },
+    ]);
+    expect(outcomes).toEqual([
+      { kind: 'skipped', threadId: sent.sessionId, reason: 'origin' },
+    ]);
+
+    // Control: the same send into a Task's own Session is delegated work.
+    const taskId = await createTask(app, 'task-lead');
+    const dispatched = await dispatch(app, taskId, {
+      agentId: 'task-lead',
+      runtimeConfig: workspace ? { cwd: workspace } : undefined,
+      sourceSurface: 'project-page',
+    });
+    const taskSession = dispatched.body.data.dispatch.sessionId as string;
+    const intoTask = await executeExecutionTargetMessage(
+      {
+        target,
+        message: 'Here is what I found.',
+        clientTurnId: 'agent-2',
+        conversationId: taskSession,
+        userId: OWNER,
+        readAuthority: authority,
+        delegation,
+        delegationProvenance: 'caller-derived',
+      },
+      service,
+    );
+    await vi.waitFor(() =>
+      expect(
+        originsOf(intoTask.sessionId).find(
+          (payload) => payload.turnId === intoTask.providerTurnId,
+        )?.dispatchOrigin,
+      ).toBe('delegation'),
+    );
   });
 
   test('a seeded dispatch records a known Agent and refuses an unknown one', async () => {
