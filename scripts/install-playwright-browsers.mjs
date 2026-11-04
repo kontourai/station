@@ -29,6 +29,9 @@
  * business touching. If a third caller wants it, extract then.
  */
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 
@@ -101,7 +104,7 @@ const PERMANENT_INSTALL_FAILURES = Object.freeze([
   {
     cause: 'the requested browser or platform is not supported',
     pattern:
-      /\bunknown browser\b|\bunsupported (?:browser|platform|operating system)\b/i,
+      /\bunknown browser\b|\binvalid installation targets\b|\bunsupported (?:browser|platform|operating system)\b/i,
     place: 'the browser argument at the call site',
   },
 ]);
@@ -301,10 +304,7 @@ function defaultSleep(milliseconds) {
  */
 export async function runPlaywrightInstallWithRetry({
   browsers = /** @type {string[]} */ ([]),
-  // `npx --no` resolves the repo-local Playwright CLI and refuses to fetch
-  // anything from the registry, so this step cannot execute a package the
-  // lockfile did not already admit.
-  command = 'npx',
+  command,
   env = process.env,
   execute = executeInstallCommand,
   sleep = defaultSleep,
@@ -323,14 +323,25 @@ export async function runPlaywrightInstallWithRetry({
     log(`::error::${validated.message}`);
     return { ok: false, attempts: 0, classification: 'refused', exitCode: 1 };
   }
-  const args = ['--no', 'playwright', 'install', ...validated.browsers];
+  let installerCommand = command ?? 'npx';
+  let launcherArgs = ['--no', 'playwright'];
+  if (command === undefined && process.platform === 'win32') {
+    // npx.cmd cannot be spawned without a shell. Use the installed bin entry.
+    const manifestPath = fileURLToPath(
+      import.meta.resolve('playwright/package.json'),
+    );
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    installerCommand = process.execPath;
+    launcherArgs = [resolve(dirname(manifestPath), manifest.bin.playwright)];
+  }
+  const args = [...launcherArgs, 'install', ...validated.browsers];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     log(
       `::notice::Playwright install attempt ${attempt}/${maxAttempts}: ${validated.browsers.join(', ')}.`,
     );
     const result = await execute({
-      command,
+      command: installerCommand,
       args,
       env,
       attemptTimeoutMs,
