@@ -5529,7 +5529,9 @@ shared chrome is `LiveSurfaceViewerControls.tsx`. A surface kind extends the
 full-screen bar only through `renderImmersiveActions(api)`, for example
 `BrowserImmersiveNav` or `DeviceImmersiveActions`. A host may also pass a `projection` that
 draws the frame and maps points back to it; the Device pane, its full-screen
-view and its float use one to draw a foldable's display bent at its hinge. When the origin, surface ID or
+view and its float use one to draw a foldable's display bent at its hinge. Such a
+host reads the surface's producer status through `onProducerStatus`, which
+keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
 credential generation.
