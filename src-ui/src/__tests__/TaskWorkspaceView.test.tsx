@@ -2143,6 +2143,9 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.queryByRole('region', { name: 'Capabilities and evidence' }),
     ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: 'Work chats' }),
+    );
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     fireEvent.click(
       within(

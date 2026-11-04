@@ -207,7 +207,10 @@ function ProjectToolInspection({
       </div>
       {library.isFetching && <p role="status">Refreshing tool setup…</p>}
       {sources.length === 0 ? (
-        <Empty variant="compact" label="No tool sources reported" />
+        <Empty
+          variant="compact"
+          description="The Project catalog returned an empty source list."
+        />
       ) : matching.length === 0 ? (
         <FilteredEmpty
           query={search}
@@ -327,7 +330,10 @@ function SourceTools({
             )}
           </>
         ) : (
-          <Empty variant="compact" label="No tools reported by this source" />
+          <Empty
+            variant="compact"
+            description="This source reported an empty tool list."
+          />
         )}
       </details>
     </li>

@@ -86,7 +86,8 @@ Overview connects three steps: **Plan**, **Work chats**, and **Artifacts and
 receipts**. Open **Inspect Project tools** to search the existing tool catalog
 for the Task's Project. Project Agent management access is required; viewers
 and contributors do not load the catalog. Closing inspection, leaving Overview,
-or disabling the preview stops its reads.
+or disabling the preview stops its reads. While open, the SDK refreshes access
+and catalog setup every five seconds.
 
 For example, define a documentation change and its acceptance checks in Plan.
 Inspect the documentation tool source, then follow the Agent's linked Work chat.

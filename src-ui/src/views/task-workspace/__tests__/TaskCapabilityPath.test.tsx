@@ -267,3 +267,68 @@ test('access failures have their own retry and retiring the preview removes the 
   });
   expect(calls).toHaveLength(reads);
 });
+
+test('refuses a catalog envelope belonging to another person', async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await original(input, init);
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname.endsWith('/catalog')) {
+        const body = await response.json();
+        return Response.json({ ...body, principalId: 'other-person' });
+      }
+      return response;
+    }),
+  );
+  mount();
+  openTools();
+  await screen.findByText('Project tools unavailable');
+  expect(screen.queryByText('Project documentation')).toBeNull();
+});
+
+test('a changed Station authority retires an outstanding catalog read and resets inspection', async () => {
+  let release: (response: Response) => void = () => {
+    throw new Error('No catalog is pending');
+  };
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname.endsWith('/catalog'))
+        return new Promise<Response>((resolve) => {
+          release = resolve;
+        });
+      return original(input, init);
+    }),
+  );
+  const mounted = mount();
+  openTools();
+  await screen.findByRole('status', { name: 'Loading Project tools' });
+  const previous = state.scope;
+  previous.isCurrent = () => false;
+  state.scope = {
+    apiBase: previous.apiBase,
+    authorityKey: 'person-b',
+    isCurrent: () => true,
+  };
+  mounted.rerender(
+    <QueryClientProvider client={client}>
+      <TaskCapabilityPath {...props} />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    release(
+      Response.json({ success: true, data: view, principalId: 'person-a' }),
+    );
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'Inspect Project tools' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+  expect(screen.queryByText('Project documentation')).toBeNull();
+  expect(screen.queryByRole('searchbox')).toBeNull();
+});

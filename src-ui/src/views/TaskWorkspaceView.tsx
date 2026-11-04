@@ -678,6 +678,9 @@ function TaskWorkspaceContent({
             onView={(view) => {
               if (view === 'Details') setActiveExperienceId('direct');
               setTab(view);
+              document
+                .getElementById(`task-tab-${view.replaceAll(' ', '-')}`)
+                ?.focus();
             }}
           />
         )}
