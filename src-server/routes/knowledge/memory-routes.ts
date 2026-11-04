@@ -206,6 +206,52 @@ export function createMemoryRoutes(deps: MemoryRouteDeps) {
     }
   });
 
+  app.get('/memory/erasure-preview', async (c) => {
+    const caller = deps.authority(c.req.raw, 'view');
+    if (!caller)
+      return c.json(
+        { success: false, error: 'Private memory access denied.' },
+        403,
+      );
+    const kind = c.req.query('kind');
+    const id = c.req.query('id');
+    if ((kind !== 'record' && kind !== 'proposal') || !id || id.length > 512)
+      return c.json({ success: false, error: 'Invalid memory target.' }, 400);
+    try {
+      const root = await deps.manager.findRoot(
+        caller.scope,
+        caller.assertCurrent,
+      );
+      if (!root || !(await deps.mayReadRoot(c.req.raw, root)))
+        return c.json(
+          { success: false, error: 'Private memory not found.' },
+          404,
+        );
+      const target = await deps.manager.previewErasureTarget(
+        caller.scope,
+        root,
+        caller.assertCurrent,
+        kind,
+        id,
+      );
+      if (!target)
+        return c.json(
+          { success: false, error: 'Memory target not found.' },
+          404,
+        );
+      return deps.guardReadResponse(
+        c.req.raw,
+        [root],
+        c.json({ success: true, data: target }),
+      );
+    } catch {
+      return c.json(
+        { success: false, error: 'Private memory is unavailable.' },
+        503,
+      );
+    }
+  });
+
   app.get('/memory/proposals', async (c) => {
     const caller = deps.authority(c.req.raw, 'view');
     if (!caller)

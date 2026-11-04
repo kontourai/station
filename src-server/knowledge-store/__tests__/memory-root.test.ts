@@ -96,6 +96,28 @@ describe('private memory root', () => {
     expect('purge' in adapter).toBe(false);
     const recordId = await manager.applyCreate(owner, root, current, id);
     expect(await adapter.get(recordId)).toMatchObject({ body: candidate.body });
+    expect(
+      await manager.previewErasureTarget(
+        owner,
+        root,
+        current,
+        'record',
+        recordId,
+      ),
+    ).toEqual({
+      kind: 'record',
+      id: recordId,
+      title: candidate.title,
+    });
+    expect(
+      await manager.previewErasureTarget(
+        owner,
+        root,
+        current,
+        'record',
+        'missing',
+      ),
+    ).toBeNull();
     const rejectedId = await manager.propose(
       owner,
       root,

@@ -325,6 +325,26 @@ export class MemoryRootManager {
     );
   }
 
+  async previewErasureTarget(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+    kind: 'record' | 'proposal',
+    id: string,
+  ) {
+    return this.withOwner(authority, root, assertCurrent, async (adapter) => {
+      if (kind === 'proposal') {
+        const proposal = await adapter.getProposal(id);
+        if (!proposal || proposal.erasure) return null;
+        return { kind, id: proposal.id, title: proposal.candidate.title };
+      }
+      const record = await adapter.get(id);
+      if (!record || record.status === 'purged' || record.id !== id)
+        return null;
+      return { kind, id: record.id, title: record.title };
+    });
+  }
+
   async applyCreate(
     authority: SessionReadAuthority,
     root: KnowledgeStoreRoot,

@@ -25,6 +25,7 @@ test('memory routes require the preview and owner, and expose proposals only exp
   const persistence = new FileStorageAdapter(home);
   const store = new KnowledgeStoreProvider(persistence);
   let enabled = false;
+  let allowRead = true;
   const manager = new MemoryRootManager(
     store,
     persistence,
@@ -47,6 +48,7 @@ test('memory routes require the preview and owner, and expose proposals only exp
       };
     },
     mayReadRoot: async (request, root) =>
+      allowRead &&
       request.headers.get('x-test-user') === 'owner' &&
       root.readPolicy?.ownerId === owner.userId,
     guardReadResponse: async (_request, _roots, response) => response,
@@ -98,6 +100,34 @@ test('memory routes require the preview and owner, and expose proposals only exp
   });
   expect(proposed.status).toBe(201);
   const id = ((await proposed.json()) as { data: { id: string } }).data.id;
+  const preview = await app.request(
+    `/memory/erasure-preview?kind=proposal&id=${id}`,
+    { headers },
+  );
+  expect(await preview.json()).toEqual({
+    success: true,
+    data: { kind: 'proposal', id, title: 'Proposed' },
+  });
+  allowRead = false;
+  expect(
+    (
+      await app.request(`/memory/erasure-preview?kind=proposal&id=${id}`, {
+        headers,
+      })
+    ).status,
+  ).toBe(404);
+  allowRead = true;
+  expect(
+    (
+      await app.request(`/memory/erasure-preview?kind=proposal&id=${id}`, {
+        headers: { 'x-test-user': 'other' },
+      })
+    ).status,
+  ).toBe(404);
+  expect(
+    (await app.request(`/memory/erasure-preview?kind=proposal&id=${id}`))
+      .status,
+  ).toBe(403);
   const registeredRoot = await manager.findRoot(owner, () => {});
   expect(registeredRoot).not.toBeNull();
   await expect(

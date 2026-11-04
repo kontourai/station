@@ -4318,6 +4318,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/integrations/:serverId/ui/:toolName/initial-result',
     },
     { method: 'POST', path: '/api/knowledge/memory/root' },
+    { method: 'GET', path: '/api/knowledge/memory/erasure-preview' },
     { method: 'POST', path: '/api/knowledge/memory/proposals' },
     { method: 'GET', path: '/api/knowledge/memory/proposals' },
     { method: 'GET', path: '/api/knowledge/adapters' },
