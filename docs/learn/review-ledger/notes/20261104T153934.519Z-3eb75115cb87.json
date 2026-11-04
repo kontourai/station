@@ -1,0 +1,9 @@
+{
+  "revision": "d4490446df616039cb34a1a05e6dca9812f13573",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed complete document at d4490446df616039cb34a1a05e6dca9812f13573 against exact Flow 9.12 manifest/lock delta, unchanged Flow root-export source and existing export targets, and Station UI/SDK import boundary. No query, transport, authority-key, i18n, navigation, style, event-stream or UI primitive owner changed. Root/SKD/contracts Flow consolidation does not alter these contributor conventions. No prose correction; no new browser/native/provider qualification.","inputs":["docs/patterns/frontend.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed complete document at d4490446df616039cb34a1a05e6dca9812f13573 against exact Flow 9.12 manifest/lock delta, unchanged Flow root-export source and existing export targets, and Station UI/SDK import boundary. Kontour UI pin/token imports and Station cascade/startup/appearance/branding/frame/terminal implementation remain unchanged; Flow nested Surface 6.3 is separate from Station direct Surface 6.2.1 and Kontour UI. Existing visual/contrast/native qualification limits remain. No prose correction or renewed rendered/theme accessibility evidence.","inputs":["docs/guides/theming.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
