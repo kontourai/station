@@ -59,10 +59,12 @@ vi.mock('../lib/serverHealth', () => ({ checkServerHealthDetailed: vi.fn() }));
 
 // #4519: the managed limit, set per test.
 const managed = vi.hoisted(() => ({
-  refusal: undefined as string | undefined,
+  limit: undefined as
+    | import('@kontourai/station-contracts/managed-policy').ManagedPolicySummary
+    | undefined,
 }));
 vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
-  useManagedRemoteClientsRefusal: () => managed.refusal,
+  useManagedRemoteClientsLimit: () => managed.limit,
 }));
 
 import { AddMachineModal } from '../views/connections-hub/AddMachineModal';
@@ -109,31 +111,39 @@ describe('AddMachineModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  test('#4519: under the managed limit the control choice is disabled and says why', async () => {
+  test('#4519: under the managed limit the control choice cannot be chosen and says why, with a Get help link', async () => {
     const { consumePendingConnectionsModal } = await import(
       '../lib/connectionModalEvents'
     );
-    managed.refusal =
-      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+    managed.limit = {
+      organization: 'Acme',
+      supportUrl: 'https://help.acme.example/station',
+      lockedSettings: [],
+      limits: { clients: ['desktop', 'local-browser'] },
+    };
     try {
       render(<AddMachineModal isOpen onClose={vi.fn()} />);
-      const option = screen
-        .getByText('Control this Station from another device')
-        .closest('button') as HTMLButtonElement;
-      expect(option.disabled).toBe(true);
-      expect(option.textContent).toContain(managed.refusal);
-      fireEvent.click(option);
+      const title = screen.getByText(
+        'Control this Station from another device',
+      );
+      expect(title.closest('button')).toBeNull();
+      const card = title.closest('[aria-disabled="true"]') as HTMLElement;
+      expect(card.textContent).toContain(
+        "Acme's policy manages remote access: only this computer can connect to Station.",
+      );
+      expect(card.textContent).not.toContain('That device can control');
+      expect(
+        screen.getByRole('link', { name: 'Get help' }).getAttribute('href'),
+      ).toBe('https://help.acme.example/station');
+      fireEvent.click(card);
       expect(consumePendingConnectionsModal()).toBeNull();
       // The other choices are unaffected.
-      expect(
-        (
-          screen
-            .getByText('Connect a Station')
-            .closest('button') as HTMLButtonElement
-        ).disabled,
-      ).toBe(false);
+      fireEvent.click(screen.getByText('Connect a Station'));
+      expect(consumePendingConnectionsModal()).toEqual({
+        mode: 'connect-station',
+      });
     } finally {
-      managed.refusal = undefined;
+      managed.limit = undefined;
     }
   });
 

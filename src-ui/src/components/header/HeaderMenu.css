@@ -18,3 +18,16 @@
   background: transparent;
   border-color: transparent;
 }
+
+/* #4519: "Pair phone" under a managed policy without remote clients. Drawn
+   like a refused row (muted, no hover fill); the policy's sentence is its
+   tooltip and description. */
+.menu-row.station-switcher__row--refused,
+.menu-row.station-switcher__row--refused:hover {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+  /* The footer rows are already muted text; this keeps the refused one
+     visibly apart from Details and Manage. */
+  opacity: 0.55;
+}

@@ -472,7 +472,7 @@ export function StationSwitcherMenu({
               <button
                 type="button"
                 role="menuitem"
-                className="menu-row"
+                className={`menu-row${pairPhoneRefusal ? ' station-switcher__row--refused' : ''}`}
                 disabled={pairPhoneRefusal !== undefined}
                 title={pairPhoneRefusal}
                 aria-description={pairPhoneRefusal}

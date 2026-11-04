@@ -36,6 +36,21 @@
   border-color: var(--accent-primary);
 }
 
+/* #4519: refused by the managed policy; says why, promises no action. */
+.add-machine-modal__option--refused,
+.add-machine-modal__option--refused:hover {
+  border-color: var(--border-primary);
+  cursor: default;
+}
+
+.add-machine-modal__option--refused .add-machine-modal__option-title {
+  color: var(--text-muted);
+}
+
+.add-machine-modal__option--refused .add-machine-modal__option-detail {
+  margin: 0;
+}
+
 .add-machine-modal__option-title {
   font-weight: 700;
   color: var(--text-primary);

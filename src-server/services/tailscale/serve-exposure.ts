@@ -132,6 +132,21 @@ function failureDetail(
     : `\`tailscale ${command}\` exited ${result.exitCode}${said ? ` (${said})` : ''}`;
 }
 
+let verifiedAuthority: TailscaleAuthority | undefined;
+
+/**
+ * The production authority for this process. A CLI once verified (the
+ * macOS signature check takes about a second) is reused by later listener
+ * admissions; an absent or untrusted answer is not kept, so a Tailscale
+ * installed later is still seen.
+ */
+async function resolveProcessAuthority(): Promise<TailscaleAuthority> {
+  if (verifiedAuthority) return verifiedAuthority;
+  const authority = await resolveTailscaleAuthority();
+  if (authority.kind === 'trusted') verifiedAuthority = authority;
+  return authority;
+}
+
 /**
  * The production check: asks only the Tailscale `resolveTailscaleAuthority`
  * trusts. No Tailscale at all is clear; signs of one without a trusted CLI
@@ -139,7 +154,7 @@ function failureDetail(
  */
 export async function inspectTrustedTailscaleServeExposure(
   ports: readonly number[],
-  resolveAuthority: () => Promise<TailscaleAuthority> = resolveTailscaleAuthority,
+  resolveAuthority: () => Promise<TailscaleAuthority> = resolveProcessAuthority,
 ): Promise<TailscaleServeExposure> {
   const authority = await resolveAuthority();
   if (authority.kind === 'absent')

@@ -4784,8 +4784,11 @@ export class StationRuntime {
       );
     }
 
-    await this.startMcpUiFrameServerIfConfigured();
+    // Consent first: the frame origin's managed admission (#4519) asks
+    // Tailscale, and `station start` reads consent availability as soon as
+    // the API answers.
     await this.startConsentListenerOrReport();
+    await this.startMcpUiFrameServerIfConfigured();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
     await this.initializeUsageTelemetry();
