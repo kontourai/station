@@ -102,12 +102,6 @@
   border-radius: 0;
 }
 
-/* The pane's codec diagnostic has no room in a player (and a tap's sticky
-   hover would show it over the chat). */
-.float-over-chat__surface .live-surface__codec {
-  display: none;
-}
-
 .float-over-chat__chrome {
   position: absolute;
   right: 0;
@@ -154,12 +148,33 @@
 }
 
 /* The pill is the shared viewer chrome (`.live-surface-controls`), placed
-   in the player's corner. Its look lives with that component. */
+   in the player's corner. Its look lives with that component; here it is
+   one tight row of 44px targets, so most of the picture stays in view. */
 .float-over-chat__pill {
+  padding: 2px;
   position: absolute;
-  right: 4px;
-  top: 4px;
+  right: 2px;
+  top: 2px;
   width: max-content;
+}
+
+/* Who is in control, as the collapsed dot said it: a mark, not a line. */
+.float-over-chat__pill-status {
+  background: var(--k-text-muted);
+  border-radius: 50%;
+  display: block;
+  flex: none;
+  height: 10px;
+  margin: 0 var(--k-space-1);
+  width: 10px;
+}
+
+.float-over-chat__pill-status[data-tone="agent"] {
+  background: var(--warning-text, var(--k-action));
+}
+
+.float-over-chat__pill-status[data-tone="you"] {
+  background: var(--k-action);
 }
 
 .float-over-chat__handle {

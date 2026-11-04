@@ -5520,7 +5520,8 @@ reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
 request), and after three failures with no picture between them switches the
 viewer to images.
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
-float-over-chat, and shows the codec it draws. It owns the one viewer for
+float-over-chat. The codec it draws is a `data-codec` diagnostic on its root,
+not shown. It owns the one viewer for
 every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
 whose client rect the pointer mapping already reads), touch presses held back
 until they are not a pinch, and immersive mode (`useImmersive.ts`, the same

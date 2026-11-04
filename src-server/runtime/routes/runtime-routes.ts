@@ -652,7 +652,11 @@ import {
   resolveInboundDeviceKindForRequest,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
-import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import {
+  createStationOriginPolicy,
+  type StationOriginPolicy,
+  stationOriginPolicy,
+} from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import {
@@ -1803,13 +1807,13 @@ export function configureRuntimeRoutes(
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
-  const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
-  // The HTTPS origin a local `tailscale serve` mapping publishes for this
-  // Station's own listener is this Station's origin too, with no
-  // ALLOWED_ORIGINS entry: the daemon, not the request, attests it.
-  const isPublishedOrigin = publicIngressOriginResolver(
-    context.port,
-  ).isOwnedOrigin;
+  // The one browser-origin policy: configured origins, then this Station's
+  // own Tailscale Serve origin (attested by the daemon, not the request).
+  const originPolicy = stationOriginPolicy({
+    port: context.port,
+    host: context.host,
+  });
+  const allowedOrigins = originPolicy.configured;
   // #2893: the one native Device request authority for this runtime. Absent
   // unless the pilot was explicitly composed; proof headers then refuse closed.
   const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
@@ -1885,8 +1889,7 @@ export function configureRuntimeRoutes(
     resolveCredentialOwnerStanding: (credential: string) =>
       context.environmentSecurityService.credentialHasOwnerStanding(credential),
     classifyPairedDeviceActivity: classifyRuntimePairedDeviceActivity,
-    allowedOrigins,
-    isPublishedOrigin,
+    originPolicy,
     audit: (record: RuntimeSecurityAuditRecord) =>
       record.reason === 'route_scope_unmapped'
         ? context.logger.error('Route missing pairing-scope table entry', {
@@ -3086,8 +3089,7 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
-      allowedOrigins,
-      isPublishedOrigin,
+      originPolicy,
       localGrant: {
         secretPath: join(
           context.configLoader.getProjectHomeDir(),
@@ -8061,7 +8063,7 @@ export function configureRuntimeRoutes(
               .split(',')
               .map((origin) => origin.trim())
               .filter(Boolean),
-            browserOrigins: resolveConfiguredRuntimeOrigins(context),
+            originPolicy,
             apiPort: context.port,
             uiPort,
             host: context.host,
@@ -12774,9 +12776,10 @@ export function configureDevicePairingPublicRoutes(
      * that tells a person what to run there. `station` when omitted.
      */
     operatorCli?: () => string;
+    /** Shorthand for a configured-only origin policy; ignored with `originPolicy`. */
     allowedOrigins?: readonly string[];
-    /** The runtime gate's own published-origin predicate; see `RuntimeHttpSecurityOptions`. */
-    isPublishedOrigin?: (origin: string) => Promise<boolean>;
+    /** The runtime gate's own origin policy (`stationOriginPolicy`). */
+    originPolicy?: Pick<StationOriginPolicy, 'admits'>;
     /**
      * Same-user local self-authorization (station#1715). Present in every
      * production boot; omitted only by tests/harnesses that do not exercise
@@ -13815,10 +13818,12 @@ async function isTrustedBrowserPairingOrigin(
   request: Request,
   options: {
     allowedOrigins?: readonly string[];
-    isPublishedOrigin?: (origin: string) => Promise<boolean>;
+    originPolicy?: Pick<StationOriginPolicy, 'admits'>;
   },
 ): Promise<boolean> {
-  const allowedOrigins = options.allowedOrigins ?? [];
+  const policy =
+    options.originPolicy ??
+    createStationOriginPolicy({ configured: options.allowedOrigins ?? [] });
   const origin = request.headers.get('origin');
   if (!origin) return false;
   // A native shell reaching a REMOTE Station is inherently cross-site and its
@@ -13847,14 +13852,9 @@ async function isTrustedBrowserPairingOrigin(
     requestOrigin = null;
   }
   // Behind `tailscale serve` TLS terminates in the daemon, so the request URL
-  // is plain HTTP and can never equal the HTTPS origin a caller addressed. The
-  // daemon's own statement that it serves only this Station at that origin is
-  // the equivalent proof (the same predicate the runtime origin gate uses).
-  if (
-    !allowedOrigins.includes(origin) &&
-    origin !== requestOrigin &&
-    !(await options.isPublishedOrigin?.(origin).catch(() => false))
-  ) {
+  // is plain HTTP and can never equal the HTTPS origin a caller addressed; the
+  // origin policy's owned-Serve-origin answer is the equivalent proof.
+  if (origin !== requestOrigin && !(await policy.admits(origin))) {
     return false;
   }
   const fetchSite = request.headers.get('sec-fetch-site');
@@ -15727,13 +15727,4 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
       pathname,
     )
   );
-}
-
-function resolveConfiguredRuntimeOrigins(
-  context: Pick<ConfigureRuntimeRoutesContext, 'host' | 'port'>,
-): string[] {
-  return resolveStationBrowserOrigins({
-    port: context.port,
-    host: context.host,
-  });
 }

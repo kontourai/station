@@ -90,8 +90,11 @@ force, so turning the preview off never signs invited people out.
   knows serves the UI: its UI listener, Tailscale Serve mappings to that
   listener, and allowed origins witnessed at the UI proxy. The API listener is
   not offered. An address is selectable only when it is HTTPS (or HTTP
-  loopback) and the API admits it as a browser origin. For a proxy address, add
-  it to `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
+  loopback) and the API's one browser-origin policy admits it: a configured
+  origin, or this Station's own Tailscale Serve origin (its MagicDNS name,
+  every handler proxying to Station, Funnel off), which needs no
+  `ALLOWED_ORIGINS` entry. For any other proxy address, add it to
+  `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
   configuration and ingress evidence, not proof another device can reach it.
   The localhost choice works only on this computer.
 - **Applying.** Confirmation stages the change in

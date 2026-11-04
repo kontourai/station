@@ -121,6 +121,8 @@ function serveJson(input: {
 // port with a 30-second cache, so a shared port would reuse a prior lookup.
 let nextPort = 41_730;
 
+const OPERATOR_TOKEN = 'operator-token-for-account-sharing';
+
 async function composedHarness() {
   const port = nextPort++;
   const homeDir = makeTempDir('station-serve-origin-');
@@ -132,6 +134,18 @@ async function composedHarness() {
   }));
   const context = deepStub({
     projectMembership: undefined,
+    // #4305 Project sharing setting, so the sign-in origin picker is mounted.
+    accountSharing: () => ({
+      lockedBy: [],
+      active: {
+        projectSharing: false,
+        localAccounts: false,
+        externalProvider: false,
+      },
+    }),
+    accountSharingPreview: {
+      select: <T>(branches: { enabled: () => T }) => branches.enabled(),
+    },
     projectSharedTasks: undefined,
     deploymentAuthentication: undefined,
     localAccounts: undefined,
@@ -163,9 +177,11 @@ async function composedHarness() {
     taskGraphService: { listTasks: () => [] },
     projectService: { listProjects: () => [], getProject: () => undefined },
     environmentSecurityService: deepStub({
-      verifyCredential: () => false,
-      authorizeCredential: () => false,
-      verifyOperatorCredential: () => false,
+      verifyCredential: (credential: string) => credential === OPERATOR_TOKEN,
+      authorizeCredential: (credential: string) =>
+        credential === OPERATOR_TOKEN,
+      verifyOperatorCredential: (credential: string) =>
+        credential === OPERATOR_TOKEN,
       resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
       identifyDevice: () => undefined,
       credentialLocality: () => 'home-possession',
@@ -200,10 +216,26 @@ async function composedHarness() {
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
       ),
     );
+  /** The operator's read of the sign-in origins the picker offers. */
+  const sharingOrigins = async () => {
+    const response = await context.app.request(
+      'http://localhost/api/operator/account-sharing',
+      { headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` } },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+    );
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    return (
+      JSON.parse(text) as {
+        data: { origins: { origin: string; unavailable?: string }[] };
+      }
+    ).data.origins;
+  };
   return {
     port,
     requestAccess,
     accessRequest,
+    sharingOrigins,
     shutdown: () => result.deviceToolchainService?.shutdown(),
   };
 }
@@ -326,6 +358,58 @@ describe('runtime routes: own Tailscale Serve origin admits pairing access reque
         await h.accessRequest('https://elsewhere.example.ts.net:3773'),
       );
       expect(h.requestAccess).toHaveBeenCalledTimes(1);
+    } finally {
+      await h.shutdown();
+    }
+  });
+});
+
+describe('runtime routes: the sign-in origin picker reads the same origin policy', () => {
+  afterEach(() => {
+    delete process.env.ALLOWED_ORIGINS;
+    delete process.env.STATION_UI_PORT;
+    tailscale.status = undefined;
+    tailscale.serve = undefined;
+    tailscale.calls = 0;
+  });
+
+  /** Serve on the node's default HTTPS port, proxying to the UI listener. */
+  function uiServe(uiPort: number, funnel = false) {
+    return serveJson({
+      authority: `${NODE}:443`,
+      handlers: { '/': { Proxy: `http://127.0.0.1:${uiPort}` } },
+      funnel,
+    });
+  }
+
+  test("offers this Station's own Serve origin as selectable with no ALLOWED_ORIGINS entry", async () => {
+    const uiPort = nextPort + 5_000;
+    process.env.STATION_UI_PORT = String(uiPort);
+    tailscale.status = STATUS_JSON;
+    tailscale.serve = uiServe(uiPort);
+    const h = await composedHarness();
+    try {
+      expect(await h.sharingOrigins()).toContainEqual({
+        origin: `https://${NODE}`,
+        sources: ['tailscale-serve'],
+      });
+    } finally {
+      await h.shutdown();
+    }
+  });
+
+  test('a Serve origin with Funnel on is listed but not selectable', async () => {
+    const uiPort = nextPort + 5_000;
+    process.env.STATION_UI_PORT = String(uiPort);
+    tailscale.status = STATUS_JSON;
+    tailscale.serve = uiServe(uiPort, true);
+    const h = await composedHarness();
+    try {
+      expect(await h.sharingOrigins()).toContainEqual({
+        origin: `https://${NODE}`,
+        sources: ['tailscale-serve'],
+        unavailable: 'not-a-browser-origin',
+      });
     } finally {
       await h.shutdown();
     }

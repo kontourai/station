@@ -565,7 +565,7 @@ describe('the control indicator', () => {
     expect(
       within(
         screen.getByRole('toolbar', { name: 'Floating browser' }),
-      ).getByText('An agent is driving'),
+      ).getByRole('img', { name: 'An agent is driving' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Take control' }));
     expect(h.claim).toHaveBeenCalledTimes(1);
@@ -584,7 +584,7 @@ describe('the control indicator', () => {
     expect(
       within(
         screen.getByRole('toolbar', { name: 'Floating browser' }),
-      ).getByText('You are in control'),
+      ).getByRole('img', { name: 'You are in control' }),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
   });
@@ -610,7 +610,8 @@ function drivenAgo(agoMs: number, skewMs = 0): BrowserSessionView {
 function pillText() {
   return screen
     .getByRole('toolbar', { name: 'Floating browser' })
-    .querySelector('.live-surface-controls__status')?.textContent;
+    .querySelector('.float-over-chat__pill-status')
+    ?.getAttribute('aria-label');
 }
 
 describe('who is driving, when no one holds the lease (owner decision, D9)', () => {

@@ -249,13 +249,17 @@
   color: var(--warning-text, #fbbf24);
 }
 
-/* A pending approval is the row's status: its sentence, countdown and the
-   one action stack instead of running together on a narrow phone row. */
+/* A pending approval's countdown and its one action: one row under the
+   status line, the action flush with the row's text (no inline indent). */
 .station-connect-row__pending {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--k-space-1);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+
+.station-connect-row__pending .station-connect-btn--inline {
+  margin-left: 0;
 }
 
 /* The desktop-supervised local server, listed while it is not running: it is

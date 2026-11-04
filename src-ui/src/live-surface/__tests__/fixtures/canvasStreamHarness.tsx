@@ -69,7 +69,12 @@ function frameRecord(seq: number, epoch: number): LiveSurfaceRecord {
   };
 }
 
-export function canvasHarness() {
+export function canvasHarness(
+  options: {
+    /** The input endpoint's answer; absent, every batch is accepted. */
+    inputReply?: (body: { epoch: number; events: unknown[] }) => Response;
+  } = {},
+) {
   const inputs: { epoch: number; events: unknown[] }[] = [];
   let push: ((record: LiveSurfaceRecord) => Promise<void>) | null = null;
   const transport = vi.fn(
@@ -98,6 +103,7 @@ export function canvasHarness() {
       if (url === INPUT_URL) {
         const body = JSON.parse(String(init?.body));
         inputs.push(body);
+        if (options.inputReply) return options.inputReply(body);
         return Response.json({
           success: true,
           data: {

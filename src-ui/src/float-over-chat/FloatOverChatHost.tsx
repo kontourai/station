@@ -1690,24 +1690,35 @@ function FloatPlayer({
               }}
               actionClassName="float-over-chat__action"
               label={`Floating ${noun}`}
-              status={status}
+              // One row over the picture, not a caption row above it: who
+              // is in control is the dot's colour, carried into the pill.
+              status={null}
               tone={tone}
               onClaim={canClaim ? () => void control?.claimControl() : null}
               onToggleImmersive={control ? control.enterImmersive : null}
               leading={
-                <button
-                  type="button"
-                  className="float-over-chat__handle"
-                  aria-label={`Move floating ${noun}. Arrow keys move it; Shift and an arrow key resize it.`}
-                  title="Drag to move (or drag the picture)"
-                  onPointerDown={(event) => beginGesture(event, null)}
-                  onPointerMove={moveGesture}
-                  onPointerUp={endGesture}
-                  onPointerCancel={endGesture}
-                  onKeyDown={onHandleKeyDown}
-                >
-                  <MoveGlyph />
-                </button>
+                <>
+                  <span
+                    className="float-over-chat__pill-status"
+                    data-tone={tone}
+                    role="img"
+                    aria-label={status}
+                    title={status}
+                  />
+                  <button
+                    type="button"
+                    className="float-over-chat__handle"
+                    aria-label={`Move floating ${noun}. Arrow keys move it; Shift and an arrow key resize it.`}
+                    title="Drag to move (or drag the picture)"
+                    onPointerDown={(event) => beginGesture(event, null)}
+                    onPointerMove={moveGesture}
+                    onPointerUp={endGesture}
+                    onPointerCancel={endGesture}
+                    onKeyDown={onHandleKeyDown}
+                  >
+                    <MoveGlyph />
+                  </button>
+                </>
               }
               trailing={
                 <>

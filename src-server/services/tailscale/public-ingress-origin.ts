@@ -296,6 +296,11 @@ interface PublicIngressOriginResolver {
    * ({@link parseServeOwnedOrigins}). Anything that is not a canonical
    * `https://*.ts.net` origin is refused without consulting the daemon, so a
    * stream of foreign Origins cannot make this spawn processes. Never throws.
+   *
+   * This is a security admission, so it never reads the 30-second suggestion
+   * cache: it reads the daemon through its own single-flight lookup whose
+   * answer lives at most `admissionTtlMs` (1 s), and a lookup that fails or
+   * outlasts `admissionTimeoutMs` refuses (fail closed).
    */
   isOwnedOrigin(origin: string): Promise<boolean>;
 }
@@ -320,9 +325,15 @@ export function createPublicIngressOriginResolver(input: {
   readonly localPorts: readonly number[];
   readonly cli: TailscaleCli;
   readonly ttlMs?: number;
+  /** Longest an ownership answer is trusted for admission. */
+  readonly admissionTtlMs?: number;
+  /** Bound on one admission lookup; a slower daemon refuses. */
+  readonly admissionTimeoutMs?: number;
   readonly now?: () => number;
 }): PublicIngressOriginResolver {
   const ttlMs = input.ttlMs ?? 30_000;
+  const admissionTtlMs = input.admissionTtlMs ?? 1_000;
+  const admissionTimeoutMs = input.admissionTimeoutMs ?? 3_000;
   const now = input.now ?? Date.now;
   let cachedAt = Number.NEGATIVE_INFINITY;
   let cached: IngressLookup = {};
@@ -362,6 +373,38 @@ export function createPublicIngressOriginResolver(input: {
     return resolved;
   };
 
+  // Admission's own cache. One short-lived answer coalesces a burst of
+  // requests (the UI sends Origin on every POST) into one daemon read, so
+  // reconfiguring Serve or turning Funnel on stops admitting within about a
+  // second instead of the suggestion cache's 30.
+  let admittedAt = Number.NEGATIVE_INFINITY;
+  let admitted: readonly string[] = [];
+  let admissionInFlight: Promise<readonly string[]> | undefined;
+  const ownedForAdmission = async (): Promise<readonly string[]> => {
+    if (now() - admittedAt < admissionTtlMs) return admitted;
+    admissionInFlight ??= (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<IngressLookup>((resolveDeadline) => {
+        timer = setTimeout(() => resolveDeadline({}), admissionTimeoutMs);
+        timer.unref?.();
+      });
+      try {
+        const fresh = await Promise.race([lookup(), deadline]);
+        // A fresh read also refreshes endpoint suggestions.
+        cached = fresh;
+        cachedAt = now();
+        admitted = fresh.ownedOrigins ?? [];
+      } finally {
+        clearTimeout(timer);
+      }
+      admittedAt = now();
+      return admitted;
+    })().finally(() => {
+      admissionInFlight = undefined;
+    });
+    return admissionInFlight;
+  };
+
   return {
     async resolve() {
       return (await read()).origins;
@@ -383,7 +426,7 @@ export function createPublicIngressOriginResolver(input: {
       ) {
         return false;
       }
-      return (await read()).ownedOrigins?.includes(origin) === true;
+      return (await ownedForAdmission()).includes(origin);
     },
   };
 }

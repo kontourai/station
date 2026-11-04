@@ -12,17 +12,20 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DeviceImmersiveActions } from '../../workspace-panes/device/DeviceImmersiveActions';
 import {
+  LiveSurfaceCanvas,
   type LiveSurfaceControlState,
   TOUCH_PRESS_HOLD_MS,
 } from '../LiveSurfaceCanvas';
 import { CONTROLS_AUTO_HIDE_MS } from '../LiveSurfaceViewerControls';
 import {
+  API,
   canvasHarness,
   flush,
   layoutStage,
   lease,
   MY_HOLD,
   renderCanvas,
+  SURFACE,
 } from './fixtures/canvasStreamHarness';
 
 // The stage is 400x250 and the 1280x800 (2x) frame fills it exactly, so a
@@ -233,6 +236,40 @@ describe('touch presses are held back until they are not a pinch', () => {
       { type: 'down', x: 160, y: 100 },
       { type: 'move', x: 240, y: 100 },
     ]);
+  });
+});
+
+describe('a held-back touch press meets the eligibility of when it goes out', () => {
+  test('turning read-only during the hold cancels the press', async () => {
+    const h = canvasHarness();
+    const view = await renderCanvas(h, {}, lease(0, MY_HOLD));
+    fireEvent.pointerDown(canvas(), touch(1, 100, 62.5));
+    await flush();
+    view.rerender(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={h.transport as never}
+        readOnly
+      />,
+    );
+    await wait(TOUCH_PRESS_HOLD_MS + 50);
+    await flush();
+    expect(h.events()).toEqual([]);
+  });
+
+  test('losing control during the hold, where the lease comes first, cancels the press', async () => {
+    const h = canvasHarness();
+    await renderCanvas(h, { inputRequiresLease: true }, lease(0, MY_HOLD));
+    fireEvent.pointerDown(canvas(), touch(1, 100, 62.5));
+    await flush();
+    await h.pushState(
+      lease(1, { kind: 'agent', principal: 'agent:coder', sessionId: 's' }),
+    );
+    await wait(TOUCH_PRESS_HOLD_MS + 50);
+    await flush();
+    expect(h.events()).toEqual([]);
   });
 });
 

@@ -224,22 +224,23 @@ Origin and authentication are independent controls:
 configure proxy attestation, grant network access, or replace the bearer
 credential.
 
-The HTTP origin gates and the pairing provenance check also accept one
-daemon-attested origin class with no configuration: the exact canonical
+Every origin decision reads one policy (`StationOriginPolicy`): the HTTP origin
+gates, the pairing provenance check, the credential-free WebSocket origin
+verifier, and the sign-in origin picker. Configured origins are checked first;
+the policy also accepts one daemon-attested origin class with no configuration: the exact canonical
 HTTPS origin (MagicDNS name and port) that the local `tailscale serve`
 configuration publishes on this node's own MagicDNS name. Every handler on that
 origin must proxy to this Station's API or UI-proxy port, Funnel must be off for
 it, and no foreground `serve` session or raw TCP forward can replace it. The
 facts come from `tailscale status --json` and `tailscale serve status --json`
-(the endpoint-suggestion resolver, cached 30 seconds), never from the request.
+(an admission read trusted for at most 1 second and refused when the daemon
+fails or is slow, never the 30-second endpoint-suggestion cache), never from the request.
 Only an HTTPS Origin on a MagicDNS name triggers a lookup. Because the daemon serves
 nothing but Station at that origin, a page presenting it is Station's own UI.
 Trusting it is equivalent to the operator listing it in `ALLOWED_ORIGINS`, and,
 like that entry, it grants no authentication or approval. Mappings for other
 hosts, other local ports, plain-HTTP spellings, Funnel-exposed authorities, and
-origins shared with another service stay refused unless explicitly listed. The
-credential-free WebSocket origin verifier is unchanged: it still reads only the
-static list. An external single-origin reverse proxy is not trusted to provide
+origins shared with another service stay refused unless explicitly listed. An external single-origin reverse proxy is not trusted to provide
 Station's internal attestation. The optional Tailscale Serve origin must be an
 exact HTTPS origin behind the loopback-only Station UI proxy; it is disabled by
 default. Funnel is rejected outright. Authority mismatches and missing or

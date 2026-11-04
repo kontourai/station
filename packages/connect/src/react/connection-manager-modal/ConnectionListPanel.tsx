@@ -1,4 +1,3 @@
-import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -277,43 +276,38 @@ function ConnectionRow({
             </span>
           )}
         </div>
-        {isPendingApproval && meta && (
-          <div className="station-connect-row__meta station-connect-row__meta--warning station-connect-row__pending">
-            <span role="status">
-              {
-                pairingStateCopy(
-                  pendingApproval?.requestKind === 'code'
-                    ? 'waiting-for-code-approval'
-                    : 'waiting-for-approval',
-                  connectionDisplayLabel(connection),
-                ).message
-              }
-            </span>
-            {pendingApproval && (
-              <span aria-live="off">
-                {/* The hook's own ticking clock, so this reading and the
-                    hook's expiry decision never disagree. */}
-                {requestExpiryLabel(
-                  pendingApproval.expiresAt,
-                  pendingApproval.expiresAt - pendingApproval.remainingMs,
-                )}
-              </span>
-            )}
-            {onCancelPendingApproval && (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCancelPendingApproval();
-                }}
-                aria-label={`Stop waiting for ${connectionDisplayLabel(connection)}`}
-                className="station-connect-btn station-connect-btn--secondary station-connect-btn--inline"
-              >
-                Stop waiting
-              </button>
-            )}
-          </div>
-        )}
+        {/* The status line above says "Waiting for approval" once; this
+            row adds only what is not said there: how long the request has
+            left, and the one thing to do about it. */}
+        {isPendingApproval &&
+          meta &&
+          (pendingApproval || onCancelPendingApproval) && (
+            <div className="station-connect-row__meta station-connect-row__pending">
+              {pendingApproval && (
+                <span aria-live="off">
+                  {/* The hook's own ticking clock, so this reading and the
+                      hook's expiry decision never disagree. */}
+                  {requestExpiryLabel(
+                    pendingApproval.expiresAt,
+                    pendingApproval.expiresAt - pendingApproval.remainingMs,
+                  )}
+                </span>
+              )}
+              {onCancelPendingApproval && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCancelPendingApproval();
+                  }}
+                  aria-label={`Stop waiting for ${connectionDisplayLabel(connection)}`}
+                  className="station-connect-btn station-connect-btn--secondary station-connect-btn--inline"
+                >
+                  Stop waiting
+                </button>
+              )}
+            </div>
+          )}
         {detailsOpen && (
           <div className="station-connect-row__details">
             <button

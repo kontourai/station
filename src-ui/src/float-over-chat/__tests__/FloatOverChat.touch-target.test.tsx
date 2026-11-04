@@ -57,7 +57,13 @@ vi.mock('../../live-surface/LiveSurfaceCanvas', () => ({
 import FloatOverChat from '../FloatOverChat';
 import { resetFloatStoreForTests } from '../floatStore';
 
-const css = ['../../index.css', '../FloatOverChat.css']
+// The pill is the shared `.live-surface-controls`, styled by the live
+// view's sheet (loaded with the canvas chunk the float mounts).
+const css = [
+  '../../index.css',
+  '../../live-surface/LiveSurfaceCanvas.css',
+  '../FloatOverChat.css',
+]
   .map((path) => resolveCssImports(resolve(import.meta.dirname, path)))
   .join('\n');
 
@@ -254,6 +260,75 @@ test.each([
       await page.close();
     }
     expect(failures).toEqual([]);
+  },
+  120_000,
+);
+
+// The revealed chrome must leave the picture mostly visible: one row of
+// controls over the player's top edge, never a caption row stacked on it.
+test.each([
+  {
+    theme: 'dark',
+    viewport: { width: 390, height: 844 },
+    chat: { width: 390, height: 700 },
+  },
+  {
+    theme: 'light',
+    viewport: { width: 390, height: 844 },
+    chat: { width: 390, height: 700 },
+  },
+  {
+    theme: 'dark',
+    viewport: { width: 1440, height: 900 },
+    chat: { width: 900, height: 700 },
+  },
+])(
+  'the open pill is one row of controls over the picture ($theme, $viewport.width px)',
+  async ({ theme, viewport, chat }) => {
+    const markup = await openPillMarkup(chat);
+    const page = await browser.newPage({ viewport });
+    try {
+      await page.setContent(
+        `<!doctype html><html data-theme="${theme}"><head><style>${css}</style></head><body>` +
+          `<div style="position:relative;width:${chat.width}px;height:${chat.height}px">${markup}</div>` +
+          '</body></html>',
+      );
+      const geometry = await page.evaluate(() => {
+        const box = (element: Element) => element.getBoundingClientRect();
+        const pill = document.querySelector('.float-over-chat__pill')!;
+        const player = document.querySelector('.float-over-chat__player')!;
+        const controls = [...pill.querySelectorAll('button')].map(
+          (button) => box(button).height,
+        );
+        return {
+          pill: box(pill).height,
+          tallestControl: Math.max(...controls),
+          player: box(player).height,
+          status: pill.querySelector('.float-over-chat__pill-status')
+            ? box(pill.querySelector('.float-over-chat__pill-status')!)
+            : null,
+        };
+      });
+      // One row: no taller than its tallest control plus the pill's own
+      // padding and border.
+      expect(geometry.pill).toBeLessThanOrEqual(geometry.tallestControl + 8);
+      expect(geometry.pill).toBeLessThan(geometry.player / 3);
+      // Who is in control is still shown, as a mark in that row.
+      expect(geometry.status?.width).toBeGreaterThan(0);
+      const evidence = process.env.STATION_UI_EVIDENCE_DIR;
+      if (evidence) {
+        // A picture behind the chrome, so the screenshot shows what it covers.
+        await page.addStyleTag({
+          content:
+            '[data-testid="float-canvas"]{position:absolute;inset:0;background:linear-gradient(135deg,#3a7bd5,#00d2ff 50%,#f7971e)}',
+        });
+        await page.locator('.float-over-chat__player').screenshot({
+          path: `${evidence}/float-pill-${theme}-${viewport.width}.png`,
+        });
+      }
+    } finally {
+      await page.close();
+    }
   },
   120_000,
 );

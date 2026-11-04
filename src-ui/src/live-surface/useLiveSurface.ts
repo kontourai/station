@@ -166,11 +166,17 @@ export interface UseLiveSurfaceResult {
   declineH264: () => void;
   sendInput: (events: LiveSurfaceInput[]) => void;
   /**
-   * Input that did not reach the surface (`input-failed`, or `host-busy`
-   * where nothing was sent) and can be sent again with `retryInput`.
+   * Input the host refused before dispatching any of it (`host-busy`), kept
+   * at the control epoch it was meant for and sendable with `retryInput`.
+   * Input whose delivery is unknown (`input-failed`) is never kept: sending
+   * it again could apply it twice.
    */
   retryableInput: boolean;
-  /** Send the input that did not reach the surface again, in order. */
+  /**
+   * Send the kept input again, ahead of anything newer. Does nothing when
+   * control has changed hands since (the input was meant for that epoch).
+   * The caller decides whether this viewer may send input right now.
+   */
   retryInput: () => void;
   claimControl: () => Promise<void>;
   /**
@@ -356,8 +362,27 @@ export function useLiveSurface(
   const epochRef = useRef(0);
   const targetGenerationRef = useRef(0);
 
+  /**
+   * Input the host refused before dispatching any of it, kept for
+   * `retryInput` with the control epoch it was sent at. `open` names the
+   * presses in it not yet released: until they are, the rest of that
+   * gesture (its moves and its release) joins it instead of going out alone,
+   * so a later no-op release never stands in for the press it belongs to.
+   */
+  const undeliveredRef = useRef<{
+    events: LiveSurfaceInput[];
+    epoch: number;
+    open: Set<string>;
+  } | null>(null);
+  const [retryableInput, setRetryableInput] = useState(false);
   const observeEpoch = useCallback((epoch: number) => {
     epochRef.current = Math.max(epochRef.current, epoch);
+    // Control changed hands: kept input was meant for the old epoch.
+    const kept = undeliveredRef.current;
+    if (kept && kept.epoch !== epochRef.current) {
+      undeliveredRef.current = null;
+      setRetryableInput(false);
+    }
   }, []);
   const adoptLease = useCallback(
     (next: LiveSurfaceControlLease) => {
@@ -613,19 +638,31 @@ export function useLiveSurface(
   /** Pressed when control changed hands; the server released them already. */
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
-  /** Input the host did not deliver, kept for `retryInput`. */
-  const undeliveredRef = useRef<LiveSurfaceInput[]>([]);
-  const [retryableInput, setRetryableInput] = useState(false);
-  const keepUndelivered = useCallback((events: LiveSurfaceInput[]) => {
-    undeliveredRef.current = events;
-    setRetryableInput(events.length > 0);
-  }, []);
+  const keepUndelivered = useCallback(
+    (events: LiveSurfaceInput[], epoch = 0) => {
+      if (events.length === 0) {
+        undeliveredRef.current = null;
+        setRetryableInput(false);
+        return;
+      }
+      const open = new Set<string>();
+      for (const event of events) {
+        const id = pressId(event);
+        if (!id) continue;
+        if (isRelease(event)) open.delete(id);
+        else open.add(id);
+      }
+      undeliveredRef.current = { events, epoch, open };
+      setRetryableInput(true);
+    },
+    [],
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
   useLayoutEffect(() => {
     targetGenerationRef.current += 1;
     queueRef.current = [];
     inFlightRef.current = false;
-    undeliveredRef.current = [];
+    undeliveredRef.current = null;
     setRetryableInput(false);
     pressedRef.current.clear();
     orphanedRef.current.clear();
@@ -652,7 +689,13 @@ export function useLiveSurface(
     if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
     busyNoticeTimerRef.current = setTimeout(() => {
       busyNoticeTimerRef.current = null;
-      setInputNotice((current) => (current === 'host-busy' ? null : current));
+      setInputNotice((current) => {
+        if (current !== 'host-busy') return current;
+        // The offer to send it again goes with the notice that made it.
+        undeliveredRef.current = null;
+        setRetryableInput(false);
+        return null;
+      });
     }, HOST_BUSY_NOTICE_MS);
   }, []);
   const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`;
@@ -686,6 +729,7 @@ export function useLiveSurface(
     }
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
+    const batchEpoch = epochRef.current;
     try {
       const response = await transportRef.current(inputUrlRef.current, {
         method: 'POST',
@@ -697,9 +741,10 @@ export function useLiveSurface(
       } | null;
       if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
-        // Not sent, and not replayed later onto a view that may have moved
-        // on: kept only for the person to send again.
-        keepUndelivered([...batch, ...queueRef.current]);
+        // Refused before any of it was dispatched, so sending it again
+        // cannot apply anything twice. Not replayed on its own onto a view
+        // that may have moved on: kept only for the person to send again.
+        keepUndelivered([...batch, ...queueRef.current], batchEpoch);
         queueRef.current = [];
         showHostBusy();
         return;
@@ -710,8 +755,11 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
       if (result?.ok) {
-        keepUndelivered([]);
-        setInputNotice(null);
+        // A later success is not the kept input arriving: only Retry or the
+        // person moving on retires that (see `sendInput`).
+        setInputNotice((current) =>
+          current === 'host-busy' && undeliveredRef.current ? current : null,
+        );
       } else if (
         result &&
         !result.ok &&
@@ -727,18 +775,18 @@ export function useLiveSurface(
         keepUndelivered([]);
         setInputNotice('page-dialog');
       } else {
-        // The host delivered the first `accepted` events; the rest of the
-        // batch, and what queued behind it, did not reach the surface.
-        keepUndelivered([
-          ...batch.slice(result?.accepted ?? 0),
-          ...queueRef.current,
-        ]);
+        // Indeterminate: the event that failed may have taken effect before
+        // its error or timeout (`accepted` counts only completed ones), and
+        // what follows it would land after a gap. Nothing is kept to send
+        // again; the person checks the page.
+        keepUndelivered([]);
         queueRef.current = [];
         setInputNotice('input-failed');
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
-      keepUndelivered([...batch, ...queueRef.current]);
+      // The response was lost: the batch may have been applied.
+      keepUndelivered([]);
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
@@ -752,6 +800,32 @@ export function useLiveSurface(
     (events: LiveSurfaceInput[]) => {
       for (const event of normalizeEvents(events)) {
         const id = pressId(event);
+        const kept = undeliveredRef.current;
+        if (kept) {
+          const continuesGesture =
+            kept.open.size > 0 &&
+            kept.events.length < LIVE_SURFACE_INPUT_MAX_EVENTS &&
+            ((event.kind === 'pointer' && event.type === 'move') ||
+              (id !== null && isRelease(event) && kept.open.has(id)));
+          if (continuesGesture) {
+            // The moves and release of a press that is kept join it, so
+            // Retry sends the whole gesture and its release never goes out
+            // alone (a no-op success that would stand in for the press).
+            kept.events.push(event);
+            if (id) {
+              kept.open.delete(id);
+              pressedRef.current.delete(id);
+            }
+            continue;
+          }
+          // New input (a new press, a key, text): the person moved on, so
+          // the kept input is retired rather than sent after it.
+          undeliveredRef.current = null;
+          setRetryableInput(false);
+          setInputNotice((current) =>
+            current === 'host-busy' ? null : current,
+          );
+        }
         if (id && isRelease(event) && orphanedRef.current.delete(id)) continue;
         if (id && !isRelease(event)) {
           // A fresh press (including a held key's auto-repeat) is new input:
@@ -782,10 +856,13 @@ export function useLiveSurface(
   );
 
   const retryInput = useCallback(() => {
-    const events = undeliveredRef.current;
+    const kept = undeliveredRef.current;
     keepUndelivered([]);
-    if (events.length === 0) return;
+    if (!kept) return;
     setInputNotice(null);
+    // Meant for an epoch that has since ended: control changed hands.
+    if (kept.epoch !== epochRef.current) return;
+    const events = kept.events;
     // Ahead of anything typed since: it was meant to arrive first.
     queueRef.current = [...events, ...queueRef.current];
     if (!flushScheduledRef.current) {

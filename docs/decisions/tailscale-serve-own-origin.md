@@ -11,19 +11,32 @@ evidence:
     ref: src-server/services/tailscale/public-ingress-origin.ts
   - kind: doc
     ref: src-server/runtime/routes/__tests__/runtime-routes-tailscale-serve-origin.test.ts
+  - kind: doc
+    ref: src-server/runtime/bootstrap/__tests__/runtime-origin-admission-freshness.test.ts
+  - kind: doc
+    ref: src-server/routes/operations/__tests__/voice-tailscale-serve-origin.test.ts
 ---
 
 # A Station trusts its own Tailscale Serve origin
 
 ## Decision
 
-The HTTP API's browser-origin policy has two sources: the exact configured
-origins (`ALLOWED_ORIGINS`, `--allowed-origin`, loopback, and the native shells),
-plus the exact HTTPS origin that the local Tailscale daemon publishes as serving
-only this Station. Both runtime origin gates and the pairing provenance check
-read one predicate, `PublicIngressOriginResolver.isOwnedOrigin`. It reuses the
-endpoint-suggestion resolver and its 30-second cache. It adds no second
-discovery path and no setting.
+Station has one browser-origin policy, `StationOriginPolicy`
+(`src-server/security/station-browser-origins.ts`), with two sources: the exact
+configured origins (`ALLOWED_ORIGINS`, `--allowed-origin`, loopback, and the
+native shells), checked first, plus the exact HTTPS origin that the local
+Tailscale daemon publishes as serving only this Station
+(`PublicIngressOriginResolver.isOwnedOrigin`). Both runtime origin gates, the
+pairing provenance check, the credential-free WebSocket verifier and the
+sign-in origin picker read it. It adds no setting.
+
+Ownership is an admission, so it does not ride the endpoint-suggestion
+resolver's 30-second cache. It reads the daemon through its own single-flight
+lookup. An answer is trusted for at most 1 second, and a lookup that fails or
+takes more than 3 seconds refuses. Re-reading on every admission was rejected
+because the UI sends `Origin` on every POST, which would mean two process
+spawns per API call. The 1-second answer coalesces a burst into one read, and
+sharing the origin or turning Funnel on stops admission within about a second.
 
 An origin qualifies only when all of these hold:
 
@@ -35,8 +48,7 @@ An origin qualifies only when all of these hold:
 
 Plain-HTTP spellings, other hosts, other ports, and shared origins are refused
 unless they are explicitly listed. Only a canonical HTTPS Origin on a MagicDNS
-name triggers a daemon lookup. The credential-free WebSocket verifier keeps the
-static list.
+name triggers a daemon lookup.
 
 ## Why
 
