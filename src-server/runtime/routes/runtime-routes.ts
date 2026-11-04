@@ -553,6 +553,11 @@ import {
   createTaskRoutes,
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
+import {
+  createAgentTerminalRunRoutes,
+  createTerminalRunRoutes,
+  TERMINAL_RUN_OUTPUT_PAGE_BYTES,
+} from '../../routes/orchestration/terminal-runs.js';
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
@@ -937,12 +942,15 @@ import {
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { createTerminalShellHost } from '../../services/terminal/supervisor-shell-host.js';
+import { resolveTerminalCommandLaunch } from '../../services/terminal/terminal-command-programs.js';
 import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
 import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
+  confineTerminalDirectory,
   TerminalSessionRefusal,
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
@@ -9557,6 +9565,39 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // Commands agents ask to run (#3994); absent on a host with no terminals.
+  let terminalRuns: TerminalRunRequests | undefined;
+  /**
+   * Where a terminal in a binding starts: the Project's directory, or a
+   * thread's own directory as `threadDirectory` reads it (the Project's when
+   * the thread names none).
+   */
+  const terminalBindingRoot = async (
+    scope: { projectId: string; bindingKey: string },
+    threadDirectory: (
+      projectSlug: string,
+      threadId: string,
+    ) => Promise<string | undefined | null>,
+  ): Promise<string> => {
+    const project = context.storageAdapter
+      .listProjects()
+      .find((item) => item.id === scope.projectId);
+    if (!project) throw new TerminalSessionRefusal('Project not found');
+    const thread = scope.bindingKey.startsWith('thread:')
+      ? scope.bindingKey.slice('thread:'.length)
+      : undefined;
+    const root =
+      scope.bindingKey === 'project'
+        ? resolveWorkspacePath(project.slug)
+        : thread
+          ? await threadDirectory(project.slug, thread)
+          : null;
+    const resolved =
+      root === undefined && thread ? resolveWorkspacePath(project.slug) : root;
+    if (!resolved)
+      throw new TerminalSessionRefusal('Terminal binding unavailable');
+    return resolved;
+  };
   // Terminals belong to the operator on a personal host: in person, or
   // through one of their own paired devices (#3994 owner decision,
   // 2026-10-31). Members, agents, plugins and hosted tenants are refused.
@@ -9634,27 +9675,17 @@ export function configureRuntimeRoutes(
           context.storageAdapter
             .listProjects()
             .some((item) => item.id === scope.projectId),
-        resolveRoot: async (request, scope) => {
-          const project = context.storageAdapter
-            .listProjects()
-            .find((item) => item.id === scope.projectId);
-          if (!project) throw new TerminalSessionRefusal('Project not found');
-          let root =
-            scope.bindingKey === 'project'
-              ? resolveWorkspacePath(project.slug)
-              : scope.bindingKey.startsWith('thread:')
-                ? await sessionWorkspaceDirectory(
-                    request,
-                    project.slug,
-                    scope.bindingKey.slice(7),
-                  )
-                : undefined;
-          if (scope.bindingKey.startsWith('thread:') && root === undefined)
-            root = resolveWorkspacePath(project.slug);
-          if (!root)
-            throw new TerminalSessionRefusal('Terminal binding unavailable');
-          return root;
-        },
+        // A package script by name or an approved agent command; the
+        // executable is found here, never taken from a request.
+        resolveCommand: async (_request, _scope, program, cwd) =>
+          resolveTerminalCommandLaunch(program, cwd, {
+            findBinary: findCliBinaryAsync,
+            path: resolveAugmentedPath,
+          }),
+        resolveRoot: (request, scope) =>
+          terminalBindingRoot(scope, (slug, thread) =>
+            sessionWorkspaceDirectory(request, slug, thread),
+          ),
       },
       {},
       {},
@@ -9726,7 +9757,87 @@ export function configureRuntimeRoutes(
         authorizeTerminalRequest,
       ),
     );
+    const runs = (terminalRuns = new TerminalRunRequests());
+    // Approving starts the command in the agent's thread binding, whose
+    // directory is read as the approving person. POST only: the leaf has no
+    // other method.
+    context.app.on(
+      'POST',
+      '/api/terminal/runs/:runId/approve',
+      bindConversationReadAuthority,
+    );
+    context.app.route(
+      '/api/terminal/runs',
+      createTerminalRunRoutes({
+        runs,
+        authorizeRequest: (request, operation) =>
+          authorizeTerminalRequest(request) &&
+          terminalScopeAllows(terminalScopeFor(request), operation),
+        person: agentSchedule.person,
+        start: async (request, run) => {
+          const { record, exited } = await terminalSessions.openCommand(
+            request,
+            { projectId: run.projectId, bindingKey: `thread:${run.sessionId}` },
+            {
+              program: { kind: 'run', command: run.command },
+              ...(run.subdirectory ? { subdirectory: run.subdirectory } : {}),
+              expectedCwd: run.cwd,
+            },
+          );
+          return { terminalId: record.terminalId, exited };
+        },
+      }),
+    );
   }
+  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
+    projects: context.projectService,
+  });
+  context.app.route(
+    '/api/orchestration/station-control/terminal-runs',
+    createAgentTerminalRunRoutes({
+      isInternalRequest: isStationInternalRequest,
+      runs: terminalRuns,
+      project: (projectId) =>
+        context.storageAdapter
+          .listProjects()
+          .find((item) => item.id === projectId),
+      // The agent's request carries no person's read authority, so its
+      // thread's directory is read as the session's recorded owner. The
+      // approver's own read must resolve it the same way before it runs.
+      runDirectory: async (input) => {
+        const root = await terminalBindingRoot(
+          {
+            projectId: input.projectId,
+            bindingKey: `thread:${input.sessionId}`,
+          },
+          (slug, thread) => ownerSessionDirectory(input.ownerId, slug, thread),
+        );
+        return (await confineTerminalDirectory(root, input.subdirectory ?? '.'))
+          .cwd;
+      },
+      output: async (run, fromSeq) => {
+        const sessions = scopedTerminals.sessions;
+        if (!sessions || !run.terminalId)
+          throw new TerminalSessionRefusal('Terminal runs unavailable');
+        const read = await sessions.readInternal(
+          { projectId: run.projectId, bindingKey: `thread:${run.sessionId}` },
+          run.terminalId,
+          fromSeq,
+          TERMINAL_RUN_OUTPUT_PAGE_BYTES,
+        );
+        const { records, lastSeq, reset } = read.journal;
+        return {
+          output: records.map((record) => record.data).join(''),
+          nextSeq: records.at(-1)?.seq ?? (reset ? 0 : fromSeq),
+          lastSeq,
+          reset,
+          outputCapped: read.outputCapped === true,
+        };
+      },
+    }),
+  );
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,
@@ -9802,6 +9913,8 @@ export function configureRuntimeRoutes(
             return !scopedTerminalRefused(error);
           }
         },
+        endProjectTerminals: async (projectId) =>
+          scopedTerminals.sessions?.endProject(projectId),
         visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),

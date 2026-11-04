@@ -4,7 +4,7 @@ import {
   type PortableDraft,
 } from '../../contexts/chat-drafts-store';
 import type { FileAttachment } from '../../types';
-import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import type { DraftQuote } from '../../utils/answer-quotes';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { Empty } from '../state';
@@ -13,7 +13,7 @@ import { ComposerIconAction } from './ComposerIconAction';
 import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
-  quotes?: readonly SavedAnswerQuote[];
+  quotes?: readonly DraftQuote[];
   input: string;
   attachments: FileAttachment[];
   open: boolean;

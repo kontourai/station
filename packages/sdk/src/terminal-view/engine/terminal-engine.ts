@@ -918,6 +918,15 @@ export class TerminalEngine {
     this.write(this.encoder.encode('\x1b[H\x1b[2J\x1b[3J'), 'replay');
   }
 
+  /**
+   * A full reset (RIS) plus scrollback: modes, the alternate screen and
+   * styles return to a fresh terminal's, so a replay from the journal's
+   * start draws exactly once. The theme is configuration and survives.
+   */
+  reset(): void {
+    this.write(this.encoder.encode('\x1bc\x1b[3J'), 'replay');
+  }
+
   // ─── selection ───────────────────────────────────────────────────────────
 
   private gridRef(x: number, y: number, out: number): boolean {

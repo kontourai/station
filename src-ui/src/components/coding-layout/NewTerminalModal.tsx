@@ -5,7 +5,7 @@ import {
   trackRecentAgent,
 } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { AgentGlyph } from '../icons/Glyph';
+import { AgentGlyph, PlayGlyph } from '../icons/Glyph';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -15,12 +15,15 @@ import { buildNewTerminalItems } from './utils';
 
 export function NewTerminalModal({
   connections,
+  scripts,
   onSelect,
   onClose,
 }: {
   connections: ACPConnectionInfo[];
+  /** The Project's package scripts; choosing one runs it. */
+  scripts?: readonly { name: string; command: string }[];
   onSelect: (
-    type: 'shell' | 'agent',
+    type: 'shell' | 'agent' | 'script',
     slug?: string,
     connectionId?: string,
   ) => void;
@@ -34,6 +37,7 @@ export function NewTerminalModal({
     connections,
     filter,
     getRecentAgentSlugs(),
+    scripts,
   );
 
   const selectItem = (item: (typeof items)[number]) => {
@@ -99,6 +103,8 @@ export function NewTerminalModal({
             !item.section &&
             item.type === 'agent' &&
             prevItem?.section === 'recent';
+          const showScriptsHeader =
+            item.section === 'scripts' && prevItem?.section !== 'scripts';
 
           return (
             <div key={item.key}>
@@ -112,6 +118,11 @@ export function NewTerminalModal({
                   All Agents
                 </div>
               )}
+              {showScriptsHeader && (
+                <div className="coding-layout__new-terminal-section">
+                  Run a script
+                </div>
+              )}
               <button
                 type="button"
                 className={`coding-layout__new-terminal-option ${index === selectedIdx ? 'coding-layout__new-terminal-option--selected' : ''}`}
@@ -119,7 +130,13 @@ export function NewTerminalModal({
                 onMouseEnter={() => setSelectedIdx(index)}
               >
                 <span className="coding-layout__new-terminal-icon">
-                  {item.type === 'agent' ? <AgentGlyph /> : '>_'}
+                  {item.type === 'agent' ? (
+                    <AgentGlyph />
+                  ) : item.type === 'script' ? (
+                    <PlayGlyph />
+                  ) : (
+                    '>_'
+                  )}
                 </span>
                 <span>{item.label}</span>
                 <span className="coding-layout__new-terminal-hint">

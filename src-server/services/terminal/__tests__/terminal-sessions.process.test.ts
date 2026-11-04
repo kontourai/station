@@ -209,6 +209,49 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toThrow('ended');
     });
 
+    test("deleting a Project ends its shells in every binding and no other Project's", async () => {
+      const otherScope = { projectId: 'project-b', bindingKey: 'project' };
+      const threadScope = { projectId: 'project-a', bindingKey: 'thread:one' };
+      const deleted = await sessions.open(request(), scope, dimensions);
+      const deletedThread = await sessions.open(
+        request(),
+        threadScope,
+        dimensions,
+      );
+      const kept = await sessions.open(request(), otherScope, dimensions);
+      expect(await sessions.endProject('project-a')).toBe(2);
+      for (const [id, target] of [
+        [deleted.terminalId, scope],
+        [deletedThread.terminalId, threadScope],
+      ] as const) {
+        const record = (await sessions.list(request(), target)).find(
+          (item) => item.terminalId === id,
+        );
+        expect(record?.status).toBe('exited');
+        await expect(
+          sessions.write(request(), target, id, 'echo late\r'),
+        ).rejects.toThrow('ended');
+      }
+      await sessions.write(
+        request(),
+        otherScope,
+        kept.terminalId,
+        "printf '%s%s\\n' 'still:' 'alive'\r",
+      );
+      await expect
+        .poll(
+          async () =>
+            (
+              await sessions.read(request(), otherScope, kept.terminalId)
+            ).journal.records
+              .map((record) => record.data)
+              .join(''),
+          { timeout: 10_000 },
+        )
+        .toContain('still:alive');
+      expect(await sessions.endProject('project-a')).toBe(0);
+    });
+
     test('cwd traversal and symlink escapes are refused before a real shell starts', async () => {
       await symlink(join(home, 'b'), join(root, 'escape'), 'dir');
       for (const subdirectory of ['../b', 'escape', join(home, 'b')]) {

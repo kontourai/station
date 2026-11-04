@@ -1,7 +1,7 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import { PageFrameActions, usePageHeader } from '../page-frame';
-import { Empty, FilteredEmpty, SkeletonList } from '../state';
+import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import {
   RegistryCatalogCard,
@@ -79,6 +79,7 @@ export interface RegistryCatalogActions {
   managePlugins: () => void;
   openProjects: () => void;
   retryInstalled: () => void;
+  retryCatalog: () => void;
   renderKits?: () => ReactNode;
 }
 
@@ -184,6 +185,7 @@ export function RegistryCatalog({
               message={message}
               loading={isLoading}
               error={loadError}
+              onRetryCatalog={actions.retryCatalog}
               installedStatusError={installedStatusError}
               onRetryInstalled={actions.retryInstalled}
               availableCount={available.length}
@@ -238,6 +240,7 @@ function RegistryCatalogState({
   message,
   loading,
   error,
+  onRetryCatalog,
   installedStatusError,
   onRetryInstalled,
   availableCount,
@@ -249,6 +252,7 @@ function RegistryCatalogState({
   message: string | null;
   loading: boolean;
   error: Error | null;
+  onRetryCatalog: () => void;
   installedStatusError: Error | null;
   onRetryInstalled: () => void;
   availableCount: number;
@@ -261,10 +265,11 @@ function RegistryCatalogState({
       {message && <div className="page__message">{message}</div>}
       {loading && <SkeletonList count={4} label="Loading catalog" />}
       {!loading && error && (
-        <div className="page__empty">
-          <p>Could not load {tab} right now.</p>
-          <p className="page__subtitle">{error.message}</p>
-        </div>
+        <ErrorState
+          title={`Could not load ${tab} right now.`}
+          description={error.message}
+          action={<Button onClick={onRetryCatalog}>Retry catalog</Button>}
+        />
       )}
       {!loading && !error && availableCount === 0 && (
         <Empty

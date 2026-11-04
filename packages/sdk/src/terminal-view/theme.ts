@@ -6,6 +6,7 @@
  * the theme whenever the root's theme attributes change.
  */
 
+import { ROOT_THEME_ATTRIBUTES, rootThemeSignature } from '../theme-signature';
 import type { TerminalTheme } from './render/screen-model';
 
 const ANSI_VARIABLES = [
@@ -44,7 +45,7 @@ const DEFAULT_ANSI = {
 let probe: CanvasRenderingContext2D | null = null;
 
 /** Any CSS colour (including `color-mix`, `oklch`) to packed RGB, or null. */
-export function cssColorToRgb(value: string): number | null {
+function cssColorToRgb(value: string): number | null {
   const text = value.trim();
   if (!text) return null;
   probe ??= document.createElement('canvas').getContext('2d');
@@ -170,23 +171,22 @@ export function readTerminalTheme(element: Element): TerminalTheme {
   };
 }
 
-const ROOT_ATTRIBUTES = [
-  'data-theme',
-  'data-color-theme',
-  'data-color-theme-flavor',
-  'data-color-theme-accent',
-  'data-app-channel',
-  'data-brand-focus',
-  'class',
-  'style',
-];
-
-/** Calls `onChange` when anything on `<html>` that feeds colour changes. */
+/**
+ * Calls `onChange` when anything on `<html>` that feeds colour changes, and
+ * not for a geometry-only style write.
+ */
 export function observeThemeChanges(onChange: () => void): () => void {
-  const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, {
+  const root = document.documentElement;
+  let signature = rootThemeSignature(root);
+  const observer = new MutationObserver(() => {
+    const next = rootThemeSignature(root);
+    if (next === signature) return;
+    signature = next;
+    onChange();
+  });
+  observer.observe(root, {
     attributes: true,
-    attributeFilter: ROOT_ATTRIBUTES,
+    attributeFilter: [...ROOT_THEME_ATTRIBUTES],
   });
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   media?.addEventListener?.('change', onChange);
