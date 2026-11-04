@@ -321,6 +321,75 @@ describe('problem paths for huge keys', () => {
   });
 });
 
+// The combined-policy round trip: every key this build accepts, set at once,
+// must survive the parse, the client summary and the status a client decodes.
+// Only `limits.updates` has landed among the limit keys; extend this document
+// as each sibling slice lands its key.
+describe('a policy setting every landed key at once', () => {
+  test('survives into the parsed document, the summary and the status decode', () => {
+    const text = JSON.stringify({
+      schemaVersion: 1,
+      organization: 'Acme',
+      supportUrl: 'https://help.example',
+      settings: {},
+      limits: {
+        updates: {
+          mode: 'off',
+          feedUrl: 'https://mirror.example/station/',
+          allowNightly: false,
+        },
+      },
+    });
+    const result = parseManagedPolicyDocument(JSON.parse(text));
+    if (!result.ok) throw new Error(JSON.stringify(result.problems));
+    expect(result.document).toEqual({
+      schemaVersion: 1,
+      organization: 'Acme',
+      supportUrl: 'https://help.example',
+      settings: {},
+      limits: {
+        updates: {
+          mode: 'off',
+          feedUrl: 'https://mirror.example/station/',
+          allowNightly: false,
+        },
+      },
+    });
+
+    const summary = summarizeManagedPolicy(result.document);
+    expect(summary).toEqual({
+      organization: 'Acme',
+      supportUrl: 'https://help.example',
+      lockedSettings: [],
+      limits: { updates: { mode: 'off', mirror: true, allowNightly: false } },
+    });
+    expect(JSON.stringify(summary)).not.toContain('mirror.example');
+
+    // What a client receives: the status over the wire, decoded.
+    const status = JSON.parse(
+      JSON.stringify({
+        state: 'loaded',
+        source: { kind: 'file', location: '/etc/station/policy.json' },
+        digest: `sha256:${'b'.repeat(64)}`,
+        summary,
+      }),
+    );
+    expect(parseManagedPolicyStatus(status)).toEqual({
+      state: 'loaded',
+      source: { kind: 'file', location: '/etc/station/policy.json' },
+      digest: `sha256:${'b'.repeat(64)}`,
+      summary: {
+        organization: 'Acme',
+        supportUrl: 'https://help.example',
+        lockedSettings: [],
+        limits: {
+          updates: { mode: 'off', mirror: true, allowNightly: false },
+        },
+      },
+    });
+  });
+});
+
 describe('limits.updates (#4522)', () => {
   const withUpdates = (updates: unknown) => ({
     schemaVersion: 1,
