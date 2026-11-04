@@ -5,8 +5,7 @@
  * starter and the integration status agree.
  */
 import { createHmac, randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
@@ -14,6 +13,7 @@ import {
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { installManagedCapabilityLimits } from '../../../security/managed-capability-limits.js';
 import { createIntegrationStatusProbes } from '../../../services/integrations/integration-status-service.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -25,12 +25,10 @@ import { createWebhookTurnStarter } from '../webhook-turn-starter.js';
 const now = 1_780_000_000_000;
 const timestamp = String(Math.floor(now / 1000));
 const secret = 'test-webhook-secret-32-chars-min';
-const homes: string[] = [];
+const temporary = trackTempDirs();
 
 afterEach(() => {
   installManagedCapabilityLimits(null);
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
 });
 
 function policy() {
@@ -44,8 +42,7 @@ function policy() {
 }
 
 function enabledHome(): string {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-managed-webhook-'));
-  homes.push(homeDir);
+  const homeDir = temporary('station-managed-webhook-');
   new InboundWebhookConfigurationStore(homeDir).write({
     schemaVersion: 1,
     enabled: true,
