@@ -37,6 +37,10 @@ import {
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   memoryContinuationKeyKind,
 } from '@kontourai/station-contracts/provider';
+import {
+  type TurnDispatchOrigin,
+  turnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import type {
@@ -371,14 +375,24 @@ export class MemoryExhaustionContinuation {
         actor,
         clientOrigin: MEMORY_CONTINUATION_CLIENT_ORIGIN,
         // #4512: a person's Continue is theirs, though Station composes it;
-        // the automatic one says nothing and is classified like any of
-        // Station's own entries.
-        ...(by === 'person' ? { dispatchOrigin: 'interactive' as const } : {}),
+        // the automatic one continues the dead turn and takes that turn's
+        // recorded origin, so continuing a person's turn stays theirs.
+        dispatchOrigin:
+          by === 'person' ? 'interactive' : this.deadTurnOrigin(dead),
       },
     });
     if (submitted.outcome !== 'queued')
       return { kind: 'failed', reason: submitted.outcome };
     return { kind: 'queued', conversationId, clientTurnId };
+  }
+
+  /** The origin the dead turn's own `turn.started` recorded (#4512). */
+  private deadTurnOrigin(dead: DeadTurn): TurnDispatchOrigin {
+    const start = this.ports.eventStore
+      .listEventsByMethods(dead.threadId, ['turn.started'])
+      .map((event) => record(event.payload))
+      .find((payload) => payload?.turnId === dead.turnId);
+    return start ? turnDispatchOrigin(start) : 'unknown';
   }
 
   /**

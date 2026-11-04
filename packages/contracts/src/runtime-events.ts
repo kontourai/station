@@ -417,10 +417,12 @@ export interface SessionCancellationRequestedEvent
  *
  * - `interactive`: a person's own send (an operator or paired-device
  *   client), and Station sends a person triggered: their memory-exhaustion
- *   Continue and their Task review send.
+ *   Continue and their Task review send. Station's automatic continuation
+ *   after a memory kill takes the killed turn's own origin, so continuing a
+ *   person's turn stays `interactive`.
  * - `task-dispatch`: an entry Station itself queued on the conversation
- *   inbox with no more specific origin (a Task question wake, an automatic
- *   memory continuation, a check-back) and placed on a Session whose room
+ *   inbox with no more specific origin (a Task question wake, a check-back)
+ *   and placed on a Session whose room
  *   execution binding names a Task. Off a Task's Session those are
  *   `unknown`.
  * - `delegation`: a delegated Session's first turn, a send carrying a

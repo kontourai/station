@@ -27,6 +27,7 @@ import {
 } from '../../../runtime/routes/conversation-start-ports.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import { memoryContinuationForInbox } from '../memory-exhaustion-continuation.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import {
   RestartContinuation,
@@ -462,6 +463,69 @@ describe('continue unattended work after a restart (#4512)', () => {
     expect(continuationsTo(second, 'person-chat')).toHaveLength(0);
     expect(outcomes).toEqual([
       { kind: 'skipped', threadId: 'person-chat', reason: 'origin' },
+    ]);
+  });
+
+  test("#4512 review: Station's automatic memory continuation of a person's turn on a Task's Session is not continued after a restart", async () => {
+    const path = join(makeTempDir('station-restart-continue-'), 'o.sqlite');
+    const first = bootAt(path);
+    first.service.initialize();
+    await first.service.whenInterruptedTurnsRecovered();
+    await startWork(first, 'task-person', 'person', {
+      taskId: 'task-a',
+      status: 'in_progress',
+      createdAt: '2026-11-01T00:00:00.000Z',
+    });
+    // The engine is killed for memory mid-turn.
+    const killed = first.store
+      .listEventsByMethods('task-person', ['turn.started'])
+      .map(
+        (event) => event.payload as { turnId: string; invocationId?: string },
+      )
+      .at(-1)!;
+    first.adapter.events.push({
+      eventId: randomUUID(),
+      provider: first.adapter.provider,
+      threadId: 'task-person',
+      createdAt: new Date().toISOString(),
+      method: 'runtime.error',
+      turnId: killed.turnId,
+      ...(killed.invocationId ? { invocationId: killed.invocationId } : {}),
+      severity: 'error',
+      code: 'engine-memory-exhausted',
+      message: 'Claude ran out of memory and was stopped.',
+      retriable: false,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(first.service.hasActiveTurn('task-person')).toBe(false),
+    );
+    // Station continues it on its own, through the same inbox.
+    const memory = memoryContinuationForInbox({
+      eventStore: first.store,
+      service: first.service,
+      inbox: first.inbox,
+      logger: { warn: vi.fn() },
+    });
+    expect(memory.continueAutomatically('task-person')).toMatchObject({
+      kind: 'queued',
+    });
+    await vi.waitFor(() =>
+      expect(
+        first.store
+          .listEventsByMethods('task-person', ['turn.started'])
+          .map(
+            (event) =>
+              (event.payload as { dispatchOrigin?: string }).dispatchOrigin,
+          ),
+      ).toEqual(['interactive', 'interactive']),
+    );
+    await first.restart();
+
+    const { boot: second, outcomes } = await nextBoot(path);
+    await second.inbox.idle();
+    expect(continuationsTo(second, 'task-person')).toHaveLength(0);
+    expect(outcomes).toEqual([
+      { kind: 'skipped', threadId: 'task-person', reason: 'origin' },
     ]);
   });
 

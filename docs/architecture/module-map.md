@@ -2258,7 +2258,8 @@ anything else as `unknown`. Who passes what:
   match wins: an Automation action's entry is `automation`; then the
   origin the Station sender wrote on the entry (`dispatchOrigin`: a
   scheduled run's `automation`, a person's memory Continue or Task review
-  send `interactive`, coordinator and Project supervision wakes `unknown`);
+  send `interactive`, an automatic memory continuation the killed turn's
+  own origin, coordinator and Project supervision wakes `unknown`);
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
   `delegationResultStartPort`) is `delegation` when the parent Session is
@@ -2266,7 +2267,7 @@ anything else as `unknown`. Who passes what:
   carries Station's provenance stamp), and otherwise takes the parent's own
   newest non-result turn's origin (`readSessionDispatchFacts`), so a
   person's chat stays `interactive`; Station's other entries (a
-  Task question wake, an automatic memory continuation, a check-back) are
+  Task question wake, a check-back) are
   `task-dispatch` on a Session bound to a Task and `unknown` elsewhere.
 
 [`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)

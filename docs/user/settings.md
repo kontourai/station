@@ -112,7 +112,8 @@ delegated child returned to a Task's Session or to another delegated Session.
 A result returned into your own chat belongs to your chat and is not
 continued. Each such turn the restart cut off gets one turn with the same note
 **Continue** sends, oldest Task first, as the Session's owner. The chat shows it
-as **Continued after restart**. It is never sent for a turn you sent yourself,
+as **Continued after restart**. It is never sent for a turn you sent yourself
+(including Station's automatic continuation of your turn after a memory kill),
 an Automation's run (Automations keep their own recovery), a coordinator, or a
 turn whose cause Station did not record. It also skips a Task that is done,
 canceled or blocked, a chat that has moved on since, and a turn that was itself
