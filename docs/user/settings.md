@@ -232,6 +232,18 @@ network or firewall. Connecting still needs your approval. See
 licenses, and links to the privacy policy, license and support. Development
 servers have no license list.
 
+## Settings your organization manages
+
+On a machine your organization manages, some rows carry a **Managed by
+<organization>** badge. Your organization fixed that value: the control is
+disabled, and **Get help** opens its support page. A row marked
+**<organization> default** uses a value your organization suggested; change it
+like any other setting. Your own earlier values are kept and come back if the
+organization removes its policy. A managed value fixes the Station-wide
+setting only: what you set on an Agent, for a conversation, or on your own
+account (such as your chat font size) still applies. See the
+[managed policy guide](https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md#settings).
+
 ## Link to a setting
 
 Every Settings row has a stable address of the form

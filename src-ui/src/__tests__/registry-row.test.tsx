@@ -472,3 +472,55 @@ describe('renderSettingRow', () => {
     });
   });
 });
+
+describe('managed policy (#4517)', () => {
+  const locked: SettingProvenanceEntry = {
+    source: 'managed',
+    locked: true,
+    organization: 'Acme',
+    supportUrl: 'https://help.example/station',
+  };
+
+  test.each([
+    ['string', { kind: 'string' } as const, 'textbox', '/bin/zsh'],
+    ['number', { kind: 'number' } as const, 'spinbutton', 5],
+    ['enum', { kind: 'enum', values: ['a', 'b'] } as const, 'combobox', 'a'],
+    ['boolean', { kind: 'boolean' } as const, 'switch', true],
+  ])(
+    'a locked %s row disables its control and names the organization',
+    (_kind, descriptor, role, value) => {
+      render(
+        renderSettingRow({
+          definition: stringDef({ descriptor }),
+          value,
+          provenance: locked,
+          onChange: vi.fn(),
+        }),
+      );
+      expect(
+        (screen.getByRole(role, { name: 'Terminal shell' }) as HTMLInputElement)
+          .disabled,
+      ).toBe(true);
+      expect(screen.getByText('Managed by Acme')).toBeTruthy();
+      expect(
+        screen.getByRole('link', { name: 'Get help' }).getAttribute('href'),
+      ).toBe('https://help.example/station');
+    },
+  );
+
+  test('a managed default leaves the control enabled and labels the default', () => {
+    render(
+      renderSettingRow({
+        definition: stringDef(),
+        value: '/bin/zsh',
+        provenance: { ...locked, locked: false },
+        onChange: vi.fn(),
+      }),
+    );
+    expect(
+      (screen.getByLabelText('Terminal shell') as HTMLInputElement).disabled,
+    ).toBe(false);
+    expect(screen.getByText('Acme default')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Get help' })).toBeNull();
+  });
+});

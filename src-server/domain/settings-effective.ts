@@ -24,6 +24,7 @@ import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
+import type { ManagedAppSettings } from './managed-settings.js';
 import { resolveSettingEnvironment } from './settings-environment.js';
 import { isStoredValue } from './settings-registry-server.js';
 
@@ -36,13 +37,23 @@ import { isStoredValue } from './settings-registry-server.js';
  * directly. `'default'` covers both the registry default and a loader-written
  * seed — a factory value nobody chose.
  */
-export type EffectiveSettingSource = 'default' | 'station' | 'project' | 'env';
+export type EffectiveSettingSource =
+  | 'default'
+  | 'station'
+  | 'project'
+  | 'env'
+  | 'managed';
 
 export interface EffectiveAppSetting {
   value: unknown;
   source: EffectiveSettingSource;
   /** Which env var supplied it, for `source: 'env'` only. */
   envVar?: string;
+  /**
+   * For `source: 'managed'` only (#4517): a fixed value (`true`) or a
+   * managed default nothing closer overrode (`false`).
+   */
+  locked?: boolean;
 }
 
 const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
@@ -56,8 +67,13 @@ const REGISTRY_BY_KEY = new Map(
 
 /**
  * Resolves one registered setting through the full chain:
- * project override -> this Station's stored config -> a declared
- * `envFallback` the field's own validator accepts -> the registry default.
+ * managed lock -> project override -> this Station's stored config -> a
+ * declared `envFallback` the field's own validator accepts -> managed
+ * default -> the registry default (#4517 added the two managed layers).
+ *
+ * `config` is the STORED config (`ConfigLoader.loadStoredAppConfig`), and
+ * `managed` the installed policy's settings: given the effective config, a
+ * managed default would read as a Station decision.
  *
  * Returns `undefined` for a key that is not registered — there is no honest
  * answer for a key with no declaration, and inventing `{ value: undefined,
@@ -74,10 +90,16 @@ export function resolveEffectiveAppSetting(
     config: AppConfig;
     projectOverrides?: ProjectSettingsOverrides;
     environment?: Record<string, string | undefined>;
+    managed?: ManagedAppSettings | null;
   },
 ): EffectiveAppSetting | undefined {
   const definition = REGISTRY_BY_KEY.get(key);
   if (!definition) return undefined;
+
+  const managedEntry = input.managed?.entries.get(key);
+  if (managedEntry?.locked) {
+    return { value: managedEntry.value, source: 'managed', locked: true };
+  }
 
   const override = (input.projectOverrides as Record<string, unknown>)?.[key];
   if (isStoredValue(override)) {
@@ -111,6 +133,10 @@ export function resolveEffectiveAppSetting(
         envVar: environment.envVar,
       };
     }
+  }
+
+  if (managedEntry) {
+    return { value: managedEntry.value, source: 'managed', locked: false };
   }
 
   return { value: definition.defaultValue, source: 'default' };

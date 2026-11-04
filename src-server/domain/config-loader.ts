@@ -105,6 +105,10 @@ import {
   ensureStationHomeSchema,
   readRegularFileNoFollow,
 } from './home-schema-gate.js';
+import {
+  assertLockedSettingsUnchanged,
+  overlayManagedAppSettings,
+} from './managed-settings.js';
 import { validator } from './validator.js';
 
 const logger = createLogger({ name: 'config-loader' });
@@ -339,6 +343,20 @@ export class ConfigLoader {
    */
   async loadAppConfig(): Promise<AppConfig> {
     await this.ensureHomeSchema();
+    // #4517: every reader sees the managed policy's values; the stored file
+    // is never rewritten with them (see `managed-settings.ts`).
+    return overlayManagedAppSettings(
+      await loadAppConfigFile(this.projectHomeDir),
+    );
+  }
+
+  /**
+   * This Station's stored config, WITHOUT the managed policy's values: for
+   * provenance, which has to tell a stored decision from a managed one.
+   * Everything that acts on a setting reads {@link loadAppConfig}.
+   */
+  async loadStoredAppConfig(): Promise<AppConfig> {
+    await this.ensureHomeSchema();
     return loadAppConfigFile(this.projectHomeDir);
   }
 
@@ -349,9 +367,15 @@ export class ConfigLoader {
     if (this.enforceHomeSchema) await this.ensureHomeSchema();
     const path = join(this.projectHomeDir, 'config', 'app.json');
     const expectedSourceSignature = this.appConfigFileSignature(path);
-    await this.serializeAppMutation(() =>
-      this.commitInternalAppConfig(config, expectedSourceSignature),
-    );
+    await this.serializeAppMutation(async () => {
+      // #4517: a whole-file replacement may not change a locked key's
+      // stored value either; `config` must be stored values, not effective.
+      assertLockedSettingsUnchanged(
+        await loadAppConfigFile(this.projectHomeDir),
+        config,
+      );
+      await this.commitInternalAppConfig(config, expectedSourceSignature);
+    });
   }
 
   /**
@@ -447,10 +471,14 @@ export class ConfigLoader {
           // An explicit null/undefined in `updates` clears non-nullable
           // fields instead of assigning a value AJV would reject.
           const updated = mergeAppConfigUpdate(existing, updates);
+          // #4517: both sides are the stored file, so a caller that spreads
+          // the stored config back writes nothing new and passes, while a
+          // change to a locked key's stored value is refused before saving.
+          assertLockedSettingsUnchanged(existing, updated);
           if (
             this.appConfigFingerprint(updated) === sourceSnapshot.fingerprint
           ) {
-            return existing;
+            return overlayManagedAppSettings(existing);
           }
           await saveAppConfigFileWithMutationAuthority(
             this.projectHomeDir,
@@ -459,7 +487,7 @@ export class ConfigLoader {
             { expectedSourceSignature: sourceSnapshot.signature },
           );
           this.recordInternalAppCommit(updated);
-          return updated;
+          return overlayManagedAppSettings(updated);
         } finally {
           this.endInternalAppMutation();
         }
@@ -485,7 +513,7 @@ export class ConfigLoader {
           this.launchabilityFileSignatures.set(path, currentSnapshot.signature);
           return {
             revision: this.launchabilityRevision.getLaunchabilityRevision(),
-            config: structuredClone(config),
+            config: structuredClone(overlayManagedAppSettings(config)),
           };
         }
         throw new Error(
