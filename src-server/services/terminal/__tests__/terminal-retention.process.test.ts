@@ -14,9 +14,12 @@ import {
 } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TerminalEngine } from '../../../../packages/sdk/src/terminal-view/engine/terminal-engine.js';
+import { GhosttyVtModule } from '../../../../packages/sdk/src/terminal-view/engine/wasm.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import type { IPtyProcess } from '../../../domain/pty-adapter.js';
@@ -40,6 +43,12 @@ import {
   windows,
 } from './fixtures/real-shell.js';
 
+const GHOSTTY_VT = fileURLToPath(
+  new URL(
+    '../../../../packages/sdk/src/terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+    import.meta.url,
+  ),
+);
 const makeTempDir = trackTempDirs();
 const scope = { projectId: 'project-a', bindingKey: 'project' };
 const other = { projectId: 'project-b', bindingKey: 'project' };
@@ -89,6 +98,24 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     return (await sessions.read(request(), target, id)).journal.records
       .map((record) => record.data)
       .join('');
+  }
+
+  /** Scrollback and screen after replaying `data` at the shell's size. */
+  async function rendered(data: string) {
+    const vt = await GhosttyVtModule.instantiate(
+      await WebAssembly.compile(await readFile(GHOSTTY_VT)),
+    );
+    const engine = new TerminalEngine(
+      vt,
+      { ...dimensions, cellWidth: 8, cellHeight: 16 },
+      { reply: () => {}, bell: () => {}, title: () => {} },
+    );
+    try {
+      engine.write(new TextEncoder().encode(data), 'replay');
+      return engine.plainText();
+    } finally {
+      engine.dispose();
+    }
   }
 
   async function output(id: string, marker: string) {
@@ -165,6 +192,14 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
       line(printCwd('after:')),
     );
     await output(first.terminalId, `after:${await realRoot()}`);
+    // What a person sees: the journal replayed through Station's emulator
+    // keeps the earlier output and the divider above the reopened shell. A
+    // reopened ConPTY clears the screen first, which once erased both.
+    const screen = await rendered(await text(first.terminalId));
+    const divider = screen.indexOf('restored after restart');
+    expect(screen.indexOf('before:restart')).toBeGreaterThanOrEqual(0);
+    expect(divider).toBeGreaterThan(screen.indexOf('before:restart'));
+    expect(screen.lastIndexOf('after:')).toBeGreaterThan(divider);
     expect((await readFile(join(root, 'ran.txt'), 'utf8')).trim()).toBe('ran');
     expect(TERMINAL_RESTORED_DIVIDER).toContain('restored after restart');
   });

@@ -45,6 +45,18 @@ import {
 export const TERMINAL_RESTORED_DIVIDER =
   '\r\n\x1b[2m── restored after restart ──\x1b[0m\r\n';
 
+/**
+ * The divider as a restored shell's journal records it. ConPTY starts by
+ * clearing the screen and painting from its top-left, which would erase the
+ * divider and the earlier output still on screen; on Windows a screenful of
+ * line feeds first moves both into scrollback, above the new shell.
+ */
+function restoredDivider(rows: number): string {
+  return process.platform === 'win32'
+    ? `${TERMINAL_RESTORED_DIVIDER}${'\r\n'.repeat(rows)}`
+    : TERMINAL_RESTORED_DIVIDER;
+}
+
 const limitsSchema = z
   .object({
     maxSessions: z.number().int().min(1).max(256).default(32),
@@ -1333,7 +1345,7 @@ export class TerminalSessions<Principal> {
       return;
     }
     const journal = await this.journal(record);
-    await journal.append(TERMINAL_RESTORED_DIVIDER);
+    await journal.append(restoredDivider(record.rows));
     await journal.flush();
     const proc = await this.host.spawn({
       terminalId: record.terminalId,
