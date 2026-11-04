@@ -30,8 +30,10 @@ queues report the announcement synchronously at enqueue, so an earlier event
 blocking the consumer cannot bypass the wait. A per-thread commit signal yields
 while publication retries. Each built-in adapter queue permits one active consumer.
 Closing its EventStore or abandoning runtime initialization revokes that service’s
-consumer and registry subscription. Loss of the consumer or settlement by another
-service ends the wait immediately with a typed indeterminate error. A start already committed
+consumer and registry subscription. Permanent loss of the consumer or settlement by another
+service ends the wait immediately with a typed indeterminate error. A recoverable
+stream fault settles only an announcement already pulled and lost; other pending
+starts keep waiting for the replacement consumer. A start already committed
 retains accepted truth after a later stream fault.
 If the announcement settles
 without a durable append, or five seconds pass without confirmation, the command
