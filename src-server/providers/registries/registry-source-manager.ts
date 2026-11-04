@@ -22,7 +22,7 @@ import { GitHubSkillRegistryProvider } from './github-skill-registry.js';
 import { JsonManifestRegistryProvider } from './json-manifest-registry.js';
 import { MultiSourceSkillRegistryProvider } from './multi-source-skill-registry.js';
 import {
-  getPluginRegistryProviders,
+  getRegisteredPluginRegistryProviders,
   getSkillRegistryProviders,
   pluginProviderSourceGeneration,
 } from './registry.js';
@@ -313,7 +313,8 @@ export class RegistrySourceManager {
     };
     for (const entry of getSkillRegistryProviders())
       collect(entry.provider, entry.source, 'skills');
-    for (const entry of getPluginRegistryProviders())
+    // Refused registries too: they are shown disabled, never read.
+    for (const entry of getRegisteredPluginRegistryProviders())
       collect(entry.provider, entry.source, 'plugins');
     const seen = new Set<string>();
     for (const entry of entries) {

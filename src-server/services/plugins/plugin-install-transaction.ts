@@ -64,6 +64,8 @@ import type { PluginProviderReadView } from '../../providers/registries/registry
 import {
   getIntegrationRegistryProvider,
   getPluginRegistryProviders,
+  getRegisteredPluginRegistryProviders,
+  pluginRegistryAllowedByManagedPolicy,
 } from '../../providers/registries/registry.js';
 import {
   type RegistryInstallAliases,
@@ -77,7 +79,6 @@ import { errorMessage } from '../../routes/schemas/schemas.js';
 import {
   managedCapabilityDenial,
   managedPolicyRequiresSignedPackages,
-  registryLocationAllowedByManagedPolicy,
 } from '../../security/managed-capability-limits.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
@@ -319,7 +320,9 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
       fresh: true,
     };
   }
-  const entries = getPluginRegistryProviders() as Array<{
+  // Refused registries too, to say why nothing matched; they are skipped
+  // below before they are asked anything.
+  const entries = getRegisteredPluginRegistryProviders() as Array<{
     source?: string;
     provider: IPluginRegistryProvider;
   }>;
@@ -337,10 +340,10 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
   let managedDenial: string | undefined;
   for (const [providerIndex, entry] of entries.entries()) {
     if (
-      !registryLocationAllowedByManagedPolicy(
-        entry.provider.registryKey,
-        entry.source === 'Bundled examples',
-      )
+      !pluginRegistryAllowedByManagedPolicy({
+        provider: entry.provider,
+        source: entry.source ?? '',
+      })
     ) {
       managedDenial ??= managedCapabilityDenial('this marketplace');
       continue;

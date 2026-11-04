@@ -20,6 +20,7 @@ export interface PluginUpdateCheckLogger {
 async function listPluginRegistryUpdates(): Promise<PluginUpdateRecord[]> {
   const updates: PluginUpdateRecord[] = [];
 
+  // #4521: the managed policy's refused registries are already left out.
   for (const entry of getPluginRegistryProviders()) {
     const [available, installed] = await Promise.all([
       entry.provider.listAvailable(),

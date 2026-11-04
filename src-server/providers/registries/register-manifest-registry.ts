@@ -1,12 +1,13 @@
 import type { JsonManifestRegistryProvider } from './json-manifest-registry.js';
 import {
+  BUNDLED_MANIFEST_REGISTRY_SOURCE,
   registerAgentRegistryProvider,
   registerIntegrationRegistryProvider,
   registerPluginRegistryProvider,
 } from './registry.js';
 
 const manifestRegistrySourceLabels = {
-  bundled: 'Bundled examples',
+  bundled: BUNDLED_MANIFEST_REGISTRY_SOURCE,
   configured: 'Configured registry',
 } as const;
 

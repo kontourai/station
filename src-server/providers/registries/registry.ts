@@ -13,7 +13,10 @@ export type {
  */
 
 import type { EngineId } from '@kontourai/station-contracts/provider';
-import { managedToolServerCatalogDenial } from '../../security/managed-capability-limits.js';
+import {
+  managedToolServerCatalogDenial,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { adapterRegistration } from '../../telemetry/metrics.js';
 import {
   awaitSettlementWithin,
@@ -947,7 +950,32 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-export function getPluginRegistryProviders(): {
+/** The registration label of the plugin registry that ships with Station. */
+export const BUNDLED_MANIFEST_REGISTRY_SOURCE = 'Bundled examples';
+
+/**
+ * #4521: whether `limits.registries.allowedUrls` lets a registered plugin
+ * registry supply anything. The bundled examples ship with Station and are
+ * never refused; a registry with no location cannot be listed, so it is
+ * refused under an allow list.
+ */
+export function pluginRegistryAllowedByManagedPolicy(entry: {
+  provider: Pick<IPluginRegistryProvider, 'registryKey'>;
+  source: string;
+}): boolean {
+  return registryLocationAllowedByManagedPolicy(
+    entry.provider.registryKey,
+    entry.source === BUNDLED_MANIFEST_REGISTRY_SOURCE,
+  );
+}
+
+/**
+ * Every registered plugin registry, those the managed policy refuses
+ * included. Only readers that must account for a refused registry without
+ * contacting it use this: the marketplace source manager (it shows a refused
+ * source as disabled) and the name resolver (it says why nothing matched).
+ */
+export function getRegisteredPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;
   source: string;
 }[] {
@@ -955,6 +983,20 @@ export function getPluginRegistryProviders(): {
     provider: IPluginRegistryProvider;
     source: string;
   }[];
+}
+
+/**
+ * The plugin registries Station may read: #4521 leaves out every one the
+ * managed policy refuses, so update checks, dependency resolution, previews
+ * and lifecycle lookups never contact a refused catalog.
+ */
+export function getPluginRegistryProviders(): {
+  provider: IPluginRegistryProvider;
+  source: string;
+}[] {
+  return getRegisteredPluginRegistryProviders().filter(
+    pluginRegistryAllowedByManagedPolicy,
+  );
 }
 
 // ── Cross-Provider Prerequisites ───────────────────────
