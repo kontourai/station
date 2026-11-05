@@ -532,8 +532,15 @@ publications use only the independently configured `releaseVersions` for a
 dimension unless another source for the same publisher configures it.
  `publisher` uses the foundation's
 `TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
-Publisher IDs are bounded to 128 characters and retain scoped IDs such as
-`publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
+Publisher validation is shared with Station config and the CLI. Legacy
+`publisher:<id>` accepts 1–128 lowercase letters, digits, `.`, `_`, `:`, or `-`,
+starting with a letter or digit. Namespaced plugin IDs are
+`publisher:<24 lowercase hex registry-key digest>/<registry item id>`; the item
+uses signed registry claim/receipt characters (ASCII letters, digits, `.`, `_`,
+`:`, or `-`, starting with a letter or digit), with the same 128-character bound.
+`constructor` and `prototype` are refused as item segments. Arbitrary scoped
+strings such as `publisher:@scope/plugin` and extra `/` segments are refused.
+Source IDs are bounded public slugs. The catalogs each
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Under the default `catalog` policy, empty catalogs admit only contract

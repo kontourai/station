@@ -8,6 +8,7 @@ export {
 
 import {
   FULL_DISCLOSURE_WORDING_REVISION,
+  isTelemetryPublisherId,
   PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
@@ -409,13 +410,7 @@ export function parseTelemetryFeedback(value: unknown): TelemetryFeedback {
     !record(value) ||
     Object.keys(value).length !== 3 ||
     !onlyKeys(value, ['publisher', 'action', 'reason']) ||
-    typeof value.publisher !== 'string' ||
-    value.publisher.length > 128 ||
-    !(
-      value.publisher === 'kontour' ||
-      value.publisher === 'operator' ||
-      /^publisher:\S{1,118}$/u.test(value.publisher)
-    ) ||
+    !isTelemetryPublisherId(value.publisher) ||
     !TELEMETRY_FEEDBACK_ACTIONS.some((action) => action === value.action) ||
     value.reason === 'skip' ||
     !TELEMETRY_FEEDBACK_REASONS.some((reason) => reason === value.reason)

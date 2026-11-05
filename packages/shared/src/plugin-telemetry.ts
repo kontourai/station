@@ -25,19 +25,8 @@ function fail(): never {
     'Invalid telemetry declaration: use bounded enums/countBuckets, declared names and an HTTPS endpoint without credentials, query or fragment.',
   );
 }
-export function isTelemetryPublisherId(
-  value: unknown,
-): value is import('@kontourai/station-contracts/product-telemetry').TelemetryPublisherId {
-  return (
-    value === 'kontour' ||
-    value === 'operator' ||
-    (typeof value === 'string' &&
-      value.startsWith('publisher:') &&
-      (ID.test(value.slice(10)) ||
-        /^[a-f0-9]{24}\/[a-z0-9][a-z0-9._:-]{0,127}$/.test(value.slice(10))) &&
-      !RESERVED.has(value.slice(10)))
-  );
-}
+
+export { isTelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 export function parsePublisherTelemetryDeclaration(
   value: unknown,
 ): PublisherTelemetryDeclaration {

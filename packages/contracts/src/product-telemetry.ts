@@ -16,6 +16,22 @@ export type TelemetryPublisherId =
   | 'kontour'
   | 'operator'
   | `publisher:${string}`;
+// Namespaced items follow registry-trust's RECEIPT_ID / registry-supply-chain's
+// SAFE_ID, capped at the telemetry declaration's 128-character bound.
+// Keep the legacy lowercase form.
+const TELEMETRY_PUBLISHER_ID =
+  /^publisher:(?:(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}|[a-f0-9]{24}\/(?!(?:constructor|prototype)$)[A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
+
+export function isTelemetryPublisherId(
+  value: unknown,
+): value is TelemetryPublisherId {
+  return (
+    value === 'kontour' ||
+    value === 'operator' ||
+    (typeof value === 'string' && TELEMETRY_PUBLISHER_ID.test(value))
+  );
+}
+
 export type TelemetryTierChoices = Partial<
   Record<TelemetryPublisherId, TelemetryTier>
 >;

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { bindOperatorPrincipal } from '../../../../src-server/__test-utils__/operator-principal.js';
@@ -15,7 +16,10 @@ import { createLogger } from '../../../../src-server/utils/logger.js';
 
 const makeTempDir = trackTempDirs();
 const PLUGIN = 'publisher:writer';
-const NAMESPACED_PLUGIN = `publisher:${'a'.repeat(24)}/writer` as const;
+const NAMESPACED_PLUGIN = pluginTelemetryPublisherId(
+  `sha256:${'a'.repeat(64)}`,
+  'writer',
+);
 const STATUS = {
   publishers: {
     kontour: { tier: 'lite', reason: 'user' },
@@ -132,11 +136,13 @@ test('plugin anonymous is refused and plugin lite remains accepted', async () =>
     expect(
       (await loader.loadAppConfig()).telemetryTier?.[publisher],
     ).toBeUndefined();
+    const accepted = await run(['set', publisher, 'lite']);
+    expect(accepted.status, accepted.stderr).toBe(0);
+    const saved = JSON.parse(
+      readFileSync(join(home, 'config/app.json'), 'utf8'),
+    );
+    expect(saved.telemetryTier[publisher]).toBe('lite');
   }
-  const accepted = await run(['set', PLUGIN, 'lite']);
-  expect(accepted.status, accepted.stderr).toBe(0);
-  const saved = JSON.parse(readFileSync(join(home, 'config/app.json'), 'utf8'));
-  expect(saved.telemetryTier[PLUGIN]).toBe('lite');
 }, 60_000);
 
 test.each([

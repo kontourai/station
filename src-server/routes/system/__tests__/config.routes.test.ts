@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -24,6 +25,7 @@ const { InvalidPathSegmentError } = await import(
   '../../../knowledge-index/path-safety.js'
 );
 const { ConfigLoader } = await import('../../../domain/config-loader.js');
+const { validator } = await import('../../../domain/validator.js');
 const { defaultTerminalShell } = await import(
   '../../../services/terminal/terminal-shells.js'
 );
@@ -1162,51 +1164,62 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     }
   });
 
-  test('publisher tier choices and operator policy persist through the real app schema and restart', async () => {
-    const home = makeTempDir('station-plugin-tier-persistence-');
-    const loader = new ConfigLoader({
-      projectHomeDir: home,
-      watchFiles: false,
-    });
-    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
-    try {
-      await loader.loadAppConfig();
-      const response = await app.request('/app', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ telemetryTier: { 'publisher:writer': 'off' } }),
-      });
-      expect(response.status, await response.clone().text()).toBe(200);
-      const policy = await app.request('/app', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          publicTelemetryRegistries: [
-            'https://registry.example.test/catalog.json',
-          ],
-          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
-        }),
-      });
-      expect(policy.status, await policy.clone().text()).toBe(200);
-      const restarted = new ConfigLoader({
+  test.each([
+    'publisher:writer',
+    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'writer'),
+    pluginTelemetryPublisherId(
+      `sha256:${'b'.repeat(64)}`,
+      `a${'b'.repeat(127)}`,
+    ),
+    pluginTelemetryPublisherId(`sha256:${'c'.repeat(64)}`, 'Writer_1.2:beta-3'),
+  ] as const)(
+    'publisher %s choices and policy persist through the app schema and restart',
+    async (publisher) => {
+      const home = makeTempDir('station-plugin-tier-persistence-');
+      const loader = new ConfigLoader({
         projectHomeDir: home,
         watchFiles: false,
       });
+      const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
       try {
-        expect(await restarted.loadAppConfig()).toMatchObject({
-          telemetryTier: { 'publisher:writer': 'off' },
-          publicTelemetryRegistries: [
-            'https://registry.example.test/catalog.json',
-          ],
-          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        await loader.loadAppConfig();
+        const response = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier: { [publisher]: 'off' } }),
         });
+        expect(response.status, await response.clone().text()).toBe(200);
+        const policy = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            publicTelemetryRegistries: [
+              'https://registry.example.test/catalog.json',
+            ],
+            telemetryPublisherPolicy: { [publisher]: 'off' },
+          }),
+        });
+        expect(policy.status, await policy.clone().text()).toBe(200);
+        const restarted = new ConfigLoader({
+          projectHomeDir: home,
+          watchFiles: false,
+        });
+        try {
+          expect(await restarted.loadAppConfig()).toMatchObject({
+            telemetryTier: { [publisher]: 'off' },
+            publicTelemetryRegistries: [
+              'https://registry.example.test/catalog.json',
+            ],
+            telemetryPublisherPolicy: { [publisher]: 'off' },
+          });
+        } finally {
+          restarted.dispose();
+        }
       } finally {
-        restarted.dispose();
+        loader.dispose();
       }
-    } finally {
-      loader.dispose();
-    }
-  });
+    },
+  );
 
   test('paired devices cannot raise a plugin publisher above its policy default, while the operator can choose and peers can lower', async () => {
     const home = makeTempDir('station-plugin-policy-authority-');
@@ -1277,6 +1290,26 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     ['full'],
     { operator: 'invalid' },
     { kontour: 'lite', foo: 'full' },
+    ...[
+      'publisher:constructor',
+      'publisher:prototype',
+      'publisher:__proto__',
+      `publisher:constructor/writer`,
+      `publisher:prototype/writer`,
+      `publisher:${'a'.repeat(24)}/constructor`,
+      `publisher:${'a'.repeat(24)}/prototype`,
+      `publisher:${'a'.repeat(24)}/__proto__`,
+      `publisher:${'A'.repeat(24)}/writer`,
+      `publisher:${'g'.repeat(24)}/writer`,
+      `publisher:${'a'.repeat(23)}/writer`,
+      `publisher:${'a'.repeat(25)}/writer`,
+      `publisher:${'a'.repeat(24)}/${'w'.repeat(129)}`,
+      `publisher:${'w'.repeat(129)}`,
+      `publisher:${'a'.repeat(24)}/writer/extra`,
+      `publisher:${'a'.repeat(24)}/writer name`,
+      `publisher:${'a'.repeat(24)}/writer@name`,
+      `publisher:${'a'.repeat(24)}/`,
+    ].map((publisher) => ({ [publisher]: 'lite' })),
   ])(
     'malformed telemetryTier %j is rejected without persisting or exposing internals',
     async (telemetryTier) => {
@@ -1290,6 +1323,13 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       try {
         await loader.loadAppConfig();
         const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        // The route and on-disk schema independently reject malformed IDs.
+        expect(() =>
+          validator.validateAppConfig({
+            ...JSON.parse(before),
+            telemetryTier,
+          }),
+        ).toThrow('Invalid app configuration');
         const response = await app.request('/app', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
