@@ -267,7 +267,7 @@ document.head.insertAdjacentHTML('beforeend', '<meta name="viewport" content="wi
 createRoot(document.getElementById('root')).render(
   <div className="app__main" style={{height:'100vh'}}>
     <header className="app-toolbar"><button type="button" className="tap-target" style={{minHeight:44, minWidth:44}}>Menu</button></header>
-    <main className="main-content"><div className="content-view"><h1 data-probe="heading">What would you like to do?</h1></div></main>
+    <main className="main-content"><div className="content-view"><p data-probe="heading">What would you like to do? A long first line of the page.</p></div></main>
   </div>);
 `;
 
