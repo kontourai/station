@@ -499,7 +499,7 @@ test('an interrupted erasure can be retried in process after the same store is r
         preview.impact.revision,
         'inflight-retry',
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow('Knowledge registration changed before the operation.');
     const root = await f.store.getRoot(f.root.id);
     if (!root) throw new Error('Expected re-registered root');
     await expect(
