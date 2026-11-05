@@ -56,7 +56,6 @@ import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enr
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
 import { createDelegationGroupRoutes } from '../../routes/orchestration/delegation-groups.js';
-import { createEnsembleInspectionRoutes } from '../../routes/orchestration/ensemble-inspection.js';
 import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createReportGroupRoutes } from '../../routes/orchestration/report-groups.js';
@@ -7164,14 +7163,6 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/orchestration/ensembles',
-    createEnsembleInspectionRoutes(
-      ensembleInspection,
-      resolveOrchestrationRequestPrincipal,
-    ),
-  );
-
-  context.app.route(
-    '/api/orchestration/ensembles',
     createEnsemblePreparationRoutes(
       new EnsembleExecutionContext({
         security: context.environmentSecurityService,
@@ -7444,6 +7435,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ensembleInspection,
       ...(isPersonalHost
         ? {
             cliSessionGroupHome: context.configLoader.getProjectHomeDir(),

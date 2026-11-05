@@ -618,7 +618,10 @@ test('inspection projects declared prerequisite identities from the exact group 
       value: 'lead → peer',
       origin: 'authored',
       state: 'configured',
-      owner: { label: 'Group dependency draft' },
+      owner: {
+        label: 'Group dependency draft',
+        receipt: expect.stringMatching(/^draft:sha256:[0-9a-f]{64}$/),
+      },
     }),
   );
   expect(data.facts).toContainEqual(
@@ -1044,4 +1047,26 @@ test('group inspection resolves an exact receiver Project ID without imposing Ag
       state: 'configured',
     }),
   );
+});
+
+test('ordinary standalone inspection declares no recorded-group reader and refuses explicit group binding without one', async () => {
+  const f = await fixture();
+  const input = {
+    presetJson: f.bytes,
+    expectedPresetHash: f.input.expectedPresetHash,
+    bindings: {},
+  };
+  const ordinary = await f.request(input, f.browser);
+  expect(ordinary.status).toBe(200);
+  expect(
+    ((await ordinary.json()) as { data: EnsembleInspection }).data
+      .groupInspection,
+  ).toEqual({
+    state: 'unavailable',
+    detail: 'Recorded group inspection is unavailable on this host.',
+  });
+  const bound = await f.request({ ...input, groupId: 'group-1' }, f.browser);
+  expect(bound.status).toBe(422);
+  expect(await bound.text()).not.toContain('SECRET_ROLE');
+  for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
 });

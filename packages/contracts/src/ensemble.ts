@@ -15,6 +15,8 @@ export const ENSEMBLE_INSPECTION_LIMITS = {
 export interface EnsembleInspectionInput {
   /** Explicit, local-operator request; ordinary inspection never probes sign-in. */
   verifyAuthentication?: boolean;
+  /** Explicit recorded group reference; never inferred from Agent or workspace. */
+  groupId?: string;
   path?: string;
   presetJson?: string;
   expectedPresetHash?: string;
@@ -86,12 +88,22 @@ export interface EnsembleInspection {
   authenticationCheck?:
     | { readonly state: 'available' }
     | { readonly state: 'unavailable'; readonly detail: string };
+  /** Recorded metadata read offer; never an execution or acceptance grant. */
+  groupInspection?:
+    | { readonly state: 'available' }
+    | { readonly state: 'unavailable'; readonly detail: string }
+    | {
+        readonly state: 'bound';
+        readonly groupId: string;
+        readonly revision: number;
+      };
   facts: readonly EnsembleInspectionFact[];
   resolutions: readonly {
     memberId: string;
     receipt: import('./execution-target.js').ExecutionResolutionReceipt;
   }[];
   limits:
+    | 'Recorded group references only; output availability, acceptance, native/shared memory, authentication, entitlement and execution limits are unverified.'
     | 'Authentication, entitlement, execution limits and live group bindings are unverified.'
     | 'Engine sign-in checks grant no execution authority; model entitlement, execution limits and live group bindings are unverified.';
 }

@@ -16,6 +16,12 @@ const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/);
 const schema = z
   .object({
     verifyAuthentication: z.boolean().optional(),
+    groupId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/)
+      .optional(),
     path: z.string().min(1).max(4096).optional(),
     presetJson: z.string().min(1).max(131_072).optional(),
     groupBindings: z
@@ -86,6 +92,11 @@ const schema = z
   .strict()
   .refine(
     (value) =>
+      (!value.groupId ||
+        (Object.keys(value.bindings).length === 0 &&
+          !value.groupBindings &&
+          !value.verifyAuthentication &&
+          value.expectedPresetHash !== undefined)) &&
       (value.path === undefined) !== (value.presetJson === undefined) &&
       (!value.groupBindings || Object.keys(value.bindings).length === 0) &&
       ((Object.keys(value.bindings).length === 0 &&
@@ -97,6 +108,13 @@ const schema = z
 export function createEnsembleInspectionRoutes(
   service: EnsembleInspectionService,
   resolvePrincipal: (c: Context) => PrincipalRef,
+  readGroupForRequest?: (
+    c: Context,
+  ) => (
+    groupId: string,
+  ) => Promise<
+    import('@kontourai/station-contracts/delegation-group').CliSessionGroupView
+  >,
 ): Hono {
   const app = new Hono();
   app.post('/inspect', async (c) => {
@@ -138,7 +156,12 @@ export function createEnsembleInspectionRoutes(
           { success: false, code: 'ensemble_inspection_invalid' },
           400,
         );
-      const data = await service.inspect(parsed.data, c.req.raw, principal);
+      const data = await service.inspect(
+        parsed.data,
+        c.req.raw,
+        principal,
+        readGroupForRequest?.(c),
+      );
       if (
         Buffer.byteLength(JSON.stringify({ success: true, data })) >
         ENSEMBLE_INSPECTION_LIMITS.responseBytes

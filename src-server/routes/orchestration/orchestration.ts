@@ -1,3 +1,6 @@
+import type { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
+import { createEnsembleInspectionRoutes } from './ensemble-inspection.js';
+
 export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -2257,6 +2260,7 @@ export function createOrchestrationRoutes(
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /** Personal runtime composition; absent means session-group routes refuse. */
     cliSessionGroupHome?: string;
+    ensembleInspection?: EnsembleInspectionService;
     authenticateEnsembleSessionGroup?: (
       input: import('../../services/orchestration/ensemble-session-group-authentication.js').EnsembleSessionGroupAuthenticationInput,
       principal: PrincipalRef,
@@ -4923,6 +4927,44 @@ export function createOrchestrationRoutes(
       assertReadable,
     };
   };
+  if (deps.ensembleInspection)
+    app.route(
+      '/ensembles',
+      createEnsembleInspectionRoutes(
+        deps.ensembleInspection,
+        (c) => {
+          if (!deps.resolvePrincipal)
+            throw new PrincipalUnresolvedError(
+              'Ensemble inspection requires a request principal resolver',
+            );
+          return deps.resolvePrincipal(c);
+        },
+        cliGroups
+          ? (c) => {
+              let authority: ReturnType<typeof groupAuthority> | undefined;
+              return async (groupId) => {
+                c.req.raw.signal.throwIfAborted();
+                authority ??= groupAuthority(c);
+                authority.assertCurrent();
+                if (!authority.authorizeInspection)
+                  throw new CliSessionGroupUnavailable(
+                    'group_authority_required',
+                  );
+                authority.authorizeInspection();
+                const group = await cliGroups.view(
+                  groupId,
+                  authority.owner,
+                  authority.authorizeInspection,
+                );
+                authority.assertReadable(group);
+                authority.assertCurrent();
+                c.req.raw.signal.throwIfAborted();
+                return group;
+              };
+            }
+          : undefined,
+      ),
+    );
   const sessionGroupHost = (
     c: Context,
     assertCurrent: () => void,

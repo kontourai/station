@@ -144,3 +144,54 @@ test.each([
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(input);
   },
 );
+
+test.each([
+  [undefined, false],
+  [{ state: 'available' }, false],
+  [{ state: 'unavailable', detail: 'No reader' }, false],
+  [{ state: 'bound', groupId: 'other', revision: 1 }, false],
+  [{ state: 'bound', groupId: 'group-1', revision: -1 }, false],
+  [
+    {
+      state: 'bound',
+      groupId: 'group-1',
+      revision: Number.MAX_SAFE_INTEGER + 1,
+    },
+    false,
+  ],
+  [{ state: 'bound', groupId: 'group-1', revision: 1, grant: true }, false],
+  [{ state: 'bound', groupId: 'group-1', revision: 1 }, true],
+] as const)(
+  'bound group inspection validates the exact requested group and closed safe revision cell: %j',
+  async (groupInspection, valid) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                version: 'station.ensemble.inspection/v1',
+                source: { sha256: `sha256:${'a'.repeat(64)}` },
+                facts: [],
+                resolutions: [],
+                groupInspection,
+              },
+            }),
+          ),
+      ),
+    );
+    const pending = inspectEnsemble('https://station.test', {
+      path: '/team.json',
+      bindings: {},
+      groupId: 'group-1',
+    });
+    if (valid)
+      await expect(pending).resolves.toMatchObject({ groupInspection });
+    else
+      await expect(pending).rejects.toThrow(
+        'Invalid Ensemble inspection response',
+      );
+  },
+);

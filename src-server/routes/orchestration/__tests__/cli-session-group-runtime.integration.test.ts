@@ -11,6 +11,7 @@ import type {
   CliSessionGroupEventPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
+import type { EnsembleInspection } from '@kontourai/station-contracts/ensemble';
 import type {
   InputRequestContent,
   InputRequestForm,
@@ -427,15 +428,15 @@ async function fixture(
     getProviderAdapter: (provider) =>
       adapters.find((entry) => entry.provider === provider),
   });
-  const ensembleGroups = security
-    ? new EnsembleCliSessionGroupPreparation(
-        new EnsembleInspectionService({
-          security,
-          inventory,
-          readIntegration: () => undefined,
-        }),
+  const ensembleInspection = security
+    ? new EnsembleInspectionService({
+        security,
         inventory,
-      )
+        readIntegration: () => undefined,
+      })
+    : undefined;
+  const ensembleGroups = ensembleInspection
+    ? new EnsembleCliSessionGroupPreparation(ensembleInspection, inventory)
     : undefined;
   const store = new EventStore(join(root, 'events.sqlite'));
   cleanup.push(async () => {
@@ -601,6 +602,7 @@ async function fixture(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
       cliSessionGroupHome: root,
+      ensembleInspection,
       delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       ...(ensembleGroups && security
         ? {
@@ -704,6 +706,7 @@ async function fixture(
     pendingDispatches,
     groupWarnings,
     resolveCallerRecord,
+    inventory,
     changeInventory: () => {
       inventoryRevision++;
     },
@@ -1992,4 +1995,299 @@ test('bound Station Control operates its real session group and cannot read anot
       })
     ).body.success,
   ).toBe(true);
+}, 30_000);
+
+test('bound inspection joins only the authorized recorded preset group and preserves pending and completed references', async () => {
+  const { f, security, local, bytes, input } = await presetFixture();
+  const group = await createEnsembleCliSessionGroup(f.apiBase, {
+    ...input,
+    maxConcurrent: 1,
+  });
+  const inspect = (
+    overrides: Record<string, unknown> = {},
+    credential = local.credential,
+  ) =>
+    f.app.request('/api/orchestration/ensembles/inspect', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        presetJson: bytes,
+        expectedPresetHash: input.expectedPresetHash,
+        bindings: {},
+        groupId: group.groupId,
+        ...overrides,
+      }),
+    });
+  const pending = await inspect();
+  expect(pending.status, await pending.clone().text()).toBe(200);
+  const pendingData = ((await pending.json()) as { data: EnsembleInspection })
+    .data;
+  expect(pendingData.groupInspection).toEqual({
+    state: 'bound',
+    groupId: group.groupId,
+    revision: group.revision,
+  });
+  expect(
+    pendingData.facts.find((fact) => fact.id === 'needs:join')?.needs,
+  ).toEqual(['lead', 'check']);
+  expect(
+    pendingData.facts.find((fact) => fact.id === 'outputs:lead'),
+  ).toMatchObject({ state: 'unknown', origin: 'runtime-derived' });
+  expect(f.adapter.authentications).toHaveLength(0);
+  expect(f.adapter.starts).toHaveLength(0);
+  for (const overrides of [
+    { verifyAuthentication: true },
+    { groupBindings: {} },
+    { bindings: { lead: { agent: 'reviewer', projectSlug: 'project' } } },
+  ])
+    expect((await inspect(overrides)).status).toBe(400);
+  const changed = bytes.replace('Delivery team', 'Different team');
+  const mismatch = await inspect({
+    presetJson: changed,
+    expectedPresetHash: `sha256:${createHash('sha256').update(changed).digest('hex')}`,
+  });
+  expect(mismatch.status).toBe(409);
+  expect(await mismatch.text()).not.toContain(group.groupId);
+  const unauthorized = await inspect({}, 'not-authorized');
+  expect(unauthorized.status).toBe(403);
+  expect(await unauthorized.text()).not.toContain(group.groupId);
+  const recordPath = join(
+    f.root,
+    'runtime',
+    'cli-session-groups',
+    `${group.groupId}.json`,
+  );
+  const savedRecord = readFileSync(recordPath, 'utf8');
+  const recorded = JSON.parse(savedRecord);
+  for (const [preset, expectedStatus] of [
+    [{ ...recorded.preset, members: undefined }, 422],
+    [{ ...recorded.preset, stationmaster: 'check' }, 409],
+    [
+      {
+        ...recorded.preset,
+        members: recorded.preset.members.map((member: { seatId: string }) => ({
+          ...member,
+          seatId: `${member.seatId}_other`,
+        })),
+      },
+      422,
+    ],
+  ] as const) {
+    writeFileSync(recordPath, JSON.stringify({ ...recorded, preset }));
+    try {
+      const refused = await inspect();
+      expect(refused.status, await refused.clone().text()).toBe(expectedStatus);
+      expect(await refused.text()).not.toContain(group.groupId);
+    } finally {
+      writeFileSync(recordPath, savedRecord);
+    }
+  }
+  let releaseStart!: () => void;
+  f.adapter.startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+  let startsReached!: () => void;
+  const startsReady = new Promise<void>((resolve) => {
+    startsReached = resolve;
+  });
+  const nativeStart = f.adapter.startSession.bind(f.adapter);
+  const startObservation = vi
+    .spyOn(f.adapter, 'startSession')
+    .mockImplementation((target) => {
+      const pending = nativeStart(target);
+      if (f.adapter.starts.length === 1) startsReached();
+      return pending;
+    });
+  const running = f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  try {
+    await Promise.race([
+      startsReady,
+      Promise.resolve(running).then(async (response) => {
+        throw new Error(
+          `Group run settled before the held starts: ${response.status}`,
+        );
+      }),
+    ]);
+    const reserved = await inspect();
+    expect(reserved.status, await reserved.clone().text()).toBe(200);
+    const reservedData = (
+      (await reserved.json()) as { data: EnsembleInspection }
+    ).data;
+    const unconfirmed = reservedData.facts.filter(
+      (fact) =>
+        fact.category === 'output destinations' &&
+        JSON.parse(fact.value).state === 'launch-intent',
+    );
+    expect(unconfirmed.length).toBeGreaterThan(0);
+    for (const fact of unconfirmed) {
+      expect(fact.state).toBe('unknown');
+      expect(JSON.parse(fact.value)).toMatchObject({
+        reservedSessionId: expect.any(String),
+        observation:
+          'Launch outcome indeterminate; reservation is not a confirmed Session.',
+      });
+      expect(fact.owner.href).toBeUndefined();
+    }
+  } finally {
+    startObservation.mockRestore();
+    releaseStart();
+  }
+  const ran = await running;
+  expect(ran.status, await ran.clone().text()).toBe(200);
+  const final = ((await ran.json()) as { data: CliSessionGroupView }).data;
+  f.adapter.syncOutputs.push(
+    'ACK SYNC run-one',
+    'ACK SYNC run-one',
+    'ACK SYNC run-one',
+  );
+  const synced = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/sync`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${local.credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operationId: 'inspection-sync',
+        runId: 'run-one',
+        content: 'Private synced context',
+        deadlineAt: Date.now() + 60_000,
+      }),
+    },
+  );
+  expect(synced.status, await synced.clone().text()).toBe(200);
+  const retainedSync = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: { Authorization: `Bearer ${local.credential}` } },
+  );
+  expect(retainedSync.status).toBe(200);
+  const synchronized = (
+    (await retainedSync.json()) as { data: CliSessionGroupView }
+  ).data;
+  const authCount = f.adapter.authentications.length;
+  const result = await inspect();
+  expect(result.status, await result.clone().text()).toBe(200);
+  const data = ((await result.json()) as { data: EnsembleInspection }).data;
+  expect(data.groupInspection).toEqual({
+    state: 'bound',
+    groupId: group.groupId,
+    revision: synchronized.revision,
+  });
+  for (const member of final.members) {
+    const fact = data.facts.find(
+      (entry) => entry.id === `outputs:${member.seatId}`,
+    )!;
+    expect(JSON.parse(fact.value)).toMatchObject({
+      state: member.state,
+      handle: member.handle,
+      terminalEvent: member.terminalEvent,
+    });
+    expect(fact.owner.href).toBe(
+      `/?surface=activity&session=${encodeURIComponent(member.handle!.sessionId)}`,
+    );
+  }
+  expect(
+    JSON.parse(data.facts.find((fact) => fact.id === 'group-flow')!.value),
+  ).toEqual(final.flow);
+  expect(f.adapter.authentications).toHaveLength(authCount);
+  for (const receipt of synchronized.contextSync!.members) {
+    const memory = data.facts.find(
+      (fact) => fact.id === `memory:${receipt.seatId}`,
+    )!;
+    expect(JSON.parse(memory.value)).toMatchObject({
+      contentHash: synchronized.contextSync!.contentHash,
+      member: receipt,
+    });
+    expect(memory.value).toContain(
+      'native/shared memory, acceptance and grants unverified',
+    );
+  }
+  const syncedRecord = readFileSync(recordPath, 'utf8');
+  const storedSync = JSON.parse(syncedRecord);
+  for (const [status, expectedState] of [
+    ['pending', 'unknown'],
+    ['unknown', 'unknown'],
+    ['failed', 'unavailable'],
+  ] as const) {
+    const altered = structuredClone(storedSync);
+    altered.syncs.at(-1).status = 'incomplete';
+    altered.syncs.at(-1).members[0].status = status;
+    writeFileSync(recordPath, JSON.stringify(altered));
+    try {
+      const observed = await inspect();
+      expect(observed.status, await observed.clone().text()).toBe(200);
+      const incomplete = (
+        (await observed.json()) as { data: EnsembleInspection }
+      ).data;
+      expect(
+        incomplete.facts.find(
+          (fact) =>
+            fact.id === `memory:${altered.syncs.at(-1).members[0].seatId}`,
+        )?.state,
+      ).toBe(expectedState);
+    } finally {
+      writeFileSync(recordPath, syncedRecord);
+    }
+  }
+  expect(JSON.stringify(data)).not.toContain('Private synced context');
+  expect(f.adapter.turns).toHaveLength(6);
+  const canRead = vi
+    .spyOn(f.service, 'canUserReadSession')
+    .mockReturnValue(false);
+  const unreadable = await inspect();
+  expect(unreadable.status).toBe(422);
+  expect(await unreadable.text()).not.toContain(
+    final.members[0]!.handle!.sessionId,
+  );
+  canRead.mockRestore();
+  const access = f.inventory.resolveEnvironmentAccess.bind(f.inventory);
+  let reads = 0;
+  vi.spyOn(f.inventory, 'resolveEnvironmentAccess').mockImplementation(
+    async (target) => {
+      const result = await access(target);
+      if (++reads === 2) {
+        const cancelled = await f.app.request(
+          `/api/orchestration/session-groups/${group.groupId}/cancel`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${local.credential}` },
+          },
+        );
+        expect(cancelled.status).toBe(200);
+      }
+      return result;
+    },
+  );
+  const stale = await inspect();
+  expect(reads).toBe(2);
+  expect(stale.status).toBe(409);
+  expect(await stale.text()).not.toContain(final.members[0]!.handle!.sessionId);
+  reads = 0;
+  vi.mocked(f.inventory.resolveEnvironmentAccess).mockImplementation(
+    async (target) => {
+      const result = await access(target);
+      if (++reads === 2)
+        security.devicePairing.revokeDevice(
+          local.device.id,
+          'operator-credential',
+        );
+      return result;
+    },
+  );
+  const revoked = await inspect();
+  expect(reads).toBe(2);
+  expect(revoked.status).toBe(403);
+  expect(await revoked.text()).not.toContain(
+    final.members[0]!.handle!.sessionId,
+  );
 }, 30_000);

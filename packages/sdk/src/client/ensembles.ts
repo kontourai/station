@@ -30,6 +30,33 @@ function validAuthenticationOffer(value: unknown): boolean {
   );
 }
 
+function validGroupInspection(
+  value: unknown,
+  requested: string | undefined,
+): boolean {
+  if (value === undefined) return requested === undefined;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !('state' in value)
+  )
+    return false;
+  if (value.state !== 'bound')
+    return requested === undefined && validAuthenticationOffer(value);
+  return (
+    Object.keys(value).length === 3 &&
+    'groupId' in value &&
+    typeof value.groupId === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.groupId) &&
+    requested === value.groupId &&
+    'revision' in value &&
+    typeof value.revision === 'number' &&
+    Number.isSafeInteger(value.revision) &&
+    value.revision >= 0
+  );
+}
+
 export async function inspectEnsemble(
   apiBase: string,
   input: EnsembleInspectionInput,
@@ -56,6 +83,7 @@ export async function inspectEnsemble(
   if (
     result?.version !== 'station.ensemble.inspection/v1' ||
     !validAuthenticationOffer(result.authenticationCheck) ||
+    !validGroupInspection(result.groupInspection, input.groupId) ||
     !result.source ||
     !/^sha256:[0-9a-f]{64}$/.test(result.source.sha256) ||
     (input.expectedPresetHash !== undefined &&

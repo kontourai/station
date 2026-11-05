@@ -6549,6 +6549,16 @@ Host-file requests retain the stricter local-grant requirement; uploaded
 inspection is available to the current personal Station's in-person operator.
 The response is an observation, not a retained launch capability.
 
+For an explicitly selected recorded group, pass `groupId`, the exact preset
+source and `expectedPresetHash`, with empty `bindings` and no `groupBindings` or
+`verifyAuthentication: true`. The optional `groupInspection` offer is
+`available`/`unavailable` on ordinary responses and `bound` with the exact group
+ID and safe integer revision on success. The SDK validates its closed shape and
+bounded strings. A bound request rejects a different group, missing cell or
+silent unbound success; older ordinary responses remain compatible.
+Recorded Session/output and context ACK references are metadata observations,
+not output availability, native/shared memory, acceptance or execution grants.
+
 After an exact receiver draft has been inspected, a current host may offer
 `authenticationCheck: {state:'available'}`. An explicit
 `verifyAuthentication: true` repeats inspection with supported native engine

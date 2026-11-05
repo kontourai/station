@@ -2997,13 +2997,36 @@ requires the locally minted operator grant; a host browser can instead send
 `presetJson` without gaining host-path read authority.
 
 The closed JSON body contains exactly one of `path` or `presetJson`, `bindings`
-and optional `expectedPresetHash`, `groupBindings` and `verifyAuthentication`. Legacy `bindings` map exact
+and optional `expectedPresetHash`, `groupBindings`, `groupId` and `verifyAuthentication`. Legacy `bindings` map exact
 preset member IDs to `{agent, projectSlug}`. Alternatively, with empty `bindings`,
 `groupBindings` carries the group draft's `{target, needs}` per member: exact
 Agent ID, expected engine connection, current environment, and Project or directory
 workspace. Model overrides are refused here: models/options always come from the
 preset. A source hash is required for uploaded bytes or either nonempty binding
 form. Empty legacy bindings permit an initial host-file declaration inspection.
+
+Set `groupId` to inspect one explicitly selected recorded Session group with the
+exact preset source and required `expectedPresetHash`. Keep `bindings` empty;
+`groupBindings` and `verifyAuthentication: true` are incompatible with this read.
+The existing group owner, inspection authorization and Session readability checks
+apply. Inspection never infers group membership from an Agent, directory or time.
+The recorded preset hash, ID, Stationmaster, member identities and seats must
+match; older records without member provenance remain unavailable.
+
+The optional `groupInspection` response cell is `{state:'available'}` when the
+host has its owner-backed reader, `{state:'unavailable',detail}` otherwise, or
+`{state:'bound',groupId,revision}` after a successful bound read. Older hosts omit
+it. This offers a metadata read, never authority. Bound facts retain exact
+Session/conversation/initial-turn/terminal references, recorded prerequisites,
+the Flow reference and context-sync receipt metadata. A reservation or launch
+intent without a confirmed handle is indeterminate. References do not assert
+output availability; context ACKs do not establish native/shared memory,
+acceptance or a grant. Schedule/webhook projection remains unavailable.
+The server rereads the authorized group snapshot after awaited inspection and
+refuses changed snapshots as stale. Read authority is checked again before
+publication; these checks are observations, not atomic external storage custody.
+Draft prerequisite provenance uses an immutable request snapshot digest, not a
+signed execution receipt.
 
 Set `verifyAuthentication: true` only for an explicit engine sign-in check. It
 requires the current local operator grant even for uploaded presets, and the

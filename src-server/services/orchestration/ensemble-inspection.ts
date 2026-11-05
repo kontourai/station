@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BUILTIN_STATION_AGENT_MCP_SERVER_IDS } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
 import {
   ENSEMBLE_INSPECTION_LIMITS,
   type EnsembleInspection,
@@ -18,6 +19,7 @@ import {
 } from '@kontourai/station-contracts/knowledge';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type { KnowledgeRootObservation } from '../../knowledge-store/knowledge-record-observation.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -157,6 +159,7 @@ export class EnsembleInspectionService {
     input: EnsembleInspectionInput,
     request: Request,
     principal: PrincipalRef,
+    readGroup?: (groupId: string) => Promise<CliSessionGroupView>,
   ): Promise<EnsembleInspection> {
     input = structuredClone(input);
     if ((input.path === undefined) === (input.presetJson === undefined))
@@ -167,6 +170,22 @@ export class EnsembleInspectionService {
         this.assertAuthority(request, principal);
       else this.assertConfigurationAuthority(request, principal);
     };
+    current();
+    if (
+      input.groupId &&
+      (!readGroup ||
+        !input.expectedPresetHash ||
+        Object.keys(input.bindings).length ||
+        input.groupBindings ||
+        input.verifyAuthentication)
+    )
+      throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
+    const group = input.groupId
+      ? structuredClone(await readGroup!(input.groupId))
+      : undefined;
+    if (group && (!Number.isSafeInteger(group.revision) || group.revision < 0))
+      throw new EnsembleInspectionRefusal('ensemble_inspection_unavailable');
+    const groupSnapshot = JSON.stringify(group);
     current();
     const bindings = new Map(Object.entries(input.bindings));
     const source =
@@ -188,6 +207,32 @@ export class EnsembleInspectionService {
       ].some((id) => !source.preset.members.some((member) => member.id === id))
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
+
+    const recordedMembers = group?.preset?.members;
+    if (group && !recordedMembers)
+      throw new EnsembleInspectionRefusal('ensemble_inspection_unavailable');
+    if (
+      group &&
+      (group.groupId !== input.groupId ||
+        group.preset?.sha256 !== source.sha256 ||
+        group.preset.presetId !== source.preset.id ||
+        group.preset.stationmaster !== source.preset.stationmaster ||
+        group.members.length !== source.preset.members.length ||
+        recordedMembers?.length !== source.preset.members.length ||
+        source.preset.members.some(
+          (member) =>
+            group.members.filter((seat) => seat.seatId === member.id).length !==
+              1 ||
+            recordedMembers?.filter(
+              (seat) =>
+                seat.seatId === member.id &&
+                seat.codename === member.codename &&
+                seat.color === member.color &&
+                seat.role === member.role,
+            ).length !== 1,
+        ))
+    )
+      throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
 
     const targets = new Map<string, ExecutionTarget>();
     for (const member of source.preset.members) {
@@ -243,6 +288,7 @@ export class EnsembleInspectionService {
     const projects = new Map<string, ProjectConfig>();
     const facts: EnsembleInspectionFact[] = [];
     const resolutions: EnsembleInspection['resolutions'][number][] = [];
+    const draftReceipt = `draft:sha256:${createHash('sha256').update(JSON.stringify(input)).digest('hex')}`;
     const presetOwner = { label: 'Preset source', receipt: source.sha256 };
     const add = (fact: EnsembleInspectionFact) => {
       if (facts.length >= ENSEMBLE_INSPECTION_LIMITS.facts)
@@ -294,10 +340,11 @@ export class EnsembleInspectionService {
         memberId: member.id,
         category: 'workspace',
         label: 'Workspace',
-        value:
-          'Select the receiver Agent and Project IDs to resolve this member.',
+        value: group
+          ? 'Current receiver settings are not projected by recorded-group inspection; inspect a separate receiver draft.'
+          : 'Select the receiver Agent and Project IDs to resolve this member.',
         origin: 'unknown',
-        state: 'missing',
+        state: group ? 'unavailable' : 'missing',
         owner,
       };
       if (target) {
@@ -578,7 +625,9 @@ export class EnsembleInspectionService {
           memberId: member.id,
           category: 'tools/services',
           label: 'Tools and external services',
-          value: 'Receiver binding missing; capabilities unavailable.',
+          value: group
+            ? 'Current receiver tool settings are not projected by recorded-group inspection; inspect a separate receiver draft. Effective capabilities remain unverified.'
+            : 'Receiver binding missing; capabilities unavailable.',
           origin: 'unknown',
           state: 'unavailable',
           owner,
@@ -597,7 +646,7 @@ export class EnsembleInspectionService {
             : 'No prerequisites; eligible at group start subject to admission.',
           origin: 'authored',
           state: 'configured',
-          owner: { label: 'Group dependency draft' },
+          owner: { label: 'Group dependency draft', receipt: draftReceipt },
         });
       add(workspace);
       add({
@@ -614,15 +663,117 @@ export class EnsembleInspectionService {
           href: '/connections/models',
         },
       });
+      if (!group)
+        add({
+          id: `memory:${member.id}`,
+          memberId: member.id,
+          category: 'memory',
+          label: 'Memory',
+          value:
+            'No bound Session or authorized continuity receipt; shared memory is unverified.',
+          origin: 'unknown',
+          state: 'unavailable',
+          owner,
+        });
+    }
+    if (group) {
+      const owner = {
+        label: 'Recorded Session group snapshot',
+        receipt: `group:${group.groupId}:${group.revision}`,
+      };
+      for (const seat of group.members) {
+        const memberOwner = seat.handle
+          ? {
+              ...owner,
+              href: surfaceDeepLink({
+                surfaceId: 'activity',
+                sessionId: seat.handle.sessionId,
+              }),
+            }
+          : owner;
+        add({
+          id: `needs:${seat.seatId}`,
+          memberId: seat.seatId,
+          needs: seat.needs,
+          category: 'routing/triggers',
+          label: 'Recorded prerequisites',
+          value: JSON.stringify(seat.needs),
+          origin: 'authored',
+          state: 'configured',
+          owner,
+        });
+        add({
+          id: `outputs:${seat.seatId}`,
+          memberId: seat.seatId,
+          category: 'output destinations',
+          label: 'Recorded Session and output references',
+          value: JSON.stringify({
+            state: seat.state,
+            ...(seat.handle ? { handle: seat.handle } : {}),
+            ...(seat.reservedSessionId
+              ? { reservedSessionId: seat.reservedSessionId }
+              : {}),
+            ...(seat.initialClientTurnId
+              ? { initialClientTurnId: seat.initialClientTurnId }
+              : {}),
+            ...(seat.terminalEvent
+              ? { terminalEvent: seat.terminalEvent }
+              : {}),
+            observation: seat.handle
+              ? 'Recorded references; availability and acceptance unverified.'
+              : seat.state === 'launch-intent' || seat.reservedSessionId
+                ? 'Launch outcome indeterminate; reservation is not a confirmed Session.'
+                : 'No confirmed Session reference recorded.',
+          }),
+          origin: 'runtime-derived',
+          state: seat.handle ? 'configured' : 'unknown',
+          owner: memberOwner,
+        });
+        const sync = group.contextSync;
+        const receipt = sync?.members.find(
+          (entry) => entry.seatId === seat.seatId,
+        );
+        add({
+          id: `memory:${seat.seatId}`,
+          memberId: seat.seatId,
+          category: 'memory',
+          label: 'Recorded context-sync attempt/status',
+          value:
+            receipt && sync
+              ? JSON.stringify({
+                  operationId: sync.operationId,
+                  runId: sync.runId,
+                  contentHash: sync.contentHash,
+                  timestamp: sync.timestamp,
+                  status: sync.status,
+                  member: receipt,
+                  limits:
+                    'Recorded context-sync metadata only; native/shared memory, acceptance and grants unverified.',
+                })
+              : 'No recorded context receipt; native/shared memory unverified.',
+          origin: receipt ? 'runtime-derived' : 'unknown',
+          state:
+            !receipt || receipt.status === 'failed'
+              ? 'unavailable'
+              : receipt.status === 'acknowledged' &&
+                  receipt.turnId &&
+                  receipt.terminalEventId &&
+                  receipt.nativeIdentityHash &&
+                  receipt.toolCalls === 0
+                ? 'configured'
+                : 'unknown',
+          owner: memberOwner,
+        });
+      }
       add({
-        id: `memory:${member.id}`,
-        memberId: member.id,
-        category: 'memory',
-        label: 'Memory',
-        value:
-          'No bound Session or authorized continuity receipt; shared memory is unverified.',
-        origin: 'unknown',
-        state: 'unavailable',
+        id: 'group-flow',
+        category: 'routing/triggers',
+        label: 'Recorded Flow reference',
+        value: group.flow
+          ? JSON.stringify(group.flow)
+          : 'No Flow reference recorded; portable lineage remains unbound.',
+        origin: 'runtime-derived',
+        state: group.flow ? 'configured' : 'unavailable',
         owner,
       });
     }
@@ -743,7 +894,9 @@ export class EnsembleInspectionService {
       [
         'schedules',
         'schedules/webhooks',
-        'No durable Ensemble binding or metadata-only schedule/webhook projection is available.',
+        group
+          ? 'Schedule/webhook projection unavailable; recorded group references grant no automation authority.'
+          : 'No durable Ensemble binding or metadata-only schedule/webhook projection is available.',
       ],
       [
         'outputs',
@@ -751,15 +904,16 @@ export class EnsembleInspectionService {
         'No authored destination or bound Session/group output receipt is available.',
       ],
     ] as const)
-      add({
-        id,
-        category,
-        label: category,
-        value,
-        origin: 'unknown',
-        state: 'unavailable',
-        owner: presetOwner,
-      });
+      if (!(group && (id === 'routing' || id === 'outputs')))
+        add({
+          id,
+          category,
+          label: category,
+          value,
+          origin: 'unknown',
+          state: 'unavailable',
+          owner: presetOwner,
+        });
     current();
     const finalAccess = await this.owners.inventory.resolveEnvironmentAccess({
       environment: { kind: 'current' },
@@ -790,7 +944,26 @@ export class EnsembleInspectionService {
         throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
       }
     }
+    if (
+      group &&
+      JSON.stringify(await readGroup!(group.groupId)) !== groupSnapshot
+    )
+      throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
+    current();
+    try {
+      fence();
+    } catch {
+      throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
+    }
     return {
+      groupInspection: group
+        ? { state: 'bound', groupId: group.groupId, revision: group.revision }
+        : readGroup
+          ? { state: 'available' }
+          : {
+              state: 'unavailable',
+              detail: 'Recorded group inspection is unavailable on this host.',
+            },
       version: 'station.ensemble.inspection/v1',
       source: {
         sha256: source.sha256,
@@ -803,9 +976,11 @@ export class EnsembleInspectionService {
       facts,
       resolutions,
       authenticationCheck,
-      limits: input.verifyAuthentication
-        ? 'Engine sign-in checks grant no execution authority; model entitlement, execution limits and live group bindings are unverified.'
-        : 'Authentication, entitlement, execution limits and live group bindings are unverified.',
+      limits: group
+        ? 'Recorded group references only; output availability, acceptance, native/shared memory, authentication, entitlement and execution limits are unverified.'
+        : input.verifyAuthentication
+          ? 'Engine sign-in checks grant no execution authority; model entitlement, execution limits and live group bindings are unverified.'
+          : 'Authentication, entitlement, execution limits and live group bindings are unverified.',
     };
   }
 }
