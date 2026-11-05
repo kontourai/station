@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import type { Page } from '@playwright/test';
+import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import {
@@ -8,6 +9,7 @@ import {
   coldLaunchFirstSnapshot,
   flatSnapshot,
 } from '../platform/fold/__tests__/nativeFoldFixtures';
+import { completeNativeCapabilityReport } from '../platform/native/__tests__/completeNativeCapabilityReportFixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 /*
@@ -28,6 +30,7 @@ const CSS =
 
 /** A single column (the route outlet's treatment) above a real list/detail. */
 const LAYOUT = `
+import 'fold-test-shell';
 import React, {useRef} from 'react';
 import {createRoot} from 'react-dom/client';
 import {installFoldGeometry} from './src-ui/src/platform/fold/foldSources';
@@ -35,7 +38,6 @@ import {useFoldSplit} from './src-ui/src/hooks/useFoldSplit';
 import {SplitPaneLayout} from './src-ui/src/components/SplitPaneLayout';
 import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
 document.head.insertAdjacentHTML('beforeend', '<meta name="viewport" content="width=device-width, initial-scale=1">');
-__SETUP__
 installFoldGeometry();
 function Column() {
   const ref = useRef(null);
@@ -57,6 +59,9 @@ createRoot(document.getElementById('root')).render(<NavigationProvider><Column/>
 `;
 
 /** A stand-in for Tauri's IPC: answers `station-fold` and delivers its nudge. */
+/** The report a real iOS shell answers; the fold source reads its platform. */
+const IOS_REPORT = completeNativeCapabilityReport('ios');
+
 const NATIVE_SETUP = `
 const callbacks = new Map();
 let nextId = 1, nextIndex = 0, channel = null;
@@ -66,6 +71,9 @@ window.__TAURI_INTERNALS__ = {
   unregisterCallback(id) { callbacks.delete(id); },
   async invoke(cmd, args) {
     if (cmd === 'plugin:station-fold|state') return window.__foldState;
+    // The real iOS app answers its capability report; the fold source asks
+    // the plugin only once that report names iOS.
+    if (cmd === 'native_capability_report') return ${JSON.stringify(IOS_REPORT)};
     if (cmd === 'plugin:station-fold|register_listener') { channel = args.handler; return null; }
     throw new Error('unexpected command ' + cmd);
   },
@@ -91,11 +99,36 @@ window.__TAURI_INTERNALS__ = {
       window.__foldReplies.push(reply.regions.length);
       return reply;
     }
+    // The real iOS app answers its capability report; the fold source asks
+    // the plugin only once that report names iOS.
+    if (cmd === 'native_capability_report') return ${JSON.stringify(IOS_REPORT)};
     if (cmd === 'plugin:station-fold|register_listener') return null;
     throw new Error('unexpected command ' + cmd);
   },
 };
 `;
+
+/**
+ * The shell's globals as a module the page imports first. The real app gets
+ * `__TAURI_INTERNALS__` from Tauri's initialization script before any page
+ * module runs; installing it after the app's imports would let the native
+ * adapter resolve as a browser and miss the iOS shell entirely.
+ */
+function testShell(setup: string): Plugin {
+  return {
+    name: 'fold-test-shell',
+    setup(builder) {
+      builder.onResolve({ filter: /^fold-test-shell$/ }, () => ({
+        path: 'fold-test-shell',
+        namespace: 'fold-test-shell',
+      }));
+      builder.onLoad({ filter: /.*/, namespace: 'fold-test-shell' }, () => ({
+        contents: setup,
+        loader: 'js',
+      }));
+    },
+  };
+}
 
 async function geometry(page: Page) {
   return page.evaluate(() => {
@@ -129,8 +162,8 @@ const settle = (page: Page) =>
 
 test('the native Book crease keeps a column off it and puts the list/detail split on it', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
-    LAYOUT.replace('__SETUP__', NATIVE_SETUP),
-    [],
+    LAYOUT,
+    [testShell(NATIVE_SETUP)],
     { viewport: { width: 951, height: 669 } },
   );
   try {
@@ -179,8 +212,8 @@ test('the native Book crease keeps a column off it and puts the list/detail spli
 
 test('without a native plugin, CSS Viewport Segments drive the same layouts', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
-    LAYOUT.replace('__SETUP__', ''),
-    [],
+    LAYOUT,
+    [testShell('')],
     { viewport: { width: 951, height: 669 } },
   );
   try {
@@ -354,11 +387,11 @@ test.each([
 
 /** The dock's row mounts only once the dock opens, after its owner mounted. */
 const DOCK_ROW = `
+import 'fold-test-shell';
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {installFoldGeometry} from './src-ui/src/platform/fold/foldSources';
 import {useFoldSplit} from './src-ui/src/hooks/useFoldSplit';
-${NATIVE_SETUP}
 installFoldGeometry();
 function Dock() {
   const [open, setOpen] = useState(false);
@@ -375,9 +408,13 @@ createRoot(document.getElementById('root')).render(<Dock/>);
 `;
 
 test('the dock’s Inbox snaps to the crease even when its row mounts after the dock', async () => {
-  const { browser, page, errors } = await scrollBrowserFixture(DOCK_ROW, [], {
-    viewport: { width: 951, height: 669 },
-  });
+  const { browser, page, errors } = await scrollBrowserFixture(
+    DOCK_ROW,
+    [testShell(NATIVE_SETUP)],
+    {
+      viewport: { width: 951, height: 669 },
+    },
+  );
   try {
     await page.addStyleTag({ content: CSS });
     await page.waitForSelector(
@@ -409,8 +446,8 @@ test('the dock’s Inbox snaps to the crease even when its row mounts after the 
 
 test('a cold launch into Book reaches the split when the first reply is empty and nothing changes after', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
-    LAYOUT.replace('__SETUP__', COLD_SETUP),
-    [],
+    LAYOUT,
+    [testShell(COLD_SETUP)],
     { viewport: { width: 951, height: 669 } },
   );
   try {
