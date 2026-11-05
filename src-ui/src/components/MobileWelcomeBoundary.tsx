@@ -54,10 +54,14 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
                 Enter Station address
               </Button>
             }
+            overflow={[
+              {
+                key: 'discover',
+                label: 'Find nearby Stations',
+                onSelect: () => openConnectionsModal({ mode: 'discover' }),
+              },
+            ]}
           />
-          <Button onClick={() => openConnectionsModal({ mode: 'discover' })}>
-            Find nearby Stations
-          </Button>
           <details>
             <summary>Other ways to connect</summary>
             <p>Manage saved Stations or set up an advanced connection.</p>
