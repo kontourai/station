@@ -188,10 +188,9 @@ export function nativeProfileBootstrapRecoveryError(): string | undefined {
 }
 
 /**
- * The shell's one answer to "which platform am I", resolved once per page
- * through the adapter's document-ready boundary and its single capability
- * report. Everything that branches on the compile target reads this, so no
- * caller asks the host again.
+ * The shell's answer to "which platform am I", resolved once per page through
+ * the adapter's document-ready boundary. The profile and the fold source share
+ * this initial resolution, so fold adds no capability report of its own.
  */
 const platformResolution: Promise<PlatformProfile> = resolvePlatformProfile();
 
