@@ -453,7 +453,10 @@ export async function startConnectionChat(
       .getByRole('option', { name: new RegExp(CONNECTION_MODEL) })
       .click();
     await form.getByRole('button', { name: /^Project:/ }).click();
-    await page.getByRole('button', { name: /Receiver work/ }).click();
+    await page
+      .getByRole('dialog', { name: 'Choose project', exact: true })
+      .getByRole('button', { name: /^Receiver work/ })
+      .click();
   }
   await form
     .getByRole('textbox', { name: 'What would you like done?' })

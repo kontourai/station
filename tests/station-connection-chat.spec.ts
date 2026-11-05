@@ -84,7 +84,7 @@ test('owner Device chats through a real Station delegation and keeps target refu
     'This turn remains running until Stop.',
   );
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectObservation(true),
+    window.stationConnectionFaults.disconnectEvents(true),
   );
   await expect(
     page
@@ -92,6 +92,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
       .getByRole('button', { name: 'Reconnecting', exact: true }),
   ).toBeVisible();
   await captureConnectionState(page, testInfo, 'relay-reconnect');
+  await page.evaluate(() =>
+    window.stationConnectionFaults.disconnectObservation(true),
+  );
   streams[2]!.stream.text('Receiver text retained during disconnect.');
   await expect(transcript).not.toContainText(
     'Receiver text retained during disconnect.',
@@ -154,7 +157,7 @@ test('owner Device chats through a real Station delegation and keeps target refu
     }
   });
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectObservation(true),
+    window.stationConnectionFaults.disconnectEvents(true),
   );
   await page.evaluate(() => window.stationConnectionFaults.loseNextSend());
   await composer.fill(
@@ -166,6 +169,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
     page.getByRole('button', { name: 'Check', exact: true }),
   ).toBeVisible();
   await captureConnectionState(page, testInfo, 'relay-uncertain');
+  await page.evaluate(() =>
+    window.stationConnectionFaults.disconnectObservation(true),
+  );
   streams[4]!.stream.text('The uncertain send ran exactly once.');
   streams[4]!.stream.finish();
   await page.reload();
