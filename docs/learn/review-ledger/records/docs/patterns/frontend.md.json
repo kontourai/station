@@ -104,7 +104,15 @@
 
     "src-ui/src/hooks/useServerEventsListener.ts",
 
-    "src-ui/src/hooks/ServerEventsMount.tsx"
+    "src-ui/src/hooks/ServerEventsMount.tsx",
+
+    "src-ui/src/components/StatusSummary.tsx",
+
+    "src-ui/src/components/StatusSummary.css",
+
+    "src-ui/src/styles/layout-recipes.css",
+
+    "src-ui/src/styles/control-recipes.css"
   ],
 
   "checks": [
