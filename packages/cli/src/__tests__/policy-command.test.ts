@@ -78,11 +78,14 @@ describe('station policy check', () => {
     const text = check(path);
     expect(text.status, text.stderr).toBe(0);
     expect(text.stdout).toContain(`Policy ${path} is valid.`);
+    // #4515: the names of the limits it sets, never their values.
     expect(text.stdout).toContain(
-      `  Limits: ${Object.keys(EVERY_KEY_POLICY.limits).length}`,
+      '  Limits: telemetry, webhookAutomations, registries, clients, updates, engines',
     );
+    expect(Object.keys(EVERY_KEY_POLICY.limits)).toHaveLength(6);
     expect(text.stdout).toContain('defaultMaxTurns');
     expect(text.stdout).not.toContain(EVERY_KEY_FEED_URL);
+    expect(text.stdout).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
 
     const json = check(path, '--json');
     expect(json.status, json.stderr).toBe(0);

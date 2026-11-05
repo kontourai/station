@@ -85,12 +85,14 @@ function describeEffect(
   document: ManagedPolicyDocument,
   summary: ManagedPolicySummary,
 ): string[] {
-  const limits = Object.keys(document.limits ?? {}).length;
+  // Names only, as `summary.engines` lists field names: a limit's value can
+  // name an internal endpoint (a mirror, a gateway).
+  const limits = Object.keys(document.limits ?? {});
   return [
     `  Organization: ${summary.organization} (users see "Managed by ${summary.organization}")`,
     `  Support link: ${summary.supportUrl ?? 'none'}`,
     ...describeSettings(document),
-    `  Limits: ${limits === 0 ? 'none' : limits}`,
+    `  Limits: ${limits.length === 0 ? 'none' : limits.join(', ')}`,
   ];
 }
 
