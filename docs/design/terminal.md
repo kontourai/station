@@ -1171,7 +1171,17 @@ Code chat in a Project was not offered the tool. Desktop copy to the system
 clipboard was not read back. On Windows, Stop does not reach a command's
 descendant whose parent already exited, and the journal does not record
 resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. The screen reader mode has not been used with real
+already scrolled. On the hosted Windows runner a forked Vitest worker
+running a terminal process suite has exited without an error, a report or a
+log line, at most once in three runs and under a different suite each time
+(the retention suite in run 41973735929, the socket suite about 37 seconds
+in, in run 42017221712); a diagnostic run that recorded every test, PTY
+spawn, kill and exit and `taskkill` (42020043935) passed, and the cause is
+not found. The floor
+([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
+therefore runs each terminal process suite in a Vitest invocation of its own,
+so a dead worker hides no other suite's results; the floor still fails, and
+nothing retries it. The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,
