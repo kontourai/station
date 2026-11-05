@@ -200,9 +200,10 @@ describe('runtime origin gate: owned Serve origin admission is not stale', () =>
     const realNow = Date.now;
     const wall = vi
       .spyOn(Date, 'now')
-      .mockImplementation(() => realNow() - 60_000);
+      .mockImplementation(() => realNow() - 500);
     try {
-      // 1.1 s of real time passes while the wall clock reads 60 s earlier.
+      // 1.1 s of real time passes while the wall clock is set back 0.5 s:
+      // by the wall clock the evidence is 0.6 s old, by real time 1.1 s.
       await new Promise((resolve) => setTimeout(resolve, 1_100));
       release(owned);
       expect(await pending).toBe(false);
