@@ -17,8 +17,11 @@
  * - Linux: a root-owned `tailscale` in a system bin directory whose whole
  *   directory chain is root-owned and not group- or world-writable (the
  *   checks the policy file itself gets).
- * - Windows: the installer's `C:\Program Files\Tailscale\tailscale.exe`.
- *   Its ACLs are not inspected, as for the policy file (#4524).
+ * - Windows: the installer's `C:\Program Files\Tailscale\tailscale.exe`,
+ *   held to the policy file's own Windows rule (#4524): the file, its
+ *   folder and every folder up to the drive must be owned by
+ *   Administrators, SYSTEM or TrustedInstaller, grant no one else a right
+ *   that changes them, and not be reparse points.
  *
  * The trusted CLI runs with a fixed, minimal environment, so no inherited
  * loader or Tailscale variable changes what it does (on macOS it sets
@@ -59,7 +62,10 @@ import {
 import { basename, delimiter, join } from 'node:path';
 import {
   managedTrustedFileProblem,
+  processWindowsSecurityApi,
   SYSTEM_MANAGED_POLICY_OWNERSHIP,
+  type WindowsSecurityApi,
+  windowsPathChainProblem,
 } from '@kontourai/station-shared/managed-policy';
 import { TAILSCALE_MACOS_APP_CLI } from './public-ingress-origin.js';
 import type {
@@ -197,11 +203,26 @@ export function trustedTailscaleEnvironment(
   return out;
 }
 
+/** What the trust check reads from the system; tests substitute fakes. */
+export interface TailscaleTrustSystem {
+  exists?: (path: string) => boolean;
+  windowsSecurity?: () => WindowsSecurityApi;
+}
+
 async function systemTrustProblem(
   platform: NodeJS.Platform,
   path: string,
+  system: TailscaleTrustSystem = {},
 ): Promise<string | null | undefined> {
-  if (platform === 'win32') return existsSync(path) ? null : undefined;
+  if (platform === 'win32') {
+    if (!(system.exists ?? existsSync)(path)) return undefined;
+    // #4524: the policy file's owner and ACL rule, for the CLI and every
+    // folder above it. A CLI someone else could replace is not trusted.
+    return windowsPathChainProblem(
+      path,
+      (system.windowsSecurity ?? processWindowsSecurityApi)(),
+    );
+  }
   const file = managedTrustedFileProblem(
     path,
     SYSTEM_MANAGED_POLICY_OWNERSHIP,
@@ -400,12 +421,13 @@ export async function foreignTailscaleDaemons(
 
 export function defaultTailscaleAuthorityProbe(
   platform: NodeJS.Platform = process.platform,
+  system: TailscaleTrustSystem = {},
 ): TailscaleAuthorityProbe {
   const env = trustedTailscaleEnvironment(platform);
   return {
     platform,
     executables: trustedTailscaleExecutables(platform),
-    trustProblem: (path) => systemTrustProblem(platform, path),
+    trustProblem: (path) => systemTrustProblem(platform, path, system),
     signs: () => tailscaleSigns(platform),
     fingerprint: (path) => trustedFileFingerprint(platform, path),
     foreignDaemons: () => foreignTailscaleDaemons(platform),

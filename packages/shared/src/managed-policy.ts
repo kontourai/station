@@ -54,6 +54,13 @@ import {
 } from './managed-policy-windows.js';
 
 /**
+ * #4524's Windows owner and ACL rule for a file outside the policy that
+ * Station trusts to answer for the system (#4519's Tailscale CLI), with the
+ * Win32 reader it runs on. Re-exported unchanged: one rule for both.
+ */
+export { type WindowsSecurityApi, windowsPathChainProblem };
+
+/**
  * The test-only override: an absolute path to a policy file. It is honored
  * only when no system source is installed; with one installed it is a
  * startup error, so it can never replace or hide an administrator's policy.

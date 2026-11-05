@@ -365,3 +365,121 @@ describe('round 2: a tailscaled the trusted CLI does not answer for', () => {
     },
   );
 });
+
+/*
+ * #4515: on Windows the installer's CLI is held to #4524's owner and ACL
+ * rule. The descriptors are the owner and DACL Windows 11 (26200) reports
+ * for a real Tailscale install, read on the test host with Get-Acl's
+ * GetSecurityDescriptorSddlForm('Owner, Access'), the form
+ * ConvertSecurityDescriptorToStringSecurityDescriptorW gives. The Win32
+ * reader is the only part substituted; the rule and the probe are the
+ * production ones.
+ */
+describe('#4515: the Windows CLI is held to the owner and ACL rule', () => {
+  const TI = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464';
+  const CLI = 'C:\\Program Files\\Tailscale\\tailscale.exe';
+  const FOLDER = 'C:\\Program Files\\Tailscale';
+  const INSTALLED: Record<string, string> = {
+    'C:\\': `O:${TI}D:PAI(A;;LC;;;AU)(A;OICIIO;SDGXGWGR;;;AU)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;;0x1000a1;;;S-1-15-3-65536-1888954469-739942743-1668119174-2468466756-4239452838-1296943325-355587736-700089176)`,
+    'C:\\Program Files': `O:${TI}D:PAI(A;OICIIO;GA;;;CO)(A;OICIIO;GA;;;SY)(A;;0x1301bf;;;SY)(A;OICIIO;GA;;;BA)(A;;0x1301bf;;;BA)(A;OICIIO;GXGR;;;BU)(A;;0x1200a9;;;BU)(A;CIIO;GA;;;${TI})(A;;FA;;;${TI})(A;;0x1200a9;;;AC)(A;OICIIO;GXGR;;;AC)(A;;0x1200a9;;;S-1-15-2-2)(A;OICIIO;GXGR;;;S-1-15-2-2)`,
+    [FOLDER]:
+      'O:SYD:P(A;;FA;;;SY)(A;OICIIO;GA;;;SY)(A;;FA;;;BA)(A;OICIIO;GA;;;BA)(A;;0x1200a9;;;BU)(A;OICIIO;GXGR;;;BU)',
+    [CLI]: 'O:SYD:(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200a9;;;BU)',
+  };
+
+  function windowsProbe(
+    descriptors: Record<string, string>,
+    options: { installed?: boolean; reparse?: string } = {},
+  ): TailscaleAuthorityProbe {
+    const system = {
+      exists: (path: string) => path === CLI && options.installed !== false,
+      windowsSecurity: () => ({
+        readMachineKey: () => {
+          throw new Error('not read here');
+        },
+        machineKeySddl: () => {
+          throw new Error('not read here');
+        },
+        pathSddl: (path: string) => {
+          const sddl = descriptors[path];
+          if (sddl === undefined) throw new Error(`no descriptor for ${path}`);
+          return sddl;
+        },
+        isReparsePoint: (path: string) => path === options.reparse,
+      }),
+    };
+    return {
+      ...defaultTailscaleAuthorityProbe('win32', system),
+      // The process list and file identity are this test's, not Windows'.
+      signs: async () => [],
+      fingerprint: () => 'unchanged',
+      run: async () => ({
+        exitCode: 0,
+        stdout: '{"BackendState":"Stopped"}',
+        stderr: '',
+      }),
+    };
+  }
+
+  test('the installer-made CLI is trusted', async () => {
+    const authority = await resolveTailscaleAuthority(windowsProbe(INSTALLED));
+    expect(authority.kind).toBe('trusted');
+  });
+
+  test.each([
+    [
+      'its folder lets Users change it',
+      { ...INSTALLED, [FOLDER]: `${INSTALLED[FOLDER]}(A;;0x1301bf;;;BU)` },
+      'C:\\Program Files\\Tailscale lets Users',
+    ],
+    [
+      'the CLI is owned by a user',
+      {
+        ...INSTALLED,
+        [CLI]:
+          'O:S-1-5-21-2612459134-1529638752-2094432294-1001D:(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200a9;;;BU)',
+      },
+      `${CLI} must be owned by Administrators, SYSTEM or TrustedInstaller`,
+    ],
+    [
+      'the CLI grants Everyone write',
+      { ...INSTALLED, [CLI]: `${INSTALLED[CLI]}(A;;FW;;;WD)` },
+      `${CLI} lets`,
+    ],
+  ])(
+    'a CLI whose %s is not trusted, and is a sign',
+    async (_name, descriptors, sign) => {
+      const authority = await resolveTailscaleAuthority(
+        windowsProbe(descriptors),
+      );
+      expect(authority.kind).toBe('untrusted');
+      if (authority.kind !== 'untrusted') throw new Error('expected untrusted');
+      expect(authority.signs.join('\n')).toContain(sign);
+      expect(authority.remedy).toContain(CLI);
+    },
+  );
+
+  test('a reparse point in the chain is not trusted', async () => {
+    const authority = await resolveTailscaleAuthority(
+      windowsProbe(INSTALLED, { reparse: FOLDER }),
+    );
+    expect(authority.kind).toBe('untrusted');
+    if (authority.kind !== 'untrusted') throw new Error('expected untrusted');
+    expect(authority.signs.join('\n')).toContain(
+      `${FOLDER} is a symbolic link, junction or other reparse point`,
+    );
+  });
+
+  test('permissions Station cannot read are not trusted', async () => {
+    const { [FOLDER]: _folder, ...unreadable } = INSTALLED;
+    const authority = await resolveTailscaleAuthority(windowsProbe(unreadable));
+    expect(authority.kind).toBe('untrusted');
+  });
+
+  test('no CLI at the fixed location is not a sign by itself', async () => {
+    const authority = await resolveTailscaleAuthority(
+      windowsProbe(INSTALLED, { installed: false }),
+    );
+    expect(authority.kind).toBe('absent');
+  });
+});

@@ -316,7 +316,7 @@ Station asks only a Tailscale command it can trust, never whatever
 | --- | --- | --- |
 | macOS | `/Applications/Tailscale.app/Contents/MacOS/Tailscale` (Mac App Store or tailscale.com) | Owned by root and signed by Tailscale Inc. (team `W5364U7YZB`). |
 | Linux | `tailscale` in `/usr/bin`, `/usr/sbin`, `/usr/local/bin`, `/usr/local/sbin`, `/bin` or `/sbin` | The file and every folder above it owned by root and not writable by group or others. Distribution and Tailscale repository packages qualify. |
-| Windows | `C:\Program Files\Tailscale\tailscale.exe` (Tailscale's installer) | Its owner and ACLs are not checked yet: the Windows ownership rule (#4524) covers the policy file, not this program. |
+| Windows | `C:\Program Files\Tailscale\tailscale.exe` (Tailscale's installer) | The same owner and ACL rule as the [policy file](#where-to-install-it): the program, its folder and every folder up to the drive must be owned by Administrators, SYSTEM or TrustedInstaller, let no one else change them, and not be links or junctions. |
 
 Station runs it with a fixed, minimal environment. A Homebrew install on macOS
 does not qualify: its files belong to the Homebrew user. Before each run
@@ -421,7 +421,11 @@ there". It does this whatever the file says, because a file beside a profile
 or the registry key is already a startup error. So a mirror delivered through
 device management leaves desktop updates off rather than mirrored; to route
 desktop updates to a mirror, install the policy as the file. The server,
-`station upgrade` and the Station service's update read every source. If the desktop app
+`station upgrade` and the Station service's update read every source. On
+Windows the desktop app does not yet hold the policy file to the owner and ACL
+rule the server applies; keep `C:\Program Files\Station` writable by
+administrators only, as it is by default
+([#4599](https://github.com/kontourai/station/issues/4599)). If the desktop app
 cannot use the installed policy file (for example it is not valid JSON, it is
 not owned by root, or `limits.updates` contains a value it does not
 understand), it turns updates off rather than guess. If only another part of

@@ -597,9 +597,10 @@ A `tailscale` on `PATH` can be any user's script, and its absence from
 fixed system location the system owns, with a fixed, minimal environment:
 the macOS app bundle, root-owned and accepted by `codesign` against Tailscale
 Inc.'s team; a root-owned Linux binary whose whole directory chain passes the
-policy file's own ownership check; or the Windows installer's path, whose
-owner and ACLs are not yet checked (the Windows ownership rule, #4524, covers
-the policy file, not this program). `/Applications` is admin-group writable, so
+policy file's own ownership check; or the Windows installer's path, held to
+the policy file's Windows owner and ACL rule (#4524) for the program and every
+folder above it. A CLI someone else could replace is untrusted, which with
+Tailscale present refuses startup under `clients`. `/Applications` is admin-group writable, so
 on macOS the signature stands in for a root-owned chain. Homebrew's CLI is
 user-owned and not trusted. Without a trusted CLI, "not installed" stands
 only when nothing looks like Tailscale: no `tailscale` or `tailscaled` on
@@ -714,7 +715,10 @@ second time the same way to stand in for the `lstat` identity, as libuv's own
 point or a directory, and an identity Windows cannot report refuses the
 policy. Only the macOS and Linux behavior is executed in tests; the Windows
 path is compile-checked only. The desktop shell does not yet apply the
-Windows owner and ACL rule the server applies to the policy file (#4524).
+Windows owner and ACL rule the server applies to the policy file (#4524);
+`C:\Program Files` is writable only by administrators by default, so a default
+install is covered, and a policy folder whose ACL was loosened is
+[#4599](https://github.com/kontourai/station/issues/4599).
 
 **Device management turns desktop updates off.** The shell reads only the
 policy file; it does not parse a macOS configuration profile (#4523) or the

@@ -592,7 +592,7 @@ export function windowsPathChainProblem(
   for (const [entry, role] of entries) {
     try {
       if (api.isReparsePoint(entry))
-        return `${entry} is a symbolic link, junction or other reparse point; install the policy in a real folder`;
+        return `${entry} is a symbolic link, junction or other reparse point; install it in a real folder`;
       const problem = securityDescriptorProblem(
         entry,
         api.pathSddl(entry),
