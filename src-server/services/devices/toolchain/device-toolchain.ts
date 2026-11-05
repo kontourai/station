@@ -200,6 +200,9 @@ export function createNpmCiInstaller(
             'ci',
             '--ignore-scripts',
             '--omit=dev',
+            // Prebuilt native binaries (node-datachannel's per-platform
+            // packages) are optional, and WebRTC is refused: none installed.
+            '--omit=optional',
             '--no-audit',
             '--no-fund',
             '--no-update-notifier',

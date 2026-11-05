@@ -26,6 +26,7 @@ import { Button } from '../components/Button';
 import { ExpandGlyph, MoreGlyph } from '../components/icons/Glyph';
 import { Empty, ErrorState } from '../components/state';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
 import {
@@ -155,6 +156,12 @@ export interface LiveSurfaceCanvasProps {
   /** Dimensions of the most recently drawn frame, after rotation. */
   onFrameSize?: (size: { width: number; height: number }) => void;
   /**
+   * The producer's status (input/video liveness, orientation, a foldable's
+   * `fold`) whenever it changes, in every mode: unlike `renderHeader`, this
+   * keeps reporting while the surface is full screen.
+   */
+  onProducerStatus?: (status: UseLiveSurfaceResult['producerStatus']) => void;
+  /**
    * No input at all — not even a click or a key — until this viewer holds
    * control (through `claimControl`, the host's Take control). For a
    * surface that can sit under the pointer or in the tab order without
@@ -177,8 +184,47 @@ export interface LiveSurfaceCanvasProps {
    * `renderHeader` so its input goes through this surface's lease.
    */
   renderImmersiveActions?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /**
+   * The surface's secondary full-screen controls: in the bar's row when it
+   * has room, behind its More controls button at phone width.
+   */
+  renderImmersiveMenu?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /** Told when this surface enters or leaves full screen. */
+  onImmersiveChange?: (immersive: boolean) => void;
   /** A Full screen button on the stage (a pane; the float has its pill). */
   fullScreenButton?: boolean;
+  /**
+   * Optional (foldable devices; fit mode only): draw the frame through a
+   * host-owned presentation instead of flat. The canvas stays the input
+   * target, invisible, and `toFrame` maps a client point on it to the
+   * SHOWN frame's pixels (null where the presentation shows nothing). The
+   * shared viewer's other hosts (fullscreen, float) pass the same object.
+   */
+  projection?: LiveSurfaceProjection;
+}
+
+/** What a `projection` gives the canvas. */
+export interface LiveSurfaceProjection {
+  toFrame(
+    client: { x: number; y: number },
+    box: { left: number; top: number; width: number; height: number },
+    shown: { width: number; height: number },
+  ): { x: number; y: number } | null;
+  /** Drawn over the canvas box; repaints from `source` after each frame. */
+  render(source: LiveSurfaceProjectionSource): ReactNode;
+  /**
+   * The box's aspect (width / height) for this shown frame, when the
+   * projection draws it differently (turned a quarter to fit a screen).
+   */
+  fitAspect?(shown: { width: number; height: number }): number;
+}
+
+/** The drawn frame a projection copies from. */
+export interface LiveSurfaceProjectionSource {
+  canvas: HTMLCanvasElement | null;
+  shown: { width: number; height: number };
+  /** Called after every frame is drawn; returns an unsubscribe. */
+  subscribe(onDrawn: () => void): () => void;
 }
 
 /** What `renderOverlay` receives. */
@@ -352,19 +398,23 @@ function InputNotice(props: {
   );
 }
 
-function controllerLine(surface: UseLiveSurfaceResult): {
+function controllerLine(
+  surface: UseLiveSurfaceResult,
+  touch = false,
+): {
   text: string;
   tone: LiveSurfaceControllerTone;
 } {
+  const verb = touch ? 'Tap' : 'Click or type';
   const holder = surface.lease?.holder;
   if (!holder)
     return {
-      text: 'No one is in control. Click or type to take control.',
+      text: `No one is in control. ${verb} to take control.`,
       tone: 'none',
     };
   if (holder.kind === 'agent')
     return {
-      text: 'An agent is in control. Click or type to take control from it.',
+      text: `An agent is in control. ${verb} to take control from it.`,
       tone: 'agent',
     };
   // Identity comes from the server (each viewer's state record names it),
@@ -374,12 +424,12 @@ function controllerLine(surface: UseLiveSurfaceResult): {
     if (holder.device === self.device)
       return { text: 'You are in control.', tone: 'you' };
     return {
-      text: 'You are in control from another device. Click or type here to take control.',
+      text: `You are in control from another device. ${verb} here to take control.`,
       tone: 'other',
     };
   }
   return {
-    text: 'Another person is in control. Click or type to take control.',
+    text: `Another person is in control. ${verb} to take control.`,
     tone: 'other',
   };
 }
@@ -416,6 +466,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     if (frameSize) props.onFrameSize?.(frameSize);
   }, [frameSize, props.onFrameSize]);
   const decodingRef = useRef(false);
+  const drawnListenersRef = useRef(new Set<() => void>());
+  const subscribeDrawn = useCallback((onDrawn: () => void) => {
+    drawnListenersRef.current.add(onDrawn);
+    return () => {
+      drawnListenersRef.current.delete(onDrawn);
+    };
+  }, []);
   const nextFrameRef = useRef<LiveSurfaceFrame | null>(null);
   const composingRef = useRef(false);
   const lastDownRef = useRef<{
@@ -462,6 +519,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       // header's (the size input maps against), so draw to that box.
       if (!header.rotation) {
         context.drawImage(picture, 0, 0, header.width, header.height);
+        for (const onDrawn of drawnListenersRef.current) onDrawn();
         return;
       }
       // Turn the drawing clockwise about the canvas origin, then shift it
@@ -479,6 +537,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       }
       context.drawImage(picture, 0, 0, header.width, header.height);
       context.restore();
+      for (const onDrawn of drawnListenersRef.current) onDrawn();
     },
     [adoptFrame],
   );
@@ -623,6 +682,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
     agentActionsEnabled: props.agentActionsEnabled === true,
   });
+  const { onProducerStatus } = props;
+  useEffect(() => {
+    onProducerStatus?.(surface.producerStatus);
+  }, [surface.producerStatus, onProducerStatus]);
   // A new target or a new stream starts a new decoder at its first keyframe.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the surface and its connection status are the change keys.
   useEffect(() => {
@@ -657,6 +720,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     height: number;
   } | null>(null);
   const fitting = props.fit !== undefined;
+  const projecting = fitting && props.projection !== undefined;
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if ((!fitting && !props.agentActionsEnabled) || !stage) return;
@@ -677,7 +741,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   let fitStyle: CSSProperties | undefined;
   if (props.fit && stageBox) {
     const aspect = frameSize
-      ? frameSize.width / frameSize.height
+      ? (props.projection?.fitAspect?.(frameSize) ??
+        frameSize.width / frameSize.height)
       : props.fit.aspect;
     const box = largestBoxAtAspect(stageBox, aspect);
     fitStyle = {
@@ -708,12 +773,35 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   /** Keys this client pressed (as key events) and has not released. */
   const heldKeysRef = useRef(new Map<string, { key: string; code: string }>());
 
+  const projectionRef = useRef(props.projection);
+  projectionRef.current = props.projection;
   const toSurface = useCallback(
     (clientX: number, clientY: number, clamp = false) => {
       const canvas = canvasRef.current;
       const header = headerRef.current;
       if (!canvas || !header) return null;
       const rect = canvas.getBoundingClientRect();
+      const projection = projectionRef.current;
+      if (projection) {
+        const shown = shownSize(header);
+        const point = projection.toFrame(
+          { x: clientX, y: clientY },
+          {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+          shown,
+        );
+        // A press must land on the drawn surface; a release or drag already
+        // under way is kept at the edge it left by, as flat input is.
+        if (!point) return clamp ? lastPointRef.current : null;
+        return {
+          x: point.x / header.deviceScaleFactor,
+          y: point.y / header.deviceScaleFactor,
+        };
+      }
       return mapClientPointToSurface(
         { x: clientX, y: clientY },
         {
@@ -1272,7 +1360,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     event.currentTarget.value = '';
   };
 
-  const controller = controllerLine(surface);
+  const touchPointer = useCoarsePointer();
+  const narrowViewport = useNarrowViewport();
+  const controller = controllerLine(surface, touchPointer);
   const { onControlState } = props;
   const { status, claimControl, releaseControl, keepControlAlive } = surface;
   const tone = controller.tone;
@@ -1285,6 +1375,17 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   } = useImmersive(containerRef);
   const immersiveRef = useRef(immersive);
   immersiveRef.current = immersive;
+  // Going full screen and back is this viewer still at the surface: a hold
+  // it has is renewed (never claimed), so the bar does not open on
+  // "No one is in control" merely because the viewer stopped touching.
+  const wasImmersiveRef = useRef(immersive);
+  const { onImmersiveChange } = props;
+  useEffect(() => {
+    if (wasImmersiveRef.current === immersive) return;
+    wasImmersiveRef.current = immersive;
+    if (holdsControl(surfaceRef.current)) void keepControlAlive();
+    onImmersiveChange?.(immersive);
+  }, [immersive, keepControlAlive, onImmersiveChange]);
   const requiresLease = props.inputRequiresLease === true && !immersive;
   requiresLeaseRef.current = requiresLease;
   // A touch press held back before eligibility changed (read-only, lost
@@ -1413,6 +1514,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       className="live-surface"
       ref={containerRef}
       data-immersive={immersive ? '' : undefined}
+      data-compact={immersive && narrowViewport ? '' : undefined}
       // Immersive owns Escape (it leaves full screen): the app's own Escape
       // shortcuts, such as "Go up one level", yield while it is active.
       data-escape-owner={immersive ? '' : undefined}
@@ -1512,7 +1614,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           <canvas
             ref={canvasRef}
             style={fitStyle}
-            className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}`}
+            className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}${projecting ? ' live-surface__canvas--projected' : ''}`}
             role="img"
             aria-label={`Live view of ${label}`}
             data-testid="live-surface-canvas"
@@ -1525,6 +1627,20 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
             onLostPointerCapture={releaseHeld}
             onContextMenu={(event) => event.preventDefault()}
           />
+          {projecting && fitStyle && frameSize ? (
+            <div
+              aria-hidden="true"
+              className="live-surface__overlay live-surface__projection"
+              data-testid="live-surface-projection"
+              style={fitStyle}
+            >
+              {props.projection!.render({
+                canvas: canvasRef.current,
+                shown: frameSize,
+                subscribe: subscribeDrawn,
+              })}
+            </div>
+          ) : null}
           {props.renderOverlay && fitStyle && frameSize ? (
             <div
               aria-hidden="true"
@@ -1659,6 +1775,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               immersive
               onToggleImmersive={exitImmersive}
               trailing={props.renderImmersiveActions?.({
+                surface,
+                inputReady,
+                sendInput,
+              })}
+              menu={props.renderImmersiveMenu?.({
                 surface,
                 inputReady,
                 sendInput,

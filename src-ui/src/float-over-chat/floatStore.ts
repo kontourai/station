@@ -313,6 +313,18 @@ let pendingRequest: {
   at: number;
 } | null = null;
 let mountedHosts = 0;
+/**
+ * A float the person asked for while no chat could take it (on a phone the
+ * dock shows one pane at a time, so the chat is never mounted beside the
+ * Device pane): the next chat floater to mount takes it, once, within
+ * `NEXT_CHAT_TTL_MS`. `requestFloat` itself still refuses with no chat.
+ */
+const NEXT_CHAT_TTL_MS = 120_000;
+let nextChatRequest: {
+  source: FloatSource;
+  onTaken: (() => void) | undefined;
+  at: number;
+} | null = null;
 let devicePanePromotion: (() => void) | undefined;
 
 /** Register the mounted Device pane's source for an explicit pane close. */
@@ -328,8 +340,12 @@ export function promoteClosedDevicePane(): void {
 }
 
 /** A chat's floater is mounted and can take a request; returns its release. */
-export function registerFloatHost(): () => void {
+export function registerFloatHost(now = Date.now()): () => void {
   mountedHosts += 1;
+  const waiting = nextChatRequest;
+  nextChatRequest = null;
+  if (waiting && now - waiting.at <= NEXT_CHAT_TTL_MS)
+    pendingRequest = { ...waiting, at: now };
   emit();
   let released = false;
   return () => {
@@ -354,6 +370,28 @@ export function requestFloat(
   pendingRequest = { source, onTaken, at: now };
   emit();
   return true;
+}
+
+/**
+ * Float `source` in the next chat the person opens (see `nextChatRequest`).
+ * Replaces any earlier such request.
+ */
+export function requestFloatInNextChat(
+  source: FloatSource,
+  onTaken?: () => void,
+  now = Date.now(),
+): void {
+  nextChatRequest = { source, onTaken, at: now };
+  emit();
+}
+
+/** Whether a float is waiting for the next chat to open. */
+export function useFloatAwaitingChat(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => nextChatRequest !== null,
+    () => false,
+  );
 }
 
 /** The waiting request, taken (so exactly one chat floats it). */
@@ -477,6 +515,7 @@ export function resetFloatStoreForTests(): void {
   for (const handoff of handoffs.values()) clearTimeout(handoff.timer);
   handoffs.clear();
   pendingRequest = null;
+  nextChatRequest = null;
   devicePanePromotion = undefined;
   mountedHosts = 0;
   notices.clear();

@@ -1144,6 +1144,7 @@ function BrowserSessionPane({
       );
   };
   const rotateViewport = () => {
+    fitToStageRef.current = false;
     if (record)
       viewport.mutate({
         ...record.viewport,
@@ -1475,16 +1476,39 @@ function BrowserSessionPane({
     navigate.mutate(value);
   };
 
+  /**
+   * The viewport the person chose follows the view's size ("Fit to this
+   * pane"), so going full screen or back fits it again; a preset or a
+   * rotation is a fixed size and does not.
+   */
+  const fitToStageRef = useRef(false);
+  const fitTo = (stage: Element | null | undefined) => {
+    const box = stage?.getBoundingClientRect();
+    const fill = box ? viewportToFill(box.width, box.height) : null;
+    if (fill) viewport.mutate(fill);
+    return fill !== null;
+  };
   const onViewport = (id: string) => {
     if (id === 'fill') {
-      const box = stageRef.current?.getBoundingClientRect();
-      const fill = box ? viewportToFill(box.width, box.height) : null;
-      if (fill) viewport.mutate(fill);
-      else setNotice('The pane size could not be measured.');
+      fitToStageRef.current = true;
+      if (!fitTo(stageRef.current))
+        setNotice('The pane size could not be measured.');
       return;
     }
+    fitToStageRef.current = false;
     const preset = BROWSER_DEVICE_PRESETS.find((p) => p.id === id);
     if (preset) viewport.mutate(preset.viewport);
+  };
+  const onImmersiveChange = (immersive: boolean) => {
+    if (!fitToStageRef.current) return;
+    // After the layout settles: full screen measures the live view's own
+    // stage (laid over the viewport), the pane its stage as before.
+    requestAnimationFrame(() => {
+      const stage = immersive
+        ? stageRef.current?.querySelector('.live-surface__stage')
+        : stageRef.current;
+      fitTo(stage);
+    });
   };
 
   const togglePanel = (next: 'sessions' | 'console' | 'network') =>
@@ -1586,8 +1610,18 @@ function BrowserSessionPane({
         agentActionsEnabled={experienceEnabled}
         onControlState={setControl}
         fullScreenButton
+        onImmersiveChange={onImmersiveChange}
         renderImmersiveActions={() => (
           <BrowserImmersiveNav
+            part="address"
+            host={hostOf(record.url)}
+            disabled={!canDriveLive || history.isPending}
+            onAction={(action) => history.mutate(action)}
+          />
+        )}
+        renderImmersiveMenu={() => (
+          <BrowserImmersiveNav
+            part="navigation"
             host={hostOf(record.url)}
             disabled={!canDriveLive || history.isPending}
             onAction={(action) => history.mutate(action)}

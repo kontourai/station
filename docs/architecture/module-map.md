@@ -5493,7 +5493,10 @@ to the stream params, whatever resolution its body has; viewers draw it
 scaled to that box, so a tap from any viewer lands on the same device point. Server-side ffmpeg
 decoding runs only while an image viewer is attached; otherwise image viewers
 get a labelled PNG-poll fallback. A successful Device dispatch means
-the hub socket accepted bytes, not that the application applied them. The
+the hub socket accepted bytes, not that the application applied them; an iOS
+`fold` input is the exception, settled by the helper's correlated reply. A
+foldable reports its hinge, stand and lit display as producer `fold` status,
+and iOS video follows the lit display's own panel stream. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
 operator opt-in, host/device identity and current Project/device shares; a bare
@@ -5531,9 +5534,16 @@ until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
 element over the viewport, with the Fullscreen API where it is granted; while
 active it marks itself `data-escape-owner`, so Escape leaves full screen and
 the app's own Escape shortcuts yield). The
-shared chrome is `LiveSurfaceViewerControls.tsx`. A surface kind extends the
-full-screen bar only through `renderImmersiveActions(api)`, for example
-`BrowserImmersiveNav` or `DeviceImmersiveActions`. When the origin, surface ID or
+shared chrome is `LiveSurfaceViewerControls.tsx`; below 480 pixels wide it is
+one row with a More controls panel. A surface kind extends the full-screen bar
+only through `renderImmersiveActions(api)` (kept in the row) and
+`renderImmersiveMenu(api)` (behind More controls when compact), for example a
+browser's address and navigation or a device's stand picker and fold
+settings. A host may also pass a `projection` that draws the frame (and may
+set its fit aspect) and maps points back to it; the Device pane, its
+full-screen view and its float use one to draw a foldable's display. Such a
+host reads the surface's producer status through `onProducerStatus`, which
+keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. Within a target, every input item carries
 the control lineage it was created in (`useLiveSurface`'s `controlLineage`): it

@@ -55,15 +55,24 @@ import {
 import {
   registerDevicePanePromotion,
   requestFloat,
+  requestFloatInNextChat,
+  useFloatAwaitingChat,
   useFloatHostAvailable,
 } from '../float-over-chat/floatStore';
 import { useAnnounceShownSource } from '../float-over-chat/shownSources';
 import { useActiveProject } from '../hooks/useActiveProject';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceHeaderApi,
 } from '../live-surface/LiveSurfaceCanvas';
 import { DeviceSetupSlot } from './DeviceSetupSlot';
+import {
+  DeviceFoldControls,
+  DeviceFoldSettings,
+  DevicePostureControl,
+} from './device/DeviceFoldControls';
+import { type DeviceFoldState, useDeviceFold } from './device/DeviceFoldView';
 import {
   DeviceImmersiveActions,
   NEXT_ORIENTATION,
@@ -929,6 +938,8 @@ function DeviceStage({
   }, [toolsView]);
   const [axOverlay, setAxOverlay] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
+  const foldState = useDeviceFold();
+  const narrow = useNarrowViewport();
   const [captureError, setCaptureError] = useState(false);
   const previews = useFeaturePreviewsQuery(requestScope.apiBase);
   const deviceLoopEnabled =
@@ -1053,18 +1064,18 @@ function DeviceStage({
   // one the person is viewing it from), and says so in the chat if it
   // cannot show it there.
   const floatOverChat = () => {
-    requestFloat(
-      {
-        kind: 'device',
-        hostId: session.hostId,
-        platform,
-        deviceId: session.deviceId,
-        surfaceId: session.surfaceId,
-        projectSlug,
-        name: session.name,
-      },
-      onClose,
-    );
+    const source = {
+      kind: 'device',
+      hostId: session.hostId,
+      platform,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+      projectSlug,
+      name: session.name,
+    } as const;
+    // No chat to take it (a phone shows one pane at a time): it floats in
+    // the next chat the person opens, and this pane lets go then.
+    if (!requestFloat(source, onClose)) requestFloatInNextChat(source, onClose);
   };
   const canvas = (
     <LiveSurfaceCanvas
@@ -1079,16 +1090,36 @@ function DeviceStage({
         cornerRadius: (box) => deviceCornerRadius(platform, box),
       }}
       fullScreenButton
+      onProducerStatus={foldState.reportStatus}
+      // The bar's row keeps the stand picker; Home, Rotate and the fold
+      // settings go behind More controls at phone width.
       renderImmersiveActions={(api) => (
-        <DeviceImmersiveActions api={api} platform={platform} />
+        <DevicePostureControl
+          {...foldState.controls}
+          compact={narrow}
+          inputReady={api.inputReady}
+          sendInput={api.sendInput}
+        />
+      )}
+      renderImmersiveMenu={(api) => (
+        <>
+          <DeviceImmersiveActions api={api} platform={platform} />
+          <DeviceFoldSettings
+            {...foldState.controls}
+            inputReady={api.inputReady}
+            sendInput={api.sendInput}
+          />
+        </>
       )}
       key={session.surfaceId}
       {...(projectSlug ? { projectSlug } : {})}
       label={`${session.name} (${osLabel(session)})`}
       params={{ maxFps: 15, quality: 70, maxWidth: 1600, maxHeight: 1600 }}
+      {...(foldState.projection ? { projection: foldState.projection } : {})}
       renderHeader={(api) => (
         <DeviceToolbar
           api={api}
+          foldState={foldState}
           hostLabel={hostLabel}
           canManage={canManage}
           ending={ending}
@@ -1292,6 +1323,7 @@ function onToolbarKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 
 function DeviceToolbar({
   api,
+  foldState,
   hostLabel,
   session,
   canManage,
@@ -1318,6 +1350,7 @@ function DeviceToolbar({
   onReconnect,
 }: {
   api: LiveSurfaceHeaderApi;
+  foldState: DeviceFoldState;
   hostLabel: string;
   session: MobileDeviceSession;
   canManage: boolean;
@@ -1346,6 +1379,8 @@ function DeviceToolbar({
   onReconnect: () => void;
 }) {
   const { surface, inputReady, sendInput } = api;
+  const narrow = useNarrowViewport();
+  const floatAwaitingChat = useFloatAwaitingChat();
   const live = surface.status === 'live';
   useEffect(() => onStreamLive(live), [live, onStreamLive]);
   const press = (button: LiveSurfaceDeviceButton) =>
@@ -1434,9 +1469,10 @@ function DeviceToolbar({
       id: 'float',
       label: floatAvailable
         ? 'Float over chat'
-        : 'Float over chat (open a chat first)',
+        : floatAwaitingChat
+          ? 'Floats in the next chat you open'
+          : 'Float in the next chat you open',
       glyph: <FloatGlyph />,
-      disabled: !floatAvailable,
       onSelect: onFloat,
     },
     {
@@ -1514,6 +1550,14 @@ function DeviceToolbar({
           </PaneOverflowMenu>
         </div>
       </div>
+      {foldState.fold ? (
+        <DeviceFoldControls
+          {...foldState.controls}
+          compact={narrow}
+          inputReady={inputReady}
+          sendInput={sendInput}
+        />
+      ) : null}
       {ended ? (
         <ErrorState
           variant="compact"

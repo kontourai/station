@@ -106,10 +106,24 @@ const HUB_CLIENT_ROUTES: readonly HubClientRoute[] = [
   {
     method: 'GET',
     pattern: new RegExp(
-      `^\\/vendor\\/serve-sim\\/helper\\/${UDID}\\/(stream\\.mjpeg|stream\\.avcc|config|health|ax|foreground)$`,
+      `^\\/vendor\\/serve-sim\\/helper\\/${UDID}\\/(stream\\.mjpeg|stream\\.avcc|config|health|ax|foreground|panel\\/[13]\\/stream\\.mjpeg)$`,
     ),
     purpose: 'view',
     device: { platform: 'ios', from: 'path' },
+  },
+  // A foldable emulator's hinge (hub 0.12+). GET reads the posture; POST
+  // folds or unfolds it, a side effect on the device.
+  {
+    method: 'GET',
+    pattern: /^\/vendor\/serve-emu\/api\/fold$/,
+    purpose: 'view',
+    device: { platform: 'android', from: 'query' },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/vendor\/serve-emu\/api\/fold$/,
+    purpose: 'drive',
+    device: { platform: 'android', from: 'query' },
   },
   // stream-settings refuses a `device` that is not its active emulator.
   {

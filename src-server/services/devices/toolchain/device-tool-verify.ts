@@ -175,6 +175,9 @@ export function verifyInstalledTree(
   for (const [path, entry] of Object.entries(pin.lock.packages)) {
     if (path === '') continue;
     const actual = recorded.packages[path];
+    // An optional package the install omitted is legitimately absent; one
+    // that IS present must still match its pin.
+    if (actual === undefined && entry.optional === true) continue;
     if (actual?.integrity !== entry.integrity)
       return {
         reason: 'integrity-mismatch',

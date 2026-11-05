@@ -159,6 +159,18 @@
   transform: translate(-50%, -50%);
 }
 
+/*
+ * A host projection (foldable devices): the canvas stays the input target
+ * but is not seen; the projection layer above it draws the frame.
+ */
+.live-surface__canvas--projected {
+  opacity: 0;
+}
+
+.live-surface__projection {
+  overflow: visible;
+}
+
 .live-surface__agent-action {
   position: absolute;
   inset: 0;
@@ -419,4 +431,74 @@
   right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
   top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
   z-index: 3;
+}
+
+/*
+ * The compact (phone-width) chrome: one row — who is in control as a chip,
+ * Take or Release control, the surface's primary control, More controls
+ * and Exit — with the surface's other controls in a panel under it while
+ * More controls is open.
+ */
+.live-surface-controls--compact {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.live-surface-controls__chip {
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  color: var(--k-text-muted);
+  flex: 0 1 auto;
+  font-size: 0.75rem;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px var(--k-space-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface-controls__chip[data-tone="you"] {
+  color: var(--k-text);
+}
+
+.live-surface-controls__chip[data-tone="agent"] {
+  color: var(--warning-text, var(--k-text));
+}
+
+/* The surface's primary control takes the row's spare width (a browser's
+   address truncates; a device's stand picker shrinks). */
+.live-surface-controls--compact > .live-surface-controls__slot {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.live-surface-controls__menu {
+  align-items: center;
+  border-top: 1px solid var(--k-line);
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  padding-top: var(--k-space-1);
+}
+
+/* With the compact bar (phone width; the component decides) its one row is
+   kept clear above the picture, so the picture is centred in the space
+   under it rather than under the bar. */
+.live-surface[data-immersive][data-compact] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
+}
+
+/* A browser's address in the compact row: it takes the spare width and
+   truncates, instead of a caption row of its own. */
+.live-surface-controls--compact .live-surface-controls__address {
+  contain: none;
+  flex: 1 1 auto;
+  order: 0;
+  text-align: start;
 }

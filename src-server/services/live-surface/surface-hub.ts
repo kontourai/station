@@ -520,6 +520,8 @@ export class LiveSurfaceHub {
     if (status.videoDegradedReason !== undefined)
       out.videoDegradedReason = status.videoDegradedReason;
     if (status.orientation !== undefined) out.orientation = status.orientation;
+    if (status.fold !== undefined)
+      out.fold = { ...status.fold, postures: [...status.fold.postures] };
     if (status.hostId !== undefined) out.hostId = status.hostId;
     return out;
   }

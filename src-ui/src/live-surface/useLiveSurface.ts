@@ -616,6 +616,7 @@ export function useLiveSurface(
                 videoMode,
                 videoDegradedReason,
                 orientation,
+                fold,
                 hostId,
               } = record.state;
               setProducerStatus((previous) =>
@@ -623,6 +624,8 @@ export function useLiveSurface(
                 previous.videoMode === videoMode &&
                 previous.videoDegradedReason === videoDegradedReason &&
                 previous.orientation === orientation &&
+                // A heartbeat re-sends the same fold as a new object.
+                JSON.stringify(previous.fold) === JSON.stringify(fold) &&
                 previous.hostId === hostId
                   ? previous
                   : {
@@ -630,6 +633,7 @@ export function useLiveSurface(
                       ...(videoMode ? { videoMode } : {}),
                       ...(videoDegradedReason ? { videoDegradedReason } : {}),
                       ...(orientation ? { orientation } : {}),
+                      ...(fold ? { fold } : {}),
                       ...(hostId ? { hostId } : {}),
                     },
               );
