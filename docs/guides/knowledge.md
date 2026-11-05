@@ -164,6 +164,7 @@ Corpus erasure can leave its before-images in a transaction journal until recove
 snapshots have their own retention. Erasure does not remove titles, categories,
 or link labels previously copied to a Neo4j graph; remove those copies separately.
 Briefs created outside Station before erasure may also retain the erased content.
+Record and file-graph responses started before erasure may still finish afterward.
 Agent-backed proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index

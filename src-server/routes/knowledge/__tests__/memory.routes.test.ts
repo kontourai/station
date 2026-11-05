@@ -103,6 +103,15 @@ test('erasure route requires owner confirmation and returns the actual proposal 
     enabled = false;
     expect((await request('owner')).status).toBe(404);
     enabled = true;
+    vi.spyOn(erasure, 'erase').mockRejectedValueOnce(
+      new Error('cleanup pending'),
+    );
+    const uncertain = await request('owner');
+    expect(uncertain.status).toBe(503);
+    expect(await uncertain.json()).toMatchObject({
+      code: 'ERASURE_UNAVAILABLE',
+      error: 'Erasure could not be confirmed. Retry with the same purgeId.',
+    });
     const response = await request('owner');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({

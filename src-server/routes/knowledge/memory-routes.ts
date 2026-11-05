@@ -351,7 +351,7 @@ export function createMemoryRoutes(deps: MemoryRouteDeps) {
         {
           success: false,
           code: 'ERASURE_UNAVAILABLE',
-          error: 'Erasure could not be confirmed. Check before trying again.',
+          error: 'Erasure could not be confirmed. Retry with the same purgeId.',
         },
         503,
       );
