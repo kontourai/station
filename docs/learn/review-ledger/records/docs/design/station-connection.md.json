@@ -5,9 +5,9 @@
 
   "state": "classified",
 
-  "summary": "Station connection and shared conversation design: dock authority, direct/relay transport, observation and delivery foundations implemented through 063bb00df3; remaining P2 surface adoptions are planned.",
+  "summary": "Implemented Station connection routing, relay, observation, delivery, legacy recovery and shared dock, Activity, attached-session, coding-tab, Task-history and Inbox ownership.",
 
-  "limits": "Purpose classification only. Browser execution results remain separate from source inspection, fixture layout and native/physical-provider qualification. No source review hashes or review notes are recorded before the final combined ledger commit.",
+  "limits": "Source inspection and deterministic fixtures do not establish release, installed native shells, physical devices or external providers. POSIX product journeys remain pending parent qualification; the Windows product attempt stopped before browser startup.",
 
   "sources": [
     "src-ui/src/connections/station-connection.ts",
@@ -48,6 +48,6 @@
   ],
 
   "checks": [
-    "Classification records the implementation/proposal boundary and named owners; final source reviews and freshness receipts are deferred until the P2 migrations finish."
+    "Classification records implemented ownership and pending parent qualification; append-only review notes separately identify the inspected claims and evidence limits."
   ]
 }

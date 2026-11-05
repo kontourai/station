@@ -1258,7 +1258,8 @@ negotiates `peerChatTunnelV1` and receiver `delegationLocalConversationV1` throu
 an authenticated `chat-connection` descriptor. The descriptor exposes identity,
 principal namespace and an operation ceiling, never the outbound credential.
 Allowed families cover bounded conversation/history/request/usage/catalog/media
-reads, live orchestration events and enumerated send, command, inbox, staging and
+reads, the exact `GET /api/settings/managed-policy` approval-summary read, live
+orchestration events and enumerated send, command, inbox, staging and
 checkpoint mutations. Unknown methods, leaves, query keys and commands are denied.
 Receiver schemas reparse bodies; foreground targets must be explicitly current.
 The receiver's [orchestration locality guard](../../src-server/routes/orchestration/orchestration.ts)

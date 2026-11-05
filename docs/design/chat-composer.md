@@ -304,14 +304,20 @@ relay chat's owner. New chats prefer a verified direct connection.
 The shared controller binds transcript, media, stats, inbox, steering, current-turn
 Stop and approval answers to that connection. Approval inspection proofs bind
 the request URL, content and authority; unsupported trust choices stay unavailable.
+The approval picker reads that Station's managed ceiling, not the host's. Server
+enforcement still applies when its summary cannot be read. A failed Stop stays
+visible and retryable; a failed Task stop keeps the confirmation open.
 Full access, arbitrary folders, remote mentions, offline copies/replay, personal
 defaults and local skill/workspace integrations are unavailable on relayed chats.
 
 Dock, Activity, attached records and coding tabs use the same conversation body.
-Attached records retain their read-only access and explicit Continue action.
+Attached records retain their read-only access and explicit **Continue in Station**
+action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
 publication removal still clears a member's readable records. Desktop and mobile
 Inbox share search, activation currency, snooze, dismissal and Undo.
+Child-work notices retain their Station and result source. A structured tool
+return updates an earlier provider summary without adding a duplicate notice.
 
 Request failures use the owning Station's shared translator. Source and target
 access failures name the appropriate Station; provider repair hints keep their
@@ -321,7 +327,7 @@ reference; an older unbound request directs the reader to its session.
 
 A definite refusal appears inside the ordinary not-sent user bubble with Retry
 and Edit, a short target-aware reason and closed Details. An uncertain send keeps
-its key and offers **Check delivery**; it is never automatically replayed remotely.
+its key and offers **Check**; it is never automatically replayed remotely.
 Retry requires safe non-delivery evidence. **Edit a copy** retains the uncertain
 original; Discard requires confirmation. Legacy chats without a source receipt
 retain text and draft and offer **Reconnect chat**, with explicit source confirmation

@@ -1260,7 +1260,7 @@ automatically. See [Scheduler identity and recovery](https://github.com/kontoura
 ## When Something Goes Wrong
 
 An access refusal names the Station to reconnect to or says it did not accept the
-message. Your draft stays editable. **Check delivery** is for an unanswered send;
+message. Your draft stays editable. **Check** is for an unanswered send;
 a refusal does not mean delivery is uncertain. Unknown technical errors use a
 short recovery message, with diagnostics in Details where available.
 

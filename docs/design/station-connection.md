@@ -1,15 +1,15 @@
 # Station connections and shared conversations
 
-> **Status: partially implemented design, 2026-11-04.** The dock connection,
-> relay, observation, delivery, migration and common-body foundations are
-> implemented through `063bb00df3`. Activity, attached sessions, shared history
-> and Inbox adoption below remain planned P2 work. This record does not establish
-> release, physical-provider or native-device qualification. The
+> **Status: implemented, 2026-11-05.** Connection routing, relay, observation,
+> delivery, legacy recovery and shared dock, Activity, attached-session, coding-tab,
+> Task-history and Inbox owners are implemented. Native shells, physical devices
+> and POSIX product journeys remain pending parent qualification. This record
+> does not establish release or physical-provider qualification. The
 > [chat composer policy](chat-composer.md) owns interaction decisions; the
 > [remote access threat model](../security/remote-access-threat-model.md) owns
-> authorization. Implementation must update those owners together.
+> authorization. Changes must update those owners together.
 
-The P1.1 foundation now lives in the [connection model](../../src-ui/src/connections/station-connection.ts),
+The connection foundation lives in the [connection model](../../src-ui/src/connections/station-connection.ts),
 [registry](../../src-ui/src/connections/station-connection-registry.ts),
 [resolver](../../src-ui/src/connections/resolve-station-connection.ts), and
 [authority boundary](../../src-ui/src/connections/StationConnectionsContext.tsx).
@@ -22,7 +22,9 @@ current route ceiling. The [relay policy](../../src-server/routes/environments/p
 and [routes](../../src-server/routes/environments/peer-chat-routes.ts) implement
 the bounded HTTP/SSE tunnel. [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx)
 and its [controller](../../src-ui/src/components/conversation/useConversationController.ts)
-own the dock's shared transcript and controls. [Outbound delivery](../../src-ui/src/lib/outboundQueue.ts)
+own shared conversation composition. Record adapters retain attached-session
+access and explicit **Continue in Station** into an owned child.
+[Outbound delivery](../../src-ui/src/lib/outboundQueue.ts)
 and [observation](../../src-ui/src/hooks/useServerEvents.ts) use owning-Station
 partitions. Focused JS tests establish diagnostic behavior only.
 
@@ -32,10 +34,10 @@ acceptance route. Their deterministic HTTP model is a provider fixture, not a
 physical external engine. Results and incomplete journey steps must be reported
 separately; spec presence and screenshots alone establish no authorization claim.
 Native direct/broker custody, installed shells and physical devices remain
-**NOT_VERIFIED** by this browser route. Review-ledger source reviews are deferred
-until the combined P2 migration commits are complete.
+**NOT_VERIFIED** by this browser route. The final review-ledger notes record
+source claims separately from these pending journeys.
 
-The P1.7 product command was attempted on Windows and stopped before browser
+The product command was attempted on Windows and stopped before browser
 startup: `assertSupportedE2EPlatform` requires POSIX process-group settlement and
 a separately owned host lane on Windows. Consequently all live journey steps,
 new viewport/theme captures and the reconnect clip are **NOT_VERIFIED** here.
@@ -79,12 +81,11 @@ does not pair the browser with the receiver.
 
 ## Connection model
 
-Introduce `StationConnectionRegistry` and `resolveStationConnection`, owned by
-a `StationConnectionsProvider` under the existing host authority/query provider.
-Keep saved Device profiles in `packages/connect`; the registry leases them and
-server peer relationships, rather than creating another credential store.
-Suggested implementation owners are `src-ui/src/connections/` for the model,
-registry, resolver, and React boundary.
+`StationConnectionRegistry` and `resolveStationConnection` are owned by
+`StationConnectionsProvider` under the existing host authority/query provider.
+Saved Device profiles stay in `packages/connect`; the registry leases them and
+server peer relationships. `src-ui/src/connections/` owns the model, registry,
+resolver and React boundary.
 
 A `StationConnection` exposes:
 
@@ -99,10 +100,12 @@ A `StationConnection` exposes:
 | `authorityNamespace` | Public owner partition, incorporating source authority and target request-principal identity/credential lineage. Never a bearer token. |
 | `runtimeKey` | Target base, authority key, and route generation; distinguishes caches and callbacks across endpoint/credential replacement. |
 | `isCurrent()` | Lease, source authority, target identity, endpoint, profile, binding, and route-generation fence. |
-| `events` | Ref-counted existing orchestration SSE stream plus status/resync interface. Same projection pipeline for all routes. |
 | `capabilities` | Connection ceiling in the single `ConversationCapabilities` vocabulary; narrowed by conversation/request state. |
-| `transport` | Bound `ConversationTransport`; components pass conversation/turn/request ids, never an arbitrary base or credential. |
-| `describeFailure` | Shared failure translator bound to target name and source/target authority. |
+
+The connection is data and a currentness check. Its consumers compose the
+ref-counted orchestration stream, `createConversationTransport(connection)` and
+`describeStationFailure(error, context)`; these are not fields on the connection.
+Controls pass conversation, turn and request ids to the bound transport.
 
 The [SDK authority check](../../packages/sdk/src/client/http.ts) requires
 `requestScope.apiBase` to equal the configured credential authority base, with
@@ -156,6 +159,15 @@ Stop presentation also takes a typed intent: interrupt the current turn
 (immediate) or stop a whole delegated Task (confirmation). This is an action's
 semantics, not another capability vocabulary. Approval choices are narrowed by
 the exact request's offered actions and content-binding/trust eligibility.
+`ConversationStopControl` awaits the action, prevents duplicate clicks and keeps
+a translated failure visible; a failed Task stop keeps its confirmation open.
+It does not report the work stopped merely because the request was attempted.
+
+The [managed-policy provider](../../src-ui/src/contexts/ManagedPolicyContext.tsx)
+reads the owning connection's approval ceiling with its target, authority and
+route generation. A remote composer never inherits the host's ceiling. If that
+read is unavailable, server enforcement still applies. Relay admits only the
+exact `GET /api/settings/managed-policy` summary read, not settings administration.
 
 Map `callerAccess`, `READ_ONLY_UI_BLOCK_ACTIONS`, `sessionUnanswerable`,
 task-room `messageWrite/historyRead`, and implicit request-context checks into
@@ -192,18 +204,16 @@ new relay features require a negotiated protocol, not a permissive fallback.
 
 ## Direct credentials are in scope
 
-Direct routing ships in this refactor. Deferring it would violate the requested
-route preference and leave two target-selection models. It reuses existing
+Direct routing is implemented. It reuses existing
 Device trust and native/broker owners; it does not expand what a native broker
 can carry. A broker route that currently permits only protected reads remains
 read-only, even when a peer chat could otherwise send.
 
-[StationCredentialBridge](../../src-ui/src/contexts/ApiBaseContext.tsx) currently
-captures only the active profile at request issue. Extend the SDK resolver to
-receive a request selector (URL and snapshotted `requestScope`) and extend
-`packages/connect/src/react/ConnectionsContext.tsx` with an explicit
+[StationCredentialBridge](../../src-ui/src/contexts/ApiBaseContext.tsx) resolves
+the SDK request selector (URL and snapshotted `requestScope`) through
+`packages/connect/src/react/ConnectionsContext.tsx`'s explicit
 `captureCredentialEvidenceForConnection(id)` and corresponding currentness
-check. Preserve the no-argument active-capture contract for existing consumers.
+check. The no-argument active-capture contract remains for existing consumers.
 Do not temporarily switch the active connection to service another chat.
 
 Resolve scoped requests by an exact registered authority/connection lease and
@@ -279,6 +289,13 @@ session, or client-turn id alone across Stations.
 | Host services | Keep `ServerEventsMount`'s general events on the host. Peer orchestration streams use `general=false` and `sharedRealtime=false`; they must not update host account/config/project shell state. |
 | Unsupported remote enrichments | Disable mentions, offline saving, replay, legacy `/messages` hydration, personal approval defaults and skill/workspace integrations until they have target-scoped protocols. Do not substitute host data. Expected-engine validation uses the target's catalog; omit an unavailable optional hint rather than borrowing the host engine. |
 
+Child-work retention keeps reporter aliases through continuation and reconciles
+snapshots only inside the owning Station partition. Structured tool returns can
+replace provider-summary notices without duplicating them; the result retains
+its source and Station attribution. The [merge integration tests](../../src-ui/src/components/conversation/__tests__/merge-integration.test.tsx)
+exercise colliding host/peer child ids, retained aliases and owning-policy reads.
+They are component/event evidence, not physical two-Station qualification.
+
 The disabled enrichments are explicit capability limitations, not deferred
 repairs to the ten duplication findings. Device-local return-key settings,
 speech input, accessibility, draft preservation and layout remain shared.
@@ -291,10 +308,10 @@ durable possibly delivered evidence remains held.
 
 S is the source Station holding a server-owned peer credential for receiver R.
 Keep [peer-chat-routes](../../src-server/routes/environments/peer-chat-routes.ts)
-as the authenticated boundary. Introduce one pure, tested method/path policy
+as the authenticated boundary. One pure, tested method/path policy is
 used both there and by
 [EnvironmentSecurityService.authorizeCredential](../../src-server/services/ssh/environment-security-service.ts).
-Replace `PEER_CHAT_WRITE_LEAF` with this policy's allowed mutation set, only for
+Its allowed mutation set replaces `PEER_CHAT_WRITE_LEAF` for
 current owner-device standing. The existing operator path remains. Do not
 exempt the whole peer subtree.
 
@@ -319,21 +336,20 @@ the table, `:id` is one validated decoded segment, not an arbitrary suffix.
 | Commands | POST `commands` restricted to `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession` and `discardDraft`; GET exact command receipt(s). These are the actual wire discriminants. |
 | Transcript and requests | GET session content, request/content-binding, input-request and child-work transcript/instructions leaves required by shared readers. Child instructions write stays denied until separately admitted and tested. |
 | Checkpoints and usage | GET checkpoint/restore history, usage-limit/tree/stat reads consumed by shared controls; POST exact restore-preview/restore only. No goal or other session mutation wildcard. |
-| Target choices | GET exact Projects list, agents list/detail, orchestration provider list/commands/models, `/api/connections/agents` and `/api/connections/models`. Read projected catalogs only, never secret/config indexes or model-inventory requiring inference scope. |
+| Target choices | GET exact Projects list, agents list/detail, orchestration provider list/commands/models, `/api/connections/agents` and `/api/connections/models`. The exact `/api/settings/managed-policy` GET exposes the approval-policy summary. No secret/config indexes or model-inventory requiring inference scope. |
 | Attachments | GET exact attachment bytes and staging capability; POST staging prepare/reconcile, PUT one stage, DELETE one stage. Bound each body with its domain limit. |
 
 Always deny peer/enrollment/pairing/auth/access/users/people/groups, config,
-settings/secrets, connections writes and credential/sign-in leaves, ACP,
+settings/secrets except that summary read, connections writes and credential/sign-in leaves, ACP,
 terminals, unattended grants, station-control, `chat/background`,
 `chat/delegated`, delegations, handoff, adoption and unknown-work release.
 Canonicalize once; reject encoded separators, nested encodings, traversal,
 invalid segments, unsupported query keys and excessive query/body sizes.
 Request budget, CSRF, scope coverage and agent-origin checks remain active.
 
-Keep body reparsing for every admitted mutation. Reject spoofed actor,
-delegation, preparation and background fields; do not forward arbitrary JSON.
-Explicitly preserve supported `whenBusy:'queue'` in the relay chat schema:
-the current `foregroundMessageObjectSchema` drops it. Inbox/continue payloads
+Every admitted mutation reparses its body and rejects spoofed actor,
+delegation, preparation and background fields. The relay chat schema explicitly
+preserves supported `whenBusy:'queue'`. Inbox/continue payloads
 must retain idempotency and expected-binding fields while forbidding a saved
 environment or caller cwd.
 
@@ -351,10 +367,9 @@ safe foreground continuation/inbox contract as `delegationLocalConversationV1`.
 An older receiver without that contract has those operations unavailable. Missing
 evidence about a path is not permission to tunnel it.
 
-Attachment uploads need a deliberate adapter. The current SDK uploads with an
-ephemeral stage grant as `Authorization`, which cannot authenticate a request
-to S's chat subtree. For relay, send through the scoped SDK transport using S
-authority, carrying the stage grant in one explicitly supported
+The attachment adapter keeps direct stage-grant authentication separate from
+relay authentication. Relay uploads use the scoped SDK transport with S's
+authority, carrying the stage grant in the explicitly supported
 `X-Station-Attachment-Upload-Grant` header. S forwards that grant as R's
 Authorization only on the validated PUT-stage leaf; all other target requests
 use the saved peer bearer. Never forward inbound browser Authorization, cookies,
@@ -366,10 +381,8 @@ fake upload progress when a transport cannot measure it.
 ### Live SSE and authority currency
 
 [fetchRemoteStation](../../src-server/services/remote-stations/remote-station-forwarder.ts)
-buffers `response.text()` under a whole-body timeout; it cannot carry a live
-SSE stream or safely preserve arbitrary binary attachment bytes. Add a separate
-byte-preserving forwarder for bounded media responses and a streaming forwarder
-for SSE with a headers-only timeout,
+buffers `response.text()` under a whole-body timeout. Separate byte-preserving
+and streaming forwarders carry bounded media and SSE with a headers-only timeout,
 client-disconnect abort, `redirect:'error'`, backpressure, and bounded error
 response handling. Copy only Accept, Last-Event-ID, X-Station-Client-Session and
 X-Station-Stream-Epoch, plus the server-selected receiver credential and canonical
@@ -448,8 +461,8 @@ explicit/bounded recovery operation, not periodic transcript polling.
 
 ## Shared surface owners and deletions
 
-Extract `ConversationBody` and `useConversationController` from the dock's
-established transcript/composer path. `ChatDockBody` becomes the dock shell
+`ConversationBody` and `useConversationController` own the dock's established
+transcript/composer path. `ChatDockBody` is the dock shell
 adapter, with record/compact densities chosen as presentation options. Densities
 change spacing and transcript framing, not authority, return-key behavior,
 delivery, approval content checks or Stop semantics. Keep virtualization, tool
@@ -457,16 +470,16 @@ expansion, Markdown, attachments and accessibility shared.
 
 | Audit finding | End state / retired implementation |
 | --- | --- |
-| 1. Mutable session detail versus dock | MutableSessionDetail uses ConversationBody at record density. Remove its transcript/reply/request-card/Stop/error orchestration; retain session metadata and evidence panels. Retire SessionTranscript and SessionReplyComposer after all callers migrate. |
-| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer, with its real attached-session permissions and existing continue-as-owned-child action. Delete its MessageBubble loop, textarea, SVG send and hard-coded Enter handler. Read-only attachment must remain read-only. |
-| 3. Five Stops | One ConversationStopControl and controller implement immediate turn interrupt versus confirmed Task stop, busy state and translated failures. ComposerStopButton becomes the sole styled leaf or is absorbed into that control; remove all other Stop UI/confirmation policy. |
-| 4. Delivery notes | MessageDeliveryNote accepts a DeliveryPort (state/check/retry/edit/discard) instead of reading activeChatsStore. Migrate child instruction, review, queued, unsent and peer states; remove their independent status sentences and retry policy. Preserve any semantically distinct queued/received/refused/uncertain state. |
-| 5. Approval controls | One useApprovalAnswering with the connection/Task port, plus existing sheet/strip/input components. Migrate ToolCallDisplay, ChatMessageList, attention cards and details. No direct per-surface answer/check mutation or reduced trust/content gate. |
-| 6. Target and capability leaks | ConversationConnectionContext is required by shared surfaces. Replace ChatRequestContext and host fallback reads. File/media bytes, checkpoints and content use its target and capabilities. Delete the context-exists-means-text-only rule and parallel capability derivations. |
-| 7. Remote start fork | One target-aware start controller and target catalog/Project picker for ordinary chats. Portable Run on a Station stays a distinct Task action with its existing consent. Remove usePeerChatStart and PeerChatBody and the ChatDockContentArea peer branch. Both dock headers show the owning Station. |
-| 8. Shared-task history fork | One SharedTaskHistoryList with records, paging, loading/empty/partial/error recovery and capability inputs. Owner/guest/member adapters retain their APIs and redaction. Replace all three record maps and the member preformatted fallback. |
-| 9. Mobile/desktop Inbox | One useInboxPanelController owns activation currency, search/filter, snooze/dismiss/undo and errors. Existing shells own layout/gestures/focus elements. Remove their duplicate mutation wiring; stale results cannot focus another conversation. |
-| 10. Failure translation | One authority-aware translator for network failures, composed with domain translations. Migrate describeReadFailure, SessionDetailErrors, child-work/inventory/review and other audited user-facing sinks; remove local 401/403 classifiers and raw message/code output. |
+| 1. Mutable session detail versus dock | MutableSessionDetail uses ConversationBody at record density and retains session metadata and evidence panels. SessionTranscript and SessionReplyComposer are deleted. |
+| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer with its real permissions and confirmed Continue in Station action. Its separate message loop and textarea are deleted; the original record remains read-only. |
+| 3. Five Stops | ConversationStopControl and the controller own immediate turn interruption, confirmed Task stop, busy state and translated failures. ComposerStopButton is the styled leaf. |
+| 4. Delivery notes | MessageDeliveryNote takes a DeliveryPort instead of reading activeChatsStore. Child instruction, review, queued, unsent and peer adapters retain distinct queued/received/refused/uncertain states through that port. |
+| 5. Approval controls | useApprovalAnswering owns answers and inspection through connection/Task ports for ToolCallDisplay, ChatMessageList, attention cards and details. Existing trust and content gates remain. |
+| 6. Target and capability leaks | ConversationConnectionContext replaces ChatRequestContext. Shared file/media, checkpoint and content readers use its target and capabilities. |
+| 7. Remote start fork | The target-aware start controller reads the target's catalogs and Projects. usePeerChatStart, PeerChatBody and the peer-only body branch are deleted. Portable Run on a Station retains its separate Task consent. Both dock headers show the owning Station. |
+| 8. Shared-task history fork | SharedTaskHistoryList owns records, paging, loading/empty/partial/error recovery and capability inputs. Owner/guest/member adapters retain their APIs and redaction. |
+| 9. Mobile/desktop Inbox | useInboxPanelController owns activation currency, search/filter, snooze/dismiss/undo and errors. Existing shells own layout, gestures and focus elements; stale activation results cannot focus another conversation. |
+| 10. Failure translation | describeStationFailure composes network/authority attribution with domain translation for read errors, session details, child work, inventory, review and registered error publishers. Raw messages remain diagnostic. |
 
 Registry/adapters are domain boundaries, not permission to build route-specific
 UI copies. Shared-task history records are not fabricated chat messages; reuse
@@ -538,7 +551,7 @@ composition, not the target's underlying access grant.
 
 ## Documentation and acceptance
 
-Implementation updates these owners in the same PR as the behavior they describe:
+The implementation updates these owners in the same PR as the behavior they describe:
 
 - [Chat composer](chat-composer.md): replace the polling/forked-body description,
   name shared controls, route indication, refusals and recovery.

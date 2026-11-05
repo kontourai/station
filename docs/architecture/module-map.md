@@ -4587,6 +4587,14 @@ receives owner/member/guest history projections and paging ports without changin
 their publication or redaction rules. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
 owns activation currency, search, snooze, dismissal and undo for both Inbox shells.
 
+The owning connection also scopes the managed approval-policy summary; remote
+controls never inherit the host's ceiling. Shared Stop awaits its action and
+retains translated failures, including a failed Task-stop confirmation. Child-work
+snapshots, retained reporter aliases and result notices stay in their Station
+partition; a structured tool return can replace a provider summary while retaining
+result provenance. [Merge integration fixtures](../../src-ui/src/components/conversation/__tests__/merge-integration.test.tsx)
+exercise these boundaries without qualifying native shells or physical devices.
+
 [describeStationFailure](../../src-ui/src/utils/stationFailure.ts) translates request
 failures at this boundary, composing provider repair policy with source/target
 attribution. A relay refusal needs the source-authored observation, current lease,

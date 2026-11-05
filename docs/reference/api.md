@@ -13,7 +13,9 @@ this source protocol; missing receiver support does not enable a polling fallbac
 methods, bounded queries and bodies in the [policy](../../src-server/routes/environments/peer-chat-policy.ts).
 Families include chat/continue, commands/receipts, open/event-window/live events,
 inbox/delivery lookup, requests/content, checkpoints, usage, projected catalogs
-and attachment staging/media. Command discriminants are `interruptTurn`,
+and attachment staging/media. The exact `GET /api/settings/managed-policy` reads
+the receiver's approval-policy summary; settings writes remain denied.
+Command discriminants are `interruptTurn`,
 `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession`
 and `discardDraft`. Arbitrary session mutations and onward remote execution are
 denied. Foreground targets must explicitly select the current receiver; its
