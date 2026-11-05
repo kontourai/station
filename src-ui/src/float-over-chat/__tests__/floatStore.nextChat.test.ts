@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
+import type { FloatSource } from '../floatSource';
 import {
   registerFloatHost,
   requestFloat,
@@ -9,14 +10,15 @@ import {
 
 /** A float asked for while no chat is open (a phone: one pane at a time). */
 
-const SOURCE = {
+const SOURCE: FloatSource = {
   kind: 'device',
   hostId: 'local',
   platform: 'ios',
   deviceId: 'D1',
   surfaceId: 'device:ios:s1',
+  projectSlug: null,
   name: 'iPhone Duo',
-} as const;
+};
 
 afterEach(() => resetFloatStoreForTests());
 
