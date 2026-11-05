@@ -411,7 +411,8 @@ invalidates the integrations queries.
 The SDK root exports `fetchManagedPolicyStatus(apiBase?)` and
 `useManagedPolicyStatusQuery(apiBase?, config?)`, which read
 `GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
-the server loaded at startup. The reader validates the response with
+the server loaded at startup. After a successful response, the reader lazily
+loads the status decoder and validates the response with
 `parseManagedPolicyStatus` from
 `@kontourai/station-contracts/managed-policy-status` and throws on a malformed
 one rather than reading it as unmanaged. A host older than the route answers

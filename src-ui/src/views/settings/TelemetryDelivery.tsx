@@ -1,4 +1,4 @@
-import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy-status';
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy-controls';
 import type {
   TelemetryConnectionProbeStatus,
   TelemetryRequestFailureCode,

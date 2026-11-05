@@ -1,7 +1,7 @@
 import {
   type ManagedPolicySummary,
   managedRemoteClientsStatement,
-} from '@kontourai/station-contracts/managed-policy-status';
+} from '@kontourai/station-contracts/managed-policy-controls';
 import type { MouseEvent } from 'react';
 import { openExternalLink } from '../../platform/openExternalLink';
 

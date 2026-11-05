@@ -4,7 +4,7 @@ import {
   clampApprovalModeToCeiling,
   type ManagedPolicySummary,
   managedApprovalCeiling,
-} from '@kontourai/station-contracts/managed-policy-status';
+} from '@kontourai/station-contracts/managed-policy-controls';
 import {
   type ApprovalMode,
   type ConcreteApprovalMode,
