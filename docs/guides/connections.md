@@ -2163,7 +2163,8 @@ API or UI-proxy port. This proves daemon configuration, not reachability from a
 phone. `ALLOWED_ORIGINS` is not used as mapping evidence. Which Serve origin is
 trusted as this Station's own (see [Saved Station addresses](#saved-station-addresses))
 does not use this 30-second cache: that admission has its own single-flight
-daemon read, trusted for at most 1 second, and refused when the daemon fails or
+daemon read, trusted for at most 1 second from when it started, and refused
+when a reply comes later than that, when the daemon fails, or when it
 takes more than 3 seconds. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.

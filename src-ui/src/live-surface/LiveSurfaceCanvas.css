@@ -207,7 +207,8 @@
   }
 }
 
-/* Why input did not take effect: one slim line over the top of the surface
+/* Why input did not take effect: one slim banner (a line, or two on a phone,
+   never cut off) over the top of the surface
    (where the person is looking, and above a phone's on-screen keyboard),
    never a card that pushes the picture down. Outside the zoom layer, so it
    neither scales nor pans; above the corner buttons, and clear of Reset
@@ -271,10 +272,8 @@
   line-height: 1.3;
   margin: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   padding: var(--k-space-1) 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .live-surface__input-notice .empty__action {
@@ -355,6 +354,14 @@
 .live-surface__zoom-reset {
   left: var(--k-space-1);
   top: var(--k-space-1);
+}
+
+/* In immersive mode the controls bar owns the top edge: the zoom level sits
+   in the bottom corner instead, where no chrome is. */
+.live-surface[data-immersive] .live-surface__zoom-reset {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--k-space-1));
+  left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
+  top: auto;
 }
 
 .live-surface__fullscreen {

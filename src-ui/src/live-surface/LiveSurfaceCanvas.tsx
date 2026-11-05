@@ -830,7 +830,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     shiftKey: boolean;
   }
 
-  const sendPress = (press: Press) => {
+  /** `lineage`: the control lineage the press was made in (see `sendInput`). */
+  const sendPress = (press: Press, lineage?: number) => {
     const { point } = press;
     const at = now();
     const last = lastDownRef.current;
@@ -858,7 +859,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     }
     const modifiers = modifiersOf(press);
     if (modifiers) input.modifiers = modifiers;
-    sendInput([input]);
+    sendInput([input], lineage === undefined ? undefined : { lineage });
   };
 
   // ---- touch: pinch zoom, and presses held back until they are not one ----
@@ -876,6 +877,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const zoomPointersRef = useRef(new Set<number>());
   const pendingPressRef = useRef<{
     press: Press;
+    /** The control lineage at the finger's down: it goes out only in it. */
+    lineage: number;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const lastTouchDownRef = useRef<{ at: number; x: number; y: number } | null>(
@@ -900,7 +903,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     clearTimeout(pending.timer);
     pendingPressRef.current = null;
     if (!mayPressRef.current()) return;
-    sendPressRef.current(pending.press);
+    sendPressRef.current(pending.press, pending.lineage);
   };
   const flushPendingPressRef = useRef(flushPendingPress);
   flushPendingPressRef.current = flushPendingPress;
@@ -1046,6 +1049,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     dropPendingPress();
     pendingPressRef.current = {
       press,
+      lineage: surface.controlLineage(),
       timer: setTimeout(
         () => flushPendingPressRef.current(),
         TOUCH_PRESS_HOLD_MS,
@@ -1508,6 +1512,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       className="live-surface"
       ref={containerRef}
       data-immersive={immersive ? '' : undefined}
+      // Immersive owns Escape (it leaves full screen): the app's own Escape
+      // shortcuts, such as "Go up one level", yield while it is active.
+      data-escape-owner={immersive ? '' : undefined}
       // Diagnostics only (devtools, tests): what this viewer draws. Not
       // shown; a codec name is not something the person acts on.
       data-codec={

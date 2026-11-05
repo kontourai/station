@@ -88,6 +88,75 @@ describe('runtime origin gate: owned Serve origin admission is not stale', () =>
     expect(await h.request()).toBe(403);
   });
 
+  test('a slow daemon reply never extends trust: the bound counts from when the read began', async () => {
+    const host = HOST;
+    const config: Record<string, unknown> = {
+      TCP: { 443: { HTTPS: true } },
+      Web: {
+        [`${host}:443`]: {
+          Handlers: { '/': { Proxy: 'http://127.0.0.1:3141' } },
+        },
+      },
+    };
+    const clock = { now: 100_000 };
+    let release!: (reply: { exitCode: number; stdout: string }) => void;
+    let first = true;
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3141],
+      now: () => clock.now,
+      admissionTimeoutMs: 10_000,
+      cli: async (args: readonly string[]) => {
+        if (args[0] === 'status')
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              Self: { DNSName: `${host}.`, Online: true },
+            }),
+          };
+        const stdout = JSON.stringify(config);
+        if (!first) return { exitCode: 0, stdout };
+        first = false;
+        // The daemon answered with the owned configuration, but the reply
+        // is slow to arrive.
+        return new Promise((resolve) => {
+          release = () => resolve({ exitCode: 0, stdout });
+        });
+      },
+    });
+    const app = new Hono();
+    configureRuntimeRouteClassificationGate(
+      app as never,
+      {
+        originPolicy: createStationOriginPolicy({
+          configured: [],
+          isOwnedOrigin: resolver.isOwnedOrigin,
+        }),
+      },
+      (path) => path,
+    );
+    app.post(PATH, (c) => c.json({ reached: true }, 202));
+    const request = async () =>
+      (await app.request(PATH, { method: 'POST', headers: { Origin: ORIGIN } }))
+        .status;
+    const pending = request();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Meanwhile the origin is shared and exposed through Funnel.
+    (config.Web as Record<string, { Handlers: object }>)[
+      `${host}:443`
+    ]!.Handlers = {
+      '/': { Proxy: 'http://127.0.0.1:3141' },
+      '/evil': { Proxy: 'http://127.0.0.1:9000' },
+    };
+    config.AllowFunnel = { [`${host}:443`]: true };
+    clock.now += 2_500;
+    release({ exitCode: 0, stdout: '' });
+    // Evidence 2.5 s old is past the 1 s bound: refused.
+    expect(await pending).toBe(403);
+    // 3.5 s after the evidence was taken: not admitted on it either.
+    clock.now += 999;
+    expect(await request()).toBe(403);
+  });
+
   test('a burst of admissions shares one daemon read', async () => {
     const h = harness();
     const statuses = await Promise.all(

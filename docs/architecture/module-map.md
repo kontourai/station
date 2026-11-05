@@ -5464,9 +5464,11 @@ A producer may refuse an event for a reason the viewer can act on
 page dialog waits for its person), which reaches the viewer as that code
 rather than `dispatch-failed`. Any other producer error is logged (surface,
 input kind and type, bounded cause; never key or text) and reaches the viewer
-as `dispatch-failed`, which the canvas shows over the surface with a Retry
-that re-sends only the events the result says were not delivered. It cannot
-cancel an arbitrary producer effect already in flight.
+as `dispatch-failed`. The event that failed may already have applied, so the
+canvas says the input may not have reached the page and sends nothing again.
+Retry is offered only for a batch the host refused before dispatching any of it
+(`surface-busy`), kept whole as one gesture in the control lineage it was made
+in. The registry cannot cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
@@ -5525,7 +5527,9 @@ not shown. It owns the one viewer for
 every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
 whose client rect the pointer mapping already reads), touch presses held back
 until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
-element over the viewport, with the Fullscreen API where it is granted). The
+element over the viewport, with the Fullscreen API where it is granted; while
+active it marks itself `data-escape-owner`, so Escape leaves full screen and
+the app's own Escape shortcuts yield). The
 shared chrome is `LiveSurfaceViewerControls.tsx`. A surface kind extends the
 full-screen bar only through `renderImmersiveActions(api)`, for example
 `BrowserImmersiveNav` or `DeviceImmersiveActions`. A host may also pass a `projection` that
@@ -5534,7 +5538,12 @@ view and its float use one to draw a foldable's display bent at its hinge. Such 
 host reads the surface's producer status through `onProducerStatus`, which
 keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
-responses from the previous target. This does not yet bind the queue to a
+responses from the previous target. Within a target, every input item carries
+the control lineage it was created in (`useLiveSurface`'s `controlLineage`): it
+advances on every change of control except this device's own takeover by input.
+Queued input, a held-back press and a kept gesture are checked against it
+immediately before dispatch, and an answer for an ended lineage is ignored, so
+input never crosses a change of control. This does not yet bind the queue to a
 credential generation.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed

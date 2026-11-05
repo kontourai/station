@@ -83,9 +83,28 @@ const busy = () =>
   Response.json({ success: false, code: 'surface-busy' }, { status: 503 });
 
 /** The live view's markup with the host-busy notice (and Retry) showing. */
-async function markupWithNotice(options: { immersive: boolean }) {
+const dispatchFailed = (body: { epoch: number }) =>
+  Response.json({
+    success: true,
+    data: {
+      ok: false,
+      code: 'dispatch-failed',
+      accepted: 0,
+      lease: lease(body.epoch, MY_HOLD),
+    },
+  });
+
+async function markupWithNotice(options: {
+  immersive: boolean;
+  /** The indeterminate failure (the longest copy, no Retry). */
+  indeterminate?: boolean;
+  /** Pinch to zoom in before capturing. */
+  zoomed?: boolean;
+}) {
   layoutStage({ width: 390, height: 244 });
-  const h = canvasHarness({ inputReply: busy });
+  const h = canvasHarness({
+    inputReply: options.indeterminate ? dispatchFailed : busy,
+  });
   let control: LiveSurfaceControlState | undefined;
   const { container } = await renderCanvas(
     h,
@@ -93,6 +112,21 @@ async function markupWithNotice(options: { immersive: boolean }) {
       onControlState: (state) => {
         control = state;
       },
+      // A Browser's own actions, as its pane adds them: the bar is as wide
+      // as it is in the real pane.
+      renderImmersiveActions: () => (
+        <>
+          <button type="button" className="live-surface-controls__action">
+            Back
+          </button>
+          <button type="button" className="live-surface-controls__action">
+            Forward
+          </button>
+          <button type="button" className="live-surface-controls__action">
+            Reload
+          </button>
+        </>
+      ),
     },
     lease(0, MY_HOLD),
   );
@@ -107,9 +141,29 @@ async function markupWithNotice(options: { immersive: boolean }) {
     pointerId: 1,
   });
   await flush();
-  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  if (!options.indeterminate)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  if (options.zoomed) {
+    const canvas = screen.getByTestId('live-surface-canvas');
+    const finger = (pointerId: number, clientX: number) => ({
+      pointerId,
+      pointerType: 'touch',
+      button: 0,
+      clientX,
+      clientY: 120,
+    });
+    fireEvent.pointerDown(canvas, finger(11, 170));
+    fireEvent.pointerDown(canvas, finger(12, 220));
+    fireEvent.pointerMove(canvas, finger(11, 120));
+    fireEvent.pointerMove(canvas, finger(12, 270));
+    fireEvent.pointerUp(canvas, finger(11, 120));
+    fireEvent.pointerUp(canvas, finger(12, 270));
+    await flush();
+    expect(screen.getByRole('button', { name: /^Zoom \d+%/ })).toBeTruthy();
+  }
   const root = container.querySelector('.live-surface') as HTMLElement;
   const html = root.outerHTML;
+  if (options.indeterminate || options.zoomed) return { html, without: html };
   // The same view with no notice: the stage's box must not change.
   const without = html.replace(
     /<div role="alert" class="error-state live-surface__input-notice">[\s\S]*?<\/button><\/div><\/div><\/div>/,
@@ -183,6 +237,24 @@ async function layOut(
                 Number.parseFloat(getComputedStyle(label).lineHeight),
             )
           : 0,
+        // The whole sentence is shown: nothing clipped or ellipsized.
+        labelClipped: label
+          ? label.scrollWidth > label.clientWidth + 1 ||
+            label.scrollHeight > label.clientHeight + 1 ||
+            getComputedStyle(label).textOverflow === 'ellipsis'
+          : true,
+        labelText: label?.textContent ?? '',
+        zoomBadge: box('.live-surface__zoom-reset'),
+        zoomBadgeHit: (() => {
+          const badge = document.querySelector('.live-surface__zoom-reset');
+          if (!badge) return false;
+          const rect = badge.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          );
+          return !!hit && badge.contains(hit);
+        })(),
         text: document.body.textContent ?? '',
       };
     });
@@ -247,6 +319,60 @@ test.each([
     expect(notice.top).toBeGreaterThanOrEqual(controls.top + controls.height);
     expect(shown.hitIsNotice).toBe(true);
     expect(retry.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  },
+  120_000,
+);
+
+test.each([
+  { theme: 'dark', viewport: { width: 390, height: 844 } },
+  { theme: 'light', viewport: { width: 412, height: 915 } },
+  // Narrower than the sentence's one line: it wraps rather than cuts off.
+  { theme: 'dark', viewport: { width: 320, height: 700 } },
+] as const)(
+  'the "may not have reached the page" sentence is readable in full on a phone ($theme, $viewport.width px)',
+  async ({ theme, viewport }) => {
+    const { html } = await markupWithNotice({
+      immersive: false,
+      indeterminate: true,
+    });
+    const shown = await layOut(
+      html,
+      viewport,
+      theme,
+      `input-notice-indeterminate-${theme}-${viewport.width}`,
+    );
+    expect(shown.labelText).toBe(
+      'Your last input may not have reached the page. Check it.',
+    );
+    expect(shown.labelClipped).toBe(false);
+    expect(shown.labelLines).toBeLessThanOrEqual(2);
+    expect(shown.hitIsNotice).toBe(true);
+  },
+  120_000,
+);
+
+test.each([
+  { theme: 'dark', viewport: { width: 390, height: 844 } },
+  { theme: 'light', viewport: { width: 1440, height: 900 } },
+] as const)(
+  'zoomed in immersive mode, the zoom level is visible and clear of the controls ($theme, $viewport.width px)',
+  async ({ theme, viewport }) => {
+    const { html } = await markupWithNotice({ immersive: true, zoomed: true });
+    const shown = await layOut(
+      html,
+      viewport,
+      theme,
+      `zoom-badge-immersive-${theme}-${viewport.width}`,
+    );
+    const { zoomBadge, controls } = shown;
+    if (!zoomBadge || !controls) throw new Error('not rendered');
+    const overlaps =
+      zoomBadge.left < controls.left + controls.width &&
+      controls.left < zoomBadge.left + zoomBadge.width &&
+      zoomBadge.top < controls.top + controls.height &&
+      controls.top < zoomBadge.top + zoomBadge.height;
+    expect(overlaps).toBe(false);
+    expect(shown.zoomBadgeHit).toBe(true);
   },
   120_000,
 );

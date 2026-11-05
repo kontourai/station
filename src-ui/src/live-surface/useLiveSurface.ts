@@ -164,7 +164,22 @@ export interface UseLiveSurfaceResult {
   activeCodec: LiveSurfaceCodec | null;
   /** Stop asking for H.264 for this target and reconnect for images. */
   declineH264: () => void;
-  sendInput: (events: LiveSurfaceInput[]) => void;
+  /**
+   * Queue input for the surface. Each event belongs to the control lineage
+   * current when it was created (`options.lineage`, else now) and is sent
+   * only while that lineage is still current: input never crosses a change
+   * of control (see `controlLineage`).
+   */
+  sendInput: (
+    events: LiveSurfaceInput[],
+    options?: { lineage?: number },
+  ) => void;
+  /**
+   * The current control lineage: it advances whenever control changes hands,
+   * except this viewer's own takeover by its input. Read it when input is
+   * created (e.g. a held-back press) and pass it to `sendInput`.
+   */
+  controlLineage: () => number;
   /**
    * Input the host refused before dispatching any of it (`host-busy`), kept
    * at the control epoch it was meant for and sendable with `retryInput`.
@@ -361,32 +376,68 @@ export function useLiveSurface(
   }, []);
   const epochRef = useRef(0);
   const targetGenerationRef = useRef(0);
+  /**
+   * The control lineage every input item carries from the moment it is
+   * created. The server's epoch also advances on this viewer's own takeover
+   * by input (its queued input must still go, at the new epoch), so the
+   * lineage, not the epoch, is what input is checked against: it advances on
+   * every other change of control, and never on this device's own step to
+   * the next epoch.
+   */
+  const lineageRef = useRef(0);
+  const selfRef = useRef<LiveSurfaceViewerIdentity | null>(null);
+  selfRef.current = self;
+  const inFlightRef = useRef(false);
+  /** Buttons/keys this client pressed and has not released. */
+  const pressedRef = useRef(new Set<string>());
+  /** Pressed when control changed hands; the server released them already. */
+  const orphanedRef = useRef(new Set<string>());
 
   /**
-   * Input the host refused before dispatching any of it, kept for
-   * `retryInput` with the control epoch it was sent at. `open` names the
-   * presses in it not yet released: until they are, the rest of that
-   * gesture (its moves and its release) joins it instead of going out alone,
-   * so a later no-op release never stands in for the press it belongs to.
+   * One gesture the host refused before dispatching any of it, kept whole
+   * for `retryInput` in its lineage. `open` names its presses not yet
+   * released: until they are, the gesture's moves (coalesced) and releases
+   * join it instead of going out alone; any other input retires it whole.
    */
   const undeliveredRef = useRef<{
     events: LiveSurfaceInput[];
-    epoch: number;
+    lineage: number;
     open: Set<string>;
   } | null>(null);
   const [retryableInput, setRetryableInput] = useState(false);
-  const observeEpoch = useCallback((epoch: number) => {
-    epochRef.current = Math.max(epochRef.current, epoch);
-    // Control changed hands: kept input was meant for the old epoch.
-    const kept = undeliveredRef.current;
-    if (kept && kept.epoch !== epochRef.current) {
+  /**
+   * A newer epoch was observed. `holder` is the lease's, or undefined when
+   * only a frame told of it. Only this device taking the very next epoch is
+   * its own takeover; anything else is a change of control.
+   */
+  const observeEpoch = useCallback(
+    (epoch: number, holder?: LiveSurfaceControlLease['holder']) => {
+      if (epoch <= epochRef.current) return;
+      const me = selfRef.current;
+      const ownTakeover =
+        epoch === epochRef.current + 1 &&
+        holder?.kind === 'human' &&
+        !!me &&
+        holder.principal === me.principal &&
+        holder.device === me.device;
+      // A frame alone cannot say who took control; while this viewer's own
+      // batch is in flight its answer (or the state record) settles it.
+      if (holder === undefined && inFlightRef.current) return;
+      epochRef.current = epoch;
+      if (ownTakeover) return;
+      lineageRef.current += 1;
+      // The server released this viewer's presses at the handoff: their
+      // releases would be fresh input that takes control back.
+      for (const id of pressedRef.current) orphanedRef.current.add(id);
+      pressedRef.current.clear();
       undeliveredRef.current = null;
       setRetryableInput(false);
-    }
-  }, []);
+    },
+    [],
+  );
   const adoptLease = useCallback(
     (next: LiveSurfaceControlLease) => {
-      observeEpoch(next.epoch);
+      observeEpoch(next.epoch, next.holder);
       setLease(next);
     },
     [observeEpoch],
@@ -538,6 +589,9 @@ export function useLiveSurface(
                     expiresAt: nowRef.current() + 700 - age,
                   });
               }
+              // Who this viewer is decides whether a new epoch is its own
+              // takeover, so it is known before the lease is adopted.
+              if (record.state.viewer) selfRef.current = record.state.viewer;
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
               setWedged(record.state.wedged === true);
@@ -632,14 +686,10 @@ export function useLiveSurface(
   );
 
   // ---- input -------------------------------------------------------------
-  const queueRef = useRef<LiveSurfaceInput[]>([]);
-  /** Buttons/keys this client pressed and has not released. */
-  const pressedRef = useRef(new Set<string>());
-  /** Pressed when control changed hands; the server released them already. */
-  const orphanedRef = useRef(new Set<string>());
-  const inFlightRef = useRef(false);
+  /** Queued input, each event with the lineage it was created in. */
+  const queueRef = useRef<{ event: LiveSurfaceInput; lineage: number }[]>([]);
   const keepUndelivered = useCallback(
-    (events: LiveSurfaceInput[], epoch = 0) => {
+    (events: LiveSurfaceInput[], lineage = 0) => {
       if (events.length === 0) {
         undeliveredRef.current = null;
         setRetryableInput(false);
@@ -652,7 +702,7 @@ export function useLiveSurface(
         if (isRelease(event)) open.delete(id);
         else open.add(id);
       }
-      undeliveredRef.current = { events, epoch, open };
+      undeliveredRef.current = { events, lineage, open };
       setRetryableInput(true);
     },
     [],
@@ -667,6 +717,7 @@ export function useLiveSurface(
     pressedRef.current.clear();
     orphanedRef.current.clear();
     epochRef.current = 0;
+    lineageRef.current += 1;
     setLease(null);
     setSelf(null);
     setActiveCodec(null);
@@ -704,7 +755,19 @@ export function useLiveSurface(
 
   const flush = useCallback(async () => {
     flushScheduledRef.current = false;
-    if (inFlightRef.current || queueRef.current.length === 0) return;
+    if (inFlightRef.current) return;
+    // Checked immediately before dispatch: input created in a lineage that
+    // has ended was meant for control that changed hands. It is dropped,
+    // never sent at the newer epoch.
+    const lineage = lineageRef.current;
+    const stale = queueRef.current.filter((item) => item.lineage !== lineage);
+    if (stale.length > 0) {
+      queueRef.current = queueRef.current.filter(
+        (item) => item.lineage === lineage,
+      );
+      setInputNotice('control-changed');
+    }
+    if (queueRef.current.length === 0) return;
     const batch: LiveSurfaceInput[] = [];
     let body = '';
     while (
@@ -713,13 +776,13 @@ export function useLiveSurface(
     ) {
       const candidate = JSON.stringify({
         epoch: epochRef.current,
-        events: [...batch, queueRef.current[0]],
+        events: [...batch, queueRef.current[0]!.event],
       });
       if (
         encoder.encode(candidate).byteLength > LIVE_SURFACE_INPUT_MAX_BODY_BYTES
       )
         break;
-      batch.push(queueRef.current.shift()!);
+      batch.push(queueRef.current.shift()!.event);
       body = candidate;
     }
     if (batch.length === 0) {
@@ -729,7 +792,6 @@ export function useLiveSurface(
     }
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
-    const batchEpoch = epochRef.current;
     try {
       const response = await transportRef.current(inputUrlRef.current, {
         method: 'POST',
@@ -740,11 +802,17 @@ export function useLiveSurface(
         data?: LiveSurfaceInputResult;
       } | null;
       if (generation !== targetGenerationRef.current) return;
+      // An answer for a lineage that has since ended describes control that
+      // changed hands: nothing in it is kept, noticed or retried.
+      if (lineage !== lineageRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         // Refused before any of it was dispatched, so sending it again
         // cannot apply anything twice. Not replayed on its own onto a view
         // that may have moved on: kept only for the person to send again.
-        keepUndelivered([...batch, ...queueRef.current], batchEpoch);
+        keepUndelivered(
+          [...batch, ...queueRef.current.map((item) => item.event)],
+          lineage,
+        );
         queueRef.current = [];
         showHostBusy();
         return;
@@ -785,6 +853,7 @@ export function useLiveSurface(
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
+      if (lineage !== lineageRef.current) return;
       // The response was lost: the batch may have been applied.
       keepUndelivered([]);
       queueRef.current = [];
@@ -797,21 +866,35 @@ export function useLiveSurface(
   }, [adoptLease, showHostBusy, keepUndelivered]);
 
   const sendInput = useCallback(
-    (events: LiveSurfaceInput[]) => {
+    (events: LiveSurfaceInput[], options?: { lineage?: number }) => {
+      const lineage = options?.lineage ?? lineageRef.current;
       for (const event of normalizeEvents(events)) {
         const id = pressId(event);
+        if (lineage !== lineageRef.current) {
+          // Created before control changed hands (a held-back press): never
+          // sent, and its release is swallowed like any orphaned press's.
+          if (id && !isRelease(event)) orphanedRef.current.add(id);
+          continue;
+        }
         const kept = undeliveredRef.current;
         if (kept) {
           const continuesGesture =
             kept.open.size > 0 &&
-            kept.events.length < LIVE_SURFACE_INPUT_MAX_EVENTS &&
             ((event.kind === 'pointer' && event.type === 'move') ||
               (id !== null && isRelease(event) && kept.open.has(id)));
           if (continuesGesture) {
-            // The moves and release of a press that is kept join it, so
-            // Retry sends the whole gesture and its release never goes out
-            // alone (a no-op success that would stand in for the press).
-            kept.events.push(event);
+            // The moves (coalesced, so a long drag has no count cliff) and
+            // release of a press that is kept join it: Retry sends the whole
+            // gesture, and its release never goes out alone.
+            const last = kept.events[kept.events.length - 1];
+            if (
+              event.kind === 'pointer' &&
+              event.type === 'move' &&
+              last?.kind === 'pointer' &&
+              last.type === 'move'
+            )
+              kept.events[kept.events.length - 1] = event;
+            else kept.events.push(event);
             if (id) {
               kept.open.delete(id);
               pressedRef.current.delete(id);
@@ -835,16 +918,16 @@ export function useLiveSurface(
         }
         if (id && isRelease(event)) pressedRef.current.delete(id);
         const queue = queueRef.current;
-        const last = queue[queue.length - 1];
+        const last = queue[queue.length - 1]?.event;
         if (
           event.kind === 'pointer' &&
           event.type === 'move' &&
           last?.kind === 'pointer' &&
           last.type === 'move'
         ) {
-          queue[queue.length - 1] = event;
+          queue[queue.length - 1] = { event, lineage };
         } else {
-          queue.push(event);
+          queue.push({ event, lineage });
         }
       }
       if (!flushScheduledRef.current) {
@@ -855,16 +938,21 @@ export function useLiveSurface(
     [flush],
   );
 
+  const controlLineage = useCallback(() => lineageRef.current, []);
+
   const retryInput = useCallback(() => {
     const kept = undeliveredRef.current;
     keepUndelivered([]);
     if (!kept) return;
     setInputNotice(null);
-    // Meant for an epoch that has since ended: control changed hands.
-    if (kept.epoch !== epochRef.current) return;
-    const events = kept.events;
-    // Ahead of anything typed since: it was meant to arrive first.
-    queueRef.current = [...events, ...queueRef.current];
+    // Meant for control that has since changed hands.
+    if (kept.lineage !== lineageRef.current) return;
+    // Ahead of anything typed since, still in its own lineage: the flush
+    // checks it again immediately before dispatch.
+    queueRef.current = [
+      ...kept.events.map((event) => ({ event, lineage: kept.lineage })),
+      ...queueRef.current,
+    ];
     if (!flushScheduledRef.current) {
       flushScheduledRef.current = true;
       queueMicrotask(() => void flush());
@@ -976,6 +1064,7 @@ export function useLiveSurface(
     activeCodec,
     declineH264,
     sendInput,
+    controlLineage,
     retryableInput,
     retryInput,
     claimControl,

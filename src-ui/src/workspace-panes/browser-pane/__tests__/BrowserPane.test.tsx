@@ -298,6 +298,9 @@ describe('BrowserPane honest states', () => {
         claimControl: async () => {},
         releaseControl: async () => {},
         keepControlAlive: async () => {},
+        immersive: false,
+        enterImmersive: () => {},
+        exitImmersive: () => {},
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: /Control options/ }));

@@ -84,7 +84,9 @@ in the Browser pane, the Device pane and the chat floater.
   Take or Release control, the keyboard while you drive, and the surface's own
   actions: Back, Forward and Reload for a browser, and Home, Back and Recents
   (Android) or Rotate (iOS) for a device. Escape, Exit or the platform
-  leaving full screen returns to where you were.
+  leaving full screen returns to where you were; while full screen is on,
+  Escape only leaves it (it does not also go up a level in the app). Zoomed in
+  full screen, the zoom level sits in the bottom corner, clear of the controls.
 - **The chat floater** moves when you drag the picture with one finger or the
   mouse. While you drive, the picture takes the press and the Move handle
   moves the floater. A tap, the corner dot, or a mouse hover shows the
@@ -476,7 +478,8 @@ check below found no control under 44px.
 On narrow screens, editing the address hides its navigation buttons until
 editing ends, leaving room for the URL. Back and forward occupy space on a fine
 pointer only while the toolbar is hovered or focused. Touch takeover hints say
-**Tap**. Why input did not take effect is one line over the top of the page.
+**Tap**. Why input did not take effect is a slim banner over the top of the page
+(one line, or two on a narrow phone; never cut off).
 **Retry** is offered only for input the host refused before dispatching any of
 it (`surface-busy`). It is sent once, at the control epoch it was meant for,
 and only while this viewer may still send input. A change of control drops it,
