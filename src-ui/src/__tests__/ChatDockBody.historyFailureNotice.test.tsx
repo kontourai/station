@@ -417,9 +417,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       await vi.advanceTimersByTimeAsync(120_000);
     });
     expect(stalledSignal?.aborted).toBe(true);
-    expect(
-      screen.getByText(/Session history read timed out after 120 seconds/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Try again in a moment/)).toBeTruthy();
     const retry = screen.getByRole('button', {
       name: 'Status unavailable — resync this conversation',
     });
@@ -439,7 +437,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(
       screen.queryByRole('button', { name: /resync this conversation/ }),
     ).toBeNull();
-    expect(screen.queryByText(/Session history read timed out/)).toBeNull();
+    expect(screen.queryByText(/Try again in a moment/)).toBeNull();
   });
 
   test.each(['caught-up', 'closed'] as const)(
@@ -483,7 +481,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('renders the recorded cause verbatim, with the shared secondary-button Retry affordance', () => {
+  test('renders a safe connection failure, with the shared secondary-button Retry affordance', () => {
     transcriptStateMock.current.enabled = true;
     transcriptStateMock.current.error = new Error('ECONNREFUSED host:8443');
     // The banner (as opposed to the empty-state variant handed to the
@@ -497,7 +495,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     const notice = screen.getByRole('alert');
     expect(notice.className).toBe('session-history-error');
     expect(notice.textContent).toBe(
-      'Session history is unavailable. ECONNREFUSED host:8443Retry',
+      'Session history is unavailable. Could not reach Station. Check the connection, then try again.Retry',
     );
 
     const retry = screen.getByRole('button', { name: 'Retry' });

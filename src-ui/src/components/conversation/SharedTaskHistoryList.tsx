@@ -13,15 +13,6 @@ type HistoryRecord = Extract<
   { kind: 'available' }
 >['records'][number];
 
-export function taskHistoryReadDenied(error: unknown) {
-  return (
-    error instanceof Error &&
-    'status' in error &&
-    typeof error.status === 'number' &&
-    [401, 403, 404].includes(error.status)
-  );
-}
-
 /** Keep the server's record projection and fixed checkpoint; never synthesize messages. */
 export function projectTaskHistory<T extends HistoryRecord>(
   pages: readonly (HistoryPage & { records?: readonly T[] })[],

@@ -39,7 +39,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   continueDelegatedTask: mocks.continue,
   interruptDelegatedTask: mocks.stop,
 }));
@@ -330,8 +331,11 @@ test.each(['task_room_reply_refused', 'receiver_execution_authority_changed'])(
     });
     fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
     expect(
-      await within(thread).findByText(/Not delivered.*successor/),
+      await within(thread).findByText('Not delivered · Try again in a moment.'),
     ).toBeTruthy();
+    expect(
+      within(thread).queryByText(/This Session has a successor/),
+    ).toBeNull();
     expect(
       (within(thread).getByRole('textbox') as HTMLTextAreaElement).value,
     ).toBe('Do not lose this reply');
@@ -356,7 +360,9 @@ test('an uncertain reply retains its draft and offers full-run inspection', asyn
   });
   fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
   expect(
-    await within(thread).findByText(/Not delivered.*Connection lost/),
+    await within(thread).findByText(
+      'Not delivered · Try again in a moment. Check the full run before resending.',
+    ),
   ).toBeTruthy();
   expect(
     (within(thread).getByRole('textbox') as HTMLTextAreaElement).readOnly,

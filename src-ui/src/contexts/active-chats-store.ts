@@ -7,7 +7,6 @@ import {
   type StationStateScope,
   stationStateKey,
 } from '../connections/station-state';
-import { outboundDispatch, rowBelongsToStation } from '../lib/outboundQueue';
 import { migratePeerChatState } from '../lib/peer-chat';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
@@ -222,6 +221,7 @@ export class ActiveChatsStore {
       );
     const original = this.chats[sessionId];
     if (!original?.peerChat || original.stationBinding) return;
+    const { outboundDispatch } = await import('../lib/outboundQueue');
     const updates = await migratePeerChatState(sessionId, original, connection);
     const latest = this.chats[sessionId];
     if (
@@ -262,6 +262,9 @@ export class ActiveChatsStore {
 
   /** Recover the crash after chat write, or persist a chat restored from its row. */
   async recoverLegacyImports(connection: StationConnection): Promise<void> {
+    const { outboundDispatch, rowBelongsToStation } = await import(
+      '../lib/outboundQueue'
+    );
     const station = outboundStationIdentity(connection);
     const rows = await outboundDispatch.snapshot();
     if (!connection.isCurrent()) return;

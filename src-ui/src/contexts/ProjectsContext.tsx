@@ -37,7 +37,7 @@ import {
 } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
-import { taskHistoryReadDenied } from '../components/conversation/SharedTaskHistoryList';
+import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 

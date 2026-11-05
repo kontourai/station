@@ -21,9 +21,9 @@ import {
   SharedTaskHistoryList,
   SharedTaskHistoryRecord,
   SharedTaskHistoryText,
-  taskHistoryReadDenied,
 } from '../components/conversation/SharedTaskHistoryList';
 import { createTaskConversationActions } from '../components/conversation/task-conversation-actions';
+import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';

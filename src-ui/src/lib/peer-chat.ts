@@ -1,7 +1,6 @@
 import type { StationConnection } from '../connections/station-connection';
 import { outboundStationIdentity } from '../connections/station-state';
 import type { ChatMessage, ChatUIState } from '../contexts/active-chats-state';
-import { outboundDispatch } from './outboundQueue';
 
 export interface PeerChatBinding {
   environmentId: string;
@@ -146,6 +145,9 @@ export async function migratePeerChatState(
     throw new Error('The original paired Station connection is unavailable.');
   let disposition: 'held' | 'observing' | 'settled' | undefined;
   if (legacy.pending) {
+    const { outboundDispatch } = await import('./outboundQueue');
+    if (!connection.isCurrent())
+      throw new Error('The original paired Station connection is unavailable.');
     disposition = await outboundDispatch.importLegacy(
       {
         station: outboundStationIdentity(connection),

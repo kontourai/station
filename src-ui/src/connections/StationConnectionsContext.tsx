@@ -12,10 +12,9 @@ import {
 } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
-import {
+import type {
   resolveStationConnection,
-  type StationConnectionSource,
-  StationConnectionUnavailableError,
+  StationConnectionSource,
 } from './resolve-station-connection';
 import type { ChatStationBindingV1 } from './station-connection';
 import {
@@ -76,12 +75,14 @@ export function StationConnectionsProvider({
   const value = useMemo<StationConnections>(
     () => ({
       remoteEnabled,
-      resolve: (options = {}) => {
-        if (!namespace || !observation || !scope || !activeConnection)
-          return Promise.reject(
-            new StationConnectionUnavailableError('authority-unavailable'),
-          );
+      resolve: async (options = {}) => {
         const remoteEpoch = remotePreviewRef.current.epoch;
+        // First paint only needs registry retirement. Route negotiation and
+        // its wire parsers load when a conversation requests a connection.
+        const { resolveStationConnection, StationConnectionUnavailableError } =
+          await import('./resolve-station-connection');
+        if (!namespace || !observation || !scope || !activeConnection)
+          throw new StationConnectionUnavailableError('authority-unavailable');
         const source: StationConnectionSource = {
           authorityNamespace: namespace,
           observation,
