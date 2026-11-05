@@ -1646,6 +1646,7 @@ describe('BrowserPane wave 2 fix round', () => {
         {
           'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
           'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+          'GET /api/browser/projects/alpha/local-targets': ok([]),
           'POST /api/browser/sessions': refuse(503, code),
         },
         { kind: 'new' },
@@ -1882,5 +1883,299 @@ describe('BrowserPane live-verify fixes', () => {
     expect(list.textContent).toContain(
       "the Station operator tried to open http://127.0.0.1:3141/ (blocked by Station: it is one of Station's own services)",
     );
+  });
+});
+
+/** A pane that attaches to what it opens, as the workspace host does. */
+function AttachingPane({
+  initial,
+  transport,
+}: {
+  initial: BrowserPaneTarget;
+  transport: never;
+}) {
+  const [target, setTarget] = useState<BrowserPaneTarget>(initial);
+  return (
+    <BrowserPane
+      projectSlug="alpha"
+      target={target}
+      onAttach={(id) => setTarget({ kind: 'session', browserSessionId: id })}
+      transport={transport}
+    />
+  );
+}
+
+describe('BrowserPane on a phone-width pane (Duo audit)', () => {
+  /** Give every Browser stage this measured size (jsdom lays nothing out). */
+  function stageSize(width: number, height: number) {
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('browser-pane__stage')
+          ? DOMRect.fromRect({ x: 0, y: 0, width, height })
+          : real.call(this);
+      },
+    );
+  }
+
+  function renderAttachingPane(
+    routes: Record<string, Route>,
+    initial: BrowserPaneTarget,
+  ) {
+    const station = fakeStation(routes);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider client={client}>
+          <AttachingPane
+            initial={initial}
+            transport={station.transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    return station;
+  }
+
+  const newSessionRoutes = (viewportRoute: Route) => ({
+    'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+    'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+    'GET /api/browser/projects/alpha/local-targets': ok([]),
+    'POST /api/browser/sessions': ok(sessionView(), 201),
+    [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    [`POST /api/browser/sessions/${SESSION}/viewport`]: viewportRoute,
+  });
+
+  async function openFromAddress() {
+    const address = await screen.findByLabelText('Address');
+    fireEvent.change(address, { target: { value: 'example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await screen.findByTestId('live-canvas');
+  }
+
+  test('a page opened from a narrow pane is sized to that pane, once', async () => {
+    stageSize(342, 364);
+    const { calls } = renderAttachingPane(
+      newSessionRoutes(
+        ok(
+          sessionView({
+            viewport: { width: 342, height: 364, deviceScaleFactor: 1 },
+          }),
+        ),
+      ),
+      { kind: 'new' },
+    );
+    await openFromAddress();
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.path.endsWith('/viewport')).map((c) => c.body),
+      ).toEqual([
+        {
+          viewport: { width: 342, height: 364, deviceScaleFactor: 1 },
+          generation: 1,
+        },
+      ]),
+    );
+    // This pane's own change is not announced back to it.
+    expect(screen.queryByText(/page size changed/)).toBeNull();
+  });
+
+  test('a page opened from a wide pane keeps its desktop viewport', async () => {
+    stageSize(900, 700);
+    const { calls } = renderAttachingPane(newSessionRoutes(ok(sessionView())), {
+      kind: 'new',
+    });
+    await openFromAddress();
+    // Let the live session settle; then nothing resized it.
+    await screen.findByRole('button', { name: /^More browser actions/ });
+    expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(false);
+  });
+
+  test('attaching a narrow pane to an existing session never resizes the shared page', async () => {
+    stageSize(342, 364);
+    const { calls } = renderAttachingPane(newSessionRoutes(ok(sessionView())), {
+      kind: 'session',
+      browserSessionId: SESSION,
+    });
+    await screen.findByTestId('live-canvas');
+    await screen.findByRole('button', { name: /^More browser actions/ });
+    expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(false);
+  });
+
+  test('a viewport change made elsewhere is announced as changing the page for everyone', async () => {
+    let reads = 0;
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: () => {
+        reads += 1;
+        return {
+          body: {
+            success: true,
+            data: sessionView(
+              reads > 1
+                ? {
+                    viewport: { width: 342, height: 364, deviceScaleFactor: 1 },
+                  }
+                : {},
+            ),
+          },
+        };
+      },
+    });
+    await screen.findByTestId('live-canvas');
+    expect(screen.queryByText(/page size changed/)).toBeNull();
+    expect(
+      (
+        await screen.findByText(
+          'The page size changed to 342 × 364 for everyone watching.',
+          undefined,
+          { timeout: 6_000 },
+        )
+      ).getAttribute('role'),
+    ).toBe('alert');
+  }, 10_000);
+
+  test('the viewport choices say they change the page for everyone watching', async () => {
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    await screen.findByTestId('live-canvas');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More browser actions' }),
+    );
+    const menu = await screen.findByRole('menu', {
+      name: 'More browser actions',
+    });
+    expect(within(menu).getByText('View for everyone watching')).toBeTruthy();
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^Viewport: / }),
+    );
+    const list = await screen.findByRole('menu', { name: 'Viewport' });
+    expect(
+      within(list).getByRole('menuitemradio', { name: 'Match this pane' }),
+    ).toBeTruthy();
+    expect(within(list).queryByText('Fit to this pane')).toBeNull();
+  });
+
+  test('on a coarse pointer the ⋯ menu shows no keyboard shortcut hints', async () => {
+    const coarse = (matches: boolean) =>
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: (query: string) => ({
+          matches: matches && query === '(pointer: coarse)',
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }),
+      });
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    try {
+      for (const touch of [false, true]) {
+        coarse(touch);
+        renderPane({
+          'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+          [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+            sessionView(),
+          ),
+        });
+        await screen.findByTestId('live-canvas');
+        fireEvent.click(
+          await screen.findByRole('button', { name: 'More browser actions' }),
+        );
+        const menu = await screen.findByRole('menu', {
+          name: 'More browser actions',
+        });
+        const shot = within(menu).getByRole('menuitem', {
+          name: /^Screenshot/,
+        });
+        // Fine pointer: the chord is shown and announced; touch: neither.
+        expect(within(menu).queryByText('Ctrl+Shift+S') !== null).toBe(!touch);
+        expect(within(menu).queryByText('Ctrl+Shift+R') !== null).toBe(!touch);
+        expect(shot.getAttribute('aria-keyshortcuts')).toBe(
+          touch ? null : 'Control+Shift+S',
+        );
+        cleanup();
+      }
+    } finally {
+      if (original) Object.defineProperty(window, 'matchMedia', original);
+      else Reflect.deleteProperty(window, 'matchMedia');
+    }
+  });
+
+  test('submitting an address puts the keyboard away, in a new pane and on a live page', async () => {
+    renderAttachingPane(newSessionRoutes(ok(sessionView())), {
+      kind: 'new',
+    });
+    const start = (await screen.findByLabelText('Address')) as HTMLInputElement;
+    act(() => start.focus());
+    expect(document.activeElement).toBe(start);
+    fireEvent.change(start, { target: { value: 'example.com' } });
+    fireEvent.submit(start.closest('form')!);
+    expect(document.activeElement).not.toBe(start);
+    await screen.findByTestId('live-canvas');
+    cleanup();
+
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      [`POST /api/browser/sessions/${SESSION}/navigate`]: ok({
+        session: sessionView({ url: 'https://example.org/' }),
+      }),
+    });
+    const address = (await screen.findByLabelText(
+      'Address',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(address.disabled).toBe(false));
+    act(() => address.focus());
+    expect(document.activeElement).toBe(address);
+    fireEvent.change(address, { target: { value: 'example.org' } });
+    fireEvent.submit(address.closest('form')!);
+    expect(document.activeElement).not.toBe(address);
+  });
+
+  test('a new pane is titled, and says when no local servers are shared', async () => {
+    renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+        'GET /api/browser/projects/alpha/local-targets': ok([]),
+      },
+      { kind: 'new' },
+    );
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Browser' }),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText('No local servers are shared with this Project'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Local servers' })).toBeNull();
+  });
+
+  test('a failed local-server read says so and retries the read', async () => {
+    let reads = 0;
+    renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+        'GET /api/browser/projects/alpha/local-targets': () => {
+          reads += 1;
+          return reads === 1
+            ? { status: 500, body: { success: false, code: 'boom' } }
+            : { body: { success: true, data: [] } };
+        },
+      },
+      { kind: 'new' },
+    );
+    expect(
+      await screen.findByText('Local servers could not be read'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByText('No local servers are shared with this Project'),
+    ).toBeTruthy();
+    expect(reads).toBe(2);
   });
 });

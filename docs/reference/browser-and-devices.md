@@ -40,7 +40,10 @@ tabs, back/forward/reload, the address bar and the driver chip; viewport
 presets, the session list and Browser settings are in **⋯**. Shared local
 servers and the Agent JavaScript permission are in **Settings → Advanced →
 Browser & devices**. A phone viewport preset
-emulates a browser viewport; it is not an iOS/Android device or app test. Use
+emulates a browser viewport; it is not an iOS/Android device or app test.
+The viewport, page zoom and appearance belong to the session, so a change
+reaches every viewer and agent; each pane only scales the shared frame to fit
+itself ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)). Use
 the [Device pane](../guides/mobile-device-workspace.md) for simulators and emulators.
 
 If no supported browser is available, the operator can approve the displayed

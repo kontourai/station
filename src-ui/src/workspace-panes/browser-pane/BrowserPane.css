@@ -768,3 +768,12 @@
   margin: 0;
   padding: 0;
 }
+
+.browser-pane__start-kicker {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
