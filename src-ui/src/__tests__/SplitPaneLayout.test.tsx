@@ -34,6 +34,9 @@ const isMobileMock = vi.fn(() => false);
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => isMobileMock(),
+  // The layout stacks on its own list/detail breakpoint, not the phone one;
+  // these cases drive "stacked" through the same switch.
+  useStackedListDetail: () => isMobileMock(),
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));
 

@@ -151,6 +151,13 @@ corresponding CSS conditions aligned. The documentation token `--bp-mobile`
 cannot be substituted into a CSS media query. Dock placement has a different
 policy: a wide coarse-pointer device can be bottom-only without being mobile.
 
+List/detail stacking is a separate question with its own query,
+`LIST_DETAIL_STACKED_QUERY` (`useStackedListDetail`): below 600px, or on a
+short coarse-pointer viewport. [SplitPaneLayout](../../src-ui/src/components/SplitPaneLayout.tsx)
+uses it, not `useIsMobile`, so a foldable open flat in portrait (~670px) keeps
+the phone shell but shows its list beside the detail; see
+[Foldable displays](#foldable-displays).
+
 Content whose room depends on the dock rather than the window measures the
 dock. The session context card beside the Chat transcript
 ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts))
@@ -509,6 +516,57 @@ bottom dock track never takes the content row's floor, `min(35%, 160px)` of the
 frame, so a page in `main` keeps room above the dock. Device emulation that
 resizes only the viewport reports `pointer: fine`; it is not a phone check.
 
+
+## Foldable displays
+
+One store, [`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), holds
+where the display's crease is and whether the device is folded (a partially
+open hinge, Book or Laptop) or flat. The iOS shell's `station-fold` plugin feeds
+it on foldable iPhones and the CSS Viewport Segments API elsewhere
+([native capabilities](../design/native-capabilities.md#fold-geometry)); with
+neither, nothing is published and layouts are unchanged.
+
+Layouts read the crease relative to themselves through
+[`useFoldSplit`](../../src-ui/src/hooks/useFoldSplit.ts). It measures its own
+element and writes `data-fold-split`, `data-fold-larger` and the
+`--fold-split-start|gap|end` lengths onto it while a folded crease crosses it.
+Two treatments use them; do not add a per-screen fold rule:
+
+- a split layout puts its first pane before the crease and its second after it.
+  `SplitPaneLayout` gives its list exactly the room before a vertical crease and
+  hides the resize divider (unfolding restores the saved width); it snaps only
+  when the list keeps 200px and the detail 280px. The dock's Inbox row does the
+  same with the Inbox. Each marks itself `data-fold-aware`;
+- a single column (`.fold-avoid-crease`) moves wholly into the larger side. The
+  route outlet and the dock's conversation reader carry it; a column that
+  contains a `data-fold-aware` layout leaves the panes to it.
+
+A horizontal crease (Laptop) is published but no layout acts on it yet, and the
+dock header's one-line title still crosses a vertical crease.
+
+On a folded or narrow foldable the list/detail breakpoint matters more than
+the phone one: open flat in portrait, `SplitPaneLayout` is side by side from
+600px of viewport, and its container rule still shows list or detail (with a
+back control, not a sheet) in a container narrower than 641px.
+
+Side safe areas are applied at the route outlet: `.main-content` pads by
+`--safe-left` and `--safe-right`, as the toolbar and dock already do for
+themselves. A foldable's cover display puts its status bar and camera in a
+vertical column on one side (iOS 27.1's vertical bar), so without it a page's
+heading and banner actions ran under that column. Fixed sheets outside the
+outlet (the stacked split's detail sheet) inset themselves.
+
+A short coarse-pointer viewport (a phone held sideways, a foldable's cover in
+Tent posture) compacts the chrome: the toolbar and the collapsed dock bar keep
+their 44px controls and drop the block padding around them (52px to 44px, and
+53px to 45px). Both heights stay literal tokens, because the dock's snap math
+parses `--chat-dock-header-height` in script.
+
+[The fold layout journey](../../src-ui/src/__tests__/fold-layout.browser.test.tsx)
+renders these in Chromium from both sources (the captured iOS replies through a
+stand-in IPC, and Chromium's display-feature emulation), along with the
+breakpoints, the side inset and the compact chrome. The iPhone Duo simulator
+screenshots are development evidence; a physical device is not verified.
 
 ## Fresh-phone welcome and initial CSS
 

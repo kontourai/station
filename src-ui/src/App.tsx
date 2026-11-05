@@ -122,6 +122,7 @@ const loadServerEventsMount = () =>
 
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
+import { useFoldSplit } from './hooks/useFoldSplit';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
@@ -632,6 +633,10 @@ function App({
   // the same key an in-app navigation and a browser Back both land on.
   const contentViewRef = useRef<HTMLDivElement>(null);
   useScrollRestoration(contentViewRef, window.location.pathname);
+  // On a folded display the route outlet keeps its column off the crease
+  // (`.fold-avoid-crease`); a split layout inside it snaps to the crease
+  // itself instead.
+  useFoldSplit(contentViewRef);
 
   // The routed view. Built once: it is what every route other than `/`
   // renders, and what `/` renders once the home surface has resolved.
@@ -778,7 +783,10 @@ function App({
                   inert={isAmbientMobileDockFullscreen || undefined}
                   aria-hidden={isAmbientMobileDockFullscreen || undefined}
                 >
-                  <div className="content-view" ref={contentViewRef}>
+                  <div
+                    className="content-view fold-avoid-crease"
+                    ref={contentViewRef}
+                  >
                     {[
                       'home',
                       'task',

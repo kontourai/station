@@ -584,7 +584,8 @@ one — a closed dock leaves it unplaced.
 The five decisions of the 2a plan, as taken (each reversible on its own):
 
 - **D1 — collapsed bar: header only.** A collapsed region is the bar alone,
-  at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
+  at the unchanged `--chat-dock-header-height` (38/53px, or 45px on a short
+  coarse-pointer viewport, which drops the bar's block padding); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
   collapsed-state affordance (archive#800): the icon-only New chat action, the one

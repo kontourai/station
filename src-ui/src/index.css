@@ -1396,6 +1396,14 @@ button:hover {
   background: var(--bg-input);
   overflow: hidden;
   position: relative;
+  /* The route outlet's side safe areas, at its own boundary: the toolbar and
+     the dock already inset themselves, and nothing inside the outlet does. A
+     foldable's cover display carries its status bar and camera as a vertical
+     column on one side (iOS 27.1's vertical bar), and a phone held sideways
+     its notch and rounded corner; without this the page's heading, cards and
+     banner actions ran under them. 0px wherever the platform reports none. */
+  padding-left: var(--safe-left, 0px);
+  padding-right: var(--safe-right, 0px);
 }
 
 .content-view {
@@ -1426,6 +1434,25 @@ button:hover {
 /* Fill frames delegate scrolling to their bodies and need the full width. */
 .content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
   scrollbar-gutter: stable;
+}
+
+/* A folded display (Book posture): a single column must not run across the
+   crease, so it moves wholly into the larger side of it. `useFoldSplit`
+   measures the element and writes `data-fold-split` and the `--fold-split-*`
+   lengths; this class is the single-column treatment, and SplitPaneLayout and
+   the dock's Inbox row are the split one. A layout inside that places its own
+   panes on each side marks itself `data-fold-aware`, and the column then
+   leaves it the full width. Physical sides, because the crease is physical. */
+.fold-avoid-crease[data-fold-split="vertical"][data-fold-larger="end"]:not(
+  :has([data-fold-aware])
+) {
+  padding-left: calc(var(--fold-split-start) + var(--fold-split-gap));
+}
+
+.fold-avoid-crease[data-fold-split="vertical"][data-fold-larger="start"]:not(
+  :has([data-fold-aware])
+) {
+  padding-right: calc(var(--fold-split-end) + var(--fold-split-gap));
 }
 
 /* Root-route (`/`) restore placeholder (archive#223) — holds the content pane's
@@ -9612,6 +9639,27 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
    preserve the header and a single-line composer instead of clipping Send. */
 @media (max-height: 540px) and (pointer: coarse) {
+  /* Compact chrome: a phone held sideways, or a foldable's cover in Tent
+     posture, has ~400 CSS px of height, and the toolbar plus the collapsed
+     dock bar took over 100 of it. Both keep their 44px controls and give up
+     only the block padding around them: toolbar 52 -> 44, dock bar
+     53 -> 45 (44 + its 1px border). Literals, like the tokens they replace:
+     the dock's snap math parses `--chat-dock-header-height` in script. */
+  :root {
+    --app-toolbar-height: 44px;
+    --chat-dock-header-height: 45px;
+  }
+
+  .app__main .app-toolbar {
+    padding-top: var(--safe-top, 0px);
+    padding-bottom: 0;
+  }
+
+  .app__main .chat-dock__header,
+  .app__main .chat-dock__mobile-header {
+    padding-block: 0;
+  }
+
   .app__main .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
     top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
     bottom: auto;

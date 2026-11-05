@@ -14337,6 +14337,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_discovery::init());
+    // iOS-only, with its own capability file (ios-fold.json) for the same
+    // ACL reason as the plugins above.
+    #[cfg(target_os = "ios")]
+    let builder = builder.plugin(tauri_plugin_station_fold::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
