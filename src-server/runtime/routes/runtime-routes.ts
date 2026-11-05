@@ -7912,12 +7912,13 @@ export function configureRuntimeRoutes(
     }),
   );
   // The chat route binds no request authority of its own. The person asking for a
-  // brief is resolved here, from this request's principal, and kept only for the
-  // brief: nothing else on the chat route changes.
-  const memoryBriefAuthorities = new WeakMap<Request, SessionReadAuthority>();
+  // brief is resolved here from this request's principal, into the same
+  // request-keyed map the Knowledge routes use (`knowledgeReadAuthorities`), so the
+  // root access check sees exactly what it sees on `/api/knowledge`. Nothing else
+  // on the chat route changes.
   context.app.use('/api/agents/:slug/chat', async (c, next) => {
     try {
-      memoryBriefAuthorities.set(
+      knowledgeReadAuthorities.set(
         c.req.raw,
         conversationReadAuthorityForContext(c),
       );
@@ -10890,7 +10891,7 @@ export function configureRuntimeRoutes(
     manager: memoryRootManager,
     review: memoryReview,
     enabled: memoryEnabled,
-    authority: (request) => memoryBriefAuthorities.get(request),
+    authority: (request) => knowledgeReadAuthorities.get(request),
     isRequestCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(
         request,
