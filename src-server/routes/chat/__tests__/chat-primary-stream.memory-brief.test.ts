@@ -5,25 +5,24 @@
  * `streamPrimaryAgentChat` and a real dedup store, because a replay, a refusal and
  * a first turn are only told apart there.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildChatHarnessApp,
   createHarnessConversationStore,
   emptyAgentResult,
 } from '../../../__test-utils__/chat-primary-stream-harness.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
 
+const makeTempDir = trackTempDirs();
+
 describe('streamPrimaryAgentChat memory brief settlement', () => {
-  let dir: string;
   let dedupStore: ChatTurnDedupStore;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'chat-primary-stream-brief-'));
+    const dir = makeTempDir('chat-primary-stream-brief-');
     dedupStore = new ChatTurnDedupStore(join(dir, 'chat-turn-dedup.json'));
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   const brief = () => ({ delivered: vi.fn(), abandoned: vi.fn() });
   const agentFor = (streamText: ReturnType<typeof vi.fn>) => ({
