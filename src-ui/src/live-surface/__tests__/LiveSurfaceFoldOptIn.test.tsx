@@ -6,9 +6,10 @@
  * rather than reconnecting forever. Other viewers never ask.
  */
 
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, renderHook, screen, waitFor } from '@testing-library/react';
+import { createRef } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { liveSurfaceFoldDeclines } from '../useLiveSurface';
+import { liveSurfaceFoldDeclines, useLiveSurface } from '../useLiveSurface';
 import {
   canvasHarness,
   flush,
@@ -90,3 +91,50 @@ test.each([['unknown'], [undefined], ['fold']])(
     expect(liveSurfaceFoldDeclines.size).toBe(1);
   },
 );
+
+test('two viewers refused fold=1 together both ask again without it', async () => {
+  // The decline set is page-wide; each refused viewer must still reconnect
+  // itself, including the one whose target the other already declined.
+  let releaseRefusals!: () => void;
+  const bothRefused = new Promise<void>((resolve) => {
+    releaseRefusals = resolve;
+  });
+  let refusals = 0;
+  const urls: string[] = [];
+  const transport = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.includes('/frames')) return Response.json({});
+    urls.push(url);
+    if (url.includes('fold=1')) {
+      refusals += 1;
+      if (refusals === 2) releaseRefusals();
+      // Hold both refusals until both requests are in flight, so the two
+      // 400s land back to back as in the reported race.
+      await bothRefused;
+      return Response.json(
+        { success: false, code: 'invalid-request', field: 'unknown' },
+        { status: 400 },
+      );
+    }
+    return new Response(new ReadableStream());
+  });
+  const mount = () =>
+    renderHook(() =>
+      useLiveSurface({
+        apiBase: 'http://127.0.0.1:3998',
+        surfaceId: 'device:duo',
+        visibilityRef: createRef<Element>(),
+        onFrame: () => {},
+        transport,
+        acceptFold: true,
+      }),
+    );
+  const a = mount();
+  const b = mount();
+  await waitFor(() =>
+    expect(urls.filter((url) => !url.includes('fold=1'))).toHaveLength(2),
+  );
+  expect(urls.filter((url) => url.includes('fold=1'))).toHaveLength(2);
+  a.unmount();
+  b.unmount();
+});

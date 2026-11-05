@@ -369,13 +369,14 @@ export function useLiveSurface(
    * downgrade the hub already applied leaves the running stream alone, and
    * only the next connection asks for images.
    */
+  // The decline sets are page-wide, but the reconnect they trigger is this
+  // hook's own: every hook that was refused must reconnect, including one
+  // whose target another viewer already recorded as declined.
   const declineH264For = useCallback((key: string, reconnect = true) => {
-    if (liveSurfaceH264Declines.has(key)) return;
     liveSurfaceH264Declines.add(key);
     if (reconnect) setDeclineVersion((version) => version + 1);
   }, []);
   const declineFoldFor = useCallback((key: string) => {
-    if (liveSurfaceFoldDeclines.has(key)) return;
     liveSurfaceFoldDeclines.add(key);
     setDeclineVersion((version) => version + 1);
   }, []);
