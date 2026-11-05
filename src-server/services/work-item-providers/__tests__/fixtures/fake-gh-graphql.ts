@@ -12,7 +12,9 @@
  * path, file paths and all body text are replaced. Two edits on top: the
  * page-1 pull request answer keeps three check runs and one of them reports
  * FAILURE (its real conclusion was SUCCESS), and page 2 omits `commits`, as
- * GitHub does for `@include(if: false)`.
+ * GitHub does for `@include(if: false)`. Each answer also carries the
+ * `viewer { login }` the query now asks for (the captures predate it), as
+ * the synthetic login `station-host`.
  */
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

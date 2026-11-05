@@ -9,7 +9,8 @@
  * - a comment, review or inline review comment whose author is `member`
  *   (`authorAssociation` OWNER, MEMBER or COLLABORATOR) and is not the gh
  *   login the poll ran as (agents post tracker updates with that login, so
- *   its own text never wakes the lead and cannot loop);
+ *   its own text never wakes the lead and cannot loop); when that login is
+ *   unknown, no comment or review wakes;
  * - a failing check-run conclusion (FAILURE, TIMED_OUT, STARTUP_FAILURE).
  * Bots, other authors, passing checks and everything already recorded never
  * wake. A re-poll records nothing new, so it never wakes again.
@@ -89,11 +90,14 @@ export function isWakeableFollowUp(
 ): boolean {
   if (item.kind === 'check_run')
     return FAILING_CONCLUSIONS.has(item.conclusion ?? '');
+  // Without the gh login, the agent's own tracker comments cannot be told
+  // apart from a person's, and waking on them would loop (the lead posts, is
+  // woken, posts again). So with an unknown login only failing checks wake.
+  if (viewerLogin === undefined) return false;
   return (
     MEMBER_TEXT_KINDS.has(item.kind) &&
     item.actorClass === 'member' &&
-    (viewerLogin === undefined ||
-      item.author.toLowerCase() !== viewerLogin.toLowerCase())
+    item.author.toLowerCase() !== viewerLogin.toLowerCase()
   );
 }
 

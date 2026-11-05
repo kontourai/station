@@ -1120,6 +1120,36 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       expect(wake.placementRefusal(placed)).toBeDefined();
     });
 
+    test('with the gh login unknown, member comments are recorded but never wake; failing checks still do', async () => {
+      const task = await trackerTask();
+      await enable();
+      answerFirstPoll();
+      // GitHub answered without the viewer: whose comments are the agent's
+      // own cannot be told, so none may wake the lead.
+      for (const [request, page] of [
+        [{ number: PR }, prPage1],
+        [{ number: PR, commentsAfter: PR_C1, reviewsAfter: PR_R2 }, prPage2],
+      ] as const) {
+        const unknown = structuredClone(page);
+        delete unknown.data.viewer;
+        answer(ghDir, request, unknown);
+      }
+      await wakePoll();
+      expect(
+        holder
+          .forRead()!
+          .list({ taskId: task.id, taskCreatedAt: task.createdAt })
+          .some((item) => item.githubId === '4363072349'),
+      ).toBe(true);
+      expect(state(task, 'review_comment', '4363072349')).toBe('none');
+      expect(state(task, 'review', '5633437083')).toBe('none');
+      expect(submits).toHaveLength(1);
+      expect(submits[0].payload.message).not.toContain('Review');
+      expect(submits[0].payload.message).toContain(
+        'Check run 120612876932 on github:acme/widgets#14804',
+      );
+    });
+
     test('with the preview off, nothing is polled and nothing wakes', async () => {
       await trackerTask();
       answerFirstPoll();
