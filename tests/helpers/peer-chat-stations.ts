@@ -36,6 +36,8 @@ declare global {
       loseNextSend(): void;
       disconnectEvents(disconnected: boolean): void;
       disconnectObservation(disconnected: boolean): void;
+      holdEventReconnects(): void;
+      releaseEventReconnects(): void;
       holdDeliveryLookups(): void;
       releaseDeliveryLookups(): void;
     };
@@ -53,11 +55,22 @@ async function installConnectionFaults(page: Page) {
       sessionStorage.getItem('qualification-windows-offline') === 'true';
     const eventControllers = new Set<AbortController>();
     const snapshotControllers = new Set<AbortController>();
+    let eventReconnectsHeld = false;
+    const eventWaiters = new Set<() => void>();
     let deliveryLookupsHeld = false;
     const deliveryWaiters = new Set<() => void>();
     window.stationConnectionFaults = {
       loseNextSend: () => {
         loseSend = true;
+      },
+      holdEventReconnects: () => {
+        eventReconnectsHeld = true;
+        for (const controller of eventControllers) controller.abort();
+      },
+      releaseEventReconnects: () => {
+        eventReconnectsHeld = false;
+        for (const resume of eventWaiters) resume();
+        eventWaiters.clear();
       },
       holdDeliveryLookups: () => {
         deliveryLookupsHeld = true;
@@ -92,6 +105,8 @@ async function installConnectionFaults(page: Page) {
         await new Promise<void>((resolve) => deliveryWaiters.add(resolve));
       const eventRequest = url.pathname.endsWith('/api/orchestration/events');
       const snapshotRequest = url.pathname.endsWith('/event-window');
+      if (eventRequest && eventReconnectsHeld)
+        await new Promise<void>((resolve) => eventWaiters.add(resolve));
       if (eventRequest || snapshotRequest) {
         if (
           (eventRequest && disconnected) ||

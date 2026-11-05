@@ -84,7 +84,7 @@ test('owner Device chats through a real Station delegation and keeps target refu
     'This turn remains running until Stop.',
   );
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectEvents(true),
+    window.stationConnectionFaults.holdEventReconnects(),
   );
   await expect(
     page
@@ -99,9 +99,10 @@ test('owner Device chats through a real Station delegation and keeps target refu
   await expect(transcript).not.toContainText(
     'Receiver text retained during disconnect.',
   );
-  await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectObservation(false),
-  );
+  await page.evaluate(() => {
+    window.stationConnectionFaults.disconnectObservation(false);
+    window.stationConnectionFaults.releaseEventReconnects();
+  });
   await expect(transcript).toContainText(
     'Receiver text retained during disconnect.',
   );
