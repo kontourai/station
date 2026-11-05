@@ -234,7 +234,9 @@ class PressedInput {
    * Everything held (or, given `controller`, only what that controller
    * pressed), then forget it; null when nothing is held.
    */
-  take(controller?: LiveSurfaceController): LiveSurfaceHeldInput | null {
+  take(
+    controller?: LiveSurfaceController,
+  ): { held: LiveSurfaceHeldInput; restore: () => void } | null {
     const owner = controller ? controllerKey(controller) : null;
     const buttons = [...this.buttons].filter(
       ([, held]) => owner === null || held.owner === owner,
@@ -254,7 +256,16 @@ class PressedInput {
     };
     for (const [button] of buttons) this.buttons.delete(button);
     for (const [id] of keys) this.keys.delete(id);
-    return held;
+    return {
+      held,
+      // A cancel that failed: still held, so it is accounted for (and
+      // released) again. Nothing is dispatched between take and restore:
+      // both run on the surface's serialized input chain.
+      restore: () => {
+        for (const [button, value] of buttons) this.buttons.set(button, value);
+        for (const [id, value] of keys) this.keys.set(id, value);
+      },
+    };
   }
 }
 
@@ -566,12 +577,13 @@ function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
 function cancelHeld(
   entry: LiveSurfaceEntry,
   controller?: LiveSurfaceController,
-): void {
+): Promise<boolean> {
   const own = internalsOf(entry);
-  void enqueue(entry, async () => {
+  return enqueue(entry, async () => {
     while (own.orphan) await own.orphan;
-    const held = own.pressed.take(controller);
-    if (!held) return null;
+    const taken = own.pressed.take(controller);
+    if (!taken) return true;
+    const { held } = taken;
     const producer = entry.producer;
     const outcomes = producer.cancelHeldInput
       ? [
@@ -591,9 +603,10 @@ function cancelHeld(
             `held-input cancel ${describeInput(event)}`,
           ),
         );
-    if (outcomes.some((outcome) => outcome !== 'ok'))
-      own.onError('live surface held-input cancel failed', outcomes);
-    return null;
+    if (outcomes.every((outcome) => outcome === 'ok')) return true;
+    own.onError('live surface held-input cancel failed', outcomes);
+    taken.restore();
+    return false;
   });
 }
 
@@ -692,22 +705,41 @@ export async function dispatchHumanInput(
  * completing it (#90 B). Fenced: only while `epoch` is current and the
  * caller holds the lease; otherwise a handoff or lapse already released it.
  */
-export function releaseHumanPressed(
+export async function releaseHumanPressed(
   entry: LiveSurfaceEntry,
   human: HumanController,
   epoch: number,
-): FencedLeaseResult {
+  /** The asking viewer: the answer then carries its attestation. */
+  presentedViewerId?: LiveSurfaceViewerId,
+): Promise<FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause }> {
   const own = internalsOf(entry);
+  const viewerId = viewerOf(entry, human, presentedViewerId);
+  const answer = (
+    result: FencedLeaseResult,
+  ): FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause } =>
+    presentedViewerId === undefined
+      ? result
+      : (attest(entry, viewerId, result) as FencedLeaseResult & {
+          epochCause: LiveSurfaceEpochCause;
+        });
   const lease = own.lease.snapshot();
-  if (lease.epoch !== epoch) return { ok: false, code: 'stale-epoch', lease };
+  if (lease.epoch !== epoch)
+    return answer({ ok: false, code: 'stale-epoch', lease });
   if (
     lease.holder?.kind !== 'human' ||
     lease.holder.principal !== human.principal ||
     (lease.holder.device ?? '') !== (human.device ?? '')
   )
-    return { ok: false, code: 'not-holder', lease };
-  cancelHeld(entry, { ...human });
-  return { ok: true, lease };
+    return answer({ ok: false, code: 'not-holder', lease });
+  // Answered only once the producer has released them: a failed cancel
+  // keeps them accounted for and is refused, so the viewer asks again.
+  const released = await cancelHeld(entry, { ...human });
+  const now = own.lease.snapshot();
+  return answer(
+    released
+      ? { ok: true, lease: now }
+      : { ok: false, code: 'release-failed', lease: now },
+  );
 }
 
 /**

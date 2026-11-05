@@ -346,9 +346,10 @@ const sameStation = (a: StationProbe | null, b: StationProbe | null) =>
 /** Bound on one input, claim or lease request (#90 C). */
 export const LIVE_SURFACE_REQUEST_TIMEOUT_MS = 10_000;
 
-/** Tries for one release-pressed obligation, and the first pause between. */
-const RELEASE_ATTEMPTS = 6;
+/** The first pause between tries of an unconfirmed release, doubling. */
 const RELEASE_BACKOFF_MS = 200;
+/** The longest pause between tries of an unconfirmed release. */
+const RELEASE_BACKOFF_MAX_MS = 5_000;
 
 /** A queued release that may go in whichever lineage is current. */
 const ANY_LINEAGE = -2;
@@ -514,19 +515,29 @@ export function useLiveSurface(
   selfRef.current = self;
   const inFlightRef = useRef(false);
   /**
-   * Each button/key this viewer pressed and has not released, with the
-   * lineage it was pressed in. A release goes out only in that lineage: once
-   * control changed hands (or the host released it), the host has released
-   * the press, and sending its release would be fresh input that claims.
+   * Each button/key this viewer pressed and has not released: the lineage
+   * it was pressed in and its own press generation. A release goes out only
+   * in that lineage: once control changed hands (or the host released it),
+   * the host has released the press, and sending its release would be fresh
+   * input that claims. The generation tells one press of a key from a later
+   * press of the same key, so an answer about the first never touches the
+   * second.
    */
-  const pressedRef = useRef(new Map<string, number>());
+  const pressedRef = useRef(
+    new Map<string, { lineage: number; generation: number }>(),
+  );
+  const pressGenerationRef = useRef(0);
   /** The host has released these presses itself (no lineage matches). */
   const RELEASED_BY_HOST = -1;
-  /** A release this viewer asked the host for and the host has not confirmed. */
-  const pendingReleaseRef = useRef<{
-    lineage: number;
-    ids: Set<string>;
-  } | null>(null);
+  /**
+   * Presses this viewer asked the host to release and the host has not yet
+   * confirmed, by key/button, each with the press generation it is about.
+   * One worker per target works through it (`runRelease`).
+   */
+  const pendingReleaseRef = useRef(new Map<string, number>());
+  /** The release worker is running; and how to cut its pause short. */
+  const releaseWorkerRef = useRef(false);
+  const releaseWakeRef = useRef<(() => void) | null>(null);
   /**
    * Which Station answers at `apiBase` and whether it attests epoch causes
    * (`liveSurfaceEpochCause`): null until known, asked again on reconnect.
@@ -722,7 +733,9 @@ export function useLiveSurface(
     const connect = async () => {
       // Reconnecting asks the host again which Station it is: a different
       // Station at the same address (an older one included) starts over.
-      if (connects++ > 0) {
+      // ...as does any stream about to present this viewer's existing id
+      // (a parameter change opens a new one): it is verified first.
+      if (connects++ > 0 || presentViewerIdRef.current !== null) {
         const probed = await probeStation(apiBase, transportRef.current);
         if (stopped || generation !== targetGenerationRef.current) return;
         if (!sameStation(probed, stationRef.current)) {
@@ -755,6 +768,8 @@ export function useLiveSurface(
     };
 
     const stream = async (url: string, h264: boolean) => {
+      /** This connection has not reported a lease yet. */
+      let firstState = true;
       let response: Response;
       try {
         const viewerId =
@@ -843,6 +858,26 @@ export function useLiveSurface(
               if (record.state.viewerId) {
                 viewerIdRef.current = record.state.viewerId;
                 presentViewerIdRef.current = record.state.viewerId;
+                // Back in touch with the host: an unconfirmed release is
+                // tried again now, not after its pause.
+                if (pendingReleaseRef.current.size > 0) {
+                  if (releaseWakeRef.current) releaseWakeRef.current();
+                  else void runReleaseRef.current();
+                }
+              }
+              // A new connection's first lease is the host's word: an epoch
+              // below what this viewer saw means the host started over (a
+              // restarted or rebuilt Station). Its view starts there, and
+              // input from before is retired.
+              if (firstState) {
+                firstState = false;
+                if (record.state.lease.epoch < epochRef.current) {
+                  epochRef.current = record.state.lease.epoch;
+                  publishedLeaseRef.current = null;
+                  lineageRef.current += 1;
+                  undeliveredRef.current = null;
+                  setRetryableInput(false);
+                }
               }
               latestStreamLeaseRef.current = {
                 lease: record.state.lease,
@@ -981,7 +1016,8 @@ export function useLiveSurface(
     viewerIdRef.current = null;
     presentViewerIdRef.current = null;
     publishedLeaseRef.current = null;
-    pendingReleaseRef.current = null;
+    pendingReleaseRef.current = new Map();
+    releaseWakeRef.current?.();
     latestStreamLeaseRef.current = null;
     targetAbortRef.current.abort();
     targetAbortRef.current = new AbortController();
@@ -1248,15 +1284,20 @@ export function useLiveSurface(
           );
         }
         if (id && isRelease(event)) {
-          const pressedIn = pressedRef.current.get(id);
+          const pressed = pressedRef.current.get(id);
           pressedRef.current.delete(id);
           // The press belongs to control that has since changed hands (or
           // the host released it itself): the host released it, so this
           // release would be fresh input that claims. It is not sent.
-          if (pressedIn !== undefined && pressedIn !== lineage) continue;
+          if (pressed !== undefined && pressed.lineage !== lineage) continue;
         } else if (id) {
-          // A fresh press (including a held key's auto-repeat), in this lineage.
-          pressedRef.current.set(id, lineage);
+          // A fresh press (including a held key's auto-repeat), in this
+          // lineage, with its own generation.
+          pressGenerationRef.current += 1;
+          pressedRef.current.set(id, {
+            lineage,
+            generation: pressGenerationRef.current,
+          });
         }
         const queue = queueRef.current;
         const last = queue[queue.length - 1]?.event;
@@ -1284,94 +1325,152 @@ export function useLiveSurface(
   /**
    * Ask the host to release whatever this viewer has pressed in the current
    * lineage, fenced by the epoch it holds. False on a host without that (the
-   * caller then sends its own releases). The obligation stands until the
-   * host confirms: a transport failure is retried with backoff, a stale
-   * epoch is retried at the epoch now reported, and it ends when control
-   * has changed hands (the host released the presses at that handoff). Only
-   * the presses it named are then treated as released.
+   * caller then sends its own releases). Each press joins one standing
+   * obligation (several calls never send several requests at once), worked
+   * through by one worker per target until the host confirms it: a failure
+   * is tried again after a capped pause that never gives up while the
+   * obligation stands, a stale epoch is tried again at the epoch the answer
+   * reports, and a change of control to someone else ends it (the host
+   * releases presses at that handoff). Only the press generations the host
+   * confirmed are then treated as released.
    */
   const releasePressed = useCallback(() => {
     if (epochCauseRef.current !== true) return false;
     const lineage = lineageRef.current;
-    const ids = [...pressedRef.current]
-      .filter(([, pressedIn]) => pressedIn === lineage)
-      .map(([id]) => id);
-    if (ids.length === 0) return true;
-    pendingReleaseRef.current = { lineage, ids: new Set(ids) };
-    void runReleaseRef.current();
+    for (const [id, pressed] of pressedRef.current)
+      if (pressed.lineage === lineage)
+        pendingReleaseRef.current.set(id, pressed.generation);
+    if (pendingReleaseRef.current.size > 0) void runReleaseRef.current();
     return true;
   }, []);
   const runReleaseRef = useRef(async () => {});
   runReleaseRef.current = async () => {
+    // One worker: a running one takes the new presses on its next round;
+    // a paused one is woken to do so now.
+    if (releaseWorkerRef.current) {
+      releaseWakeRef.current?.();
+      return;
+    }
+    releaseWorkerRef.current = true;
     const generation = targetGenerationRef.current;
-    for (let attempt = 0; attempt < RELEASE_ATTEMPTS; attempt += 1) {
-      const obligation = pendingReleaseRef.current;
-      if (!obligation || generation !== targetGenerationRef.current) return;
-      // The host no longer releases presses itself (a different Station):
-      // the releases still queued go instead.
-      if (epochCauseRef.current !== true) {
-        pendingReleaseRef.current = null;
-        return;
-      }
-      // Control changed hands since: the host released them at the handoff.
-      if (obligation.lineage !== lineageRef.current) {
-        pendingReleaseRef.current = null;
-        return;
-      }
-      const viewerId = viewerIdRef.current;
-      try {
-        const envelope = await boundedRequest(
-          async (signal) => {
-            const answer = await transportRef.current(
-              `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  action: 'release-pressed',
-                  epoch: epochRef.current,
-                  ...(viewerId ? { viewerId } : {}),
-                }),
-                signal,
-                keepalive: true,
-              },
-            );
-            if (!answer.ok && answer.status !== 409)
-              throw new Error(`release-pressed answered ${answer.status}`);
-            return (await answer.json().catch(() => null)) as {
-              data?: LiveSurfaceLeaseResult;
-            } | null;
-          },
-          // Not tied to the target: an unmount sends it on the way out.
-          new AbortController().signal,
-          requestTimeoutRef.current,
+    let failures = 0;
+    try {
+      while (
+        pendingReleaseRef.current.size > 0 &&
+        generation === targetGenerationRef.current
+      ) {
+        // The host no longer releases presses itself (a different Station):
+        // the releases still queued go instead.
+        if (epochCauseRef.current !== true) {
+          pendingReleaseRef.current.clear();
+          return;
+        }
+        const lineage = lineageRef.current;
+        // A press from control that has since passed to someone else: the
+        // host released it at that handoff.
+        for (const [id, pressGeneration] of [...pendingReleaseRef.current]) {
+          const pressed = pressedRef.current.get(id);
+          if (
+            !pressed ||
+            pressed.generation !== pressGeneration ||
+            pressed.lineage !== lineage
+          )
+            pendingReleaseRef.current.delete(id);
+        }
+        if (pendingReleaseRef.current.size === 0) return;
+        const asked = new Map(pendingReleaseRef.current);
+        const viewerId = viewerIdRef.current;
+        let retryNow = false;
+        try {
+          const envelope = await boundedRequest(
+            async (signal) => {
+              const answer = await transportRef.current(
+                `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'release-pressed',
+                    epoch: epochRef.current,
+                    ...(viewerId ? { viewerId } : {}),
+                  }),
+                  signal,
+                  keepalive: true,
+                },
+              );
+              if (!answer.ok && answer.status !== 409)
+                throw new Error(`release-pressed answered ${answer.status}`);
+              return (await answer.json().catch(() => null)) as {
+                data?: LiveSurfaceLeaseResult & { epochCause?: unknown };
+              } | null;
+            },
+            // Not tied to the target: an unmount sends it on the way out.
+            new AbortController().signal,
+            requestTimeoutRef.current,
+          );
+          if (generation !== targetGenerationRef.current) return;
+          const result = envelope?.data;
+          const nextLease = result
+            ? parseLiveSurfaceControlLease(result.lease)
+            : null;
+          // Reconciled like any answer, with its attested cause: a stale
+          // epoch from this viewer's own takeover is not someone else's.
+          if (nextLease)
+            adoptLease(nextLease, {
+              from: 'answer',
+              cause: parseLiveSurfaceEpochCause(result?.epochCause),
+              handoff: false,
+            });
+          if (result?.ok) {
+            for (const [id, pressGeneration] of asked) {
+              const pressed = pressedRef.current.get(id);
+              // Only the press this answer is about; a later press of the
+              // same key or button keeps its own release.
+              if (pressed?.generation === pressGeneration)
+                pressedRef.current.set(id, {
+                  ...pressed,
+                  lineage: RELEASED_BY_HOST,
+                });
+              if (pendingReleaseRef.current.get(id) === pressGeneration)
+                pendingReleaseRef.current.delete(id);
+            }
+            failures = 0;
+            continue;
+          }
+          // Not the holder: control left this viewer, and the host released
+          // its presses as it went.
+          if (result && !result.ok && result.code === 'not-holder') {
+            for (const [id, pressGeneration] of asked)
+              if (pendingReleaseRef.current.get(id) === pressGeneration)
+                pendingReleaseRef.current.delete(id);
+            continue;
+          }
+          // A stale epoch: tried again at once, at the epoch now reported.
+          if (result && !result.ok && result.code === 'stale-epoch')
+            retryNow = true;
+        } catch {
+          // Lost, failed (`release-failed`), or timed out: tried again.
+        }
+        if (retryNow && failures < 3) {
+          failures += 1;
+          continue;
+        }
+        const pause = Math.min(
+          RELEASE_BACKOFF_MS * 2 ** failures,
+          RELEASE_BACKOFF_MAX_MS,
         );
-        if (pendingReleaseRef.current !== obligation) return;
-        const result = envelope?.data;
-        if (result?.ok) {
-          for (const id of obligation.ids)
-            if (pressedRef.current.get(id) === obligation.lineage)
-              pressedRef.current.set(id, RELEASED_BY_HOST);
-          pendingReleaseRef.current = null;
-          return;
-        }
-        const nextLease = result
-          ? parseLiveSurfaceControlLease(result.lease)
-          : null;
-        if (nextLease) adoptLease(nextLease);
-        // Not the holder: control left this viewer, and with it the presses.
-        if (result && !result.ok && result.code === 'not-holder') {
-          pendingReleaseRef.current = null;
-          return;
-        }
-        // A stale epoch: tried again at the epoch now reported.
-        if (result && !result.ok && result.code === 'stale-epoch') continue;
-      } catch {
-        // Lost or failed: tried again after a pause.
+        failures += 1;
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, pause);
+          releaseWakeRef.current = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+        releaseWakeRef.current = null;
       }
-      await new Promise((resolve) =>
-        setTimeout(resolve, RELEASE_BACKOFF_MS * 2 ** attempt),
-      );
+    } finally {
+      releaseWorkerRef.current = false;
     }
   };
   releasePressedRef.current = releasePressed;

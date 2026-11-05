@@ -369,7 +369,12 @@ export type LiveSurfaceLeaseRefusalCode =
   /** The surface was unregistered; its lease accepts no further claims. */
   | 'surface-closed'
   /** The caller is not the current holder (release/renew/dispatch). */
-  | 'not-holder';
+  | 'not-holder'
+  /**
+   * `release-pressed` could not release what was pressed (the producer's
+   * cancel failed or timed out). Nothing was forgotten: the caller retries.
+   */
+  | 'release-failed';
 
 export type LiveSurfaceLeaseResult = (
   | { ok: true; lease: LiveSurfaceControlLease }
