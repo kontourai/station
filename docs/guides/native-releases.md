@@ -135,10 +135,15 @@ one pre-ledger published code is a permanent floor in
 cannot regress it.
 Desktop, Android, and iOS builds consume the same overlay; the platform jobs
 inspect package metadata where the host tooling exposes it before uploading.
-Nightly build zero retains the compatible `base-nightly.<day>` version. A
-same-day rebuild uses `base-nightly.<day>.<build>` (where `build` is 1–99), so
+Nightly build zero uses `base-nightly.YYYYMMDD`, showing the UTC date. A
+same-day rebuild uses `base-nightly.YYYYMMDD.<build>` (where `build` is 1–99), so
 the Android and macOS artifacts carry the identical, strictly higher updater
-SemVer as well as the shared `day * 100 + build` numeric code.
+SemVer as well as the shared `day * 100 + build` numeric code. Here `day`
+remains whole UTC days since 2020-01-01; the native numeric code and reservation
+tags keep their existing allocation. Dated versions sort after legacy
+day-counter versions of the same base release. Portable server versions
+encode the same allocation as `base-nightly.YYYYMMDDNN`, with a two-digit
+build index, to preserve the installer's single numeric prerelease suffix.
 
 ## Manually dispatching Nightly
 

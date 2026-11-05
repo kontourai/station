@@ -5,7 +5,10 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { NIGHTLY_BUILDS_PER_DAY } from './lib/nightly-build-identity.mjs';
+import {
+  NIGHTLY_BUILDS_PER_DAY,
+  nightlyVersion,
+} from './lib/nightly-build-identity.mjs';
 import { verifyTauriUpdaterSignature } from './lib/release-artifacts.mjs';
 import {
   assertWindowsNightlyManifest,
@@ -361,11 +364,15 @@ export function assertNightlyVersionRelationship(identities) {
     /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.(0|[1-9][0-9]*)(?:\.([1-9][0-9]*))?$/.exec(
       version ?? '',
     );
-  const day = match ? Number(match[1]) : Number.NaN;
-  const build = match?.[2] === undefined ? 0 : Number(match[2]);
   const androidCode = identities?.android?.versionCode;
+  const day = Math.floor(androidCode / NIGHTLY_BUILDS_PER_DAY);
+  const build = match?.[2] === undefined ? 0 : Number(match[2]);
+  const base = version?.split('-nightly.')[0];
+  const date = new Date(Date.UTC(2020, 0, 1) + day * 86_400_000);
+  const legacyVersion = `${base}-nightly.${day}${build === 0 ? '' : `.${build}`}`;
   const desktopCode = Number(identities?.desktop?.bundleVersion);
   if (
+    !match ||
     !Number.isSafeInteger(day) ||
     !Number.isSafeInteger(build) ||
     build < 0 ||
@@ -374,7 +381,8 @@ export function assertNightlyVersionRelationship(identities) {
     !Number.isSafeInteger(androidCode) ||
     !Number.isSafeInteger(desktopCode) ||
     desktopCode !== androidCode ||
-    Math.floor(androidCode / NIGHTLY_BUILDS_PER_DAY) !== day ||
+    (version !== legacyVersion &&
+      version !== nightlyVersion(base, date, build)) ||
     androidCode % NIGHTLY_BUILDS_PER_DAY !== build
   ) {
     fail(
