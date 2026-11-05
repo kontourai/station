@@ -218,6 +218,116 @@ describe('pinned launch fields reach the engine child', () => {
   });
 });
 
+// #4515 fix round 2: the Codex and Muse builders hand the merged launch env
+// to `childProcessEnvironment`, which layers it over `process.env` again. On
+// Windows an inherited `HTTPS_PROXY` came back beside a locked
+// `https_proxy`, and the child got the first of the two. This drives the
+// real builders with the platform read as Windows; the recorder (run here
+// on a case-sensitive host) reports every name spawn was handed.
+describe('on Windows a locked variable is the only case-variant the engine child gets', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const inherited = process.env.HTTPS_PROXY;
+  afterEach(() => {
+    if (platform) Object.defineProperty(process, 'platform', platform);
+    if (inherited === undefined) delete process.env.HTTPS_PROXY;
+    else process.env.HTTPS_PROXY = inherited;
+  });
+
+  function asWindows<T>(launch: () => T): T {
+    process.env.HTTPS_PROXY = 'http://inherited:1';
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      return launch();
+    } finally {
+      if (platform) Object.defineProperty(process, 'platform', platform);
+    }
+  }
+
+  function proxyVariants(env: Record<string, string>) {
+    return Object.entries(env).filter(
+      ([name]) => name.toUpperCase() === 'HTTPS_PROXY',
+    );
+  }
+
+  test('Codex', async () => {
+    const engine = recordingEngine();
+    install({
+      instances: {
+        codex: {
+          locked: true,
+          binaryPath: engine.binary,
+          environment: { https_proxy: 'http://pinned:2' },
+        },
+      },
+    });
+    const tmpDir = makeTempDir('station-managed-codex-tmp-');
+    const child = asWindows(() => spawnCodexProcess(undefined, [], tmpDir));
+    await exited(child);
+    expect(proxyVariants(engine.read().env)).toEqual([
+      ['https_proxy', 'http://pinned:2'],
+    ]);
+  });
+
+  test('Muse: muse exec and muse serve', async () => {
+    const engine = recordingEngine();
+    install({
+      instances: {
+        muse: {
+          locked: true,
+          binaryPath: engine.binary,
+          environment: { https_proxy: 'http://pinned:2' },
+        },
+      },
+    });
+    const tmpDir = makeTempDir('station-managed-muse-tmp-');
+    const exec = asWindows(() =>
+      createMuseProcess(['exec'], undefined, tmpDir),
+    );
+    await exited(exec.process as never);
+    exec.release?.();
+    expect(proxyVariants(engine.read().env)).toEqual([
+      ['https_proxy', 'http://pinned:2'],
+    ]);
+    const serve = asWindows(() =>
+      createMuseServeHost(
+        { disableSandbox: false },
+        undefined,
+        undefined,
+        tmpDir,
+      ),
+    );
+    await exited(serve.process as never);
+    serve.release?.();
+    expect(proxyVariants(engine.read().env)).toEqual([
+      ['https_proxy', 'http://pinned:2'],
+    ]);
+  });
+
+  test('control: elsewhere both names reach the child, as the platform keeps both', async () => {
+    const engine = recordingEngine();
+    install({
+      instances: {
+        codex: {
+          locked: true,
+          binaryPath: engine.binary,
+          environment: { https_proxy: 'http://pinned:2' },
+        },
+      },
+    });
+    process.env.HTTPS_PROXY = 'http://inherited:1';
+    const child = spawnCodexProcess(
+      undefined,
+      [],
+      makeTempDir('station-managed-codex-tmp-'),
+    );
+    await exited(child);
+    expect(proxyVariants(engine.read().env).sort()).toEqual([
+      ['HTTPS_PROXY', 'http://inherited:1'],
+      ['https_proxy', 'http://pinned:2'],
+    ]);
+  });
+});
+
 describe('merge rules', () => {
   const launch = {
     command: '/usr/bin/user-agent',
