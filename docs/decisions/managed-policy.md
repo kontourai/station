@@ -188,13 +188,14 @@ refused with `duplicate key <path>`, as a file is. An XML plist goes through a
 strict tokenizer that refuses any markup it cannot read rather than skipping
 it; a binary plist (what macOS writes) through its object table, refusing a
 structure it cannot read. An object is its encoded bytes, found by
-its offset, however many indices name it, and each distinct container is
-scanned once. The references read are bounded by the reference slots the
-object area can hold, charged as each container is expanded: objects that do
-not overlap, as plutil writes them (including a valid profile whose strings
-plutil shares), stay within it, and a file whose containers overlap so as to
-exceed it is refused before reading further. So a crafted profile cannot make
-startup slow. The conversion
+its offset, however many indices name it: each distinct container is
+expanded once and each distinct key string decoded once. Each expansion
+charges its references, and each first decode its string's bytes, against
+the object area's size before reading them. Objects that do not overlap, as
+plutil writes them (including a valid profile whose strings plutil shares),
+stay within it; a file whose objects overlap so as to exceed it is refused.
+So the references and key characters the scan reads together are at most
+the object area's size; this bounds what is read, not how long it takes. The conversion
 itself runs plutil with a 10-second timeout; a timeout refuses the profile. Any other encoding plutil reads (JSON, old-style
 text) is not what macOS writes and is refused.
 

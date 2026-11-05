@@ -208,16 +208,18 @@ const BINARY_PLIST_MAX_DEPTH = 64;
  * dict's keys are decoded (ASCII or UTF-16 strings) and compared. Anything
  * the scan cannot read (a bad trailer, offset or reference, a key that is not
  * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}) refuses
- * the profile rather than being passed on. An object reached twice (shared,
- * not a cycle) is scanned once: its keys are its own, whatever path reaches
- * it, and an object is its encoded bytes, however many indices name them:
- * each distinct encoded container is expanded at most once. The references
- * read are bounded by the reference slots the object area can hold
- * (`(tableOffset - 8) / refSize`), charged as each container is expanded;
- * non-overlapping objects, as plutil and CFPropertyList write them, stay
- * within it, and a file whose containers overlap so as to exceed it is
- * refused before reading past it. So the work is linear in the file's size
- * (at most 1 MiB) (#4515).
+ * the profile rather than being passed on.
+ *
+ * What it reads is bounded (#4515). An object is its encoded bytes, found by
+ * offset however many indices name it: each distinct container is expanded
+ * at most once, and each distinct key string decoded at most once. Each
+ * expansion charges its references (`count * refSize` bytes, both halves of
+ * a dict) and each first decode its string's bytes, before reading them,
+ * against the object area (`tableOffset - 8` bytes). A writer's objects do
+ * not overlap, so a valid profile stays within the area; a file whose
+ * objects overlap so as to exceed it is refused as unreadable. So the
+ * references and key characters read together are at most the object
+ * area's size. This bounds the bytes read, not the time taken.
  */
 export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   const unreadable = 'it is a binary property list Station cannot read';
