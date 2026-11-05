@@ -734,3 +734,40 @@ test("R6-2b: a release refused as stale only because this viewer's own takeover 
   expect(server.remotePressed()).toEqual([]);
   a.unmount();
 });
+
+test('R6-2c: a release whose own answer is lost stays owed until the host confirms it', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  await server.agentClaim();
+  let openStream!: () => void;
+  const streamGate = new Promise<void>((resolve) => {
+    openStream = resolve;
+  });
+  // Every input answer from here on is held back, then lost: the takeover's
+  // and the stale release's alike.
+  let loseAnswers!: () => void;
+  const answerGate = new Promise<void>((_resolve, reject) => {
+    loseAnswers = () => reject(new TypeError('network connection was lost'));
+  });
+  answerGate.catch(() => {});
+  const a = viewer(
+    server.transport({
+      streamGate: () => streamGate,
+      delay: (url) => (url.endsWith('/input') ? answerGate : null),
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  act(() => a.result.current.sendInput([shiftUp]));
+  loseAnswers();
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  expect(releaseRequests(server)).toBeGreaterThanOrEqual(1);
+  openStream();
+  await settle();
+  expect(server.remotePressed()).toEqual([]);
+  a.unmount();
+});

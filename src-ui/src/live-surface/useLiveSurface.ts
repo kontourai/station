@@ -1205,14 +1205,14 @@ export function useLiveSurface(
         // its error or timeout (`accepted` counts only completed ones), and
         // what follows it would land after a gap. Nothing is kept to send
         // again; the person checks the page.
-        abandonIndeterminateRef.current();
+        abandonIndeterminateRef.current(batch);
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
       if (lineage !== lineageRef.current) return;
       // The answer was lost (or the request timed out): the batch may have
       // been applied.
-      abandonIndeterminateRef.current();
+      abandonIndeterminateRef.current(batch);
     } finally {
       // Whatever happened to this batch's answer (used, discarded as
       // describing ended control, lost or timed out): reconcile to the
@@ -1231,9 +1231,24 @@ export function useLiveSurface(
    * itself is asked to; on an older host the releases already queued still
    * go, so a press that did land is not left down.
    */
-  const abandonIndeterminateRef = useRef(() => {});
-  abandonIndeterminateRef.current = () => {
+  const abandonIndeterminateRef = useRef(
+    (_batch: readonly LiveSurfaceInput[] = []) => {},
+  );
+  abandonIndeterminateRef.current = (batch = []) => {
     keepUndelivered([]);
+    // A release in the unknown batch may never have landed (refused, or
+    // never arrived): where the host releases presses itself, what it
+    // released stays owed until the host confirms it.
+    if (epochCauseRef.current === true)
+      for (const event of batch) {
+        const id = pressId(event);
+        if (!id || !isRelease(event) || pressedRef.current.has(id)) continue;
+        pressGenerationRef.current += 1;
+        pressedRef.current.set(id, {
+          lineage: lineageRef.current,
+          generation: pressGenerationRef.current,
+        });
+      }
     // The releases already queued still go: a press that did land must not
     // be left down. Where the host releases presses itself it is asked to as
     // well. On an older host they go in whatever lineage the stream settles
