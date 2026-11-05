@@ -17,6 +17,7 @@ import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-ind
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 import { MemoryErasureCoordinator } from '../memory-erasure-coordinator.js';
+import { MemoryErasureIntentStore } from '../memory-erasure-intent.js';
 import { MemoryRootManager } from '../memory-root.js';
 import { syncRootToNeo4j } from '../neo4j-graph-sync.js';
 import { FakeNeo4jDriver } from './fake-neo4j-driver.js';
@@ -359,6 +360,25 @@ test('a re-registered root recovers an interrupted intent for the same bound sto
     });
     await expect(f.coordinator.recoverAll()).resolves.toBeUndefined();
     expect((await f.index.stats(f.root.id)).chunks).toBe(0);
+    const journal = new MemoryErasureIntentStore(f.home);
+    try {
+      expect(journal.open()).toMatchObject({ kind: 'entries', entries: [] });
+    } finally {
+      await journal.close();
+    }
+    const currentRoot = await f.store.getRoot(f.root.id);
+    if (!currentRoot) throw new Error('Expected re-registered root');
+    await expect(
+      f.coordinator.erase(
+        owner,
+        currentRoot,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'registration-change',
+      ),
+    ).resolves.toBeNull();
   } finally {
     f.index.close();
   }
@@ -414,14 +434,26 @@ test('refuses recovery if the Corpus store is replaced after the intent', async 
       f.home,
       () => true,
     );
+    const recovery = new MemoryErasureCoordinator(
+      f.home,
+      reopenedStore,
+      reopenedManager,
+      f.index,
+    );
+    await expect(recovery.recoverAll()).rejects.toThrow('binding changed');
+    const replacement = await reopenedStore.getRoot(f.root.id);
+    if (!replacement) throw new Error('Expected replacement registration');
     await expect(
-      new MemoryErasureCoordinator(
-        f.home,
-        reopenedStore,
-        reopenedManager,
-        f.index,
-      ).recoverAll(),
-    ).rejects.toThrow('binding changed');
+      recovery.erase(
+        owner,
+        replacement,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'binding',
+      ),
+    ).rejects.toMatchObject({ code: 'REQUEST_KEY_CONFLICT' });
   } finally {
     f.index.close();
   }

@@ -113,7 +113,6 @@ export class MemoryErasureCoordinator {
             if (
               intent.operation !== 'purge' ||
               intent.ownerId !== authority.userId ||
-              intent.registrationId !== root.registrationId ||
               intent.binding !== adapter.rootBinding() ||
               intent.targetKind !== kind ||
               intent.targetId !== id ||
