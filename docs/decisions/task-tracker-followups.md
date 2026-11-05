@@ -34,9 +34,13 @@ lead wake. Choices the decision left open:
   `gh` login of their own.
 - One wake per poll carries every new waking item of the Task (at most eight
   written out, the rest counted), deduplicated by GitHub kind and id.
-- Comments and reviews by the `gh` login the poll runs as never wake the
-  lead: agents post their tracker updates with that login, so waking on them
-  would let a lead wake itself.
+- Comments and reviews made with the same GitHub account Station's `gh` uses
+  never wake the lead: agents post their tracker updates with that account,
+  so waking on them would let a lead wake itself. On a single-user Station
+  your own GitHub comments are therefore recorded and shown in the brief but
+  do not wake the lead; to steer it, message it in Station. When GitHub does
+  not report that account (no login, or a deleted one), no comment or review
+  wakes the lead; only failing checks do.
 - Failing conclusions are `FAILURE`, `TIMED_OUT` and `STARTUP_FAILURE`.
 - A wake the lead's owner may no longer read, or that finds no inbox or no
   owner, waits for the next poll; a Task that is done, canceled or has a

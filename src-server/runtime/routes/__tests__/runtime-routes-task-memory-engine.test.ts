@@ -780,7 +780,7 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     ]);
   });
 
-  test("the production inbox asks the Task follow-up wake's placement re-check before queueing a tf- wake (#4508)", async () => {
+  test("the production inbox asks the Task follow-up wake's placement re-check before placing a queued tf- wake (#4508)", async () => {
     const asked: unknown[] = [];
     let refuse = true;
     support.taskFollowUpWake = {

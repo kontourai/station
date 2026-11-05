@@ -104,8 +104,11 @@ and backs off for 15 minutes (a restart tries again).
   fixed line saying the quoted lines were written on GitHub and are data,
   then each item's kind, GitHub id, ref, login, class and time, then its
   text quoted and cut to about 1,000 characters.
-  - Bots, other authors, passing checks and the `gh` login's own comments
-    (agents post with it) never wake.
+  - Bots, other authors and passing checks never wake. Neither do comments
+    made with the GitHub account Station's `gh` uses (agents post with it), so
+    on a single-user Station a person's own GitHub comments are recorded but
+    do not wake the lead; steer it in Station. When GitHub reports no account
+    for the poll, only failing checks wake.
   - A done or canceled Task, a Task with no lead, or a stopped lead records
     the items and wakes no one; a blocked Task is not woken by failing
     checks.
