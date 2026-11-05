@@ -1096,18 +1096,24 @@ export class UsageTelemetryService {
   ): Promise<void> {
     const remaining = Math.max(0, deadline - Date.now());
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let expired = false;
     await Promise.race([
       flushing,
       new Promise<void>((resolve) => {
         timeoutId = setTimeout(() => {
           // Shutdown begins by allowing an acknowledged request to finish.
           // Only expiry of its shared budget is allowed to cancel it.
+          expired = true;
           this.requestAbort?.abort();
           resolve();
         }, remaining);
       }),
     ]);
     if (timeoutId) clearTimeout(timeoutId);
+    // The abort ends the network wait, but the cancelled flush still records
+    // its batch in the local ledger beneath the Station home. Join that local
+    // settlement so shutdown never returns with a write still in flight.
+    if (expired) await flushing.catch(() => undefined);
   }
   private async flushWithDeadline(deadline?: number): Promise<void> {
     if (!this.active || this.buffer.length === 0 || this.flushing)
@@ -1264,6 +1270,10 @@ export class UsageTelemetryService {
         this.recordDropped(this.buffer, 'transport');
         this.counts.shutdownDropped += this.buffer.length;
         this.buffer.length = 0;
+        // The request is already aborted; what remains is local ledger work
+        // beneath the home (the cancelled flush and the dropped record).
+        await this.flushing?.catch(() => undefined);
+        await Promise.allSettled([...this.tracking]);
         await authorShutdown;
         return;
       }

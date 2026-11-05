@@ -1739,6 +1739,47 @@ describe('UsageTelemetryService', () => {
       await subject.shutdown();
     }
   });
+  test('SHUTDOWN LIFETIME DEFECT: a flush cut at the deadline settles its ledger before shutdown returns', async () => {
+    // The request never answers until shutdown's 1s budget aborts it.
+    const fetch = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        }),
+    );
+    const subject = await service({
+      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+      fetch: fetch as any,
+      setInterval: vi.fn() as any,
+    });
+    // The aborted batch's local ledger write takes a moment to land under the
+    // home, like a loaded runner. Shutdown must join it, not leave it running.
+    // Only the flush's own write passes its wire ID; shutdown's write for the
+    // still-buffered events does not, and must not satisfy this probe.
+    let transportLedgerSettled = false;
+    const recordFull = (subject as any).recordFull.bind(subject);
+    (subject as any).recordFull = async (...args: unknown[]) => {
+      if (args[1] !== 'dropped' || args[2] !== 'transport' || args.length < 4)
+        return recordFull(...args);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await recordFull(...args);
+      transportLedgerSettled = true;
+    };
+    for (let index = 0; index < 20; index++)
+      await subject.track('station_started', {
+        version: `1.0.${index}`,
+        platform: 'linux',
+        arch: 'x64',
+      });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await subject.shutdown();
+    expect(
+      transportLedgerSettled,
+      'shutdown returned while an aborted flush was still writing under the home',
+    ).toBe(true);
+  }, 10_000);
   test('IDENTITY RACE DEFECT: concurrent creation converges on one UUID', async () => {
     const root = await home();
     await mkdir(join(root, 'config'));
