@@ -134,6 +134,7 @@ test('host and peer dock adopt the same writable conversation controls', async (
   );
   await expect(composer).toHaveValue(localDraft);
   await page.evaluate(() => {
+    window.stationConnectionFaults.holdEventReconnects();
     window.stationConnectionFaults.disconnectObservation(true);
     window.stationConnectionFaults.holdDeliveryLookups();
   });
@@ -159,9 +160,10 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await expect(
     page.getByRole('button', { name: 'Check', exact: true }),
   ).toHaveCount(0);
-  await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectObservation(false),
-  );
+  await page.evaluate(() => {
+    window.stationConnectionFaults.disconnectObservation(false);
+    window.stationConnectionFaults.releaseEventReconnects();
+  });
   await expect(transcript).toContainText('The local uncertain turn ran once.');
   await stationJson(
     stations.source,
