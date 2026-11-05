@@ -4703,7 +4703,7 @@ export function configureRuntimeRoutes(
     id: 'repository-auth-details',
     label: 'Repository sign-in details',
     description:
-      'Show the Station’s GitHub CLI account and reported token scopes in Project Sources. Does not verify repository access.',
+      'Show the Station’s GitHub CLI sign-in and scopes. Repository access remains unchecked.',
   });
   const integrationStatus = createIntegrationStatusReader(
     createIntegrationStatusProbes({

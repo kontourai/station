@@ -225,6 +225,7 @@ test('repository links lead the cards, chat placement is plain, and access belon
     within(station).getByRole('button', { name: 'Check sign-in' }),
   );
   await within(station).findByText('GitHub sign-in details unavailable');
+  expect(screen.getByRole('link', { name: 'example/station' })).toBeTruthy();
   expect(within(station).queryByText('checkout-owner')).toBeNull();
   expect(within(station).queryByText('repo, read:org')).toBeNull();
   replies.failAuth = false;

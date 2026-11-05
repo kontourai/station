@@ -234,39 +234,57 @@ function RepositorySourceCard({
             )}
           />
         )}
-        <details className="project-sources__diagnostics">
-          <summary>Advanced details</summary>
-          <dl className="project-repositories__details">
-            {repo.label && (
-              <>
-                <dt>Project label</dt>
-                <dd>{repo.label}</dd>
-              </>
-            )}
-            <dt>Resource identity</dt>
-            <dd>
-              <code>{repo.id}</code>
-            </dd>
-            <dt>Primary resource</dt>
-            <dd>{primary ? 'Yes' : 'No'}</dd>
-            <dt>Checkout check</dt>
-            <dd>{resource?.state ?? view?.posture ?? 'Not available'}</dd>
-            {resource && 'reason' in resource && (
-              <>
-                <dt>Check details</dt>
-                <dd>{resource.reason}</dd>
-              </>
-            )}
-            {view?.posture === 'unreadable' && (
-              <>
-                <dt>Record details</dt>
-                <dd>{view.reason}</dd>
-              </>
-            )}
-          </dl>
-        </details>
+        <RepositoryDiagnostics
+          repo={repo}
+          resource={resource}
+          primary={primary}
+          view={view}
+        />
       </details>
     </li>
+  );
+}
+
+function RepositoryDiagnostics({
+  repo,
+  resource,
+  primary,
+  view,
+}: Pick<CardProps, 'repo' | 'primary' | 'view'> & {
+  resource: ResourceResolutionResult | undefined;
+}) {
+  return (
+    <details className="project-sources__diagnostics">
+      <summary>Advanced details</summary>
+      <dl className="project-repositories__details">
+        {repo.label && (
+          <>
+            <dt>Project label</dt>
+            <dd>{repo.label}</dd>
+          </>
+        )}
+        <dt>Resource identity</dt>
+        <dd>
+          <code>{repo.id}</code>
+        </dd>
+        <dt>Primary resource</dt>
+        <dd>{primary ? 'Yes' : 'No'}</dd>
+        <dt>Checkout check</dt>
+        <dd>{resource?.state ?? view?.posture ?? 'Not available'}</dd>
+        {resource && 'reason' in resource && (
+          <>
+            <dt>Check details</dt>
+            <dd>{resource.reason}</dd>
+          </>
+        )}
+        {view?.posture === 'unreadable' && (
+          <>
+            <dt>Record details</dt>
+            <dd>{view.reason}</dd>
+          </>
+        )}
+      </dl>
+    </details>
   );
 }
 

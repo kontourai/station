@@ -74,10 +74,7 @@ export function ProjectRepositoryAccess({
           </Button>
         )}
       </div>
-      <p>
-        Sign-in is checked on {stationName}. Git may use a different SSH key or
-        credential helper.
-      </p>
+      <p>Git may use a different SSH key or credential helper.</p>
       {github &&
       (previews.isPending || status.isPending) &&
       !previews.isError ? (
@@ -159,8 +156,8 @@ export function ProjectRepositoryAccess({
         )}
         <dt>Repository permissions</dt>
         <dd>Not checked by this sign-in check</dd>
-        <dt>Project or repository credentials</dt>
-        <dd>Separate credential bindings are not managed here yet.</dd>
+        <dt>Project or repository sign-in</dt>
+        <dd>Not available in this view</dd>
       </dl>
       {github && (
         <details className="project-sources__diagnostics">
