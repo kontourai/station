@@ -67,7 +67,7 @@ export async function iosShell(): Promise<boolean> {
 
 function defaultEnvironment(): FoldSourceEnvironment {
   return {
-    window: window as unknown as FoldWindow,
+    window,
     devicePosture: (navigator as Navigator & { devicePosture?: DevicePosture })
       .devicePosture,
     document,
