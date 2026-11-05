@@ -151,12 +151,7 @@ async function provisionModel(live: LiveStation, origin: string) {
     status: 'ready',
     prerequisites: [],
   });
-  await stationJson(live, '/agents', 'POST', {
-    slug: CONNECTION_AGENT,
-    name: 'Connection qualification',
-    prompt: 'Answer briefly.',
-    tools: { mcpServers: ['station-docs'] },
-  });
+  await provisionAgent(live);
   await expect
     .poll(
       async () => {
@@ -167,7 +162,6 @@ async function provisionModel(live: LiveStation, origin: string) {
         return (
           catalog.catalogState !== 'reconciling' &&
           catalog.data.some(
-            // The catalog marks only unlaunchable Agents (`available: false`).
             (agent) =>
               agent.slug === CONNECTION_AGENT && agent.available !== false,
           )
@@ -176,6 +170,20 @@ async function provisionModel(live: LiveStation, origin: string) {
       { timeout: 30_000 },
     )
     .toBe(true);
+}
+
+async function provisionAgent(live: LiveStation) {
+  await stationJson(live, '/agents', 'POST', {
+    slug: CONNECTION_AGENT,
+    name: 'Connection qualification',
+    prompt: 'Answer briefly.',
+    model: CONNECTION_MODEL,
+    execution: {
+      modelConnectionId: 'connection-qualification-model',
+      modelId: CONNECTION_MODEL,
+    },
+    tools: { mcpServers: ['station-docs'] },
+  });
 }
 
 export const test = mergeTests(authenticatedTest, auditedTest).extend<{
@@ -262,6 +270,10 @@ export const test = mergeTests(authenticatedTest, auditedTest).extend<{
           );
           models.push(model);
           await provisionModel(live, model.origin);
+        } else {
+          // Delegation verifies the same authored profile on both Stations.
+          // S deliberately has no model; only R must be able to run it.
+          await provisionAgent(live);
         }
       }
       const folder = join(receiver.home, 'qualification-project');
@@ -394,12 +406,12 @@ export async function startConnectionChat(
 ) {
   await ensureChatDockOpen(page);
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  const form = page.getByRole('form', { name: 'Start work' });
+  const form = page
+    .getByRole('region', { name: 'New chat', exact: true })
+    .getByRole('form', { name: 'Start work' });
   await expect(form).toBeVisible();
-  if (route === 'host') {
-    await form.getByRole('button', { name: /^Agent:/ }).click();
-    await page.locator(`[data-agent-slug="${CONNECTION_AGENT}"]`).click();
-  }
+  await form.getByRole('button', { name: /^(Agent:|Choose an agent)/ }).click();
+  await page.locator(`[data-agent-slug="${CONNECTION_AGENT}"]`).click();
   if (route === 'relay') {
     await form.getByRole('button', { name: /Runs on .*Choose where/ }).click();
     await page

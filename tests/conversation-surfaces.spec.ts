@@ -449,7 +449,8 @@ for (const access of ['owner', 'member', 'guest'] as const) {
           portableProjectId: 'portable-history',
         },
         task: {
-          ...task,
+          id: task.id,
+          createdAt: task.createdAt,
           title: 'Shared connection history',
           status: 'in_progress',
         },
@@ -535,6 +536,9 @@ for (const access of ['owner', 'member', 'guest'] as const) {
         await page.goto(
           stations.source.ui + '/tasks/' + encodeURIComponent(task.id),
         );
+        await page
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
       } else {
         const memberProject = {
           version: 'station.member-project/v1',

@@ -814,6 +814,14 @@ export function NewChatModal({
     } = {},
   ) => {
     const composer = options.composer === true;
+    const choice =
+      options.choice ??
+      (composer
+        ? start.modelChoiceFor(agent)
+        : modelChoices[modelChoiceKey(agent)]);
+    const remoteChoice = Boolean(
+      choice?.environmentId && choice.environmentId !== 'current',
+    );
     // A typed message is sent; context alone (or a visual skill) is placed in
     // the new chat's composer to review, as an Agent-row start always did.
     const sendInitialMessage =
@@ -855,7 +863,7 @@ export function NewChatModal({
     // Keyboard selection (Enter on the filtered list) reaches here with no
     // availability filter, so this must speak rather than return silently —
     // the pointer path never arrives (the row button is disabled).
-    if (agent.available === false) {
+    if (agent.available === false && !remoteChoice) {
       // archive#3027: Enter on an enableable alias row triggers Enable, the
       // same action its visible button offers; non-enableable rows keep
       // speaking their reason. A connection remedy outranks Enable on the
@@ -889,11 +897,6 @@ export function NewChatModal({
       : (initialPrompt ??
         buildCodingChatInitialMessage(draftItems, draftContext?.framing));
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
-    const choice =
-      options.choice ??
-      (composer
-        ? start.modelChoiceFor(agent)
-        : modelChoices[modelChoiceKey(agent)]);
     if (choice?.environmentId && choice.environmentId !== 'current') {
       if (startFiles.length > 0) {
         setSelectFeedback(
@@ -1476,7 +1479,14 @@ export function NewChatModal({
   );
   const canStart =
     (Boolean(prompt.trim()) || Boolean(experience) || contextSelected) &&
-    Boolean(draftAgent && agentRunnability(draftAgent).runnable) &&
+    Boolean(
+      draftAgent &&
+        (agentRunnability(draftAgent).runnable ||
+          (targetStart.active &&
+            start.modelChoiceFor(draftAgent)?.executionAgentId &&
+            start.modelChoiceFor(draftAgent)?.expectedDefinitionFingerprint ===
+              draftAgent.definitionFingerprint)),
+    ) &&
     !contextPending &&
     selectedContextResolved &&
     !runtimeLoading &&

@@ -794,7 +794,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(onSelect.mock.calls[0][0].slug).toBe('codex-agent');
   });
 
-  test('a failed Enable surfaces the server message instead of failing silently', async () => {
+  test('a failed Enable surfaces recovery copy without leaking the registry error', async () => {
     selectionModelState.agents = [ENABLEABLE_ALIAS];
     materializeMock.mockRejectedValueOnce(new Error('registry write refused'));
     const onSelect = renderModal();
@@ -807,9 +807,10 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not enable codex.*registry write refused/i,
+        /could not enable codex.*Try again in a moment\./i,
       );
     });
+    expect(screen.queryByText(/registry write refused/i)).toBeNull();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -1639,14 +1640,18 @@ describe('the start composer in the dock', () => {
     },
   );
 
-  test.each([false, true])(
-    'a paired chat chooses the receiver project and reports open failures (failure: %s)',
-    async (openFails) => {
+  test.each([
+    [false, true],
+    [true, true],
+    [false, false],
+  ])(
+    'a paired chat chooses the receiver project and reports open failures (failure: %s, locally ready: %s)',
+    async (openFails, locallyReady) => {
       const fingerprint = 'c'.repeat(64);
       const profile: AgentData = {
         slug: agentId('codex'),
         name: 'Codex',
-        available: true,
+        available: locallyReady,
         definitionFingerprint: fingerprint,
       };
       selectionModelState.agents = [profile];
@@ -1737,8 +1742,9 @@ describe('the start composer in the dock', () => {
       );
       if (openFails)
         expect(
-          await screen.findByText('Could not open the chat.'),
+          await screen.findByText('Try again in a moment.'),
         ).toBeTruthy();
+      expect(screen.queryByText('Could not open the chat.')).toBeNull();
       expect(onTaskStarted).not.toHaveBeenCalled();
       expect(onSelect).not.toHaveBeenCalled();
       expect(

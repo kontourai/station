@@ -264,7 +264,7 @@ export function createButton(page: Page): Locator {
 /** Open the desktop region or mobile dock without matching the inbox toggle. */
 export async function ensureChatDockOpen(page: Page): Promise<void> {
   const expand = page.getByRole('button', {
-    name: /^(?:Expand chat(?: dock)?|Show Chat)$/,
+    name: /^(?:Expand chat(?: dock)?|Full screen chat|Show Chat)$/,
   });
   const collapse = page.getByRole('button', {
     name: /^(?:Collapse chat(?: dock)?|Hide Chat)$/,
