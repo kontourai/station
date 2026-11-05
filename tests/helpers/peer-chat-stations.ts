@@ -642,6 +642,32 @@ export async function captureConnectionState(
         path: testInfo.outputPath(name),
         animations: 'disabled',
       });
+      await testInfo.attach(`${name}.styles.json`, {
+        body: JSON.stringify(
+          await page.locator('.message.assistant p').evaluateAll((paragraphs) =>
+            paragraphs.map((paragraph) => {
+              const ancestors = [];
+              for (
+                let element: Element | null = paragraph;
+                element;
+                element = element.parentElement
+              ) {
+                const style = getComputedStyle(element);
+                ancestors.push({
+                  element: element.tagName,
+                  className: element.className,
+                  color: style.color,
+                  background: style.backgroundColor,
+                });
+              }
+              return ancestors;
+            }),
+          ),
+          null,
+          2,
+        ),
+        contentType: 'application/json',
+      });
       await testInfo.attach(name, {
         path: testInfo.outputPath(name),
         contentType: 'image/png',
