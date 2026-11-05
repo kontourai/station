@@ -2889,7 +2889,9 @@ function projectRepositorySourceScreens(): Screen[] {
                 'Add a repository',
                 'Advanced: checkout repair',
               ]) {
-                const summary = section.getByText(label, { exact: true });
+                const summary = section
+                  .locator('summary')
+                  .filter({ hasText: new RegExp(`^${label}$`) });
                 await summary.click();
                 await expect(
                   section
