@@ -751,7 +751,7 @@ export function applyOrchestrationSnapshot(
   // The live stream's snapshot is FULL (never thread-filtered), so a
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
-    reconcileChildWorkSnapshot(payload.sessions);
+    reconcileChildWorkSnapshot(payload.sessions, options?.apiBase);
     if (options?.apiBase) {
       childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
       const chats = Object.entries(activeChatsStore.getSnapshot());

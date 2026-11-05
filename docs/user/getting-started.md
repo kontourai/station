@@ -859,7 +859,7 @@ Child-work cards distinguish **Returned result**, **Provider summary**,
 **Child message**, and **Provider error**. Older text may show that its source
 was not recorded. A summary or transcript handle alone does not establish a
 returned result. An existing completion notice is corrected when a later
-structured tool return arrives.
+structured tool return arrives from the same Station and child.
 
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained

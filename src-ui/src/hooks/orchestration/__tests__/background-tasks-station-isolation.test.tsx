@@ -495,3 +495,63 @@ test('a resumed continuation reporter keeps its alias when a new child arrives a
     'Resumed authoritative child',
   );
 });
+
+test('a foreign Station cannot replace a completion notice with a colliding child result', () => {
+  const emit = (apiBase: string, summary?: string, returned = false) =>
+    handleOrchestrationEvent(apiBase, {
+      eventId: `${apiBase}:${summary ?? 'started'}`,
+      provider: 'claude',
+      threadId: parent,
+      createdAt: '2026-10-30T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: summary
+        ? {
+            kind: 'settle',
+            producer: 'engine-subagent',
+            reporterThreadId: parent,
+            childId: 'colliding-child',
+            status: 'completed',
+            result: {
+              summary,
+              source: returned ? 'tool-return' : 'provider-summary',
+            },
+          }
+        : {
+            kind: 'upsert',
+            item: {
+              producer: 'engine-subagent',
+              reporterThreadId: parent,
+              childId: 'colliding-child',
+              title: 'Background review',
+              status: 'running',
+              backgrounded: true,
+            },
+          },
+    });
+  emit(stationA);
+  emit(stationA, 'A provider summary');
+  const original =
+    activeChatsStore.getSnapshot()[parent].ephemeralMessages ?? [];
+  expect(original).toHaveLength(1);
+  const originalId = original[0].id;
+  const originalContent = original[0].content;
+  emit(stationB);
+  emit(stationB, 'B returned result', true);
+  const afterForeign =
+    activeChatsStore.getSnapshot()[parent].ephemeralMessages ?? [];
+  expect(
+    afterForeign.find((message) => message.id === originalId)?.content,
+  ).toBe(originalContent);
+  expect(afterForeign).toHaveLength(2);
+  applyOrchestrationSnapshot({ sessions: [] }, { apiBase: stationB });
+  emit(stationA, 'A returned result', true);
+  const corrected =
+    activeChatsStore.getSnapshot()[parent].ephemeralMessages ?? [];
+  expect(corrected).toHaveLength(2);
+  expect(
+    corrected.find((message) => message.id === originalId)?.content,
+  ).toContain('A returned result');
+  expect(
+    corrected.find((message) => message.id !== originalId)?.content,
+  ).toContain('B returned result');
+});
