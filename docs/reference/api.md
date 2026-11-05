@@ -708,6 +708,17 @@ assistant turn in the same Project (or a conversation without a Project), parses
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
+## A Task's worktree
+
+`GET /api/tasks/:taskId` answers the opened Task. When its Project isolates
+Sessions in worktrees and the Task has one, the response adds
+`taskWorktree: {path, branch, kept?}`, and `workspaceBinding.worktreePath`
+and `branch` name that worktree; `workspaceBinding.workingDirectory` stays the
+Project checkout. `kept: {reason, at, detail?}` says why a finished Task's
+worktree was not removed (`policy`, `uncommitted`, `unpushed`,
+`session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
+(#4507).
+
 ## Start a Task from a tracker item
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,

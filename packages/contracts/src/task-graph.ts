@@ -94,6 +94,57 @@ const MAX_TASK_WORKSPACE_STRING_LENGTH = 4_096;
  * are optional because Station never infers an unavailable repository/worktree
  * value from a project or neighboring session.
  */
+/**
+ * #4507: the worktree a Task's Sessions run in, when its Project isolates
+ * them in worktrees. A read projection on the opened Task (and the server's
+ * own reads); it is never stored on the Task record.
+ */
+export interface TaskWorktreeView {
+  path: string;
+  branch: string;
+  /**
+   * Set when the Task finished but its worktree was kept: its policy keeps
+   * it (`policy`), removing it would lose work (`uncommitted`, `unpushed`),
+   * a Session in it had a running turn (`session-running`, retried when the
+   * turn ends), the repository's own config names a program git would run
+   * (`unsafe-config`), or finalization failed (`failed`).
+   */
+  kept?: {
+    reason:
+      | 'policy'
+      | 'uncommitted'
+      | 'unpushed'
+      | 'session-running'
+      | 'unsafe-config'
+      | 'failed';
+    at: string;
+    detail?: string;
+  };
+}
+
+/**
+ * #4507: the directory a Task's work happens in: its own worktree when it
+ * has one, otherwise the Project working directory it was created against.
+ * Every reader that compares or reads a Task's files uses this, so a Task
+ * whose Sessions run in a worktree is not compared against the Project
+ * checkout.
+ */
+export function taskWorkingDirectory(
+  task: Pick<
+    TaskRecord,
+    'workspaceBinding' | 'taskWorktree' | 'taskWorktreeUnknown'
+  >,
+): string | undefined {
+  // Not the Project checkout: this Task may have a worktree nobody can
+  // vouch for right now, so nothing reads or compares its files.
+  if (task.taskWorktreeUnknown) return undefined;
+  // Returned as stored, never expanded: this module has no home directory
+  // to expand `~` against. Callers that read files with it expand it
+  // (`resolve(expandTilde(...))`); the keep route compares it with a value
+  // of the same provenance.
+  return task.taskWorktree?.path ?? task.workspaceBinding?.workingDirectory;
+}
+
 export interface TaskWorkspaceBinding {
   /** Server-derived current reopen state; raw paths are not authority to open. */
   availability?: TaskWorkspaceAvailability;
@@ -597,6 +648,14 @@ export interface TaskRecord {
   dispatchedAt?: string;
   sessionId?: string;
   workspaceBinding?: TaskWorkspaceBinding;
+  /** #4507: read projection only; see {@link TaskWorktreeView}. */
+  taskWorktree?: TaskWorktreeView;
+  /**
+   * #4507: read projection only. Set when the Task worktree record cannot
+   * be read and this Task has a worktree on disk, so whether its work is in
+   * that worktree or the Project checkout is unknown.
+   */
+  taskWorktreeUnknown?: true;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */

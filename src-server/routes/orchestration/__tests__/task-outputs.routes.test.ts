@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
-import { TASK_DECLARED_OUTPUT_KEEP_V1 } from '@kontourai/station-contracts/task-graph';
+import {
+  TASK_DECLARED_OUTPUT_KEEP_V1,
+  taskWorkingDirectory,
+} from '@kontourai/station-contracts/task-graph';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -173,6 +176,8 @@ describe('Task Output routes', () => {
               : null;
           },
           keepDeclaredPullRequest: graph.keepDeclaredPullRequest.bind(graph),
+          // The record this stand-in returns carries no Task worktree.
+          taskWorkingDirectory: (task) => taskWorkingDirectory(task),
         },
         sessionOutputs: sessions,
         readAuthorityForRequest: () =>
