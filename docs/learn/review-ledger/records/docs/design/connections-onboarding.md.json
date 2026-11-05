@@ -86,7 +86,13 @@
 
     "src-ui/src/components/MobileWelcomeBoundary.tsx",
 
-    "src-ui/src/components/OnboardingGate.tsx"
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-ui/src/__tests__/OnboardingGate.test.tsx",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
   ],
 
   "checks": [

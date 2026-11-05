@@ -26,6 +26,7 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
 import { APP_CONFIG_SEED } from './app-config-seed.js';
+import { overlayManagedAppSettings } from './managed-settings.js';
 import { validator } from './validator.js';
 
 // The literal values live in `app-config-seed.ts`, a leaf module the
@@ -192,7 +193,9 @@ export async function observeAppConfigFile(
   const value: unknown = JSON.parse(content);
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('app config must be an object');
-  return value as Record<string, unknown>;
+  // #4517: observers decide with it (registry trust, plugin admission), so
+  // they see the managed policy's values like every other reader.
+  return overlayManagedAppSettings(value as Record<string, unknown>);
 }
 
 interface AppConfigFileMutationOptions {

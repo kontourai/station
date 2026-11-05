@@ -124,6 +124,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
   MCPLocalConnectionCustody,
@@ -149,6 +150,7 @@ import {
 } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
+import { installManagedAppSettings } from '../../domain/managed-settings.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
@@ -609,6 +611,12 @@ export interface StationRuntimeOptions {
   logger?: Logger;
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /**
+   * The managed policy the entrypoint loaded before construction (#4515);
+   * null or absent means none is installed. Fixed for the process lifetime:
+   * a changed policy takes effect on restart.
+   */
+  managedPolicy?: LoadedManagedPolicy | null;
 }
 
 /** How long session recovery may take before update readiness warns. */
@@ -662,6 +670,7 @@ export class StationRuntime {
   private appConfig!: AppConfig;
   private logger: Logger;
   private readonly buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  private readonly managedPolicy: LoadedManagedPolicy | null = null;
   /** One persistent grant store shared by default and persisted managed agents. */
   private readonly unattendedGrantStore: UnattendedGrantStore;
   private readonly discordGatewayService: DiscordGatewayService;
@@ -1178,6 +1187,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private failedInitializationOrchestration?: OrchestrationService;
   private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -1545,6 +1555,10 @@ export class StationRuntime {
       }
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
+      this.managedPolicy = options.managedPolicy ?? null;
+      // #4517: before any config is loaded, so every reader (this runtime's
+      // loader and the ones plugin routes build) sees the managed values.
+      installManagedAppSettings(this.managedPolicy);
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -3995,6 +4009,12 @@ export class StationRuntime {
         });
       }
       await retire(() => this.retireSelfHostedBroker());
+      if (
+        this.failedInitializationOrchestration !== this.orchestrationService
+      ) {
+        this.failedInitializationOrchestration = this.orchestrationService;
+        await retire(() => this.orchestrationService?.shutdown());
+      }
       if (cleanupErrors.length)
         throw new AggregateError(
           [error, ...cleanupErrors],
@@ -4430,6 +4450,10 @@ export class StationRuntime {
               | StrandsFramework;
             this.modelCatalog = core.modelCatalog;
           },
+          onOrchestrationServiceCreated: (service) => {
+            this.failedInitializationOrchestration = undefined;
+            this.orchestrationService = service;
+          },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
             this.nativeForkStoredReadBinder =
@@ -4807,6 +4831,8 @@ export class StationRuntime {
       }
     };
 
+    this.failedInitializationOrchestration = this.orchestrationService;
+    await attempt(() => this.orchestrationService?.shutdown());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
@@ -5194,6 +5220,7 @@ export class StationRuntime {
       port: this.port,
       host: this.host,
       buildProvenanceSnapshot: this.buildProvenanceSnapshot,
+      managedPolicy: this.managedPolicy,
       usageAggregator: this.usageAggregator,
       usageTelemetry: this.usageTelemetry,
       getUsageTelemetry: () => this.usageTelemetry,

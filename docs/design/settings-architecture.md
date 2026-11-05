@@ -246,8 +246,9 @@ products:
   ("saved to this device" vs a save-toast for server writes); contextual settings
   live with their entity, not in the global page.
 
-Deliberately skipped: multi-layer file-precedence stacks and org-policy
-constraint engines (Station has no org-policy tier yet); settings-sync services
+Deliberately skipped: multi-layer file-precedence stacks and general
+constraint engines (the one administrator-owned tier, the managed policy, is
+described in [Managed policy tier](#managed-policy-tier)); settings-sync services
 and encrypted account blobs (Station settings are server-authoritative per
 instance); per-setting analytics metadata; duplicated page-vs-modal settings
 implementations (observed in the wild as an explicit anti-pattern).
@@ -256,6 +257,42 @@ The consensus across all four products, independently arrived at: **settings are
 organized by scope — who or what a setting controls and where it lives — not by
 whichever page first needed them.** That is also exactly what #572 and #536 ask
 for.
+
+## Managed policy tier
+
+Status: the foundation shipped with #4516 and managed settings with #4517.
+The [decision record](../decisions/managed-policy.md) owns the rules, and the
+[administrator guide](../guides/managed-policy.md) owns rollout.
+
+A machine administrator can install one managed policy, which every Station
+server on that machine loads at startup. It is the outer bound on the scopes
+below, not a sixth scope: it has no settings screen of its own, and Station
+never writes its values into `app.json` or a project file. Precedence for a
+setting, highest first: managed lock > project > Station > environment >
+managed default > built-in default. Removing the policy and restarting brings
+back the user's own values.
+
+Each `settings` entry names a registered Station setting, managed as a whole,
+with a default (`locked: false`) or a fixed value (`locked: true`). The values
+reach readers through one overlay, `overlayManagedAppSettings`
+(`src-server/domain/managed-settings.ts`), applied where `ConfigLoader` hands
+out `AppConfig` (`loadAppConfig`, the launchability snapshot, the mutation
+result) and in `observeAppConfigFile`; the stored file is read raw by the
+mutation path, so nothing writes a policy value back. A default fills a key
+only when no Station decision and no accepted environment value exists (the
+registry's declared variable, or one the consumer reads itself:
+`STATION_LOG_LEVEL`, `SHELL`), the same test `resolveEffectiveAppSetting` and
+provenance apply; a `logLevel` lock outranks `STATION_LOG_LEVEL` in the logger
+itself. Settings with a reader the overlay cannot reach (the telemetry
+settings, read before the policy loads) are refused at policy load. Every
+write path refuses a change to a locked key with one sentence
+("<Organization>'s policy manages this setting."). A lock hides, and refuses
+writes to, every project field that would decide the setting past it
+(`MANAGED_SETTING_PROJECT_FIELDS`: the model and provider pair with its
+`last-used` selection, the approval default with its selection, the
+workspace isolation mode); the stored project record keeps them. Device settings are out of scope: they live on each
+client. Settings shows a "Managed by <organization>" layer and badge and
+disables the locked control.
 
 ## 3. Target model: five scopes
 
@@ -478,9 +515,10 @@ the response body stays this Station's config. An unknown slug is a 404, not a
 Station-only answer under a name that does not exist.
 
 **Effective values** are resolved by `resolveEffectiveAppSetting`
-(`src-server/domain/settings-effective.ts`) — project, then Station, then a
-declared `envFallback` the field's own validator accepts, then the registry
-default — and by `resolveEffectiveDeviceSetting`
+(`src-server/domain/settings-effective.ts`) — a managed lock, then project,
+then Station, then a declared `envFallback` the field's own validator accepts,
+then a managed default, then the registry default (the two managed layers
+arrived with #4517; see [Managed policy tier](#managed-policy-tier)) — and by `resolveEffectiveDeviceSetting`
 (`src-ui/src/views/settings/effective-device-setting.ts`) for the device
 scope's only two sources. Both reuse the existing "is this a decision or the
 absence of one" tests rather than re-deriving them; a second definition of
@@ -513,8 +551,12 @@ Registry-derived surfaces and checks intended to detect drift:
 Write path: **all writers go through the live route** — UI, and `station config
 set` when a Station is reachable (falling back to direct file write only with an
 explicit `--offline` flag), closing #175. `GET /config/app` gains per-field
-provenance (`default | file | env`) so the UI can name where a value came from
-(the §2 provenance pattern).
+provenance (`default | file | env`, and `managed` since #4517) so the UI can
+name where a value came from (the §2 provenance pattern). A `managed` entry
+says whether the policy locks the value or supplies a default, and names the
+organization and support link, never the value. It is reported only where the
+managed value is what readers get: a managed default under a stored Station
+value stays `file`, the #1557 rule below.
 
 **Corrected by station#1557.** This originally said the UI would render
 "overridden by operator env" badges "instead of accepting doomed edits", and
@@ -724,7 +766,9 @@ Slices 1–2 are foundations; 3 is the visible revamp; 4–6 ride the new rails.
 
 ## 7. Non-goals
 
-- No org/enterprise policy tier — nothing demands it yet.
+- No general org-policy constraint engine. Organization-wide control is the
+  machine-level [managed policy tier](#managed-policy-tier) (#4515), which only
+  narrows; it is not a settings sync or account-policy service.
 - No cross-device settings sync service — Station settings
   are server-authoritative per instance; device settings are deliberately local.
 - No project-level `config` files for app settings — project scope stays entity

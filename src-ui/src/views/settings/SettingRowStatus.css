@@ -34,3 +34,14 @@
   position: absolute;
   inset: -6px;
 }
+
+/* #4517: groups a custom editor so a managed lock can disable it whole. */
+.setting-managed-fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.setting-managed-fieldset:disabled {
+  opacity: 0.6;
+}

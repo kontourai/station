@@ -382,6 +382,8 @@ export const troubleshootPrepareSchema = z
       .object({
         route: z.string().optional(),
         errorSummary: z.string().optional(),
+        conversationId: z.string().optional(),
+        turnId: z.string().optional(),
       })
       .strict()
       .optional(),

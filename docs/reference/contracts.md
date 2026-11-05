@@ -336,8 +336,9 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
+| `@kontourai/station-contracts/managed-policy` | The machine administrator's v1 managed policy document and its boundary parser (unknown keys and not-yet-enforced limits are refused, with a problem per key, and long key names are truncated in problem paths; `settings` entries are checked against the settings registry by `managedSettingsProblems`, which refuses the settings listed in `MANAGED_POLICY_UNMANAGEABLE_SETTINGS`, and against the settings file schema by `managedSettingsSchemaError`; `withoutLockedProjectFields` hides the project fields a lock outranks, per `MANAGED_SETTING_PROJECT_FIELDS`), the `duplicateJsonMemberPath` scanner that finds a repeated member name, the canonical form its `sha256:` fingerprint covers, the value-free client summary, the `GET /api/settings/managed-policy` status, the denial and "Managed by" text helpers, and the `STATION_MANAGED_POLICY_INVALID` startup marker. Reading sources and hashing live in `@kontourai/station-shared/managed-policy`; see the [managed policy guide](../guides/managed-policy.md) |
 | `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy, its automatic-download time and a per-run sequence) and its state event name; the native shell computes it, the window and tray read it |
-| `@kontourai/station-contracts/config` | App config and template variables |
+| `@kontourai/station-contracts/config` | App config and template variables, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
@@ -372,7 +373,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
-| `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
+| `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
@@ -963,6 +964,10 @@ partial/background work; they do not fail or replay the completed turn. Generic 
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
+`async_event_queue_consumer_conflict` identifies an internal queue-ownership
+invariant violation, not a provider or caller error. Its `conflict` kind is
+non-retryable.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -985,6 +990,7 @@ No existing diagnostic code is renamed or removed.
 | `stage_incomplete` | `input_unsupported` | `false` |
 | `stage_invalid_upload` | `input_unsupported` | `false` |
 | `stage_capacity` | `busy` | `true` |
+| `async_event_queue_consumer_conflict` | `conflict` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `create_request_capacity` | `busy` | `true` |
@@ -1045,6 +1051,7 @@ No existing diagnostic code is renamed or removed.
 | `muse-turn-timeout` | `timeout` | `true` |
 | `principal_unresolved` | `auth` | `false` |
 | `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `managed_setting_locked` | `permission_denied` | `false` |
 | `provider_session_start_failed` | `unavailable` | `true` |
 | `provider_session_starting` | `busy` | `true` |
 | `provider_turn_in_progress` | `busy` | `true` |

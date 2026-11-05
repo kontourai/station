@@ -8,6 +8,7 @@ import {
   inspectLock,
   lockOwnerAlive,
 } from '@kontourai/station-shared/lifecycle-events';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   isSupportedNodeVersion,
   SUPPORTED_NODE_MAJOR,
@@ -23,6 +24,7 @@ import {
   inspectExactKontourDependencyPins,
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
+import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
 import {
   collectInstanceStatus,
@@ -33,6 +35,7 @@ import {
   type LifecycleCodeRoot,
   resolveLifecycleStateLocation,
 } from './lifecycle-code-root.js';
+import { effectiveAppConfigOffline } from './managed-settings-guard.js';
 
 type DoctorCheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -87,6 +90,8 @@ export interface DoctorDeps {
   codeRoot: LifecycleCodeRoot;
   /** The Node.js executing this CLI: an archive runs its bundled one. */
   processRuntime: { version: string; execPath: string };
+  /** The installed managed policy, as server startup accepts it (#4517). */
+  loadManagedPolicy: () => LoadedManagedPolicy | null;
 }
 
 export interface DoctorJsonDocument {
@@ -433,6 +438,25 @@ export function prebuiltArchiveChecks(
   });
 }
 
+/**
+ * A detected CLI's row: `pass` only when its connection may run it, so the
+ * row agrees with `runtimeReady` and `runtimeState.detected` (#4517).
+ */
+function cliCheck(
+  label: string,
+  version: string | null,
+  allowed: boolean,
+): DoctorCheck {
+  if (!version) return { label, status: 'warn', detail: 'Not found' };
+  if (!allowed)
+    return {
+      label,
+      status: 'warn',
+      detail: `${version}, but its connection is disabled by configuration or the managed policy cannot be used.`,
+    };
+  return { label, status: 'pass', detail: version };
+}
+
 export async function collectDoctorReport(
   deps: Partial<DoctorDeps> = {},
 ): Promise<DoctorReport> {
@@ -450,6 +474,7 @@ export async function collectDoctorReport(
     inspectShellHosts: inspectTerminalShellHosts,
     codeRoot: LIFECYCLE_CODE_ROOT,
     processRuntime: { version: process.version, execPath: process.execPath },
+    loadManagedPolicy: loadInstalledManagedPolicyChecked,
     ...deps,
   };
   const archive =
@@ -493,10 +518,27 @@ export async function collectDoctorReport(
   const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
   const shellHosts = runtimeDeps.inspectShellHosts(runtimeDeps.projectHome);
 
-  const appConfig = runtimeDeps.readJson<Record<string, unknown>>(
+  // #4517: readiness is derived from the settings in effect, with the
+  // managed policy's locks and defaults applied the way the server applies
+  // them, so a connection the policy disables is not reported as ready. A
+  // policy server startup would refuse is a failing check: nothing the
+  // stored file configures runs until it is fixed.
+  const storedAppConfig = runtimeDeps.readJson<Record<string, unknown>>(
     appConfigPath,
     {},
   );
+  let managedPolicyProblem: string | null = null;
+  let appConfig: Record<string, unknown>;
+  try {
+    appConfig = effectiveAppConfigOffline(
+      storedAppConfig,
+      runtimeDeps.loadManagedPolicy,
+    );
+  } catch (error) {
+    managedPolicyProblem =
+      error instanceof Error ? error.message : String(error);
+    appConfig = {};
+  }
   const providers = runtimeDeps.readJson<Array<Record<string, unknown>>>(
     providersPath,
     [],
@@ -514,6 +556,17 @@ export async function collectDoctorReport(
   const enabledRuntimeConnections = Object.entries(agentConnections).filter(
     ([, settings]) => settings?.enabled !== false,
   );
+  // A detected CLI is a usable runtime only while its connection is not
+  // disabled in the effective configuration (a managed policy can disable
+  // it, #4517).
+  // Under a policy startup would refuse, nothing runs: the server does not
+  // start, so no detected CLI is usable either.
+  const runtimeAllowed = (connectionId: string): boolean =>
+    managedPolicyProblem === null &&
+    agentConnections[connectionId]?.enabled !== false;
+  // Kiro is an ACP registry engine, not an `agentConnections` key, so only
+  // an unusable policy gates it here.
+  const kiroUsable = Boolean(kiroVersion) && managedPolicyProblem === null;
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -522,6 +575,15 @@ export async function collectDoctorReport(
   );
 
   const sourceChecks: DoctorCheck[] = [
+    ...(managedPolicyProblem
+      ? [
+          {
+            label: 'Managed policy',
+            status: 'fail' as const,
+            detail: managedPolicyProblem,
+          },
+        ]
+      : []),
     {
       label: 'Node.js',
       status: isSupportedNodeVersion(nodeVersion) ? 'pass' : 'fail',
@@ -607,27 +669,21 @@ export async function collectDoctorReport(
         ? 'AWS credential sources detected.'
         : 'No AWS credential source detected.',
     },
-    {
-      label: 'Codex CLI',
-      status: codexVersion ? 'pass' : 'warn',
-      detail: codexVersion ?? 'Not found',
-    },
-    {
-      label: 'Claude CLI',
-      status: claudeVersion ? 'pass' : 'warn',
-      detail: claudeVersion ?? 'Not found',
-    },
+    cliCheck('Codex CLI', codexVersion, runtimeAllowed('codex')),
+    cliCheck('Claude CLI', claudeVersion, runtimeAllowed('claude')),
     {
       label: 'ACP / external runtime',
       status:
-        kiroVersion || enabledRuntimeConnections.some(([id]) => id === 'acp')
+        kiroUsable || enabledRuntimeConnections.some(([id]) => id === 'acp')
           ? 'pass'
           : 'warn',
-      detail:
-        kiroVersion ??
-        (enabledRuntimeConnections.some(([id]) => id === 'acp')
-          ? 'ACP runtime connection configured.'
-          : 'No ACP runtime detected.'),
+      detail: kiroUsable
+        ? (kiroVersion as string)
+        : kiroVersion
+          ? `${kiroVersion}, but the managed policy cannot be used.`
+          : enabledRuntimeConnections.some(([id]) => id === 'acp')
+            ? 'ACP runtime connection configured.'
+            : 'No ACP runtime detected.',
     },
   ];
   const checks = archive
@@ -641,13 +697,19 @@ export async function collectDoctorReport(
       )
     : sourceChecks;
 
+  const codexUsable = Boolean(codexVersion) && runtimeAllowed('codex');
+  const claudeUsable = Boolean(claudeVersion) && runtimeAllowed('claude');
+  // A policy server startup would refuse leaves nothing ready: the server
+  // does not start.
   const chatReady =
-    enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured;
+    managedPolicyProblem === null &&
+    (enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured);
   const runtimeReady =
-    awsConfigured ||
-    Boolean(codexVersion) ||
-    Boolean(claudeVersion) ||
-    enabledRuntimeConnections.length > 0;
+    managedPolicyProblem === null &&
+    (awsConfigured ||
+      codexUsable ||
+      claudeUsable ||
+      enabledRuntimeConnections.length > 0);
   const configuredProviderLabels = enabledLlmProviders
     .map(providerLabel)
     .filter(Boolean);
@@ -657,9 +719,9 @@ export async function collectDoctorReport(
   ].filter((value): value is string => Boolean(value));
   const configuredRuntimes = enabledRuntimeConnections.map(([id]) => id);
   const detectedRuntimes = [
-    codexVersion ? 'codex-cli' : null,
-    claudeVersion ? 'claude-cli' : null,
-    kiroVersion ? 'kiro-cli' : null,
+    codexUsable ? 'codex-cli' : null,
+    claudeUsable ? 'claude-cli' : null,
+    kiroUsable ? 'kiro-cli' : null,
   ].filter((value): value is string => Boolean(value));
   const fixCommands = buildFixCommands({
     chatReady,
@@ -701,9 +763,11 @@ export async function collectDoctorReport(
       configured: configuredRuntimes,
       detected: detectedRuntimes,
       effective:
-        configuredRuntimes[0] ??
-        detectedRuntimes[0] ??
-        (awsConfigured ? 'bedrock-credentials' : null),
+        managedPolicyProblem !== null
+          ? null
+          : (configuredRuntimes[0] ??
+            detectedRuntimes[0] ??
+            (awsConfigured ? 'bedrock-credentials' : null)),
     },
     dependencyState,
     fixCommands,

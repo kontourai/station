@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./managed-policy": "./src/managed-policy.ts",
     "./isolated-repair": "./src/isolated-repair.ts",
     "./qualification-repair-policy": {
       "types": "./src/qualification-repair-policy.d.mts",

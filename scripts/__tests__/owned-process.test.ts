@@ -200,6 +200,50 @@ describe('owned process lifecycle', () => {
     expect(execution.isAlive()).toBe(false);
   });
 
+  test('reports asynchronous abort delivery failure without acknowledging Job settlement', async () => {
+    const emittedErrors: Error[] = [];
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: () => true,
+      send: (_message: unknown, callback?: (error: Error) => void) => {
+        queueMicrotask(() => {
+          const error = Object.assign(new Error('write EPIPE'), {
+            code: 'EPIPE',
+          });
+          if (callback) callback(error);
+          else child.emit('error', error);
+        });
+        return true;
+      },
+    });
+    child.on('error', (error: Error) => emittedErrors.push(error));
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        treeSettlementTimeoutMs: 10,
+      },
+      { platform: 'win32' },
+    );
+    try {
+      await expect(execution.terminate()).rejects.toThrow('write EPIPE');
+      expect(emittedErrors).toEqual([]);
+      expect(execution.settlementEvidence().barriers).toMatchObject({
+        treeSettlementAcknowledged: false,
+        settlementProven: false,
+      });
+    } finally {
+      child.stdout.emit('end');
+      child.stderr.emit('end');
+      child.emit('close', 1, null);
+      await execution.launcherCompletion;
+    }
+  });
+
   test('retains the fence when the launcher does not acknowledge abort settlement', async () => {
     const child = Object.assign(mockChild(), {
       pid: 4242,

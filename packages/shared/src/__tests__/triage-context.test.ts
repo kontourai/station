@@ -1,17 +1,23 @@
-import { existsSync, readdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { TroubleshootReportBoundsError } from '@kontourai/station-contracts/troubleshoot';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   admitTroubleshootSeed,
   boundedTriageLogTail,
   createTriageRunDirectory,
+  draftTroubleshootReport,
+  homeRelativePath,
+  localTriageLogFacts,
   MAX_TRIAGE_CONTEXT_BYTES,
   MAX_TRIAGE_DOCTOR_CHECKS,
   MAX_TRIAGE_LOG_TAIL_LENGTH,
   MAX_TRIAGE_TEXT_LENGTH,
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
   MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
   MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
   redactTroubleshootReportText,
   serializeTriageContext,
   summarizeTriageDoctor,
@@ -232,6 +238,37 @@ describe('troubleshoot seed admission', () => {
     expect(admitTroubleshootSeed({ route: '/' }).route).toBe('');
   });
 
+  test('accepts conversation and turn ids at their limits and refuses one character more', () => {
+    const conversationId = 'c'.repeat(
+      MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+    );
+    const turnId = 't'.repeat(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH);
+    expect(admitTroubleshootSeed({ conversationId, turnId })).toMatchObject({
+      conversationId,
+      turnId,
+    });
+    expect(() =>
+      admitTroubleshootSeed({ conversationId: `${conversationId}c` }),
+    ).toThrow(expect.objectContaining({ reason: 'conversation-id-too-long' }));
+    expect(() => admitTroubleshootSeed({ turnId: `${turnId}t` })).toThrow(
+      expect.objectContaining({ reason: 'turn-id-too-long' }),
+    );
+  });
+
+  test('refuses an id with whitespace or a control character', () => {
+    for (const conversationId of ['a b', 'a\nb', 'a\tb', '']) {
+      expect(() => admitTroubleshootSeed({ conversationId })).toThrow(
+        expect.objectContaining({ reason: 'conversation-id-invalid' }),
+      );
+    }
+    expect(() => admitTroubleshootSeed({ turnId: 'turn\u0000' })).toThrow(
+      expect.objectContaining({ reason: 'turn-id-invalid' }),
+    );
+    expect(admitTroubleshootSeed({ turnId: 'provider:abc-1' }).turnId).toBe(
+      'provider:abc-1',
+    );
+  });
+
   test('redacts secrets and paths from an error summary', () => {
     const seed = admitTroubleshootSeed({
       errorSummary: `failed with ${GITHUB_TOKEN} at /Users/alice/x.ts:1:2`,
@@ -298,7 +335,12 @@ function context(): TroubleshootContext {
       serverLogStore: 'unavailable',
       agentRead: 'requires-operator-grant',
     },
-    seed: { route: null, errorSummary: null },
+    seed: {
+      route: null,
+      errorSummary: null,
+      conversationId: null,
+      turnId: null,
+    },
     limits: {
       contextBytes: MAX_TRIAGE_CONTEXT_BYTES,
       doctorChecks: MAX_TRIAGE_DOCTOR_CHECKS,
@@ -328,6 +370,21 @@ describe('validateTroubleshootContext', () => {
         },
       }),
     ).toThrow('invalid bounded values');
+    expect(() =>
+      validateTroubleshootContext({
+        ...context(),
+        seed: {
+          ...context().seed,
+          turnId: 't'.repeat(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH + 1),
+        },
+      }),
+    ).toThrow('invalid bounded values');
+    expect(() =>
+      validateTroubleshootContext({
+        ...context(),
+        seed: { ...context().seed, conversationId: 'a\nb' },
+      }),
+    ).toThrow('invalid bounded values');
   });
 });
 
@@ -350,5 +407,88 @@ describe('createTriageRunDirectory', () => {
       createTriageRunDirectory('6c6c6c6c-6c6c-4c6c-8c6c-6c6c6c6c6c6c', other),
     ).toThrow('real directory');
     expect(readdirSync(outside)).toEqual([]);
+  });
+});
+
+describe('localTriageLogFacts', () => {
+  test('shows a location inside the real home as ~ and withholds any other path', () => {
+    const userHome = tempRoot();
+    expect(
+      localTriageLogFacts(
+        join(userHome, '.station/instances/stable'),
+        userHome,
+      ),
+    ).toEqual({
+      directory: '~/.station/instances/stable/logs',
+      status: 'absent',
+    });
+    // Another user's home is not this user's ~, whatever its name looks like.
+    expect(
+      localTriageLogFacts('/home/another-user/private', userHome).directory,
+    ).toBeNull();
+    expect(localTriageLogFacts('/opt/station', userHome).directory).toBeNull();
+    // Spaces in the home path are kept intact.
+    const spaced = join(userHome, 'Alice Smith');
+    mkdirSync(spaced);
+    expect(
+      localTriageLogFacts(join(spaced, '.station'), userHome).directory,
+    ).toBe('~/Alice Smith/.station/logs');
+  });
+
+  test('homeRelativePath refuses any path outside the home on its own', () => {
+    const userHome = tempRoot();
+    expect(homeRelativePath('/home/another-user/private', userHome)).toBeNull();
+    expect(
+      homeRelativePath(join(userHome, '..', 'sibling'), userHome),
+    ).toBeNull();
+    expect(homeRelativePath(userHome, userHome)).toBe('~');
+    expect(homeRelativePath(join(userHome, 'a', 'b'), userHome)).toBe('~/a/b');
+  });
+
+  test('an unavailable home directory withholds the location instead of failing', () => {
+    expect(homeRelativePath('/anything', null)).toBeNull();
+    expect(homeRelativePath('/anything', '')).toBeNull();
+  });
+
+  test('a symlink leading out of the home is withheld', () => {
+    const userHome = tempRoot();
+    const outside = tempRoot();
+    symlinkSync(outside, join(userHome, 'linked'));
+    expect(
+      localTriageLogFacts(join(userHome, 'linked', 'station'), userHome)
+        .directory,
+    ).toBeNull();
+  });
+
+  test('reports whether the log directory exists', () => {
+    const home = tempRoot();
+    expect(localTriageLogFacts(home).status).toBe('absent');
+    mkdirSync(join(home, 'logs'));
+    expect(localTriageLogFacts(home).status).toBe('present');
+  });
+});
+
+describe('draftTroubleshootReport', () => {
+  test('redacts title and fields before building the link', () => {
+    const draft = draftTroubleshootReport({
+      title: 'Crash at /Users/alice/project',
+      fields: {
+        'prior-issue': 'https://github.com/acme/private/issues/3',
+      },
+    });
+    expect(draft.title).toBe('Crash at ~/project');
+    expect(draft.fields).toEqual({ 'prior-issue': '[REDACTED_URL]' });
+    expect(new URL(draft.url).searchParams.get('prior-issue')).toBe(
+      '[REDACTED_URL]',
+    );
+  });
+
+  test('refuses an unknown field by name', () => {
+    expect(() =>
+      draftTroubleshootReport({
+        title: 'x',
+        fields: { body: 'y' } as never,
+      }),
+    ).toThrow(TroubleshootReportBoundsError);
   });
 });

@@ -13,6 +13,7 @@ const account: ComponentProps<
 >['value'] = {
   status: 'account',
   saving: false,
+  retrying: false,
   waitingForConnection: false,
   error: false,
   conflict: false,
