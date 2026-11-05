@@ -154,31 +154,31 @@ Erasure remains unavailable until index cleanup and recovery are fenced
 
 ### Review, recall and brief
 
-With the preview on, **My knowledge store → Review memory** does three things
-with what your agents have learned about you and your work:
+With the preview on, **Settings → My knowledge → My knowledge store → What
+Station remembers about you** does three things with what your agents have
+learned about you and your work:
 
-- **You decide the doubtful ones.** Most memories need no attention. Station
-  holds back only the ones that need a person: a new claim that disagrees with
-  an older one, one that replaces something Station remembers, a reading of a
-  conversation that was not consistent, or one that more people could see than
-  could see its source. Each shows the words it came from, side by side with
-  what it conflicts with. You accept, correct, keep the old one, or leave it open
-  ("Not sure" keeps it in the queue).
-- **You can look anything up.** Search shows each memory with the sentence it
-  came from, whether anyone has reviewed it, and what it replaces, was replaced
-  by or disagrees with. A memory nobody flagged is usable straight away,
-  labelled "Not reviewed".
-- **New sessions start informed.** The first message of every new
-  Station-engine session carries a short, bounded brief of what you have confirmed, marked as
-  background and not instruction. Memory that is unreviewed, waiting on a
-  decision, rejected or hidden from you is left out. Turn the preview off and
+- **You check the doubtful ones.** Station asks you only when a new memory
+  disagrees with an older one, replaces something Station remembers, came from a
+  conversation Station wasn't sure how to read, or would be shown to more people
+  than its source was. Each shows the words it came from, beside the older memory
+  it conflicts with. You can remember the new one, keep the old one, correct it,
+  or choose "Not sure", which leaves it in the queue.
+- **You can search.** Each result shows the sentence it came from, whether
+  anyone has reviewed it, and what it replaces, was replaced by or disagrees
+  with. Memories nobody flagged show up in search right away, marked "Not
+  reviewed". Press **Confirm** on one to add it to new chats.
+- **New chats start informed.** A new chat on the Station engine starts with a
+  short brief of what you confirmed, marked as background, not instructions. Chats
+  in Claude Code or Codex don't get it. Left out: anything unreviewed, waiting on
+  you, rejected, replaced, inferred rather than said, or hidden from you. Once
+  the brief reaches 6 KB, further entries are dropped. Turn the preview off and
   nothing is added.
 
-Only a person promotes a memory, including one nobody flagged. Station decides
-who is deciding from your signed-in request, never from anything sent with it. A
-decision made through an agent, Station's internal token or a delegated device
-is saved as a note on the item and changes nothing; the item stays open for you.
-A replacement takes effect in the brief only after you confirm it.
+Only you, signed in at this Station, can approve a memory. If an agent or another
+device tries, Station saves it as a note and the memory keeps waiting for you. A
+replacement reaches new chats only after you confirm it. The exact list of who
+counts is in the [threat model](../security/remote-access-threat-model.md).
 
 How it works, for integrators:
 
@@ -193,12 +193,13 @@ How it works, for integrators:
 
 Claims arrive as Corpus create proposals whose body is the Knowledge Kit's
 distilled-claim envelope (category `memory.claim`). Station reads that envelope,
-checks the claim against its own content-addressed id, and routes it again
+checks the claim against its own content-addressed id, and checks it again
 against the claims proposed before it, so the first version of a fact stays
-usable and the one that challenges it is what you decide. Station does not
-distil sessions or schedule distillation in this preview.
+searchable and the one that challenges it is what you decide. A distillation
+sitting is one run. Station does not distil sessions or schedule distillation in
+this preview.
 
-What this does not cover yet:
+Known limits:
 
 - **Merges and splits of "the same thing".** The Kit and Survey can review them,
   but nothing yet produces those proposals into a memory root, so none reaches
@@ -242,9 +243,8 @@ rules, its standing outcome, who decided and how long it took.
 
 This is what the [evals lane](https://github.com/kontourai/evals/blob/main/docs/measurement.md)
 needs for *defect escapes per human-review-minute*: review minutes per lineage
-(`reviewSeconds / 60` for its first reviewed occurrence, zero when never
-routed) and the routed set. Whether a defect *escaped* is the evals lane's
-judgement of the final memory; Station does not compute it.
+(`reviewSeconds / 60` for its first human review, zero when never routed) and the
+routed set.
 
 ## `./station knowledge reindex` — (re)build the index
 

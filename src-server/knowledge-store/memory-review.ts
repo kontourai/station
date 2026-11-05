@@ -52,10 +52,10 @@ const REASON_PLAIN: Record<MemoryRoutingReason, string> = {
     'It disagrees with something already remembered.',
   'contradicted-by-verification': 'A check found it does not hold.',
   'consequential-supersession': 'It replaces something that matters.',
-  'entity-identity-change':
-    'It merges or splits who or what a memory is about.',
-  'low-extraction-agreement': 'Station read the conversation two ways.',
-  'visibility-widening': 'More people could see it than could see its source.',
+  'entity-identity-change': 'It may be about the same thing as another memory.',
+  'low-extraction-agreement': 'Station wasn’t sure what was said.',
+  'visibility-widening':
+    'It would be shown to more people than its source was.',
 };
 
 /** One short question per leading reason, in the owner's words. */

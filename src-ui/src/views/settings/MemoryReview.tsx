@@ -43,7 +43,7 @@ function ClaimLine({ claim }: { claim: MemoryClaimView }) {
   return (
     <p className="memory-review__claim">
       <span className="memory-review__subject">
-        {claim.subject} · {claim.property}
+        About {claim.subject} · {claim.property}
       </span>
       <span>{claim.value}</span>
     </p>
@@ -250,8 +250,8 @@ export function MemoryReview() {
         const message = result.promoted
           ? 'Saved.'
           : result.reviewerKind === 'agent'
-            ? 'Noted, but only you at this Station can settle it. It is still waiting.'
-            : 'Saved. It stays open until you decide.';
+            ? 'Noted. Only you can decide this, signed in at this Station.'
+            : 'Left open.';
         setLastNote(message);
       },
       invalidateKeys: [['memory']],
@@ -267,7 +267,7 @@ export function MemoryReview() {
   );
   return (
     <section aria-label="Review memory" className="memory-review">
-      <h3>Review memory</h3>
+      <h3>What Station remembers about you</h3>
       {support.data === 'unsupported' && (
         <Empty
           label="This Station can’t review memory yet"
@@ -276,7 +276,7 @@ export function MemoryReview() {
       )}
       {supported && (
         <>
-          <h4>Waiting for you</h4>
+          <h4>Check these</h4>
           {lastNote && (
             <p className="memory-review__note" role="status">
               {lastNote}
@@ -285,8 +285,8 @@ export function MemoryReview() {
           {queue.isFetching && !queue.data && <SkeletonList count={2} />}
           {refused && (
             <Empty
-              label="Nothing remembered yet"
-              description="Memory you collect shows up here for review."
+              label="No memory to review here"
+              description="Collected memory shows up here."
             />
           )}
           {queue.isError && !refused && (
@@ -330,11 +330,10 @@ export function MemoryReview() {
           )}
           {queue.data && (
             <p className="memory-review__count">
-              {queue.data.recallableWithoutReview} other{' '}
               {queue.data.recallableWithoutReview === 1
-                ? 'memory is'
-                : 'memories are'}{' '}
-              ready to use without review.
+                ? '1 more memory wasn’t flagged.'
+                : `${queue.data.recallableWithoutReview} more memories weren’t flagged.`}{' '}
+              Confirm them in search to add them to new chats.
             </p>
           )}
           {decidedItems && decidedItems.length > 0 && (
@@ -354,7 +353,7 @@ export function MemoryReview() {
             </details>
           )}
 
-          <h4>Look something up</h4>
+          <h4>Search your memory</h4>
           <form
             className="memory-review__search"
             onSubmit={(event) => {
@@ -453,8 +452,9 @@ export function MemoryReview() {
           )}
           {recall.data && recall.data.notes.length > 0 && (
             <p className="memory-review__count">
-              Also found {recall.data.notes.length} unstructured{' '}
-              {recall.data.notes.length === 1 ? 'note' : 'notes'}.
+              {recall.data.notes.length === 1
+                ? '1 more note matched but can’t be shown here yet.'
+                : `${recall.data.notes.length} more notes matched but can’t be shown here yet.`}
             </p>
           )}
         </>

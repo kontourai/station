@@ -10868,7 +10868,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Keep a private memory you can review, search and start new chats from. It can hold personal information. Erasure is not available yet.',
+          'Keep a private memory you can check, search and start new chats from. It can hold personal information; erasure isn’t available yet.',
       })
     : undefined;
   const memoryEnabled = () =>
