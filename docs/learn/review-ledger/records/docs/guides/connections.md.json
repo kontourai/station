@@ -438,7 +438,19 @@
 
     "src-ui/src/views/project-settings/ProjectWorkspaceSelection.tsx",
 
-    "src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx"
+    "src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx",
+
+    "src-ui/src/views/project-settings/ProjectRepositoryAccess.tsx",
+
+    "packages/contracts/src/integration-status.ts",
+
+    "packages/sdk/src/query-domains/integrationStatus.ts",
+
+    "src-server/services/integrations/integration-status-service.ts",
+
+    "src-server/routes/integrations/integration-status-routes.ts",
+
+    "src-server/routes/integrations/__tests__/integration-status-routes.test.ts"
   ],
 
   "checks": [
