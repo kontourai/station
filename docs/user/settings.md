@@ -228,6 +228,18 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+## Updates and changelogs
+
+Open **Updates** in the sidebar to review an app or server update. **What’s
+new** shows the offered version’s release notes. **Previous versions and
+changelogs** lets you browse published releases without starting an update.
+The circle around the sidebar update icon fills as a download progresses.
+
+After an app upgrade, its changelog opens once on this device. To turn that
+off, clear **Show changelog after updates** in the dialog, Updates, or
+**Settings → System**. Release history stays available. The first launch on a
+new device establishes the starting version without showing an upgrade dialog.
+
 ## About
 
 **Settings → About** shows the app version, links to **Build details** and

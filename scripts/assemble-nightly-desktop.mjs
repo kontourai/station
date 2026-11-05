@@ -64,6 +64,7 @@ const manifest = assembleNightlyDesktopManifest({
   version: plan.versionIdentities.desktop.version,
   sourceSha: plan.sourceSha,
   pubDate: new Date().toISOString(),
+  notes: readFileSync(join(root, 'desktop-release-notes.md'), 'utf8'),
   builds,
 });
 writeFileSync(

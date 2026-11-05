@@ -4,6 +4,7 @@ import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { ChangelogPreference } from '../../components/updates/ChangelogPreference';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
@@ -87,6 +88,10 @@ export function SystemSection({
           <DesktopUpdateCheck />
         </div>
       )}
+
+      <div {...settingsRow('show-release-notes')} tabIndex={-1}>
+        <ChangelogPreference />
+      </div>
 
       {/* The card's own "Server · {name}" heading labels this row; a row
           title above it would name the same server twice. */}

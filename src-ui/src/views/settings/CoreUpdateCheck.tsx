@@ -11,11 +11,17 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
+import {
+  clearUpdateNotice,
+  publishUpdateNotice,
+} from '../../components/updates/updatesEvents';
 import {
   type ConnectedServerUpdateContext,
   coreUpdateScopeFromContext,
@@ -72,6 +78,7 @@ export function CoreUpdateCheck({
   headingId,
   alerts,
   details,
+  showReleaseNotes = false,
 }: {
   active?: boolean;
   apiBase: string;
@@ -98,6 +105,7 @@ export function CoreUpdateCheck({
   alerts?: ReactNode;
   /** Identity and install facts, folded into Details with the card's own. */
   details?: ReactNode;
+  showReleaseNotes?: boolean;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
   const [confirmApplyScope, setConfirmApplyScope] = useState<string | null>(
@@ -608,6 +616,24 @@ export function CoreUpdateCheck({
   const download = serviceProgress
     ? serviceUpdateDownload(serviceProgress)
     : null;
+  const downloadNoticeId = useId();
+  const downloadPercent = !comparisonSuperseded ? download?.percent : undefined;
+  const downloadText = !comparisonSuperseded ? download?.text : undefined;
+  useEffect(() => {
+    if (downloadPercent === undefined || !downloadText) return;
+    publishUpdateNotice({
+      id: downloadNoticeId,
+      target: 'server',
+      message: 'Downloading server update',
+      summaryOnly: true,
+      progress: {
+        percent: downloadPercent,
+        text: downloadText,
+        label: 'Downloading server update',
+      },
+    });
+    return () => clearUpdateNotice(downloadNoticeId);
+  }, [downloadNoticeId, downloadPercent, downloadText]);
   // Where the progress line goes: a measured download is the bar, finished
   // history is Details, and a staged release has no line. While Restart is
   // offered the header's badge and version carry it; otherwise (a mismatched
@@ -783,6 +809,13 @@ export function CoreUpdateCheck({
         above replaces every derived state claim. */}
       {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
+      {showReleaseNotes && targetVersion && (
+        <ReleaseNotes
+          key={targetVersion}
+          version={targetVersion}
+          active={active}
+        />
+      )}
       {showStageApply && serverUpdateState ? (
         <ServerUpdateStageApply
           key={connectionScope}
