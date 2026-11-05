@@ -72,10 +72,10 @@ async function setup() {
         },
       };
     },
-    mayReadRoot: async (request, root) =>
-      state.allowRead &&
-      request.headers.get('x-test-user') === 'owner' &&
-      root.readPolicy?.ownerId === OWNER,
+    // Root access is deliberately independent of who asked: a missing identity must be
+    // refused by the authority step alone, not hidden behind this check.
+    mayReadRoot: async (_request, root) =>
+      state.allowRead && root.readPolicy?.ownerId === OWNER,
     review,
     // Stands in for the host's reading of the authenticated request.
     reviewerKind: (request) =>
@@ -87,6 +87,7 @@ async function setup() {
   const seed = async (
     memory: ReturnType<typeof claim>,
     agreement?: { passes: number; agreeing: number } | null,
+    sourceVisibility?: ReturnType<typeof claim>['visibility'] | null,
   ) => {
     sequence += 1;
     await sleep(4);
@@ -94,7 +95,7 @@ async function setup() {
       owner,
       root,
       () => {},
-      candidate(memory, agreement),
+      candidate(memory, agreement, sourceVisibility),
       { agent: 'dream', proposal: 'Distilled memory' },
       'agent:dream',
       `seed-${sequence}`,
@@ -593,4 +594,173 @@ test('a retried decision with the same request key is recorded once', async () =
   expect(
     (await h.json(await h.get('/memory/measurement'))).reviewer.decisions,
   ).toBe(1);
+});
+
+const itemOf = (claimId: string) =>
+  `memory-change.${claimId.replace(/^sha256:/, '').slice(0, 32)}`;
+
+test('an agent cannot promote a claim no rule flagged: it stays unreviewed and out of the brief', async () => {
+  const h = await setup();
+  const memory = region();
+  await h.seed(memory);
+  const result = await h.json(
+    await h.post(
+      `/memory/queue/${itemOf(memory.id)}/decision`,
+      { outcome: 'accept' },
+      h.as('agent'),
+    ),
+  );
+  expect(result).toMatchObject({ reviewerKind: 'agent', promoted: false });
+  const entry = (await h.json(await h.get('/memory/recall?q=billing')))
+    .entries[0];
+  expect(entry.review.label).toBe('unreviewed');
+  expect((await h.json(await h.get('/memory/brief'))).text).toBeNull();
+  const measurement = await h.json(await h.get('/memory/measurement'));
+  expect(measurement.reviewer).toMatchObject({ confirmed: 0, annotated: 1 });
+  // A human decision on the same claim does promote it.
+  await h.post(`/memory/queue/${itemOf(memory.id)}/decision`, {
+    outcome: 'accept',
+  });
+  expect((await h.json(await h.get('/memory/brief'))).entries).toHaveLength(1);
+});
+
+test('"Not sure" leaves the item open to decide again', async () => {
+  const h = await contradiction();
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  await h.post(`/memory/queue/${item.itemId}/decision`, { outcome: 'hold' });
+  const held = (await h.json(await h.get('/memory/queue'))).items[0];
+  expect(held).toMatchObject({
+    status: 'pending',
+    decision: { outcome: 'hold' },
+  });
+  await h.post(`/memory/queue/${item.itemId}/decision`, { outcome: 'accept' });
+  expect((await h.json(await h.get('/memory/queue'))).items[0].status).toBe(
+    'decided',
+  );
+});
+
+test('a retried decision returns what was first recorded, not what the retry asked for', async () => {
+  const h = await contradiction();
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  await h.post(`/memory/queue/${item.itemId}/decision`, {
+    outcome: 'accept',
+    requestKey: 'k',
+  });
+  const retry = await h.json(
+    await h.post(`/memory/queue/${item.itemId}/decision`, {
+      outcome: 'reject',
+      requestKey: 'k',
+    }),
+  );
+  expect(retry).toMatchObject({
+    outcome: 'accept',
+    reviewerKind: 'human',
+    promoted: true,
+  });
+  expect(
+    (await h.json(await h.get('/memory/recall?q=mysql'))).entries[0].review
+      .label,
+  ).toBe('confirmed');
+});
+
+test('an unreviewed replacement does not remove confirmed memory from the brief, but it is queued', async () => {
+  const h = await setup();
+  const older = claim({
+    subject: 'Widget service',
+    property: 'owner',
+    value: 'Platform team',
+    excerpt: 'Platform owns the widget service.',
+    observedAt: '2026-10-01T10:00:00.000Z',
+  });
+  await h.seed(older);
+  await h.post(`/memory/queue/${itemOf(older.id)}/decision`, {
+    outcome: 'accept',
+  });
+  const newer = claim({
+    subject: 'Widget service',
+    property: 'owner',
+    value: 'Billing team',
+    excerpt: 'Billing took over the widget service.',
+    observedAt: '2026-11-01T10:00:00.000Z',
+    supersedes: [
+      { claimId: older.id, kind: 'succession', reason: 'Ownership moved.' },
+    ],
+  });
+  await h.seed(newer);
+  const brief = await h.json(await h.get('/memory/brief'));
+  expect(brief.text).toContain('Platform team');
+  expect(brief.text).not.toContain('Billing team');
+  const queued = (await h.json(await h.get('/memory/queue'))).items;
+  expect(
+    queued.map((i: any) => i.reasons.map((r: any) => r.rule)),
+  ).toContainEqual(expect.arrayContaining(['consequential-supersession']));
+  // Once a person confirms the replacement, the old claim leaves the brief.
+  await h.post(`/memory/queue/${itemOf(newer.id)}/decision`, {
+    outcome: 'accept',
+  });
+  const after = await h.json(await h.get('/memory/brief'));
+  expect(after.text).toContain('Billing team');
+  expect(after.text).not.toContain('Platform team');
+});
+
+test('a correction that makes two claims agree resolves their conflict', async () => {
+  const h = await contradiction();
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  const first = (await h.json(await h.get('/memory/recall?q=postgres')))
+    .entries[0];
+  await h.post(`/memory/queue/${first.itemId}/decision`, { outcome: 'accept' });
+  await h.post(`/memory/queue/${item.itemId}/decision`, {
+    outcome: 'correct',
+    correctedValue: 'Postgres',
+  });
+  const brief = await h.json(await h.get('/memory/brief'));
+  expect(brief.text).toContain('Postgres');
+  const entry = (
+    await h.json(await h.get('/memory/recall?q=postgres'))
+  ).entries.find((e: any) => e.review.label === 'corrected');
+  expect(entry.conflictsWith).toEqual([]);
+});
+
+test('a public claim from a sealed source is queued for widening the audience', async () => {
+  const h = await setup();
+  await h.seed(
+    claim({
+      subject: 'Roadmap',
+      property: 'launch',
+      value: 'March',
+      excerpt: 'Launch is in March.',
+      visibility: { kind: 'public' },
+    }),
+    undefined,
+    null,
+  );
+  const queue = await h.json(await h.get('/memory/queue'));
+  expect(
+    queue.items.map((i: any) => i.reasons.map((r: any) => r.rule)),
+  ).toEqual([['visibility-widening']]);
+});
+
+test('measurement keeps each producer run apart and ties every change to its run', async () => {
+  const h = await contradiction();
+  const measurement = await h.json(await h.get('/memory/measurement'));
+  // The contradiction pair shares a sitting; the Billing claim came from another.
+  expect(measurement.runs).toHaveLength(2);
+  expect(measurement.runs.map((r: any) => r.claimsProposed).sort()).toEqual([
+    1, 2,
+  ]);
+  expect(
+    measurement.runs.every((r: any) => r.runId.startsWith('sitting:')),
+  ).toBe(true);
+  expect(new Set(measurement.lineages.map((l: any) => l.runId)).size).toBe(2);
+  expect(measurement.claimsProposed).toBe(3);
+});
+
+test('a decision response the delivery guard refuses is not delivered', async () => {
+  const h = await contradiction();
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  h.state.deny = true;
+  const response = await h.post(`/memory/queue/${item.itemId}/decision`, {
+    outcome: 'hold',
+  });
+  expect(response.status).toBe(403);
 });

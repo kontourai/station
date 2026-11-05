@@ -151,6 +151,8 @@ export interface MemoryBrief {
  */
 export interface MemoryLineageMeasurement {
   lineageId: string;
+  /** The producer run (sitting) this change came from. */
+  runId: string;
   routed: boolean;
   rules: MemoryRoutingReason[];
   outcome: MemoryDecisionOutcome | 'pending' | 'not-routed';
@@ -160,14 +162,13 @@ export interface MemoryLineageMeasurement {
   reviewSeconds: number | null;
 }
 
-export interface MemoryMeasurement {
-  schema: 'station.memory-measurement/1';
+/** The figures for one set of claims: all of them, or one producer run. */
+export interface MemoryRunFigures {
   runId: string;
-  generatedAt: string;
   claimsProposed: number;
   uncontested: number;
   routed: number;
-  /** Null when no claim has been routed or proposed. */
+  /** Null when there are no claims. */
   routedShare: number | null;
   routedByRule: Record<string, number>;
   reviewer: {
@@ -183,5 +184,16 @@ export interface MemoryMeasurement {
   reviewSeconds: number | null;
   reviewTimedDecisions: number;
   reviewMinutes: number | null;
+}
+
+/**
+ * The record the evals lane scores. The top level covers every claim in the
+ * memory root; `runs` has one entry per producer run (sitting), so a run can be
+ * compared with another.
+ */
+export interface MemoryMeasurement extends MemoryRunFigures {
+  schema: 'station.memory-measurement/1';
+  generatedAt: string;
+  runs: (MemoryRunFigures & { firstProposedAt: string | null })[];
   lineages: MemoryLineageMeasurement[];
 }

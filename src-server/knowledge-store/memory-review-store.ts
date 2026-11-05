@@ -89,20 +89,21 @@ export class MemoryReviewStore {
     return this.json.read(decode);
   }
 
-  /** Runs `change` on the current state under the lock and writes the state it returns. */
+  /** Runs `change` on the current state under the lock and writes the state it returns. `change` may read other stores: the lock is held across it. */
   async mutate<T>(
     assertCurrent: () => void,
-    change: (state: MemoryReviewState) => {
-      state: MemoryReviewState;
-      result: T;
-    },
+    change: (
+      state: MemoryReviewState,
+    ) =>
+      | { state: MemoryReviewState; result: T }
+      | Promise<{ state: MemoryReviewState; result: T }>,
   ): Promise<T> {
     this.ensureDirectory();
     assertCurrent();
     const release = await acquireFileMutationLockAsync(`${this.file}.lock`);
     try {
       assertCurrent();
-      const { state, result } = change(this.read());
+      const { state, result } = await change(this.read());
       if (
         state.decisions.length > MAX_RECORDS ||
         state.events.length > MAX_RECORDS

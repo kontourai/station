@@ -25,13 +25,37 @@ export interface MemoryBriefProviderDeps {
  * Anything short of all of that is no brief, never someone else's memory.
  */
 export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
+  // A conversation is briefed once. Station's relay sends every turn as plain
+  // text, so "first turn" cannot be read from the message; it is the first time
+  // this person's conversation asks. A restart forgets, and briefs a long-running
+  // conversation once more, still as labelled background.
+  const briefed = new Set<string>();
   return async (
     request: Request,
+    session: {
+      relayOwner?: string | null;
+      conversationId?: string;
+    } = {},
   ): Promise<{ text: string | null; entries: number } | null> => {
     if (!deps.enabled()) return null;
     const scope = deps.authority(request);
     if (!scope || scope.mode !== 'personal' || !deps.isRequestCurrent(request))
       return null;
+    // Station's relay carries its own internal identity, which is the local
+    // operator whoever the session belongs to. The brief follows the session's
+    // owner: with no recorded owner, or another person, there is no brief.
+    if (session.relayOwner === null) return null;
+    if (session.relayOwner !== undefined && session.relayOwner !== scope.userId)
+      return null;
+    if (session.conversationId) {
+      const key = `${scope.userId}\u0000${session.conversationId}`;
+      if (briefed.has(key)) return null;
+      briefed.add(key);
+      if (briefed.size > 5000) {
+        const oldest = briefed.values().next().value;
+        if (oldest !== undefined) briefed.delete(oldest);
+      }
+    }
     const assertCurrent = () => {
       if (!deps.enabled() || request.signal.aborted)
         throw new Error('Private memory authority ended.');

@@ -685,6 +685,15 @@ export interface RuntimeContext {
    */
   memoryBrief?: (
     request: Request,
+    session?: {
+      /**
+       * `undefined`: a direct caller. A string: Station's own relay, which
+       * recorded this person as the session's owner. `null`: Station's own relay
+       * with no owner recorded.
+       */
+      relayOwner?: string | null;
+      conversationId?: string;
+    },
   ) => Promise<{ text: string | null; entries: number } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;

@@ -64,6 +64,9 @@ export function envelope(
     passes: 2,
     agreeing: 2,
   },
+  /** Who could see the source. The producer records it; by default it matches the claim. */
+  sourceVisibility: MemoryClaim['visibility'] | null = memory.visibility ??
+    null,
 ): string {
   const plan = [{ claim: memory, agreement, project: null }];
   return canonicalJson({
@@ -75,7 +78,7 @@ export function envelope(
       claim: memory,
       current: [],
       agreement,
-      sourceVisibility: memory.visibility ?? null,
+      sourceVisibility,
     }),
     project: null,
     sitting: {
@@ -93,11 +96,12 @@ export function envelope(
 export function candidate(
   memory: MemoryClaim,
   agreement?: { passes: number; agreeing: number } | null,
+  sourceVisibility?: MemoryClaim['visibility'] | null,
 ) {
   return {
     type: 'raw' as const,
     title: `${memory.subject.label}: ${memory.property}`,
-    body: envelope(memory, agreement),
+    body: envelope(memory, agreement, sourceVisibility),
     category: 'memory.claim',
     provenance: { agent: 'dream' },
   };

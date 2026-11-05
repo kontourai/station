@@ -7933,9 +7933,9 @@ export function configureRuntimeRoutes(
     '/api/agents',
     createChatRoutes({
       ...runtimeContext,
-      memoryBrief: (request) =>
+      memoryBrief: (request, session) =>
         memoryBriefProvider
-          ? memoryBriefProvider(request)
+          ? memoryBriefProvider(request, session)
           : Promise.resolve(null),
       // station#977: threaded in here (rather than widening the shared
       // `RuntimeContext` every route module receives) so `/chat` can apply

@@ -3,6 +3,7 @@ import type { KitCreateProposal } from '@kontourai/corpus-store';
 import {
   foldMemoryText,
   type MemoryClaim,
+  type MemoryVisibility,
   memorySlotKey,
   memoryValuesEqual,
 } from '@kontourai/flow-agents/memory-claims';
@@ -10,7 +11,6 @@ import {
   buildMemoryReviewItem,
   deriveMemoryRunMetrics,
   type MemoryRoutingDecision,
-  memoryDecisionMayPromote,
   memoryReviewerKind,
   memoryReviewItemName,
   memoryReviewOutcome,
@@ -69,6 +69,14 @@ const QUESTION: Record<MemoryRoutingReason, string> = {
 };
 
 const SESSION_NAME = 'station-memory-review';
+/**
+ * Replacing something Station remembers is always a person's decision. The Kit
+ * routes a replacement only for properties or subject types the host lists, and
+ * lists none by default; `*` lists them all.
+ */
+const ROUTING_POLICY = {
+  consequential: { properties: ['*'], subjectTypes: [] },
+};
 const BRIEF_BUDGET_BYTES = 6144;
 const BRIEF_ENTRY_BYTES = 512;
 /** flow-agents `kits/knowledge/memory-marker.js`; not exported yet (kontourai/flow-agents#1611). */
@@ -86,6 +94,8 @@ interface LoadedClaim {
   agreement: { passes: number; agreeing: number } | null;
   proposedAt: string;
   itemName: string;
+  sittingId: string | null;
+  sourceVisibility: MemoryVisibility | null;
   decision: MemoryRoutingDecision | null;
 }
 
@@ -96,6 +106,8 @@ interface Snapshot {
   notes: { proposalId: string; title: string }[];
   state: MemoryReviewState;
   decisions: ReviewDecision[];
+  /** What the Kit sees: human decisions, plus any decision on a claim a rule flagged. */
+  kitDecisions: ReviewDecision[];
   presented: Map<
     string,
     ReturnType<typeof presentMemoryClaims>['presented'][number]
@@ -204,13 +216,16 @@ export class MemoryReviewService {
     const earlier: MemoryClaim[] = [];
     for (const entry of live.claims) {
       try {
-        entry.decision = routeMemoryChange({
-          type: 'claim',
-          claim: entry.claim,
-          current: earlier.filter((claim) => !rejected.has(claim.id)),
-          agreement: entry.agreement,
-          sourceVisibility: entry.claim.visibility ?? null,
-        });
+        entry.decision = routeMemoryChange(
+          {
+            type: 'claim',
+            claim: entry.claim,
+            current: earlier.filter((claim) => !rejected.has(claim.id)),
+            agreement: entry.agreement,
+            sourceVisibility: entry.sourceVisibility,
+          },
+          ROUTING_POLICY,
+        );
       } catch {
         entry.decision = null;
       }
@@ -219,9 +234,24 @@ export class MemoryReviewService {
     const routing = live.claims.flatMap((entry) =>
       entry.decision ? [entry.decision] : [],
     );
+    // Station's rule is stricter than the Kit's: only a human decision changes
+    // what a person sees. The Kit lets any reviewer settle a claim no rule
+    // flagged, so a non-human decision on an unflagged claim is kept out of the
+    // Kit's input and counted as an annotation instead. On a flagged claim the
+    // Kit already treats it as one.
+    const flagged = new Set(
+      live.claims
+        .filter((entry) => entry.decision?.outcome !== 'proposed')
+        .map((entry) => entry.itemName),
+    );
+    const kitDecisions = decisions.filter(
+      (decision) =>
+        memoryReviewerKind(decision) === 'human' ||
+        flagged.has(decision.spec.reviewItemName),
+    );
     const { presented, withheld } = presentMemoryClaims(
       live.claims.map((entry) => entry.claim),
-      { routing, reviewDecisions: decisions },
+      { routing, reviewDecisions: kitDecisions },
     );
     return {
       owner: authority.userId,
@@ -230,6 +260,7 @@ export class MemoryReviewService {
       notes: live.notes,
       state,
       decisions,
+      kitDecisions,
       presented: new Map(presented.map((claim) => [claim.id, claim])),
       withheld: withheld.length,
     };
@@ -263,6 +294,8 @@ export class MemoryReviewService {
         agreement: decoded.agreement,
         proposedAt: proposal.proposed_at,
         itemName: memoryReviewItemName(decoded.claim.id),
+        sittingId: decoded.sittingId,
+        sourceVisibility: decoded.sourceVisibility,
         decision: null,
       });
     }
@@ -358,7 +391,11 @@ export class MemoryReviewService {
         reasons: rules.map((rule) => ({ rule, plain: REASON_PLAIN[rule] })),
         proposed: this.view(snapshot, entry),
         current: rivalEntry ? this.view(snapshot, rivalEntry) : null,
-        status: standing ? 'decided' : 'pending',
+        // "Not sure" leaves the question open: the person can still decide it.
+        status:
+          standing && memoryReviewOutcome(standing, entry.itemName) !== 'held'
+            ? 'decided'
+            : 'pending',
         decision: standing
           ? {
               outcome: OUTCOME_OF[
@@ -393,8 +430,11 @@ export class MemoryReviewService {
     if (!snapshot.claims.some((entry) => entry.itemName === itemId))
       return false;
     const occurredAt = this.now().toISOString();
-    await snapshot.store.mutate(assertCurrent, (state) => {
-      const next = this.pruned(state, snapshot);
+    await snapshot.store.mutate(assertCurrent, async (state) => {
+      const next = this.pruned(
+        state,
+        await this.liveItemNames(authority, root, assertCurrent),
+      );
       next.events.push(
         this.event(next, authority.userId, reviewerKind, {
           eventType: 'item-selected',
@@ -463,46 +503,69 @@ export class MemoryReviewService {
       metadata: { name },
       spec,
     };
-    const recorded = await snapshot.store.mutate(assertCurrent, (state) => {
-      const next = this.pruned(state, snapshot);
-      const existing = next.decisions.find(
-        (candidate) => candidate.metadata.name === name,
-      );
-      if (existing) return { state: next, result: existing };
-      next.decisions.push(decision);
-      next.events.push(
-        this.event(next, authority.userId, reviewerKind, {
-          eventType: 'decision-submitted',
-          occurredAt: reviewedAt,
-          reviewItemName: itemId,
-          reviewDecisionName: name,
-          candidateId: spec.candidateId,
-          status: spec.status,
-          ...(spec.resolution ? { resolution: spec.resolution } : {}),
-        }),
-      );
-      return { state: next, result: decision };
-    });
+    const recorded = await snapshot.store.mutate(
+      assertCurrent,
+      async (state) => {
+        const next = this.pruned(
+          state,
+          await this.liveItemNames(authority, root, assertCurrent),
+        );
+        const existing = next.decisions.find(
+          (candidate) => candidate.metadata.name === name,
+        );
+        if (existing) return { state: next, result: existing };
+        next.decisions.push(decision);
+        next.events.push(
+          this.event(next, authority.userId, reviewerKind, {
+            eventType: 'decision-submitted',
+            occurredAt: reviewedAt,
+            reviewItemName: itemId,
+            reviewDecisionName: name,
+            candidateId: spec.candidateId,
+            status: spec.status,
+            ...(spec.resolution ? { resolution: spec.resolution } : {}),
+          }),
+        );
+        return { state: next, result: decision };
+      },
+    );
     const events = snapshot.store.read().events;
-    const routed = entry.decision?.outcome !== 'proposed';
+    // Every field of the receipt comes from the record that was kept. A retry with
+    // the same key returns what was first recorded, whatever the retry asked for.
+    const recordedOutcome = OUTCOME_OF[
+      memoryReviewOutcome(recorded, itemId)
+    ] as MemoryDecisionOutcome;
+    const recordedKind =
+      memoryReviewerKind(recorded) === 'human' ? 'human' : 'agent';
     return {
       itemId,
-      outcome: request.outcome,
-      reviewerKind:
-        memoryReviewerKind(recorded) === 'human' ? 'human' : 'agent',
-      promoted:
-        request.outcome !== 'hold' &&
-        memoryDecisionMayPromote(recorded, { routed }),
+      outcome: recordedOutcome,
+      reviewerKind: recordedKind,
+      // Only a human decision promotes, whether or not a rule flagged the claim.
+      promoted: recordedKind === 'human' && recordedOutcome !== 'hold',
       reviewSeconds: this.dwell(recorded, events),
     };
+  }
+
+  /** The review items whose memory is readable right now, read fresh (under the review lock). */
+  private async liveItemNames(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+  ): Promise<Set<string>> {
+    const proposals = await this.deps.manager.listProposals(
+      authority,
+      root,
+      assertCurrent,
+    );
+    return new Set(this.readable(proposals).claims.map((e) => e.itemName));
   }
 
   /** Records and events for memory that still exists; the rest were erased and are dropped. */
   private pruned(
     state: MemoryReviewState,
-    snapshot: Snapshot,
+    live: ReadonlySet<string>,
   ): MemoryReviewState {
-    const live = new Set(snapshot.claims.map((entry) => entry.itemName));
     return {
       version: 1,
       decisions: state.decisions.filter((d) => live.has(d.spec.reviewItemName)),
@@ -638,7 +701,12 @@ export class MemoryReviewService {
                 other.claim.posture === 'stated' &&
                 entry.claim.posture === 'stated' &&
                 memorySlotKey(other.claim) === slot &&
-                !memoryValuesEqual(other.claim.value, entry.claim.value),
+                !memoryValuesEqual(
+                  snapshot.presented.get(other.claim.id)?.value ??
+                    other.claim.value,
+                  snapshot.presented.get(entry.claim.id)?.value ??
+                    entry.claim.value,
+                ),
             )
             .flatMap((other) => ref(other.claim.id) ?? []),
         };
@@ -667,9 +735,18 @@ export class MemoryReviewService {
   ): Promise<MemoryBrief> {
     const snapshot = await this.load(authority, root, assertCurrent);
     const owner = authority.userId;
+    const reviewed = (entry: LoadedClaim) => {
+      const label = snapshot.presented.get(entry.claim.id)?.review.label;
+      return label === 'confirmed' || label === 'corrected';
+    };
+    // What a reviewed claim says, which is the reviewer's value when they corrected it.
+    const effective = (entry: LoadedClaim) =>
+      snapshot.presented.get(entry.claim.id)?.value ?? entry.claim.value;
+    // A replacement only takes effect once a person has confirmed it. A proposal that
+    // merely says it replaces something does not remove that thing from the brief.
     const replaced = new Set(
       snapshot.claims
-        .filter((entry) => snapshot.presented.has(entry.claim.id))
+        .filter(reviewed)
         .flatMap((entry) =>
           (entry.claim.supersedes ?? []).map((edge) => edge.claimId),
         ),
@@ -690,10 +767,6 @@ export class MemoryReviewService {
           visibility.audiences.includes(owner))
       );
     });
-    const reviewed = (entry: LoadedClaim) => {
-      const label = snapshot.presented.get(entry.claim.id)?.review.label;
-      return label === 'confirmed' || label === 'corrected';
-    };
     const bySlot = new Map<string, LoadedClaim[]>();
     for (const entry of live) {
       const slot = memorySlotKey(entry.claim);
@@ -701,7 +774,7 @@ export class MemoryReviewService {
     }
     const eligible = live.filter((entry) => {
       const peers = (bySlot.get(memorySlotKey(entry.claim)) ?? []).filter(
-        (other) => !memoryValuesEqual(other.claim.value, entry.claim.value),
+        (other) => !memoryValuesEqual(effective(other), effective(entry)),
       );
       // A slot with disagreeing claims waits for review. Once exactly one is confirmed it is the answer.
       if (peers.length > 0) {
@@ -765,21 +838,72 @@ export class MemoryReviewService {
     assertCurrent: () => void,
   ): Promise<MemoryMeasurement> {
     const snapshot = await this.load(authority, root, assertCurrent);
-    const decisions = snapshot.claims.flatMap((entry) =>
-      entry.decision ? [entry.decision] : [],
-    );
-    const runId = `memory:${createHash('sha256').update(snapshot.owner).digest('hex').slice(0, 16)}`;
     const itemNames = new Set(snapshot.claims.map((entry) => entry.itemName));
     const events = snapshot.state.events.filter(
       (event) =>
         !event.spec.reviewItemName || itemNames.has(event.spec.reviewItemName),
     );
-    const metrics = deriveMemoryRunMetrics({
-      runId,
-      decisions,
-      reviewDecisions: snapshot.decisions,
-      reviewEvents: events,
-    });
+    const ownerKey = createHash('sha256')
+      .update(snapshot.owner)
+      .digest('hex')
+      .slice(0, 16);
+    /** The Kit's figures for one set of claims, with Station's non-human decisions counted as annotations. */
+    const figures = (claims: readonly LoadedClaim[], runId: string) => {
+      const names = new Set(claims.map((entry) => entry.itemName));
+      const metrics = deriveMemoryRunMetrics({
+        runId,
+        decisions: claims.flatMap((entry) =>
+          entry.decision ? [entry.decision] : [],
+        ),
+        reviewDecisions: snapshot.kitDecisions.filter((decision) =>
+          names.has(decision.spec.reviewItemName),
+        ),
+        reviewEvents: events.filter(
+          (event) =>
+            !event.spec.reviewItemName || names.has(event.spec.reviewItemName),
+        ),
+      });
+      const keptByKit = new Set(
+        snapshot.kitDecisions.map((decision) => decision.metadata.name),
+      );
+      const withheldFromKit = snapshot.decisions.filter(
+        (decision) =>
+          names.has(decision.spec.reviewItemName) &&
+          !keptByKit.has(decision.metadata.name),
+      ).length;
+      return {
+        runId,
+        claimsProposed: metrics.claimsProposed,
+        uncontested: metrics.uncontested,
+        routed: metrics.routed,
+        routedShare: metrics.routedShare,
+        routedByRule: metrics.routedByRule,
+        reviewer: {
+          decisions: metrics.reviewer.decisions,
+          confirmed: metrics.reviewer.confirmed,
+          corrected: metrics.reviewer.corrected,
+          rejected: metrics.reviewer.rejected,
+          held: metrics.reviewer.held,
+          pending: metrics.reviewer.pending,
+          annotated: metrics.reviewer.annotated + withheldFromKit,
+          defectsCaught: metrics.reviewer.defectsCaught,
+        },
+        reviewSeconds: metrics.reviewSeconds,
+        reviewTimedDecisions: metrics.reviewTimedDecisions,
+        reviewMinutes:
+          metrics.reviewSeconds === null ? null : metrics.reviewSeconds / 60,
+      };
+    };
+    // One run is one producer sitting; a claim whose producer named none is its own run group.
+    const bySitting = new Map<string, LoadedClaim[]>();
+    for (const entry of snapshot.claims) {
+      const key = entry.sittingId ?? 'unknown-run';
+      bySitting.set(key, [...(bySitting.get(key) ?? []), entry]);
+    }
+    const runs = [...bySitting.entries()].map(([sitting, claims]) => ({
+      ...figures(claims, sitting),
+      firstProposedAt: claims[0]?.proposedAt ?? null,
+    }));
     const lineages: MemoryLineageMeasurement[] = snapshot.claims.map(
       (entry) => {
         const routed = entry.decision?.outcome === 'routed';
@@ -798,6 +922,7 @@ export class MemoryReviewService {
         );
         return {
           lineageId: entry.claim.id,
+          runId: entry.sittingId ?? 'unknown-run',
           routed,
           rules: (entry.decision?.reasons ?? []).map(
             (reason) => reason.rule as MemoryRoutingReason,
@@ -821,27 +946,9 @@ export class MemoryReviewService {
     );
     return {
       schema: 'station.memory-measurement/1',
-      runId,
       generatedAt: this.now().toISOString(),
-      claimsProposed: metrics.claimsProposed,
-      uncontested: metrics.uncontested,
-      routed: metrics.routed,
-      routedShare: metrics.routedShare,
-      routedByRule: metrics.routedByRule,
-      reviewer: {
-        decisions: metrics.reviewer.decisions,
-        confirmed: metrics.reviewer.confirmed,
-        corrected: metrics.reviewer.corrected,
-        rejected: metrics.reviewer.rejected,
-        held: metrics.reviewer.held,
-        pending: metrics.reviewer.pending,
-        annotated: metrics.reviewer.annotated,
-        defectsCaught: metrics.reviewer.defectsCaught,
-      },
-      reviewSeconds: metrics.reviewSeconds,
-      reviewTimedDecisions: metrics.reviewTimedDecisions,
-      reviewMinutes:
-        metrics.reviewSeconds === null ? null : metrics.reviewSeconds / 60,
+      ...figures(snapshot.claims, `memory:${ownerKey}`),
+      runs,
       lineages,
     };
   }

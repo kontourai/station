@@ -124,3 +124,27 @@ test('a hosted authority is never briefed', async () => {
   } as never);
   expect(await each.provider(each.request)).toBeNull();
 });
+
+test('a relayed session is briefed only from its recorded owner’s memory', async () => {
+  const { provider, request } = await setup();
+  // Station's relay carries the local operator's identity whoever owns the session.
+  expect(
+    await provider(request, { relayOwner: 'human:someone-else' }),
+  ).toBeNull();
+  expect(await provider(request, { relayOwner: null })).toBeNull();
+  const own = await provider(request, { relayOwner: OWNER });
+  expect(own?.entries).toBe(1);
+});
+
+test('a conversation is briefed once, however many turns the relay sends', async () => {
+  const { provider, request } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-1' };
+  expect((await provider(request, session))?.entries).toBe(1);
+  expect(await provider(request, session)).toBeNull();
+  expect(await provider(request, session)).toBeNull();
+  // Another conversation is a new session.
+  expect(
+    (await provider(request, { ...session, conversationId: 'thread-2' }))
+      ?.entries,
+  ).toBe(1);
+});

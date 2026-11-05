@@ -51,7 +51,7 @@ describe('chat-request-preparation', () => {
         input: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
         options: {},
       });
-      expect(memoryBrief).toHaveBeenCalledWith(request);
+      expect(memoryBrief).toHaveBeenCalledWith(request, undefined);
       expect(result.ragContext).toBe(text);
       expect(result.contextInjection.memoryBrief).toEqual({
         entries: 1,

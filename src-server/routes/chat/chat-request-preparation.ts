@@ -48,6 +48,10 @@ interface PrepareChatRequestContext {
   slug: string;
   /** The incoming request, used only to derive who is asking for the memory brief. */
   request?: Request;
+  /** What the memory brief needs to know about the session; see `RuntimeContext.memoryBrief`. */
+  memoryBriefSession?: Parameters<
+    NonNullable<RuntimeContext['memoryBrief']>
+  >[1];
   input: string | ChatMessage[];
   options: Record<string, any>;
   projectSlug?: string;
@@ -252,7 +256,10 @@ export async function prepareChatRequest(
     isFirstTurn(context.input)
   ) {
     try {
-      const brief = await context.ctx.memoryBrief(context.request);
+      const brief = await context.ctx.memoryBrief(
+        context.request,
+        context.memoryBriefSession,
+      );
       if (brief?.text) {
         ragContext = ragContext ? `${ragContext}\n\n${brief.text}` : brief.text;
         contextInjection.memoryBrief = {
