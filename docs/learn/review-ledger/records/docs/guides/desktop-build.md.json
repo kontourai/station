@@ -208,7 +208,13 @@
 
     "src-ui/src/components/updates/UpdateDownloadIcon.tsx",
 
-    "src-ui/src/components/updates/Updates.css"
+    "src-ui/src/components/updates/Updates.css",
+
+    "scripts/lib/desktop-server-runtime.mjs",
+
+    "scripts/__tests__/desktop-runtime-pruning.test.ts",
+
+    "scripts/__tests__/server-build-portability.test.ts"
   ],
 
   "checks": [

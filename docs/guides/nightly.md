@@ -305,6 +305,17 @@ SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies
 did not produce an archive for a partial cohort, the notes remain unavailable.
 Earlier Nightlies without a versioned changelog are not reconstructed.
 
+Archive publication checks the Git tag reference before resolving its commit:
+GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag
+must resolve to the planned source, and an existing archive must retain the
+same notes. Lookup failures stop publication.
+
+A changelog failure can occur after the desktop assets and updater manifest
+are live, before the rolling marker advances. Compare provider assets and the
+live manifest with the admitted cohort before choosing a recovery action;
+the failed promotion remains `NOT_VERIFIED`. Creating the missing changelog
+alone does not complete or rewrite that cohort's recovery receipt.
+
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, including the
 built-in server in that app update and its restart confirmation. The server

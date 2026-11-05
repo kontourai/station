@@ -3640,6 +3640,44 @@ describe('projectRuntimeEventsToMessages — a turn that ended with nothing to s
   });
 });
 
+describe("#4512: Station's continuation after a restart", () => {
+  const KEY = 'continue-interrupted:turn-boundary:3f1c';
+  const origin = (kind: string) => ({
+    version: 1,
+    actor: { kind },
+    reported: { surface: 'unknown' },
+  });
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'continue',
+        prompt: 'Station restarted while you were working.',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('is marked as Station’s: its own origin and the Continue key', () => {
+    expect(
+      userRow({ clientTurnId: KEY, clientOrigin: origin('internal') })?.metadata
+        ?.stationRestartContinuation,
+    ).toBe(true);
+  });
+
+  it("is not marked for the person's own Continue, or another key", () => {
+    expect(
+      userRow({ clientTurnId: KEY, clientOrigin: origin('operator') })?.metadata
+        ?.stationRestartContinuation,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientTurnId: 'scheduler:run-1',
+        clientOrigin: origin('internal'),
+      })?.metadata?.stationRestartContinuation,
+    ).toBeUndefined();
+  });
+});
+
 describe("Station's continuation after a memory kill", () => {
   const KEY = `memory-continue-${'a'.repeat(40)}`;
   const internal = {

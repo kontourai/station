@@ -1,6 +1,6 @@
 import { runAccountOperation } from '@kontourai/station-sdk/account-authentication';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
@@ -16,6 +16,10 @@ interface PasskeyView {
   name?: string;
   createdAt: string | null;
   synced: boolean;
+}
+
+interface RemovalSelection {
+  passkey: PasskeyView;
 }
 
 function readPasskeys(value: unknown): PasskeyView[] {
@@ -50,7 +54,14 @@ export function MemberPasskeys({
   const client = useQueryClient();
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
-  const [removing, setRemoving] = useState<PasskeyView>();
+  const [removing, setRemoving] = useState<RemovalSelection>();
+  const currentRemoval = useRef<RemovalSelection | undefined>(undefined);
+  useEffect(
+    () => () => {
+      currentRemoval.current = undefined;
+    },
+    [],
+  );
   const key = ['account', apiBase, 'passkeys', principalId];
   const passkeys = useQuery({
     queryKey: key,
@@ -72,9 +83,11 @@ export function MemberPasskeys({
     onSettled: () => client.invalidateQueries({ queryKey: key }),
   });
   const remove = useMutation({
-    mutationFn: (id: string) =>
-      runAccountOperation(apiBase, paths.remove!, { id }),
-    onSuccess: () => {
+    mutationFn: (selection: RemovalSelection) =>
+      runAccountOperation(apiBase, paths.remove!, { id: selection.passkey.id }),
+    onSuccess: (_data, selection) => {
+      if (currentRemoval.current !== selection) return;
+      currentRemoval.current = undefined;
       setRemoving(undefined);
       setNotice('Passkey removed.');
     },
@@ -139,7 +152,9 @@ export function MemberPasskeys({
                     setError(undefined);
                     setNotice(undefined);
                     remove.reset();
-                    setRemoving(entry);
+                    const selection = { passkey: entry };
+                    currentRemoval.current = selection;
+                    setRemoving(selection);
                   }}
                 >
                   Remove
@@ -165,8 +180,9 @@ export function MemberPasskeys({
               userFacingErrorMessage(remove.error))
             : null
         }
-        onConfirm={() => removing && remove.mutate(removing.id)}
+        onConfirm={() => removing && remove.mutate(removing)}
         onCancel={() => {
+          currentRemoval.current = undefined;
           setRemoving(undefined);
           remove.reset();
         }}

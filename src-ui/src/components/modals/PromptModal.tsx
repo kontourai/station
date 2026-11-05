@@ -17,6 +17,7 @@ interface PromptModalProps {
   placeholder?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  returnFocusTarget?: HTMLElement | null;
   /** Inline validation. Return an error string to block submit, or null. */
   validate?: (value: string) => string | null;
   onConfirm: (value: string) => void;
@@ -36,6 +37,7 @@ export function PromptModal({
   placeholder,
   confirmLabel = 'Save',
   cancelLabel = 'Cancel',
+  returnFocusTarget,
   validate,
   onConfirm,
   onCancel,
@@ -77,6 +79,7 @@ export function PromptModal({
       panelClassName="modal-dialog"
       initialFocusRef={inputRef}
       initialFocusPolicy="always"
+      returnFocusTarget={returnFocusTarget}
     >
       <div className="modal-header">
         <h3 id="prompt-modal-title">{title}</h3>
