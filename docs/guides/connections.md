@@ -1000,7 +1000,10 @@ under the Station home, readable only by its owner), never in
 only that it is saved. The value is added to that one connection's engine
 processes, overriding the same variable in Station's own environment.
 Removing the connection attempts to remove its keys. Station logs a warning
-if that cleanup fails; the connection removal still completes.
+if that cleanup fails; the connection removal still completes. While the
+machine's [managed policy](managed-policy.md#engines) does not allow the
+engine, its keys are not read, the panel's view and a new key are refused,
+and removing a key still works.
 
 **Who may sign in.** Reading the panel needs read access; **Check again**
 needs permission to operate Station. Starting or cancelling a sign-in and
