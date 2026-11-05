@@ -143,7 +143,9 @@ fields: channel, version, platform, arch, surfaces_today, engines_used_today,
 first_active_this_week, first_active_this_month, distribution and
 public_plugins_enabled. Counters/friction and customization remain private.
 The fixed public domain contains all enum/boolean/empty-set values and each
-publisher's operator-configured public release versions/registry IDs. Custom
+publisher's operator-configured public release versions, registry IDs and
+channels (owner decision 2026-11-05: channel cells come from the sources'
+provisioned channels, removing structural zeros). Custom
 version/distribution values collapse to `custom`. Every coordinate, even true
 zero, always receives noise. There is no true k=10 pre-filter or presence oracle.
 Catalogs must be public configuration independent of private observations.

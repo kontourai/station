@@ -94,16 +94,30 @@ from running one process. Each request runs its SQL inside one
   forbidden by policy (see the restore warning below), so that history is
   reachable only by deliberately breaking the policy, by someone with access
   to the Cloudflare account, and only for those 30 days.
-- **Closed days stay closed.** A day closes when its salt is erased (or it
-  is finalized). An arrival for a closed day (the clock stepped back) is
-  refused with 422 `day_closed` and no second salt is created for it. That is
-  content-free and not a 5xx, because the same request is refused again until
-  the receiver's clock moves on; 409 keeps its changed-payload meaning. Only
-  days that had a salt close, so after a forward clock jump is corrected, the
-  real days in between still accept pings. Pings stored under the jumped day
-  are finalized once its salt is gone. A week published while the clock was
-  ahead stays published (publications are immutable), so a jump can still
-  leave the real days of that week out of the public estimate.
+- **The clock is trusted; faults cost availability, never data.** The
+  Worker uses the platform clock, which Cloudflare keeps in sync and this
+  receiver does not control. Recovering from clock jumps is out of scope. The
+  guards only make a fault harmless to the data: one salt per day, one
+  finalization per day, and no published week without a real day.
+  - A day closes once a later day has begun, maintenance has passed it, or it
+    is finalized. Every day at or before the latest closed day (the
+    `closed_through` watermark, which only increases) refuses arrivals with
+    422 `day_closed`. That is content-free and not a 5xx, because the same
+    request is refused again until the clock passes the watermark; 409 keeps
+    its changed-payload meaning.
+  - **Backward step** from day C to an earlier day B: every arrival is
+    refused until the clock reaches C again. Day C is not affected.
+  - **Forward jump** from day R to a later day F: day F opens with its one
+    salt, and every day from R+1 through F−1 can no longer receive pings.
+    After the clock is corrected, arrivals are refused until real time
+    reaches F, and then day F's original salt is used. Pings in the refused
+    windows are lost, because senders do not retry.
+  - A week is published only if it contains a day that really had arrivals
+    (a closed-day record). The weeks a forward jump skips are never
+    published, so they cannot freeze as noise-only releases.
+  - `lite_finalized` and `lite_closed_days` hold about one row per publisher
+    per day and are never pruned: pruning would let an old day reopen after
+    a long jump.
 - **Finalization and erasure.** An alarm runs once per UTC hour. For each closed
   publisher/day it computes exact marginals and erases that day's contributor
   hashes and contribution arrays in one transaction. Finalization happens once
@@ -113,10 +127,11 @@ from running one process. Each request runs its SQL inside one
   hashes for closed days. A failed publisher/day is skipped, retried on the
   next pass and recorded as a content-free code in the exact view's
   `finalizationDiagnostics`.
-- **Weekly publication.** Each of the last four closed ISO weeks is published
-  once per publisher, after all of its days are finalized. Every cell of the
-  fixed domain gets noise, including true zeros. The marker and the cells
-  commit together and are never rewritten.
+- **Weekly publication.** Each of the last four closed ISO weeks that holds
+  a real day is published once per publisher, after all of its days are
+  finalized. Every cell of the fixed domain gets noise, including true zeros.
+  Channel cells are the publisher's provisioned channels. The marker and the
+  cells commit together and are never rewritten.
 - **Retention.** Raw pings and feedback keep 90 UTC days including today
   (`LITE_RETENTION_DAYS`). Retention also ends replay deduplication. Finalized
   marginals and publications are kept.
@@ -136,6 +151,10 @@ Differences from the Node receiver:
   published twice under the same noise seeds exposes the exact difference. It
   would also bring back erased salts and contributor hashes (see *What erasure
   covers*).
+- Whether a week is published depends on whether any ping arrived in it; the
+  Node receiver publishes every closed week. A published week therefore
+  reveals that at least one network reported that week. The cells are
+  unaffected: every published week releases its full fixed domain with noise.
 - Public aggregate pages are cached in Cloudflare's cache for at most 60
   seconds and never past UTC midnight.
 
@@ -236,8 +255,12 @@ Setting that variable is a separate owner-gated activation.
   unique people.
 - `https://telemetry.kontourai.io/public/` charts the last four published weeks:
   weekly active networks and per-dimension bars, each bar its own noisy
-  estimate. It never adds cells together, and it names a top harness or
-  platform only when that value clears the noise. Values are network-days with
+  estimate. It never adds cells together. Each card shows a cell only above a
+  Bonferroni threshold for its m candidate cells, `ln(m / (0.05·(1+α))) / ε`
+  with α = e^(−ε), so a card has at most a 5% chance of showing any false bar.
+  Everything else reads "within noise". It names a top harness or platform
+  only when the leader also beats its runner-up by the 95% bound for the
+  difference of two noisy cells (about 1,151). Values are network-days with
   privacy noise, not people.
 
 Both pages load only same-origin script under a `script-src 'self'` policy and
@@ -263,6 +286,8 @@ token dimension to preview that panel.
 **Limits of this evidence.** A local `wrangler dev --local` run exercised
 ingest, replay, conflict, refusals, operator auth, the insights and exact views,
 storage, the public route, the pages and the per-IP limiter under the Workers
-runtime. The alarm path ran only under Node's SQLite. Nothing here establishes
+runtime. The alarm path and the clock-fault guards (backward step, forward
+jump, a jump past raw retention) ran only under Node's SQLite, with a fake
+clock; the local Workers runtime's clock cannot be moved. Nothing here establishes
 deployed behavior, custom-domain routing, Cloudflare's logging and retention,
 limiter accuracy, or plan sufficiency.

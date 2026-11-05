@@ -6163,8 +6163,8 @@ days including the current partial period. Public and publisher APIs exclude it.
 
 Public and publisher views release only four closed ISO UTC weeks over ten
 profile/adoption fields, excluding counters/friction. The fixed public domain
-contains enum values and each publisher's operator-configured public versions
-and registry IDs, including zero-count values. There is no true k pre-filter.
+contains enum values and each publisher's operator-configured public versions,
+registry IDs and channels, including zero-count values. There is no true k pre-filter.
 Published counts sum distinct daily contributor keys per value (network-days),
 so NAT undercounts installations. Sensitivity is 40 per added/removed ping;
 ε=1/280 per count gives ε≤1/7 per added ping. A network contributing at most 40

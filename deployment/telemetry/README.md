@@ -298,7 +298,7 @@ included in public or third-party publisher aggregates in this PR.
 `/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
 Publisher keys receive only their own publisher's weekly publication. The ten
 profile/adoption fields use a fixed public domain of enum values and
-operator-configured public release versions/registry IDs. Every value, including
+operator-configured public release versions, registry IDs and channels. Every value, including
 true zero, is released with noise; no k threshold or remainder suppression
 remains. Catalogs must be independent of private traffic. Per-count ε=1/280,
 sensitivity 40 per added ping gives ε≤1/7 per ping. Published counts sum distinct

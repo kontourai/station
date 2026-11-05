@@ -680,9 +680,12 @@ profile/adoption questions. Counters, friction, setup, age, private-plugin and
 customization fields remain available only to the exact operator view.
 
 The public domain is fixed independently of traffic: every enum value, both
-boolean values, empty-set `none`, operator-configured `releaseVersions` and
-`registryIds`, plus `custom` for catalog-policy version/distribution and `none`
-for distribution. SemVer-policy versions contribute only their configured
+boolean values, empty-set `none`, operator-configured `releaseVersions`,
+`registryIds` and `channels`, plus `custom` for catalog-policy
+version/distribution and `none` for distribution. Channel cells are only the
+channels the publisher's sources list, so a channel no source admits (such as
+`unknown` for a stable-only publisher) is not released as pure noise. Weeks
+published before this rule keep their frozen cells. SemVer-policy versions contribute only their configured
 catalog entries; an empty catalog contributes no public version cells.
 All values always receive noise, including true zero. **There is no true-count
 k pre-filter.** Nine attacker networks plus a victim cannot change the release
@@ -743,11 +746,13 @@ Unverified cursors cannot occupy or evict a cached public page. There is no 10,0
 follows every page. It charts each week's `first_active_this_week=true`
 estimate and per-dimension bars for the latest week. It never adds cells
 together: each is clipped at zero, so a sum of empty cells would read as about
-+140 network-days apiece. One rule decides every number it shows: a cell is
-shown only above the 95% single-cell noise bound (`ln 20 / epsilonPerCount`,
-about 839). A week at or below it is a muted column with no number, bars fold
-those values into "N other values within noise", and tables say "within
-noise". It names a top harness or platform only when the leader also beats its
++140 network-days apiece. One rule decides every number it shows: each card
+shows a cell only above a Bonferroni threshold for its m candidate cells,
+`ln(m / (0.05·(1+α))) / ε` with α = e^(−ε). A card therefore has at most a 5%
+chance of showing any false bar: about 645 network-days for one cell, 1,033
+for four weeks and 1,692 for 42 cells. A week at or below it is a muted column
+with no number, bars fold those values into "N other values within noise", and
+tables say "within noise". It names a top harness or platform only when the leader also beats its
 runner-up by the 95% bound for the difference of two independent noisy cells
 (about 1,151; derived in `src/public-dashboard.ts`). It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.

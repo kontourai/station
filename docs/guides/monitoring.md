@@ -67,7 +67,7 @@ for public route limits and the separate infrastructure logging review.
 
 Public dashboards and scoped publisher keys receive only **weekly noisy
 estimates** over ten profile/adoption fields. The fixed public domain includes
-all enum values and operator-configured public versions/registry IDs, even true
+all enum values and operator-configured public versions, registry IDs and channels, even true
 zero; no true-count k pre-filter remains. Sources default to catalog-only
 version admission. Optional `versionPolicy: "semver"` admits valid sender
 versions plus `custom`; operator exact views show all of them. Its public version
