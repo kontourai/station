@@ -283,7 +283,7 @@ test('a verified relay refusal has Station-aware copy; unverified failure stays 
     describeStationFailure(error, connection, 'original-key'),
   ).toMatchObject({
     title: 'Not sent',
-    body: 'This connection cannot send to Receiver.',
+    body: "Receiver didn't accept this message.",
     delivery: 'refused',
     authority: 'target',
   });

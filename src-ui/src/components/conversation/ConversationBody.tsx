@@ -29,7 +29,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { verifiedBuildLabel } from '../../build-info';
 import { outboundStationIdentity } from '../../connections/station-state';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -50,7 +49,6 @@ import {
 } from '../../hooks/orchestration/queueDrain';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useACPConnections } from '../../hooks/useACPConnections';
-import { useActiveStationName } from '../../hooks/useActiveStationName';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
@@ -95,10 +93,7 @@ import type {
   ModelProviderOption,
   SelectableModel,
 } from '../../utils/modelCapabilities';
-import {
-  accountableHumanFromUser,
-  ownerAttributionFromStation,
-} from '../../utils/ownerAttribution';
+import { accountableHumanFromUser } from '../../utils/ownerAttribution';
 import {
   sessionFailureNote,
   sessionFailureText,
@@ -127,7 +122,6 @@ import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { AgentScheduleNotes } from '../chat-dock/AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from '../chat-dock/ComposerActionsMenu';
 import { CoordinatorToolsNotice } from '../chat-dock/CoordinatorToolsNotice';
-import { DockDeliveryNotice } from '../chat-dock/DockDeliveryNotice';
 import {
   CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
   continuableInterruptedBoundary,
@@ -628,7 +622,7 @@ export function ConversationBody({
     useActiveChatActions();
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
-  const { activeConnection, captureCredentialEvidence } = useConnections();
+  const { captureCredentialEvidence } = useConnections();
   const approvalModeIsNewSession =
     !activeSession?.orchestrationSessionStarted &&
     !activeSession?.conversationId;
@@ -671,22 +665,6 @@ export function ConversationBody({
   const acpApproval = useMemo(
     () => acpApprovalFor(activeAcpConnection),
     [activeAcpConnection],
-  );
-  // Stable across renders unless the saved Station or accountable display name
-  // changes, preserving ChatMessageList's memoization.
-  // #4402: "via <machine>" for the seeded "Default" connection.
-  const activeStationName = useActiveStationName();
-  const owner = useMemo(
-    () =>
-      ownerAttributionFromStation(
-        station
-          ? { id: station.environmentId, name: station.stationName }
-          : activeConnection && activeStationName
-            ? { ...activeConnection, name: activeStationName }
-            : activeConnection,
-        verifiedBuildLabel ? `Station ${verifiedBuildLabel}` : null,
-      ),
-    [activeConnection, activeStationName, station],
   );
   const accountableHuman = useMemo(
     () =>
@@ -1528,15 +1506,6 @@ export function ConversationBody({
   // Dock-specific message overrides: ephemeral messages and system events
   const renderOverride = useCallback(
     (msg: ChatMessage, idx: number): React.ReactNode | null => {
-      if (msg.ephemeral && msg.deliveryNotice) {
-        return (
-          <DockDeliveryNotice
-            chatKey={activeSession.id}
-            notice={msg.deliveryNotice}
-            retry={msg.action?.handler}
-          />
-        );
-      }
       if (msg.ephemeral) {
         const messageId = msg.id || `ephemeral-${idx}`;
         if (staleSendFailures.has(messageId) && 'action' in msg && msg.action) {
@@ -2044,7 +2013,6 @@ export function ConversationBody({
               : (workObservation?.unavailable(
                   activeSession.conversationId ?? activeSession.id,
                 ) ?? observationUnavailable),
-            owner,
             accountableHuman,
             onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,

@@ -186,6 +186,9 @@ export type ChatContentPart = {
 };
 
 export type ChatMessage = {
+  /** Refused sends remain ordinary user messages, with shared delivery controls. */
+  deliveryNotice?: import('../types').ChatMessage['deliveryNotice'];
+  action?: import('../types').ChatMessage['action'];
   /** Stable server/event identity when the producer provides one. */
   id?: string;
   role: ChatRole;

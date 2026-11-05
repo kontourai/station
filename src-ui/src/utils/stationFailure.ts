@@ -67,7 +67,7 @@ export function describeStationFailure(
     const body =
       remoteStatus === 401
         ? `Reconnect to ${target || connection?.routeKind !== 'relay' ? station : 'the source Station'}.`
-        : `This connection cannot send to ${target || connection?.routeKind !== 'relay' ? station : 'the source Station'}.`;
+        : `${target || connection?.routeKind !== 'relay' ? station : 'The source Station'} didn't accept this message.`;
     return {
       title: 'Not sent',
       body,

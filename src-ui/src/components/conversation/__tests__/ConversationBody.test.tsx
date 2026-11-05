@@ -4,7 +4,7 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
@@ -72,6 +72,12 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
 vi.mock('../../../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
 }));
+vi.mock('../../../lib/outboundQueue', () => ({
+  outboundDispatch: {
+    discard: vi.fn(async () => {}),
+    retiredKeys: vi.fn(async () => ({ accepted: [] })),
+  },
+}));
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
   activeChatsStore,
   useActiveChatActions: () => ({
@@ -101,6 +107,10 @@ function Harness({ route }: { route: 'host' | 'direct' | 'relay' }) {
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [messages, setMessages] = useState<ChatSession['messages']>([]);
+  const stored = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    () => activeChatsStore.getSnapshot()[`tab-${route}`],
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const session: ChatSession = {
     id: `tab-${route}`,
@@ -108,8 +118,8 @@ function Harness({ route }: { route: 'host' | 'direct' | 'relay' }) {
     agentName: agent.name,
     title: 'Shared chat',
     source: 'manual',
-    messages,
-    input,
+    messages: stored?.messages ?? messages,
+    input: stored?.input ?? input,
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
@@ -127,7 +137,7 @@ function Harness({ route }: { route: 'host' | 'direct' | 'relay' }) {
     quotes: [],
     quotedDraftText: input,
     removeQuote: () => {},
-    input,
+    input: stored?.input ?? input,
     attachments: [],
     attachmentError: null,
     attachmentStages: [],
@@ -295,5 +305,88 @@ test.each(['host', 'direct', 'relay'] as const)(
         body: { type: 'interruptTurn', threadId: 'child', turnId: 'turn' },
       },
     ]);
+  },
+);
+// Keep the refusal projection and its actions identical on every route.
+test.each(['host', 'direct', 'relay'] as const)(
+  '%s renders a refusal inside the user bubble and Edit returns it to the composer',
+  async (route) => {
+    const text = 'Please continue this work.';
+    const retry = vi.fn();
+    const connection = conversationConnection(route);
+    activeChatsStore.initChat(`tab-${route}`, {
+      agentSlug: agent.slug,
+      agentName: agent.name,
+      title: 'Shared chat',
+    });
+    activeChatsStore.updateChat(`tab-${route}`, {
+      messages: [
+        {
+          id: 'refused',
+          role: 'user',
+          clientId: 'refused-key',
+          content: text,
+          timestamp: 0,
+          action: { label: 'Retry', handler: retry },
+          deliveryNotice: {
+            clientTurnId: 'refused-key',
+            text,
+            state: 'not-sent',
+            description: "Receiver didn't accept this message.",
+            diagnostic: 'peer_chat_target_refused: insufficient_scope',
+          },
+        },
+        {
+          id: 'reply',
+          role: 'assistant',
+          content: 'An earlier reply',
+          timestamp: 1,
+        },
+      ],
+      stationBinding: connection.binding,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () =>
+        Response.json({ success: true, data: [] }),
+      ),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    clients.push(client);
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <PreviewProvider>
+          <Harness route={route} />
+        </PreviewProvider>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    const message = await screen.findByText(text);
+    const bubble = message.closest('.message');
+    expect(bubble?.classList.contains('user')).toBe(true);
+    expect(bubble?.classList.contains('message--delivery-not-sent')).toBe(true);
+    expect(bubble?.querySelectorAll('.message-delivery')).toHaveLength(1);
+    expect(
+      screen.getAllByText("Receiver didn't accept this message."),
+    ).toHaveLength(1);
+    const diagnostic = screen.getByText(
+      'peer_chat_target_refused: insufficient_scope',
+    );
+    expect(diagnostic.closest('details')?.open).toBe(false);
+    expect(
+      container.querySelector('.message__sender')?.textContent ?? '',
+    ).not.toMatch(/via/i);
+    expect(container.textContent).not.toMatch(/via Source|via Receiver/i);
+    await user.click(screen.getByRole('button', { name: /^Retry$/ }));
+    expect(retry).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: /^Edit$/ }));
+    await waitFor(() =>
+      expect(container.querySelector('.message--delivery-not-sent')).toBeNull(),
+    );
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      text,
+    );
   },
 );

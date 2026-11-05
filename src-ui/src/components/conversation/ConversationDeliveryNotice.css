@@ -1,7 +1,5 @@
 .message-delivery-notice {
   position: relative;
-  margin: var(--k-space-3);
-  padding: var(--k-space-3);
   min-width: 0;
   overflow-wrap: anywhere;
 }

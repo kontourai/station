@@ -229,7 +229,7 @@ describe('useSendMessage: durable before the request', () => {
     expect(getQueryDataMock).not.toHaveBeenCalledWith(['agents']);
   });
 
-  it('a paired refusal keeps an editable draft and uses the shared Not sent notice', async () => {
+  it('a paired refusal keeps its user bubble and shared Not sent evidence', async () => {
     activeChatsStore.updateChat(chat, {
       stationBinding: peerConnection.binding,
       input: 'keep this draft',
@@ -264,14 +264,14 @@ describe('useSendMessage: durable before the request', () => {
       );
     });
     const state = activeChatsStore.getSnapshot()[chat];
-    expect(state?.input).toBe('keep this draft');
+    expect(state?.input).toBe('');
     expect(state?.sendAwaitingTurnStart).not.toBe(true);
-    expect(state?.ephemeralMessages?.at(-1)?.deliveryNotice).toMatchObject({
+    expect(state?.messages?.at(-1)?.deliveryNotice).toMatchObject({
       state: 'not-sent',
-      description: 'This connection cannot send to Peer.',
+      description: "Peer didn't accept this message.",
       diagnostic: 'peer_chat_target_refused: insufficient_scope',
     });
-    expect(state?.ephemeralMessages?.at(-1)?.content).not.toContain(
+    expect(state?.messages?.at(-1)?.content).not.toContain(
       'insufficient_scope',
     );
   });
@@ -730,7 +730,7 @@ describe('useSendMessage: durable before the request', () => {
     ['the engine is busy', 'provider_turn_in_progress'],
     ['its session is still starting', 'provider_session_starting'],
   ])(
-    'refused because %s: restores the draft without a local automatic queue',
+    'refused because %s: retains the not-sent bubble without a local automatic queue',
     async (_why, code) => {
       // Hold the drain's own settle timer so the held state can be read.
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -748,12 +748,17 @@ describe('useSendMessage: durable before the request', () => {
       expect(body.clientTurnId).toEqual(expect.any(String));
       expect(held.queuedMessages).toEqual([]);
       expect(held.pendingQueueDispatch).toBeUndefined();
-      expect(held.input).toBe('wait your turn');
+      expect(held.input).toBe('');
+      expect(held.messages?.at(-1)).toMatchObject({
+        role: 'user',
+        content: 'wait your turn',
+        deliveryNotice: { state: 'not-sent' },
+      });
       expect(await outboundDispatch.snapshot()).toEqual([]);
     },
   );
 
-  it('a Station refusal lets the row go: the composer holds the text, never both', async () => {
+  it('a Station refusal lets the row go and retains its not-sent bubble', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new ChatHttpError(400, 'Refused'),
     );
@@ -762,7 +767,14 @@ describe('useSendMessage: durable before the request', () => {
       await result.current(chat, 'codex', undefined, 'refuse me');
     });
     expect(await outboundDispatch.snapshot()).toEqual([]);
-    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('refuse me');
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.messages?.at(-1),
+    ).toMatchObject({
+      role: 'user',
+      content: 'refuse me',
+      deliveryNotice: { state: 'not-sent' },
+    });
   });
 
   it('storage unavailable: still sends, and never claims the draft is safe to drop', async () => {
@@ -1414,7 +1426,7 @@ describe('useSendMessage: durable before the request', () => {
     expect(
       activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
     ).toBeUndefined();
-    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('slow session');
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
     expect(activeChatsStore.getSnapshot()[chat]?.queuedMessages).toEqual([]);
     expect(await outboundDispatch.snapshot()).toEqual([]);
   });
@@ -1728,9 +1740,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     });
     const retry = activeChatsStore
       .getSnapshot()
-      [chat]?.ephemeralMessages?.find(
-        (message) => message.action?.label === 'Retry',
-      );
+      [chat]?.messages?.find((message) => message.action?.label === 'Retry');
     expect(retry).toBeDefined();
     sendExecutionMessageMock.mockResolvedValueOnce(receipt());
     await act(async () => {

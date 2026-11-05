@@ -23,6 +23,7 @@ import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { useDockDeliveryPort } from '../chat-dock/useDockDeliveryPort';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { ConversationDeliveryNotice } from '../conversation/ConversationDeliveryNotice';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -268,13 +269,26 @@ function MessageBubbleComponent({
   const textContent = typeof msg.content === 'string' ? msg.content : '';
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
-  const deliveryState = useMessageDeliveryState(activeSession.id, msg);
-  const deliveryPort = useDockDeliveryPort(
+  const observedDeliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const deliveryState =
+    observedDeliveryState && observedDeliveryState !== 'unanswered'
+      ? observedDeliveryState
+      : (msg.deliveryNotice?.state ?? observedDeliveryState);
+  const dockDeliveryPort = useDockDeliveryPort(
     activeSession.id,
     msg.clientId ?? '',
     textContent,
     deliveryState,
   );
+  const deliveryPort =
+    msg.deliveryNotice && msg.action?.label === 'Retry'
+      ? {
+          ...dockDeliveryPort,
+          retry: async () => {
+            await msg.action?.handler();
+          },
+        }
+      : dockDeliveryPort;
   // A right-click on the bubble opens its own ⋯ — the user menu on a user
   // bubble, the answer menu on an answer — with the rows that ⋯ shows. Only on
   // the desktop layout and only for the pointer: a held finger in a message is
@@ -1307,6 +1321,11 @@ function MessageBubbleComponent({
             state={deliveryState}
             notice={deliveryNotice}
           />
+        ) : null}
+        {msg.role === 'user' &&
+        msg.deliveryNotice &&
+        deliveryState === msg.deliveryNotice.state ? (
+          <ConversationDeliveryNotice notice={msg.deliveryNotice} />
         ) : null}
 
         {!isMobile && metadataAfter}

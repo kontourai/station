@@ -1929,8 +1929,8 @@ export function useSendMessage(
             ?.callerAccess,
         );
         clearEphemeralMessages(sessionId);
-        addEphemeralMessage(sessionId, {
-          role: 'system',
+        const failureMessage = {
+          role: 'system' as const,
           sendFailure: true,
           ...(!foregroundIndeterminate &&
           !terminalSession &&
@@ -2018,7 +2018,40 @@ export function useSendMessage(
                       );
                     },
                   },
-        });
+        };
+
+        if (failureMessage.deliveryNotice) {
+          // A verified refusal belongs to the person's message, using the same
+          // transcript bubble and delivery actions for every Station route.
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const optimistic = transaction.optimisticMessages.find(
+            (message) => message.clientId === resolvedTurnId,
+          );
+          updateChat(sessionId, {
+            input:
+              !transaction.composed &&
+              latest?.input === transaction.submittedDraft
+                ? ''
+                : latest?.input,
+            messages: [
+              ...(latest?.messages ?? []).filter(
+                (message) => message.clientId !== resolvedTurnId,
+              ),
+              {
+                ...optimistic,
+                id: optimistic?.id ?? resolvedTurnId,
+                role: 'user',
+                clientId: resolvedTurnId,
+                content,
+                timestamp: optimistic?.timestamp ?? Date.now(),
+                deliveryNotice: failureMessage.deliveryNotice,
+                action: failureMessage.action,
+              },
+            ],
+          });
+        } else {
+          addEphemeralMessage(sessionId, failureMessage);
+        }
         // The engine just answered the image question for itself; the
         // inventory read that carries its handshake answer is cached for
         // minutes and may predate that answer. Re-read it so the composer's
