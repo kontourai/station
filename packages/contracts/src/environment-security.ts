@@ -1237,10 +1237,11 @@ export interface StationCapabilityFlags {
    */
   eventStreamResume?: boolean;
   /**
-   * Live surfaces accept a `requestId` on claims and input, answer with the
-   * `epochCause` of the current epoch, take `epochCause=1` on the frames
-   * stream, and accept the `release-pressed` lease action. Absent: an older
-   * host that refuses those, so a viewer sends none of them.
+   * Live surfaces issue each frames stream (opened with `epochCause=1`) its
+   * own viewer id, accept that id on claims, input and the `release-pressed`
+   * lease action, and tell each viewer whether the current epoch was its own
+   * (`epochCause`). Absent: an older host that refuses those, so a viewer
+   * sends none of them.
    */
   liveSurfaceEpochCause?: boolean;
   /** The versioned bounded per-session event-window protocol is available. */

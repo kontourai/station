@@ -27,12 +27,13 @@ export const REAL_PERSON = {
 function handshake(
   flags: Record<string, boolean>,
   epochCause: boolean,
+  environmentId: string,
 ): unknown {
   const capabilities = { ...flags };
   if (!epochCause) delete capabilities.liveSurfaceEpochCause;
   return {
     schemaVersion: 1,
-    environmentId: '00000000-0000-4000-8000-000000000000',
+    environmentId,
     authentication: { scheme: 'bearer', protocolVersion: 1 },
     transports: { http: 1, sse: 1, websocket: 1 },
     compatibility: {
@@ -52,7 +53,11 @@ function handshake(
 }
 
 export async function realLiveSurfaceServer(
-  options: { epochCause?: boolean } = {},
+  options: {
+    epochCause?: boolean;
+    /** The server's replacement window for a closed viewer stream. */
+    viewerGraceMs?: number;
+  } = {},
 ) {
   const [
     { LiveSurfaceRegistry, claimAgentControl },
@@ -67,7 +72,9 @@ export async function realLiveSurfaceServer(
     ),
     import('../../../../../src-server/capabilities/station-capability-flags'),
   ]);
-  const registry = new LiveSurfaceRegistry();
+  const registry = new LiveSurfaceRegistry({
+    viewerGraceMs: options.viewerGraceMs ?? 50,
+  });
   const producer = new producerModule.SyntheticLiveSurfaceProducer(SURFACE, {
     backpressure: false,
   });
@@ -90,7 +97,21 @@ export async function realLiveSurfaceServer(
     string,
     boolean
   >;
-  const epochCause = options.epochCause !== false;
+  /**
+   * The Station answering at this address. `switchStation` swaps it for
+   * another one (an older build included) behind the same origin.
+   */
+  let station = {
+    environmentId: '00000000-0000-4000-8000-000000000000',
+    epochCause: options.epochCause !== false,
+  };
+  /** What an older host refused (a key its strict parsers do not know). */
+  const rejected: unknown[] = [];
+  /** Open frames streams, so a test can end them (the viewer reconnects). */
+  const streams = new Map<
+    ReadableStreamDefaultController<Uint8Array>,
+    ReadableStreamDefaultReader<Uint8Array>
+  >();
 
   /** What every viewer's requests did, in order, for assertions. */
   const requests: { url: string; body: unknown }[] = [];
@@ -106,15 +127,39 @@ export async function realLiveSurfaceServer(
         person?: string;
         loseAnswer?: (url: string, body: unknown) => boolean;
         hang?: (url: string, body: unknown) => boolean;
+        /** Fail before reaching the server (nothing is applied). */
+        fail?: (url: string, body: unknown) => boolean;
+        /** Hold the server's answer back until the returned gate opens. */
+        delay?: (url: string, body: unknown) => Promise<void> | null;
       } = {},
     ) =>
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/.well-known/station/v1'))
-        return Response.json(handshake(flags, epochCause));
+        return Response.json(
+          handshake(flags, station.epochCause, station.environmentId),
+        );
       const body =
         typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+      // An older host refuses the keys it does not know, as its strict
+      // parsers do (400 invalid-request).
+      if (
+        !station.epochCause &&
+        (url.includes('epochCause=1') ||
+          (body &&
+            typeof body === 'object' &&
+            ('viewerId' in body ||
+              (body as { action?: string }).action === 'release-pressed')))
+      ) {
+        rejected.push(url.includes('/frames') ? url : body);
+        return Response.json(
+          { success: false, code: 'invalid-request' },
+          { status: 400 },
+        );
+      }
       if (!url.includes('/frames')) requests.push({ url, body });
+      if (viewer.fail?.(url, body))
+        throw new TypeError('network connection failed');
       if (viewer.hang?.(url, body))
         return new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () =>
@@ -131,6 +176,36 @@ export async function realLiveSurfaceServer(
         await response.text().catch(() => '');
         throw new TypeError('network connection was lost');
       }
+      const gate = viewer.delay?.(url, body);
+      if (gate) await gate;
+      if (url.includes('/frames') && response.body) {
+        // Relayed through a stream the test can end.
+        const reader = response.body.getReader();
+        let own!: ReadableStreamDefaultController<Uint8Array>;
+        const relayed = new ReadableStream<Uint8Array>({
+          start(controller) {
+            own = controller;
+            streams.set(controller, reader);
+          },
+          async pull(controller) {
+            try {
+              const chunk = await reader.read();
+              if (chunk.done) controller.close();
+              else controller.enqueue(chunk.value);
+            } catch (error) {
+              controller.error(error);
+            }
+          },
+          cancel(reason) {
+            streams.delete(own);
+            return reader.cancel(reason);
+          },
+        });
+        return new Response(relayed, {
+          status: response.status,
+          headers: response.headers,
+        });
+      }
       return response;
     };
 
@@ -144,6 +219,22 @@ export async function realLiveSurfaceServer(
     registry,
     transport,
     requests,
+    rejected,
+    /** Another Station now answers at this address. */
+    switchStation: (next: { environmentId: string; epochCause: boolean }) => {
+      station = { ...next };
+    },
+    /** End every open frames stream: viewers reconnect. */
+    dropStreams: () => {
+      for (const [controller, reader] of streams) {
+        try {
+          controller.error(new TypeError('stream ended'));
+        } catch {}
+        // The server's side of the stream ends too.
+        void reader.cancel().catch(() => {});
+      }
+      streams.clear();
+    },
     /** The lease as the server holds it now. */
     lease: () => entry().lease.snapshot(),
     /** An agent takes control (it never preempts a live human hold). */

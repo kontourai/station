@@ -1,12 +1,14 @@
+import { randomBytes } from 'node:crypto';
 import type {
   LiveSurfaceAction,
+  LiveSurfaceControlLease,
   LiveSurfaceController,
   LiveSurfaceEpochCause,
   LiveSurfaceInput,
   LiveSurfaceInputResult,
   LiveSurfacePointerButton,
   LiveSurfacePointerType,
-  LiveSurfaceRequestId,
+  LiveSurfaceViewerId,
 } from '@kontourai/station-contracts/live-surface';
 import {
   type AgentController,
@@ -132,7 +134,17 @@ export interface LiveSurfaceRegistryOptions {
    * `dispatch-failed`. A hung producer must never block the input chain.
    */
   dispatchTimeoutMs?: number;
+  /**
+   * How long after a controller's last viewer stream closes the server waits
+   * before releasing what it pressed (and forgetting its viewer ids). A
+   * replacement stream (new stream params, a reconnect) inside the window
+   * keeps both.
+   */
+  viewerGraceMs?: number;
 }
+
+/** Default replacement window for a closed viewer stream. */
+const DEFAULT_VIEWER_GRACE_MS = 5_000;
 
 export interface LiveSurfaceRegistration {
   /** Absent means every principal is denied every action. */
@@ -295,7 +307,19 @@ interface EntryInternals {
   onError: (message: string, error: unknown) => void;
   onExplicitControl: NonNullable<LiveSurfaceRegistration['onExplicitControl']>;
   /** Open viewer streams per human controller (for release on disconnect). */
-  viewers: Map<string, number>;
+  /**
+   * Viewer ids this surface issued: the controller each belongs to, how many
+   * open streams hold it, and the pending forget once none does.
+   */
+  viewers: Map<
+    LiveSurfaceViewerId,
+    {
+      controller: string;
+      streams: number;
+      forget: ReturnType<typeof setTimeout> | null;
+    }
+  >;
+  viewerGraceMs: number;
 }
 
 const internals = new WeakMap<LiveSurfaceEntry, EntryInternals>();
@@ -380,6 +404,7 @@ export class LiveSurfaceRegistry {
       onError: this.options.hub?.onError ?? (() => {}),
       onExplicitControl: registration.onExplicitControl ?? (() => {}),
       viewers: new Map(),
+      viewerGraceMs: this.options.viewerGraceMs ?? DEFAULT_VIEWER_GRACE_MS,
     };
     internals.set(entry, own);
     own.dispose = async () => {
@@ -643,17 +668,16 @@ export async function dispatchHumanInput(
   human: HumanController,
   observedEpoch: number,
   events: readonly LiveSurfaceInput[],
-  /** The batch's own id: the answer then says what caused its epoch. */
-  requestId?: LiveSurfaceRequestId,
+  /** The sending viewer, as it presented itself (validated here). */
+  presentedViewerId?: LiveSurfaceViewerId,
 ): Promise<LiveSurfaceInputResult> {
   const own = internalsOf(entry);
+  const viewerId = viewerOf(entry, human, presentedViewerId);
   const withCause = (result: LiveSurfaceInputResult): LiveSurfaceInputResult =>
-    requestId === undefined
-      ? result
-      : { ...result, epochCause: own.lease.epochCause() };
+    presentedViewerId === undefined ? result : attest(entry, viewerId, result);
   const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return withCause(unsupported);
-  const claim = own.lease.claimForHumanInput(human, observedEpoch, requestId);
+  const claim = own.lease.claimForHumanInput(human, observedEpoch, viewerId);
   if (!claim.ok) return withCause({ ...claim, accepted: 0 });
   const fence = claim.lease.fence ?? 0;
   return withCause(
@@ -687,28 +711,92 @@ export function releaseHumanPressed(
 }
 
 /**
- * A viewer stream for `human` opened; the returned function closes it.
- * When a controller's last stream closes it can no longer see or release
- * what it pressed, so the server releases it.
+ * The viewer id `presented` by `human`, when this surface issued it to that
+ * same controller; otherwise none. Someone else presenting a viewer's id is
+ * treated exactly as presenting no id, so it can never borrow that viewer's
+ * causality.
+ */
+function viewerOf(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+  presented: LiveSurfaceViewerId | undefined,
+): LiveSurfaceViewerId | undefined {
+  if (presented === undefined) return undefined;
+  const issued = internalsOf(entry).viewers.get(presented);
+  return issued?.controller === controllerKey({ ...human })
+    ? presented
+    : undefined;
+}
+
+/** The answer's lease and its cause for `viewerId`, read at one point. */
+function attest<T extends { lease: LiveSurfaceControlLease }>(
+  entry: LiveSurfaceEntry,
+  viewerId: LiveSurfaceViewerId | undefined,
+  result: T,
+): T & { epochCause: LiveSurfaceEpochCause } {
+  const { lease, epochCause } = internalsOf(entry).lease.snapshotFor(viewerId);
+  return { ...result, lease, epochCause };
+}
+
+/** The epoch's cause for one viewer, with the lease it describes. */
+export function attestedLease(
+  entry: LiveSurfaceEntry,
+  viewerId: LiveSurfaceViewerId,
+): { lease: LiveSurfaceControlLease; epochCause: LiveSurfaceEpochCause } {
+  return internalsOf(entry).lease.snapshotFor(viewerId);
+}
+
+/** Whether `controller` has any viewer stream open on this surface. */
+function hasOpenStream(own: EntryInternals, controller: string): boolean {
+  for (const viewer of own.viewers.values())
+    if (viewer.controller === controller && viewer.streams > 0) return true;
+  return false;
+}
+
+/**
+ * A viewer stream for `human` opened. A replacement stream (new params, a
+ * reconnect) presents the viewer id it already holds and stays that viewer;
+ * anything else gets a fresh, unguessable id, told only to this stream.
+ * `close` ends the stream: once the controller has no open stream for the
+ * grace window, the server releases what it pressed (it can no longer see
+ * its own releases) and forgets the id.
  */
 export function attachHumanViewer(
   entry: LiveSurfaceEntry,
   human: HumanController,
-): () => void {
+  presented?: LiveSurfaceViewerId,
+): { viewerId: LiveSurfaceViewerId; close: () => void } {
   const own = internalsOf(entry);
-  const key = controllerKey({ ...human });
-  own.viewers.set(key, (own.viewers.get(key) ?? 0) + 1);
+  const controller = controllerKey({ ...human });
+  const adopted = viewerOf(entry, human, presented);
+  const viewerId = adopted ?? randomBytes(24).toString('base64url');
+  const viewer = own.viewers.get(viewerId) ?? {
+    controller,
+    streams: 0,
+    forget: null,
+  };
+  if (viewer.forget) clearTimeout(viewer.forget);
+  viewer.forget = null;
+  viewer.streams += 1;
+  own.viewers.set(viewerId, viewer);
   let closed = false;
-  return () => {
-    if (closed) return;
-    closed = true;
-    const left = (own.viewers.get(key) ?? 1) - 1;
-    if (left > 0) {
-      own.viewers.set(key, left);
-      return;
-    }
-    own.viewers.delete(key);
-    cancelHeld(entry, { ...human });
+  return {
+    viewerId,
+    close: () => {
+      if (closed) return;
+      closed = true;
+      viewer.streams -= 1;
+      if (viewer.streams > 0) return;
+      viewer.forget = setTimeout(() => {
+        viewer.forget = null;
+        if (viewer.streams > 0) return;
+        own.viewers.delete(viewerId);
+        // A fresh check: a replacement stream for the same controller (even
+        // under a new id) means it can still see what it pressed.
+        if (!hasOpenStream(own, controller)) cancelHeld(entry, { ...human });
+      }, own.viewerGraceMs);
+      viewer.forget.unref?.();
+    },
   };
 }
 
@@ -730,15 +818,18 @@ function notifyExplicit(
 export function claimHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
-  /** The claim's own id: the answer then says what caused its epoch. */
-  requestId?: LiveSurfaceRequestId,
+  /** The claiming viewer, as it presented itself (validated here). */
+  presentedViewerId?: LiveSurfaceViewerId,
 ): FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause } {
   const own = internalsOf(entry);
-  const result = own.lease.claimHuman(human, requestId);
+  const viewerId = viewerOf(entry, human, presentedViewerId);
+  const result = own.lease.claimHuman(human, viewerId);
   if (result.ok) notifyExplicit(own, 'claim', human, result.lease.fence);
-  return requestId === undefined
+  return presentedViewerId === undefined
     ? result
-    : { ...result, epochCause: own.lease.epochCause() };
+    : (attest(entry, viewerId, result) as FencedLeaseResult & {
+        epochCause: LiveSurfaceEpochCause;
+      });
 }
 
 /** Release, and cancel anything the human still held (never completing it). */

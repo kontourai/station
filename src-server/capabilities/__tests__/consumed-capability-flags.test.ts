@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { LiveSurfaceRecordDecoder } from '@kontourai/station-contracts/live-surface';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -365,8 +366,8 @@ const CONSUMED_FLAGS: Record<
     });
     return response.status === 200;
   },
-  // POST /api/live-surfaces/:id/lease takes a claim `requestId` and answers
-  // with the epoch's cause; live surfaces are served in every mode.
+  // GET /frames?epochCause=1 issues the stream its viewer id, and a claim
+  // naming it is answered `self`; live surfaces are served in every mode.
   liveSurfaceEpochCause: async () => {
     const registry = new LiveSurfaceRegistry();
     registry.register(new SyntheticLiveSurfaceProducer('browser:flag-probe'), {
@@ -383,24 +384,39 @@ const CONSUMED_FLAGS: Record<
         principalRecheckMs: 0,
       }),
     );
+    const abort = new AbortController();
     try {
-      const requestId = 'probe0000000000000000';
+      // The stream is issued its viewer id; a claim naming it is its own.
+      const frames = await routes.request(
+        '/api/live-surfaces/browser%3Aflag-probe/frames?epochCause=1',
+        { signal: abort.signal },
+      );
+      if (frames.status !== 200 || !frames.body) return false;
+      const reader = frames.body.getReader();
+      const decoder = new LiveSurfaceRecordDecoder();
+      let viewerId: string | undefined;
+      while (!viewerId) {
+        const chunk = await reader.read();
+        if (chunk.done) return false;
+        for (const record of decoder.push(chunk.value))
+          if (record.kind === 'state') viewerId = record.state.viewerId;
+        if (!viewerId) return false;
+      }
       const response = await routes.request(
         '/api/live-surfaces/browser%3Aflag-probe/lease',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'claim', requestId }),
+          body: JSON.stringify({ action: 'claim', viewerId }),
         },
       );
       const body = (await response.json()) as {
-        data?: { epochCause?: { requestId?: string } | null };
+        data?: { epochCause?: string };
       };
-      return (
-        response.status === 200 &&
-        body.data?.epochCause?.requestId === requestId
-      );
+      await reader.cancel();
+      return response.status === 200 && body.data?.epochCause === 'self';
     } finally {
+      abort.abort();
       await registry.dispose();
     }
   },

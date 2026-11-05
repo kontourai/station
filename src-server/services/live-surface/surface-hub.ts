@@ -3,11 +3,14 @@ import {
   LIVE_SURFACE_RECORD_MAX_BODY_BYTES,
   LIVE_SURFACE_STREAM_PARAM_BOUNDS,
   type LiveSurfaceAgentAction,
+  type LiveSurfaceControlLease,
+  type LiveSurfaceEpochCause,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceProducerStatus,
   type LiveSurfaceRecord,
   type LiveSurfaceStreamParams,
   type LiveSurfaceStreamState,
+  type LiveSurfaceViewerId,
   type LiveSurfaceViewerIdentity,
   parseLiveSurfaceAgentActions,
   parseLiveSurfaceFrameHeader,
@@ -18,6 +21,12 @@ import type {
   LiveSurfaceProducer,
 } from './producer.js';
 
+/** A viewer's own id and the lease with its epoch's cause, read together. */
+export type LiveSurfaceViewerAttestation = () => {
+  viewerId: LiveSurfaceViewerId;
+  lease: LiveSurfaceControlLease;
+  epochCause: LiveSurfaceEpochCause;
+};
 /**
  * Fan-out of one producer to N viewers (#90).
  *
@@ -159,8 +168,8 @@ class HubViewer implements LiveSurfaceViewer {
     readonly freshOnly: boolean,
     readonly attachedAt: number,
     readonly attachedAfter: number,
-    /** This viewer asked for `epochCause` on its state records. */
-    readonly epochCause = false,
+    /** This viewer's id and the lease attested for it (it asked). */
+    readonly attest?: LiveSurfaceViewerAttestation,
   ) {}
 
   /**
@@ -256,11 +265,7 @@ class HubViewer implements LiveSurfaceViewer {
       this.busy = true;
       return {
         kind: 'state',
-        state: this.hub.state(
-          this.identity,
-          this.agentActions,
-          this.epochCause,
-        ),
+        state: this.hub.state(this.identity, this.agentActions, this.attest),
       };
     }
     const frame = this.codec === 'h264' ? this.videoQueue.shift() : this.slot;
@@ -367,8 +372,8 @@ export class LiveSurfaceHub {
       codec?: LiveSurfaceViewerCodec;
       /** Ignore cached and queued images captured before this viewer attached. */
       freshOnly?: boolean;
-      /** Put `epochCause` on this viewer's state records (it asked). */
-      epochCause?: boolean;
+      /** This viewer's own id and attested lease, for its state records. */
+      attest?: LiveSurfaceViewerAttestation;
     },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
@@ -382,7 +387,7 @@ export class LiveSurfaceHub {
       options?.freshOnly === true,
       this.now(),
       this.frameArrival,
-      options?.epochCause === true,
+      options?.attest,
     );
     if (options?.freshOnly) viewer.skipFrame = this.pending;
     if (
@@ -456,16 +461,18 @@ export class LiveSurfaceHub {
   state(
     viewer?: LiveSurfaceViewerIdentity,
     agentActions?: () => boolean,
-    epochCause = false,
+    attest?: LiveSurfaceViewerAttestation,
   ): LiveSurfaceStreamState {
     const health = this.inputHealth();
     let includeActions = false;
     try {
       includeActions = agentActions?.() === true;
     } catch {}
+    // One read for the lease and what caused it, so they always agree.
+    const attested = attest?.();
     return {
       surfaceId: this.surfaceId,
-      lease: this.lease.snapshot(),
+      lease: attested?.lease ?? this.lease.snapshot(),
       effectiveParams: this.effectiveParams(),
       ...(viewer ? { viewer: { ...viewer } } : {}),
       wedged: health.wedged,
@@ -479,7 +486,9 @@ export class LiveSurfaceHub {
             },
           }
         : {}),
-      ...(epochCause ? { epochCause: this.lease.epochCause() } : {}),
+      ...(attested
+        ? { viewerId: attested.viewerId, epochCause: attested.epochCause }
+        : {}),
     };
   }
 

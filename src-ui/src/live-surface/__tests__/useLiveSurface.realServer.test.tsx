@@ -188,8 +188,16 @@ test('B: a lost answer for an applied press: the release queued behind it is not
   // The finger lifts while the press's answer is still on its way back.
   act(() => a.result.current.sendInput([up]));
   release();
+  // The release queued behind the lost answer still goes (its success then
+  // clears the notice, as later input getting through always does).
   await waitFor(() =>
-    expect(a.result.current.inputNotice).toBe('input-failed'),
+    expect(
+      server!.requests.some((request) =>
+        (request.body as { events?: { type?: string }[] }).events?.some(
+          (event) => event.type === 'up',
+        ),
+      ),
+    ).toBe(true),
   );
   await waitFor(() => expect(server!.remotePressed()).toEqual([]));
   a.unmount();
@@ -282,4 +290,175 @@ test('C: an input request that never answers is cut off and what is queued behin
   act(() => a.result.current.sendInput([text('after')]));
   await waitFor(() => expect(dispatchedText(server!)).toEqual(['after']));
   a.unmount();
+});
+
+// ---- fix round 5 -----------------------------------------------------------
+
+/** The viewer id this viewer sent with its last request. */
+const sentViewerId = (s: Server) =>
+  [...s.requests]
+    .reverse()
+    .map(
+      (request) =>
+        (request.body as { viewerId?: string } | undefined)?.viewerId,
+    )
+    .find((id) => id !== undefined);
+
+test("1: another controller presenting this viewer's id gains it nothing: its takeover is someone else's, and a press from before is not sent", async () => {
+  server = await realLiveSurfaceServer();
+  const a = viewer(server.transport());
+  await settle();
+  act(() => a.result.current.sendInput([text('mine')]));
+  await waitFor(() => expect(server!.lease().epoch).toBe(1));
+  const victimId = sentViewerId(server)!;
+  expect(victimId).toBeDefined();
+  const pressedIn = a.result.current.controlLineage();
+  // Someone else claims, presenting the victim's viewer id.
+  const thief = server.transport({ person: 'human:local:other' });
+  await thief(
+    `${REAL_API}/api/live-surfaces/${encodeURIComponent(REAL_SURFACE)}/lease`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'claim', viewerId: victimId }),
+    },
+  );
+  await waitFor(() => expect(server!.lease().epoch).toBe(2));
+  await settle();
+  // The press made before the theft is not sent, and control stays theirs.
+  act(() => a.result.current.sendInput([down], { lineage: pressedIn }));
+  await settle();
+  expect(server.producer.dispatched).not.toContainEqual(
+    expect.objectContaining({ type: 'down' }),
+  );
+  expect(server.lease().holder).toEqual(
+    expect.objectContaining({ principal: 'human:local:other' }),
+  );
+  a.unmount();
+});
+
+test('2: a release the host has not confirmed is tried again until it is', async () => {
+  server = await realLiveSurfaceServer();
+  let failures = 2;
+  const a = viewer(
+    server.transport({
+      fail: (url, body) =>
+        url.endsWith('/lease') &&
+        (body as { action?: string }).action === 'release-pressed' &&
+        failures-- > 0,
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([down]));
+  await waitFor(() => expect(server!.remotePressed()).toEqual(['button:left']));
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  a.unmount();
+});
+
+test('3: a different, older Station behind the same address is asked again on reconnect, and gets no new fields', async () => {
+  server = await realLiveSurfaceServer();
+  const a = viewer(server.transport());
+  await settle();
+  act(() => a.result.current.sendInput([text('new-station')]));
+  await waitFor(() => expect(dispatchedText(server!)).toEqual(['new-station']));
+  server.switchStation({
+    environmentId: '11111111-1111-4111-8111-111111111111',
+    epochCause: false,
+  });
+  server.dropStreams();
+  await waitFor(() => expect(a.result.current.status).not.toBe('live'));
+  // Typed while it reconnects: it never carries the old stream's viewer id
+  // to whatever Station now answers (it is retired when that Station turns
+  // out to be a different one: it was meant for the one being watched).
+  act(() => a.result.current.sendInput([text('gap')]));
+  await waitFor(() => expect(a.result.current.status).toBe('live'), {
+    timeout: 5_000,
+  });
+  act(() => a.result.current.sendInput([text('old-station')]));
+  await waitFor(() =>
+    expect(dispatchedText(server!)).toEqual(
+      expect.arrayContaining(['new-station', 'old-station']),
+    ),
+  );
+  expect(server.rejected).toEqual([]);
+  a.unmount();
+});
+
+test('4: a claim answered late never moves the published lease back', async () => {
+  server = await realLiveSurfaceServer();
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const a = viewer(
+    server.transport({
+      delay: (url, body) =>
+        url.endsWith('/lease') &&
+        (body as { action?: string }).action === 'claim'
+          ? gate
+          : null,
+    }),
+  );
+  const other = viewer(server.transport({ person: 'human:local:other' }));
+  await settle();
+  const claim = a.result.current.claimControl();
+  await waitFor(() => expect(server!.lease().epoch).toBe(1));
+  act(() => other.result.current.sendInput([text('other')]));
+  await waitFor(() => expect(a.result.current.lease?.epoch).toBe(2));
+  open();
+  await act(async () => {
+    await claim;
+  });
+  expect(a.result.current.lease).toEqual(
+    expect.objectContaining({
+      epoch: 2,
+      holder: expect.objectContaining({ principal: 'human:local:other' }),
+    }),
+  );
+  a.unmount();
+  other.unmount();
+});
+
+test('6: a replacement stream (new stream params) keeps a held key down and stays the same viewer', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 200 });
+  const shift: LiveSurfaceInput = {
+    kind: 'key',
+    type: 'down',
+    key: 'Shift',
+    code: 'ShiftLeft',
+  };
+  const transport = server.transport();
+  const view = renderHook(
+    ({ maxWidth }) =>
+      useLiveSurface({
+        apiBase: REAL_API,
+        surfaceId: REAL_SURFACE,
+        visibilityRef: createRef<Element>(),
+        onFrame: () => {},
+        transport: transport as never,
+        params: { maxWidth },
+      }),
+    { initialProps: { maxWidth: 960 } },
+  );
+  await settle();
+  act(() => view.result.current.sendInput([shift]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  const before = sentViewerId(server);
+  // The pane grows: the viewer asks for a larger picture on a new stream.
+  view.rerender({ maxWidth: 1280 });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  });
+  expect(server.remotePressed()).toEqual(['key:ShiftLeft']);
+  act(() => view.result.current.sendInput([text('after')]));
+  await waitFor(() => expect(dispatchedText(server!)).toEqual(['after']));
+  expect(sentViewerId(server)).toBe(before);
+  view.unmount();
 });

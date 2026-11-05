@@ -3,8 +3,14 @@ import type {
   LiveSurfaceController,
   LiveSurfaceEpochCause,
   LiveSurfaceLeaseResult,
-  LiveSurfaceRequestId,
+  LiveSurfaceViewerId,
 } from '@kontourai/station-contracts/live-surface';
+
+/** What created the current epoch, as the lease records it (never sent). */
+type LeaseEpochCause =
+  | { kind: 'viewer'; viewerId: LiveSurfaceViewerId }
+  | { kind: 'agent' }
+  | { kind: 'none' };
 
 /**
  * One controller, many viewers, two counters (#90).
@@ -83,8 +89,14 @@ function sameController(
 export interface LiveSurfaceLeaseReader {
   readonly surfaceId: string;
   snapshot(): FencedLease;
-  /** What caused the current epoch (see `LiveSurfaceEpochCause`). */
-  epochCause(): LiveSurfaceEpochCause;
+  /**
+   * The lease and what caused its epoch for `viewerId`, read together at one
+   * point so an answer never pairs one epoch's lease with another's cause.
+   */
+  snapshotFor(viewerId?: LiveSurfaceViewerId): {
+    lease: FencedLease;
+    epochCause: LiveSurfaceEpochCause;
+  };
   isCurrent(
     fence: number,
     controller?: LiveSurfaceController,
@@ -103,7 +115,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
    * handoff advances the epoch, so a renewal by the same controller (another
    * tab of the same person and device) never claims an epoch it did not make.
    */
-  private cause: LiveSurfaceEpochCause = null;
+  private cause: LeaseEpochCause = { kind: 'none' };
   private expiresAt: number | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
@@ -178,20 +190,21 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   claimForHumanInput(
     human: HumanController,
     observedEpoch: number,
-    requestId?: LiveSurfaceRequestId,
+    viewerId?: LiveSurfaceViewerId,
   ): FencedLeaseResult {
     if (this.disposed)
       return { ok: false, code: 'surface-closed', lease: this.view() };
     this.expireIfDue();
     if (observedEpoch !== this.epoch)
       return { ok: false, code: 'stale-epoch', lease: this.view() };
-    return this.claimHuman(human, requestId);
+    return this.claimHuman(human, viewerId);
   }
 
   /** An explicit human claim (the "take control" button): no epoch needed. */
   claimHuman(
     human: HumanController,
-    requestId?: LiveSurfaceRequestId,
+    /** The viewer making the claim; it is the cause should control pass. */
+    viewerId?: LiveSurfaceViewerId,
   ): FencedLeaseResult {
     if (this.disposed)
       return { ok: false, code: 'surface-closed', lease: this.view() };
@@ -200,7 +213,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     this.setHolder(
       { ...human },
       this.now() + this.humanHoldMs,
-      requestId ? { requestId } : null,
+      viewerId ? { kind: 'viewer', viewerId } : { kind: 'none' },
     );
     return { ok: true, lease: this.view() };
   }
@@ -221,7 +234,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
       if (this.holder)
         return { ok: false, code: 'held-by-other', lease: this.view() };
     }
-    this.setHolder(controller, this.now() + this.agentTtlMs);
+    this.setHolder(controller, this.now() + this.agentTtlMs, { kind: 'agent' });
     return { ok: true, lease: this.view() };
   }
 
@@ -287,7 +300,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     holder: LiveSurfaceController | null,
     expiresAt: number | null,
     /** What caused this change, should it hand control off (a new epoch). */
-    cause: LiveSurfaceEpochCause = null,
+    cause: LeaseEpochCause = { kind: 'none' },
   ): void {
     const changed = !sameController(this.holder, holder);
     const previousHolder = this.lastHolder;
@@ -362,8 +375,23 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     this.setHolder(null, null);
   }
 
-  epochCause(): LiveSurfaceEpochCause {
-    return this.cause;
+  snapshotFor(viewerId?: LiveSurfaceViewerId): {
+    lease: FencedLease;
+    epochCause: LiveSurfaceEpochCause;
+  } {
+    const lease = this.snapshot();
+    const cause = this.cause;
+    return {
+      lease,
+      epochCause:
+        cause.kind === 'agent'
+          ? 'agent'
+          : cause.kind === 'viewer' &&
+              viewerId !== undefined &&
+              cause.viewerId === viewerId
+            ? 'self'
+            : 'other',
+    };
   }
 
   private view(): FencedLease {

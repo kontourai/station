@@ -405,35 +405,41 @@ describe('epoch cause (#90 A)', () => {
     principal: 'human:other',
     device: 'device:theirs',
   } as const;
+  const TAB_ONE = 'tab-one-viewer-000000000000000000000';
+  const TAB_TWO = 'tab-two-viewer-000000000000000000000';
+  const THEIRS = 'other-viewer-00000000000000000000000';
 
-  test('the request whose handoff created the epoch is its cause; a renewal by the same controller changes nothing', () => {
+  test('the viewer whose handoff created the epoch is told self; a renewal by the same controller changes nothing', () => {
     const lease = new LiveSurfaceControlLeaseState('surface-1');
-    expect(lease.epochCause()).toBeNull();
-    lease.claimForHumanInput(me, 0, 'tab-one-request-0001');
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('other');
+    lease.claimForHumanInput(me, 0, TAB_ONE);
     expect(lease.snapshot().epoch).toBe(1);
-    expect(lease.epochCause()).toEqual({ requestId: 'tab-one-request-0001' });
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('self');
+    expect(lease.snapshotFor(TAB_TWO).epochCause).toBe('other');
     // Another tab of the same person and device: the same controller, so
     // no handoff, no new epoch, and the cause stays the first tab's.
-    lease.claimHuman(me, 'tab-two-request-0002');
-    lease.claimForHumanInput(me, 1, 'tab-two-request-0003');
+    lease.claimHuman(me, TAB_TWO);
+    lease.claimForHumanInput(me, 1, TAB_TWO);
     expect(lease.snapshot().epoch).toBe(1);
-    expect(lease.epochCause()).toEqual({ requestId: 'tab-one-request-0001' });
-    // Someone else's takeover is caused by their request.
-    lease.claimForHumanInput(other, 1, 'other-request-00004');
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('self');
+    expect(lease.snapshotFor(TAB_TWO).epochCause).toBe('other');
+    lease.claimForHumanInput(other, 1, THEIRS);
     expect(lease.snapshot().epoch).toBe(2);
-    expect(lease.epochCause()).toEqual({ requestId: 'other-request-00004' });
+    expect(lease.snapshotFor(THEIRS).epochCause).toBe('self');
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('other');
   });
 
-  test('an agent takeover, or a request without an id, has no cause', () => {
+  test('an agent takeover is agent; a claim naming no viewer is other to everyone', () => {
     const lease = new LiveSurfaceControlLeaseState('surface-1');
-    lease.claimForHumanInput(me, 0, 'tab-one-request-0001');
+    lease.claimForHumanInput(me, 0, TAB_ONE);
     // An agent never preempts a live human hold: released first.
     lease.release(me, { epoch: 1 });
     expect(lease.claimForAgent('agent:coder', 'session-1').ok).toBe(true);
     expect(lease.snapshot().epoch).toBe(2);
-    expect(lease.epochCause()).toBeNull();
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('agent');
     lease.claimHuman(other);
     expect(lease.snapshot().epoch).toBe(3);
-    expect(lease.epochCause()).toBeNull();
+    expect(lease.snapshotFor(TAB_ONE).epochCause).toBe('other');
+    expect(lease.snapshotFor().epochCause).toBe('other');
   });
 });

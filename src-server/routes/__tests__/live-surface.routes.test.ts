@@ -272,42 +272,61 @@ describe('live surface routes through runtime authentication', () => {
     expect(h.producer.stops).toBe(1);
   });
 
-  test("epochCause=1 puts what caused the epoch on this stream's state records; without it the record is the shape older viewers parse", async () => {
+  test('epochCause=1 tells this stream its own viewer id and, per stream, whether the epoch was its own; without it the record is the shape older viewers parse', async () => {
     const h = harness();
     const asked = recordReader(
       await h.request(`${base}/frames?epochCause=1`, 'operator'),
     );
+    const second = recordReader(
+      await h.request(`${base}/frames?epochCause=1`, 'operator'),
+    );
     const plain = recordReader(await h.request(`${base}/frames`, 'operator'));
     const first = await asked.next();
-    expect(first?.kind === 'state' && first.state.epochCause).toBeNull();
+    const secondFirst = await second.next();
+    if (first?.kind !== 'state' || secondFirst?.kind !== 'state')
+      throw new Error('no state record');
+    const viewerId = first.state.viewerId!;
+    expect(viewerId).toMatch(/^[A-Za-z0-9_-]{32,64}$/);
+    expect(first.state.epochCause).toBe('other');
+    // Another viewer of the same person gets its own id, never this one.
+    expect(secondFirst.state.viewerId).toMatch(/^[A-Za-z0-9_-]{32,64}$/);
+    expect(secondFirst.state.viewerId).not.toBe(viewerId);
     const plainFirst = await plain.next();
     expect(
-      plainFirst?.kind === 'state' && 'epochCause' in plainFirst.state,
+      plainFirst?.kind === 'state' &&
+        ('epochCause' in plainFirst.state || 'viewerId' in plainFirst.state),
     ).toBe(false);
-    const requestId = 'operator-request-000001';
     const input = await h.request(
       `${base}/input`,
       'operator',
       JSON.stringify({
         epoch: 0,
         events: [{ kind: 'pointer', type: 'move', x: 1, y: 1 }],
-        requestId,
+        viewerId,
       }),
     );
     expect(((await input.json()) as { data: unknown }).data).toMatchObject({
       ok: true,
-      epochCause: { requestId },
+      lease: { epoch: 1 },
+      epochCause: 'self',
     });
-    let record = await asked.next();
-    while (
-      record &&
-      (record.kind !== 'state' || record.state.lease.epoch !== 1)
-    )
-      record = await asked.next();
-    expect(record?.kind === 'state' && record.state.epochCause).toEqual({
-      requestId,
-    });
+    const untilEpoch = async (reader: ReturnType<typeof recordReader>) => {
+      let record = await reader.next();
+      while (
+        record &&
+        (record.kind !== 'state' || record.state.lease.epoch !== 1)
+      )
+        record = await reader.next();
+      return record?.kind === 'state' ? record.state : null;
+    };
+    const mine = await untilEpoch(asked);
+    const theirs = await untilEpoch(second);
+    expect(mine?.epochCause).toBe('self');
+    expect(theirs?.epochCause).toBe('other');
+    // No stream is ever told another viewer's id.
+    expect(theirs?.viewerId).not.toBe(viewerId);
     await asked.cancel();
+    await second.cancel();
     await plain.cancel();
   });
 

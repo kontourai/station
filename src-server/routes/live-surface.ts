@@ -1,10 +1,12 @@
 import {
   encodeLiveSurfaceRecord,
   isLiveSurfaceId,
+  isLiveSurfaceViewerId,
   LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY,
   LIVE_SURFACE_FRAMES_CONTENT_TYPE,
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_LEASE_MAX_BODY_BYTES,
+  LIVE_SURFACE_VIEWER_HEADER,
   type LiveSurfaceAction,
   type LiveSurfaceInputResult,
   type LiveSurfaceLeaseResult,
@@ -19,6 +21,7 @@ import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { HumanController } from '../services/live-surface/control-lease.js';
 import {
   attachHumanViewer,
+  attestedLease,
   claimHumanControl,
   dispatchHumanInput,
   keepHumanControlAlive,
@@ -272,6 +275,17 @@ export function createLiveSurfaceRoutes(
       );
 
     const request = c.req.raw;
+    // While this stream is open its controller can see, and release, what it
+    // pressed. A replacement stream presents the viewer id it holds and
+    // stays that viewer; the id is told only to this stream.
+    const presented = c.req.header(LIVE_SURFACE_VIEWER_HEADER);
+    const control = attachHumanViewer(
+      entry,
+      human,
+      epochCause === '1' && isLiveSurfaceViewerId(presented)
+        ? presented
+        : undefined,
+    );
     const viewer = entry.hub.attach(
       parsed.params,
       { principal: human.principal, device: human.device },
@@ -279,7 +293,14 @@ export function createLiveSurfaceRoutes(
         ...(agentActions === '1'
           ? { agentActions: () => options.agentActionsEnabled?.() === true }
           : {}),
-        ...(epochCause === '1' ? { epochCause: true } : {}),
+        ...(epochCause === '1'
+          ? {
+              attest: () => ({
+                viewerId: control.viewerId,
+                ...attestedLease(entry, control.viewerId),
+              }),
+            }
+          : {}),
         codec:
           codec === 'h264' &&
           entry.hub.producer.capabilities.codecs.includes('h264')
@@ -288,13 +309,10 @@ export function createLiveSurfaceRoutes(
       },
     );
     const abort = new AbortController();
-    // While this stream is open its controller can see, and release, what it
-    // pressed; when its last stream closes the server releases it.
-    const detachControl = attachHumanViewer(entry, human);
     const end = () => {
       abort.abort();
       viewer.close();
-      detachControl();
+      control.close();
     };
     request.signal?.addEventListener('abort', end, { once: true });
     let lastCheckAt = now();
@@ -396,7 +414,7 @@ export function createLiveSurfaceRoutes(
       human,
       batch.epoch,
       batch.events,
-      batch.requestId,
+      batch.viewerId,
     );
     return c.json(
       { success: result.ok, data: result },
@@ -426,7 +444,7 @@ export function createLiveSurfaceRoutes(
       return failure(c, 'access-denied', 403);
     const result: LiveSurfaceLeaseResult =
       request.action === 'claim'
-        ? claimHumanControl(found.value, human, request.requestId)
+        ? claimHumanControl(found.value, human, request.viewerId)
         : request.action === 'keep-alive'
           ? keepHumanControlAlive(found.value, human, request.epoch)
           : request.action === 'release-pressed'

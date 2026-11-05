@@ -382,29 +382,42 @@ describe('epoch causality and host release (#90 A, B)', () => {
     lease,
     effectiveParams: LIVE_SURFACE_DEFAULT_STREAM_PARAMS,
   };
+  const viewerId = 'abcdefABCDEF0123456789_-abcdefABCD';
 
-  test('an input batch and a claim carry a bounded request id', () => {
-    const requestId = 'abcdefABCDEF0123456789_-';
+  test('an input batch, a claim and release-pressed carry a bounded viewer id', () => {
     expect(
       parseLiveSurfaceInputBatch({
         epoch: 1,
         events: [{ kind: 'text', text: 'x' }],
-        requestId,
+        viewerId,
       }),
-    ).toEqual({ epoch: 1, events: [{ kind: 'text', text: 'x' }], requestId });
+    ).toEqual({ epoch: 1, events: [{ kind: 'text', text: 'x' }], viewerId });
+    expect(parseLiveSurfaceLeaseRequest({ action: 'claim', viewerId })).toEqual(
+      { action: 'claim', viewerId },
+    );
     expect(
-      parseLiveSurfaceLeaseRequest({ action: 'claim', requestId }),
-    ).toEqual({
-      action: 'claim',
-      requestId,
-    });
-    for (const bad of ['short', 'has space in it 0000', 'x'.repeat(65), 7])
+      parseLiveSurfaceLeaseRequest({
+        action: 'release-pressed',
+        epoch: 3,
+        viewerId,
+      }),
+    ).toEqual({ action: 'release-pressed', epoch: 3, viewerId });
+    for (const bad of [
+      'short',
+      'has space in it 00000000000000000',
+      'x'.repeat(65),
+      7,
+    ])
       expect(
-        parseLiveSurfaceLeaseRequest({ action: 'claim', requestId: bad }),
+        parseLiveSurfaceLeaseRequest({ action: 'claim', viewerId: bad }),
       ).toBeNull();
     expect(parseLiveSurfaceLeaseRequest({ action: 'claim' })).toEqual({
       action: 'claim',
     });
+    // The retired request id is not part of the contract.
+    expect(
+      parseLiveSurfaceLeaseRequest({ action: 'claim', requestId: viewerId }),
+    ).toBeNull();
   });
 
   test('release-pressed is a fenced lease action', () => {
@@ -416,22 +429,20 @@ describe('epoch causality and host release (#90 A, B)', () => {
     ).toBeNull();
   });
 
-  test('a state record carries an epoch cause only in its own bounded shape; without it the record is unchanged', () => {
+  test('a state record carries its own viewer id and a per-viewer cause only in their bounded shapes; without them it is unchanged', () => {
     expect(parseLiveSurfaceStreamState(state)).toEqual(state);
+    for (const cause of ['self', 'other', 'agent'] as const)
+      expect(
+        parseLiveSurfaceStreamState({ ...state, viewerId, epochCause: cause }),
+      ).toEqual({ ...state, viewerId, epochCause: cause });
     expect(
       parseLiveSurfaceStreamState({
         ...state,
-        epochCause: { requestId: 'abcdefABCDEF0123456789' },
-      })?.epochCause,
-    ).toEqual({ requestId: 'abcdefABCDEF0123456789' });
-    expect(
-      parseLiveSurfaceStreamState({ ...state, epochCause: null })?.epochCause,
+        epochCause: { requestId: viewerId },
+      }),
     ).toBeNull();
     expect(
-      parseLiveSurfaceStreamState({
-        ...state,
-        epochCause: { requestId: 'abcdefABCDEF0123456789', extra: 1 },
-      }),
+      parseLiveSurfaceStreamState({ ...state, viewerId: 'short' }),
     ).toBeNull();
   });
 });

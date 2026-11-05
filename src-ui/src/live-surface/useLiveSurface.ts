@@ -7,6 +7,7 @@ import {
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
   LIVE_SURFACE_TEXT_MAX_LENGTH,
+  LIVE_SURFACE_VIEWER_HEADER,
   type LiveSurfaceAgentAction,
   type LiveSurfaceCodec,
   type LiveSurfaceControlLease,
@@ -23,7 +24,6 @@ import {
   parseLiveSurfaceEpochCause,
 } from '@kontourai/station-contracts/live-surface';
 import { authenticatedFetch, hasCapability } from '@kontourai/station-sdk';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type RefObject,
   useCallback,
@@ -287,68 +287,71 @@ function streamUrl(
 
 const encoder = new TextEncoder();
 
-/** One capability answer per host and transport, shared by its viewers. */
-const epochCauseCapabilities = new WeakMap<
-  object,
-  Map<string, Promise<boolean>>
->();
+/** What the host says about itself: which Station, and whether it attests. */
+interface StationProbe {
+  /** The Station's own id from its handshake; null when it gave none. */
+  environmentId: string | null;
+  /** It advertises `liveSurfaceEpochCause`. */
+  epochCause: boolean;
+}
+
+/** Probes in flight, so viewers of one host ask once at a time. */
+const stationProbes = new WeakMap<object, Map<string, Promise<StationProbe>>>();
 
 /**
- * Whether the host at `apiBase` advertises `liveSurfaceEpochCause`. Unknown
- * (unreachable, an older host) is false: the viewer then sends no request
- * ids and asks for no cause, which such a host would refuse.
+ * Ask the host at `apiBase` which Station it is and whether it attests
+ * epoch causes. Never cached past the answer: a viewer asks again whenever
+ * it (re)connects, so a different Station at the same address (an older one
+ * included) is seen at once. Unknown is "an older host": the viewer then
+ * sends no viewer id and asks for no cause, which such a host would refuse.
  */
-function epochCauseCapability(
+function probeStation(
   apiBase: string,
   transport: typeof authenticatedFetch,
-): Promise<boolean> {
-  let byHost = epochCauseCapabilities.get(transport);
+): Promise<StationProbe> {
+  let byHost = stationProbes.get(transport);
   if (!byHost) {
     byHost = new Map();
-    epochCauseCapabilities.set(transport, byHost);
+    stationProbes.set(transport, byHost);
   }
-  const known = byHost.get(apiBase);
-  if (known) return known;
-  const asked = (async () => {
+  const pending = byHost.get(apiBase);
+  if (pending) return pending;
+  const asked = (async (): Promise<StationProbe> => {
     try {
       const response = await transport(
         `${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`,
         { method: 'GET' },
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { environmentId: null, epochCause: false };
       const handshake = parsePublicStationHandshake(
         await response.json().catch(() => null),
       );
-      return hasCapability(handshake, 'liveSurfaceEpochCause');
+      return {
+        environmentId: handshake?.environmentId ?? null,
+        epochCause: hasCapability(handshake, 'liveSurfaceEpochCause'),
+      };
     } catch {
-      return false;
+      return { environmentId: null, epochCause: false };
     }
-  })();
-  byHost.set(apiBase, asked);
-  // A failed read is asked again later rather than pinned.
-  void asked.then((supported) => {
-    if (!supported) setTimeout(() => byHost?.delete(apiBase), 30_000);
+  })().finally(() => {
+    byHost?.delete(apiBase);
   });
+  byHost.set(apiBase, asked);
   return asked;
 }
+
+const sameStation = (a: StationProbe | null, b: StationProbe | null) =>
+  a?.environmentId === b?.environmentId && a?.epochCause === b?.epochCause;
 
 /** Bound on one input, claim or lease request (#90 C). */
 export const LIVE_SURFACE_REQUEST_TIMEOUT_MS = 10_000;
 
-/**
- * A fresh id for one of this viewer's own requests (contract shape). Not a
- * secret: the server still authorizes the caller. The shared helper works in
- * an insecure context, where `crypto.randomUUID` is undefined.
- */
-function newRequestId(): string {
-  return randomCorrelationId().replaceAll('-', '');
-}
+/** Tries for one release-pressed obligation, and the first pause between. */
+const RELEASE_ATTEMPTS = 6;
+const RELEASE_BACKOFF_MS = 200;
 
 /** A queued release that may go in whichever lineage is current. */
 const ANY_LINEAGE = -2;
-
-/** How many of this viewer's own request ids it remembers. */
-const OWN_REQUEST_IDS = 64;
 
 /** A request was cut off: its deadline passed or its target went away. */
 class LiveSurfaceRequestAborted extends Error {
@@ -519,22 +522,36 @@ export function useLiveSurface(
   const pressedRef = useRef(new Map<string, number>());
   /** The host has released these presses itself (no lineage matches). */
   const RELEASED_BY_HOST = -1;
+  /** A release this viewer asked the host for and the host has not confirmed. */
+  const pendingReleaseRef = useRef<{
+    lineage: number;
+    ids: Set<string>;
+  } | null>(null);
   /**
-   * Whether the host says which request caused each epoch
-   * (`liveSurfaceEpochCause`): null until known for this target.
+   * Which Station answers at `apiBase` and whether it attests epoch causes
+   * (`liveSurfaceEpochCause`): null until known, asked again on reconnect.
    */
-  const [epochCauseSupported, setEpochCauseSupported] = useState<
-    boolean | null
-  >(null);
+  const [station, setStation] = useState<StationProbe | null>(null);
+  const stationRef = useRef<StationProbe | null>(null);
+  stationRef.current = station;
+  const epochCauseSupported = station === null ? null : station.epochCause;
   const epochCauseRef = useRef<boolean | null>(null);
   epochCauseRef.current = epochCauseSupported;
-  /** This viewer's own recent request ids, newest last. */
-  const ownRequestIdsRef = useRef<string[]>([]);
-  const rememberRequestId = useCallback((id: string) => {
-    const ids = ownRequestIdsRef.current;
-    ids.push(id);
-    if (ids.length > OWN_REQUEST_IDS) ids.shift();
-  }, []);
+  /**
+   * This viewer's own id on an attesting host, issued by the server to its
+   * frames stream and told to no one else. Sent with its claims, input and
+   * `release-pressed`, and presented by a replacement stream.
+   */
+  const viewerIdRef = useRef<string | null>(null);
+  /**
+   * The id a replacement stream presents to stay the same viewer. Kept
+   * across a stream's end, while `viewerIdRef` (what requests carry) is only
+   * set once the current stream confirms it: input sent while reconnecting
+   * names no viewer, so a different Station there never sees a stale id.
+   */
+  const presentViewerIdRef = useRef<string | null>(null);
+  /** The newest lease published to the view, never replaced by an older one. */
+  const publishedLeaseRef = useRef<LiveSurfaceControlLease | null>(null);
   /** Aborted when this target's work must stop (target change, unmount). */
   const targetAbortRef = useRef(new AbortController());
   /** The newest lease the stream reported, with its cause, for reconcile. */
@@ -585,8 +602,8 @@ export function useLiveSurface(
       const cause = evidence.from === 'frame' ? undefined : evidence.cause;
       let own = false;
       if (attested && cause !== undefined) {
-        own =
-          cause !== null && ownRequestIdsRef.current.includes(cause.requestId);
+        // The server's word, for this viewer alone: never inferred.
+        own = cause === 'self';
       } else if (attested) {
         // A frame alone: the state record, with its cause, follows it.
         if (evidence.from === 'frame') return;
@@ -620,7 +637,21 @@ export function useLiveSurface(
         handoff: false,
       },
     ) => {
+      // An answer that arrives late (a delayed claim) carries an older
+      // lease than the stream already reported: it is not published, so the
+      // view never moves back.
+      const published = publishedLeaseRef.current;
+      if (
+        published &&
+        (next.epoch < published.epoch ||
+          (next.epoch === published.epoch &&
+            next.fence !== undefined &&
+            published.fence !== undefined &&
+            next.fence < published.fence))
+      )
+        return;
       observeEpoch(next.epoch, evidence);
+      publishedLeaseRef.current = next;
       setLease(next);
     },
     [observeEpoch],
@@ -671,6 +702,9 @@ export function useLiveSurface(
 
     const scheduleReconnect = () => {
       if (stopped || generation !== targetGenerationRef.current) return;
+      // The stream that confirmed this viewer's id has ended: until the next
+      // one confirms it, requests name no viewer.
+      viewerIdRef.current = null;
       setStatus('reconnecting');
       const delay =
         LIVE_SURFACE_RECONNECT_DELAYS_MS[
@@ -684,7 +718,18 @@ export function useLiveSurface(
     };
 
     let releaseSlot: (() => void) | null = null;
+    let connects = 0;
     const connect = async () => {
+      // Reconnecting asks the host again which Station it is: a different
+      // Station at the same address (an older one included) starts over.
+      if (connects++ > 0) {
+        const probed = await probeStation(apiBase, transportRef.current);
+        if (stopped || generation !== targetGenerationRef.current) return;
+        if (!sameStation(probed, stationRef.current)) {
+          setStation(probed);
+          return;
+        }
+      }
       const h264 = askH264();
       const url = urlFor(h264);
       const release = await admissionRef.current.admit(
@@ -712,10 +757,18 @@ export function useLiveSurface(
     const stream = async (url: string, h264: boolean) => {
       let response: Response;
       try {
+        const viewerId =
+          epochCauseRef.current === true ? presentViewerIdRef.current : null;
+        // Until this stream confirms who this viewer is, requests name none.
+        viewerIdRef.current = null;
         response = await transportRef.current(url, {
           signal: abort.signal,
           timeoutMs: null,
           readOnly: true,
+          // A replacement stream stays the same viewer.
+          ...(viewerId
+            ? { headers: { [LIVE_SURFACE_VIEWER_HEADER]: viewerId } }
+            : {}),
         });
       } catch {
         if (!abort.signal.aborted) scheduleReconnect();
@@ -787,6 +840,10 @@ export function useLiveSurface(
               // Who this viewer is decides whether a new epoch is its own
               // takeover, so it is known before the lease is adopted.
               if (record.state.viewer) selfRef.current = record.state.viewer;
+              if (record.state.viewerId) {
+                viewerIdRef.current = record.state.viewerId;
+                presentViewerIdRef.current = record.state.viewerId;
+              }
               latestStreamLeaseRef.current = {
                 lease: record.state.lease,
                 cause: record.state.epochCause,
@@ -882,6 +939,7 @@ export function useLiveSurface(
     adoptLease,
     observeEpoch,
     epochCauseSupported,
+    station?.environmentId,
   ]);
 
   const declineH264 = useCallback(
@@ -920,7 +978,10 @@ export function useLiveSurface(
     undeliveredRef.current = null;
     setRetryableInput(false);
     pressedRef.current.clear();
-    ownRequestIdsRef.current = [];
+    viewerIdRef.current = null;
+    presentViewerIdRef.current = null;
+    publishedLeaseRef.current = null;
+    pendingReleaseRef.current = null;
     latestStreamLeaseRef.current = null;
     targetAbortRef.current.abort();
     targetAbortRef.current = new AbortController();
@@ -935,18 +996,18 @@ export function useLiveSurface(
       // Requests for this target stop; their answers are not waited for.
       targetAbortRef.current.abort();
     };
-  }, [apiBase, surfaceId, projectSlug]);
+    // A different Station at the same address is a different target.
+  }, [apiBase, surfaceId, projectSlug, station?.environmentId]);
 
-  // Whether this host says what caused each epoch: asked once per host,
-  // through the same transport, before the stream opens.
+  // Which Station this is and whether it attests epoch causes: asked
+  // through the same transport before the stream opens, and again on every
+  // reconnect (see `connect`).
   useEffect(() => {
     let current = true;
-    setEpochCauseSupported(null);
-    void epochCauseCapability(apiBase, transportRef.current).then(
-      (supported) => {
-        if (current) setEpochCauseSupported(supported);
-      },
-    );
+    setStation(null);
+    void probeStation(apiBase, transportRef.current).then((probed) => {
+      if (current) setStation(probed);
+    });
     return () => {
       current = false;
     };
@@ -996,8 +1057,9 @@ export function useLiveSurface(
     const batch: LiveSurfaceInput[] = [];
     let body = '';
     const batchEpoch = epochRef.current;
-    // Only a host that says what caused each epoch takes a request id.
-    const requestId = epochCauseRef.current === true ? newRequestId() : null;
+    // Only a host that attests epoch causes takes a viewer id.
+    const viewerId =
+      epochCauseRef.current === true ? viewerIdRef.current : null;
     while (
       queueRef.current.length > 0 &&
       batch.length < LIVE_SURFACE_INPUT_MAX_EVENTS
@@ -1005,7 +1067,7 @@ export function useLiveSurface(
       const candidate = JSON.stringify({
         epoch: batchEpoch,
         events: [...batch, queueRef.current[0]!.event],
-        ...(requestId ? { requestId } : {}),
+        ...(viewerId ? { viewerId } : {}),
       });
       if (
         encoder.encode(candidate).byteLength > LIVE_SURFACE_INPUT_MAX_BODY_BYTES
@@ -1021,7 +1083,6 @@ export function useLiveSurface(
     }
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
-    if (requestId) rememberRequestId(requestId);
     try {
       const { response, envelope } = await boundedRequest(
         async (signal) => {
@@ -1111,7 +1172,7 @@ export function useLiveSurface(
         if (queueRef.current.length > 0) scheduleFlushRef.current();
       }
     }
-  }, [adoptLease, showHostBusy, keepUndelivered, reconcile, rememberRequestId]);
+  }, [adoptLease, showHostBusy, keepUndelivered, reconcile]);
   /**
    * After a batch whose effect is unknown: nothing is sent again, and what
    * this viewer may have pressed is released. A host that releases presses
@@ -1121,16 +1182,19 @@ export function useLiveSurface(
   const abandonIndeterminateRef = useRef(() => {});
   abandonIndeterminateRef.current = () => {
     keepUndelivered([]);
-    if (releasePressedRef.current()) queueRef.current = [];
-    // An older host: the releases already queued go in whatever lineage
-    // the stream settles on. A change to anyone else would already have
-    // ended this lineage (and this answer would not be handled here), so
-    // what can still follow is this device's own controller, whose
-    // release the host accepts and needs.
+    // The releases already queued still go: a press that did land must not
+    // be left down. Where the host releases presses itself it is asked to as
+    // well. On an older host they go in whatever lineage the stream settles
+    // on: a change to anyone else would already have ended this lineage
+    // (and this answer would not be handled here), so what can still follow
+    // is this device's own controller, whose release the host accepts.
+    const releases = queueRef.current.filter((item) => isRelease(item.event));
+    if (releasePressedRef.current()) queueRef.current = releases;
     else
-      queueRef.current = queueRef.current
-        .filter((item) => isRelease(item.event))
-        .map((item) => ({ ...item, lineage: ANY_LINEAGE }));
+      queueRef.current = releases.map((item) => ({
+        ...item,
+        lineage: ANY_LINEAGE,
+      }));
     setInputNotice('input-failed');
   };
   const releasePressedRef = useRef<() => boolean>(() => false);
@@ -1218,36 +1282,98 @@ export function useLiveSurface(
   const controlLineage = useCallback(() => lineageRef.current, []);
 
   /**
-   * Ask the host to release whatever this viewer has pressed, fenced by the
-   * epoch it holds. False on a host without that (the caller then sends its
-   * own releases). Its releases are then not sent: the host did it.
+   * Ask the host to release whatever this viewer has pressed in the current
+   * lineage, fenced by the epoch it holds. False on a host without that (the
+   * caller then sends its own releases). The obligation stands until the
+   * host confirms: a transport failure is retried with backoff, a stale
+   * epoch is retried at the epoch now reported, and it ends when control
+   * has changed hands (the host released the presses at that handoff). Only
+   * the presses it named are then treated as released.
    */
   const releasePressed = useCallback(() => {
     if (epochCauseRef.current !== true) return false;
-    for (const id of pressedRef.current.keys())
-      pressedRef.current.set(id, RELEASED_BY_HOST);
-    void boundedRequest(
-      (signal) =>
-        transportRef.current(
-          `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'release-pressed',
-              epoch: epochRef.current,
-            }),
-            signal,
-            keepalive: true,
-          },
-        ),
-      // Not tied to the target: an unmount sends it on the way out.
-      new AbortController().signal,
-    ).catch(() => {
-      // The host also releases when this viewer's stream closes.
-    });
+    const lineage = lineageRef.current;
+    const ids = [...pressedRef.current]
+      .filter(([, pressedIn]) => pressedIn === lineage)
+      .map(([id]) => id);
+    if (ids.length === 0) return true;
+    pendingReleaseRef.current = { lineage, ids: new Set(ids) };
+    void runReleaseRef.current();
     return true;
-  }, [apiBase, surfaceId, projectSlug]);
+  }, []);
+  const runReleaseRef = useRef(async () => {});
+  runReleaseRef.current = async () => {
+    const generation = targetGenerationRef.current;
+    for (let attempt = 0; attempt < RELEASE_ATTEMPTS; attempt += 1) {
+      const obligation = pendingReleaseRef.current;
+      if (!obligation || generation !== targetGenerationRef.current) return;
+      // The host no longer releases presses itself (a different Station):
+      // the releases still queued go instead.
+      if (epochCauseRef.current !== true) {
+        pendingReleaseRef.current = null;
+        return;
+      }
+      // Control changed hands since: the host released them at the handoff.
+      if (obligation.lineage !== lineageRef.current) {
+        pendingReleaseRef.current = null;
+        return;
+      }
+      const viewerId = viewerIdRef.current;
+      try {
+        const envelope = await boundedRequest(
+          async (signal) => {
+            const answer = await transportRef.current(
+              `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'release-pressed',
+                  epoch: epochRef.current,
+                  ...(viewerId ? { viewerId } : {}),
+                }),
+                signal,
+                keepalive: true,
+              },
+            );
+            if (!answer.ok && answer.status !== 409)
+              throw new Error(`release-pressed answered ${answer.status}`);
+            return (await answer.json().catch(() => null)) as {
+              data?: LiveSurfaceLeaseResult;
+            } | null;
+          },
+          // Not tied to the target: an unmount sends it on the way out.
+          new AbortController().signal,
+          requestTimeoutRef.current,
+        );
+        if (pendingReleaseRef.current !== obligation) return;
+        const result = envelope?.data;
+        if (result?.ok) {
+          for (const id of obligation.ids)
+            if (pressedRef.current.get(id) === obligation.lineage)
+              pressedRef.current.set(id, RELEASED_BY_HOST);
+          pendingReleaseRef.current = null;
+          return;
+        }
+        const nextLease = result
+          ? parseLiveSurfaceControlLease(result.lease)
+          : null;
+        if (nextLease) adoptLease(nextLease);
+        // Not the holder: control left this viewer, and with it the presses.
+        if (result && !result.ok && result.code === 'not-holder') {
+          pendingReleaseRef.current = null;
+          return;
+        }
+        // A stale epoch: tried again at the epoch now reported.
+        if (result && !result.ok && result.code === 'stale-epoch') continue;
+      } catch {
+        // Lost or failed: tried again after a pause.
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, RELEASE_BACKOFF_MS * 2 ** attempt),
+      );
+    }
+  };
   releasePressedRef.current = releasePressed;
 
   const retryInput = useCallback(() => {
@@ -1272,8 +1398,8 @@ export function useLiveSurface(
   const claimControl = useCallback(async () => {
     const generation = targetGenerationRef.current;
     claimInFlightRef.current = true;
-    const requestId = epochCauseRef.current === true ? newRequestId() : null;
-    if (requestId) rememberRequestId(requestId);
+    const viewerId =
+      epochCauseRef.current === true ? viewerIdRef.current : null;
     try {
       const { response, envelope } = await boundedRequest(
         async (signal) => {
@@ -1284,7 +1410,7 @@ export function useLiveSurface(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'claim',
-                ...(requestId ? { requestId } : {}),
+                ...(viewerId ? { viewerId } : {}),
               }),
               signal,
             },
@@ -1324,15 +1450,7 @@ export function useLiveSurface(
         reconcile();
       }
     }
-  }, [
-    apiBase,
-    surfaceId,
-    projectSlug,
-    adoptLease,
-    showHostBusy,
-    reconcile,
-    rememberRequestId,
-  ]);
+  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy, reconcile]);
 
   const leaseRef = useRef(lease);
   leaseRef.current = lease;

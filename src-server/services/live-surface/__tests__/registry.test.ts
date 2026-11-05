@@ -4,6 +4,7 @@ import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-
 import type { LiveSurfaceHeldInput } from '../producer.js';
 import {
   attachHumanViewer,
+  attestedLease,
   claimAgentControl,
   claimHumanControl,
   dispatchAgentInput,
@@ -746,34 +747,79 @@ describe('server-owned release of pressed input (#90 B)', () => {
     expect(downOn(producer)).toEqual([]);
   });
 
-  test("a controller's presses are released when its last viewer stream closes, not before", async () => {
-    const { producer, entry } = setup();
+  test("a controller's presses are released only after its last stream has been closed for the grace window", async () => {
+    const { producer, entry } = setup(() => true, { viewerGraceMs: 30 });
     const tabOne = attachHumanViewer(entry, human);
     const tabTwo = attachHumanViewer(entry, human);
     await dispatchHumanInput(entry, human, 0, [press('down', 5, 5)]);
-    tabOne();
-    await settleChain();
+    tabOne.close();
+    await sleep(60);
     // The other tab of the same person and device can still see it.
     expect(downOn(producer)).toEqual(['left']);
-    tabTwo();
+    tabTwo.close();
+    await settleChain();
+    expect(downOn(producer)).toEqual(['left']);
+    await sleep(60);
     await settleChain();
     expect(downOn(producer)).toEqual([]);
   });
 
-  test("an input or claim answer carries the epoch's cause only when it named a request", async () => {
+  test('a replacement stream inside the grace window (new stream params, a reconnect) releases nothing and keeps the viewer id (finding 6)', async () => {
+    const { producer, entry } = setup(() => true, { viewerGraceMs: 40 });
+    const first = attachHumanViewer(entry, human);
+    await dispatchHumanInput(entry, human, 0, [key('Shift')], first.viewerId);
+    first.close();
+    const replacement = attachHumanViewer(entry, human, first.viewerId);
+    expect(replacement.viewerId).toBe(first.viewerId);
+    await sleep(80);
+    await settleChain();
+    expect(keysOf(producer.dispatched)).toEqual(['down:Shift']);
+    // Still that viewer: its takeover is still its own.
+    expect(attestedLease(entry, replacement.viewerId).epochCause).toBe('self');
+    replacement.close();
+  });
+
+  test('a viewer id presented by a different controller is not honoured: it can neither adopt nor claim causality (finding 1)', async () => {
     const { entry } = setup();
-    const withId = await dispatchHumanInput(
+    const victim = attachHumanViewer(entry, human);
+    // The other person presents the victim's id on their stream and claim.
+    const thief = attachHumanViewer(entry, other, victim.viewerId);
+    expect(thief.viewerId).not.toBe(victim.viewerId);
+    const claim = claimHumanControl(entry, other, victim.viewerId);
+    expect(claim.ok).toBe(true);
+    expect(claim.epochCause).toBe('other');
+    expect(attestedLease(entry, victim.viewerId).epochCause).toBe('other');
+    victim.close();
+    thief.close();
+  });
+
+  test("an answer's lease and cause are read at one point: a takeover during the dispatch never pairs an old lease with a new cause (finding 5)", async () => {
+    const { producer, entry } = setup();
+    const mine = attachHumanViewer(entry, human);
+    let resume!: () => void;
+    producer.dispatchImpl = () =>
+      new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+    const answer = dispatchHumanInput(
       entry,
       human,
       0,
       [move(1)],
-      'viewer-request-0001',
+      mine.viewerId,
     );
-    expect(withId.epochCause).toEqual({ requestId: 'viewer-request-0001' });
-    const without = await dispatchHumanInput(entry, human, 1, [move(2)]);
-    expect('epochCause' in without).toBe(false);
-    // A renewal claim reports the cause of the epoch it did not create.
-    const renewal = claimHumanControl(entry, human, 'viewer-request-0002');
-    expect(renewal.epochCause).toEqual({ requestId: 'viewer-request-0001' });
+    await settleChain();
+    // Someone else takes control while this batch's event is in flight.
+    producer.dispatchImpl = async () => {};
+    claimHumanControl(entry, other);
+    resume();
+    const result = await answer;
+    const now = attestedLease(entry, mine.viewerId);
+    expect({ epoch: result.lease.epoch, cause: result.epochCause }).toEqual({
+      epoch: now.lease.epoch,
+      cause: now.epochCause,
+    });
+    expect(result.epochCause).toBe(result.lease.epoch === 1 ? 'self' : 'other');
+    mine.close();
   });
 });
