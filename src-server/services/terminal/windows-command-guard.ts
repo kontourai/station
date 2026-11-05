@@ -437,7 +437,10 @@ export async function spawnGuardedCommand(
     input.env,
   );
   if (!application)
-    throw new GuardSpawnError(`spawn ${input.command} ENOENT`, 'ENOENT');
+    throw new GuardSpawnError(
+      `spawn failed: spawn ${input.command} ENOENT`,
+      'ENOENT',
+    );
   let identity: string;
   try {
     identity = await parentIdentity(guard);

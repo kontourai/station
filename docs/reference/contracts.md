@@ -283,7 +283,8 @@ bytes, publication references, byte/height limits and theme variable names for
 conversation access. Filesystem preparation stays in the server.
 
 The `@kontourai/station-contracts/terminal-transport` subpath exports the
-terminal binary frame codec, limits, the socket's `restart` request
+terminal binary frame codec (with the version 2 resize frame and its size
+codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
 observe/operate scope predicate. The
 frame limit bounds unacknowledged output records independently of byte credit,

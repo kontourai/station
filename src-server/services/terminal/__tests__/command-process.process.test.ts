@@ -73,11 +73,13 @@ async function run(
 /**
  * The command starts a child that starts a grandchild and exits: the
  * grandchild's parent is gone before Stop, so no parent-pid census can
- * attribute it to the command (#4624). Prints `mid:` and `pid:` lines.
+ * attribute it to the command (#4624). Prints `mid:` and `pid:` lines. The
+ * grandchild is detached: Node ends a non-detached child with its parent
+ * (libuv's own kill-on-close job), so only a detached one outlives it.
  */
 const ORPHANING = `
 const { spawn } = require('node:child_process');
-spawn(process.execPath, ['-e', "require('node:child_process').spawn(process.execPath, ['-e', \\"console.log('pid:' + process.pid); setInterval(() => {}, 1000)\\"], { stdio: 'inherit' }).unref(); console.log('mid:' + process.pid); setTimeout(() => process.exit(0), 300)"], { stdio: 'inherit' });
+spawn(process.execPath, ['-e', "require('node:child_process').spawn(process.execPath, ['-e', \\"console.log('pid:' + process.pid); setInterval(() => {}, 1000)\\"], { stdio: 'inherit', detached: true }).unref(); console.log('mid:' + process.pid); setTimeout(() => process.exit(0), 300)"], { stdio: 'inherit' });
 setInterval(() => {}, 1000);
 `;
 
@@ -200,8 +202,10 @@ setTimeout(() => setInterval(() => process.stdout.write('x'.repeat(65536)), 1), 
   }, 60_000);
 
   it('a command that exits by itself leaves what it started running, as on POSIX', async () => {
+    // Detached, so Node's own job does not end it with the command; the
+    // command's Job must be released for it to survive.
     const { exited, pidsOf } = await run(
-      "require('node:child_process').spawn(process.execPath, ['-e', \"console.log('pid:' + process.pid); setInterval(() => {}, 1000)\"], { stdio: 'inherit' }).unref(); setTimeout(() => process.exit(3), 500)",
+      "require('node:child_process').spawn(process.execPath, ['-e', \"console.log('pid:' + process.pid); setInterval(() => {}, 1000)\"], { stdio: 'inherit', detached: true }).unref(); setTimeout(() => process.exit(3), 500)",
     );
     const [child] = await pidsOf(1);
     expect(await exited).toMatchObject({ exitCode: 3, signal: null });
