@@ -134,15 +134,20 @@ export function ConfirmModal({
             <Button
               variant={variant === 'danger' ? 'danger' : 'primary'}
               disabled={confirmDisabled}
-              pending={pending}
-              pendingLabel={`${confirmLabel}…`}
+              className={pending ? 'is-pending' : undefined}
+              aria-busy={pending || undefined}
+              aria-disabled={pending || undefined}
               onClick={(event) => {
                 event.stopPropagation();
+                if (pending) return;
                 triggerHaptic(variant === 'danger' ? 'error' : 'medium');
                 onConfirm();
               }}
             >
-              {confirmLabel}
+              {pending && (
+                <span className="button__spinner" aria-hidden="true" />
+              )}
+              {pending ? `${confirmLabel}…` : confirmLabel}
             </Button>
           </>
         }

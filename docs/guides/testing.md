@@ -976,10 +976,17 @@ supervisor's terminal workload tests run there too: the workload host with
 real ConPTY shells, and a journey whose shell keeps its pid and journal across
 a handoff of built supervisor and workload host bundles. The command-session
 suite runs there as well: output caps, exits and ACP engine terminals without a
-PTY (its PTY restart cases are POSIX-only). So does the agent-run and
-script-runner suite with the launch builder's cases: package managers' batch
-shims run through cmd.exe, and an approved command reaches cmd with its
-quotes as shown (#3994). A ConPTY cannot change
+PTY (its PTY restart cases are POSIX-only). So do the terminal session,
+real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
+built on POSIX job control POSIX-only; and the agent-run and script-runner
+suite with the launch builder's cases: package managers' batch shims run
+through cmd.exe, and an approved command reaches cmd with its quotes as shown
+(#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
+runs each terminal process suite in a Vitest invocation of its own after the
+other files, so a forked worker that dies (an open,
+intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other suite's results; every invocation runs, and any failure fails the floor
+without a retry. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
