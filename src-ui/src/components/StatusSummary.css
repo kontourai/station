@@ -45,14 +45,16 @@
 }
 .status-summary__checked {
   display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 400;
 }
 .status-summary__checked time {
+  font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
