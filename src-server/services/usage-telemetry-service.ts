@@ -123,6 +123,8 @@ export class UsageTelemetryService {
   private timer: ReturnType<typeof setInterval> | undefined;
   private flushing: Promise<void> | undefined;
   private dailyFlushing: Promise<void> | undefined;
+  /** Fire-and-forget flush() runs; shutdown joins their local ledger tails. */
+  private readonly flushRuns = new Set<Promise<void>>();
   private readonly dropped = new Map<string, TelemetryOutboxEntry>();
   private requestAbort: AbortController | undefined;
   private acceptingTracks = true;
@@ -1229,13 +1231,19 @@ export class UsageTelemetryService {
   }
   async flush(): Promise<void> {
     if (!this.acceptingTracks) return this.flushing;
-    await Promise.all([
+    const run = Promise.all([
       this.pluginPublishers?.flushFull(),
       this.flushDropped(),
       this.author?.flushDropped(),
       this.flushWithDeadline(),
       this.author?.flushWithDeadline(),
-    ]);
+    ]).then(() => undefined);
+    this.flushRuns.add(run);
+    try {
+      await run;
+    } finally {
+      this.flushRuns.delete(run);
+    }
   }
   async shutdown(signal?: AbortSignal): Promise<void> {
     const abortRequest = () => this.requestAbort?.abort();
@@ -1302,6 +1310,10 @@ export class UsageTelemetryService {
     } catch (error) {
       this.warn('Usage telemetry shutdown failed.', error);
     } finally {
+      // Track- and timer-started flush() runs write the dropped ledger beneath
+      // the home after their request settles. Every request is aborted or
+      // joined by now, so what remains is local; join it before returning.
+      await Promise.allSettled([...this.flushRuns]);
       await this.flushDropped().catch((error) =>
         this.warn('Usage telemetry ledger failed.', error),
       );
