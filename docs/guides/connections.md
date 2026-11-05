@@ -352,8 +352,8 @@ cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
-Tap the Station chip (its dot, and on a healthy connection its name) on a
-phone, or the connection name on desktop, to
+Tap the Station chip (its dot and name, in every state) on a phone, or the
+connection name on desktop, to
 choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
 once two are saved. The current Station comes first with a checkmark and its
 live status; the rest follow most recently used first, and focus starts on the
