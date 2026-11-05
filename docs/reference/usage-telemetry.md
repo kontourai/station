@@ -694,9 +694,9 @@ Distribution manifests remain design-only and will share the declaration schema
 and tier resolver.
 
 Publishers appear in the existing status map as `publisher:<24 lowercase hex registry-key digest>/<verified registry item id>`.
-The item starts with an ASCII letter or digit and contains only letters, digits,
-`.`, `_`, `:`, or `-`, with a maximum of 128 characters. These are the signed
-registry claim/receipt characters with the telemetry declaration length bound.
+The item follows the telemetry declaration grammar: a lowercase ASCII letter or
+digit, then lowercase letters, digits, `.`, `_`, `:`, or `-`, with a maximum of
+128 characters. Uppercase items and trailing newlines are refused.
 Reserved item keys `constructor` and `prototype` are refused; the digest segment
 must be exactly 24 lowercase hex characters. Extra `/` segments are refused.
 Legacy `publisher:<id>` remains accepted with lowercase letters and the same

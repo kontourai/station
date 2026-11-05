@@ -1,5 +1,9 @@
 import type { TelemetryPublisherId } from './product-telemetry.js';
 
+// Absolute end rejects a final newline, which JavaScript's $ anchor permits.
+export const PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN =
+  /^(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}(?![\s\S])/;
+
 /** Shared by plugin and future distribution manifests. Counts are bucketed locally. */
 export interface PublisherTelemetryDeclaration {
   publisher: string;

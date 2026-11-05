@@ -1171,7 +1171,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       `sha256:${'b'.repeat(64)}`,
       `a${'b'.repeat(127)}`,
     ),
-    pluginTelemetryPublisherId(`sha256:${'c'.repeat(64)}`, 'Writer_1.2:beta-3'),
+    pluginTelemetryPublisherId(`sha256:${'c'.repeat(64)}`, 'writer_1.2:beta-3'),
   ] as const)(
     'publisher %s choices and policy persist through the app schema and restart',
     async (publisher) => {
@@ -1300,6 +1300,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       `publisher:${'a'.repeat(24)}/prototype`,
       `publisher:${'a'.repeat(24)}/__proto__`,
       `publisher:${'A'.repeat(24)}/writer`,
+      `publisher:${'a'.repeat(24)}/Writer`,
       `publisher:${'g'.repeat(24)}/writer`,
       `publisher:${'a'.repeat(23)}/writer`,
       `publisher:${'a'.repeat(25)}/writer`,

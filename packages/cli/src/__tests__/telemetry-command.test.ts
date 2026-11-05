@@ -190,3 +190,15 @@ test('help explains the built-in alias and plugin boundary', async () => {
     'anonymous is an alias for lite only for kontour and operator',
   );
 }, 60_000);
+
+test('uppercase namespaced plugin items are refused without saving a dead choice', async () => {
+  const publisher = pluginTelemetryPublisherId(
+    `sha256:${'a'.repeat(64)}`,
+    'Writer',
+  );
+  const before = readFileSync(join(home, 'config/app.json'), 'utf8');
+  const refused = await run(['set', publisher, 'lite']);
+  expect(refused.status).not.toBe(0);
+  expect(refused.stderr).toContain('Usage: station telemetry set');
+  expect(readFileSync(join(home, 'config/app.json'), 'utf8')).toBe(before);
+}, 60_000);

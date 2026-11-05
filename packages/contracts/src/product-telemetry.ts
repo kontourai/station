@@ -1,7 +1,8 @@
-import type {
-  PluginDailyPing,
-  PluginTelemetryBatch,
-  PluginTelemetryEvent,
+import {
+  PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN,
+  type PluginDailyPing,
+  type PluginTelemetryBatch,
+  type PluginTelemetryEvent,
 } from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
@@ -16,20 +17,14 @@ export type TelemetryPublisherId =
   | 'kontour'
   | 'operator'
   | `publisher:${string}`;
-// Namespaced items follow registry-trust's RECEIPT_ID / registry-supply-chain's
-// SAFE_ID, capped at the telemetry declaration's 128-character bound.
-// Keep the legacy lowercase form.
-const TELEMETRY_PUBLISHER_ID =
-  /^publisher:(?:(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}|[a-f0-9]{24}\/(?!(?:constructor|prototype)$)[A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
-
 export function isTelemetryPublisherId(
   value: unknown,
 ): value is TelemetryPublisherId {
-  return (
-    value === 'kontour' ||
-    value === 'operator' ||
-    (typeof value === 'string' && TELEMETRY_PUBLISHER_ID.test(value))
-  );
+  if (value === 'kontour' || value === 'operator') return true;
+  if (typeof value !== 'string' || !value.startsWith('publisher:'))
+    return false;
+  const item = value.slice('publisher:'.length).replace(/^[a-f0-9]{24}\//, '');
+  return PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN.test(item);
 }
 
 export type TelemetryTierChoices = Partial<

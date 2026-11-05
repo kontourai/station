@@ -75,7 +75,7 @@ test.each([
     true,
   ],
   [
-    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'Writer_1.2:beta-3'),
+    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'writer_1.2:beta-3'),
     true,
   ],
   ['publisher:constructor', false],
@@ -84,6 +84,7 @@ test.each([
   [`publisher:${'a'.repeat(24)}/constructor`, false],
   [`publisher:${'a'.repeat(24)}/prototype`, false],
   [`publisher:${'A'.repeat(24)}/writer`, false],
+  [`publisher:${'a'.repeat(24)}/Writer`, false],
   [`publisher:${'g'.repeat(24)}/writer`, false],
   [`publisher:${'a'.repeat(24)}/${'w'.repeat(129)}`, false],
   [`publisher:${'a'.repeat(24)}/writer/extra`, false],

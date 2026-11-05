@@ -25,9 +25,10 @@ The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 Each publisher has its own Off, Lite, or Full choice. `kontour` is the app author;
 `operator` is the existing configured product receiver; `publisher:<registry-key-digest>/<registry item id>`
 identifies a plugin or distribution publisher. The digest is the first 24 lowercase
-hex characters of the verified registry key digest. The item segment follows signed
-registry claim/receipt IDs: an ASCII letter or digit, then letters, digits, `.`,
-`_`, `:`, or `-`, bounded to 128 characters for telemetry. `constructor` and
+hex characters of the verified registry key digest. The item segment follows the
+telemetry declaration: a lowercase ASCII letter or digit, then lowercase letters,
+digits, `.`, `_`, `:`, or `-`, bounded to 128 characters. Uppercase items and
+trailing newlines are refused. `constructor` and
 `prototype` are refused as segments; `__proto__` cannot match the first character.
 The legacy `publisher:<id>` form remains accepted with lowercase letters and the
 same item bound. All publisher choices are stored in `telemetryTier` in Station configuration. Plugin publisher registration and storage use verified signed public-registry
