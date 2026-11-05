@@ -154,7 +154,7 @@ test('owner Device chats through a real Station delegation and keeps target refu
     }
   });
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectEvents(true),
+    window.stationConnectionFaults.disconnectObservation(true),
   );
   await page.evaluate(() => window.stationConnectionFaults.loseNextSend());
   await composer.fill(
@@ -169,15 +169,27 @@ test('owner Device chats through a real Station delegation and keeps target refu
   streams[4]!.stream.text('The uncertain send ran exactly once.');
   streams[4]!.stream.finish();
   await page.reload();
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(transcript).toContainText(
-    'The uncertain send ran exactly once.',
-  );
+  const pendingMessages = page.getByRole('region', {
+    name: 'Pending messages',
+    exact: true,
+  });
+  await pendingMessages
+    .getByRole('button', {
+      name: '1 pending message, needs review',
+      exact: true,
+    })
+    .click();
+  await pendingMessages
+    .getByRole('button', { name: 'Check', exact: true })
+    .click();
   await expect(
     page.getByRole('button', { name: 'Check', exact: true }),
   ).toHaveCount(0);
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectEvents(false),
+    window.stationConnectionFaults.disconnectObservation(false),
+  );
+  await expect(transcript).toContainText(
+    'The uncertain send ran exactly once.',
   );
   expect(keyedSends).toHaveLength(1);
   expect(new Set(keyedSends).size).toBe(1);

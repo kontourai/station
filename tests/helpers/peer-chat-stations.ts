@@ -47,7 +47,8 @@ async function installConnectionFaults(page: Page) {
     let loseSend = false;
     let disconnected =
       sessionStorage.getItem('qualification-events-offline') === 'true';
-    let snapshotsDisconnected = false;
+    let snapshotsDisconnected =
+      sessionStorage.getItem('qualification-windows-offline') === 'true';
     const eventControllers = new Set<AbortController>();
     const snapshotControllers = new Set<AbortController>();
     window.stationConnectionFaults = {
@@ -62,6 +63,7 @@ async function installConnectionFaults(page: Page) {
       },
       disconnectObservation: (value) => {
         snapshotsDisconnected = value;
+        sessionStorage.setItem('qualification-windows-offline', String(value));
         window.stationConnectionFaults.disconnectEvents(value);
         if (value)
           for (const controller of snapshotControllers) controller.abort();
