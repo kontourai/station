@@ -113,7 +113,7 @@ export function AppDetailsDialog({
             <input
               value={icon}
               maxLength={16}
-              placeholder="e.g. 🌿"
+              placeholder="Emoji or short symbol"
               onChange={(event) => setIcon(event.target.value)}
             />
           </label>
