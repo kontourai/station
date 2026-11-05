@@ -92,7 +92,7 @@ Corpus, formerly Docs Kit, owns the shared related-content contract.
 Station's `corpus-content.json` maps product paths to the
 [product site](https://station.kontourai.io/), the company site's Station
 pages, and the [public app privacy policy](https://kontourai.io/privacy/station/).
-`gate:for` and `docs:impact` use the published `@kontourai/corpus/content`
+`gate:for` and `docs:impact` use the public `@kontourai/corpus/content`
 interface to show affected targets. These are portable URLs, not sibling
 checkout paths. The mappings are conservative review leads; they do not
 discover every new dependency or establish that a claim needs changing.
