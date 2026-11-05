@@ -83,7 +83,10 @@ in the Browser pane, the Device pane and the chat floater.
   ⋯ handle, a tap while you only watch, or mouse movement. They offer Exit,
   Take or Release control, the keyboard while you drive, and the surface's own
   actions: Back, Forward and Reload for a browser, and Home, Back and Recents
-  (Android) or Rotate (iOS) for a device. Escape, Exit or the platform
+  (Android) or Rotate (iOS) for a device. Below 480 pixels wide they are one
+  row (who is in control, Take or Release, the address or stand picker, More
+  controls and Exit), and the rest are behind More controls. Going full
+  screen or back renews a hold you have; it never takes control. Escape, Exit or the platform
   leaving full screen returns to where you were; while full screen is on,
   Escape only leaves it (it does not also go up a level in the app). Zoomed in
   full screen, the zoom level sits in the bottom corner, clear of the controls.
@@ -644,7 +647,10 @@ quality 50 and 960 pixels on each side. See the
 
 Zoom, full screen and the floater work for a device as they do for a browser;
 see [viewing a live surface](#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
-In full screen a device screen is fitted at its own aspect and orientation.
+In full screen a device screen is fitted at its own aspect and orientation,
+or, for a foldable with **Rotate picture to fit** on, turned a quarter to fill
+a portrait screen. A browser fitted to its pane fits again on entering and
+leaving full screen.
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares
