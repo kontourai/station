@@ -101,7 +101,10 @@ window.__TAURI_INTERNALS__ = {
     }
     // The real iOS app answers its capability report; the fold source asks
     // the plugin only once that report names iOS.
-    if (cmd === 'native_capability_report') return ${JSON.stringify(IOS_REPORT)};
+    if (cmd === 'native_capability_report') {
+      window.__reportCalls = (window.__reportCalls ?? 0) + 1;
+      return ${JSON.stringify(IOS_REPORT)};
+    }
     if (cmd === 'plugin:station-fold|register_listener') return null;
     throw new Error('unexpected command ' + cmd);
   },
@@ -460,6 +463,13 @@ test('a cold launch into Book reaches the split when the first reply is empty an
     // The page's first answer really was the empty launch reading.
     expect(replies[0]).toBe(0);
     expect(replies.at(-1)).toBe(1);
+    // The fold source reuses the page's one platform resolution: the host is
+    // asked for its capability report once, by the profile, not again by fold.
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __reportCalls: number }).__reportCalls,
+      ),
+    ).toBe(1);
     const [crease] = coldLaunchBookSnapshot.regions;
     const book = await geometry(page);
     expect(Math.abs(book.list!.right - crease.x)).toBeLessThanOrEqual(1);

@@ -187,8 +187,21 @@ export function nativeProfileBootstrapRecoveryError(): string | undefined {
   return nativeBootstrapRecoveryError;
 }
 
+/**
+ * The shell's one answer to "which platform am I", resolved once per page
+ * through the adapter's document-ready boundary and its single capability
+ * report. Everything that branches on the compile target reads this, so no
+ * caller asks the host again.
+ */
+const platformResolution: Promise<PlatformProfile> = resolvePlatformProfile();
+
+/** The compile target this page resolved (`web` or `unknown` included). */
+export function resolvedPlatformTarget(): Promise<PlatformProfile['target']> {
+  return platformResolution.then((profile) => profile.target);
+}
+
 let cachedProfile: PlatformProfile | null = null;
-const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
+const profileReady: Promise<PlatformProfile> = platformResolution.then(
   async (profile) => {
     if (profile.isTauri) {
       const [{ nativeStationProfileStorage }] = await Promise.all([

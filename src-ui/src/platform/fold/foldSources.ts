@@ -1,5 +1,5 @@
-import { hasTauriRuntime, nativePlatformPromise } from '../native/index';
 import { invokeTauri, listenTauriPlugin } from '../native/tauriInvoke';
+import { resolvedPlatformTarget } from '../PlatformProfileContext';
 import {
   type FoldRect,
   geometryFromNativeSnapshot,
@@ -51,14 +51,15 @@ export interface FoldSourceEnvironment {
  */
 export const FOLD_FOLLOW_UP_READS_MS = [250, 1000, 3000, 8000] as const;
 
-/** The iOS app is the one shell with `station-fold`, per its capability report. */
+/**
+ * The iOS app is the one shell with `station-fold`. This reads the page's own
+ * platform resolution (the profile's capability report), never a second host
+ * call. A shell whose report could not be read resolves `unknown`: like the
+ * rest of the app, the fold source then treats it as not iOS.
+ */
 export async function iosShell(): Promise<boolean> {
-  if (!hasTauriRuntime()) return false;
   try {
-    const adapter = await nativePlatformPromise;
-    if (adapter.platform !== 'tauri') return false;
-    const report = await adapter.getCapabilityReport();
-    return report.status === 'ok' && report.value.platform === 'ios';
+    return (await resolvedPlatformTarget()) === 'ios';
   } catch {
     return false;
   }
