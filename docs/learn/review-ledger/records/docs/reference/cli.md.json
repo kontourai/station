@@ -266,7 +266,15 @@
 
     "src-server/services/terminal/terminal-gateway.ts",
 
-    "src-server/runtime/frameworks/voltagent-hono-runtime.ts"
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts",
+
+    "src-ui/src/utils/sessionDisplay.ts",
+
+    "src-ui/src/views/home/home-view-model.ts",
+
+    "src-ui/src/views/SessionsView.tsx",
+
+    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx"
   ],
 
   "checks": [
