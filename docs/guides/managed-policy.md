@@ -643,6 +643,11 @@ An engine the policy does not allow is unavailable everywhere:
   approval guardian and review guides) still runs. A direct chat on an Agent
   bound to an engine the policy does not allow is refused even when you pick
   a model, rather than run on Station's agent instead.
+- Station does not use its account credentials: the engine page reports its
+  usage and sign-in status as unavailable, without reading the credential
+  (no Keychain, no credentials file) or calling the engine's vendor, and
+  setting it up (importing an account, adding a profile, starting a sign-in)
+  is refused. Removing a profile still works.
 - Station never starts its program: it is not checked for prerequisites or
   its version (at startup, for system status or for readiness), asked for its
   models, its sign-in status or how it signs in (the Accounts page), probed
