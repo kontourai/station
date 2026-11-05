@@ -95,9 +95,14 @@ class NodePtyProcess implements IPtyProcess {
    * console, so a descendant with no console (one started detached) would
    * outlive the shell. End the shell's process tree with `taskkill /T /F`
    * while its parent links still hold, as the supervisor's workload host
-   * does. The console is closed only if the shell outlived that: closing one
-   * whose shell already ended makes node-pty attach to a console that is
-   * gone. A tree taskkill could not end is reported, never a clean close.
+   * does, then wait for its exit as after a natural one.
+   *
+   * node-pty's `kill()` is only the fallback for a tree taskkill could not
+   * end. After the shell has gone it lists the console's processes through a
+   * helper that cannot attach, and five seconds later signals the old shell
+   * pid, which Windows may have given to another process by then (a later
+   * shell's console host, #3994). A tree taskkill could not end is reported,
+   * never a clean close.
    */
   private terminateTree(): Promise<void> {
     this.termination ??= (async () => {
@@ -118,18 +123,14 @@ class NodePtyProcess implements IPtyProcess {
           (error) => resolve(error),
         ),
       );
-      const ended = await Promise.race([
-        exited.then(() => true),
-        new Promise<boolean>((resolve) =>
-          setTimeout(() => resolve(false), 1_000).unref(),
-        ),
-      ]);
-      if (!ended) this.pty.kill();
       // 128: the shell had already ended, which leaves nothing to report.
-      if (failure && failure.code !== 128)
+      if (failure && failure.code !== 128) {
+        if (!this.exited) this.pty.kill();
         throw new Error(
           `Terminal process-tree cleanup failed: ${failure.message}`,
         );
+      }
+      await exited;
     })();
     return this.termination;
   }

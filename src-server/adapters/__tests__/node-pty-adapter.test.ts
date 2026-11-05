@@ -1,4 +1,4 @@
-import { ChildProcess, execFile } from 'node:child_process';
+import { ChildProcess, execFile, spawn } from 'node:child_process';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
@@ -86,6 +86,51 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
       expect.objectContaining({ cwd: '/tmp', cols: 80, rows: 24 }),
     );
   });
+});
+
+describe.skipIf(process.platform !== 'win32')('Windows tree close', () => {
+  test('a shell taskkill ended is never killed through node-pty while its exit is late', async () => {
+    // A real process stands in for the shell, so taskkill really ends it;
+    // the PTY's exit event arrives 1.5 s later, as on a loaded host. node-pty's
+    // kill() then would signal the old pid five seconds on (#3994).
+    const shell = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    await new Promise((resolve) => shell.once('spawn', resolve));
+    const exits = new Set<(event: { exitCode: number }) => void>();
+    shell.once('exit', () =>
+      setTimeout(() => {
+        for (const listener of [...exits]) listener({ exitCode: 1 });
+      }, 1_500),
+    );
+    const kill = vi.fn();
+    const pty = {
+      pid: shell.pid,
+      onData: () => ({ dispose() {} }),
+      onExit: (listener: (event: { exitCode: number }) => void) => {
+        exits.add(listener);
+        return { dispose: () => exits.delete(listener) };
+      },
+      write() {},
+      resize() {},
+      kill,
+    };
+    const adapter = new NodePtyAdapter(
+      () =>
+        Promise.resolve({ spawn: () => pty }) as unknown as Promise<
+          typeof import('node-pty')
+        >,
+    );
+    const proc = await adapter.spawn({ ...SPAWN_INPUT, shell: 'cmd.exe' });
+    try {
+      await proc.terminate!();
+      expect(shell.exitCode !== null || shell.signalCode !== null).toBe(true);
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      if (shell.exitCode === null && shell.signalCode === null) shell.kill();
+    }
+  }, 15_000);
 });
 
 describe.skipIf(process.platform === 'win32')(
