@@ -313,3 +313,58 @@ test.each([
     }
   },
 );
+
+/** The dock's row mounts only once the dock opens, after its owner mounted. */
+const DOCK_ROW = `
+import React, {useEffect, useRef, useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {installFoldGeometry} from './src-ui/src/platform/fold/foldSources';
+import {useFoldSplit} from './src-ui/src/hooks/useFoldSplit';
+${NATIVE_SETUP}
+installFoldGeometry();
+function Dock() {
+  const [open, setOpen] = useState(false);
+  const row = useRef(null);
+  useFoldSplit(row);
+  useEffect(() => { const t = setTimeout(() => setOpen(true), 100); return () => clearTimeout(t); }, []);
+  if (!open) return null;
+  return <div ref={row} className="chat-dock__workspace" style={{position:'fixed', inset:0, display:'flex'}}>
+    <aside className="chat-dock-inbox">Inbox rows</aside>
+    <div className="chat-dock__reader" style={{flex:1, minWidth:0}}>Transcript</div>
+  </div>;
+}
+createRoot(document.getElementById('root')).render(<Dock/>);
+`;
+
+test('the dock’s Inbox snaps to the crease even when its row mounts after the dock', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(DOCK_ROW, [], {
+    viewport: { width: 951, height: 669 },
+  });
+  try {
+    await page.addStyleTag({ content: CSS });
+    await page.waitForSelector(
+      '.chat-dock__workspace[data-fold-split="vertical"]',
+      {
+        timeout: 5000,
+      },
+    );
+    // The panel slides in; measure where it rests.
+    await page.evaluate(() =>
+      Promise.all(document.getAnimations().map((a) => a.finished)),
+    );
+    await settle(page);
+    const [crease] = bookSnapshot.regions;
+    const { inbox, reader } = await page.evaluate(() => ({
+      inbox: document.querySelector('.chat-dock-inbox')!.getBoundingClientRect()
+        .right,
+      reader: document
+        .querySelector('.chat-dock__reader')!
+        .getBoundingClientRect().left,
+    }));
+    expect(Math.abs(inbox - crease.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reader - (crease.x + crease.width))).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
