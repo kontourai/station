@@ -65,7 +65,7 @@ describe('parseNativeFoldSnapshot (the station-fold `state` reply)', () => {
 describe('geometryFromNativeSnapshot', () => {
   it('reads Book (partially open, vertical crease) as folded', () => {
     const region = bookSnapshot.regions[0];
-    expect(geometryFromNativeSnapshot(bookSnapshot, 951, 669)).toEqual({
+    expect(geometryFromNativeSnapshot(bookSnapshot, 951)).toEqual({
       source: 'native',
       posture: 'folded',
       axis: 'vertical',
@@ -74,18 +74,16 @@ describe('geometryFromNativeSnapshot', () => {
   });
 
   it('reads a fully open hinge as flat, keeping the crease', () => {
-    expect(geometryFromNativeSnapshot(flatSnapshot, 951, 669)?.posture).toBe(
-      'flat',
-    );
+    expect(geometryFromNativeSnapshot(flatSnapshot, 951)?.posture).toBe('flat');
   });
 
   it('scales native points to CSS pixels when the page is zoomed', () => {
-    const geometry = geometryFromNativeSnapshot(bookSnapshot, 951 * 2, 669 * 2);
+    const geometry = geometryFromNativeSnapshot(bookSnapshot, 951 * 2);
     expect(geometry?.hinge.x).toBe(bookSnapshot.regions[0].x * 2);
   });
 
   it('reads Laptop (horizontal crease) as a horizontal axis', () => {
-    expect(geometryFromNativeSnapshot(laptopSnapshot, 669, 951)).toMatchObject({
+    expect(geometryFromNativeSnapshot(laptopSnapshot, 669)).toMatchObject({
       posture: 'folded',
       axis: 'horizontal',
       hinge: laptopSnapshot.regions[0],
@@ -95,8 +93,8 @@ describe('geometryFromNativeSnapshot', () => {
   it('reads the launch reply (hinge key absent) and the Tent cover as no crease', () => {
     const launch = parseNativeFoldSnapshot(launchSnapshot);
     expect(launch?.hinge).toBeNull();
-    expect(geometryFromNativeSnapshot(launch!, 951, 669)).toBeNull();
-    expect(geometryFromNativeSnapshot(tentCoverSnapshot, 678, 466)).toBeNull();
+    expect(geometryFromNativeSnapshot(launch!, 951)).toBeNull();
+    expect(geometryFromNativeSnapshot(tentCoverSnapshot, 678)).toBeNull();
   });
 
   it.each<[string, NativeFoldSnapshot]>([
@@ -124,7 +122,7 @@ describe('geometryFromNativeSnapshot', () => {
       },
     ],
   ])('reports no crease for %s', (_label, snapshot) => {
-    expect(geometryFromNativeSnapshot(snapshot, 951, 669)).toBeNull();
+    expect(geometryFromNativeSnapshot(snapshot, 951)).toBeNull();
   });
 });
 
@@ -170,7 +168,7 @@ describe('geometryFromViewportSegments (the CSS fallback)', () => {
 });
 
 describe('foldSplitWithin', () => {
-  const book = geometryFromNativeSnapshot(bookSnapshot, 951, 669)!;
+  const book = geometryFromNativeSnapshot(bookSnapshot, 951)!;
   const crease = bookSnapshot.regions[0];
 
   it('measures the crease from the element’s own edges', () => {
@@ -193,7 +191,7 @@ describe('foldSplitWithin', () => {
   });
 
   it('is null when the display is flat', () => {
-    const flat = geometryFromNativeSnapshot(flatSnapshot, 951, 669);
+    const flat = geometryFromNativeSnapshot(flatSnapshot, 951);
     expect(
       foldSplitWithin({ left: 0, top: 0, width: 951, height: 669 }, flat),
     ).toBeNull();

@@ -4,6 +4,8 @@ import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import {
   bookSnapshot,
+  coldLaunchBookSnapshot,
+  coldLaunchFirstSnapshot,
   flatSnapshot,
 } from '../platform/fold/__tests__/nativeFoldFixtures';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
@@ -69,6 +71,30 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__foldNudge = () => callbacks.get(channel.id)({ index: nextIndex++, message: {} });
+`;
+
+/**
+ * A cold launch into Book, as the plugin answers it: the first `state` is the
+ * launch reading (no hinge, no region), every later one is Book. No `change`
+ * event is ever delivered and nothing resizes.
+ */
+const COLD_SETUP = `
+window.__foldReplies = [];
+window.__TAURI_INTERNALS__ = {
+  transformCallback() { return 1; },
+  unregisterCallback() {},
+  async invoke(cmd) {
+    if (cmd === 'plugin:station-fold|state') {
+      const reply = window.__foldReplies.length === 0
+        ? ${JSON.stringify(coldLaunchFirstSnapshot)}
+        : ${JSON.stringify(coldLaunchBookSnapshot)};
+      window.__foldReplies.push(reply.regions.length);
+      return reply;
+    }
+    if (cmd === 'plugin:station-fold|register_listener') return null;
+    throw new Error('unexpected command ' + cmd);
+  },
+};
 `;
 
 async function geometry(page: Page) {
@@ -375,6 +401,32 @@ test('the dock’s Inbox snaps to the crease even when its row mounts after the 
     }));
     expect(Math.abs(inbox - crease.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(reader - (crease.x + crease.width))).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a cold launch into Book reaches the split when the first reply is empty and nothing changes after', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    LAYOUT.replace('__SETUP__', COLD_SETUP),
+    [],
+    { viewport: { width: 951, height: 669 } },
+  );
+  try {
+    await page.addStyleTag({ content: CSS });
+    await page.waitForSelector('.split-pane--fold-snapped', { timeout: 5000 });
+    await settle(page);
+    const replies = await page.evaluate(
+      () => (window as unknown as { __foldReplies: number[] }).__foldReplies,
+    );
+    // The page's first answer really was the empty launch reading.
+    expect(replies[0]).toBe(0);
+    expect(replies.at(-1)).toBe(1);
+    const [crease] = coldLaunchBookSnapshot.regions;
+    const book = await geometry(page);
+    expect(Math.abs(book.list!.right - crease.x)).toBeLessThanOrEqual(1);
+    expect(book.textLeft).toBeGreaterThanOrEqual(crease.x + crease.width - 1);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

@@ -91,7 +91,7 @@ recovery.
 
 The [station-fold plugin](../../src-desktop/plugins/station-fold/src/lib.rs)
 reports where a foldable iPhone's display divides, for layouts that keep text
-off the crease. Its [Swift half](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldPlugin.swift)
+off the crease. Its [Swift half](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldPlugin/StationFoldPlugin.swift)
 reads two iOS 27.1 seams: `UIView.reservedRegionsOfKind:` with
 `UIViewReservedRegionKind.divisionRegionKind` (the crease, in the WebView's
 coordinates, including the system's interactive margins), and
@@ -102,7 +102,22 @@ them; where they are absent the plugin reports `supported: false`.
 
 `plugin:station-fold|state` answers `{ revision, supported, hinge?, regions,
 viewport }`; the `change` event is a nudge to read it again. It controls
-nothing and carries no identifiers. The WebView side is one store,
+nothing and carries no identifiers.
+
+A cold launch on a device that is already folded is the case to protect. The
+plugin's first reading precedes UIKit's first hinge update, so it carries no
+hinge and no region, and the posture never changes afterwards. Therefore
+`state` always answers a fresh reading, never a cached one; the plugin also
+re-reads on scene activation and trait changes and 0.25, 1 and 3 seconds after
+install, emitting `change` when the reading moved. The page, for its part,
+asks again 0.25, 1, 3 and 8 seconds after install (and on every resize) until
+a reply carries a hinge reading, so a missed or unregistered subscription
+cannot leave it on the launch answer. The crease is matched against the
+WebView bounds the plugin reported, not the page's possibly unsettled
+`innerHeight`. That decision lives in the UIKit-free
+[`StationFoldCore`](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldCore/FoldReading.swift),
+whose host tests run with `STATION_FOLD_HOST_TESTS=1 swift test` in
+`src-desktop/plugins/station-fold/ios`; no hosted lane runs them yet. The WebView side is one store,
 [`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), fed by
 [`foldSources`](../../src-ui/src/platform/fold/foldSources.ts): the native reply
 wins whenever the shell answers, and otherwise CSS Viewport Segments (with the

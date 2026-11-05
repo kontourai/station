@@ -151,42 +151,53 @@ function creaseAxis(
 /**
  * The geometry a native snapshot describes, in this page's CSS pixels.
  *
- * Exactly one division region must cross the viewport edge to edge; zero or
- * several is "no usable crease". The hinge status decides the posture:
- * partially open is folded. A division the system reports with no hinge
- * reading is also treated as folded, because the system only divides a
- * display it considers creased.
+ * Exactly one division region must cross the WebView edge to edge; zero or
+ * several is "no usable crease". That test is made in the plugin's own
+ * coordinates, against the WebView bounds it reported with the region, never
+ * against `innerWidth`/`innerHeight`: during a cold launch the page can read
+ * a viewport that has not settled yet, and a correct crease must not be
+ * thrown away because of it. Only the conversion to CSS pixels uses the page
+ * width (a page zoom makes them differ).
+ *
+ * The hinge status decides the posture: partially open is folded. A division
+ * the system reports with no hinge reading is also treated as folded, because
+ * the system only divides a display it considers creased.
  */
 export function geometryFromNativeSnapshot(
   snapshot: NativeFoldSnapshot,
   innerWidth: number,
-  innerHeight: number,
 ): FoldGeometry | null {
   if (!snapshot.supported || snapshot.regions.length !== 1) return null;
   if (snapshot.hinge?.status === 'closed') return null;
   const { width: nativeWidth, height: nativeHeight } = snapshot.viewport;
-  if (nativeWidth <= 0 || nativeHeight <= 0 || innerWidth <= 0) return null;
-  // The WebView's points are CSS pixels at the default zoom; scale if a page
-  // zoom made them differ.
-  const scale = innerWidth / nativeWidth;
+  if (nativeWidth <= 0 || nativeHeight <= 0) return null;
   const region = snapshot.regions[0];
+  const axis = creaseAxis(region, nativeWidth, nativeHeight);
+  if (!axis) return null;
+  const scale = innerWidth > 0 ? innerWidth / nativeWidth : 1;
   const hinge: FoldRect = {
     x: region.x * scale,
     y: region.y * scale,
     width: region.width * scale,
     height: region.height * scale,
   };
-  const axis = creaseAxis(
-    hinge,
-    innerWidth,
-    innerHeight || nativeHeight * scale,
-  );
-  if (!axis) return null;
   const posture: FoldPosture =
     snapshot.hinge === null || snapshot.hinge.status === 'partially-open'
       ? 'folded'
       : 'flat';
   return { source: 'native', posture, axis, hinge };
+}
+
+/**
+ * Whether a reply settles what the display is. The plugin's first reading can
+ * precede UIKit's first hinge update and the scene's division regions (the
+ * launch reply carries no `hinge` at all), so a reader keeps asking until a
+ * reply carries a hinge reading or the shell says it has no fold support.
+ */
+export function isDefinitiveNativeSnapshot(
+  snapshot: NativeFoldSnapshot,
+): boolean {
+  return !snapshot.supported || snapshot.hinge !== null;
 }
 
 /**

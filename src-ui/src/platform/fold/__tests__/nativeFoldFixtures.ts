@@ -51,3 +51,23 @@ export const tentCoverSnapshot: NativeFoldSnapshot = {
   hinge: { status: 'partially-open', angle: 80.6 },
   regions: [],
 };
+
+/*
+ * A cold launch on a device already in Book (2026-11-05, same simulator):
+ * the plugin's first reading has no hinge and no region, the second, about
+ * half a second later, has both. No posture change happens in between.
+ */
+export const coldLaunchFirstSnapshot = {
+  viewport: { height: 669, width: 951 },
+  supported: true,
+  regions: [],
+  revision: 1,
+} as unknown as NativeFoldSnapshot;
+
+export const coldLaunchBookSnapshot: NativeFoldSnapshot = {
+  hinge: { status: 'partially-open', angle: 90 },
+  viewport: { width: 951, height: 669 },
+  supported: true,
+  revision: 2,
+  regions: [{ height: 669, x: 455.5, width: 40, y: 0 }],
+};

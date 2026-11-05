@@ -1,5 +1,6 @@
 import Foundation
 import ObjectiveC
+import StationFoldCore
 import SwiftRs
 import Tauri
 import UIKit
@@ -19,40 +20,11 @@ import WebKit
 /// the OS has them and are simply absent elsewhere (`supported: false`).
 ///
 /// The WebView reads `state` and treats the `change` event as a nudge to read
-/// it again (`src-ui/src/platform/fold/nativeFoldSource.ts`). Coordinates are
+/// it again (`src-ui/src/platform/fold/foldSources.ts`). Coordinates are
 /// the WebView's points, which are CSS pixels at the default zoom; `viewport`
 /// is sent beside them so the page can scale if they differ.
-struct FoldRegion: Encodable, Equatable {
-  let x: Double
-  let y: Double
-  let width: Double
-  let height: Double
-}
-
-struct FoldHinge: Encodable, Equatable {
-  /// `unknown`, `closed`, `partially-open` or `fully-open` (UIHinge.Status).
-  let status: String
-  /// Degrees, rounded to one place: the page snaps layout, it does not animate the angle.
-  let angle: Double
-}
-
-struct FoldViewport: Encodable, Equatable {
-  let width: Double
-  let height: Double
-}
-
-struct FoldSnapshot: Encodable, Equatable {
-  let revision: Int
-  let supported: Bool
-  let hinge: FoldHinge?
-  let regions: [FoldRegion]
-  let viewport: FoldViewport
-
-  func sameGeometry(as other: FoldSnapshot) -> Bool {
-    supported == other.supported && hinge == other.hinge && regions == other.regions
-      && viewport == other.viewport
-  }
-}
+// The snapshot types and what to answer when live in StationFoldCore, which
+// the host `swift test` run covers; this file supplies only UIKit readings.
 
 /// Reports layout passes of the WebView it is pinned inside: rotation, a move
 /// between the cover and inner displays, and window resizes all reach here.
@@ -66,6 +38,11 @@ private final class FoldProbeView: UIView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
+    onLayout?()
+  }
+
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
     onLayout?()
   }
 }
@@ -152,8 +129,14 @@ class StationFoldPlugin: Plugin {
   private var probe: FoldProbeView?
   private var interaction: (NSObject & UIInteraction)?
   private var hinge: FoldHinge?
-  private var snapshot: FoldSnapshot?
+  private var observers: [NSObjectProtocol] = []
   private var refreshQueued = false
+  private lazy var responder = FoldStateResponder(
+    read: { [weak self] in self?.reading() ?? Self.emptyReading },
+    emit: { [weak self] snapshot in self?.emit(snapshot) })
+
+  private static let emptyReading = FoldReading(
+    supported: false, hinge: nil, regions: [], viewport: FoldViewport(width: 0, height: 0))
 
   override func load(webview: WKWebView) {
     self.webview = webview
@@ -177,7 +160,42 @@ class StationFoldPlugin: Plugin {
       webview.addInteraction(interaction)
       self.interaction = interaction
     }
-    refresh()
+    // A scene that becomes active (cold launch, a return from the background,
+    // a move between displays) can carry division regions no layout announced.
+    let center = NotificationCenter.default
+    for name in [UIScene.didActivateNotification, UIApplication.didBecomeActiveNotification] {
+      observers.append(
+        center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+          self?.scheduleRefresh()
+        })
+    }
+    responder.start { delay, work in
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+  }
+
+  deinit {
+    for observer in observers { NotificationCenter.default.removeObserver(observer) }
+  }
+
+  private func reading() -> FoldReading {
+    let bounds = webview?.bounds ?? .zero
+    return FoldReading(
+      supported: Runtime.supported,
+      hinge: hinge,
+      regions: webview.map { Runtime.divisionRegions(in: $0) } ?? [],
+      viewport: FoldViewport(width: Double(bounds.width), height: Double(bounds.height)))
+  }
+
+  private func emit(_ snapshot: FoldSnapshot) {
+    #if DEBUG
+      // Geometry only (no identifiers), for device verification with
+      // `log stream --predicate 'eventMessage CONTAINS "[station-fold]"'`.
+      if let json = try? JSONEncoder().encode(snapshot), let text = String(data: json, encoding: .utf8) {
+        NSLog("[station-fold] %@", text)
+      }
+    #endif
+    try? trigger("change", data: snapshot)
   }
 
   /// Coalesces a burst (rotation lays out several times) into one read after
@@ -187,35 +205,17 @@ class StationFoldPlugin: Plugin {
     refreshQueued = true
     DispatchQueue.main.async {
       self.refreshQueued = false
-      self.refresh()
+      self.responder.observe()
     }
-  }
-
-  @discardableResult
-  private func refresh() -> FoldSnapshot {
-    let bounds = webview?.bounds ?? .zero
-    let next = FoldSnapshot(
-      revision: (snapshot?.revision ?? 0) + 1,
-      supported: Runtime.supported,
-      hinge: hinge,
-      regions: webview.map { Runtime.divisionRegions(in: $0) } ?? [],
-      viewport: FoldViewport(width: Double(bounds.width), height: Double(bounds.height)))
-    if let current = snapshot, current.sameGeometry(as: next) { return current }
-    snapshot = next
-    #if DEBUG
-      // Geometry only (no identifiers): what `state` will answer, for device
-      // verification with `log stream --predicate 'eventMessage CONTAINS "[station-fold]"'`.
-      if let json = try? JSONEncoder().encode(next), let text = String(data: json, encoding: .utf8) {
-        NSLog("[station-fold] %@", text)
-      }
-    #endif
-    try? trigger("change", data: next)
-    return next
   }
 
   @objc public func state(_ invoke: Invoke) {
     DispatchQueue.main.async {
-      invoke.resolve(self.snapshot ?? self.refresh())
+      let reply = self.responder.state()
+      #if DEBUG
+        NSLog("[station-fold] state reply revision=%d regions=%d", reply.revision, reply.regions.count)
+      #endif
+      invoke.resolve(reply)
     }
   }
 }
