@@ -208,6 +208,10 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   entries the package's own `dist/` is read only by `workflow doctor`, a
  *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
  *   project checkout, not the package). ~102 MB.
+ * - `@kontourai/flow-agents/src` and `/evals` are the package's TypeScript
+ *   input and its own test harness (~19 MB together). Everything Station reads
+ *   from the package is under `build/`, `scripts/`, `skills/`, `kits/`,
+ *   `schemas/` and `context/`; a kit's own `kits/<kit>/evals/` is kept.
  * - OTLP transformer's Node entry is build/src/index.js for both import and
  *   require. Its build/esm and build/esnext trees are alternate bundler
  *   distributions, including duplicate generated protobuf code. Keep the
@@ -258,6 +262,15 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     id: 'flow-agents-harness-bundles',
     package: '@kontourai/flow-agents',
     excludes: (segments) => segments[0] === 'dist',
+  }),
+  Object.freeze({
+    id: 'flow-agents-development-sources',
+    package: '@kontourai/flow-agents',
+    // Top-level only: `src/` is the TypeScript input of `build/` (the package's
+    // main, exports and bin all point into `build/`) and `evals/` is the
+    // package's own acceptance and integration harness. Each kit's own
+    // `kits/<kit>/evals/` is a different directory and stays.
+    excludes: (segments) => segments[0] === 'src' || segments[0] === 'evals',
   }),
 ]);
 
