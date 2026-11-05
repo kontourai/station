@@ -173,7 +173,11 @@ screen. Mint the link at handoff time — an earlier link may already be
 consumed or name a boot that has since restarted — and open it in the
 operator's browser rather than asking them to retype a URL. Pairing is stored
 per browser profile in the instance home, so once paired, ordinary stop and
-start on the same home needs no new link.
+start on the same home needs no new link. Each link pairs its own Device, so
+opening one on a phone leaves a desktop browser signed in, on either origin;
+a browser that already holds a session keeps its Device. Sign one browser out
+by revoking its Device. Each fresh profile that redeems a link adds a Device
+toward the identityless-Device quota, so revoke ones you no longer use.
 
 ### Running a second Station in development mode
 

@@ -480,6 +480,12 @@ binding, the approved issuer and subject must match on both; different accounts
 and unbound Devices remain separate even when they share a Serve WhoIs login.
 The correlation is not account proof or Project membership.
 
+A launcher sign-in link (`station open --print`, `#station-ui-bootstrap`)
+never replaces another browser's Device. The server picks a new correlation
+for each redemption, so a second browser signing in, on the same origin or
+another one, leaves the first browser's session valid. Revoking one of those
+Devices ends only that browser.
+
 The exchanged Device must present a current account for that exact
 issuer/subject on protected resource requests, apart from the narrowly scoped
 Device-binding self-read and native neutral observations described below.
