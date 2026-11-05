@@ -1,5 +1,8 @@
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
-import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import { providerFailure } from '../provider-failure.js';
 /**
@@ -2849,6 +2852,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       : connections;
     if (scoped.length === 0) {
       return [];
+    }
+    // #4515: an engine the managed policy does not allow is never run.
+    if (managedEnginePrerequisites('acp', 'acp', 'ACP')) {
+      return scoped.flatMap(
+        (config) =>
+          managedEnginePrerequisites('acp', config.command, config.name) ?? [],
+      );
     }
 
     const results = await Promise.all(

@@ -19,6 +19,7 @@
  * (pattern `*`), only rules no looser than Station's may follow.
  */
 import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
+import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import {
   OPENCODE_ASK_PERMISSIONS,
   OPENCODE_EXPLORE_TOOLS,
@@ -404,6 +405,8 @@ export function openCodeAgentReader(input: {
 }): OpenCodeAgentReader {
   return (agent) =>
     new Promise((resolve, reject) => {
+      // #4515: this runs the engine's own program.
+      assertEngineAllowedByManagedPolicy('acp');
       const child = spawn(input.command, ['debug', 'agent', agent], {
         cwd: input.cwd,
         env: input.env,

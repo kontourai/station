@@ -7,6 +7,7 @@ import type {
 import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
+  assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
   managedEngineLaunch,
   managedEngineLaunchRefusal,
@@ -91,6 +92,8 @@ export function managedClaudeLaunch(options: {
   args: readonly string[];
   env: Record<string, string | undefined>;
 }): Omit<ClaudeSpawnLaunch, 'cwd'> {
+  // #4515: every Claude CLI the SDK starts comes through here.
+  assertEngineAllowedByManagedPolicy('claude');
   const pinned = managedEngineBinaryPath('claude');
   if (
     pinned !== undefined &&

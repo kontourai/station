@@ -4,8 +4,8 @@
  * script that records the arguments and environment it was started with,
  * so an assertion reads what the child actually received.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { delimiter, dirname, join } from 'node:path';
 import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
@@ -325,6 +325,64 @@ describe('on Windows a locked variable is the only case-variant the engine child
       ['HTTPS_PROXY', 'http://inherited:1'],
       ['https_proxy', 'http://pinned:2'],
     ]);
+  });
+});
+
+// #4515 fix round 2: the launch leaves refuse an engine the policy does not
+// allow, whichever caller reached them (a session, a model listing).
+describe('a disallowed engine is refused at its launch, before anything runs', () => {
+  // A disallowed engine cannot be pinned, so the recorder is found the way
+  // an installed CLI is: first on the PATH, under the engine's name.
+  const path = process.env.PATH;
+  afterEach(() => {
+    process.env.PATH = path;
+  });
+  const onPath = () => {
+    const engine = recordingEngine();
+    const dir = dirname(engine.binary);
+    for (const name of ['codex', 'muse'])
+      symlinkSync(engine.binary, join(dir, name));
+    process.env.PATH = `${dir}${delimiter}${path ?? ''}`;
+    const ran = () => {
+      try {
+        engine.read();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    return { engine, ran };
+  };
+  const refused = /Acme's policy manages which engines run on this computer/;
+
+  test('Codex, Muse and the Claude SDK spawn', () => {
+    const { engine, ran } = onPath();
+    install({ allowed: ['station-agent'] });
+    expect(() => spawnCodexProcess()).toThrow(refused);
+    expect(() => createMuseProcess(['exec'])).toThrow(refused);
+    expect(() => createMuseServeHost({ disableSandbox: false })).toThrow(
+      refused,
+    );
+    const owner = createClaudeEngineProcess(() => {
+      throw new Error('nothing may be spawned');
+    });
+    expect(() =>
+      owner.spawn({
+        command: engine.binary,
+        args: [],
+        cwd: undefined,
+        env: {},
+        signal: new AbortController().signal,
+      }),
+    ).toThrow(refused);
+    expect(ran()).toBe(false);
+  });
+
+  test('control: allowed, the same Codex launch runs the CLI on the PATH', async () => {
+    const { ran } = onPath();
+    install({ allowed: ['codex'] });
+    await exited(spawnCodexProcess());
+    expect(ran()).toBe(true);
   });
 });
 

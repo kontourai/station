@@ -29,8 +29,10 @@ import type {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
+  assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
   managedEngineLaunch,
+  managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -674,6 +676,9 @@ type MuseTurnSettleOutcome =
  * arguments follow Station's own, so the subcommand stays first.
  */
 function museLaunch(args: readonly string[], envOverrides: NodeJS.ProcessEnv) {
+  // #4515: `muse exec` and `muse serve` both start here, so an engine the
+  // managed policy does not allow is refused before anything is resolved.
+  assertEngineAllowedByManagedPolicy('muse');
   return managedEngineLaunch(
     'muse',
     {
@@ -1107,6 +1112,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // key's validity is proven on first use, surfacing as the `runtime.error`
     // `settleTurn` publishes for a turn that ends without a completed
     // terminal, which carries the bounded tail of muse's own stderr.
+    //
+    // #4515: an engine the managed policy does not allow is never run.
+    const managed = managedEnginePrerequisites('muse', 'muse', 'Muse Code');
+    if (managed) return managed;
     return buildCliRuntimePrerequisites({
       command: 'muse',
       displayName: 'Muse Code',

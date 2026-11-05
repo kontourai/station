@@ -23,6 +23,7 @@ import {
   WORKLOAD_TRANSCRIPT_NAMESPACE,
 } from '@kontourai/station-shared/extension-transcript-markers';
 import {
+  assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
   managedEngineLaunch,
 } from '../../security/managed-engine-limits.js';
@@ -1652,6 +1653,10 @@ export function spawnCodexProcess(
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
+  // #4515: every `codex app-server` child (sessions, model listing) starts
+  // here, so an engine the managed policy does not allow is refused before
+  // anything is resolved or spawned.
+  assertEngineAllowedByManagedPolicy('codex');
   // #4520: a managed policy's pinned binary, arguments and environment are
   // merged into every Codex launch (`managedEngineLaunch`).
   const launch = managedEngineLaunch(

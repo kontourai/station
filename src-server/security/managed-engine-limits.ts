@@ -20,6 +20,7 @@ import {
   type ManagedPolicyEngineLimits,
   managedEngineAllowed,
 } from '@kontourai/station-contracts/managed-policy-engines';
+import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { SendTurnRefusedError } from '../providers/adapter-shape.js';
 
@@ -122,6 +123,31 @@ export function managedEngineRefusalFor(
       `which engines run on this computer: ${managedPolicyEngineId(engine)} is not allowed`,
     ),
   );
+}
+
+/**
+ * #4515: what an engine the policy does not allow reports as its
+ * prerequisites, or null when it may run. Each adapter's `getPrerequisites`
+ * answers with this before it resolves or runs anything, so boot priming,
+ * system status, the launch gate and the inventory never start the
+ * program of an engine the organization does not allow.
+ */
+export function managedEnginePrerequisites(
+  engine: string,
+  command: string,
+  displayName: string,
+): Prerequisite[] | null {
+  const refusal = managedEngineRefusalFor(engine);
+  if (!refusal) return null;
+  return [
+    {
+      id: `${command}-cli`,
+      name: `${displayName} CLI`,
+      description: refusal.message,
+      status: 'error',
+      category: 'required',
+    },
+  ];
 }
 
 /**

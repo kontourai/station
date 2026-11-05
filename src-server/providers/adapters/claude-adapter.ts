@@ -98,7 +98,11 @@ import {
   type SeatbeltEvidence,
   seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
-import { managedEngineBinaryPath } from '../../security/managed-engine-limits.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineBinaryPath,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -3580,6 +3584,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // #4515: an engine the managed policy does not allow is never run, not
+    // even for `--version` (boot priming and system status reach here).
+    const managed = managedEnginePrerequisites(
+      'claude',
+      CLAUDE_CLI_COMMAND,
+      'Claude',
+    );
+    if (managed) return managed;
     // #1551: resolve ONCE and hand that single answer to both the
     // install-status derivation (`findBinary`) and the description below, so
     // the executable this reports is the one the spawn path resolves — not a
@@ -5267,6 +5279,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
       const cached = this.authStatusProbes.get(key);
       if (cached) return cached.result;
+      // #4515: every `claude auth status` run starts here.
+      assertEngineAllowedByManagedPolicy('claude');
       const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
         command,
         args,
@@ -5333,6 +5347,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     command: string,
     args: string[],
   ): Promise<CliCommandResult | null> {
+    // #4515: every Claude version probe (executable resolution for a
+    // session, readiness, boot priming) starts here, so an engine the
+    // managed policy does not allow is refused before its program runs.
+    assertEngineAllowedByManagedPolicy('claude');
     const key = `${command}\u0000${args.join('\u0000')}`;
     const cached = this.versionProbes.get(key);
     if (cached) return cached;

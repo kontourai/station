@@ -12,6 +12,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   symlinkSync,
@@ -160,8 +161,12 @@ async function expectRefusal(
 }
 
 /** Boot a server on `policyPath` and mint a local credential for it. */
-async function bootWithGrant(root: string, policyPath: string) {
-  const env = isolatedEnv(root, policyPath);
+async function bootWithGrant(
+  root: string,
+  policyPath: string,
+  extraEnv: Record<string, string> = {},
+) {
+  const env = { ...isolatedEnv(root, policyPath), ...extraEnv };
   const { owned } = startServer(env);
   const child = owned.child;
   if (!('stdout' in child) || !child.stdout)
@@ -781,3 +786,103 @@ describe('#4515: a disallowed engine answers the managed refusal on the real cha
     }
   }, 300_000);
 });
+
+describe.skipIf(process.platform === 'win32')(
+  '#4515: a disallowed engine program is never run, at boot, for Accounts or for system status',
+  () => {
+    // Executables named for each engine, first on the server's PATH, that
+    // record every run. The login-shell PATH is not consulted, so nothing
+    // else of the same name can be found instead.
+    const markerEngines = (root: string) => {
+      const bin = join(root, 'engines-bin');
+      const log = join(root, 'engine-runs.log');
+      mkdirSync(bin, { recursive: true });
+      for (const name of ['claude', 'codex', 'muse'])
+        writeFileSync(
+          join(bin, name),
+          `#!/bin/sh\nprintf '%s %s\\n' "${name}" "$*" >> ${JSON.stringify(log)}\nexit 1\n`,
+          { mode: 0o755 },
+        );
+      return {
+        env: {
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          STATION_DISABLE_LOGIN_PATH_RESOLVE: '1',
+        },
+        runs: () =>
+          existsSync(log)
+            ? readFileSync(log, 'utf8').split('\n').filter(Boolean)
+            : [],
+      };
+    };
+
+    const exercise = async (allowed: string[]) => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { engines: { allowed } },
+        }),
+      );
+      const engines = markerEngines(root);
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        engines.env,
+      );
+      const get = async (path: string) => {
+        const response = await fetch(`${apiBase}${path}`, {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        const text = await response.text();
+        return { status: response.status, text };
+      };
+      // The engine connections are listed once inspection completes.
+      const accounts: Record<string, { status: number; text: string }> = {};
+      for (const engine of ['claude', 'codex']) {
+        const deadline = Date.now() + 120_000;
+        do {
+          accounts[engine] = await get(
+            `/api/connections/agent/${engine}/accounts`,
+          );
+          if (accounts[engine].status !== 404) break;
+          await new Promise((wait) => setTimeout(wait, 500));
+        } while (Date.now() < deadline);
+        if (accounts[engine].status === 404)
+          accounts[engine].text +=
+            ` connections: ${(await get('/api/connections')).text.slice(0, 3000)}`;
+      }
+      const status = await get('/api/system/status');
+      // Boot priming is fire-and-forget; give every probe it or the
+      // requests above started time to run before reading the record.
+      await new Promise((wait) => setTimeout(wait, 5_000));
+      return { accounts, status, runs: engines.runs() };
+    };
+
+    test('with no engine allowed, nothing named for an engine runs', async () => {
+      const { accounts, status, runs } = await exercise([]);
+      for (const [engine, answer] of Object.entries(accounts))
+        expect(answer.status, `${engine}: ${answer.text}`).toBe(200);
+      expect(status.status, status.text).toBe(200);
+      expect(runs).toEqual([]);
+    }, 300_000);
+
+    test('control: with claude and codex allowed, the same boot and requests run both', async () => {
+      const { accounts, status, runs } = await exercise([
+        'claude',
+        'codex',
+        'station-agent',
+      ]);
+      for (const [engine, answer] of Object.entries(accounts))
+        expect(answer.status, `${engine}: ${answer.text}`).toBe(200);
+      expect(status.status, status.text).toBe(200);
+      const ran = new Set(runs.map((line) => line.split(' ')[0]));
+      expect([...ran].sort(), runs.join('\n')).toEqual(
+        expect.arrayContaining(['claude', 'codex']),
+      );
+      expect(ran.has('muse'), runs.join('\n')).toBe(false);
+    }, 300_000);
+  },
+);

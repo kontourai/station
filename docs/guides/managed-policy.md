@@ -540,9 +540,10 @@ An engine the policy does not allow is unavailable everywhere:
   and run again if it is removed.
 - Its connection reads as disabled, and the engine pages mark it "Managed by
   Example Corp" and "Not allowed".
-- Station never starts its program: it is not checked for prerequisites,
-  asked for its models, probed for availability (at startup or periodically)
-  or launched for sign-in.
+- Station never starts its program: it is not checked for prerequisites or
+  its version (at startup, for system status or for readiness), asked for its
+  models, its sign-in status or how it signs in (the Accounts page), probed
+  for availability (at startup or periodically) or launched for sign-in.
 
 ### Pinned launch fields
 
