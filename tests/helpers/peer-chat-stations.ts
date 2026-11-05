@@ -1,7 +1,10 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
+import {
+  type DevicePairingOffer,
+  pairingScopePresetString,
+} from '@kontourai/station-contracts/environment-security';
 import type { ForegroundMessageInput } from '@kontourai/station-sdk/client';
 import { expect, mergeTests, type Page, type TestInfo } from '@playwright/test';
 import { pairBrowser } from '../live/helpers/station-instance.mjs';
@@ -462,37 +465,104 @@ export async function startConnectionChat(
   return body.data;
 }
 
-/** Independently pair R, then save its Device credential through the normal editor. */
+/** Pair an independent receiver Device through the invitation UI, keeping S selected. */
 export async function addDirectReceiver(page: Page, receiver: LiveStation) {
-  const paired = await pairBrowserDevice(
+  const sourceUrl = page.url();
+  const offer = await stationJson<DevicePairingOffer>(
     receiver,
-    readE2EOperatorCredential(receiver.home),
-    'Direct owner browser',
+    '/api/pairing/offers',
+    'POST',
+    {
+      endpoint: receiver.api,
+      scope: pairingScopePresetString('standard'),
+      kind: 'device',
+      approval: 'on-request',
+    },
   );
   await page.getByTestId('app-toolbar-connection').click();
   await page
     .getByRole('menu', { name: 'Choose Station', exact: true })
     .getByRole('menuitem', { name: 'Manage Stations', exact: true })
     .click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: 'Add a Station address' }).click();
-  await dialog.getByLabel('Name (optional)').fill('Direct Receiver');
-  await dialog.getByLabel('Station address').fill(receiver.api);
-  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Connect a Station', exact: true })
+    .click();
+  const setup = page.getByRole('dialog', {
+    name: 'Connect a Station',
+    exact: true,
+  });
+  await setup
+    .getByRole('button', { name: 'Pairing code', exact: true })
+    .click();
+  await setup.getByLabel('Station address for a short code').fill(receiver.api);
+  await setup
+    .getByRole('textbox', { name: 'Pairing code', exact: true })
+    .fill(offer.manualCode);
+  await setup.getByRole('button', { name: 'Continue', exact: true }).click();
+  await setup
+    .getByRole('button', { name: 'Request selected access', exact: true })
+    .click();
+  const requested = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url() ===
+        `${receiver.api}/.well-known/station/v1/pairing/request`,
+  );
+  const exchanged = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.ok() &&
+      response.url() ===
+        `${receiver.api}/.well-known/station/v1/pairing/exchange`,
+  );
+  await setup
+    .getByRole('button', { name: 'Request access', exact: true })
+    .click();
+  const request = await requested;
+  expect(request.status()).toBe(202);
+  const { requestId } = (await request.json()) as { requestId: string };
   await expect(
-    dialog.getByRole('heading', { name: 'Request Access', exact: true }),
+    page.getByRole('button', { name: 'Cancel request', exact: true }),
   ).toBeVisible();
-  await dialog.getByRole('button', { name: 'Back', exact: true }).click();
-  await dialog
-    .getByRole('button', { name: 'More actions for Direct Receiver' })
+  await stationJson(
+    receiver,
+    `/api/pairing/requests/${encodeURIComponent(requestId)}/confirm`,
+    'POST',
+  );
+  const paired = (await (await exchanged).json()) as {
+    credential: string;
+    device: { id: string };
+  };
+  expect(Boolean(paired.credential)).toBe(true);
+  await expect(
+    page.getByRole('button', { name: 'Cancel request', exact: true }),
+  ).toHaveCount(0);
+  await setup.getByRole('button', { name: 'Done', exact: true }).click();
+  expect(page.url()).toBe(sourceUrl);
+  await page.getByTestId('app-toolbar-connection').click();
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
     .click();
-  await dialog
-    .getByRole('menu', { name: 'Actions for Direct Receiver' })
-    .getByRole('menuitem', { name: 'Edit Station' })
+  const manager = page.getByRole('dialog');
+  await manager
+    .getByRole('button', {
+      name: `More actions for ${receiver.api}`,
+      exact: true,
+    })
     .click();
-  await dialog.getByLabel('Station access credential').fill(paired.credential);
-  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Close Station manager' }).click();
+  await manager
+    .getByRole('menu', { name: `Actions for ${receiver.api}`, exact: true })
+    .getByRole('menuitem', { name: 'Edit Station', exact: true })
+    .click();
+  await manager
+    .getByLabel('Station name', { exact: true })
+    .fill('Direct Receiver');
+  await manager.getByRole('button', { name: 'Save', exact: true }).click();
+  await manager
+    .getByRole('button', { name: 'Close Station manager', exact: true })
+    .click();
   return paired;
 }
 
@@ -568,12 +638,13 @@ export async function ensureConnectionInboxOpen(page: Page) {
     mobileHeader.or(page.getByRole('button', { name: /^(Show|Hide) inbox/ })),
   ).toBeVisible();
   if (await mobileHeader.isVisible()) {
+    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
     const entry = mobileHeader.getByRole('button', {
       name: 'Inbox',
       exact: true,
     });
+    await expect(entry.or(inbox)).toBeVisible();
     if (await entry.isVisible()) await entry.click();
-    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
     await expect(inbox).toBeVisible();
     return inbox;
   }

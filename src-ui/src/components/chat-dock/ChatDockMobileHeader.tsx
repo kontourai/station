@@ -331,12 +331,10 @@ export function ChatDockMobileHeader({
           {!inboxActive && agentIdentity && ' '}
           {!inboxActive && (agentIdentity || stationName) && (
             <span className="chat-dock__mobile-eyebrow">
+              {stationName && `Via ${stationName}`}
+              {stationName && agentIdentity && ' · '}
               {agentIdentity?.name}
-              {stationName
-                ? `${agentIdentity ? ' · ' : ''}Via ${stationName}`
-                : routeLabel
-                  ? ` · via ${routeLabel}`
-                  : ''}
+              {!stationName && routeLabel && ` · via ${routeLabel}`}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>

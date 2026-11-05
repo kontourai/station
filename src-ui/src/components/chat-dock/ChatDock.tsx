@@ -1076,6 +1076,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSession,
     activeOrchestrationSession,
     activeOrchestrationSessionRead,
+    retryRemoteSessionRead,
     activeSessionForHook,
     agentDefaultModelId,
     bindingStatus,
@@ -4348,7 +4349,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSessionRead
                           }
                           onRetryOrchestrationSessions={() => {
-                            void refetchOrchestrationSessions();
+                            if (retryRemoteSessionRead)
+                              void retryRemoteSessionRead();
+                            else void refetchOrchestrationSessions();
                           }}
                           activeSessionId={activeSessionId}
                           sessions={sessions}

@@ -7,7 +7,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
@@ -82,6 +82,119 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
+});
+
+test('Activity rechecks continuation when the viewed running execution becomes idle', async () => {
+  const station = conversationConnection('host');
+  registry.resolve.mockResolvedValue({ connection: station, release: vi.fn() });
+  setClientCredentialResolver(() => ({
+    origin: station.requestScope.apiBase,
+    credential: 'record-fixture',
+    requestAuthority: { ...station.requestScope, isCurrent: station.isCurrent },
+  }));
+  let idle = false;
+  const openReads = vi.fn();
+  const record: OrchestrationSessionSummary = {
+    ...sourceRecord,
+    delegation: undefined,
+    threadId: 'host-child',
+    conversationId: 'host-conversation',
+    status: 'running',
+    lifecycleState: 'running',
+    hasActiveTurn: true,
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/conversations/host-conversation/open') {
+        openReads(idle);
+        const data: ConversationOpenResolution = {
+          status: 'resolved',
+          currentSessionId: record.threadId,
+          conversation: {
+            id: record.conversationId!,
+            source: 'runtime',
+            title: 'Host conversation',
+            agentSlug: agentId('reviewer'),
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            messageCount: 0,
+            mutable: false,
+            answerability: { answerable: true },
+          },
+          transcript: { available: true, owner: 'runtime', messageCount: 0 },
+          canContinue: idle,
+          continuationPending: !idle,
+          callerAccess: { continue: true, startChat: true },
+          answerability: { answerable: true },
+          recoveryActions: [],
+        };
+        return Response.json({ success: true, data });
+      }
+      if (url.pathname.endsWith('/event-window')) {
+        const data: OrchestrationConversationEventWindow = {
+          protocolVersion: 1,
+          conversationId: record.conversationId!,
+          currentSessionId: record.threadId,
+          session: record,
+          events: [],
+          handoffs: [],
+          contextBoundaries: [],
+          watermark: 0,
+          hasMore: false,
+        };
+        return Response.json({ success: true, data });
+      }
+      throw new Error(`Unexpected fixture request: ${url.pathname}`);
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const tree = (session: OrchestrationSessionSummary) => (
+    <QueryClientProvider client={client}>
+      <PreviewProvider>
+        <SessionDetail
+          apiBase={station.targetApiBase}
+          session={session}
+          onTaskChanged={() => {}}
+          onAdopted={() => {}}
+          getSelectionIntent={() => 0}
+        />
+      </PreviewProvider>
+    </QueryClientProvider>
+  );
+  const view = render(tree(record));
+  await waitFor(() => expect(openReads).toHaveBeenCalledWith(false));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('textbox', { name: 'Message' }).hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Stop the current turn' }),
+  ).toBeTruthy();
+  idle = true;
+  view.rerender(
+    tree({
+      ...record,
+      status: 'ready',
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+    }),
+  );
+  await waitFor(() => expect(openReads).toHaveBeenCalledWith(true));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('textbox', { name: 'Message' }).hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  expect(openReads).toHaveBeenCalledTimes(2);
+  expect(
+    screen.queryByRole('button', { name: 'Stop the current turn' }),
+  ).toBeNull();
 });
 
 test.each([true, false])(

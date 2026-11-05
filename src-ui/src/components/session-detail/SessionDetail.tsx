@@ -103,6 +103,8 @@ export function SessionDetail(
       value.apiBase,
       station?.runtimeKey ?? requestScope?.authorityKey,
       props.session.conversationId,
+      props.session.threadId,
+      props.session.lifecycleState ?? props.session.status,
     ],
     enabled: Boolean(
       props.session.controlMode !== 'read-only-attached' &&
@@ -182,7 +184,7 @@ export function SessionDetail(
   const conversationWritable =
     station && props.session.controlMode !== 'read-only-attached'
       ? open.data?.status === 'resolved' &&
-        open.data.canContinue &&
+        (open.data.canContinue || open.data.continuationPending === true) &&
         open.data.callerAccess?.continue !== false
       : undefined;
   const accessNotice = open.isError ? (

@@ -128,11 +128,17 @@ test('a failed history page retains admitted records until the owner explicitly 
   const client = new QueryClient({
     defaultOptions: { queries: { retry: 2, retryDelay: 0 } },
   });
-  const view = renderHook(() => useProjectTaskRoomHistoryQuery('paged-task'), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    ),
-  });
+  const view = renderHook(
+    () => {
+      useProjectTaskRoomStream('paged-task');
+      return useProjectTaskRoomHistoryQuery('paged-task');
+    },
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  );
   try {
     await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
     await act(() => view.result.current.fetchNextPage());
@@ -141,6 +147,18 @@ test('a failed history page retains admitted records until the owner explicitly 
     );
     expect(historyRead).toHaveBeenCalledTimes(2);
     expect(view.result.current.data?.pages).toEqual([first]);
+    await waitFor(() => expect(callbacks).toBeDefined());
+    await act(async () => {
+      callbacks!.onEvent({ kind: 'room', value: {} });
+      callbacks!.onEvent({ kind: 'snapshot', value: {} });
+    });
+    expect(
+      client.getQueryState(
+        projectTaskRoomQueries.history('paged-task').queryKey,
+      )?.isInvalidated,
+    ).toBe(true);
+    expect(view.result.current.isFetchNextPageError).toBe(true);
+    expect(historyRead).toHaveBeenCalledTimes(2);
     expect(
       client.getQueryData(
         projectTaskRoomQueries.history('paged-task').queryKey,

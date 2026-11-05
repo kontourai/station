@@ -850,6 +850,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         );
       }
       await page.reload();
+      await expect(
+        page.getByRole('log', { name: 'Conversation transcript' }),
+      ).toContainText('Current chat is ready.');
       const inbox = await ensureConnectionInboxOpen(page);
       if (layout === 'mobile')
         await inbox.getByRole('button', { name: 'Search inbox' }).click();

@@ -184,14 +184,23 @@ export function useOrchestrationSessionActivityQuery(
   apiBase?: string,
   config?: QueryConfig<OrchestrationSessionEventWindow>,
 ) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
   return useApiQuery(
-    ['orchestration-session-activity', apiBase ?? 'default', threadId],
+    [
+      'orchestration-session-activity',
+      ...(target
+        ? [target.requestScope.authorityKey, target.runtimeKey ?? '']
+        : []),
+      apiBase ?? 'default',
+      threadId,
+    ],
     (signal) =>
       fetchOrchestrationSessionEventWindow(
         threadId,
         apiBase,
         { direction: 'newest', turnLimit: 1 },
-        { signal },
+        { signal, requestScope: target?.requestScope },
       ),
     {
       enabled: Boolean(threadId) && (config?.enabled ?? true),

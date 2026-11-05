@@ -29,6 +29,17 @@ test('owner Device chats through a real Station delegation and keeps target refu
     'Receiver streamed this before completion.',
   );
   await expect(page.getByText('Via Receiver', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('status', {
+      name: "Reading this chat's record",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Could not read this Station's chat records", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await captureConnectionState(page, testInfo, 'relay-streaming');
   const sourceSessions = await stationJson<{ data: unknown[] }>(
     source,

@@ -14,7 +14,7 @@ import {
   useAgentsQuery,
   useEngineConnectionsQuery,
   useModelPickerCatalogQuery,
-  useOrchestrationSessionsQuery,
+  useOrchestrationSessionActivityQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
@@ -155,18 +155,31 @@ export function useChatDockViewModel({
         activeSession &&
         chatBelongsToStation(activeSession, connection),
     );
-  const remoteSessions = useOrchestrationSessionsQuery(
-    { enabled: remote && Boolean(connection), readTarget: connection },
-    remote && !connection ? null : undefined,
+  const sessionThreadId =
+    activeSessionForHook?.currentSessionId ||
+    activeSessionForHook?.conversationId ||
+    activeSessionForHook?.id ||
+    null;
+  // Relays authorize a bounded read of this execution, not a Station inventory.
+  const remoteSession = useOrchestrationSessionActivityQuery(
+    sessionThreadId ?? '',
+    connection?.targetApiBase,
+    {
+      enabled: remote && Boolean(connection),
+      readTarget: connection,
+      refetchInterval: 60_000,
+    },
   );
   const remoteAgents = useAgentsQuery({
     enabled: remote && Boolean(connection),
     readTarget: connection,
   });
   if (remote && connection) {
-    orchestrationSessions = remoteSessions.data ?? EMPTY_ORCHESTRATION_SESSIONS;
-    orchestrationSessionsStatus = remoteSessions.status;
-    orchestrationSessionsFetching = remoteSessions.isFetching;
+    orchestrationSessions = remoteSession.data
+      ? [remoteSession.data.session]
+      : EMPTY_ORCHESTRATION_SESSIONS;
+    orchestrationSessionsStatus = remoteSession.status;
+    orchestrationSessionsFetching = remoteSession.isFetching;
     agents = remoteAgents.data ?? [];
   }
   if (remote) {
@@ -223,11 +236,6 @@ export function useChatDockViewModel({
   // Correlate to the exact current execution Session once the bounded
   // Conversation window has supplied it. Legacy one-Session conversations
   // retain the established Conversation/store-key fallbacks.
-  const sessionThreadId =
-    activeSessionForHook?.currentSessionId ||
-    activeSessionForHook?.conversationId ||
-    activeSessionForHook?.id ||
-    null;
   /**
    * The serving Station's own record of the chat this dock is showing, found
    * by the correlation key documented above. station#3213 named it: the dock
@@ -588,6 +596,7 @@ export function useChatDockViewModel({
     activeSession,
     activeOrchestrationSession,
     activeOrchestrationSessionRead,
+    retryRemoteSessionRead: remote ? remoteSession.refetch : undefined,
     activeSessionForHook,
     agentDefaultModelId,
     chatEngineConnection,

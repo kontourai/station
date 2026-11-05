@@ -6,9 +6,14 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useChatDockViewModel } from '../components/chat-dock/useChatDockViewModel';
+import {
+  conversationCapabilitiesFromAuthority,
+  type StationConnection,
+} from '../connections/station-connection';
 
 const queryState = vi.hoisted(() => ({
   agentConnections: [] as any[],
@@ -21,15 +26,31 @@ const queryState = vi.hoisted(() => ({
   modelCatalogError: undefined as Error | undefined,
   modelCatalogLoading: false,
   modelImageSupport: 'unknown' as 'yes' | 'no' | 'unknown',
+  remoteWindow: undefined as OrchestrationSessionEventWindow | undefined,
+  activityReads: vi.fn(),
+  inventoryReads: vi.fn(),
+  retryRemote: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({ data: [] }),
-  useOrchestrationSessionsQuery: () => ({
-    data: [],
-    status: 'pending',
-    isFetching: false,
-  }),
+  useOrchestrationSessionsQuery: (...args: unknown[]) => {
+    queryState.inventoryReads(...args);
+    return {
+      data: [],
+      status: 'pending',
+      isFetching: false,
+    };
+  },
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) => {
+    queryState.activityReads(...args);
+    return {
+      data: queryState.remoteWindow,
+      status: queryState.remoteWindow ? 'success' : 'pending',
+      isFetching: false,
+      refetch: queryState.retryRemote,
+    };
+  },
   // The real picker projection is credential-free and drops
   // `capabilityInventory` (workspaceConnections.ts `useModelPickerCatalogQuery`);
   // modelled faithfully so a consumer cannot read the live handshake off it.
@@ -94,6 +115,103 @@ afterEach(() => {
   queryState.modelCatalogLoading = false;
   queryState.modelCatalogFetchedAfterMount = false;
   queryState.modelCatalogError = undefined;
+  queryState.remoteWindow = undefined;
+  queryState.activityReads.mockClear();
+  queryState.inventoryReads.mockClear();
+  queryState.retryRemote.mockClear();
+});
+
+test('remote record status comes from the exact receiver child without reading its inventory', () => {
+  const connection: StationConnection = {
+    environmentId: 'receiver',
+    stationName: 'Receiver',
+    stationKey: 'receiver',
+    routeKind: 'relay',
+    targetApiBase:
+      'http://source.test/api/environments/peers/receiver/chat-api',
+    requestScope: {
+      apiBase: 'http://source.test',
+      authorityKey: 'owner-device',
+    },
+    authorityNamespace: 'owner-device',
+    runtimeKey: 'receiver-route',
+    binding: {
+      version: 1,
+      environmentId: 'receiver',
+      stationName: 'Receiver',
+      affinity: {
+        kind: 'peer',
+        sourceEnvironmentId: 'source',
+        sourceConnectionId: 'source',
+        principalNamespace: 'owner-device',
+      },
+    },
+    capabilities: conversationCapabilitiesFromAuthority(
+      {
+        schemaVersion: 'station.authority-observation/v1',
+        environmentId: 'receiver',
+        principal: { kind: 'human', id: 'owner' },
+        grant: {
+          kind: 'device',
+          deviceId: 'owner-device',
+          grantedScopes: ['orchestration:read'],
+        },
+      },
+      { remote: true, mutationAllowed: true },
+    ),
+    isCurrent: () => true,
+  };
+  queryState.remoteWindow = {
+    protocolVersion: 1,
+    watermark: 1,
+    events: [],
+    hasMore: false,
+    session: {
+      threadId: 'receiver-child',
+      provider: 'station',
+      status: 'ready',
+      createdAt: '2026-11-05T00:00:00Z',
+      updatedAt: '2026-11-05T00:00:00Z',
+      controlMode: 'station-owned',
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 1,
+      answerability: { answerable: true },
+      cwd: '/receiver/work',
+    },
+  };
+  const { result } = renderHook(() =>
+    useChatDockViewModel({
+      activeSessionId: 's1',
+      availableModels,
+      agents,
+      connection,
+      sessions: [
+        {
+          ...sessions[0],
+          currentSessionId: 'receiver-child',
+          stationBinding: connection.binding,
+        },
+      ],
+    }),
+  );
+  expect(queryState.inventoryReads).not.toHaveBeenCalled();
+  expect(queryState.activityReads).toHaveBeenCalledWith(
+    'receiver-child',
+    connection.targetApiBase,
+    {
+      enabled: true,
+      readTarget: connection,
+      refetchInterval: 60_000,
+    },
+  );
+  expect(result.current.activeOrchestrationSessionRead).toBe('present');
+  expect(result.current.activeOrchestrationSession?.threadId).toBe(
+    'receiver-child',
+  );
+  expect(result.current.sessionDisplayCwd).toBe('/receiver/work');
+  result.current.retryRemoteSessionRead?.();
+  expect(queryState.retryRemote).toHaveBeenCalledOnce();
 });
 
 describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => {
