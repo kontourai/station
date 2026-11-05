@@ -5395,7 +5395,8 @@ bounded-body replacement. ACP remains unavailable without independent binding.
 Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
-Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
+Host exit/restart produces `needs-reopen` (as does a key that may be stuck on
+the page: endReason `input-stuck`), and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
 `browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
@@ -5475,17 +5476,29 @@ ask sees neither key (`liveSurfaceEpochCause` capability). The registry
 serializes and fences input and is the one account of what each controller
 holds: a press counts from when it is sent, and a release only once the
 producer confirms it (one that fails or times out stays held, and is confirmed
-if it lands late). It releases presses (never completing them) on handoff, on
-lapse to no holder, on the unfenced `release-pressed` lease action (only the
-caller's own presses), after a release the producer failed, and once the
+if it lands late). Producers keep the same rule: Browser and Device
+`cancelHeldInput` release the registry's supplied held set, forget a release
+only once it was delivered, try every release and fail if any did not go. It
+releases presses (never completing them) on handoff, on lapse to no holder,
+on the unfenced `release-pressed` lease action (only the caller's own
+presses, and only those its sender pressed in batches up to the
+`LiveSurfaceInputOrder` it names, so a retried or late request never releases
+a newer press), after a release the producer failed, and once the
 controller has had no open stream for a grace window (checked again when it
 ends), so a replacement stream releases nothing. One cleanup per surface does
 this, one attempt at a time on the input chain, retrying a failed cancel
 itself with a pause doubling from 200 ms to at most 5 s, whoever controls the
 surface by then; it waits out a wedge without holding the chain. While a
-release is owed, input is refused `release-pending` (after the fence check,
-so a controller that lost control is told that first), and `release-pressed`
-answers `release-pending` at once rather than queuing. The grace window is 2 s by default: measured, a
+release is owed, input is refused `release-pending` (after the epoch or fence
+check, so a controller that lost control is told that first), and
+`release-pressed` answers `release-pending` at once rather than queuing.
+After six failed attempts in a row (waiting out a wedge is not one) the
+surface is stuck: those refusals become `release-stuck`, opted-in viewers get
+`releaseStuck` in their state record, and the host's `onReleaseStuck` resets
+it (the Browser session stops for Reopen, the Device session ends for
+Reconnect). Presses still held when a surface is unregistered are carried to
+the next surface registered in the same `heldScope` (the reopened session,
+the device's next session), which releases them before taking input. The grace window is 2 s by default: measured, a
 stream reopened for new params attaches about 1 ms after the old one closes
 and a dropped connection reconnects in about 0.5 s; a longer window only
 keeps an abandoned press down longer. It marks a timed-out dispatch wedged
@@ -5587,14 +5600,18 @@ ended lineage is ignored. Input and claim requests are bounded (10 s); after any
 completion the viewer reconciles to the newest lease its stream reported. The
 viewer asks the server to release its presses on blur, a hidden page and
 unmount, and after any batch whose effect is unknown (then even when it knows
-of no press; the server knows what is held). Any answer hands the release to
+of no press; the server knows what is held). Each batch carries its place in
+the viewer's own input order (a sender id picked once and a `seq` counting
+up, only while a stream confirmed the viewer), and a release names the last
+`seq` sent, going only after the input queued ahead of it. Any answer hands the release to
 the server; only a request that got no answer is sent again, after its own
 pause (doubling to at most 5 s, never on a state record), while the view stays
 mounted on the same target and control. Each press carries its own
 generation, and an answer marks released only the generations it asked about,
 so a later press of the same key keeps its own release. Input refused
 `release-pending` before any of it was dispatched is kept for Retry, as when
-the host is busy. Queued releases are never discarded, and a batch refused as
+the host is busy; `release-stuck` (from a refusal or the state record) says a
+key may be stuck and to reload or reopen, and offers no Retry. Queued releases are never discarded, and a batch refused as
 stale only because of this viewer's own takeover goes again at the adopted
 epoch. A stream about
 to present an existing viewer id first asks which Station answers, and a

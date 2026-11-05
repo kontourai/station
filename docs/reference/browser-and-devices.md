@@ -59,7 +59,8 @@ An open pane subscribes to the session's live surface. Hiding or closing that
 viewer stops its frame request, not the browser session. An authorized Agent
 may work while nobody watches. Close the server session explicitly when the
 page should stop running. If its browser exits, or Station restarts, retained
-sessions become `needs-reopen`; they are not silently declared live. Reopening
+sessions become `needs-reopen`; they are not silently declared live. A session
+whose page may have a stuck key (see below) stops the same way. Reopening
 uses a new browser generation and invalidates the old live-surface reference.
 
 ### Viewing a live surface: zoom, full screen and the chat floater
@@ -268,7 +269,12 @@ a press or its release), and when that person has had no open view of the
 surface for about two seconds (a view reopening with a larger picture or after a dropped connection
 is the same view, and releases nothing). A release the page does not take is
 not forgotten: Station keeps trying it, and input waits until it lands (the
-person can send theirs again; an Agent is told to wait). A second
+person can send theirs again; an Agent is told to wait). If it keeps failing,
+a key may be stuck: the viewer says so, input stays refused, and the session
+stops so it can be reset (the Browser pane offers Reopen, the Device pane
+Reconnect, and an Agent's input is refused `release-stuck`, telling it to
+reopen the session). The reset releases what was
+held before it takes any input. A second
 tab of the same person on the same device shares that control; a tap made in
 one tab before the other took control is not sent into it. A timeout or
 interrupted operation does not establish that an already-sent browser effect
