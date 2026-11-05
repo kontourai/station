@@ -9,7 +9,6 @@ import {
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { readRetainedChatTranscript } from '../../lib/retained-chat-transcript';
 import { Button } from '../Button';
-import { LazyMarkdown } from '../chat/LazyMarkdown';
 import {
   ConversationBody,
   type ConversationBodyProps,
@@ -81,12 +80,7 @@ export function ChatDockBody({
           }
         />
         {retained?.messages.map((message, index) => (
-          <div
-            key={`${index}:${message.role}`}
-            className="chat-message-content"
-          >
-            <LazyMarkdown>{message.content}</LazyMarkdown>
-          </div>
+          <p key={`${index}:${message.role}`}>{message.content}</p>
         ))}
         {props.activeSession.messages
           .filter(
