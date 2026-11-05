@@ -19,6 +19,7 @@ import {
   managedPolicyFilePath,
   readManagedPolicyFile,
   SYSTEM_MANAGED_POLICY_OWNERSHIP,
+  systemManagedPolicySources,
 } from '@kontourai/station-shared/managed-policy';
 import {
   MANAGED_POLICY_TEMPLATE_FILES,
@@ -127,7 +128,7 @@ function runCheck(file: string, json: boolean): void {
 }
 
 type InstalledState =
-  | { state: 'none'; path: string }
+  | { state: 'none'; path: string; checked: string[] }
   | {
       state: 'installed';
       source: ManagedPolicySourceDescriptor;
@@ -186,7 +187,14 @@ async function readRunning(args: string[]): Promise<RunningState> {
 function readInstalled(): InstalledState {
   try {
     const loaded = loadInstalledManagedPolicy();
-    if (!loaded) return { state: 'none', path: managedPolicyFilePath() };
+    if (!loaded)
+      return {
+        state: 'none',
+        path: managedPolicyFilePath(),
+        checked: systemManagedPolicySources().map(
+          (source) => source.descriptor.location,
+        ),
+      };
     return {
       state: 'installed',
       source: loaded.source,
@@ -227,7 +235,9 @@ async function runShow(args: string[], json: boolean): Promise<void> {
   }
 
   if (installed.state === 'none')
-    console.log(`Installed policy: none (${installed.path} does not exist)`);
+    console.log(
+      `Installed policy: none (nothing at ${installed.checked.join(' or ')})`,
+    );
   else if (installed.state === 'invalid') {
     console.log('Installed policy: INVALID');
     console.log(`  ${installed.error}`);
