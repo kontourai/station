@@ -46,6 +46,19 @@ export interface FoldSourceEnvironment {
  */
 export const FOLD_FOLLOW_UP_READS_MS = [250, 1000, 3000, 8000] as const;
 
+/**
+ * Tauri's rejection when the running shell does not register `station-fold`
+ * (desktop, Android, or an iOS build without it): exact messages, not a
+ * substring, so a transient plugin error keeps the shell asking.
+ */
+export function isFoldPluginMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : error;
+  return (
+    message === 'plugin station-fold not found' ||
+    message === 'Command plugin:station-fold|state not found'
+  );
+}
+
 function defaultEnvironment(): FoldSourceEnvironment {
   return {
     window: window as unknown as FoldWindow,
@@ -110,10 +123,36 @@ export function installFoldGeometry(
     recompute();
   };
 
+  // One native read at a time: a burst of resizes or events collapses into
+  // the read in flight plus one trailing read. A shell without the plugin
+  // (desktop, Android) answers that definitively, so it is asked no more.
+  let reading = false;
+  let readAgain = false;
+  let unavailable = false;
   const refresh = () => {
-    environment.readNative().then(accept, () => {
-      // Not the iOS shell (or a shell without the plugin): segments decide.
-    });
+    if (disposed || unavailable) return;
+    if (reading) {
+      readAgain = true;
+      return;
+    }
+    reading = true;
+    environment
+      .readNative()
+      .then(accept, (error: unknown) => {
+        // Not the iOS shell: segments decide. Any other failure is transient
+        // and the next event, resize or follow-up asks again.
+        if (isFoldPluginMissing(error)) {
+          unavailable = true;
+          stopFollowUps();
+        }
+      })
+      .finally(() => {
+        reading = false;
+        if (readAgain && !disposed && !unavailable) {
+          readAgain = false;
+          refresh();
+        }
+      });
   };
 
   const visible = () => {

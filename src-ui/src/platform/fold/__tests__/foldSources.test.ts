@@ -251,4 +251,56 @@ describe('a cold launch on a device that is already folded', () => {
     expect(pendingFollowUps()).toBe(0);
     stop();
   });
+
+  it('stops asking a shell without the plugin, however often the page resizes', async () => {
+    const native = vi
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValue(new Error('plugin station-fold not found'));
+    const { stop, resize, fireFollowUps, pendingFollowUps } = harness({
+      native,
+    });
+    await settle();
+    const afterInstall = native.mock.calls.length;
+    for (let i = 0; i < 120; i += 1) resize();
+    fireFollowUps();
+    await settle();
+    expect(native.mock.calls.length).toBe(afterInstall);
+    expect(pendingFollowUps()).toBe(0);
+    stop();
+  });
+
+  it('keeps one native read in flight: a burst of resizes adds one trailing read', async () => {
+    let release!: (value: unknown) => void;
+    const native = vi
+      .fn<() => Promise<unknown>>()
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (release = resolve)),
+      )
+      .mockResolvedValue(bookSnapshot);
+    const { stop, resize } = harness({ native });
+    await settle();
+    expect(native).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 120; i += 1) resize();
+    expect(native).toHaveBeenCalledTimes(1);
+    release(coldLaunchFirstSnapshot);
+    await settle();
+    await settle();
+    expect(native).toHaveBeenCalledTimes(2);
+    expect(root().dataset.foldPosture).toBe('folded');
+    stop();
+  });
+
+  it('keeps asking after a transient plugin error', async () => {
+    const native = vi
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValueOnce(new Error('hinge interaction unavailable'))
+      .mockResolvedValue(bookSnapshot);
+    const { stop, resize } = harness({ native });
+    await settle();
+    resize();
+    await settle();
+    expect(native).toHaveBeenCalledTimes(2);
+    expect(root().dataset.foldPosture).toBe('folded');
+    stop();
+  });
 });
