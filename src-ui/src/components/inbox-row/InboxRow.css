@@ -458,7 +458,7 @@
   position: static;
   flex: 0 0 auto;
   align-self: center;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
   padding: 0;
   background: transparent;
   box-shadow: none;
@@ -474,7 +474,7 @@
   /* Always on screen here, with no hover to reveal them and no tooltip a
      finger can raise: drawn as buttons so Details and Snooze do not read as
      status glyphs beside the row. */
-  box-shadow: inset 0 0 0 1px var(--border-primary);
+  box-shadow: inset 0 0 0 var(--k-border-thin) var(--k-line);
 }
 
 .inbox-row--touch .inbox-row__action::after {
