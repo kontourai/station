@@ -125,6 +125,46 @@ export function managedEngineRefusalFor(
   );
 }
 
+/** Whether the policy carries an engine allow list at all. */
+export function managedEngineAllowListActive(): boolean {
+  return installedEngines?.allowed !== undefined;
+}
+
+const STATION_AGENT_RUN_METHODS = [
+  'generateText',
+  'streamText',
+  'generateObject',
+  'streamObject',
+] as const;
+
+/**
+ * #4515: the lowest seam of Station's own agent runtime. Every run of a
+ * Station agent (a registered Agent, or a temp agent created for an agent
+ * run: the default agent, a chat's model-override agent, `/invoke`, a
+ * scheduled job) calls one of these methods on the framework wrapper, so the
+ * framework adapters gate them here, on the instance itself (identity is
+ * preserved, as `bindDurableAgent` requires), before any durable binding: a
+ * durable replay goes through the gate too. An agent created for a utility
+ * (a chat title, a session summary, the approval guardian, a review guide)
+ * is not Station's agent and is not gated.
+ */
+export function gateStationAgentRuns<T extends object>(agent: T): T {
+  for (const method of STATION_AGENT_RUN_METHODS) {
+    const run = Reflect.get(agent, method, agent);
+    if (typeof run !== 'function') continue;
+    Reflect.set(
+      agent,
+      method,
+      async (...args: unknown[]) => {
+        assertEngineAllowedByManagedPolicy('station');
+        return Reflect.apply(run, agent, args);
+      },
+      agent,
+    );
+  }
+  return agent;
+}
+
 /**
  * #4515: what an engine the policy does not allow reports as its
  * prerequisites, or null when it may run. Each adapter's `getPrerequisites`

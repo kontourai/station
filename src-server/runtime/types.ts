@@ -526,6 +526,15 @@ export interface IAgentFramework {
 
   /** Create a lightweight agent for one-shot invocations (no persistence) */
   createTempAgent(opts: {
+    /**
+     * #4515: `agent-run` is a run of Station's own agent (the default agent,
+     * a chat's model-override agent, `/invoke`, a scheduled job) and is
+     * refused while the managed policy does not allow `station-agent`;
+     * `utility` is Station's own work on a model connection (a title, a
+     * summary, the approval guardian, a review guide). Required so a new
+     * caller decides.
+     */
+    purpose: 'agent-run' | 'utility';
     /** Canonical Agent owning optional prompt history; never inferred from display name. */
     agentId?: string;
     name: string;

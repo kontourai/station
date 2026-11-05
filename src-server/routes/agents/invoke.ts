@@ -222,6 +222,7 @@ export function createInvokeRoutes(
             logger: ctx.logger,
           });
           const tempAgent = await ctx.framework.createTempAgent({
+            purpose: 'agent-run',
             name: `${slug}-temp`,
             instructions:
               (agent as { instructions?: string }).instructions || '',

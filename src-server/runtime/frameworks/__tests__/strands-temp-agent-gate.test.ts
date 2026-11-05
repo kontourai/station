@@ -157,6 +157,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     const beforeToolCall = vi.fn().mockResolvedValue(true);
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -204,6 +205,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
   test('forwards a scheduler cancellation signal to the real Strands invoke options', async () => {
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -222,6 +224,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     const execute = vi.fn();
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -254,6 +257,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
 
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default:model-override',
       instructions: 'Help',
       model: {},
@@ -290,6 +294,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
 
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -328,6 +333,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     const beforeToolCall = vi.fn().mockResolvedValue(true);
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -366,6 +372,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     const beforeToolCall = vi.fn().mockResolvedValue(true);
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},
@@ -408,6 +415,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
 
     const framework = new StrandsFramework();
     const tempAgent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model: {},

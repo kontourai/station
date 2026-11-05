@@ -94,6 +94,7 @@ export class ApprovalGuardianService {
       );
 
       const agent = await this.deps.framework.createTempAgent({
+        purpose: 'utility',
         name: 'approval-guardian',
         instructions: composeGuardianInstructions(this.config?.instructions),
         model,

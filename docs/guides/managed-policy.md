@@ -636,6 +636,13 @@ An engine the policy does not allow is unavailable everywhere:
   and run again if it is removed.
 - Its connection reads as disabled, and the engine pages mark it "Managed by
   Example Corp" and "Not allowed".
+- For `station-agent`, every run of Station's own agent is refused the same
+  way: a direct chat (an active agent, or one started for a model you pick),
+  `/invoke`, and a scheduled job. Station's own work on your model
+  connections that is not an agent run (chat titles, session summaries, the
+  approval guardian and review guides) still runs. A direct chat on an Agent
+  bound to an engine the policy does not allow is refused even when you pick
+  a model, rather than run on Station's agent instead.
 - Station never starts its program: it is not checked for prerequisites or
   its version (at startup, for system status or for readiness), asked for its
   models, its sign-in status or how it signs in (the Accounts page), probed

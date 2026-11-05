@@ -1508,6 +1508,7 @@ test('registered structured invoke retains the real raw VoltAgent three-argument
     }),
   });
   const wrapper = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'registered',
     instructions: 'Return JSON.',
     model,

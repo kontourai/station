@@ -183,6 +183,7 @@ async function createToolCallingAgent(options: {
     } as never,
   );
   return await framework.createTempAgent({
+    purpose: 'agent-run',
     name: 'guarded',
     instructions: 'Help',
     model,
