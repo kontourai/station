@@ -68,11 +68,6 @@ function getNodePty(): Promise<typeof import('node-pty')> {
   return nodePtyPromise;
 }
 
-/** The part of node-pty 1.1's Windows terminal that {@link releaseConpty} uses. */
-interface ConptyInternals {
-  _agent?: { _getConsoleProcessList?: () => Promise<number[]> };
-}
-
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
@@ -108,9 +103,19 @@ class NodePtyProcess implements IPtyProcess {
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    const agent = (this.pty as unknown as ConptyInternals)._agent;
-    if (typeof agent?._getConsoleProcessList === 'function')
-      agent._getConsoleProcessList = () => Promise.resolve([]);
+    // node-pty 1.1's private WindowsTerminal._agent._getConsoleProcessList,
+    // found at runtime. Without it (another node-pty) kill() still releases.
+    const { pty } = this;
+    if ('_agent' in pty) {
+      const agent = pty._agent;
+      if (
+        typeof agent === 'object' &&
+        agent !== null &&
+        '_getConsoleProcessList' in agent &&
+        typeof agent._getConsoleProcessList === 'function'
+      )
+        agent._getConsoleProcessList = () => Promise.resolve([]);
+    }
     try {
       this.pty.kill();
     } catch (error) {
