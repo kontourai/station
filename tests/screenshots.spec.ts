@@ -2883,8 +2883,38 @@ function projectRepositorySourceScreens(): Screen[] {
                 }),
               ).toBeVisible();
             }
+            if (viewport.width === MOBILE.width && !accessDetails) {
+              const section = page.locator('#section-resources');
+              for (const label of [
+                'Add a repository',
+                'Advanced: checkout repair',
+              ]) {
+                const summary = section.getByText(label, { exact: true });
+                await summary.click();
+                await expect(
+                  section
+                    .locator('details[open] > summary')
+                    .filter({ hasText: label }),
+                ).toHaveCount(1);
+                await expect(summary).toBeInViewport({ ratio: 1 });
+                await summary.click();
+              }
+              await sources
+                .getByRole('button', { name: 'Review checkout', exact: true })
+                .click();
+              const repair = section.getByText('Advanced: checkout repair', {
+                exact: true,
+              });
+              await expect(repair).toBeInViewport({ ratio: 1 });
+              await expect(
+                section
+                  .locator('details[open] > summary')
+                  .filter({ hasText: 'Advanced: checkout repair' }),
+              ).toHaveCount(1);
+              await repair.click();
+            }
             const target = accessDetails
-              ? first.locator('.project-repositories__checkout')
+              ? first.locator('.project-repositories__access')
               : sources.getByRole('heading', {
                   name: 'Repositories and folders',
                   exact: true,
@@ -2908,6 +2938,28 @@ function projectRepositorySourceScreens(): Screen[] {
                 Math.abs(((await target.boundingBox())?.y ?? 0) - top),
               )
               .toBeLessThan(3);
+            const scroller = await page
+              .locator('.project-settings__body')
+              .boundingBox();
+            const pinnedHeader = await page
+              .locator('.detail-header')
+              .boundingBox();
+            const dock = await page
+              .locator('.chat-dock.is-collapsed')
+              .boundingBox();
+            expect(scroller).not.toBeNull();
+            expect(pinnedHeader).not.toBeNull();
+            expect(dock).not.toBeNull();
+            expect(
+              scroller!.y,
+              'Sources scroll below the header',
+            ).toBeGreaterThanOrEqual(
+              pinnedHeader!.y + pinnedHeader!.height - 1,
+            );
+            expect(
+              scroller!.y + scroller!.height,
+              'Sources scroll above the collapsed dock',
+            ).toBeLessThanOrEqual(dock!.y + 1);
             if (accessDetails) {
               await expect(
                 first.getByText('example-user', { exact: true }),
