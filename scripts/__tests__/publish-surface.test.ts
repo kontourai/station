@@ -4,7 +4,8 @@ import { isBuiltin } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript-api';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { ensureCliBundle } from '../run-repo-scan-suites.mjs';
 
 /**
  * Publish-surface contract for the `@kontourai/station-*` workspace packages.
@@ -362,6 +363,11 @@ describe('publish surface', () => {
 
   describe('@kontourai/station-cli (bundled entrypoint)', () => {
     const cli = byName.get('@kontourai/station-cli');
+    // A shard that runs this suite without the repo-scan runner has no CLI
+    // bundle unless another suite happened to build it first.
+    beforeAll(() => {
+      ensureCliBundle();
+    }, 180_000);
 
     it('is publishable and ships a pre-bundled entrypoint, not raw source', async () => {
       expect(cli).toBeDefined();
