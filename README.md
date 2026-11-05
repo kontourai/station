@@ -43,7 +43,14 @@ source, stores its data under `~/.station`, and has a public SDK for plugins.
 - **Add a tool or work surface.** Plugins built on the public SDK can add
   layouts, agents, MCP tools, model providers, knowledge, and skills.
 
-## Sharing with others
+## Work in a Task room
+
+Station’s team experience is being built around interactive Task rooms. People
+and agents work from shared Task and project knowledge, talk through the work,
+and see what the agents are doing. Room permissions will control who can join
+and which agents they can direct.
+
+### Current sharing limits
 
 You can invite people to a Project and give them a role. After signing in and
 getting their browser approved, they can read the Tasks you publish for them.

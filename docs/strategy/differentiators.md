@@ -11,8 +11,10 @@ evidence routes establish which parts a particular feature currently delivers.
 
 **Station keeps coding work attached to a Task across agents, Sessions, and
 paired devices.** An individual developer can return to the same work from
-another paired device. Selected sharing gives others access to that Task
-history. Plugins adapt the workspace to personal and organizational workflows.
+another paired device. The team vision is an interactive room for that Task:
+people and agents share knowledge, converse, and inspect activity and results
+within explicit permissions. Plugins adapt the workspace to personal and
+organizational workflows.
 
 The product hypothesis is less effort reconstructing context and coordinating
 work. Evidence and receipts support the decision to accept a result. Qualify
@@ -28,9 +30,9 @@ workflow.
 
 1. **Everyday coding usefulness.** Choose an agent, move a real project Task
    forward, inspect the result, and return from another device.
-2. **Collaboration that grows from useful work.** Bring a teammate into a
-   selected Project or Task to understand, discuss, review, or contribute
-   within their permissions. Access to an output is separate from control
+2. **A shared Task room.** People and agents work from shared knowledge,
+   talk with each other and the room’s available agents, and see the work
+   happening. This is the team design to qualify with a two-person journey. Access to an output is separate from control
    over the agent, credentials, or compute that produced it.
 3. **An adaptable workspace.** Public plugin contracts support personal
    customization and purpose-built team surfaces.

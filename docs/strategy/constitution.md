@@ -21,6 +21,13 @@ into selected Projects and Tasks with clear control over participation and
 resources. Plugins let individuals and organizations shape the workspace around
 their work through public extension contracts.
 
+The Task room is the collaboration unit. People and agents work from shared
+Task and project knowledge. Participants should be able to talk with each other
+and the agents available to the room, follow agent activity, inspect results,
+and contribute within their permissions. Room access, permission to direct an
+agent, and access to inference are separate grants. An agent’s output can help
+other participants without giving them control over that agent.
+
 Plans, conversations, decisions, changes, and checks belong with the work so the
 next person or agent can understand and contribute without reconstructing the
 whole conversation. Evidence and receipts help people decide what to accept.
