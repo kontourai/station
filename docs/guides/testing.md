@@ -983,7 +983,7 @@ suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
 (#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
-other files, so a forked worker that dies on the hosted runner (an open,
+other files, so a forked worker that dies (an open,
 intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
 other suite's results; every invocation runs, and any failure fails the floor
 without a retry. A ConPTY cannot change

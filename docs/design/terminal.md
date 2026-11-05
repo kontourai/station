@@ -1171,13 +1171,16 @@ Code chat in a Project was not offered the tool. Desktop copy to the system
 clipboard was not read back. On Windows, Stop does not reach a command's
 descendant whose parent already exited, and the journal does not record
 resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. On the hosted Windows runner a forked Vitest worker
+already scrolled. On Windows a forked Vitest worker
 running a terminal process suite has exited without an error, a report or a
 log line, at most once in three runs and under a different suite each time
 (the retention suite in run 41973735929, the socket suite about 37 seconds
-in, in run 42017221712); a diagnostic run that recorded every test, PTY
-spawn, kill and exit and `taskkill` (42020043935) passed, and the cause is
-not found. The floor
+in, in run 42017221712). On the Windows machine above it happened once in
+four full floor runs, in the retention suite in an invocation of its own
+after five other terminal suites, and not in six runs of that suite alone.
+A hosted run and three local floor runs that recorded every test, PTY spawn,
+kill and exit and `taskkill` all passed (42020043935), and the cause is not
+found. The floor
 ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
 therefore runs each terminal process suite in a Vitest invocation of its own,
 so a dead worker hides no other suite's results; the floor still fails, and

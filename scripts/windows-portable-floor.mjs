@@ -7,10 +7,11 @@
  * Each terminal process suite (`src-server/services/terminal/__tests__/`,
  * `*.process.test.ts` or `*.real.test.ts`) runs in a Vitest invocation of its
  * own, after one invocation for every other file. A forked Vitest worker on
- * the hosted Windows runner has exited without a word at most once in three
- * runs, each time under a different terminal suite (#3994: runs 41973735929
- * and 42017221712); in one invocation that hid the results of every file the
- * dead worker would have run. Every invocation runs whatever the others did,
+ * Windows has exited without a word at most once in three hosted runs, each
+ * time under a different terminal suite (#3994: runs 41973735929 and
+ * 42017221712), and once in four local ones; the cause is not found. In one
+ * invocation that hid the results of every file the dead worker would have
+ * run. Every invocation runs whatever the others did,
  * and the floor fails when any one fails, crashes, is signalled or cannot
  * start: isolation keeps each suite's verdict visible, it never retries one.
  */
