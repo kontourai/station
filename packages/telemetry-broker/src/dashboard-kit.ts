@@ -48,7 +48,7 @@ svg.chart text.end{fill:var(--ink2);font-weight:600}
 .s1{fill:var(--s1);stroke:var(--s1);color:var(--s1)}.s2{fill:var(--s2);stroke:var(--s2);color:var(--s2)}.s3{fill:var(--s3);stroke:var(--s3);color:var(--s3)}.s4{fill:var(--s4);stroke:var(--s4);color:var(--s4)}
 .s5{fill:var(--s5);stroke:var(--s5);color:var(--s5)}.s6{fill:var(--s6);stroke:var(--s6);color:var(--s6)}.s7{fill:var(--s7);stroke:var(--s7);color:var(--s7)}.s8{fill:var(--s8);stroke:var(--s8);color:var(--s8)}
 .r1{fill:var(--r1);background:var(--r1)}.r2{fill:var(--r2);background:var(--r2)}.r3{fill:var(--r3);background:var(--r3)}.r4{fill:var(--r4);background:var(--r4)}.r5{fill:var(--r5);background:var(--r5)}
-.col{stroke:none!important}.col.partial{opacity:.45}.col:hover,.col:focus{opacity:.8;outline:none}
+.col{stroke:none!important}.col.noise{fill:var(--grid)!important;opacity:.7}.fold{color:var(--muted);font-size:.8rem;margin-top:.6rem}.col.partial{opacity:.45}.col:hover,.col:focus{opacity:.8;outline:none}
 .bars{display:grid;grid-template-columns:minmax(5rem,11rem) 1fr auto;gap:.45rem .75rem;align-items:center}
 .bars .name{color:var(--ink2);font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bars .track{height:12px;position:relative}
@@ -256,14 +256,30 @@ export const DASHBOARD_KIT_JS = String.raw`
   }
 
   // Columns from one baseline; partial (still open) periods are faded.
+  // 'masked' indexes are values the page may not show (within noise): each
+  // gets a muted full-height placeholder with no number, its tooltip says
+  // 'within noise', and it does not set the scale.
   function columnChart(body, opts) {
     var f = frame(body, opts.height || 200);
-    var n = opts.values.length, max = Math.max.apply(null, opts.values.concat([0]));
+    var masked = opts.masked || [];
+    var isMasked = function (i) { return masked.indexOf(i) >= 0; };
+    var n = opts.values.length, max = Math.max.apply(null, opts.values.filter(function (v, i) { return !isMasked(i); }).concat([0]));
     var top = yAxis(f, max), band = f.plotW / Math.max(1, n), w = Math.min(24, Math.max(2, band - 2));
     var xAt = function (i) { return M.left + band * i + band / 2; };
     var yAt = function (v) { return M.top + f.plotH - (v / top) * f.plotH; };
     xLabels(f, opts.labels.map(opts.labelFormat || shortDay), xAt, opts.labelCount || 6);
     opts.values.forEach(function (v, i) {
+      if (isMasked(i)) {
+        var slot = svgEl('rect', { class: 'col noise', x: xAt(i) - w / 2, y: M.top, width: w, height: f.plotH, rx: 4, tabindex: 0 }, f.svg);
+        var tipNoise = function (e) {
+          var rect = slot.getBoundingClientRect();
+          showTip(e && e.clientX !== undefined ? e.clientX : rect.left + rect.width / 2, e && e.clientY !== undefined ? e.clientY : rect.top,
+            (opts.titleFormat || shortDay)(opts.labels[i]), [{ value: 'within noise' }]);
+        };
+        slot.addEventListener('pointermove', tipNoise); slot.addEventListener('pointerleave', hideTip);
+        slot.addEventListener('focus', function () { tipNoise(); }); slot.addEventListener('blur', hideTip);
+        return;
+      }
       var x = xAt(i) - w / 2, y = yAt(v), base = yAt(0), r = Math.min(4, w / 2, base - y);
       var d = v <= 0 ? 'M' + x + ',' + base + 'h' + w :
         'M' + x + ',' + base + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'V' + base + 'Z';
@@ -281,7 +297,7 @@ export const DASHBOARD_KIT_JS = String.raw`
       col.addEventListener('focus', function () { show(); }); col.addEventListener('blur', hideTip);
     });
     // Only label the last cap where columns leave room for its text.
-    if (n && band >= 18) {
+    if (n && band >= 18 && !isMasked(n - 1)) {
       var lastV = opts.values[n - 1], label = svgEl('text', { class: 'end', x: xAt(n - 1), y: yAt(lastV) - 6, 'text-anchor': 'middle' }, f.svg);
       label.textContent = compact(lastV);
     }
@@ -289,11 +305,14 @@ export const DASHBOARD_KIT_JS = String.raw`
   }
 
   // Ranked horizontal bars (HTML): one series, so one color and no legend.
+  // 'folded' counts values the page may not show; they become one line with
+  // no numbers.
   function barList(body, rows, opts) {
     opts = opts || {};
     var list = h('div', 'bars', null, body), max = 0;
     rows.forEach(function (r) { if (r.value > max) max = r.value; });
-    if (!rows.length) { h('div', 'empty', opts.empty || 'No data yet', body); return; }
+    if (opts.folded) h('div', 'fold', opts.folded + (opts.folded === 1 ? ' other value' : ' other values') + ' within noise', body);
+    if (!rows.length) { if (!opts.folded) h('div', 'empty', opts.empty || 'No data yet', body); return; }
     rows.forEach(function (r) {
       h('div', 'name', r.label, list).title = r.label;
       var track = h('div', 'track', null, list), fill = h('div', 'fill', null, track);

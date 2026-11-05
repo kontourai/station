@@ -61,9 +61,10 @@ async function openPage(
       (unlock !== null && !unlock.hidden && requests.length === (key ? 1 : 0))
     );
   };
-  const deadline = Date.now() + 5000;
-  vi.useRealTimers();
-  while (!settled() && Date.now() < deadline)
+  // Only Date is faked, so timers still run. Keep the fixed date while the
+  // page's requests reach the receiver: bound the wait by attempts, never by
+  // the clock, or the receiver reads the real date.
+  for (let attempt = 0; attempt < 500 && !settled(); attempt++)
     await new Promise((resolve) => setTimeout(resolve, 10));
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { document: window.document, requests };
@@ -192,16 +193,90 @@ test('the public page charts the published weeks', async () => {
 function publish(
   receiver: ReturnType<typeof fakeReceiver>,
   cells: [string, string, number][],
+  week = '2026-10-26',
 ) {
   const insert = receiver.storage.db.prepare(
     'INSERT INTO lite_published VALUES (?, ?, ?, ?, ?)',
   );
   receiver.storage.db
     .prepare('INSERT INTO lite_publications VALUES (?, ?)')
-    .run('2026-10-26', 'kontour');
+    .run(week, 'kontour');
   for (const [dimension, value, estimate] of cells)
-    insert.run('2026-10-26', 'kontour', dimension, value, estimate);
+    insert.run(week, 'kontour', dimension, value, estimate);
 }
+
+test('no bar, chart label or table cell shows a value within the noise', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  // The published bound: 95% of a cell's noise lies within ln(20)/epsilon.
+  const { epsilonPerCount } = await (
+    await call(env, '/v1/public/aggregates')
+  ).json();
+  const bound = Math.log(20) / epsilonPerCount;
+  expect(bound).toBeGreaterThan(838);
+  expect(bound).toBeLessThan(839);
+  publish(receiver, [['first_active_this_week', 'true', 3000]], '2026-10-12');
+  publish(receiver, [['first_active_this_week', 'true', 838]], '2026-10-19');
+  publish(receiver, [
+    ['first_active_this_week', 'true', 840],
+    ['platform', 'darwin', 2400],
+    ['platform', 'linux', 840],
+    ['platform', 'cygwin', 589],
+    ['platform', 'haiku', 300],
+    ['platform', 'win32', 0],
+    ['arch', 'mipsel', 700],
+    ['engines_used_today', 'claude', 2900],
+    ['engines_used_today', 'codex', 2000],
+  ]);
+  const { document } = await openPage(env, '/public/', '/public/dashboard.js');
+  const numbers = (selector: string) =>
+    [...document.querySelectorAll(selector)]
+      .map((node) => node.textContent?.replace(/[^0-9]/g, '') ?? '')
+      .filter(Boolean)
+      .map(Number);
+  // Bar values, the chart's labelled columns and every table cell.
+  for (const value of [
+    ...numbers('.bars .val'),
+    ...numbers('svg.chart text.end'),
+    ...numbers('details.table td:last-child'),
+  ])
+    expect(value).toBeGreaterThan(bound);
+  const card = (title: string) =>
+    [...document.querySelectorAll('.card')].find(
+      (node) => node.querySelector('h2')?.textContent === title,
+    );
+  const platform = card('Platform');
+  expect(
+    [...(platform?.querySelectorAll('.bars .name') ?? [])].map(
+      (n) => n.textContent,
+    ),
+  ).toEqual(['darwin', 'linux']);
+  expect(platform?.textContent).toContain('3 other values within noise');
+  const rows = [...(platform?.querySelectorAll('details.table tr') ?? [])].map(
+    (row) => [...row.querySelectorAll('td')].map((td) => td.textContent),
+  );
+  expect(rows).toContainEqual(['cygwin', 'within noise']);
+  expect(rows).toContainEqual(['darwin', '2,400']);
+  // Architecture has nothing above the bound: no bars, only the fold line.
+  const arch = card('Architecture');
+  expect(arch?.querySelectorAll('.bars .name')).toHaveLength(0);
+  expect(arch?.textContent).toContain('1 other value within noise');
+  // The 10-19 week is a muted placeholder with no number.
+  const trend = card('Weekly active networks');
+  expect(trend?.querySelectorAll('svg.chart .col.noise')).toHaveLength(1);
+  const weeks = [...(trend?.querySelectorAll('details.table tr') ?? [])].map(
+    (row) => [...row.querySelectorAll('td')].map((td) => td.textContent),
+  );
+  expect(weeks).toContainEqual(['2026-10-19', 'within noise']);
+  expect(weeks).toContainEqual(['2026-10-26', '840']);
+  // A leader needs a gap wider than the single-cell bound: 900 is not enough
+  // for two independent noisy cells; 1,560 is.
+  const tiles = [...document.querySelectorAll('.tile .label')].map(
+    (n) => n.textContent,
+  );
+  expect(tiles).not.toContain('Most used harness');
+  expect(tiles).toContain('Top platform');
+});
 
 test('the public page never sums clipped cells and names a top value only above the noise', async () => {
   const receiver = fakeReceiver();

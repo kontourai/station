@@ -40,7 +40,10 @@ export function brokerErrorStatus(code: BrokerError['code']): number {
   if (code === 'source_unauthorized') return 401;
   if (code === 'event_conflict' || code === 'source_conflict') return 409;
   if (code === 'storage_limit') return 507;
-  if (code === 'query_limit') return 422;
+  // A well-formed request the receiver cannot take in its current state;
+  // repeating it unchanged is refused again, so it is not a transient 5xx.
+  // 409 stays reserved for a changed payload under a retained event ID.
+  if (code === 'query_limit' || code === 'day_closed') return 422;
   if (
     code === 'invalid_cursor' ||
     code === 'invalid_source' ||

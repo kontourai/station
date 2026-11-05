@@ -97,6 +97,35 @@ test('closing a day erases its salt and every contributor key', async () => {
   expect(receiver.storage.alarmAt()).toBe(nextMaintenance(Date.now()));
 });
 
+test('a forward clock jump closes only days that had a salt', async () => {
+  at('2026-11-04T10:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.1' })).status).toBe(202);
+  // The clock jumps two months ahead, takes a ping and runs maintenance.
+  at('2027-01-04T10:00:00Z');
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.2' })).status).toBe(202);
+  at('2027-01-04T11:00:05Z');
+  await receiver.object.alarm();
+  // Corrected: the real next day was never opened, so it accepts pings. The
+  // day whose salt was erased stays closed.
+  at('2026-11-05T10:00:00Z');
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.3' })).status).toBe(202);
+  at('2026-11-04T12:00:00Z');
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.4' })).status).toBe(422);
+  // The jumped day's salt is gone again, and its pings are finalized rather
+  // than left holding contributor keys until 2027.
+  at('2026-11-06T00:30:00Z');
+  await receiver.object.alarm();
+  expect(receiver.rows('SELECT day FROM lite_salts')).toEqual([]);
+  expect(
+    receiver.rows(
+      'SELECT count(*) AS n FROM lite_pings WHERE client_hash IS NOT NULL',
+    ),
+  ).toEqual([{ n: 0 }]);
+});
+
 test('a clock that steps back cannot reopen or refinalize a closed day', async () => {
   at('2026-11-04T10:00:00Z');
   const receiver = fakeReceiver();
@@ -118,12 +147,12 @@ test('a clock that steps back cannot reopen or refinalize a closed day', async (
     clients: 3,
   });
 
-  // The clock steps back into the closed day: refused, like the Node
-  // receiver's day mismatch, and no salt is recreated for it.
+  // The clock steps back into the closed day: refused with a content-free,
+  // non-transient answer, and no salt is recreated for it.
   at('2026-11-04T23:00:00Z');
   const refused = await post(env, LITE, ping(), { ip: '192.0.2.1' });
-  expect(refused.status).toBe(503);
-  expect(await refused.json()).toEqual({ error: 'storage_busy' });
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: 'day_closed' });
   expect(
     receiver.rows(
       "SELECT count(*) AS n FROM lite_salts WHERE day = '2026-11-04'",
@@ -216,12 +245,16 @@ test('the alarm applies 90-day retention and keeps its own schedule', async () =
   expect(receiver.rows('SELECT rows FROM lite_capacity')).toEqual([
     { rows: 1 },
   ]);
-  // Finalized history outlives raw retention.
+  // Finalized history outlives raw retention; the finalization journal and
+  // closed-day records follow the rows they journal.
   expect(
     receiver.rows(
       "SELECT count(*) AS n FROM lite_marginals WHERE day = '2026-08-01'",
     )[0].n,
   ).toBeGreaterThan(0);
+  expect(receiver.rows('SELECT day FROM lite_finalized')).toEqual([
+    { day: '2026-10-29' },
+  ]);
   expect(receiver.storage.alarmAt()).toBe(Date.parse('2026-10-30T04:00:05Z'));
 });
 
