@@ -1,6 +1,7 @@
 import type { TelemetryPublisherId } from './product-telemetry.js';
 
-// Absolute end rejects a final newline, which JavaScript's $ anchor permits.
+// The absolute end (?![\s\S]) matches JavaScript's non-multiline $, and also
+// refuses a final newline under JSON Schema validators whose $ allows one.
 export const PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN =
   /^(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}(?![\s\S])/;
 
