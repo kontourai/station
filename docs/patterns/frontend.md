@@ -171,6 +171,8 @@ with its feature. A new rule should have real consumers and one style owner.
   paragraphs, lists, and field groups semantic instead of spacing each child
   with feature-specific margins. This recipe is opt-in; it does not reset
   unrelated pages or long-form prose.
+- `ActionRow` owns primary/secondary action order, wrapping, and gaps. App and
+  server update controls use the same row instead of custom button-row CSS.
 - `Field` and `Select` from `@kontourai/ui/react` own labels, hints, control
   geometry, and the select chevron. The select retains native keyboard and
   mobile behavior. Do not add a bare select with separate border, padding,

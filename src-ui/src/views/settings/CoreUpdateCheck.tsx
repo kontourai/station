@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { StatusSummary } from '../../components/StatusSummary';
 import { SkeletonBlock } from '../../components/state';
@@ -830,24 +831,27 @@ export function CoreUpdateCheck({
           }}
         />
       ) : (
-        <div className="settings__update-row">
-          {canApply && !stagedFlow && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setConfirmApplyScope(scopeKey ?? 'unscoped');
-              }}
-              disabled={updateMutation.isPending || restarting}
-            >
-              {restarting || updateMutation.isPending
-                ? 'Updating…'
-                : canApplyServiceUpdate
-                  ? 'Update server'
-                  : 'Update server checkout'}
-            </Button>
-          )}
-          {checkButton}
-        </div>
+        <ActionRow
+          overflowLabel="More server update actions"
+          secondary={checkButton}
+          primary={
+            canApply && !stagedFlow ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmApplyScope(scopeKey ?? 'unscoped');
+                }}
+                disabled={updateMutation.isPending || restarting}
+              >
+                {restarting || updateMutation.isPending
+                  ? 'Updating…'
+                  : canApplyServiceUpdate
+                    ? 'Update server'
+                    : 'Update server checkout'}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
       {active &&
         confirmApplyScope === (scopeKey ?? 'unscoped') &&
