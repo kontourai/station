@@ -308,7 +308,13 @@
 
     "src-ui/src/views/home/home-view-model.ts",
 
-    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx"
+    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
+
+    "src-ui/src/contexts/background-tasks-store.ts",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-ui/src/utils/child-work-display.ts"
   ],
 
   "checks": [
