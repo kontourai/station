@@ -17,7 +17,7 @@ const stranger = sessionReadAuthorityFromRequest(
 );
 afterEach(() => vi.unstubAllEnvs());
 
-async function setup() {
+async function setup(options: { maxInFlight?: number } = {}) {
   const home = makeTempDir('station-memory-brief-');
   vi.stubEnv('STATION_HOME', home);
   const persistence = new FileStorageAdapter(home);
@@ -64,6 +64,7 @@ async function setup() {
     'human',
   );
   const provider = createMemoryBriefProvider({
+    ...(options.maxInFlight ? { maxInFlight: options.maxInFlight } : {}),
     manager,
     review,
     enabled: () => state.enabled,
@@ -255,4 +256,64 @@ test('a stale turn’s delivery report cannot mark a newer turn’s conversation
   // The second turn is refused before it reaches the model, so the brief comes back.
   second?.abandoned();
   expect((await provider(request, session))?.entries).toBe(1);
+});
+
+test('a client that aborts stops holding the brief, and a late report from its turn changes nothing', async () => {
+  const { provider } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-abort' };
+  const gone = new AbortController();
+  const first = await provider(
+    new Request('http://station.test/chat', { signal: gone.signal }),
+    session,
+  );
+  expect(first?.entries).toBe(1);
+  // The turn is stuck behind other work when its client goes away.
+  gone.abort();
+  const live = new Request('http://station.test/chat');
+  const second = await provider(live, session);
+  expect(second?.entries).toBe(1);
+  // The aborted turn finally reports. The live turn still holds the reservation.
+  first?.delivered();
+  first?.abandoned();
+  expect(await provider(live, session)).toBeNull();
+  second?.delivered();
+  expect(await provider(live, session)).toBeNull();
+});
+
+test('an already-aborted request is not briefed and holds nothing', async () => {
+  const { provider } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-dead' };
+  const dead = new AbortController();
+  dead.abort();
+  expect(
+    await provider(
+      new Request('http://station.test/chat', { signal: dead.signal }),
+      session,
+    ),
+  ).toBeNull();
+  expect(
+    (await provider(new Request('http://station.test/chat'), session))?.entries,
+  ).toBe(1);
+});
+
+test('turns in flight are capped, so pinned reservations cannot grow without bound', async () => {
+  const { provider, request } = await setup({ maxInFlight: 3 });
+  const held = [];
+  for (let n = 0; n < 3; n += 1)
+    held.push(
+      await provider(request, {
+        relayOwner: OWNER,
+        conversationId: `pin-${n}`,
+      }),
+    );
+  expect(held.every((brief) => brief?.entries === 1)).toBe(true);
+  expect(
+    await provider(request, { relayOwner: OWNER, conversationId: 'pin-over' }),
+  ).toBeNull();
+  // Settling one frees a place.
+  held[0]?.abandoned();
+  expect(
+    (await provider(request, { relayOwner: OWNER, conversationId: 'pin-over' }))
+      ?.entries,
+  ).toBe(1);
 });

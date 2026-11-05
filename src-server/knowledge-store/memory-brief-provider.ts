@@ -41,7 +41,12 @@ export interface MemoryBrief extends MemoryBriefDelivery {
   entries: number;
 }
 
-export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
+export function createMemoryBriefProvider(
+  deps: MemoryBriefProviderDeps & {
+    /** Most turns that may hold a reservation at once. Default 1000. */
+    maxInFlight?: number;
+  },
+) {
   // A conversation is briefed once. Station's relay sends every turn as plain
   // text, so "first turn" cannot be read from the message; it is the first time
   // this person's conversation gets a brief to the model. A restart forgets, and
@@ -58,6 +63,8 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
   const done = new Set<string>();
   const reserved = new Map<string, symbol>();
   const MAX_REMEMBERED = 5000;
+  // Turns that can hold a reservation at once. Past it a turn simply gets no brief.
+  const MAX_IN_FLIGHT = deps.maxInFlight ?? 1000;
   const keyOf = (userId: string, conversationId: string) =>
     createHash('sha256')
       .update(`${userId}\u0000${conversationId}`)
@@ -95,9 +102,22 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
       ? keyOf(scope.userId, session.conversationId)
       : undefined;
     const owner = Symbol('memory-brief');
+    let onAbort: (() => void) | undefined;
     if (key) {
-      if (done.has(key) || reserved.has(key)) return null;
+      if (
+        done.has(key) ||
+        reserved.has(key) ||
+        reserved.size >= MAX_IN_FLIGHT ||
+        request.signal.aborted
+      )
+        return null;
       reserved.set(key, owner);
+      // A client that goes away stops holding the brief at once, even while the work
+      // it started is still waiting on something. A report that arrives later from
+      // that turn finds it no longer owns the reservation and changes nothing, and an
+      // aborted turn never invokes the agent.
+      onAbort = () => release(key, owner);
+      request.signal.addEventListener('abort', onAbort, { once: true });
     }
     let handedOff = false;
     try {
@@ -116,6 +136,7 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
       if (!guarded.ok) return null;
       if (!brief.text) {
         if (key) finish(key, owner);
+        if (onAbort) request.signal.removeEventListener('abort', onAbort);
         return {
           text: null,
           entries: 0,
@@ -129,14 +150,19 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
         entries: brief.entries.length,
         delivered: () => {
           if (key) finish(key, owner);
+          if (onAbort) request.signal.removeEventListener('abort', onAbort);
         },
         // After delivery this changes nothing: the conversation stays briefed.
         abandoned: () => {
           if (key) release(key, owner);
+          if (onAbort) request.signal.removeEventListener('abort', onAbort);
         },
       };
     } finally {
-      if (key && !handedOff) release(key, owner);
+      if (key && !handedOff) {
+        release(key, owner);
+        if (onAbort) request.signal.removeEventListener('abort', onAbort);
+      }
     }
   };
 }
