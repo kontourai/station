@@ -134,26 +134,99 @@ Project membership and delegation do not grant access to this root.
 `requestKey`, and `GET /api/knowledge/memory/proposals` is the explicit proposal
 query. Reusing a key for different input is refused. Pending proposals are not
 records and are not indexed or returned by ordinary Knowledge search. Ordinary
-record mutation routes cannot write directly into this root. Review decisions,
-distillation and erasure are separate work and are not provided by this preview.
-Optional `provenance.source_refs` identify transcript sources for attribution;
-they neither grant transcript access nor serve as review evidence. Station checks
+record mutation routes cannot write directly into this root. Optional
+`provenance.source_refs` identify transcript sources for attribution; they
+neither grant transcript access nor serve as review evidence. Station checks
 the Corpus adapter binding when opening a root and before cached reads, but does
 not pin that identity across a Station restart. Replacing the store directory can
 therefore cause a reopened registration to adopt a different store. Durable host
 binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
-Proposals submitted through this preview are attributed to the operator; Corpus
-refuses that same person as an approver, including through a future review route.
-Corpus permits the proposer to reject a proposal, but rejection retains its
-content. The preview provides no decision or erasure route; proposal content
-remains in the store until erased through a separately authorized flow.
+Proposals submitted through this route are attributed to the operator; Corpus
+refuses that same person as an approver. Corpus permits the proposer to reject a
+proposal, but rejection retains its content. Proposal content remains in the
+store until erased through a separately authorized flow.
 With the preview enabled, **My knowledge store** lists proposals for lookup and
 can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
 Corpus provides a cascade preview, but Station does not show it yet.
 Erasure remains unavailable until index cleanup and recovery are fenced
 ([#4593](https://github.com/kontourai/station/issues/4593)).
-Agent-backed proposals and human review are separate future work.
+
+### Review, recall and brief
+
+With the preview on, **My knowledge store → Review memory** does three things
+with what your agents have learned about you and your work:
+
+- **You decide the doubtful ones.** Most memories need no attention. Station
+  holds back only the ones that need a person: a new claim that disagrees with
+  an older one, one that replaces something that matters, a merge of two things
+  that may be the same, a reading of a conversation that was not consistent, or
+  one that more people could see than could see its source. Each shows the
+  words it came from, side by side with what it conflicts with. You accept,
+  correct, reject or leave it open.
+- **You can look anything up.** Search shows each memory with the sentence it
+  came from, whether anyone has reviewed it, and what it replaces, was replaced
+  by or disagrees with. A memory nobody flagged is usable straight away,
+  labelled "Not reviewed".
+- **New sessions start informed.** The first message of every new Station
+  session carries a short, bounded brief of what you have confirmed, marked as
+  background and not instruction. Memory that is unreviewed, waiting on a
+  decision, rejected or hidden from you is left out. Turn the preview off and
+  nothing is added.
+
+Only a person promotes a memory. Station decides who is deciding from your
+signed-in request, never from anything sent with it. A decision made through an
+agent, Station's internal token or a delegated device is saved as a note on the
+item and changes nothing; the item stays open for you.
+
+How it works, for integrators:
+
+| Need | Route (all under `/api/knowledge/memory`) | Owner of the meaning |
+| --- | --- | --- |
+| The queue | `GET /queue` | Routing rules: Knowledge Kit `routeMemoryChange` |
+| Open an item (starts its review clock) | `POST /queue/:itemId/open` | Station |
+| Decide | `POST /queue/:itemId/decision` | Survey `ReviewDecision`, with a host-attested `reviewerKind` |
+| Recall | `GET /recall?q=` | Knowledge Kit `presentMemoryClaims` |
+| The brief | `GET /brief` | Knowledge Kit `presentMemoryClaims`, plus the Kit's marker |
+| Measurement | `GET /measurement` | Knowledge Kit `deriveMemoryRunMetrics` |
+
+Claims arrive as Corpus create proposals whose body is the Knowledge Kit's
+distilled-claim envelope (category `memory.claim`). Station reads that envelope,
+checks the claim against its own content-addressed id, and routes it again
+against the claims proposed before it, so the first version of a fact stays
+usable and the one that challenges it is what you decide. Station does not
+distil sessions or schedule distillation in this preview.
+
+What this does not cover yet:
+
+- **Surface accumulation.** Station does not run Surface's projection (it needs
+  custody records Station does not hold), so a conflict is found by comparing
+  claims in the same subject and property. The Kit reports these as
+  `not-evaluated`.
+- **Claims that name a replacement** show their supersession history, but
+  Station does not yet verify a succession edge with Survey support checks.
+- **External engines.** The brief reaches Station-engine chats. Claude Code and
+  Codex sessions build their own context; Station does not write their brief
+  files.
+- **Recall is a plain word match** over claims, titles and excerpts. The Kit's
+  question-answering recall is not yet published as a package.
+
+### Measuring whether review is worth it
+
+`GET /api/knowledge/memory/measurement` returns one record per run
+(`station.memory-measurement/1`): claims proposed, claims no rule flagged,
+claims routed (and the share), routed claims by rule, decisions by outcome
+(confirmed, corrected, rejected, held, annotated, pending), and review time. A
+review is timed from opening the item to submitting the decision, only from the
+reviewer's own events, and is `null` rather than estimated when it was not
+observed. `lineages` has one row per change with whether it was routed, its
+rules, its standing outcome, who decided and how long it took.
+
+This is what the [evals lane](https://github.com/kontourai/evals/blob/main/docs/measurement.md)
+needs for *defect escapes per human-review-minute*: review minutes per lineage
+(`reviewSeconds / 60` for its first reviewed occurrence, zero when never
+routed) and the routed set. Whether a defect *escaped* is the evals lane's
+judgement of the final memory; Station does not compute it.
 
 ## `./station knowledge reindex` — (re)build the index
 

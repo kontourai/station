@@ -10852,7 +10852,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Use a private memory store. It can contain personal information. Create it through the API. Review, recall and briefing are available; erasure is not yet.',
+          'Keep a private memory you can review, search and start new chats from. It can hold personal information. Erasure is not available yet.',
       })
     : undefined;
   const memoryEnabled = () =>
