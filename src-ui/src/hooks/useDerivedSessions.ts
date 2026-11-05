@@ -313,6 +313,7 @@ function deriveSession(
     updatedAt: Date.now(),
     provider: chatState.provider,
     stationConnectionUnavailable: chatState.stationConnectionUnavailable,
+    retainedTranscript: chatState.retainedTranscript,
     stationBinding: chatState.stationBinding,
     stationBindingInvalid: chatState.stationBindingInvalid,
     peerChat: chatState.peerChat,

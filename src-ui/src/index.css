@@ -3921,6 +3921,7 @@ button:hover {
 
 .message.assistant {
   align-self: flex-start;
+  color: var(--text-primary);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
 }

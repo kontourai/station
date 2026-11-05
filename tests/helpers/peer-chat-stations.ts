@@ -721,6 +721,9 @@ export async function captureConnectionState(
                   element: element.tagName,
                   className: element.className,
                   color: style.color,
+                  textFillColor: style.webkitTextFillColor,
+                  opacity: style.opacity,
+                  filter: style.filter,
                   background: style.backgroundColor,
                 });
               }

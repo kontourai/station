@@ -3581,7 +3581,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? newChatDraftTitle
                   : importedSessionId
                     ? importedTitle
-                    : activeSession?.title || 'Chat'
+                    : activeSession?.title === 'New chat' &&
+                        activeOrchestrationSession?.displayTitle
+                      ? activeOrchestrationSession.displayTitle
+                      : activeSession?.title || 'Chat'
               }
               // station#3309: same identity the desktop header leads with,
               // from the same session-committed slug — artwork only when the
