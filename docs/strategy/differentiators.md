@@ -9,7 +9,8 @@ evidence routes establish which parts a particular feature currently delivers.
 
 ## The One-Line Differentiation
 
-**Station is a coding workspace that grows with you.** Individual developers
+**Station keeps coding work attached to a Task across agents, Sessions, and
+paired devices.** Individual developers
 get their agents, project context, changes, and checks together across Sessions
 and paired devices. Scoped collaboration lets the same work involve others;
 plugins let the workspace fit personal and organizational workflows.
@@ -18,6 +19,11 @@ The product hypothesis is less effort reconstructing context and coordinating
 work. Evidence and receipts support the decision to accept a result. Qualify
 the personal coding loop and the real two-person journey separately; the
 existence of their components does not establish a complete experience.
+
+The public promise is “Code from anywhere. On your own, or with your team.”
+Use concrete supporting copy and keep current sharing limits in the owning
+guides and team FAQ. This wording does not qualify a complete two-person
+workflow.
 
 ## Message Hierarchy
 
@@ -34,7 +40,8 @@ existence of their components does not establish a complete experience.
 
 “Command your Station” is a brand line. “Work ships with receipts” expresses
 the evidence discipline. Neither replaces the coding-workspace description or
-establishes current team or verification guarantees.
+establishes current team or verification guarantees. Public headings should
+name what developers can do rather than repeat a positioning slogan.
 
 ## Durable Advantages
 

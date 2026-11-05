@@ -1,12 +1,9 @@
 # Getting Started
 
-Station is an open-source, local-first coding workspace that grows with you.
-Start with your own agents and projects, follow the work from paired devices,
-and extend the experience through plugins. For involving teammates, read the
+Run Station on your computer and connect an agent such as Claude Code or Codex.
+This guide covers installation, your first chat and Project, connecting a phone,
+and keeping Station updated. To share a Project with someone, read the
 [sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
-This guide covers the ways
-to run Station today, a verified macOS/Linux install when its release ring is
-published, first launch, connection setup, and routine lifecycle.
 
 ## First chat with Codex
 

@@ -12,7 +12,7 @@ Kontour's evidence infrastructure.*
 
 ## Mission
 
-**Station is an open-source coding workspace that grows with you.**
+**Station is an open-source workspace for running and reviewing coding agents.**
 
 People choose it for their own coding work: use preferred agents, keep project
 context and results together, inspect changes and checks, and continue from a
@@ -84,7 +84,7 @@ Station agents and External agents run through one orchestration layer with a un
 
 ### 5. Local-first, user owns their data
 
-All runtime data lives in the user's home directory. No cloud account required. No identifying telemetry without consent. Station may send anonymous, identifier-free aggregate counts to a publisher with clear notice and an always-available off switch; anything keyed to an installation requires explicit opt-in. DO_NOT_TRACK is honored. Evidence, runs, and reports are files the user can version-control. This is shared DNA with every Kontour product — local-first, file-backed, zero lock-in — and is non-negotiable for the compliance-sensitive teams Station serves.
+All runtime data lives in the user's home directory. No cloud account required. No identifying telemetry without consent. Station may send anonymous, identifier-free aggregate counts to a publisher with clear notice and an always-available off switch; anything keyed to an installation requires explicit opt-in. DO_NOT_TRACK is honored. Evidence, runs, and reports are files the user can version-control. This is shared DNA with every Kontour product — local-first, file-backed, zero lock-in — and is non-negotiable for the developers and teams Station serves.
 
 ### 6. Stand-alone products are a success condition, not scope creep
 

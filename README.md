@@ -1,16 +1,16 @@
 # Station
 
-**A coding workspace that grows with you.**
+**Code from anywhere. On your own, or with your team.**
 
 [![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Station is Kontour's open-source, local-first coding workspace for individual
-developers and small teams. Work with the agents you choose, keep project
-context, changes, and checks together, and follow the work from your computer
-or phone. Start with the included experience and extend it with plugins as your
-workflow grows. A completed run and a passed review are separate facts.
+Run Station on a computer you control, connect Claude Code, Codex, or another
+supported coding agent, and open your project. Direct a Task from your desk or
+a paired phone. The plan, Session history, changed files, and check results stay
+with the Task so you can review the work before continuing. Station is open
+source, stores its data under `~/.station`, and has a public SDK for plugins.
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
@@ -18,53 +18,42 @@ workflow grows. A completed run and a passed review are separate facts.
 [Concepts](docs/user/concepts.md) ·
 [Contributing](CONTRIBUTING.md)
 
-> **Status:** open source under active development (Apache-2.0). Run Station
-> using a signed Nightly server archive or a Nightly desktop build.
-> The portable installer requires a published release in the selected ring. See
-> [Get Station](#get-station).
+> **Status:** open source (Apache-2.0) and in active development. Install
+> the Nightly with one command, use a Nightly desktop build, or run from source.
+> There is no stable release yet. See [Get Station](#get-station).
 
 ## Why Station
 
-Start with your own coding work, then involve others within a defined scope:
+- **Choose an engine for the work.** Run a Station agent on a local or hosted
+  model, or connect supported agent CLIs and compatible custom engines. Each
+  engine keeps its own behavior and tool loop. Station supplies Project context,
+  records its activity, and connects configured workflows.
+- **Return to the Task between Sessions.** Its plan, conversations, files,
+  artifacts, and results stay linked. When you reopen a Task, check that its
+  recorded workspace is still available.
+- **Direct work from another device.** Pair a phone, tablet, or laptop with
+  scoped, revocable access. You can also send work to another computer you own
+  over SSH, using that computer’s agents and credentials.
+- **Review the changes and check results.** Configured workflows can attach
+  gate results, missing evidence, review receipts, and exceptions to the Task.
+  Creating or completing a Task doesn’t mean a gate passed.
+- **Run it on your own machine.** Station data lives under `~/.station` by
+  default. Networked features have their own settings and destinations; see
+  [Data and privacy](#data-and-privacy).
+- **Add a tool or work surface.** Plugins built on the public SDK can add
+  layouts, agents, MCP tools, model providers, knowledge, and skills.
 
-- **Supported engines, one workspace** — run Station agents on a local or
-  hosted model, or connect supported agent CLIs and compatible custom engines
-  as External agents. Each engine keeps its own behavior and tool loop;
-  Station supplies project context, execution records, and configured workflow
-  integrations.
-- **Work that outlives a chat** — Projects, Tasks, Sessions, changed files,
-  artifacts, and receipts stay linked. Reopen a Task later with its recorded
-  workspace binding and evidence, then check the workspace's current availability.
-- **Your devices, your Station** — pair a phone, tablet, or laptop to your
-  Station with scoped, revocable access, and delegate work to another
-  computer you own over SSH.
-- **Evidence beside the work** — inspect gate results, missing evidence,
-  review receipts, and exceptions where the configured workflow provides them.
-  Creating or completing a Task does not by itself prove a gate passed.
-- **Local-first ownership** — Station data lives under `~/.station` by
-  default. Networked features have separate settings and destinations;
-  review those boundaries under [Data and privacy](#data-and-privacy).
-- **Built to extend** — build on Station's core capabilities through its public
-  SDK and plugin APIs. Add layouts, agents, tools, knowledge, connections, skills,
-  and work surfaces to shape the workspace around your work. Start with the
-  included experience and extend it with your own plugins.
+## Sharing with others
 
-## Grow into shared work
+You can invite people to a Project and give them a role. After signing in and
+getting their browser approved, they can read the Tasks you publish for them.
+Editing Tasks and running agents from that entry aren’t available yet. Review
+and member-presence UI include Feature Previews. Pairing connects your own
+devices; it isn’t team access. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
+before inviting someone.
 
-Station's direction is to grow from a useful personal coding workspace into
-shared Project and Task work: plans, decisions, knowledge, review, and results
-that another person or agent can understand and contribute to. Project
-invitations and roles provide scoped access. The separate collaborator browser
-entry currently reads shared Tasks; editing and agent execution through that
-entry remain unavailable. Review and member-presence UI include Feature
-Previews. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
-before inviting someone; paired devices alone do not prove a complete team
-workflow.
-
-Plugins support personal customization and purpose-built team work surfaces
-through the public SDK. Shared inference, contributed compute, and enterprise
-deployment each need their own supported contracts and qualification; plugin
-support does not establish them. See [integrating Station](docs/guides/integrating-station.md).
+Plugins can also provide team-specific work surfaces. See [integrating Station](docs/guides/integrating-station.md)
+for supported extension contracts and deployment boundaries.
 
 ## What people use it for
 

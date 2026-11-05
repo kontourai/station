@@ -1,6 +1,6 @@
 # Station Context
 
-Station is an open-source, local-first coding workspace that grows with you.
+Station is an open-source workspace for running and reviewing coding agents.
 Individual developers and small teams are its primary audience. It connects
 Projects, Tasks, agent Sessions, files, and evidence, with scoped sharing and
 public plugin contracts. The [constitution](docs/strategy/constitution.md) owns

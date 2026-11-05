@@ -1,10 +1,9 @@
 # Contributing to Station
 
-Station is a coding workspace that grows with you: useful for an individual
-developer, extensible through plugins, and growing into scoped shared work.
-Contributions should help people finish, understand, or review real project
-work. The [constitution](docs/strategy/constitution.md) owns the product direction.
-Start with the path that matches the change.
+Help developers run coding agents, continue work across devices, and review
+the results. Plugins and selected Project sharing build on that personal coding
+experience. The [constitution](docs/strategy/constitution.md) owns the product
+direction. Start with the path that matches the change.
 
 ## Choose a path
 
