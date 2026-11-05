@@ -112,6 +112,21 @@ async function markupWithNotice(options: {
       onControlState: (state) => {
         control = state;
       },
+      // A Browser's own actions, as its pane adds them: the bar is as wide
+      // as it is in the real pane.
+      renderImmersiveActions: () => (
+        <>
+          <button type="button" className="live-surface-controls__action">
+            Back
+          </button>
+          <button type="button" className="live-surface-controls__action">
+            Forward
+          </button>
+          <button type="button" className="live-surface-controls__action">
+            Reload
+          </button>
+        </>
+      ),
     },
     lease(0, MY_HOLD),
   );
