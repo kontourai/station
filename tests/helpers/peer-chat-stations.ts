@@ -470,6 +470,10 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
     'Direct owner browser',
   );
   await page.getByTestId('app-toolbar-connection').click();
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+    .click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Add a Station address' }).click();
   await dialog.getByLabel('Name (optional)').fill('Direct Receiver');
