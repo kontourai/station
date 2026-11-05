@@ -41,7 +41,7 @@ export function getConnectionManagerTitle(
     case 'devices':
       return 'Paired Devices';
     case 'discover':
-      return 'Other Stations';
+      return 'Nearby Stations';
   }
 }
 

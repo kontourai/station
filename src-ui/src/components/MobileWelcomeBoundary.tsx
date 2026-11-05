@@ -47,18 +47,20 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
             }
             secondary={
               <Button
-                onClick={() => openConnectionsModal({ mode: 'discover' })}
+                onClick={() =>
+                  openConnectionsModal({ mode: 'connect-station' })
+                }
               >
-                Find nearby Stations
+                Enter Station address
               </Button>
             }
           />
+          <Button onClick={() => openConnectionsModal({ mode: 'discover' })}>
+            Find nearby Stations
+          </Button>
           <details>
             <summary>Other ways to connect</summary>
-            <p>
-              Enter a Station address, manage saved Stations, or set up an
-              advanced connection.
-            </p>
+            <p>Manage saved Stations or set up an advanced connection.</p>
             <Button onClick={() => openConnectionsModal({ mode: 'list' })}>
               Open connection manager
             </Button>

@@ -88,6 +88,8 @@ describe('fresh phone connection entry', () => {
 
   it.each([
     ['Enter a pairing code', 'pair-code'],
+    // Top level, not three levels down behind the connection manager.
+    ['Enter Station address', 'connect-station'],
     ['Find nearby Stations', 'discover'],
     ['Open connection manager', 'list'],
   ])('opens the existing %s fallback directly', (label, mode) => {

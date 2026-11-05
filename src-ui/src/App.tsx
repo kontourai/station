@@ -3,7 +3,9 @@ import {
   connectionFailureCopy,
   useConnectionStatus,
   useConnections,
+  usePendingPairingApproval,
 } from '@kontourai/station-connect';
+import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
@@ -856,6 +858,38 @@ function HomeRouteHostUnavailable({
         variant="prominent"
         label="Connect to a Station to get started"
         description="Choose a saved Station or add its address."
+      />
+    );
+  }
+  return <HomeRouteHostFailure reason={reason} host={host} address={address} />;
+}
+
+function HomeRouteHostFailure({
+  reason,
+  host,
+  address,
+}: {
+  reason: ConnectionFailureReason | null;
+  host: string;
+  address: string;
+}) {
+  // The header chip reads this same pending-request fact; without it the
+  // card said "isn't accepting this device" (every probe 401s until approval)
+  // while the header said "Awaiting approval".
+  const pendingApproval = usePendingPairingApproval(address);
+  if (pendingApproval) {
+    return (
+      <Empty
+        variant="prominent"
+        label={
+          pairingStateCopy(
+            pendingApproval.requestKind === 'code'
+              ? 'waiting-for-code-approval'
+              : 'waiting-for-approval',
+            host,
+          ).message
+        }
+        description="This device connects as soon as it is approved."
       />
     );
   }

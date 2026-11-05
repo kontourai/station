@@ -276,8 +276,14 @@ Project access administration still requires Project IAM. See the
 
 ## Saved Station addresses
 
-Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
-or scan a QR code. Station checks compatibility and displays the destination's
+Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
+Station also offers **Enter Station address** on its welcome screen, beside
+**Enter a pairing code** and **Find nearby Stations**. Enter its address, a pairing code,
+or scan a QR code. Return in the address field continues. Without a controlling
+Station there is no peer option to weigh, so the destination goes straight to
+its one Device request instead of a second **Request selected access** step.
+When that request is handed to the application shell, the dialog's status line
+follows it: waiting for approval, then saved. Station checks compatibility and displays the destination's
 reported identity. That public response is not a signing-key trust decision.
 In a browser, the destination must permit the current page's exact origin
 through its existing `--allowed-origin` startup setting. HTTPS pages may also
@@ -289,6 +295,14 @@ another page origin are refused even when discovery is allowed. That refusal
 does not create a pending request. Use the native app to request Device access,
 or open the receiver's own page; peer setup still belongs to the sending
 Station's trusted session.
+
+If the Station approves a request but this device cannot save the access, the
+request is held for review rather than retried automatically, because its
+one-time proof is spent. Choose **Pair again**: it retires the held request and
+sends a new one from the same per-origin client instance, and the Station's
+approval of that request supersedes the unsaved grant. Nothing needs revoking
+on the computer. A phone's first Station, including a plain-HTTP loopback
+address, saves its approved access even though saving it selects that Station.
 
 Choose either or both access requests:
 
@@ -2033,7 +2047,9 @@ details. A paired browser can sign in with an enrolled operator passkey and
 confirm an ordinary pairing request on the consent origin; the request remains
 pending until confirmation. See [operator passkeys](operator-passkeys.md) for
 setup and availability. (The share prompt's **Request pairing for this browser** still
-asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
+asks for the full default grant; it says so on screen.) The requesting
+screen says the same level, and a grant approved as asked is listed as
+**Full device access**. A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
 
