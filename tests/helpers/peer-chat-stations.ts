@@ -35,6 +35,7 @@ declare global {
     stationConnectionFaults: {
       loseNextSend(): void;
       disconnectEvents(disconnected: boolean): void;
+      disconnectObservation(disconnected: boolean): void;
     };
   }
 }
@@ -46,7 +47,9 @@ async function installConnectionFaults(page: Page) {
     let loseSend = false;
     let disconnected =
       sessionStorage.getItem('qualification-events-offline') === 'true';
+    let snapshotsDisconnected = false;
     const eventControllers = new Set<AbortController>();
+    const snapshotControllers = new Set<AbortController>();
     window.stationConnectionFaults = {
       loseNextSend: () => {
         loseSend = true;
@@ -57,6 +60,12 @@ async function installConnectionFaults(page: Page) {
         if (value)
           for (const controller of eventControllers) controller.abort();
       },
+      disconnectObservation: (value) => {
+        snapshotsDisconnected = value;
+        window.stationConnectionFaults.disconnectEvents(value);
+        if (value)
+          for (const controller of snapshotControllers) controller.abort();
+      },
     };
     window.fetch = async (input, init) => {
       const url = new URL(
@@ -65,11 +74,18 @@ async function installConnectionFaults(page: Page) {
       );
       const method =
         init?.method ?? (input instanceof Request ? input.method : 'GET');
-      if (url.pathname.endsWith('/api/orchestration/events')) {
-        if (disconnected)
-          throw new TypeError('Qualification event connection is offline');
+      const eventRequest = url.pathname.endsWith('/api/orchestration/events');
+      const snapshotRequest = url.pathname.endsWith('/event-window');
+      if (eventRequest || snapshotRequest) {
+        if (
+          (eventRequest && disconnected) ||
+          (snapshotRequest && snapshotsDisconnected)
+        )
+          throw new TypeError(
+            'Qualification observation connection is offline',
+          );
         const controller = new AbortController();
-        eventControllers.add(controller);
+        (eventRequest ? eventControllers : snapshotControllers).add(controller);
         const signal = init?.signal
           ? AbortSignal.any([init.signal, controller.signal])
           : controller.signal;
@@ -528,8 +544,18 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
     }),
   ).toBeVisible();
   await setup.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByTestId('app-toolbar-connection').click();
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: /^Station details/ })
+    .click();
+  const details = page.getByRole('dialog', {
+    name: 'Station details',
+    exact: true,
+  });
+  await expect(details).toContainText(receiver.api);
   await expect(
-    page.getByRole('button', { name: 'Cancel request', exact: true }),
+    details.getByRole('button', { name: 'Cancel request', exact: true }),
   ).toBeVisible();
   await stationJson(
     receiver,
@@ -542,8 +568,11 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
   };
   expect(Boolean(paired.credential)).toBe(true);
   await expect(
-    page.getByRole('button', { name: 'Cancel request', exact: true }),
+    details.getByRole('button', { name: 'Cancel request', exact: true }),
   ).toHaveCount(0);
+  await details
+    .getByRole('button', { name: 'Close Station details', exact: true })
+    .click();
   expect(page.url()).toBe(sourceUrl);
   await page.getByTestId('app-toolbar-connection').click();
   await page
