@@ -5156,7 +5156,11 @@ operator operations. SSE and webhook retain their separate HTTP transport roles.
 deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
 projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
 times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
-No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+A delivery that matched `observe` or `live` rules also carries `decisions`, one
+per rule ordered by rule id: `ruleId`, `ruleName`, `mode`, `outcome`
+(`would-start`, `suppressed`, `intent-retained`), optional suppression `reason`,
+`actionKind`, `projectId`, `agentId`, `episodeId` and `decidedAt`.
+No payload, instructions, secret or delivery GUID is returned. A `limit` outside 1–200 is
 refused with 400 rather than clamped, an unavailable ledger answers 503 with
 `code: "policy_unavailable"`, and hosted mode answers 404. The route
 ([source](../../src-server/routes/operations/automations.ts)) needs the
@@ -7232,8 +7236,8 @@ inside their mutation authority. Responses are private/no-store.
 | Method | Suffix under `/api/isolated-repairs` | Behavior |
 | --- | --- | --- |
 | GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
-| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
-| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and `observe`-mode isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source at expected configuration fingerprint, or set a rule's `mode` (`off`, `observe`, `live`). For a rule, `enabled:true` still means `live` and `enabled:false` means `off`. |
 | POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
 | GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
 | POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |
