@@ -167,7 +167,9 @@ async function provisionModel(live: LiveStation, origin: string) {
         return (
           catalog.catalogState !== 'reconciling' &&
           catalog.data.some(
-            (agent) => agent.slug === CONNECTION_AGENT && agent.available,
+            // The catalog marks only unlaunchable Agents (`available: false`).
+            (agent) =>
+              agent.slug === CONNECTION_AGENT && agent.available !== false,
           )
         );
       },
