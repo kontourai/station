@@ -9,8 +9,9 @@ if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. The remaining limits arrive in later releases (#4518 and
-#4520). This guide grows with them.
+precedence rules. The remaining limit, the approval-mode ceiling
+(`limits.maxApprovalMode`, #4518), arrives in a later release. This guide
+grows with it.
 
 ## What this release supports
 
