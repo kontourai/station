@@ -208,9 +208,15 @@ run the Project's setup commands while preparing it.
    schedule/workflow_dispatch/push event and failure/timed_out conclusion. The
    episode needs keyFields and a green closeOn matcher. This budget limits
    requests and wall time; it is not a token or billing reservation.
-6. Read `GET /configuration`, then enable the exact source and rule through
-   `POST /configuration/enable` with `{kind:"source"|"rule",id,enabled:true,
-   expectedFingerprint}`. Read a new fingerprint between writes. A stale one
+6. Read `GET /configuration`, then enable the exact source through
+   `POST /configuration/enable` with `{kind:"source",id,enabled:true,
+   expectedFingerprint}`. A new rule starts in `observe` mode: it records
+   `would-start` or `suppressed` decisions in the delivery history but never
+   starts a repair. Observing still polls the source for GitHub runs (using
+   API quota) as soon as the source is enabled. Each observed run also takes
+   its dedupe key, so turning the rule `live` later does not act on that run. When those decisions look right, send
+   `{kind:"rule",id,mode:"live",expectedFingerprint}`. Earlier observed events
+   are not replayed. Read a new fingerprint between writes. A stale one
    refuses the change. Source, rule, profile and preview checks remain separate.
 
 A matching failure creates one canonical Task and one durable repair run. The
