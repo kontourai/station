@@ -12,6 +12,7 @@ export function useDockDeliveryPort(
   clientTurnId: string,
   text: string,
   state?: MessageDeliveryState,
+  knownDiscardable?: boolean,
 ): DeliveryPort {
   const target = useOptionalConversationConnection();
   const station = target?.station;
@@ -30,6 +31,7 @@ export function useDockDeliveryPort(
   const check = useRecheckMessageDelivery(chatKey);
   const [discardable, setDiscardable] = useState(false);
   useEffect(() => {
+    if (knownDiscardable !== undefined) return;
     if (state !== 'unconfirmed') {
       setDiscardable(false);
       return;
@@ -64,14 +66,14 @@ export function useDockDeliveryPort(
       active = false;
       unsubscribe();
     };
-  }, [state, clientTurnId, station, conversationId]);
+  }, [state, clientTurnId, station, conversationId, knownDiscardable]);
   const current = () => {
     if (station && !station.isCurrent())
       throw new Error('Reconnect to this chat’s Station.');
   };
   return {
     savedOnDevice,
-    canDiscardUnconfirmed: discardable,
+    canDiscardUnconfirmed: knownDiscardable ?? discardable,
     check: () => {
       current();
       return check(clientTurnId);

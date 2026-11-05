@@ -328,11 +328,11 @@ function MessageBubbleComponent({
     null,
   );
   const discardUnsent =
-    undelivered === 'not-sent' && msg.clientId
+    undelivered === 'not-sent' && msg.clientId && deliveryPort.discard
       ? () => {
           setDeliveryNotice(null);
           void deliveryPort
-            .discard('not-sent')
+            .discard?.('not-sent')
             .then((text) => {
               if (text) setDeliveryNotice({ text, error: false });
             })

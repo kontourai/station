@@ -112,13 +112,13 @@
     },
     {
       "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
-      "requires": ["composer", "delivery"],
-      "reason": "P2.2 child instruction adapter."
+      "requires": ["delivery"],
+      "reason": "Child instruction protocol retains its exact child/turn form and consumes shared delivery actions."
     },
     {
       "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
-      "requires": ["stop", "approval"],
-      "reason": "P2.2 review work controls."
+      "requires": ["delivery"],
+      "reason": "Review delivery uses the shared note; review resolution is not an engine approval or Stop."
     },
     {
       "file": "src-ui/src/components/chat/QueuedMessages.tsx",
@@ -246,7 +246,8 @@
     "src-ui/src/hooks/useConversationStartTarget.ts",
     "src-ui/src/hooks/orchestration/approvalHandlers.ts",
     "src-ui/src/components/conversation/ConversationReader.tsx",
-    "src-ui/src/components/conversation/useRecordConversationController.ts"
+    "src-ui/src/components/conversation/useRecordConversationController.ts",
+    "src-ui/src/components/conversation/task-conversation-actions.ts"
   ],
   "contracts": [
     {
@@ -368,6 +369,22 @@
       "symbols": ["transcript polling"],
       "fingerprints": ["e2bc849f806bce4a63d3"],
       "reason": "This exact query reads non-transcript Inbox delivery entries. New transcript polling in the same file remains forbidden."
+    },
+    {
+      "file": "src-ui/src/components/conversation/task-conversation-actions.ts",
+      "rule": "G2",
+      "symbols": [
+        "interruptDelegatedTask",
+        "respondToDelegatedTaskRequest",
+        "continueDelegatedTask"
+      ],
+      "reason": "Bound Task adapter preserves Task ids, authority currentness, capability decisions and the delegated protocol."
+    },
+    {
+      "file": "src-ui/src/components/conversation/useApprovalAnswering.ts",
+      "rule": "G2",
+      "symbols": ["respondToRequest"],
+      "reason": "Shared exact-request answer preserves the inspected event and captured authority; the inspection owner retains its uncertainty latch."
     }
   ]
 }

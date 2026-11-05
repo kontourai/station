@@ -37,10 +37,6 @@ import {
   useQueryClient,
   useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
-import {
-  continueDelegatedTask,
-  respondToDelegatedTaskRequest,
-} from '@kontourai/station-sdk/client';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -67,6 +63,7 @@ import {
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { DecisionError } from '../notifications/DecisionError';
@@ -880,21 +877,13 @@ function PeerRequestDecisionActions({
   reference: AttentionPeerRequestReference;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const answer = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: (decision: 'accept' | 'decline') => {
       if (!scope?.isCurrent())
         throw new Error('Reconnect to this Station to decide this request.');
-      return respondToDelegatedTaskRequest(
-        scope.apiBase,
-        reference.taskId,
-        {
-          requestId: reference.requestId,
-          decision,
-          environmentId: reference.environmentId,
-        },
-        { requestScope: scope },
-      );
+      return answer.task(reference, decision, scope);
     },
     onSuccess: async () => {
       await Promise.all([
@@ -909,7 +898,9 @@ function PeerRequestDecisionActions({
         <NoticeAction
           type="button"
           className="notice-action--primary"
-          disabled={mutation.isPending || mutation.isSuccess}
+          disabled={
+            !scope?.isCurrent() || mutation.isPending || mutation.isSuccess
+          }
           onClick={() => mutation.mutate('accept')}
         >
           Allow
@@ -917,7 +908,9 @@ function PeerRequestDecisionActions({
         <NoticeAction
           type="button"
           className="notice-action--danger"
-          disabled={mutation.isPending || mutation.isSuccess}
+          disabled={
+            !scope?.isCurrent() || mutation.isPending || mutation.isSuccess
+          }
           onClick={() => mutation.mutate('decline')}
         >
           Deny
@@ -947,26 +940,14 @@ function PeerInputAnswer({
   itemId: string;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const answering = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
   const [answer, setAnswer] = useState('');
   const mutation = useMutation({
     mutationFn: (message: string) => {
       if (!scope?.isCurrent())
         throw new Error('Reconnect to this Station to answer this request.');
-      return continueDelegatedTask(
-        scope.apiBase,
-        reference.taskId,
-        {
-          message,
-          environmentId: reference.environmentId,
-          expectedInputRequest: {
-            threadId: reference.threadId,
-            requestId: reference.requestId,
-            requestEventId: reference.requestEventId,
-          },
-        },
-        { requestScope: scope },
-      );
+      return answering.taskInput(reference, message, scope);
     },
     onSuccess: async () => {
       setAnswer('');

@@ -170,14 +170,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/components/attention/AttentionCard.tsx",
-      "fingerprint": "90d1271db40dda7a2f2f",
-      "syntax": "adopt approval",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G1",
       "file": "src-ui/src/components/attention/ExactRequestInline.tsx",
       "fingerprint": "2631666cedef4c71bb09",
@@ -190,14 +182,6 @@
       "file": "src-ui/src/components/attention/ExactRequestInline.tsx",
       "fingerprint": "2f28d1025988a74bb1d1",
       "syntax": "useHostRequestAuthorityScope: useHostRequestAuthorityScope",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/attention/ExactRequestInline.tsx",
-      "fingerprint": "90d1271db40dda7a2f2f",
-      "syntax": "adopt approval",
       "count": 1,
       "migrate": "P2.2"
     },
@@ -232,22 +216,6 @@
       "syntax": "raw failure sink: {dismiss.error instanceof Error ? dismiss.error.message : 'Unable to update inbox item.'}",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G2",
-      "file": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-      "fingerprint": "898698986a574e05b702",
-      "syntax": "respondToRequest: respondToRequest( authority.apiBase, { threadId: reference.threadId, requestId: reference.requestId, expectedRequestEventId: reference.requestEventId, decision, }, { requestScope: authority }, )",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-      "fingerprint": "90d1271db40dda7a2f2f",
-      "syntax": "adopt approval",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G3",
@@ -362,22 +330,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
-      "fingerprint": "13a0d3b40b797a9387e6",
-      "syntax": "adopt delivery",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
-      "fingerprint": "f83ae4598bafd1265a8d",
-      "syntax": "adopt composer",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/components/chat/ConversationTimeline.tsx",
       "fingerprint": "7454590f33b1bdc86e5d",
@@ -402,44 +354,12 @@
       "migrate": "P2.2"
     },
     {
-      "rule": "G2",
-      "file": "src-ui/src/components/chat/InputRequestRequest.tsx",
-      "fingerprint": "83d0903f19efc42d304d",
-      "syntax": "respondToRequest: respondToRequest( apiBase!, { threadId: approvalThreadId, requestId: approvalId, expectedRequestEventId: approvalEventId, decision: action, ...(action === 'accept' && content ? { content } : {}), }, { requestScope: scope }, )",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/InputRequestRequest.tsx",
-      "fingerprint": "90d1271db40dda7a2f2f",
-      "syntax": "adopt approval",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G4",
       "file": "src-ui/src/components/chat/MessageBubble.tsx",
       "fingerprint": "2a77ea879f7fe14db8f5",
       "syntax": "callerAccess: activeSession.callerAccess",
       "count": 2,
       "migrate": "P2.6"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/OutboundQueuedMessages.tsx",
-      "fingerprint": "13a0d3b40b797a9387e6",
-      "syntax": "adopt delivery",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/QueuedMessages.tsx",
-      "fingerprint": "13a0d3b40b797a9387e6",
-      "syntax": "adopt delivery",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G3",
@@ -496,14 +416,6 @@
       "syntax": "raw failure sink: setFailure({ summary: unconfirmed ? message : `${translated.title}. ${('hint' in translated ? translated.hint : undefined) ?? translated.body}`, detail: error instanceof Error && error.cause instanceof Error ? error.cause.message : message, })",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat/UnsentMessages.tsx",
-      "fingerprint": "13a0d3b40b797a9387e6",
-      "syntax": "adopt delivery",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G3",
@@ -1338,36 +1250,12 @@
       "migrate": "P2.2"
     },
     {
-      "rule": "G2",
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "fingerprint": "d7c684f9d5b851f60872",
-      "syntax": "interruptOrchestrationTurn: interruptOrchestrationTurn(target)",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/views/SessionsView.tsx",
       "fingerprint": "18fd07b092a0f1bee4a1",
       "syntax": "raw failure sink: { routedSession.error?.message ?? 'Station did not return the requested activity item.' }",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "fingerprint": "58844e95a21fbac3e28c",
-      "syntax": "raw failure sink: { stopTask.error ? stopTask.error instanceof Error ? stopTask.error.message : 'Unable to stop this turn' : null }",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "fingerprint": "982f424eff54e49c939b",
-      "syntax": "adopt stop",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G3",
@@ -1538,22 +1426,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
-      "fingerprint": "90d1271db40dda7a2f2f",
-      "syntax": "adopt approval",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
-      "fingerprint": "982f424eff54e49c939b",
-      "syntax": "adopt stop",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
       "fingerprint": "bc6aa16ec7ff9940416c",
@@ -1674,14 +1546,6 @@
       "migrate": "P2.2"
     },
     {
-      "rule": "G2",
-      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-      "fingerprint": "74e58fee2a1e892ec828",
-      "syntax": "Stop control: <Button variant=\"ghost\" size=\"sm\" disabled={!writable || stop.isPending} onClick={() => stop.mutate(participant.work.sessionId)} > Stop </Button>",
-      "count": 1,
-      "migrate": "P2.2"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
       "fingerprint": "873e975b456d7eb1d361",
@@ -1702,7 +1566,7 @@
       "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
       "fingerprint": "bc6aa16ec7ff9940416c",
       "syntax": "raw failure sink: setNotice(error.message)",
-      "count": 2,
+      "count": 1,
       "migrate": "P2.5"
     },
     {
@@ -1728,14 +1592,6 @@
       "syntax": "historyRead: capabilities.historyRead",
       "count": 1,
       "migrate": "P2.6"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-      "fingerprint": "982f424eff54e49c939b",
-      "syntax": "adopt stop",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G5",

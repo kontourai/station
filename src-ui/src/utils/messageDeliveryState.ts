@@ -79,6 +79,7 @@ export type MessageDeliveryState =
   | 'waiting-behind-unsent'
   | 'waiting-for-station'
   | 'held-on-device'
+  | 'held-for-send'
   | 'not-sent'
   | 'unconfirmed'
   | 'unanswered';

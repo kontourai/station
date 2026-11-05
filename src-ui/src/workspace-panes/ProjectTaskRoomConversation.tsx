@@ -3,10 +3,7 @@ import {
   useCreateTaskReferenceMutation,
   useTaskTurnReferencesQuery,
 } from '@kontourai/station-sdk';
-import {
-  continueDelegatedTask,
-  interruptDelegatedTask,
-} from '@kontourai/station-sdk/client';
+import { continueDelegatedTask } from '@kontourai/station-sdk/client';
 import {
   useProjectTaskRoomDiscoveryQuery,
   useProjectTaskRoomHistoryQuery,
@@ -18,6 +15,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { ConversationStopControl } from '../components/conversation/ConversationStopControl';
+import { createTaskConversationActions } from '../components/conversation/task-conversation-actions';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
@@ -312,17 +311,22 @@ export function ProjectTaskRoomConversation({
   });
   const followupPending = useRef(followup.isPending);
   followupPending.current = followup.isPending;
+  const stopCapability =
+    writable && scope?.isCurrent()
+      ? { state: 'allowed' as const }
+      : { state: 'denied' as const, reason: 'permission-required' as const };
+  const taskActions = createTaskConversationActions({
+    apiBase: scope?.apiBase ?? '',
+    requestScope: scope,
+    capabilities: {
+      stop: stopCapability,
+      approvalAnswer: { state: 'denied', reason: 'permission-required' },
+    },
+  });
   const stop = useMutation({
     mutationFn: async (sessionId: string) => {
-      if (!scope?.isCurrent()) throw new Error('Task connection changed.');
-      return interruptDelegatedTask(
-        scope.apiBase,
-        sessionId,
-        {},
-        { requestScope: scope },
-      );
+      return taskActions.stop(sessionId);
     },
-    onError: (error) => setNotice(error.message),
   });
   const retryFailed = useMutation({
     mutationFn: async (sessionId: string) => {
@@ -816,14 +820,14 @@ export function ProjectTaskRoomConversation({
                   >
                     Watch
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!writable || stop.isPending}
-                    onClick={() => stop.mutate(participant.work.sessionId)}
-                  >
-                    Stop
-                  </Button>
+                  <ConversationStopControl
+                    intent={{ kind: 'task', name: participant.actor.label }}
+                    capability={stopCapability}
+                    stopPending={stop.isPending}
+                    onCancel={() =>
+                      stop.mutateAsync(participant.work.sessionId)
+                    }
+                  />
                 </>
               )}
             </div>

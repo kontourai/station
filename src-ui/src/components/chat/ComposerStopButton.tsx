@@ -3,10 +3,12 @@ import type { Ref } from 'react';
 export function ComposerStopButton({
   onCancel,
   stopPending = false,
+  disabled = false,
   buttonRef,
 }: {
   onCancel: () => void;
   stopPending?: boolean;
+  disabled?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
@@ -15,7 +17,7 @@ export function ComposerStopButton({
       type="button"
       onClick={onCancel}
       tabIndex={0}
-      disabled={stopPending}
+      disabled={stopPending || disabled}
       aria-busy={stopPending || undefined}
       className="send-button chat-input__stop-btn"
       aria-label={

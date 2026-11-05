@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { UnsentMessageRecord } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { copyToClipboard } from '../../lib/clipboard';
+import { recordedDeliveryPort } from '../conversation/DeliveryPort';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import './UnsentMessages.css';
 
 interface UnsentMessagesProps {
@@ -46,12 +48,16 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
   if (messages.length === 0) return null;
   return (
     <section className="unsent-messages" aria-label="Unsent messages">
-      <div className="unsent-messages__label">Not sent</div>
       <div className="unsent-messages__list">
         {messages.map((record) => (
           <div className="unsent-message" key={record.id}>
             <div className="unsent-message__body">
               <span className="unsent-message__text">{record.content}</span>
+              <MessageDeliveryNote
+                variant="inline"
+                state="not-sent"
+                port={recordedDeliveryPort}
+              />
               <span className="unsent-message__reason">{record.reason}</span>
             </div>
             <div className="unsent-message__actions">

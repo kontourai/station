@@ -1,12 +1,29 @@
-import { submitToolApproval } from '@kontourai/station-sdk';
+import type {
+  AttentionPeerRequestReference,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
+import {
+  attentionRequestQueryKey,
+  submitToolApproval,
+} from '@kontourai/station-sdk';
+import {
+  inspectAttentionRequest,
+  respondToRequest,
+  StationRequestAuthorityError,
+} from '@kontourai/station-sdk/client';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
+import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useToast } from '../../contexts/ToastContext';
 import type { ToolApprovalOutcome } from '../chat/ToolCallDisplay';
 import { useOptionalConversationConnection } from './ConversationConnectionContext';
+import { createTaskConversationActions } from './task-conversation-actions';
 
 type ToolApprovalAction = 'once' | 'trust' | 'trust-server' | 'deny';
+type CapturedApprovalAuthority = NonNullable<
+  ReturnType<typeof useHostRequestAuthorityScope>
+>;
 
 /** The decision an orchestration adapter's `respondToRequest` understands. */
 function orchestrationDecisionForToolApproval(
@@ -56,9 +73,156 @@ export function useApprovalAnswering(apiBase: string) {
   apiBase = target?.apiBase ?? apiBase;
   const actions = useActiveChatActions(true);
   const updateChat = actions?.updateChat ?? activeChatsStore.updateChat;
-  const { dismissToast } = useToast();
+  const toast = useToast(true);
+  const dismissToast = toast?.dismissToast;
 
-  return useCallback(
+  const assert = useCallback(
+    (
+      scope: CapturedApprovalAuthority,
+      capability: 'approvalAnswer' | 'approvalInspect' | 'inputAnswer',
+    ) => {
+      if (
+        !scope.isCurrent() ||
+        (target?.requestScope &&
+          (scope.apiBase !== target.requestScope.apiBase ||
+            scope.authorityKey !== target.requestScope.authorityKey)) ||
+        target?.record?.readOnly ||
+        target?.record?.answeringDeniedReason ||
+        (target?.station &&
+          (!target.station.isCurrent() ||
+            target.station.capabilities[capability].state !== 'allowed'))
+      )
+        throw new StationRequestAuthorityError();
+    },
+    [target],
+  );
+  const inspect = useCallback(
+    async (
+      reference: AttentionRequestReference,
+      scope: CapturedApprovalAuthority,
+      signal?: AbortSignal,
+    ) => {
+      assert(scope, 'approvalInspect');
+      const result = await inspectAttentionRequest(
+        target?.apiBase ?? scope.apiBase,
+        reference,
+        {
+          requestScope: scope,
+          signal,
+        },
+      );
+      assert(scope, 'approvalInspect');
+      return result;
+    },
+    [assert, target],
+  );
+  const exact = useCallback(
+    async (
+      reference: AttentionRequestReference,
+      decision: 'accept' | 'decline',
+      scope: CapturedApprovalAuthority,
+    ) => {
+      assert(scope, 'approvalAnswer');
+      const result = await respondToRequest(
+        target?.apiBase ?? scope.apiBase,
+        {
+          threadId: reference.threadId,
+          requestId: reference.requestId,
+          expectedRequestEventId: reference.requestEventId,
+          decision,
+        },
+        { requestScope: scope },
+      );
+      assert(scope, 'approvalAnswer');
+      return result;
+    },
+    [assert, target],
+  );
+  const inspectionKey = useCallback(
+    (reference: AttentionRequestReference, scope: CapturedApprovalAuthority) =>
+      attentionRequestQueryKey(reference, {
+        apiBase: target?.apiBase ?? scope.apiBase,
+        authorityKey: target?.station?.runtimeKey ?? scope.authorityKey,
+      }),
+    [target],
+  );
+  const task = useCallback(
+    (
+      reference: AttentionPeerRequestReference,
+      decision: 'accept' | 'decline',
+      scope: CapturedApprovalAuthority,
+    ) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      return createTaskConversationActions({
+        apiBase: scope.apiBase,
+        requestScope: scope,
+        capabilities: {
+          stop: { state: 'denied', reason: 'permission-required' },
+          approvalAnswer: { state: 'allowed' },
+        },
+      }).answer(reference.taskId, {
+        requestId: reference.requestId,
+        environmentId: reference.environmentId,
+        decision,
+      });
+    },
+    [],
+  );
+
+  const input = useCallback(
+    (
+      reference: AttentionRequestReference,
+      decision: 'accept' | 'decline' | 'cancel',
+      content: Parameters<typeof respondToRequest>[1]['content'],
+      scope: CapturedApprovalAuthority,
+    ) => {
+      assert(scope, 'inputAnswer');
+      return respondToRequest(
+        target?.apiBase ?? scope.apiBase,
+        {
+          threadId: reference.threadId,
+          requestId: reference.requestId,
+          expectedRequestEventId: reference.requestEventId,
+          decision,
+          ...(decision === 'accept' && content ? { content } : {}),
+        },
+        { requestScope: scope },
+      );
+    },
+    [assert, target],
+  );
+  const taskInput = useCallback(
+    (
+      reference: AttentionPeerRequestReference & {
+        threadId: string;
+        requestEventId: string;
+      },
+      message: string,
+      scope: CapturedApprovalAuthority,
+    ) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      return createTaskConversationActions({
+        apiBase: scope.apiBase,
+        requestScope: scope,
+        capabilities: {
+          stop: { state: 'denied', reason: 'permission-required' },
+          approvalAnswer: { state: 'denied', reason: 'permission-required' },
+          inputAnswer: { state: 'allowed' },
+        },
+      }).answerInput(reference.taskId, {
+        message,
+        environmentId: reference.environmentId,
+        expectedInputRequest: {
+          threadId: reference.threadId,
+          requestId: reference.requestId,
+          requestEventId: reference.requestEventId,
+        },
+      });
+    },
+    [],
+  );
+
+  const answer = useCallback(
     async (
       sessionId: string,
       _agentSlug: string,
@@ -123,7 +287,7 @@ export function useApprovalAnswering(apiBase: string) {
       // Dismiss the toast for this approval
       const toastId = state.approvalToasts?.get(approvalId);
       if (toastId) {
-        dismissToast(toastId);
+        dismissToast?.(toastId);
       }
 
       // Clean up approvalToasts mapping
@@ -199,4 +363,18 @@ export function useApprovalAnswering(apiBase: string) {
     },
     [apiBase, target, updateChat, dismissToast],
   );
+  return Object.assign(answer, {
+    inspect,
+    inspectionKey,
+    exact,
+    input,
+    task,
+    taskInput,
+    answerAllowed:
+      !target?.record?.readOnly &&
+      !target?.record?.answeringDeniedReason &&
+      (!target?.station ||
+        (target.station.isCurrent() &&
+          target.station.capabilities.approvalAnswer.state === 'allowed')),
+  });
 }

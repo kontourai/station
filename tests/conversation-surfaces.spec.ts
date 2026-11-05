@@ -386,7 +386,9 @@ test('attached record fixture requires consent and opens the owned child in the 
   await detail
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Continue this exact draft.');
-  await detail.getByRole('button', { name: 'Send', exact: true }).click();
+  await detail
+    .getByRole('button', { name: 'Continue in Station', exact: true })
+    .click();
   await expect(
     page.getByRole('dialog', { name: 'Continue here?' }),
   ).toBeVisible();

@@ -1117,6 +1117,39 @@
 .message-delivery__notice {
   color: var(--text-primary);
 }
+
+.message-delivery--inline {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.message-delivery--inline .message-delivery__glyph {
+  position: static;
+  display: none;
+  flex: none;
+}
+.message-delivery--inline:is(
+    [data-delivery-state="sending"],
+    [data-delivery-state="received"]
+  )
+  .message-delivery__glyph {
+  display: block;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .message-delivery--inline
+    :is(
+      .message-delivery__action,
+      .unconfirmed-discard__button,
+      .action-overflow__trigger
+    ) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 /* Phone: every delivery action is a full 44px target. */
 .message-row--compact .message-delivery__action,
 .message-row--compact .unconfirmed-discard__button {

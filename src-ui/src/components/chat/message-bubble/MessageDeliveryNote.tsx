@@ -13,6 +13,7 @@ import {
   UnconfirmedDiscardConfirm,
   useUnconfirmedDiscardDisclosure,
 } from '../UnconfirmedDiscardConfirm';
+import '../chat.css';
 
 /** An action's result on the delivery line: an error is an alert. */
 export interface DeliveryNotice {
@@ -58,6 +59,10 @@ const LABELS: Record<ExceptionState, { text: string; title: string }> = {
     title:
       'Kept on this device until the reply ends. If the app closes first, it stays here to send.',
   },
+  'held-for-send': {
+    text: 'Queued. Send when ready.',
+    title: 'Kept on this device. Sent only when you choose Send.',
+  },
   'not-sent': {
     text: 'Not sent',
     title: "Station didn't take it. Retry can't send it twice.",
@@ -92,11 +97,13 @@ export function MessageDeliveryNote({
   port,
   state,
   notice: outsideNotice,
+  variant = 'bubble',
 }: {
   port: DeliveryPort;
   state: MessageDeliveryState;
   /** A result from an action the bubble's own menu ran (Discard). */
   notice?: DeliveryNotice | null;
+  variant?: 'bubble' | 'inline';
 }) {
   const [busy, setBusy] = useState(false);
   const [ownNotice, setNotice] = useState<DeliveryNotice | null>(null);
@@ -143,7 +150,7 @@ export function MessageDeliveryNote({
         'Sending'
       )
     ) : state === 'received' ? (
-      <ReceivedText />
+      <ReceivedText value={port.stationOutlivesApp} />
     ) : (
       'Delivered'
     );
@@ -152,13 +159,16 @@ export function MessageDeliveryNote({
   // What a screen reader is told: the received fact or the exception line.
   const announcement =
     state === 'received' ? (
-      <ReceivedText />
+      <ReceivedText value={port.stationOutlivesApp} />
     ) : isException(state) ? (
       LABELS[state].text
     ) : null;
 
   return (
-    <div className="message-delivery" data-delivery-state={state}>
+    <div
+      className={`message-delivery${variant === 'inline' ? ' message-delivery--inline' : ''}`}
+      data-delivery-state={state}
+    >
       <span
         className="message-delivery__glyph"
         data-glyph={
@@ -213,14 +223,14 @@ export function MessageDeliveryNote({
             ) : null}
             {state === 'not-sent' ? (
               <span className="message-delivery__actions">
-                {port.canRetry !== false && (
+                {port.canRetry !== false && port.retry && (
                   <button
                     type="button"
                     className="message-delivery__action"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
-                        await port.retry();
+                        await port.retry?.();
                         return null;
                       })
                     }
@@ -228,52 +238,73 @@ export function MessageDeliveryNote({
                     Retry
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="message-delivery__action"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      return port.edit();
-                    })
-                  }
-                >
-                  Edit
-                </button>
+                {port.edit && (
+                  <button
+                    type="button"
+                    className="message-delivery__action"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        return port.edit?.();
+                      })
+                    }
+                  >
+                    Edit
+                  </button>
+                )}
               </span>
-            ) : state === 'unconfirmed' ? (
+            ) : (state === 'held-on-device' || state === 'held-for-send') &&
+              port.release ? (
+              <button
+                type="button"
+                className="message-delivery__action"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await port.release?.();
+                    return null;
+                  })
+                }
+              >
+                Send
+              </button>
+            ) : state === 'unconfirmed' || state === 'awaiting-confirmation' ? (
               <span className="message-delivery__actions">
-                <button
-                  type="button"
-                  className="message-delivery__action"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const outcome = await port.check();
-                      if (outcome === undefined)
-                        return 'Nothing new to check right now.';
-                      return outcome === 'indeterminate' ||
-                        outcome === 'expired' ||
-                        outcome === 'unknown'
-                        ? 'Station still can’t confirm it.'
-                        : null;
-                    })
-                  }
-                >
-                  Check
-                </button>
-                <ActionOverflowMenu
-                  label="More delivery actions"
-                  actions={[
-                    {
-                      key: 'edit-copy',
-                      label: 'Edit a copy',
-                      disabled: busy,
-                      onSelect: () => void run(port.edit),
-                    },
-                  ]}
-                />
-                {canDiscardUnconfirmed ? (
+                {port.check && (
+                  <button
+                    type="button"
+                    className="message-delivery__action"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const outcome = await port.check?.();
+                        if (outcome === undefined)
+                          return 'Nothing new to check right now.';
+                        return outcome === 'indeterminate' ||
+                          outcome === 'expired' ||
+                          outcome === 'unknown'
+                          ? 'Station still can’t confirm it.'
+                          : null;
+                      })
+                    }
+                  >
+                    Check
+                  </button>
+                )}
+                {port.edit && (
+                  <ActionOverflowMenu
+                    label="More delivery actions"
+                    actions={[
+                      {
+                        key: 'edit-copy',
+                        label: 'Edit a copy',
+                        disabled: busy,
+                        onSelect: () => void run(() => port.edit!()),
+                      },
+                    ]}
+                  />
+                )}
+                {canDiscardUnconfirmed && port.discard ? (
                   <button
                     type="button"
                     className="message-delivery__action"
@@ -289,14 +320,15 @@ export function MessageDeliveryNote({
         </div>
       </div>
       {discardDisclosure.open &&
-      state === 'unconfirmed' &&
-      canDiscardUnconfirmed ? (
+      (state === 'unconfirmed' || state === 'awaiting-confirmation') &&
+      canDiscardUnconfirmed &&
+      port.discard ? (
         <UnconfirmedDiscardConfirm
           busy={busy}
           {...discardDisclosure.confirmProps}
           onConfirm={() =>
             void run(async () => {
-              return port.discard();
+              return port.discard?.();
             })
           }
         />
@@ -319,6 +351,13 @@ export function MessageDeliveryNote({
  * safe only when that Station keeps running without it
  * (`useStationOutlivesApp`), so the platform is read only in this state.
  */
-function ReceivedText() {
+function ReceivedText({ value }: { value?: boolean | null }) {
+  return value === undefined ? (
+    <ObservedReceivedText />
+  ) : (
+    <>{receivedDeliveryLabel(value ?? undefined)}</>
+  );
+}
+function ObservedReceivedText() {
   return <>{receivedDeliveryLabel(useStationOutlivesApp())}</>;
 }

@@ -1,9 +1,9 @@
-import { respondToRequest } from '@kontourai/station-sdk/client';
 import { toolRequestIsPlanReview } from '@kontourai/station-shared/tool-request-preview';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { InputRequestCard } from './InputRequestCard';
 
 /**
@@ -21,6 +21,7 @@ export function InputRequestRequest({
   const target = useOptionalConversationConnection();
   const scope = target?.requestScope ?? host;
   const apiBase = target?.apiBase ?? scope?.apiBase;
+  const answer = useApprovalAnswering(apiBase ?? '');
   const { namespace, status } = useAuthorityPersistence();
   const {
     inputRequest,
@@ -81,16 +82,15 @@ export function InputRequestRequest({
       onRespond={async (action, content) => {
         if (target?.record?.readOnly)
           throw new Error('This session is read only.');
-        await respondToRequest(
-          apiBase!,
+        await answer.input(
           {
             threadId: approvalThreadId,
             requestId: approvalId,
-            expectedRequestEventId: approvalEventId,
-            decision: action,
-            ...(action === 'accept' && content ? { content } : {}),
+            requestEventId: approvalEventId,
           },
-          { requestScope: scope },
+          action,
+          content,
+          scope,
         );
         target?.record?.onAnswered?.();
       }}

@@ -400,7 +400,7 @@ async function continueFromComposer(message = 'carry on') {
   fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
 }
 
@@ -2825,9 +2825,7 @@ describe('SessionsView', () => {
       await within(detail).findByText('The workspace is ready.'),
     ).toBeTruthy();
     expect(within(detail).queryByRole('button', { name: /stop/i })).toBeNull();
-    expect(
-      within(detail).queryByLabelText(/input|follow-up|continue/i),
-    ).toBeNull();
+    expect(within(detail).queryByLabelText(/input|follow-up/i)).toBeNull();
     expect(
       within(detail).queryByRole('button', { name: 'Allow Once' }),
     ).toBeNull();
@@ -2933,7 +2931,9 @@ describe('SessionsView', () => {
       name: 'Message',
     })) as HTMLTextAreaElement;
     fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     expect(onContinueInChat).toHaveBeenCalledWith(
       'external:claude:handoff',
       'My exact\nmessage',
@@ -3107,7 +3107,9 @@ describe('SessionsView', () => {
     fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     const secondButton = screen.getByRole('button', {
       name: 'Continue and send',
     });

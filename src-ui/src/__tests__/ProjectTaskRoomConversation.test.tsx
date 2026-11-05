@@ -284,6 +284,12 @@ test('running agents have one inline status with functional Watch and Stop', asy
   fireEvent.click(screen.getByRole('button', { name: 'Watch' }));
   expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(mocks.stop).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Stop',
+    }),
+  );
   await waitFor(() =>
     expect(mocks.stop).toHaveBeenCalledWith(
       'http://station',
