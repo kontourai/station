@@ -6,7 +6,7 @@ import {
 import { useState } from 'react';
 import { z } from 'zod/v3';
 import { Button } from '../../components/Button';
-import { ErrorState } from '../../components/state';
+import { ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
 const responseSchema = z.object({
@@ -104,7 +104,9 @@ export function MemoryErasurePreview() {
           Preview
         </Button>
       </div>
-      {preview.isFetching && <p>Loading preview…</p>}
+      {preview.isFetching && (
+        <Skeleton variant="block" label="Loading preview" />
+      )}
       {preview.isError && (
         <ErrorState
           title="Couldn’t load preview"
@@ -118,15 +120,15 @@ export function MemoryErasurePreview() {
             {preview.data.kind}: {preview.data.id}
           </p>
           <p>
-            Claims affected (from Surface): unavailable. Station has no verified
-            claim bundle for this memory.{' '}
+            Claims affected (from Surface): unavailable.{' '}
             <a href="https://github.com/kontourai/surface/issues/360">
               About claim impact
             </a>
           </p>
+          <p>Station has no verified claim bundle for this memory.</p>
           <p>
-            Search can’t show which records and proposals will also be erased.
-            Their effects are determined at erasure time.{' '}
+            The effects on other records and proposals are determined at erasure
+            time.{' '}
             <a href="https://github.com/kontourai/corpus/issues/69">
               About cascade preview
             </a>
