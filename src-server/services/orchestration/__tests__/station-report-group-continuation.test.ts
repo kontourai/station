@@ -129,6 +129,12 @@ test.each([
       eventBus: bus,
       eventStore,
       logger,
+      personalConversationAccess: {
+        canRead: (requesterId, ownerId) =>
+          h.f.environment.canSharePersonalConversation(requesterId, ownerId),
+        ownerIds: (requesterId) =>
+          h.f.environment.personalConversationOwnerIds(requesterId),
+      },
       ...(heldInterrupt ? { cooperativeStopBudgetMs: 1000 } : {}),
       resolveSessionAgent: createSessionAgentResolver({
         loadAgentSpec: (slug) => h.f.loader.loadAgent(slug),

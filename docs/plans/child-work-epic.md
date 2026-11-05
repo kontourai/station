@@ -4558,3 +4558,32 @@ portable lineage and peer/SSH obligations, topology dependencies, final source
 review and visual work remain open. The initialized cold-start test remains
 held for the durability owner's #4564 landing. Both production qualification
 flags remain false. No PR is opened.
+
+
+## Durable start and real authorization checkpoint
+
+Normal merge `1a681371d779` incorporates main `81379fe3a266`, including
+#4564. Managed dependencies passed. The unchanged initialized caller observed
+an accepted start with durable `session.started` and the correct owner. Its
+next failure was Home authorization in terminal-history reads, not a missing
+start. `fb2af54d3543` binds those local reads to the report Home lease; the
+16-case execution/continuation selection and server-test types passed.
+The initialized caller then reached raw output and exact settled accounting,
+but exposed an incorrect fixture expectation: the first new recovery operation
+is not replayed, while the same-key retry is. Both receipt equality and the
+single-invocation assertions remain.
+
+Adding real pairing-backed personal-conversation authorization to the existing
+continuation fixture exposed further missing Home borrows. The baseline failed
+seven continuation cases; the by-ID terminal guard left four cancellation
+failures with typed `busy` errors. Passing the existing private Home check into
+delivery inspection now passes all 15 continuation/accounting-recovery cases
+and server-test types. Unscoped delivery reads retain their existing behavior.
+The initialized full caller still has a retained 120-second timeout; no deadline
+was increased and no whole-caller performance claim follows from these checks.
+
+A separate source finding identifies an untracked delayed attached-session
+startup callback that can start its follower after shutdown. Its regression and
+repair remain pending. No latency attribution is claimed yet. The broader
+finalizer, input, lineage, topology and device-readback obligations remain open;
+both production qualification flags remain false and no PR is opened.

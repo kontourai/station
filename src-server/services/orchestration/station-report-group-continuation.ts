@@ -743,13 +743,16 @@ export class StationReportGroupContinuation {
               !same(observed.identity, physicalIdentity.parse(initialRecipient))
             )
               return null;
-            const terminal = orchestration.readSessionEventById(
-              record.observation.sessionId,
-              record.observation.eventId,
-              sessionReadAuthorityFromRequest(
-                root.authenticated_principal_ref.id,
-                undefined,
-                undefined,
+            const { sessionId, eventId } = record.observation;
+            const terminal = await checkAsync(() =>
+              orchestration.readSessionEventById(
+                sessionId,
+                eventId,
+                sessionReadAuthorityFromRequest(
+                  root.authenticated_principal_ref.id,
+                  undefined,
+                  undefined,
+                ),
               ),
             );
             current();

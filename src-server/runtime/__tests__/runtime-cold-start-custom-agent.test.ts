@@ -3110,7 +3110,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         options,
       );
       expect(recovered).toMatchObject({
-        replayed: true,
+        replayed: false,
         status: 'settled',
         reason: 'exact-settlement',
         accounting: { inputTokens: 4, outputTokens: 2, costMicros: 42 },
@@ -3122,7 +3122,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           recovery,
           options,
         ),
-      ).toEqual(recovered);
+      ).toEqual({ ...recovered, replayed: true });
       expect(scopedPhases).toContain('body');
       expect(scopedPhases).toContain('return');
       expect(retiredScopes.length).toBeGreaterThan(0);

@@ -760,6 +760,7 @@ export class StationReportGroupCustody {
                     command.seatId,
                     orchestration,
                     continuation ? invocation.invocationId : undefined,
+                    scope.check,
                   );
                   if (delivery?.outcome === 'started')
                     terminal = writer.runWithLease(hold, () =>
@@ -1747,6 +1748,7 @@ export class StationReportGroupCustody {
     seatId: string,
     orchestration: OrchestrationService,
     continuationInvocationId?: string,
+    check: <Value>(body: () => Value) => Value = (body) => body(),
   ) {
     id(seatId);
     const historical = await this.#inspect(authorized, groupId);
@@ -1785,13 +1787,15 @@ export class StationReportGroupCustody {
     )
       refuse();
     authorized.current();
-    const delivery = orchestration.inspectTurnDelivery(
-      member.reservedTaskId,
-      clientTurnId,
-      sessionReadAuthorityFromRequest(
-        authorized.principal.id,
-        undefined,
-        undefined,
+    const delivery = check(() =>
+      orchestration.inspectTurnDelivery(
+        member.reservedTaskId,
+        clientTurnId,
+        sessionReadAuthorityFromRequest(
+          authorized.principal.id,
+          undefined,
+          undefined,
+        ),
       ),
     );
     authorized.current();
@@ -1907,7 +1911,7 @@ export class StationReportGroupCustody {
             this.owners.environment.withCurrentAuthority(body),
           );
     const { historical, delivery, member, continuation } = await withMetadata(
-      async (current) => {
+      async (current, check) => {
         const scoped = { ...authorized, current };
         const historical = await this.#inspect(scoped, groupId);
         if (!historical?.authority?.cancelled) refuse();
@@ -1917,6 +1921,7 @@ export class StationReportGroupCustody {
           seatId,
           orchestration,
           continuationInvocationId,
+          check,
         );
         if (
           delivery?.outcome !== 'started' ||
