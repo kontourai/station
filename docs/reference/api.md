@@ -537,15 +537,18 @@ delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
   host records a Survey `ReviewDecision` with the reviewer it attested from the
   request, and returns `{ itemId, outcome, reviewerKind, promoted, reviewSeconds }`.
   `promoted` is true only when a human decision changed what recall and the brief
-  show. A retry with the same `requestKey` returns the first record.
+  show; a decision by anyone else is kept as a note. Every field comes from the
+  record that was kept, so a retry with the same `requestKey` returns the first
+  decision whatever the retry asked for. `hold` leaves the item in the queue.
 - `GET /api/knowledge/memory/recall?q=&limit=` returns `{ entries, withheld, notes }`.
   Entries carry the Kit's display `text`, `review.label`
   (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing`, the source
   excerpt, and `replaces`, `replacedBy` and `conflictsWith`.
 - `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the bounded
   background block (`text` is `null` when nothing qualifies). Default budget 6,144 bytes.
-- `GET /api/knowledge/memory/measurement` returns the per-run
-  `station.memory-measurement/1` record.
+- `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+  figures for the whole root, `runs` with one entry per producer run (sitting),
+  and `lineages` with one row per change, each naming its run.
 
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard

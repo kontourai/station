@@ -79,6 +79,7 @@ import {
 } from './chat-primary-stream.js';
 import {
   type ChatMessage,
+  memoryBriefSessionFor,
   prepareChatRequest,
 } from './chat-request-preparation.js';
 import { ChatTurnDedupStore } from './chat-turn-dedup.js';
@@ -276,17 +277,11 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // Who the session belongs to, as Station's own relay recorded it. A direct
         // caller names no owner: the memory brief then follows the request's own
         // person. A relayed turn with no recorded owner gets no brief.
-        memoryBriefSession: {
-          relayOwner: trustedRelay
-            ? typeof rawOptions.userId === 'string' && rawOptions.userId
-              ? rawOptions.userId
-              : null
-            : undefined,
-          conversationId:
-            typeof rawOptions.conversationId === 'string'
-              ? rawOptions.conversationId
-              : undefined,
-        },
+        memoryBriefSession: memoryBriefSessionFor({
+          trustedRelay,
+          userId: rawOptions.userId,
+          conversationId: rawOptions.conversationId,
+        }),
         input,
         options: optionsForPreparation,
         projectSlug,

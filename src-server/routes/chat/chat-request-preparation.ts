@@ -292,6 +292,29 @@ export async function prepareChatRequest(
   };
 }
 
+/**
+ * Who a turn's memory brief belongs to. Station's own relay is trusted to name
+ * the session's owner (it records it when the session starts); a direct caller
+ * names none, so the brief follows the request's own person. A relayed turn with
+ * no recorded owner gets no brief.
+ */
+export function memoryBriefSessionFor(input: {
+  trustedRelay: boolean;
+  userId: unknown;
+  conversationId: unknown;
+}): { relayOwner: string | null | undefined; conversationId?: string } {
+  return {
+    relayOwner: input.trustedRelay
+      ? typeof input.userId === 'string' && input.userId
+        ? input.userId
+        : null
+      : undefined,
+    ...(typeof input.conversationId === 'string'
+      ? { conversationId: input.conversationId }
+      : {}),
+  };
+}
+
 /** A new session's first turn: the input carries no earlier assistant reply. */
 function isFirstTurn(input: string | ChatMessage[]): boolean {
   return (

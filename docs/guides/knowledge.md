@@ -159,25 +159,26 @@ with what your agents have learned about you and your work:
 
 - **You decide the doubtful ones.** Most memories need no attention. Station
   holds back only the ones that need a person: a new claim that disagrees with
-  an older one, one that replaces something that matters, a merge of two things
-  that may be the same, a reading of a conversation that was not consistent, or
-  one that more people could see than could see its source. Each shows the
-  words it came from, side by side with what it conflicts with. You accept,
-  correct, reject or leave it open.
+  an older one, one that replaces something Station remembers, a reading of a
+  conversation that was not consistent, or one that more people could see than
+  could see its source. Each shows the words it came from, side by side with
+  what it conflicts with. You accept, correct, keep the old one, or leave it open
+  ("Not sure" keeps it in the queue).
 - **You can look anything up.** Search shows each memory with the sentence it
   came from, whether anyone has reviewed it, and what it replaces, was replaced
   by or disagrees with. A memory nobody flagged is usable straight away,
   labelled "Not reviewed".
-- **New sessions start informed.** The first message of every new Station
-  session carries a short, bounded brief of what you have confirmed, marked as
+- **New sessions start informed.** The first message of every new
+  Station-engine session carries a short, bounded brief of what you have confirmed, marked as
   background and not instruction. Memory that is unreviewed, waiting on a
   decision, rejected or hidden from you is left out. Turn the preview off and
   nothing is added.
 
-Only a person promotes a memory. Station decides who is deciding from your
-signed-in request, never from anything sent with it. A decision made through an
-agent, Station's internal token or a delegated device is saved as a note on the
-item and changes nothing; the item stays open for you.
+Only a person promotes a memory, including one nobody flagged. Station decides
+who is deciding from your signed-in request, never from anything sent with it. A
+decision made through an agent, Station's internal token or a delegated device
+is saved as a note on the item and changes nothing; the item stays open for you.
+A replacement takes effect in the brief only after you confirm it.
 
 How it works, for integrators:
 
@@ -199,6 +200,16 @@ distil sessions or schedule distillation in this preview.
 
 What this does not cover yet:
 
+- **Merges and splits of "the same thing".** The Kit and Survey can review them,
+  but nothing yet produces those proposals into a memory root, so none reaches
+  the queue ([#4612](https://github.com/kontourai/station/issues/4612)).
+- **A restart forgets which chats were briefed.** Station briefs each conversation
+  once while it runs; after a restart a long-running chat can be briefed once
+  more, still marked as background.
+- **Other people's sessions.** The brief follows the person a session belongs
+  to. A session another person started on this Station gets no brief from your
+  memory, and Station does not yet brief them from theirs.
+
 - **Surface accumulation.** Station does not run Surface's projection (it needs
   custody records Station does not hold), so a conflict is found by comparing
   claims in the same subject and property. The Kit reports these as
@@ -219,8 +230,9 @@ What this does not cover yet:
 
 ### Measuring whether review is worth it
 
-`GET /api/knowledge/memory/measurement` returns one record per run
-(`station.memory-measurement/1`): claims proposed, claims no rule flagged,
+`GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+the figures for the whole memory root, plus one entry in `runs` for each run
+that produced claims (a distillation sitting): claims proposed, claims no rule flagged,
 claims routed (and the share), routed claims by rule, decisions by outcome
 (confirmed, corrected, rejected, held, annotated, pending), and review time. A
 review is timed from opening the item to submitting the decision, only from the

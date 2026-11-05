@@ -90,6 +90,8 @@ function QueueCard({
             value={DECISION_TEXT[item.decision.outcome]}
             tone={item.decision.outcome === 'reject' ? 'neutral' : 'positive'}
           />
+        ) : item.decision?.outcome === 'hold' ? (
+          <Badge value="Left open" tone="neutral" />
         ) : (
           <Badge value="Needs a decision" tone="caution" />
         )}

@@ -13,6 +13,7 @@ import { ProviderService } from '../../../services/connections/provider-service.
 import { stationWorkflowActorKey } from '../../../services/evidence/orchestration-workflow-sidecar.js';
 import {
   extractChatUserText,
+  memoryBriefSessionFor,
   prepareChatRequest,
 } from '../chat-request-preparation.js';
 
@@ -25,6 +26,40 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 }));
 
 describe('chat-request-preparation', () => {
+  describe('private memory brief session', () => {
+    test('only Station’s own relay may name the session owner; a relay with none names null', () => {
+      expect(
+        memoryBriefSessionFor({
+          trustedRelay: true,
+          userId: 'human:a',
+          conversationId: 'c1',
+        }),
+      ).toEqual({ relayOwner: 'human:a', conversationId: 'c1' });
+      expect(
+        memoryBriefSessionFor({
+          trustedRelay: true,
+          userId: undefined,
+          conversationId: 'c1',
+        }),
+      ).toEqual({ relayOwner: null, conversationId: 'c1' });
+      expect(
+        memoryBriefSessionFor({
+          trustedRelay: true,
+          userId: '',
+          conversationId: undefined,
+        }),
+      ).toEqual({ relayOwner: null });
+      // A direct caller's body cannot name an owner: it is ignored, not trusted.
+      expect(
+        memoryBriefSessionFor({
+          trustedRelay: false,
+          userId: 'human:someone',
+          conversationId: 'c2',
+        }),
+      ).toEqual({ relayOwner: undefined, conversationId: 'c2' });
+    });
+  });
+
   describe('private memory brief', () => {
     const baseCtx = (memoryBrief?: unknown) =>
       ({
