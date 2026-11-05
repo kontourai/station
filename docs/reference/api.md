@@ -3093,8 +3093,9 @@ Agent/profile, connection and canonical workspace context. All observations must
 succeed before Flow claims work. Codex and Claude support this non-model login
 check; ACP/OpenCode and non-shared Project workspaces currently refuse with
 `ensemble_auth_unsupported` before any member starts. Unauthenticated/unknown
-login returns `ensemble_auth_unverified`. Creating or inspecting a preset still
-starts no engine and performs no login probe.
+login returns `ensemble_auth_unverified`. Creating a preset group and ordinary
+configuration inspection perform no login probe and start no member Session.
+An explicit sign-in inspection uses the same observer without admitting work.
 
 Observations are private to that supervision run and bound to the persisted
 intent. Configuration/permission currency is rechecked at dispatch and the
