@@ -109,3 +109,55 @@
   color: var(--k-text-muted);
   margin-block: var(--k-space-2) var(--k-space-4);
 }
+
+.project-repositories,
+.project-repositories__list,
+.project-repositories__card {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.project-repositories__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.project-repositories__card {
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  overflow-wrap: anywhere;
+}
+.project-repositories__heading,
+.project-repositories__identity,
+.project-repositories__roles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.project-repositories__heading {
+  justify-content: space-between;
+}
+.project-repositories__heading h3 {
+  margin: 0;
+}
+.project-repositories__mark {
+  flex-shrink: 0;
+  width: var(--k-space-5);
+  height: var(--k-space-5);
+}
+.project-repositories__details {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+}
+.project-repositories__details dt {
+  color: var(--k-text-muted);
+}
+.project-repositories__details dd {
+  margin: 0 0 var(--k-space-2);
+  overflow-wrap: anywhere;
+}

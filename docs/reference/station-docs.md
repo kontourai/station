@@ -96,7 +96,7 @@ Open a Project's **Room** for shared discussion, notes, presence and explicit Ag
 explicitly **Ask in room** to request a cited recap with freshness and coverage
 limits. Preparing it does not execute work or replace an existing draft.
 
-Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
+Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Repositories appear by identity; details name the connected Station beside each machine-local path. The primary resource and Agent starting resource are distinct; a failed refresh does not keep an old working copy marked verified. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
 
 Project resource resolution and a Task's captured workspace are different
 records. The Task topic below describes the latter. See the

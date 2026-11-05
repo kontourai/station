@@ -2679,7 +2679,146 @@ function taskCapabilityScreens(): Screen[] {
   );
 }
 
+function projectRepositorySourceScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const slug = `gallery-repository-sources-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      const cleanups: (() => Promise<void>)[] = [];
+      let created = false;
+      return {
+        name: `project-repository-sources-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        title: `Project repository sources — ${theme}, ${viewport.width}px`,
+        path: `/projects/${slug}/edit?section=resources`,
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const response = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Station documentation', slug } },
+          );
+          expect(response.ok()).toBe(true);
+          created = true;
+          const project = (await response.json()).data;
+          const identity = {
+            schemaVersion: 1 as const,
+            id: `portable-${slug}`,
+            repos: [
+              {
+                kind: 'git' as const,
+                id: 'github.com/example/station',
+                canonicalRemote: 'github.com/example/station',
+                role: 'primary' as const,
+                label: 'Station repository',
+              },
+              {
+                kind: 'git' as const,
+                id: 'gitlab.com/example/docs',
+                canonicalRemote: 'gitlab.com/example/docs',
+              },
+            ],
+            executionRoot: {
+              repoId: 'gitlab.com/example/docs',
+              path: 'manual',
+            },
+            createdAt: '2026-11-05T00:00:00.000Z',
+            updatedAt: '2026-11-05T00:00:00.000Z',
+          } satisfies import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity;
+          cleanups.push(
+            await withRoute(
+              page,
+              `**/api/projects/${slug}/identity`,
+              (route) => {
+                if (route.request().method() !== 'GET')
+                  return rejectUnexpectedFixtureRequest(route);
+                return route.fulfill({
+                  json: {
+                    success: true,
+                    data: {
+                      identity,
+                      association: {
+                        portableProjectId: identity.id,
+                        localProjectId: project.id,
+                        localProjectSlug: slug,
+                      },
+                    },
+                  },
+                });
+              },
+            ),
+          );
+          const resolution = {
+            posture: 'backing',
+            primary: { named: true, resourceId: identity.repos[0].id },
+            resources: [
+              {
+                state: 'bound',
+                resourceId: identity.repos[0].id,
+                path: '/srv/code/station',
+              },
+              {
+                state: 'missing',
+                resourceId: identity.repos[1].id,
+                record: 'binding',
+                declaredPath: '/srv/code/docs',
+                reason:
+                  'The recorded working copy is unavailable on this Station.',
+              },
+            ],
+          } satisfies import('@kontourai/station-contracts/project-identity').ProjectResolutionView;
+          cleanups.push(
+            await withRoute(
+              page,
+              `**/api/projects/${slug}/resolution`,
+              (route) => {
+                if (route.request().method() !== 'GET')
+                  return rejectUnexpectedFixtureRequest(route);
+                return route.fulfill({
+                  json: { success: true, data: resolution },
+                });
+              },
+            ),
+          );
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const sources = page.locator('[aria-label="Repository sources"]');
+          await expect(
+            sources.getByText('Working copy missing', { exact: true }),
+          ).toBeVisible();
+          await sources
+            .getByText('Details for Station repository', { exact: true })
+            .click();
+          await expect(
+            sources.getByText('/srv/code/station', { exact: true }),
+          ).toBeVisible();
+          await sources.scrollIntoViewIfNeeded();
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          ).toBe(true);
+        },
+        async cleanup() {
+          for (const cleanup of cleanups.splice(0)) await cleanup();
+          if (created) {
+            const removed = await request.delete(
+              `${resolveE2EApiBase()}/api/projects/${slug}`,
+            );
+            expect(removed.ok()).toBe(true);
+          }
+        },
+      };
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...projectRepositorySourceScreens(),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
     const slug = 'gallery-project-retry-board';

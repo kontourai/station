@@ -16,10 +16,12 @@ export function ProjectRepositoryAttachment({
   slug,
   projectId,
   authority,
+  stationName = 'the connected Station',
 }: {
   slug: string;
   projectId: string;
   authority: ApiRequestScope;
+  stationName?: string;
 }) {
   const identity = useProjectIdentityQuery(slug, {
     requestScope: authority,
@@ -87,7 +89,8 @@ export function ProjectRepositoryAttachment({
       {selection && (
         <>
           <p>
-            Selected working copy: <code>{selection.path}</code>
+            Selected working copy via {stationName}:{' '}
+            <code>{selection.path}</code>
           </p>
           <label className="project-sources__consent" htmlFor={checkboxId}>
             <input

@@ -1485,7 +1485,22 @@ the normal workspace checks. Operator-assisted import uses host Git credentials.
 Provider OAuth, Project-scoped forge grants and collaboration onboarding are
 tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
 importing a repository does not grant an Agent remote credentials.
-Project Settings → Sources combines repository repair with knowledge-store
+Project Settings → Sources lists every attached repository or local folder before
+its working-copy details. Public GitHub and GitLab identities use their forge
+marks; other hosts keep their own identity without a guessed provider. Details
+name the connected Station (and its reported machine name when available) beside
+verified, unverified or missing paths. These paths belong to that Station, not
+the viewing browser. This is a view of one Station’s mappings, not a fleet-wide
+checkout inventory or proof that an execution destination is available.
+
+The primary resource and Agent starting resource are shown separately. An explicit
+execution root takes precedence over the primary for new Sessions; attachment
+alone does not change either. A failed availability refresh keeps repository
+identity visible but withholds previously verified paths. Use **Refresh sources**
+to recheck identity and working copies; this does not fetch from Git remotes.
+Projects without repositories retain documents and connected tools.
+
+Sources combines repository repair with knowledge-store
 registration, refresh and disconnect. A repository repair row offers the same
 acquisition and retained-checkout picker. **Use this checkout** fills the repair
 path; the separate bind action verifies the current declared resource before
