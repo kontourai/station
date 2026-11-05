@@ -191,6 +191,8 @@ export interface LiveSurfaceCanvasProps {
   renderImmersiveMenu?: (surface: LiveSurfaceHeaderApi) => ReactNode;
   /** Told when this surface enters or leaves full screen. */
   onImmersiveChange?: (immersive: boolean) => void;
+  /** Ask for a foldable's fold state (a device viewer that can draw it). */
+  acceptFold?: boolean;
   /** A Full screen button on the stage (a pane; the float has its pill). */
   fullScreenButton?: boolean;
   /**
@@ -679,6 +681,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     transport: props.transport,
     now,
     acceptH264,
+    acceptFold: props.acceptFold === true,
     ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
     agentActionsEnabled: props.agentActionsEnabled === true,
   });

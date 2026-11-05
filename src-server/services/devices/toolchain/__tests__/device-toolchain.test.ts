@@ -216,11 +216,18 @@ describe('device toolchain: install', () => {
     return tool;
   }
 
-  async function optionalOutcome(record: NonNullable<InstallTamper['record']>) {
+  async function optionalOutcome(
+    tamper: NonNullable<InstallTamper['record']> | InstallTamper,
+  ) {
     const home = tempHome();
     const tool = withOptionalPlatformPackage();
     const installer: DeviceToolInstaller = {
-      run: async ({ dir }) => writeFakeInstall(dir, tool, { record }),
+      run: async ({ dir }) =>
+        writeFakeInstall(
+          dir,
+          tool,
+          typeof tamper === 'function' ? { record: tamper } : tamper,
+        ),
     };
     const toolchain = new DeviceToolchain({
       stationHome: home,
@@ -232,10 +239,28 @@ describe('device toolchain: install', () => {
   }
 
   test('an optional platform package the install omitted is not a mismatch', async () => {
-    const state = await optionalOutcome((packages) => {
-      delete packages['node_modules/@native/other-os'];
+    // Omitted as npm --omit=optional omits it: not recorded, not on disk.
+    const state = await optionalOutcome({
+      omit: ['node_modules/@native/other-os'],
     });
     expect(state).toMatchObject({ state: 'installed' });
+  });
+
+  test('an optional package on disk but not in npm’s record is present, and fails its pin', async () => {
+    // A 999.0.0 binary package where the pin says 1.0.0, left unrecorded.
+    const state = await optionalOutcome({
+      versions: { 'node_modules/@native/other-os': '999.0.0' },
+      record: (packages) => {
+        delete packages['node_modules/@native/other-os'];
+      },
+    });
+    expect(state).toMatchObject({
+      state: 'failed',
+      reason: 'integrity-mismatch',
+    });
+    expect(state.state === 'failed' && state.detail).toContain(
+      'node_modules/@native/other-os was recorded with integrity none',
+    );
   });
 
   test('an optional package that IS installed must still match its pin', async () => {

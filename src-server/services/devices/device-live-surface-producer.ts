@@ -767,14 +767,27 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
           ? 'this emulator can only be folded closed or opened flat'
           : 'this device does not fold',
       );
-    if (guard && !guard.isCurrent())
-      throw new DeviceInputError('interrupted', 'control changed hands');
+    // The fence, disposal and the dispatch deadline are asked again after
+    // every wait and immediately before the fold is sent: a person who took
+    // control (or a close, or a timeout) while the hub connection was being
+    // resolved stops it, rather than the emulator folding for a stale
+    // controller.
+    const stillCurrent = () => {
+      if (this.disposed)
+        throw new DeviceInputError('disposed', 'device closed');
+      if (signal?.aborted)
+        throw new DeviceInputError('dispatch-timeout', 'the fold timed out');
+      if (guard && !guard.isCurrent())
+        throw new DeviceInputError('interrupted', 'control changed hands');
+    };
+    stillCurrent();
     const resolution = await this.options.hub.connect();
     if (!resolution.ok)
       throw new DeviceInputError(
         'input-channel-down',
         'device hub unavailable',
       );
+    stillCurrent();
     const response = await resolution.connection.request(
       'POST',
       this.foldPath(),

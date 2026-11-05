@@ -199,12 +199,17 @@ describe('client route table (D12)', () => {
       purpose: 'view',
       device: { platform: 'android', deviceId: 'emulator-5554' },
     });
+    // Folding is not a client route at all (the lease-fenced fold input is
+    // the only way), though Station's own producer connection may call it.
     expect(
       device('POST', '/vendor/serve-emu/api/fold', 'device=emulator-5554'),
-    ).toEqual({
-      purpose: 'drive',
-      device: { platform: 'android', deviceId: 'emulator-5554' },
-    });
+    ).toBeUndefined();
+    expect(isHubHttpRequestAllowed('POST', '/vendor/serve-emu/api/fold')).toBe(
+      false,
+    );
+    expect(
+      isHubHttpRequestAllowed('POST', '/vendor/serve-emu/api/fold', 'station'),
+    ).toBe(true);
     expect(
       device('GET', '/vendor/serve-sim/helper/ABC-1/stream.mjpeg'),
     ).toEqual({

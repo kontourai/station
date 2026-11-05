@@ -1090,6 +1090,7 @@ function DeviceStage({
         cornerRadius: (box) => deviceCornerRadius(platform, box),
       }}
       fullScreenButton
+      acceptFold
       onProducerStatus={foldState.reportStatus}
       // The bar's row keeps the stand picker; Home, Rotate and the fold
       // settings go behind More controls at phone width.

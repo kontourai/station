@@ -143,6 +143,8 @@ class HubViewer implements LiveSurfaceViewer {
   private overflows: number[] = [];
   statePending = true;
   closed = false;
+  /** The viewer asked for fold state and display-tagged frames. */
+  fold = false;
   /** True between handing out a record and the next `next()` call. */
   busy = false;
   consecutiveSlowOverwrites = 0;
@@ -254,7 +256,7 @@ class HubViewer implements LiveSurfaceViewer {
       this.busy = true;
       return {
         kind: 'state',
-        state: this.hub.state(this.identity, this.agentActions),
+        state: this.hub.state(this.identity, this.agentActions, this.fold),
       };
     }
     const frame = this.codec === 'h264' ? this.videoQueue.shift() : this.slot;
@@ -265,9 +267,14 @@ class HubViewer implements LiveSurfaceViewer {
     this.consecutiveSlowOverwrites = 0;
     this.stats.delivered += 1;
     if (this.codec !== 'h264') this.hub.ackOnce(frame);
+    const { display, ...header } = frame.header;
     return {
       kind: 'frame',
-      header: { ...frame.header, epoch: this.hub.lease.snapshot().epoch },
+      header: {
+        ...header,
+        ...(this.fold && display !== undefined ? { display } : {}),
+        epoch: this.hub.lease.snapshot().epoch,
+      },
       body: frame.body,
     };
   }
@@ -361,6 +368,11 @@ export class LiveSurfaceHub {
       codec?: LiveSurfaceViewerCodec;
       /** Ignore cached and queued images captured before this viewer attached. */
       freshOnly?: boolean;
+      /**
+       * Include a foldable's `fold` state and frames' `display` tag. Off,
+       * the records are the ones an earlier client validates.
+       */
+      fold?: boolean;
     },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
@@ -376,6 +388,7 @@ export class LiveSurfaceHub {
       this.frameArrival,
     );
     if (options?.freshOnly) viewer.skipFrame = this.pending;
+    viewer.fold = options?.fold === true;
     if (
       codec === 'image' &&
       !options?.freshOnly &&
@@ -447,6 +460,8 @@ export class LiveSurfaceHub {
   state(
     viewer?: LiveSurfaceViewerIdentity,
     agentActions?: () => boolean,
+    /** Include a foldable's `fold` (a viewer that asked for it). */
+    fold = false,
   ): LiveSurfaceStreamState {
     const health = this.inputHealth();
     let includeActions = false;
@@ -460,7 +475,7 @@ export class LiveSurfaceHub {
       ...(viewer ? { viewer: { ...viewer } } : {}),
       wedged: health.wedged,
       wedgedSince: health.wedgedSince,
-      ...this.producerStatus(),
+      ...this.producerStatus(fold),
       ...(includeActions
         ? {
             agentActions: {
@@ -504,7 +519,7 @@ export class LiveSurfaceHub {
    * can never add (or overwrite) anything else in the state record. A throw
    * is reported and treated as "no status", never as a broken stream.
    */
-  private producerStatus(): LiveSurfaceProducerStatus {
+  private producerStatus(fold = false): LiveSurfaceProducerStatus {
     let status: LiveSurfaceProducerStatus | undefined;
     try {
       status = this.producer.status?.();
@@ -520,7 +535,7 @@ export class LiveSurfaceHub {
     if (status.videoDegradedReason !== undefined)
       out.videoDegradedReason = status.videoDegradedReason;
     if (status.orientation !== undefined) out.orientation = status.orientation;
-    if (status.fold !== undefined)
+    if (fold && status.fold !== undefined)
       out.fold = { ...status.fold, postures: [...status.fold.postures] };
     if (status.hostId !== undefined) out.hostId = status.hostId;
     return out;

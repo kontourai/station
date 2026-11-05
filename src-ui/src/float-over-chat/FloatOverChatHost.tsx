@@ -1176,6 +1176,7 @@ function DeviceFloat({
             onControlState={onControlState}
             onFrameSize={setFrameSize}
             {...(fold.projection ? { projection: fold.projection } : {})}
+            acceptFold
             onProducerStatus={fold.reportStatus}
             renderImmersiveActions={(api) => (
               <DevicePostureControl

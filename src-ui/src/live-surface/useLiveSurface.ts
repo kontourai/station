@@ -138,6 +138,12 @@ export interface UseLiveSurfaceOptions {
   agentActionsEnabled?: boolean;
   /** Ask for H.264 access units; the caller can decode them (#4418). */
   acceptH264?: boolean;
+  /**
+   * Ask for a foldable's `fold` state and display-tagged frames
+   * (`?fold=1`). A host that does not offer them, or a viewer that does not
+   * ask, gets the records an earlier client can read.
+   */
+  acceptFold?: boolean;
   /** Test seam; defaults to the page-wide frame-stream admission. */
   streamAdmission?: LiveSurfaceStreamAdmission;
 }
@@ -206,6 +212,12 @@ const HOST_BUSY_NOTICE_MS = 5_000;
  */
 export const liveSurfaceH264Declines = new Set<string>();
 
+/**
+ * Targets whose host refused `?fold=1` (a host older than the key): asked
+ * again without it, for the rest of the page's session.
+ */
+export const liveSurfaceFoldDeclines = new Set<string>();
+
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
 ] as const;
@@ -239,6 +251,7 @@ function streamUrl(
   projectSlug: string | undefined,
   agentActionsEnabled: boolean,
   h264: boolean,
+  fold = false,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
@@ -248,6 +261,7 @@ function streamUrl(
   if (projectSlug) query.set('projectSlug', projectSlug);
   if (agentActionsEnabled) query.set('agentActions', '1');
   if (h264) query.set('codec', 'h264');
+  if (fold) query.set('fold', '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
@@ -305,6 +319,7 @@ export function useLiveSurface(
     projectSlug,
     agentActionsEnabled = false,
     acceptH264 = false,
+    acceptFold = false,
     streamAdmission = liveSurfaceStreamAdmission,
   } = options;
   const onFrameRef = useRef(options.onFrame);
@@ -358,6 +373,11 @@ export function useLiveSurface(
     if (liveSurfaceH264Declines.has(key)) return;
     liveSurfaceH264Declines.add(key);
     if (reconnect) setDeclineVersion((version) => version + 1);
+  }, []);
+  const declineFoldFor = useCallback((key: string) => {
+    if (liveSurfaceFoldDeclines.has(key)) return;
+    liveSurfaceFoldDeclines.add(key);
+    setDeclineVersion((version) => version + 1);
   }, []);
   const epochRef = useRef(0);
   const targetGenerationRef = useRef(0);
@@ -413,7 +433,8 @@ export function useLiveSurface(
     let stopped = false;
     /** Each connection asks again whether H.264 is still wanted. */
     const askH264 = () => acceptH264 && !liveSurfaceH264Declines.has(targetKey);
-    const urlFor = (h264: boolean) =>
+    const askFold = () => acceptFold && !liveSurfaceFoldDeclines.has(targetKey);
+    const urlFor = (h264: boolean, fold: boolean) =>
       streamUrl(
         apiBase,
         surfaceId,
@@ -421,6 +442,7 @@ export function useLiveSurface(
         projectSlug,
         agentActionsEnabled,
         h264,
+        fold,
       );
 
     const scheduleReconnect = () => {
@@ -440,7 +462,8 @@ export function useLiveSurface(
     let releaseSlot: (() => void) | null = null;
     const connect = async () => {
       const h264 = askH264();
-      const url = urlFor(h264);
+      const fold = askFold();
+      const url = urlFor(h264, fold);
       const release = await admissionRef.current.admit(
         url,
         abort.signal,
@@ -456,14 +479,14 @@ export function useLiveSurface(
       setStatus((current) => (current === 'queued' ? 'connecting' : current));
       releaseSlot = release;
       try {
-        await stream(url, h264);
+        await stream(url, h264, fold);
       } finally {
         release();
         if (releaseSlot === release) releaseSlot = null;
       }
     };
 
-    const stream = async (url: string, h264: boolean) => {
+    const stream = async (url: string, h264: boolean, fold: boolean) => {
       let response: Response;
       try {
         response = await transportRef.current(url, {
@@ -476,7 +499,7 @@ export function useLiveSurface(
         return;
       }
       if (stopped || generation !== targetGenerationRef.current) return;
-      if (response.status === 400 && h264) {
+      if (response.status === 400 && (h264 || fold)) {
         // A refusal of the codec itself declines H.264 for this target: the
         // host names the refused key (`field: 'codec'`). A host older than
         // `?codec=` refuses it as an unknown key but names nothing, so an
@@ -488,12 +511,20 @@ export function useLiveSurface(
           return null;
         })) as { code?: unknown; field?: unknown } | null;
         if (stopped || generation !== targetGenerationRef.current) return;
-        if (
-          envelope?.code === 'invalid-request' &&
-          (envelope.field === 'codec' || envelope.field === undefined)
-        )
-          declineH264For(targetKey);
-        else scheduleReconnect();
+        // `?fold=1` the same way: a host older than it names `unknown` (or,
+        // older still, nothing); either way ask again without it.
+        const refused =
+          envelope?.code === 'invalid-request' ? envelope.field : null;
+        const declineCodec =
+          h264 && (refused === 'codec' || refused === undefined);
+        const declineFold =
+          fold &&
+          (refused === 'fold' ||
+            refused === 'unknown' ||
+            refused === undefined);
+        if (declineFold) declineFoldFor(targetKey);
+        if (declineCodec) declineH264For(targetKey);
+        if (!declineFold && !declineCodec) scheduleReconnect();
         return;
       }
       if (response.status === 404) {
@@ -619,9 +650,11 @@ export function useLiveSurface(
     visible,
     retryToken,
     acceptH264,
+    acceptFold,
     declineVersion,
     targetKey,
     declineH264For,
+    declineFoldFor,
     adoptLease,
     observeEpoch,
   ]);

@@ -111,18 +111,13 @@ const HUB_CLIENT_ROUTES: readonly HubClientRoute[] = [
     purpose: 'view',
     device: { platform: 'ios', from: 'path' },
   },
-  // A foldable emulator's hinge (hub 0.12+). GET reads the posture; POST
-  // folds or unfolds it, a side effect on the device.
+  // A foldable emulator's hinge (hub 0.12+): reading the posture. Folding
+  // it is server-only (below): it goes through the live surface's fold
+  // input, under its control lease, never the client proxy.
   {
     method: 'GET',
     pattern: /^\/vendor\/serve-emu\/api\/fold$/,
     purpose: 'view',
-    device: { platform: 'android', from: 'query' },
-  },
-  {
-    method: 'POST',
-    pattern: /^\/vendor\/serve-emu\/api\/fold$/,
-    purpose: 'drive',
     device: { platform: 'android', from: 'query' },
   },
   // stream-settings refuses a `device` that is not its active emulator.
@@ -162,6 +157,8 @@ const HUB_CLIENT_ROUTES: readonly HubClientRoute[] = [
 /** Server-only POSTs: attach/detach a simulator's stream helper. */
 const HUB_STATION_POST_PATHS: readonly RegExp[] = [
   /^\/vendor\/serve-sim\/grid\/api\/(start|shutdown)$/,
+  // Folding an emulator: the device producer's fold input (lease-fenced).
+  /^\/vendor\/serve-emu\/api\/fold$/,
 ];
 
 /** The readiness probe, server-only. */

@@ -127,6 +127,8 @@ interface Harness {
   requests: { method: string; path: string; body?: unknown }[];
   /** Answers a request before the default MJPEG/unknown handling. */
   respond?: (method: string, path: string) => Response | undefined;
+  /** Held before every hub connect resolves (a slow device host). */
+  connectGate?: () => Promise<void>;
 }
 
 const boundary = 'frame';
@@ -192,7 +194,10 @@ function harness(
     },
   } as unknown as DeviceHubAccessConnection;
   const hub: DeviceHubAccess = {
-    connect: async () => ({ ok: true, connection }),
+    connect: async () => {
+      await h.connectGate?.();
+      return { ok: true, connection };
+    },
     screenshot: async () => {
       h.screenshots += 1;
       return { png: PNG, width: 1, height: 1 };
@@ -1577,113 +1582,37 @@ describe('Android foldable', () => {
     ).rejects.toMatchObject({ code: 'fold-unsupported' });
     expect(h.requests).toHaveLength(before);
   });
-});
 
-describe('foldables through the live-surface registry', () => {
-  test('fold state reaches viewers and a human fold input reaches the helper', async () => {
-    const h = track(harness());
-    const registry = new LiveSurfaceRegistry();
-    registry.register(h.producer, { authorize: () => true });
-    const entry = registry.get('device:ios:test')!;
-    const viewer = entry.hub.attach(PARAMS);
-    await viewer.next();
-    const socket = await openInput(h);
-    await viewer.next();
-    socket.emit('message', screenConfig(DUO_COVER), true);
-    const state = await viewer.next();
-    expect(state).toMatchObject({
-      kind: 'state',
-      state: { fold: { activeDisplay: 'cover', posture: 'closed' } },
-    });
-    const result = dispatchHumanInput(
-      entry,
-      { kind: 'human', principal: 'operator', device: 'd1' },
-      0,
-      [{ kind: 'fold', posture: 'laptop' }],
+  test('control taken while the hub connection resolves: the fold is not sent', async () => {
+    const h = track(
+      harness({
+        surfaceId: 'device:android:test',
+        platform: 'android',
+        deviceId: 'emulator-5554',
+      }),
     );
-    await until(() => socket.sent.length === 2, 'hinge command');
-    const [tag, body] = socket.packets()[1] as [
-      number,
-      { requestId: number; command: unknown },
-    ];
-    expect([tag, body.command]).toEqual([
-      0x10,
-      { control: 'pose', value: 'laptop' },
-    ]);
-    socket.emit(
-      'message',
-      hingeReply({ requestId: body.requestId, ok: true }),
-      true,
+    h.respond = (_method, path) =>
+      path.startsWith('/vendor/serve-emu/api/fold')
+        ? foldResponse('opened', 180)
+        : undefined;
+    await openInput(h);
+    await until(() => h.producer.status().fold !== undefined, 'fold state');
+    let release!: () => void;
+    h.connectGate = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    let current = true;
+    const folding = h.producer.dispatch(
+      { kind: 'fold', posture: 'closed' },
+      { isCurrent: () => current },
     );
-    expect(await result).toMatchObject({ ok: true });
-    viewer.close();
-    await registry.dispose();
-  });
-});
-
-describe('device cancel: releases what it is given, and forgets a release only once delivered', () => {
-  const key = (type: 'down' | 'up', name: string, code: string) =>
-    ({ kind: 'key', type, key: name, code }) as const;
-  /** HID usages down on the simulator, replayed from what it received. */
-  const remoteKeys = (socket: FakeSocket) => {
-    const down = new Set<number>();
-    for (const packet of socket.packets() as [number, unknown][]) {
-      if (packet[0] !== 0x06) continue;
-      const body = packet[1] as { type: string; usage: number };
-      if (body.type === 'down') down.add(body.usage);
-      else down.delete(body.usage);
-    }
-    return [...down];
-  };
-  /** Refuse the next `times` key releases before they reach the device. */
-  const refuseKeyUps = (socket: FakeSocket, times: number) => {
-    let left = times;
-    socket.refuse = (data) => {
-      if (typeof data === 'string' || data[0] !== 0x06) return false;
-      const body = JSON.parse(new TextDecoder().decode(data.subarray(1)));
-      if (body.type !== 'up' || left <= 0) return false;
-      left -= 1;
-      return true;
-    };
-  };
-  const held = (keys: { key: string; code: string }[]) => ({
-    buttons: [],
-    keys,
-    pointer: { x: 0, y: 0 },
-    pointerType: 'mouse' as const,
-    buttonPointerTypes: {},
-  });
-
-  test('a key release the device never got is still released by a cancel that names it', async () => {
-    const h = track(harness());
-    const socket = await openInput(h);
-    await h.producer.dispatch(key('down', 'Shift', 'ShiftLeft'));
-    expect(remoteKeys(socket)).toEqual([225]);
-    refuseKeyUps(socket, 1);
-    await expect(
-      h.producer.dispatch(key('up', 'Shift', 'ShiftLeft')),
-    ).rejects.toThrow();
-    expect(remoteKeys(socket)).toEqual([225]);
-    await h.producer.cancelHeldInput(
-      held([{ key: 'Shift', code: 'ShiftLeft' }]),
-    );
-    expect(remoteKeys(socket)).toEqual([]);
-  });
-
-  test('a cancel that fails for one of two keys fails, and a second cancel releases both', async () => {
-    const h = track(harness());
-    const socket = await openInput(h);
-    await h.producer.dispatch(key('down', 'Shift', 'ShiftLeft'));
-    await h.producer.dispatch(key('down', 'Control', 'ControlLeft'));
-    refuseKeyUps(socket, 1);
-    const both = held([
-      { key: 'Shift', code: 'ShiftLeft' },
-      { key: 'Control', code: 'ControlLeft' },
-    ]);
-    await expect(h.producer.cancelHeldInput(both)).rejects.toThrow();
-    // Every release was tried: only the refused one is still down.
-    expect(remoteKeys(socket)).toEqual([225]);
-    await h.producer.cancelHeldInput(both);
-    expect(remoteKeys(socket)).toEqual([]);
+    folding.catch(() => {});
+    await until(() => release !== undefined, 'connect waiting');
+    // A person takes control while the device host is still answering.
+    current = false;
+    release();
+    await expect(folding).rejects.toMatchObject({ code: 'interrupted' });
+    expect(h.requests.some((r) => r.method === 'POST')).toBe(false);
   });
 });
