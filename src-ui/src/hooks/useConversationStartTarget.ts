@@ -20,6 +20,7 @@ export function useConversationStartTarget(
     environmentId: string;
     connection?: StationConnection;
     error?: unknown;
+    source: typeof connections;
   }>();
   useEffect(() => {
     void attempt;
@@ -33,10 +34,15 @@ export function useConversationStartTarget(
           release();
           return;
         }
-        setResolved({ environmentId, connection: lease.connection });
+        setResolved({
+          environmentId,
+          connection: lease.connection,
+          source: connections,
+        });
       },
       (error) => {
-        if (!cancelled) setResolved({ environmentId, error });
+        if (!cancelled)
+          setResolved({ environmentId, error, source: connections });
       },
     );
     return () => {
@@ -47,6 +53,7 @@ export function useConversationStartTarget(
   const connection =
     active &&
     resolved?.environmentId === environmentId &&
+    resolved.source === connections &&
     resolved.connection?.isCurrent()
       ? resolved.connection
       : undefined;
@@ -82,7 +89,9 @@ export function useConversationStartTarget(
     scope,
     connection,
     connectionError:
-      active && resolved?.environmentId === environmentId
+      active &&
+      resolved?.environmentId === environmentId &&
+      resolved.source === connections
         ? resolved.error
         : undefined,
     reconnect: () => setAttempt((value) => value + 1),
