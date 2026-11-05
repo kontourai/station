@@ -521,7 +521,8 @@ const VERBS: Record<string, VerbSpec> = {
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
     usage: [
       'station telemetry status',
-      'station telemetry set <kontour|operator> <off|lite|full>',
+      'station telemetry set <kontour|operator> <off|anonymous|lite|full>',
+      'station telemetry set publisher:<id> <off|lite|full>',
       'station telemetry producers create <name> [--allow-remote] [--expires-in-days=<n>] [--token-file=<path>]',
       'station telemetry producers list',
       'station telemetry producers revoke <name>',
@@ -530,6 +531,8 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     group: 'Configuration',
     detail: [
+      'anonymous is an alias for lite only for kontour and operator; saved tiers and --json stay lite.',
+      'Plugin Lite contains plugin-chosen counts and can encode identifiers.',
       'DO_NOT_TRACK forces Off. Full requires the current disclosure acknowledgement.',
       'A producer token is accepted only on POST /v1/agent-events, /v1/traces and /v1/logs.',
       'It works from this machine only unless created with --allow-remote. The secret is shown once.',

@@ -193,7 +193,16 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     vi.restoreAllMocks();
   });
 
-  async function setup(terminalProof = false) {
+  async function setup(
+    terminalProof = false,
+    /** Runs before the routes are built (a record a restart would find). */
+    beforeRoutes?: (fixture: {
+      home: string;
+      terminalA: string;
+      aProjectId: string;
+      bProjectId: string;
+    }) => Promise<void>,
+  ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-read-scope-');
     const terminalA = join(home, 'terminal-a'),
@@ -503,6 +512,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const base = `http://127.0.0.1:${await listening}`;
     process.env.STATION_API_BASE = base;
     Reflect.set(context, 'port', Number(new URL(base).port));
+    await beforeRoutes?.({
+      home,
+      terminalA,
+      aProjectId: aProject.id,
+      bProjectId: bProject.id,
+    });
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
@@ -651,6 +666,68 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         });
     },
   );
+
+  // #492: the production restore resolves each binding as it is NOW. Project
+  // B's shell was recorded in terminal-a; B now lives in terminal-b, so a
+  // restart must not reopen it there. Project A still lives in terminal-a.
+  test('production restore refuses a shell whose Project moved, with the reason', async () => {
+    const ids = { moved: crypto.randomUUID(), kept: crypto.randomUUID() };
+    const { base } = await setup(true, async (fixture) => {
+      const cwd = await realpath(fixture.terminalA);
+      const shell = (terminalId: string, projectId: string) => ({
+        projectId,
+        bindingKey: 'project',
+        terminalId,
+        cwd,
+        cols: 80,
+        rows: 24,
+        status: 'running',
+        createdAt: Date.parse(NOW),
+        ordinal: 1,
+      });
+      writeFileSync(
+        join(fixture.home, 'terminal-sessions.json'),
+        JSON.stringify([
+          shell(ids.moved, fixture.bProjectId),
+          shell(ids.kept, fixture.aProjectId),
+        ]),
+      );
+    });
+    const list = async (slug: string) => {
+      const response = await fetch(
+        `${base}/api/projects/${slug}/terminal-sessions?bindingKey=project`,
+        {
+          headers: {
+            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+            origin: base,
+          },
+        },
+      );
+      expect(response.status).toBe(200);
+      return (
+        (await response.json()) as {
+          data: {
+            terminalId: string;
+            status: string;
+            restoreRefused?: { reason: string };
+          }[];
+        }
+      ).data;
+    };
+    const [moved] = await list('b-project');
+    expect(moved).toMatchObject({
+      terminalId: ids.moved,
+      status: 'exited',
+      restoreRefused: {
+        reason: 'its directory is no longer inside its Project or chat',
+      },
+    });
+    // The control: its binding still resolves where it was, so it is not
+    // refused (it reopens; on a host without /bin/sh its spawn fails).
+    const [kept] = await list('a-project');
+    expect(kept?.terminalId).toBe(ids.kept);
+    expect(kept?.restoreRefused).toBeUndefined();
+  });
 
   // #3994 owner decision: the operator's own paired device (tied to no
   // person) is the operator; the same device tied to a member is not.

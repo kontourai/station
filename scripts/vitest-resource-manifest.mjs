@@ -520,6 +520,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
   // #4521: runs `station telemetry` as a CLI child against a local server.
   'packages/cli/src/__tests__/telemetry-managed-command.test.ts',
+  'packages/cli/src/__tests__/telemetry-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.

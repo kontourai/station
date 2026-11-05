@@ -666,6 +666,7 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import { AGENT_TERMINAL_UNBOUND_PROJECT } from '../../services/acp/acp-session-terminals.js';
 import {
   ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
@@ -9609,6 +9610,13 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // A chat's directory read as its recorded owner: for a server-side read
+  // with no request (an agent's terminal run, a restore after restart).
+  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
+    projects: context.projectService,
+  });
   // Commands agents ask to run (#3994); absent on a host with no terminals.
   let terminalRuns: TerminalRunRequests | undefined;
   /**
@@ -9713,12 +9721,40 @@ export function configureRuntimeRoutes(
             env: { PATH: await resolveAugmentedPath() },
           };
         },
-        // A shell that ended because its host restarted reopens only while
-        // its Project still exists; the session re-checks its directory.
-        restorable: async (scope) =>
-          context.storageAdapter
-            .listProjects()
-            .some((item) => item.id === scope.projectId),
+        // #492: a shell that ended because its host restarted reopens only
+        // inside its binding as it resolves now: the Project's directory, or
+        // a chat's directory read as that chat's recorded owner (no request
+        // exists at startup). The session refuses a directory outside it.
+        restoreRoot: (scope) =>
+          terminalBindingRoot(scope, async (slug, thread) => {
+            const ownerId =
+              context.orchestrationService.sessionRecordedOwnerId(thread);
+            if (!ownerId)
+              throw new TerminalSessionRefusal(
+                'its chat has no recorded owner',
+              );
+            return ownerSessionDirectory(ownerId, slug, thread);
+          }).catch((error: unknown) => {
+            if (!(error instanceof TerminalSessionRefusal)) throw error;
+            throw new TerminalSessionRefusal(
+              error.message === 'Project not found'
+                ? 'its Project no longer exists'
+                : error.message === 'Terminal binding unavailable'
+                  ? "its chat's directory is no longer available"
+                  : error.message,
+            );
+          }),
+        // #2497: the service has required a host-confined session in its
+        // own thread binding; its Project must also still exist.
+        authorizeAgentCommand: async (_execution, scope) => {
+          if (
+            scope.projectId !== AGENT_TERMINAL_UNBOUND_PROJECT &&
+            !context.storageAdapter
+              .listProjects()
+              .some((item) => item.id === scope.projectId)
+          )
+            throw new TerminalSessionRefusal('Project not found');
+        },
         // A package script by name or an approved agent command; the
         // executable is found here, never taken from a request.
         resolveCommand: async (_request, _scope, program, cwd) =>
@@ -9833,11 +9869,6 @@ export function configureRuntimeRoutes(
       }),
     );
   }
-  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
-    sessions: context.orchestrationService,
-    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
-    projects: context.projectService,
-  });
   context.app.route(
     '/api/orchestration/station-control/terminal-runs',
     createAgentTerminalRunRoutes({

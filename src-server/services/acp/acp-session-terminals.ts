@@ -6,25 +6,33 @@
  * answers stay what the protocol defines: output from the journal, truncated
  * from the beginning to `outputByteLimit`, and an exit as an exit code or a
  * signal name, never both.
+ *
+ * #2497: the engine chose the program, so it runs only under the agent
+ * session's execution authority (`TerminalSessions.openAgentCommand`): a
+ * session confined to its workspace is refused with the reason, as an ACP
+ * error, and nothing starts.
  */
 import { realpath } from 'node:fs/promises';
 import { isAbsolute, relative, sep } from 'node:path';
 import { RequestError } from '@agentclientprotocol/sdk/unstable';
+import type { StationConfinement } from '@kontourai/station-contracts/provider';
 import { signalName } from '../terminal/command-process.js';
 import type { ShellLaunch } from '../terminal/shell-host.js';
+import {
+  type AgentCommandExecution,
+  TerminalSessionRefusal,
+} from '../terminal/terminal-sessions.js';
 
 type Scope = { projectId: string; bindingKey: string };
 
 /** The part of `TerminalSessions` an agent's terminals use. */
 export interface AgentCommandSessions {
-  openInternal(
+  openAgentCommand(
+    execution: AgentCommandExecution,
     scope: Scope,
     input: {
       cwd: string;
-      cols: number;
-      rows: number;
       launch: ShellLaunch;
-      kind: 'command';
       outputCapBytes?: number;
     },
   ): Promise<{
@@ -104,6 +112,8 @@ export class AcpSessionTerminals {
     private readonly scope: Scope,
     /** The agent session's directory: a terminal's cwd must be inside it. */
     private readonly root: string,
+    /** The session's execution authority, read at each create. */
+    private readonly execution: () => AgentCommandExecution,
     private readonly outputCapBytes?: number,
   ) {}
 
@@ -130,26 +140,33 @@ export class AcpSessionTerminals {
       exited: Promise.resolve({ exitCode: null, signal: null }),
     };
     try {
-      const opened = await this.sessions.openInternal(this.scope, {
-        cwd,
-        cols: 80,
-        rows: 24,
-        launch: {
-          file: input.command,
-          args: input.args,
-          ...(input.env && { env: input.env }),
+      const opened = await this.sessions.openAgentCommand(
+        this.execution(),
+        this.scope,
+        {
+          cwd,
+          launch: {
+            file: input.command,
+            args: input.args,
+            ...(input.env && { env: input.env }),
+          },
+          ...(this.outputCapBytes !== undefined && {
+            outputCapBytes: this.outputCapBytes,
+          }),
         },
-        kind: 'command',
-        ...(this.outputCapBytes !== undefined && {
-          outputCapBytes: this.outputCapBytes,
-        }),
-      });
+      );
       terminal.sessionId = opened.terminalId;
       terminal.exited = opened.exited.then((exit) => {
         terminal.exit = acpExit(exit);
         return terminal.exit;
       });
     } catch (error) {
+      // Refused, not failed: the engine is told why, and nothing started.
+      if (error instanceof TerminalSessionRefusal)
+        throw RequestError.invalidRequest(
+          { command: input.command, refused: 'execution-authority' },
+          error.message,
+        );
       const message = error instanceof Error ? error.message : String(error);
       if (!/spawn failed/.test(message)) throw error;
       // A command that never started is a failed terminal, reported through
@@ -252,7 +269,7 @@ export class AcpSessionTerminals {
 }
 
 /** The Project an agent's terminals are recorded under when its session has none. */
-const AGENT_TERMINAL_UNBOUND_PROJECT = '.agent-terminals';
+export const AGENT_TERMINAL_UNBOUND_PROJECT = '.agent-terminals';
 
 /**
  * The adapter's `agentTerminals` option: an agent session's terminals are
@@ -267,6 +284,8 @@ export function agentTerminalsFor(source: {
     threadId: string;
     projectSlug?: string;
     cwd: string;
+    /** The session's current server-derived confinement (#2493). */
+    confinement: () => StationConfinement | undefined;
   }): AcpSessionTerminals | undefined => {
     const sessions = source.sessions();
     if (!sessions) return undefined;
@@ -279,6 +298,7 @@ export function agentTerminalsFor(source: {
         bindingKey: `thread:${input.threadId}`,
       },
       input.cwd,
+      () => ({ threadId: input.threadId, confinement: input.confinement() }),
     );
   };
 }

@@ -59,7 +59,8 @@ vi.mock('../contexts/RegionModelContext', () => ({
         },
 }));
 
-vi.mock('../build-info', () => ({
+vi.mock('../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../build-info')>()),
   buildInfo: { version: '0.1.2', commit: 'test' },
 }));
 

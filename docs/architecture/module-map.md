@@ -6152,7 +6152,8 @@ reads do not expose private source incident detail or establish delivery coverag
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
-IDs mapped to publisher/channel pairs, without installation credentials.
+IDs mapped to a publisher and its allowed channels, without installation
+credentials. The ping's channel must be one the source lists.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
 deduplicates raw pings and records bounded contribution arrays and dimension
 jobs. Closed-day finalization uses grouped SQL in separately committed dimension
@@ -6170,8 +6171,8 @@ days including the current partial period. Public and publisher APIs exclude it.
 
 Public and publisher views release only four closed ISO UTC weeks over ten
 profile/adoption fields, excluding counters/friction. The fixed public domain
-contains enum values and each publisher's operator-configured public versions
-and registry IDs, including zero-count values. There is no true k pre-filter.
+contains enum values and each publisher's operator-configured public versions,
+registry IDs and channels, including zero-count values. There is no true k pre-filter.
 Published counts sum distinct daily contributor keys per value (network-days),
 so NAT undercounts installations. Sensitivity is 40 per added/removed ping;
 ε=1/280 per count gives ε≤1/7 per added ping. A network contributing at most 40
@@ -6189,6 +6190,20 @@ refusal without storage; known product and publisher keys have per-credential
 post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
 returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
 for composition, fixed domains, key/publication custody and low-volume utility.
+
+[Lite core](../../packages/telemetry-broker/src/lite-core.ts) holds the
+storage-independent Lite rules: validation glue, normalization and marginals
+driven by `STATION_DAILY_FIELDS`, daily network keys, source parsing,
+publication cells, cursors and response shapes. It is shared with the
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md), whose
+[SQLite Durable Object](../../deploy/telemetry-worker/src/receiver.ts) stores
+the open day's salt, erases closed days' salts and contributor keys from live
+storage (Durable Object point-in-time recovery can still restore them for 30
+days; restoring is forbidden by policy), refuses arrivals for closed days,
+finalizes each day once, and adds an exact per-day insights view for its owner
+dashboard.
+Each receiver keeps only its storage adapter. The Worker implements the Lite
+and public routes, not the Full-tier, private-usage or publisher routes.
 
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
@@ -6608,7 +6623,8 @@ other terminal service or listener remains. An ACP engine's terminals are
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
 (pipes, an output cap, and termination that ends what the command started, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
-on personal hosts only. `restart` keeps a session's id and starts a new
+on personal hosts only, through `openAgentCommand`: only for a host-confined
+session in its own thread binding (#2497). `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
 `endProject`, wired into the Project routes as `endProjectTerminals`.
 A person's command sessions run a Project package script by
@@ -6624,7 +6640,9 @@ are read before each open and usage read: history on or off, the journal
 directory (ended journals move there), maximum age and the per-terminal and
 total sizes; agent command sessions are retained in a separate 16-record pool
 that never expires a user shell. On start, a shell that ended only because its host went away
-reopens under the same id below a "restored after restart" divider; one the
+reopens under the same id below a "restored after restart" divider, only
+inside its binding as it resolves then (#492; otherwise it stays ended with a
+recorded `restoreRefused` reason); one the
 supervisor reattached, or that ended by itself, is not restored. Shell records
 carry a stable `ordinal`, and an `adopt` open answers with the binding's
 running shell, so concurrent opens of an empty binding share one. The

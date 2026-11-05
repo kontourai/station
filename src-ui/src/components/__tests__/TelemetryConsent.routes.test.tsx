@@ -289,6 +289,14 @@ test.each(['off', 'lite', 'full'] as const)(
         name: /^Anonymous usage counts/,
       });
       expect(anonymous).toHaveProperty('checked', true);
+      expect(anonymous.getAttribute('aria-describedby')).toBeTruthy();
+      const description = document.getElementById(
+        anonymous.getAttribute('aria-describedby')!,
+      )?.textContent;
+      expect(description).toContain('Daily counts');
+      expect(description).toContain(
+        'coarse tokens per engine from conversations run in Station',
+      );
       fireEvent.click(
         screen.getByRole('radio', { name: SHARING_LABELS[tier] }),
       );

@@ -6698,3 +6698,15 @@ establish activation or an observed effect.
 
 See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
 flow and the separate setup, provider and release boundaries.
+
+### Station release notes
+
+`@kontourai/station-sdk/release-notes-query` exports
+`useStationReleaseNotesQuery(version, nativeApp, enabled?)` and
+`useStationReleaseHistoryQuery(enabled?)`. They read public GitHub Releases
+without Station credentials, using the host’s QueryClient. An exact-version
+404 returns `null`; transport and response failures remain errors for retry.
+Native app Nightlies use the cohort’s `desktop-v<version>` changelog releases; other versions
+use `v<version>`. History includes versioned entries from the latest 100
+GitHub releases, with `STATION_RELEASE_HISTORY_URL` for older entries. Release
+prose never authorizes an update.

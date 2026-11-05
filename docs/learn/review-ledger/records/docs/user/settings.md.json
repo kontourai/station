@@ -62,7 +62,15 @@
 
     "packages/agent-runtime/src/turn-retention.ts",
 
-    "src-server/runtime/conversation/stream-orchestrator.ts"
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "src-ui/src/components/updates/ChangelogPreference.tsx",
+
+    "src-ui/src/components/updates/ReleaseNotes.tsx",
+
+    "src-ui/src/components/updates/PostUpdateChangelog.tsx",
+
+    "src-ui/src/components/updates/UpdateDownloadIcon.tsx"
   ],
 
   "checks": [

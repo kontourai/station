@@ -2820,29 +2820,38 @@ export class OrchestrationService {
       },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
-      listUsageEventPayloads: (threadId) =>
-        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
+      listUsageEventPayloads: (threadId, clock) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId, clock) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
         this.options.eventStore?.listUsageCoverageEvents(input) ?? [],
       searchConversationMessages: (input) =>
         this.options.eventStore?.searchConversationMessages(input) ?? [],
-      readSessionThreadIds: (authority) => {
+      readSessionThreadIds: (authority, stationOwnedOnly = false) => {
         if (authority === INTERNAL_SESSION_READ_SCOPE) {
-          return (this.options.eventStore?.readSessions() ?? []).map(
-            (persisted) => persisted.threadId,
-          );
+          return (this.options.eventStore?.readSessions() ?? [])
+            .filter(
+              (session) =>
+                !stationOwnedOnly || session.controlMode === 'station-owned',
+            )
+            .map((persisted) => persisted.threadId);
         }
         if (!isSessionReadAuthority(authority)) return [];
-        return (
+        const ids =
           this.options.eventStore?.readUsageSessionThreadIds({
             ownerUserId: authority.userId,
             ...(authority.mode === 'hosted' && authority.tenantExecutionContext
               ? { tenantId: authority.tenantExecutionContext.tenantId }
               : {}),
-          }) ?? []
-        );
+          }) ?? [];
+        return stationOwnedOnly
+          ? ids.filter(
+              (id) =>
+                this.options.eventStore?.readSessionByThread(id)
+                  ?.controlMode === 'station-owned',
+            )
+          : ids;
       },
       requireTenantExecutionContext: () =>
         this.options.requireTenantExecutionContext?.() === true,
@@ -6917,6 +6926,11 @@ export class OrchestrationService {
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
     this.initialize();
     return this.transcriptReads.listSessionUsage(authority);
+  }
+
+  listDailyUsage(day: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.transcriptReads.listDailyUsage(day, authority);
   }
 
   listUsageReceipts(

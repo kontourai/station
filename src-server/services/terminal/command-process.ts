@@ -373,6 +373,14 @@ class CommandProcess implements IPtyProcess {
   }
 }
 
+/** cmd.exe on Windows, which takes its command line as written. */
+function isWindowsCommandProcessor(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === 'win32' && /(^|[\\/])cmd(\.exe)?$/i.test(command);
+}
+
 /**
  * Starts a command and resolves once it has started, or rejects with a
  * `CommandSpawnError` (a missing or unrunnable executable) without leaving an
@@ -406,6 +414,9 @@ export function spawnCommandProcess(
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
+        // cmd.exe parses its own line, and Node's quoting for other programs
+        // turns a command's quotes into \" there; the launch quotes for cmd.
+        windowsVerbatimArguments: isWindowsCommandProcessor(input.command),
       });
     } catch (error) {
       reject(
