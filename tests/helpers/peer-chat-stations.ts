@@ -523,6 +523,12 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
   expect(request.status()).toBe(202);
   const { requestId } = (await request.json()) as { requestId: string };
   await expect(
+    setup.getByText('Device access requested. Track it in connection status.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await setup.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(
     page.getByRole('button', { name: 'Cancel request', exact: true }),
   ).toBeVisible();
   await stationJson(
@@ -538,7 +544,6 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
   await expect(
     page.getByRole('button', { name: 'Cancel request', exact: true }),
   ).toHaveCount(0);
-  await setup.getByRole('button', { name: 'Done', exact: true }).click();
   expect(page.url()).toBe(sourceUrl);
   await page.getByTestId('app-toolbar-connection').click();
   await page
