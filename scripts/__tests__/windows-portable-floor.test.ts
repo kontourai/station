@@ -69,13 +69,9 @@ describe('the Windows portable floor runner', () => {
       ],
       expect.objectContaining({ cwd: root, windowsHide: true }),
     ]);
-    expect(outcomes.map((outcome) => outcome.passed)).toEqual([
-      true,
-      false,
-      false,
-      false,
-      true,
-    ]);
+    expect(
+      outcomes.map((outcome: { passed: boolean }) => outcome.passed),
+    ).toEqual([true, false, false, false, true]);
     expect(floorFailures(outcomes)).toEqual([
       'b.test.ts: exit 1',
       'c.test.ts: signal SIGTERM',
