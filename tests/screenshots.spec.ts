@@ -1671,6 +1671,11 @@ async function openGalleryNewChatDraft(page: Page): Promise<Locator> {
     .click();
   const draft = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(draft).toBeVisible();
+  // The draft's setup check starts as a one-line placeholder and is replaced
+  // by the taller setup guidance, which moves the composer down. A tap aimed
+  // before that lands on whatever slid under it, so wait for the settled draft.
+  for (const label of ['Checking chat setup', 'Loading setup options'])
+    await expect(draft.getByRole('status', { name: label })).toHaveCount(0);
   return draft;
 }
 
