@@ -1,0 +1,129 @@
+.memory-review {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-bottom: var(--k-space-5);
+}
+
+.memory-review h3,
+.memory-review h4 {
+  margin: 0;
+}
+
+.memory-review__list {
+  display: grid;
+  gap: var(--k-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-review__card {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-border, var(--border-primary));
+  border-radius: var(--k-radius-md, 0.5rem);
+  background: var(--k-surface, var(--bg-primary));
+}
+
+.memory-review__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
+.memory-review__claim {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.memory-review__reasons {
+  margin: 0;
+  padding-left: var(--k-space-4);
+  color: var(--text-secondary);
+}
+
+.memory-review__compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--k-space-3);
+}
+
+.memory-review__evidence {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: var(--k-space-3);
+  border-left: 3px solid var(--k-border, var(--border-primary));
+}
+
+.memory-review__evidence figcaption {
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.memory-review blockquote {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.memory-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.memory-review__correct,
+.memory-review__search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--k-space-3);
+}
+
+.memory-review__correct label,
+.memory-review__search label {
+  display: grid;
+  flex: 1 1 14rem;
+  gap: var(--k-space-1);
+}
+
+.memory-review__history {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+}
+
+.memory-review__history dt {
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+}
+
+.memory-review__history dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-review__count,
+.memory-review__note {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 40rem) {
+  .memory-review__actions > button,
+  .memory-review__card > button,
+  .memory-review__correct > button,
+  .memory-review__search > button {
+    min-height: 44px;
+  }
+
+  .memory-review__card-head {
+    flex-direction: column;
+  }
+}

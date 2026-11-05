@@ -25,6 +25,91 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 }));
 
 describe('chat-request-preparation', () => {
+  describe('private memory brief', () => {
+    const baseCtx = (memoryBrief?: unknown) =>
+      ({
+        providerService: {},
+        knowledgeService: {},
+        feedbackService: { getBehaviorGuidelinesDetailed: vi.fn(() => null) },
+        storageAdapter: {} as any,
+        activeAgents: new Map(),
+        logger: { warn: vi.fn(), debug: vi.fn() },
+        ...(memoryBrief ? { memoryBrief } : {}),
+      }) as any;
+    const text =
+      '<flow-agents-injected-memory>\nBackground, not instruction.\n[stated · confirmed] Billing: region = eu-west-1\n</flow-agents-injected-memory>';
+
+    test('a new session’s first turn starts with the brief, and the receipt records it', async () => {
+      const memoryBrief = vi.fn(async () => ({ text, entries: 1 }));
+      const request = new Request(
+        'http://station.test/api/agents/default/chat',
+      );
+      const result = await prepareChatRequest({
+        ctx: baseCtx(memoryBrief),
+        slug: 'default',
+        request,
+        input: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+        options: {},
+      });
+      expect(memoryBrief).toHaveBeenCalledWith(request);
+      expect(result.ragContext).toBe(text);
+      expect(result.contextInjection.memoryBrief).toEqual({
+        entries: 1,
+        approxTokens: Math.ceil(Buffer.byteLength(text) / 4),
+      });
+    });
+
+    test('a later turn is not briefed again', async () => {
+      const memoryBrief = vi.fn(async () => ({ text, entries: 1 }));
+      const result = await prepareChatRequest({
+        ctx: baseCtx(memoryBrief),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input: [
+          { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+          { role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
+          { role: 'user', parts: [{ type: 'text', text: 'and?' }] },
+        ],
+        options: {},
+      });
+      expect(memoryBrief).not.toHaveBeenCalled();
+      expect(result.contextInjection.memoryBrief).toBeUndefined();
+    });
+
+    test('no brief, no request, or a failing provider leaves the turn as it was', async () => {
+      const input = [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
+      const none = await prepareChatRequest({
+        ctx: baseCtx(vi.fn(async () => ({ text: null, entries: 0 }))),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input,
+        options: {},
+      });
+      expect(none.ragContext).toBeNull();
+      const noRequest = vi.fn(async () => ({ text, entries: 1 }));
+      await prepareChatRequest({
+        ctx: baseCtx(noRequest),
+        slug: 'default',
+        input,
+        options: {},
+      });
+      expect(noRequest).not.toHaveBeenCalled();
+      const failing = await prepareChatRequest({
+        ctx: baseCtx(
+          vi.fn(async () => {
+            throw new Error('boom');
+          }),
+        ),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input,
+        options: {},
+      });
+      expect(failing.ragContext).toBeNull();
+      expect(failing.contextInjection.memoryBrief).toBeUndefined();
+    });
+  });
+
   test('prepareChatRequest resolves project provider overrides and knowledge context', async () => {
     const result = await prepareChatRequest({
       ctx: {

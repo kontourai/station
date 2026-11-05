@@ -1219,6 +1219,13 @@ export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**
+   * Review, recall and briefing for private memory
+   * (`/api/knowledge/memory/queue|recall|brief|measurement`). The routes also
+   * need the `private-memory` preview; absent on hosted deployments, which
+   * never serve private memory.
+   */
+  privateMemoryReview?: boolean;
+  /**
    * `GET /api/system/routes` (`station-routes.ts`): the addresses this Station
    * reports it can be reached on, for a paired device to learn as routes.
    */

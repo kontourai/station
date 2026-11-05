@@ -18,6 +18,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
 import { MemoryErasurePreview } from './MemoryErasurePreview';
+import { MemoryReview } from './MemoryReview';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
@@ -155,6 +156,7 @@ export function KnowledgeStoreSection() {
       title="My knowledge store"
       id="section-knowledge"
     >
+      <MemoryReview />
       <MemoryErasurePreview />
       <div {...settingsRow('personal-knowledge-store')} tabIndex={-1}>
         <p className="knowledge-store-section__intro">

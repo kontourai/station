@@ -272,6 +272,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       } = await prepareChatRequest({
         ctx,
         slug,
+        request: c.req.raw,
         input,
         options: optionsForPreparation,
         projectSlug,

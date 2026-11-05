@@ -677,6 +677,15 @@ export interface RuntimeContext {
   acpProviderSecretResolver?: ACPProviderSecretResolver;
   providerService: ProviderService;
   knowledgeService: KnowledgeService;
+  /**
+   * The briefing from the signed-in person's private memory, for a new
+   * session's first turn. Set only when the Private memory preview is on. It
+   * re-derives the person and their access from the request, so a caller with
+   * no identity or no access gets `null`, never someone else's memory.
+   */
+  memoryBrief?: (
+    request: Request,
+  ) => Promise<{ text: string | null; entries: number } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;
   storageAdapter: IStorageAdapter;

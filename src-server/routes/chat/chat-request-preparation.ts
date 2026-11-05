@@ -41,8 +41,13 @@ interface PrepareChatRequestContext {
     // is re-assigned on every config reload, so this stays fresh without a
     // per-turn file read.
     | 'appConfig'
-  >;
+  > & {
+    /** Set when the Private memory preview is on; see `memoryBriefForNewSession`. */
+    memoryBrief?: RuntimeContext['memoryBrief'];
+  };
   slug: string;
+  /** The incoming request, used only to derive who is asking for the memory brief. */
+  request?: Request;
   input: string | ChatMessage[];
   options: Record<string, any>;
   projectSlug?: string;
@@ -238,6 +243,30 @@ export async function prepareChatRequest(
     }
   }
 
+  // The briefing from the person's private memory goes in once, on a new
+  // session's first turn. Fail-open: no memory, no preview or any error means
+  // no block, and the turn proceeds as it did before.
+  if (
+    context.ctx.memoryBrief &&
+    context.request &&
+    isFirstTurn(context.input)
+  ) {
+    try {
+      const brief = await context.ctx.memoryBrief(context.request);
+      if (brief?.text) {
+        ragContext = ragContext ? `${ragContext}\n\n${brief.text}` : brief.text;
+        contextInjection.memoryBrief = {
+          entries: brief.entries,
+          approxTokens: approxInjectedTokens(brief.text),
+        };
+      }
+    } catch (err: unknown) {
+      context.ctx.logger.debug('Memory brief skipped', {
+        error: errorMessage(err),
+      });
+    }
+  }
+
   // archive#2652 chapter 2: the first-run "About you" answers, composed like
   // every block above. Returns `ragContext` unchanged when the user skipped
   // the questions — see `injectUserProfileContext` for why no default User Profile
@@ -254,6 +283,14 @@ export async function prepareChatRequest(
     ragContext,
     contextInjection,
   };
+}
+
+/** A new session's first turn: the input carries no earlier assistant reply. */
+export function isFirstTurn(input: string | ChatMessage[]): boolean {
+  return (
+    typeof input === 'string' ||
+    !input.some((message) => message.role === 'assistant')
+  );
 }
 
 export function extractChatUserText(input: string | ChatMessage[]): string {
