@@ -11,6 +11,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type {
   LiveSurfaceProjection,
   LiveSurfaceProjectionSource,
@@ -70,24 +72,16 @@ export interface DeviceFoldViewControls {
   turnToFitOffered: boolean;
 }
 
-/** A viewer preference kept on this device (never sent to the surface). */
-function useStoredFlag(key: string): [boolean, (value: boolean) => void] {
-  const [value, setValue] = useState(() => {
-    try {
-      return globalThis.localStorage?.getItem(key) === '1';
-    } catch {
-      return false;
-    }
-  });
+/**
+ * A fold-view preference kept on this device in the device-settings registry
+ * (never sent to the surface).
+ */
+function useFoldViewSetting(
+  key: 'deviceFoldBentView' | 'deviceFoldTurnToFit',
+): [boolean, (value: boolean) => void] {
+  const value = useDeviceSettings()[key];
   const store = useCallback(
-    (next: boolean) => {
-      setValue(next);
-      try {
-        globalThis.localStorage?.setItem(key, next ? '1' : '0');
-      } catch {
-        // A private window may refuse storage: the choice lasts this view.
-      }
-    },
+    (next: boolean) => deviceSettingsStore.set(key, next),
     [key],
   );
   return [value, store];
@@ -110,10 +104,6 @@ function usePortraitViewport(): boolean {
   }, []);
   return portrait;
 }
-
-/** Keys of the viewer's fold-view preferences. */
-export const DEVICE_FOLD_BENT_KEY = 'station.device.foldView.bent';
-export const DEVICE_FOLD_TURN_KEY = 'station.device.foldView.turnToFit';
 
 export function useDeviceFold(): DeviceFoldState {
   const [fold, setFold] = useState<LiveSurfaceFold | undefined>(undefined);
@@ -151,8 +141,8 @@ export function useDeviceFold(): DeviceFoldState {
     },
     [reportedAngle, reportedPosture],
   );
-  const [bent, onBent] = useStoredFlag(DEVICE_FOLD_BENT_KEY);
-  const [turnToFit, onTurnToFit] = useStoredFlag(DEVICE_FOLD_TURN_KEY);
+  const [bent, onBent] = useFoldViewSetting('deviceFoldBentView');
+  const [turnToFit, onTurnToFit] = useFoldViewSetting('deviceFoldTurnToFit');
   const portrait = usePortraitViewport();
   const reportStatus = useCallback(
     (status: { fold?: LiveSurfaceFold }) => report(status.fold),

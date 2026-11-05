@@ -33,8 +33,8 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 }));
 
 import { resetFloatStoreForTests } from '../../float-over-chat/floatStore';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
-import { DEVICE_FOLD_BENT_KEY } from '../device/DeviceFoldView';
 import { foldPresentation, projectFoldPoint } from '../device/deviceFold';
 import {
   authorizeScope,
@@ -95,6 +95,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   setClientCredentialResolver();
   localStorage.clear();
+  deviceSettingsStore.reset('deviceFoldBentView');
   resetFloatStoreForTests();
 });
 
@@ -175,11 +176,11 @@ describe('a foldable device', () => {
       ].map((half) => half.dataset.turn),
     ).toEqual(['45', '45']);
     // A viewer preference: kept on this device, nothing sent to the device.
-    expect(localStorage.getItem(DEVICE_FOLD_BENT_KEY)).toBe('1');
+    expect(deviceSettingsStore.get('deviceFoldBentView')).toBe(true);
   });
 
   test('the lit inner display is drawn bent at a crease across its longer side', async () => {
-    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
+    deviceSettingsStore.set('deviceFoldBentView', true);
     const { stream, surfaceId } = await live(BOOK);
     const view = screen.getByTestId('device-fold-view');
     expect(view.dataset.crease).toBe('vertical');
@@ -204,7 +205,7 @@ describe('a foldable device', () => {
   });
 
   test('a touch on the bent drawing reaches the flat display point under it', async () => {
-    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
+    deviceSettingsStore.set('deviceFoldBentView', true);
     const { log } = await live(BOOK);
     const presentation = foldPresentation(BOOK, INNER);
     // Where the display point (1650, 480) — the right half — is drawn.
@@ -250,7 +251,7 @@ describe('a foldable device', () => {
   });
 
   test('full screen keeps the bent view current and offers the stands in its bar', async () => {
-    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
+    deviceSettingsStore.set('deviceFoldBentView', true);
     const { log, stream, surfaceId } = await live(BOOK);
     await click(screen.getByRole('button', { name: 'Full screen' }));
     // The pane's header is gone in full screen; the fold still updates

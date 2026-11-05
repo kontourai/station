@@ -250,7 +250,7 @@ export type ChromiumLaunchFailure = 'sandbox-unavailable';
  * refused (Ubuntu 23.10+ AppArmor `apparmor_restrict_unprivileged_userns`, or
  * a distro sysctl) and no setuid sandbox is installed.
  */
-export function classifyChromiumStderr(
+function classifyChromiumStderr(
   stderr: string,
 ): ChromiumLaunchFailure | undefined {
   if (/FATAL:[^\]\n]*\] No usable sandbox!/.test(stderr))

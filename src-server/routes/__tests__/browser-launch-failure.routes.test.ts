@@ -7,11 +7,11 @@
  * stderr and exits. Its CDP pipe closes before Node reports the exit, which
  * is the race that turned the sandbox refusal into an untyped 500.
  */
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createLocalBrowserHostResolver } from '../../services/browser/browser-host.js';
 import { LocalTargetStore } from '../../services/browser/browser-local-targets.js';
 import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
@@ -26,17 +26,7 @@ import { createBrowserRoutes } from '../browser.js';
 const SANDBOX_FATAL =
   '[4242:4242:1104/093012.345678:FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:129] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md. Otherwise see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md for more information on developing with the (older) SUID sandbox. If you want to live dangerously and need an immediate workaround, you can try using --no-sandbox.';
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
-
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
+const tempDir = trackTempDirs();
 
 /** An executable that writes `stderr` lines and exits with `code`. */
 function fakeChromium(stderr: readonly string[], code: number): string {

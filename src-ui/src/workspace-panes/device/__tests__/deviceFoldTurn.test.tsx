@@ -9,7 +9,8 @@
 import type { LiveSurfaceFold } from '@kontourai/station-contracts/live-surface';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { DEVICE_FOLD_TURN_KEY, useDeviceFold } from '../DeviceFoldView';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { useDeviceFold } from '../DeviceFoldView';
 import { turnQuarter, unturnQuarter } from '../deviceFold';
 
 const OPEN: LiveSurfaceFold = {
@@ -34,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
+  deviceSettingsStore.reset('deviceFoldTurnToFit');
 });
 
 test('the quarter turn and its inverse undo each other', () => {
@@ -57,7 +59,7 @@ test('turned to fit: a portrait box, and a touch maps through the turn', () => {
     SHOWN.width / SHOWN.height,
   );
   act(() => result.current.controls.onTurnToFit(true));
-  expect(localStorage.getItem(DEVICE_FOLD_TURN_KEY)).toBe('1');
+  expect(deviceSettingsStore.get('deviceFoldTurnToFit')).toBe(true);
   const projection = result.current.projection!;
   const aspect = projection.fitAspect!(SHOWN);
   expect(aspect).toBeCloseTo(SHOWN.height / SHOWN.width);
@@ -82,7 +84,7 @@ test('turned to fit: a portrait box, and a touch maps through the turn', () => {
 });
 
 test('a portrait display is never turned', () => {
-  localStorage.setItem(DEVICE_FOLD_TURN_KEY, '1');
+  deviceSettingsStore.set('deviceFoldTurnToFit', true);
   const { result } = renderHook(() => useDeviceFold());
   act(() => result.current.report(OPEN));
   const tall = { width: 2008, height: 2854 };
