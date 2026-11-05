@@ -20,6 +20,11 @@ import { parseArgs } from 'node:util';
 import { CHANNEL_VERSION } from '../packages/shared/src/release-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
+  MAX_ANDROID_VERSION_CODE,
+  NIGHTLY_BUILDS_PER_DAY,
+  nightlyVersion,
+} from './lib/nightly-build-identity.mjs';
+import {
   checkArchives,
   compareRingVersions,
   readManifest,
@@ -65,9 +70,8 @@ const MARKETING_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const VERSION_CODE = /^[1-9]\d*$/;
 
 /**
- * `X.Y.Z-nightly.<code>`: the package's marketing version and the version
- * code the native Nightly reserved (refs/tags/nightly-version-code/<code>),
- * so the portable and native Nightlies of one night share one allocation.
+ * `X.Y.Z-nightly.<YYYYMMDD><NN>`: retain the installer's single numeric
+ * suffix while showing the UTC date and two-digit reserved build index.
  */
 export function portableNightlyVersion(marketingVersion, versionCode) {
   if (
@@ -78,11 +82,18 @@ export function portableNightlyVersion(marketingVersion, versionCode) {
       `marketing version must be MAJOR.MINOR.PATCH, got ${String(marketingVersion)}`,
     );
   const code = String(versionCode ?? '');
-  if (!VERSION_CODE.test(code) || !Number.isSafeInteger(Number(code)))
+  if (
+    !VERSION_CODE.test(code) ||
+    !Number.isSafeInteger(Number(code)) ||
+    Number(code) > MAX_ANDROID_VERSION_CODE
+  )
     throw new Error(
       `version code must be a positive integer, got ${String(versionCode)}`,
     );
-  const version = `${marketingVersion}-${RING}.${code}`;
+  const day = Math.floor(Number(code) / NIGHTLY_BUILDS_PER_DAY);
+  const build = Number(code) % NIGHTLY_BUILDS_PER_DAY;
+  const date = new Date(Date.UTC(2020, 0, 1) + day * 86_400_000);
+  const version = `${nightlyVersion(marketingVersion, date)}${String(build).padStart(2, '0')}`;
   if (!CHANNEL_VERSION[RING].test(version))
     throw new Error(`${version} is not a ${RING} release version`);
   return version;
