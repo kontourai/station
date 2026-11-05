@@ -69,7 +69,11 @@ test('owner Device chats through a real Station delegation and keeps target refu
   await page.evaluate(() =>
     window.stationConnectionFaults.disconnectEvents(true),
   );
-  await expect(page.getByText('Reconnecting…', { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('region', { name: 'Conversation status', exact: true })
+      .getByRole('button', { name: 'Reconnecting', exact: true }),
+  ).toBeVisible();
   await captureConnectionState(page, testInfo, 'relay-reconnect');
   streams[2]!.stream.text('Receiver text retained during disconnect.');
   await expect(transcript).not.toContainText(
