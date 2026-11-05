@@ -5533,7 +5533,10 @@ full-screen bar only through `renderImmersiveActions(api)`, for example
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. Within a target, every input item carries
 the control lineage it was created in (`useLiveSurface`'s `controlLineage`): it
-advances on every change of control except this device's own takeover by input.
+advances on every change of control except this viewer's own takeover: one that
+arrives in the answer to this viewer's own successful input or claim. The same
+person on the same device in another tab is a change of control; while a request
+is in flight, a stream record naming this device waits for that answer.
 Queued input, a held-back press and a kept gesture are checked against it
 immediately before dispatch, and an answer for an ended lineage is ignored, so
 input never crosses a change of control. This does not yet bind the queue to a
