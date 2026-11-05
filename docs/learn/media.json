@@ -37,7 +37,7 @@
       "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
-      "scenario": "Connections \u2192 Models",
+      "scenario": "Connections → Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
@@ -52,7 +52,7 @@
       "digest": "389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7",
       "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
       "caption": "Inspect a request before answering it.",
-      "scenario": "Notifications \u2192 Inspect request",
+      "scenario": "Notifications → Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
       "documents": [
@@ -67,7 +67,7 @@
       "digest": "68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147",
       "alt": "Open the request inspector, expand Request identity and close it without deciding.",
       "caption": "Open Inspect request, expand Request identity, then Close. No decision is made.",
-      "scenario": "Notifications \u2192 Inspect request",
+      "scenario": "Notifications → Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
@@ -81,7 +81,7 @@
       "digest": "8630aae682bb9a47e2b2794ecbc44335c24afdef0967d5840d143fec75cf3bb2",
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
-      "scenario": "Connections \u2192 Models and Engines",
+      "scenario": "Connections → Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
@@ -94,8 +94,8 @@
       "digest": "ff36a01d202fd05e8face22117d8c73f9051f52ebaaa965c910a8164d235e8a2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
-      "scenario": "Knowledge Library \u2192 selected repository record",
-      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440\u00d71000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library → selected repository record",
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440×1000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
@@ -108,8 +108,8 @@
       "digest": "ee41b771796dce8d021bab23f63db99bd9e5ad283ebf37e7c35699dfc78b46c2",
       "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record, its title wrapped at the word boundary.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
-      "scenario": "Knowledge Library \u2192 narrow layout",
-      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390\u00d7844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "scenario": "Knowledge Library → narrow layout",
+      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390×844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "4e900230beb9023bec9a2a8e21cc82327d7139e2",
       "documents": [
         "docs/guides/knowledge.md",
@@ -699,6 +699,90 @@
       "capturedRevision": "8fc2ee79376b288f76fe6d0e52d21dbc85b5bbde",
       "documents": [
         "docs/guides/deployment-authentication.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-before-390-dark.png",
+      "kind": "image",
+      "digest": "7deb95cdb471067f79967d29631ffec60869dd85bdaf6fcdbd9f668314ca9311",
+      "alt": "Historical Updates panel before shared summaries.",
+      "caption": "Historical Updates panel before shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Historical comparison from base c8e900950601c2cd7913a7fe4ad9a3fcc7375608. It intentionally retains the older-server notice and missing-archive state reported by the user; it does not represent current provider state. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "c8e900950601c2cd7913a7fe4ad9a3fcc7375608",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-after-390-dark.png",
+      "kind": "image",
+      "digest": "3522ac5b586e99bdfd280dd3236fe883ad0ad545a29a23839c1f912a4afbe364",
+      "alt": "Updates panel with shared summaries.",
+      "caption": "Updates panel with shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "279cbe706d6b7576f58437d53efc32a45f5866de",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-before-1440-light.png",
+      "kind": "image",
+      "digest": "379f4b6bebd3a96170b226619591ba72a8df7637d46dca2084a6c76d5e9f8248",
+      "alt": "Historical Updates panel before shared summaries.",
+      "caption": "Historical Updates panel before shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Historical comparison from base c8e900950601c2cd7913a7fe4ad9a3fcc7375608. It intentionally retains the older-server notice and missing-archive state reported by the user; it does not represent current provider state. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "c8e900950601c2cd7913a7fe4ad9a3fcc7375608",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-after-1440-light.png",
+      "kind": "image",
+      "digest": "fe791922350b72a2256831d3d709e6a7d394a937a7ab34f4713dc0b9e429ba23",
+      "alt": "Updates panel with shared summaries.",
+      "caption": "Updates panel with shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "279cbe706d6b7576f58437d53efc32a45f5866de",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-history-after-390-dark.png",
+      "kind": "image",
+      "digest": "8cb87ea43ab6060e4d58ad940d33f09a02c6ab6cba2e241877543e2b214ea32b",
+      "alt": "Release history using the published styled select.",
+      "caption": "Release history using the published styled select.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "279cbe706d6b7576f58437d53efc32a45f5866de",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-notes-after-390-light.png",
+      "kind": "image",
+      "digest": "dbae4c84e04cae3e6dd258dd8a7f9c623b058d30c9c9d405785f09faffe77b68",
+      "alt": "Installed-version changelog using the recovered exact archive notes.",
+      "caption": "Installed-version changelog using the recovered exact archive notes.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "279cbe706d6b7576f58437d53efc32a45f5866de",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
       ]
     }
   ]

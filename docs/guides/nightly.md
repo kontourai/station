@@ -287,6 +287,12 @@ a newer app version alone does not mean a server update is available. The
 sidebar indicator signals an available update or an update in progress,
 not informational version differences or a failed background check.
 
+Controlled component examples: [phone status summary](../learn/media/updates-after-390-dark.png),
+[desktop status summary](../learn/media/updates-after-1440-light.png), and
+[release history](../learn/media/updates-history-after-390-dark.png). These
+illustrate the UI with fixture data; they do not qualify an installed app or
+a provider delivery.
+
 **Previous versions and changelogs** opens a release picker in the same panel.
 It lists versioned releases from GitHub’s most recent 100 releases; **All
 releases on GitHub** reaches older entries. Rolling release pointers are not
