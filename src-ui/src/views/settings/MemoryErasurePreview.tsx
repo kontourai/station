@@ -111,10 +111,7 @@ export function MemoryErasurePreview() {
     preview.error instanceof MemoryLookupError &&
     preview.error.kind === 'not-found';
   return (
-    <section
-      aria-label="Memory erasure preview"
-      className="knowledge-memory-preview"
-    >
+    <section aria-label="Look up a memory" className="knowledge-memory-preview">
       <h3>Look up a memory</h3>
       <p>Erasing memories isn’t available yet.</p>
       <h4>Proposals</h4>
@@ -123,8 +120,8 @@ export function MemoryErasurePreview() {
       )}
       {listMissing && (
         <Empty
-          label="Private memory hasn’t been created yet"
-          description="Create it using the memory API on this Station."
+          label="Private memory is unavailable"
+          description="Check that the preview is enabled and that you have access."
         />
       )}
       {proposals.isError && !listMissing && (
@@ -155,7 +152,7 @@ export function MemoryErasurePreview() {
                     setTarget({ kind: 'proposal', id: proposal.id });
                   }}
                 >
-                  Preview erasure
+                  Look up proposal
                 </Button>
               </li>
             ))}

@@ -10790,7 +10790,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Use a private memory store. Create it through the API; review and erasure are not available yet.',
+          'Use a private memory store. It can contain personal information. Create it through the API; review and erasure are not available yet.',
       })
     : undefined;
   const memoryEnabled = () =>
