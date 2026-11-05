@@ -98,9 +98,8 @@ describe('Desktop app updates settings card', () => {
       }),
     );
     expect(select.value).toBe('never');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /It downloads when you choose\./,
-    );
+    expect(screen.getByText('It downloads when you choose.')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Update available');
   });
 
   test('a policy the native side could not save is reported', async () => {
@@ -169,9 +168,7 @@ describe('Desktop app updates settings card', () => {
 
   test('an unconfigured build offers no check, download or policy', async () => {
     await mount('disabled');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /has no desktop update channel/,
-    );
+    expect(screen.getByRole('status').textContent).toBe('No update channel');
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Automatic download')).toBeNull();
   });
@@ -212,9 +209,7 @@ describe('Desktop app updates settings card', () => {
       ).not.toBeNull();
       native.invoke.mockImplementation(answer);
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-      expect(
-        await screen.findByText(/Station 0.1.12 is downloaded/),
-      ).not.toBeNull();
+      expect(await screen.findByText('Ready to restart')).not.toBeNull();
       expect(fake.listenerCount()).toBe(1);
       act(() => fake.emit(desktopUpdateFixture('available')));
       fireEvent.click(screen.getByRole('button', { name: 'Download update' }));

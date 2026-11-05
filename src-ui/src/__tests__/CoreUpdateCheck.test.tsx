@@ -116,14 +116,15 @@ const { CoreUpdateCheck } = await import('../views/settings/CoreUpdateCheck');
 
 /** The header's status badge, empty when the card claims no status. */
 function badgeText(): string {
-  return document.querySelector('.server-update__badge')?.textContent ?? '';
+  return document.querySelector('header [role="status"]')?.textContent ?? '';
 }
 
 /** The header's version line, as text ("current → to target"). */
 function versionLine(): string | null {
   return (
     document
-      .querySelector('.server-update__version')
+      .querySelector('header code')
+      ?.closest('p')
       ?.textContent?.replace(/\s+/g, ' ')
       .trim() ?? null
   );
@@ -1186,7 +1187,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     );
     expect(badgeText()).toBe('Up to date');
     expect(
-      document.querySelector('.server-update__badge .tone-positive'),
+      document.querySelector('header [role="status"] .tone-positive'),
     ).not.toBeNull();
     // Latest equals current: the version is stated once, with no arrow.
     expect(versionLine()).toBe('0.8.0-preview.1');

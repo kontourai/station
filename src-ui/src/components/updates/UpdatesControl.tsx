@@ -62,8 +62,8 @@ export function UpdatesControl({
               : 'App update available'
             : progress
               ? `Server downloading ${progress.text}`
-              : notices.length > 0
-                ? 'Update details available'
+              : notices.some((notice) => notice.updateAvailable)
+                ? 'Update available'
                 : null;
   const close = () => setOpen(false);
   const loadingDialog = (children: ReactNode) => (

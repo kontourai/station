@@ -156,11 +156,6 @@ describe('deriveServerOlderOffer: no dead button', () => {
       /station upgrade/,
     ],
     [
-      'a ring with nothing newer',
-      { updateAvailable: false, latestVersion: '0.1.11-nightly.246303' },
-      /No newer nightly server release yet/,
-    ],
-    [
       'an unreachable manifest',
       {
         releaseCheck: 'unreachable',
@@ -175,6 +170,21 @@ describe('deriveServerOlderOffer: no dead button', () => {
     );
     expect(offer.kind).toBe('manual');
     expect(offer.kind === 'manual' && offer.remedy).toMatch(remedy);
+  });
+
+  test('a server running its newest verified release does not raise an older-app notice', () => {
+    expect(
+      deriveServerOlderOffer(
+        facts({
+          clientVersion: '0.1.11-nightly.20261105.1',
+          status: serviceArchive({
+            currentVersion: '0.1.11-nightly.250000',
+            latestVersion: '0.1.11-nightly.250000',
+            updateAvailable: false,
+          }),
+        }),
+      ),
+    ).toEqual({ kind: 'none' });
   });
 
   test('never offers an apply to a server it cannot correlate', () => {

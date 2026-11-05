@@ -1,6 +1,7 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
 @import url("./styles/control-recipes.css");
+@import url("./styles/layout-recipes.css");
 @import url("@kontourai/station-sdk/action-control.css");
 /* Console Kit token contract (roadmap), now consumed from the
    published @kontourai/ui@1.1.0 package (was the local console-kit mirror).

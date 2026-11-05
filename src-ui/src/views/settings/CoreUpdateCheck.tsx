@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react';
 import { Button } from '../../components/Button';
+import { StatusSummary } from '../../components/StatusSummary';
 import { SkeletonBlock } from '../../components/state';
 import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
 import {
@@ -33,7 +34,6 @@ import {
   formatCheckTime,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
-  ServerUpdateHeader,
   serverIdentityMatchesView,
   serverUpdateBadge,
   serviceProgressIsHistory,
@@ -690,13 +690,14 @@ export function CoreUpdateCheck({
   );
 
   return (
-    <div className="server-update">
-      <ServerUpdateHeader
+    <div className="server-update content-stack">
+      <StatusSummary
         title={title}
         headingId={headingId}
         badge={badge}
         current={status?.currentVersion}
         target={targetVersion}
+        checkedAt={!comparisonSuperseded ? dataUpdatedAt : null}
       />
       {alerts}
       {/*
@@ -809,13 +810,6 @@ export function CoreUpdateCheck({
         above replaces every derived state claim. */}
       {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
-      {showReleaseNotes && targetVersion && (
-        <ReleaseNotes
-          key={targetVersion}
-          version={targetVersion}
-          active={active}
-        />
-      )}
       {showStageApply && serverUpdateState ? (
         <ServerUpdateStageApply
           key={connectionScope}
@@ -872,6 +866,13 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {showReleaseNotes && targetVersion && (
+        <ReleaseNotes
+          key={targetVersion}
+          version={targetVersion}
+          active={active}
+        />
+      )}
       <details className="settings__update-technical server-update__details">
         <summary>Details</summary>
         {details}

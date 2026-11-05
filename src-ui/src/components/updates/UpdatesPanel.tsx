@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef } from 'react';
-import { readClientReleaseVersion } from '../../build-info';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConnectedServerUpdates } from '../../views/settings/ConnectedServerUpdates';
 import { DesktopUpdateCheck } from '../../views/settings/DesktopUpdateCheck';
@@ -92,7 +91,7 @@ export function UpdatesPanel({
         </Button>
       }
     >
-      <div className="updates-panel">
+      <div className="updates-panel content-stack content-stack--sections">
         {(profile.isDesktop ||
           profile.isMobile ||
           notices.some((notice) => notice.target === 'desktop')) && (
@@ -101,21 +100,14 @@ export function UpdatesPanel({
             tabIndex={-1}
             aria-labelledby={`${id}-desktop`}
           >
-            <h3 id={`${id}-desktop`}>
-              {profile.isDesktop ? 'Desktop app' : 'Station app'}
-            </h3>
-            <p className="updates-panel__identity">
-              {profile.isDesktop
-                ? (profile.productName ?? 'Station')
-                : (readClientReleaseVersion() ?? 'Version unavailable')}
-              {profile.channel ? ` · ${profile.channel}` : ''}
-            </p>
+            {!profile.isDesktop && <h3 id={`${id}-desktop`}>Station app</h3>}
             {noticesFor('desktop')}
             {profile.isDesktop && (
               <DesktopUpdateCheck
                 active={open}
                 showPolicy={false}
                 showReleaseNotes
+                headingId={`${id}-desktop`}
               />
             )}
           </section>
@@ -128,7 +120,10 @@ export function UpdatesPanel({
             notices={noticesFor('server')}
           />
         </section>
-        <ReleaseHistory active={open} />
+        <ReleaseHistory
+          active={open}
+          nativeApp={profile.isDesktop || profile.isMobile}
+        />
         <ChangelogPreference />
       </div>
     </Dialog>

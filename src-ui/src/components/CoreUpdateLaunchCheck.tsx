@@ -109,7 +109,7 @@ export function CoreUpdateLaunchCheck({
   const [latest, setLatest] = useState<NativeUpdateFeed | null>(null);
   const [attempt, setAttempt] = useState(0);
   const scopeKey = coreUpdateScopeFromContext(context);
-  const { data: desktopStatus } = useCoreUpdateStatusQuery(
+  const { data: desktopStatus, error: desktopError } = useCoreUpdateStatusQuery(
     apiBase ?? '',
     {
       // Mobile packages use the immutable, provenance-pinned release feed below.
@@ -211,9 +211,10 @@ export function CoreUpdateLaunchCheck({
   }, [failure, retry]);
 
   useEffect(() => {
-    const sourceMessage = desktopStatus
-      ? sourceComparisonMessage(desktopStatus)
-      : null;
+    const sourceMessage =
+      desktopStatus && !desktopError
+        ? sourceComparisonMessage(desktopStatus)
+        : null;
     if (latest) {
       publishUpdateNotice({
         id: 'launch-update',
@@ -222,16 +223,23 @@ export function CoreUpdateLaunchCheck({
         href: latest.releaseUrl,
         releaseVersion: latest.version,
         actionLabel: 'Update app',
+        updateAvailable: true,
       });
     } else if (
       !isMobile &&
       context.kind !== 'embedded-sidecar' &&
-      sourceMessage
+      (sourceMessage ||
+        (!desktopError &&
+          desktopStatus?.releaseCheck === 'verified' &&
+          !!desktopStatus.currentVersion &&
+          !!desktopStatus.latestVersion &&
+          desktopStatus.updateAvailable))
     ) {
       publishUpdateNotice({
         id: 'launch-update',
         target: 'server',
-        message: sourceMessage,
+        message: sourceMessage ?? 'Server update available.',
+        updateAvailable: true,
         // The server section states this comparison itself, and the panel
         // that would show it is where an "open Updates" action leads.
         summaryOnly: true,
@@ -240,7 +248,7 @@ export function CoreUpdateLaunchCheck({
       clearUpdateNotice('launch-update');
     }
     return () => clearUpdateNotice('launch-update');
-  }, [context.kind, desktopStatus, isMobile, latest]);
+  }, [context.kind, desktopStatus, desktopError, isMobile, latest]);
 
   return null;
 }

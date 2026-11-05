@@ -103,6 +103,7 @@ describe('ServerOlderLaunchCheck notices', () => {
         // The notice renders only inside Updates, beside the section's own
         // update control: no detail repeats it and no action reopens Updates.
         detail: undefined,
+        updateAvailable: true,
       },
     ]);
     const sequence = openRequest.sequence;

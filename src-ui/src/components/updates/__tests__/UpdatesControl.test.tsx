@@ -210,6 +210,31 @@ async function closeUpdates(
   });
 }
 
+test('an informational server notice does not advertise an available update on the sidebar', async () => {
+  installFakeNativeUpdater(native, desktopUpdateFixture('upToDate'));
+  render(<UpdatesControl collapsed onNavigate={vi.fn()} />);
+  act(() =>
+    publishUpdateNotice({
+      id: 'mobile-release',
+      target: 'server',
+      message: 'App and server use separate release channels.',
+    }),
+  );
+  await waitFor(() => expect(native.invoke).toHaveBeenCalled());
+  expect(screen.getByRole('button', { name: 'Updates' })).toBeTruthy();
+  act(() =>
+    publishUpdateNotice({
+      id: 'mobile-release',
+      target: 'server',
+      message: 'Server update available.',
+      updateAvailable: true,
+    }),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Updates: Update available' }),
+  ).toBeTruthy();
+});
+
 test('one panel offers independently labelled app and server downloads, and opening it starts neither', async () => {
   const fake = installFakeNativeUpdater(
     native,

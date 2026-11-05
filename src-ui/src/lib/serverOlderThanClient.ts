@@ -116,8 +116,7 @@ export function deriveServerOlderOffer(
     status.releaseCheck === 'verified'
   ) {
     if (!status.updateAvailable || !status.latestVersion) {
-      const ring = status.channel ? `${status.channel} ` : '';
-      return manual(`No newer ${ring}server release yet.`);
+      return NONE;
     }
     if (!facts.identityMatches) {
       return manual(

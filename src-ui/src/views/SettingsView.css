@@ -481,7 +481,7 @@
 .settings__field input[type="text"],
 .settings__field input[type="number"],
 .settings__field textarea,
-.settings__field select,
+.settings__field select:not(.control),
 .voice-provider-section__select {
   width: 100%;
   padding: var(--k-space-2) var(--k-space-3);
@@ -494,7 +494,7 @@
 }
 .settings__field input:focus,
 .settings__field textarea:focus,
-.settings__field select:focus,
+.settings__field select:not(.control):focus,
 .voice-provider-section__select:focus {
   outline: none;
   border-color: var(--accent-primary);
@@ -1463,41 +1463,8 @@
    needs attention or action; identity and history fold into Details. */
 .server-update {
   display: grid;
-  gap: var(--k-space-2);
-  min-width: 0;
-}
-.server-update__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: var(--k-space-3);
   min-width: 0;
-}
-.server-update__identity {
-  display: grid;
-  gap: var(--k-space-1);
-  min-width: 0;
-}
-.server-update .server-update__title {
-  margin: 0;
-  color: var(--k-text);
-  font-size: var(--k-text-md);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.server-update .server-update__version {
-  margin: 0;
-  color: var(--k-text-muted);
-  font-family: var(--k-font-mono);
-  font-size: var(--k-text-sm);
-  overflow-wrap: anywhere;
-}
-/* Break between the two versions, never inside one. */
-.server-update__version span {
-  white-space: nowrap;
-}
-.server-update__badge {
-  flex: 0 0 auto;
 }
 .server-update .settings__update-msg,
 .server-update .settings__field-hint {

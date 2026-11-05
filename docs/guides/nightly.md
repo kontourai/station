@@ -273,10 +273,19 @@ keeps two independent mechanisms and separately labelled actions:
 The update proposal shows **What’s new** for the offered version. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;
-it never determines whether an update is available or safe to install. The
+it never determines whether an update is available or safe to install. Missing
+archives remain an explicit, retryable state; notes from another version are
+never substituted. When no update is offered, **What’s new** stays folded until
+opened. The
 sidebar icon shows a circular download indicator using the updater’s byte
 counts, or an indeterminate arc when the total size is unknown. An observed
 server download can also drive the ring while the panel stays closed.
+
+Desktop and server summaries share their badge, version, and last-check
+layout in Updates and System settings. Their channels publish independently;
+a newer app version alone does not mean a server update is available. The
+sidebar indicator signals an available update or an update in progress,
+not informational version differences or a failed background check.
 
 **Previous versions and changelogs** opens a release picker in the same panel.
 It lists versioned releases from GitHub’s most recent 100 releases; **All
