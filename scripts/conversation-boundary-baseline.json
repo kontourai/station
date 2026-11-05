@@ -850,46 +850,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G2",
-      "file": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
-      "fingerprint": "63b4fb21416735cf0da1",
-      "syntax": "reply textarea: <textarea ref={composerRef} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={composerDisabled} aria-label=\"Message\" aria-describedby={ continuationSupported ? undefined : unavailableReasonId } placeholder=\"Type a message…\" rows={2} onKeyDown={(event) => { if ( event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing ) { event.preventDefault(); requestSend(); } }} />",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
-      "fingerprint": "b56fea3ad745e50c48f2",
-      "syntax": "adopt body",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G1",
-      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
-      "fingerprint": "11165bb14189ab6ab359",
-      "syntax": "useAgents: useAgents()",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G1",
-      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
-      "fingerprint": "11197e6de9c1b1f756f5",
-      "syntax": "useAgents: useAgents",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
-      "fingerprint": "71f38808b9095bf8362c",
-      "syntax": "raw failure sink: { stopTask.error ? stopTask.error instanceof Error ? stopTask.error.message : 'Unable to stop this task' : null }",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
       "rule": "G4",
       "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
       "fingerprint": "082b6dbfe5305be10539",
@@ -898,92 +858,12 @@
       "migrate": "P2.6"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
-      "fingerprint": "b56fea3ad745e50c48f2",
-      "syntax": "adopt body",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/components/session-detail/OwnedWorkCleanup.tsx",
       "fingerprint": "206e86e71b8cb32be450",
       "syntax": "raw failure sink: { release.error ? release.error instanceof Error ? release.error.message : 'Child cleanup could not be released.' : null }",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionDetail.tsx",
-      "fingerprint": "c5e23457cf46e39c9dd8",
-      "syntax": "raw failure sink: {historyRetrying ? `${error.message} Retrying session history…` : error.message}",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionDetailErrors.tsx",
-      "fingerprint": "7bf355e74df2cac1d7bd",
-      "syntax": "raw failure sink: {dismissFailureError instanceof Error ? dismissFailureError.message : 'Unable to dismiss this failure'}",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionDetailErrors.tsx",
-      "fingerprint": "890ee2f1923f93a35587",
-      "syntax": "raw failure sink: { sendTurnError instanceof Error ? sendTurnError.message : undefined }",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionDetailErrors.tsx",
-      "fingerprint": "8eb324482a0f021801ee",
-      "syntax": "raw failure sink: {respondError instanceof Error ? respondError.message : 'Unable to answer this request'}",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionDetailErrors.tsx",
-      "fingerprint": "c95e7e8914d4b44b1c12",
-      "syntax": "raw failure sink: {stopTaskError instanceof Error ? stopTaskError.message : 'Unable to stop this task'}",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G2",
-      "file": "src-ui/src/components/session-detail/SessionReplyComposer.tsx",
-      "fingerprint": "95382b69681f072fcfc8",
-      "syntax": "reply textarea: <textarea className=\"sessions-detail__input\" aria-label={label} placeholder={placeholder} aria-describedby={busy ? noteId : undefined} value={input} disabled={(!allowDraftWhileBusy && busy) || disabled} onChange={(event) => onInputChange(event.target.value)} onKeyDown={(event) => { if ( isComposerSubmitKey( event, composerReturnSends(chatReturnBehavior, coarsePointer), ) ) { event.preventDefault(); if (canSend) onSend(); } }} />",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/session-detail/SessionReplyComposer.tsx",
-      "fingerprint": "f83ae4598bafd1265a8d",
-      "syntax": "adopt composer",
-      "count": 1,
-      "migrate": "P2.1"
-    },
-    {
-      "rule": "G3",
-      "file": "src-ui/src/components/session-detail/SessionTranscript.tsx",
-      "fingerprint": "e9899b19fb486162b86c",
-      "syntax": "raw failure sink: {error.message}",
-      "count": 1,
-      "migrate": "P2.5"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/session-detail/SessionTranscript.tsx",
-      "fingerprint": "b56fea3ad745e50c48f2",
-      "syntax": "adopt body",
-      "count": 1,
-      "migrate": "P2.1"
     },
     {
       "rule": "G3",
@@ -1072,14 +952,6 @@
       "syntax": "useHostRequestAuthorityScope: useHostRequestAuthorityScope",
       "count": 1,
       "migrate": "P2.4"
-    },
-    {
-      "rule": "G2",
-      "file": "src-ui/src/hooks/useMutableSessionDetailState.ts",
-      "fingerprint": "f18ecc10c49cec8e66e6",
-      "syntax": "interruptOrchestrationTurn: interruptOrchestrationTurn({ threadId, apiBase })",
-      "count": 1,
-      "migrate": "P2.1"
     },
     {
       "rule": "G3",

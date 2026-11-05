@@ -1,12 +1,17 @@
+import type { Ref } from 'react';
+
 export function ComposerStopButton({
   onCancel,
   stopPending = false,
+  buttonRef,
 }: {
   onCancel: () => void;
   stopPending?: boolean;
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onCancel}
       tabIndex={0}

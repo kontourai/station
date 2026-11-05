@@ -30,6 +30,8 @@ export function InputRequestRequest({
     approvalToolName,
   } = request;
   if (
+    target?.record?.readOnly ||
+    target?.record?.answeringDeniedReason ||
     (target?.station &&
       (!target.station.isCurrent() ||
         target.station.capabilities.inputAnswer.state !== 'allowed')) ||
@@ -39,7 +41,12 @@ export function InputRequestRequest({
     !approvalThreadId ||
     !approvalEventId
   )
-    return <p role="status">Connect to this Station to answer this request.</p>;
+    return (
+      <p role="status">
+        {target?.record?.answeringDeniedReason ??
+          'Connect to this Station to answer this request.'}
+      </p>
+    );
   const requestKey = [
     apiBase!,
     scope.authorityKey,
@@ -72,6 +79,8 @@ export function InputRequestRequest({
       draftKey={draftKey}
       planReview={toolRequestIsPlanReview(approvalToolName)}
       onRespond={async (action, content) => {
+        if (target?.record?.readOnly)
+          throw new Error('This session is read only.');
         await respondToRequest(
           apiBase!,
           {
@@ -83,6 +92,7 @@ export function InputRequestRequest({
           },
           { requestScope: scope },
         );
+        target?.record?.onAnswered?.();
       }}
     />
   );

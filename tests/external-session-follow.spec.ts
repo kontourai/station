@@ -415,9 +415,7 @@ test.describe
       await expect(detail).toContainText('Started in Claude Code · Read only');
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
-      await expect(
-        page.getByTestId('attached-session-transcript'),
-      ).toBeVisible();
+      await expect(page.getByTestId('session-transcript')).toBeVisible();
 
       const rejection = await authenticatedE2EFetch(
         `${API}/api/orchestration/sessions/${encodeURIComponent(THREAD_ID)}/lifecycle`,

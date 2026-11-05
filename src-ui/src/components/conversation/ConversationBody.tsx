@@ -105,7 +105,6 @@ import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
-import type { ChatInputArea } from '../chat/ChatInputArea';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type {
@@ -147,8 +146,12 @@ import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
+import { ConversationComposer } from './ConversationComposer';
 import { useConversationConnection } from './ConversationConnectionContext';
-import { ConversationStopControl } from './ConversationStopControl';
+import {
+  RecordConversationBody,
+  type RecordConversationBodyProps,
+} from './RecordConversationBody';
 import { useConversationController } from './useConversationController';
 
 /** The station-control tools that change what a chat has scheduled. */
@@ -179,52 +182,6 @@ export function agentScheduleRefreshKey(
       part.state !== 'partial-call',
   ).length;
   return `${openTurnId ?? 'idle'}:${scheduled}`;
-}
-
-const loadChatInputArea = () =>
-  import('../chat/ChatInputArea').then((module) => ({
-    default: module.ChatInputArea,
-  }));
-
-function DeferredChatInputArea(
-  props: React.ComponentProps<typeof ChatInputArea>,
-) {
-  const pendingControls = (
-    <div className="chat-controls-row">
-      <div className="chat-input__activity" ref={props.activityRef}>
-        {props.activity}
-      </div>
-      <span className="chat-controls-row__spacer" />
-      {props.turnInFlight && (
-        <ConversationStopControl
-          onCancel={props.onCancel}
-          stopPending={props.stopPending}
-        />
-      )}
-    </div>
-  );
-  return (
-    <LazyBoundary
-      load={loadChatInputArea}
-      componentProps={props}
-      pending={
-        <div className="chat-input">
-          <SkeletonList count={2} label="Loading composer" />
-          {pendingControls}
-        </div>
-      }
-      unavailable={(retry) => (
-        <div className="chat-input">
-          <ErrorState
-            title="Could not load the composer"
-            description="Your draft is retained. Retry to continue writing."
-            action={<Button onClick={retry}>Retry composer</Button>}
-          />
-          {pendingControls}
-        </div>
-      )}
-    />
-  );
 }
 
 const loadChatMessageList = () =>
@@ -564,7 +521,17 @@ function noticeLine(content: string) {
   return line || undefined;
 }
 
-export function ConversationBody({
+export function ConversationBody(
+  props: ConversationBodyProps | RecordConversationBodyProps,
+) {
+  return 'density' in props && props.density === 'record' ? (
+    <RecordConversationBody {...props} />
+  ) : (
+    <LiveConversationBody {...(props as ConversationBodyProps)} />
+  );
+}
+
+function LiveConversationBody({
   activeSession,
   workingDirectory,
   activeOrchestrationSession,
@@ -2851,7 +2818,7 @@ export function ConversationBody({
               }
             />
           )}
-          <DeferredChatInputArea
+          <ConversationComposer
             activity={statusPill}
             contextMeter={
               showContextMeter && activeSession.conversationId ? (

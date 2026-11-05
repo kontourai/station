@@ -38,7 +38,7 @@ export interface TranscriptTurnViewport {
 }
 
 const ROW_SELECTOR =
-  ':scope > .chat-message-anchor[data-chat-message-key], [data-transcript-row]';
+  ':scope > .chat-message-anchor[data-chat-message-key], :scope > .chat-messages > .chat-message-anchor[data-chat-message-key], :scope > .conversation-reader > .chat-messages > .chat-message-anchor[data-chat-message-key], [data-transcript-row]';
 
 /**
  * Follows the transcript's scroll position in turns. The in-view marks on the

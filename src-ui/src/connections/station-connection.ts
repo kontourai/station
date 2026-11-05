@@ -2,6 +2,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import type {
   ApiRequestScope,
   ClientRequestOptions,
+  continueExecutionMessage,
   getTurnDelivery,
   inspectAttentionRequest,
   interruptTurn,
@@ -172,6 +173,11 @@ export type ConversationCallOptions = Pick<ClientRequestOptions, 'signal'>;
 
 /** Bound by the shared conversation adapter; callers never provide a base/scope. */
 export interface ConversationTransport {
+  continue(
+    conversationId: string,
+    input: Parameters<typeof continueExecutionMessage>[2],
+    options?: ConversationCallOptions,
+  ): ReturnType<typeof continueExecutionMessage>;
   send(
     input: Parameters<typeof sendExecutionMessageWithInventory>[1],
     inventory: Parameters<typeof sendExecutionMessageWithInventory>[2],

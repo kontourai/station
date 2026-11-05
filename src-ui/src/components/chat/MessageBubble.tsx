@@ -265,13 +265,16 @@ function MessageBubbleComponent({
   const isMobile = useIsMobile();
   const connection = useOptionalConversationConnection();
   const hostTaskActions =
-    !connection?.station || connection.station.routeKind === 'host';
+    !connection?.record &&
+    (!connection?.station || connection.station.routeKind === 'host');
   const textContent = typeof msg.content === 'string' ? msg.content : '';
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
   const observedDeliveryState = useMessageDeliveryState(activeSession.id, msg);
-  const deliveryState =
-    observedDeliveryState && observedDeliveryState !== 'unanswered'
+  const recordDelivery = connection?.record?.deliveryFor?.(msg);
+  const deliveryState = recordDelivery
+    ? recordDelivery.state
+    : observedDeliveryState && observedDeliveryState !== 'unanswered'
       ? observedDeliveryState
       : (msg.deliveryNotice?.state ?? observedDeliveryState);
   const dockDeliveryPort = useDockDeliveryPort(
@@ -280,8 +283,9 @@ function MessageBubbleComponent({
     textContent,
     deliveryState,
   );
-  const deliveryPort =
-    msg.deliveryNotice && msg.action?.label === 'Retry'
+  const deliveryPort = recordDelivery
+    ? recordDelivery.port
+    : msg.deliveryNotice && msg.action?.label === 'Retry'
       ? {
           ...dockDeliveryPort,
           retry: async () => {
@@ -827,6 +831,7 @@ function MessageBubbleComponent({
   // screen reader's list of buttons is not a column of identical "Basis".
   const basisLabels = answerBasisLabels(textContent, settledAt);
   const basisChip =
+    !connection?.record &&
     isAssistant &&
     msg.turnId &&
     answerSessionId &&

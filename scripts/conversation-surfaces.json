@@ -67,7 +67,7 @@
     },
     {
       "file": "src-ui/src/components/conversation/ConversationBody.tsx",
-      "requires": ["composer", "stop"],
+      "requires": [],
       "reason": "Shared transcript and composer composition."
     },
     {
@@ -109,16 +109,6 @@
       "file": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
       "requires": ["body"],
       "reason": "P2.1 attached conversation and read-only continuation adapter."
-    },
-    {
-      "file": "src-ui/src/components/session-detail/SessionReplyComposer.tsx",
-      "requires": ["composer"],
-      "reason": "P2.1 retired reply composer."
-    },
-    {
-      "file": "src-ui/src/components/session-detail/SessionTranscript.tsx",
-      "requires": ["body"],
-      "reason": "P2.1 retired transcript stack."
     },
     {
       "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
@@ -224,6 +214,16 @@
       "file": "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
       "requires": ["failure"],
       "reason": "Shared delivery actions translate their failures through the same owner."
+    },
+    {
+      "file": "src-ui/src/components/conversation/ConversationComposer.tsx",
+      "requires": ["composer", "stop"],
+      "reason": "Shared lazy reply editor and pending Stop."
+    },
+    {
+      "file": "src-ui/src/components/conversation/RecordConversationBody.tsx",
+      "requires": ["stop", "failure"],
+      "reason": "Activity and imported records compose shared controls."
     }
   ],
   "modules": [
@@ -244,7 +244,9 @@
     "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
     "src-ui/src/hooks/useConversationInbox.ts",
     "src-ui/src/hooks/useConversationStartTarget.ts",
-    "src-ui/src/hooks/orchestration/approvalHandlers.ts"
+    "src-ui/src/hooks/orchestration/approvalHandlers.ts",
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+    "src-ui/src/components/conversation/useRecordConversationController.ts"
   ],
   "contracts": [
     {
@@ -270,6 +272,7 @@
       "rule": "G2",
       "symbols": [
         "sendExecutionMessageWithInventory",
+        "continueExecutionMessage",
         "interruptTurn",
         "answerRequest"
       ],

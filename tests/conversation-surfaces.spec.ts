@@ -1,4 +1,16 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AdoptedSessionResult,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { expect } from '@playwright/test';
+import {
+  buildLongSessionTurns,
+  createLongSessionEventWindowHandler,
+} from './fixtures/long-session';
+import { rejectUnexpectedFixtureRequest } from './helpers/fixture-audit';
+import { installMockOrchestrationSse } from './helpers/orchestration';
 import {
   addDirectReceiver,
   captureConnectionState,
@@ -6,6 +18,7 @@ import {
   stationJson,
   test,
 } from './helpers/peer-chat-stations';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 test.use({ hostModel: true });
 test.setTimeout(600_000);
@@ -146,4 +159,243 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await expect(composer).toBeEditable();
   await captureConnectionState(page, testInfo, 'host-refused');
   expect(streams).toHaveLength(6);
+});
+
+test('Activity uses the shared record composer and immediate turn interrupt', async ({
+  page,
+  stations,
+}) => {
+  const receipt = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/orchestration/chat',
+  );
+  await startConnectionChat(
+    page,
+    'host',
+    'Read this conversation in Activity.',
+  );
+  const accepted: { data: { sessionId: string } } = await (
+    await receipt
+  ).json();
+  await expect.poll(() => stations.streams.length).toBe(1);
+  stations.streams[0]!.stream.text(
+    'Activity retains the same Markdown and composer.',
+  );
+  stations.streams[0]!.stream.finish();
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Activity retains the same Markdown and composer.');
+  await page.goto(
+    new URL(
+      activityDeepLink({ sessionId: accepted.data.sessionId }),
+      stations.source.ui,
+    ).href,
+  );
+  const detail = page.getByTestId('session-detail');
+  await expect(
+    detail.locator('[data-conversation-density="record"]'),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Activity retains the same Markdown and composer.');
+  const composer = detail.getByRole('textbox', {
+    name: 'Message',
+    exact: true,
+  });
+  await expect(composer).toBeEditable();
+  await composer.fill('Continue from Activity.');
+  await detail.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => stations.streams.length).toBe(2);
+  stations.streams[1]!.stream.text('This reply started from Activity.');
+  await expect(detail.getByRole('log')).toContainText(
+    'This reply started from Activity.',
+  );
+  const interrupted = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/orchestration/commands' &&
+      request.postDataJSON().type === 'interruptTurn',
+  );
+  await detail.getByRole('button', { name: 'Stop the current turn' }).click();
+  expect((await interrupted).postDataJSON().threadId).toBe(
+    accepted.data.sessionId,
+  );
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+});
+
+test('attached record fixture requires consent and opens the owned child in the real dock', async ({
+  page,
+  stations,
+}) => {
+  // Typed domain fixtures qualify the parent UI handoff, not provider adoption/authentication.
+  const sourceId = 'external:claude:shared-record-fixture';
+  const childId = 'shared-record-owned-child';
+  const source: OrchestrationSessionSummary = {
+    threadId: sourceId,
+    provider: 'claude',
+    controlMode: 'read-only-attached',
+    status: 'ready',
+    lifecycleState: 'idle',
+    hasActiveTurn: false,
+    answerability: { answerable: true },
+    attachedSource: {
+      kind: 'claude-transcript',
+      externalSessionId: 'shared-record-fixture',
+      affinity: { kind: 'fixture-home', ref: 'shared-record-home' },
+    },
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 2,
+    createdAt: '2026-11-04T00:00:00Z',
+    updatedAt: '2026-11-04T00:00:01Z',
+  };
+  const child: OrchestrationSessionSummary = {
+    ...source,
+    threadId: childId,
+    conversationId: childId,
+    provider: 'station-agent',
+    controlMode: 'station-owned',
+    attachedSource: undefined,
+    assignedAgentSlug: agentId('connection-qualification'),
+    answerability: { answerable: true },
+  };
+  const adoption: AdoptedSessionResult = {
+    threadId: childId,
+    provider: child.provider,
+    controlMode: 'station-owned',
+    status: 'ready',
+    createdAt: child.createdAt,
+    updatedAt: child.updatedAt,
+  };
+  let continued = false;
+  const commands: string[] = [];
+  await installMockOrchestrationSse(page);
+  await page.route(
+    '**/api/orchestration/sessions/read-model',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill({
+        json: { success: true, data: continued ? [source, child] : [source] },
+      });
+    },
+  );
+  for (const session of [source, child]) {
+    const encoded = encodeURIComponent(session.threadId);
+    await page.route(`**/api/orchestration/sessions/${encoded}`, (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            json: { success: true, data: { session, events: [] } },
+          })
+        : rejectUnexpectedFixtureRequest(route),
+    );
+    await page.route(
+      `**/api/orchestration/sessions/${encoded}/event-window**`,
+      createLongSessionEventWindowHandler({
+        threadId: session.threadId,
+        provider: session.provider,
+        availableTurns: () =>
+          buildLongSessionTurns({
+            threadId: session.threadId,
+            provider: session.provider,
+            turnCount: 1,
+            promptText: () => 'Read the original conversation.',
+            replyText: () => 'The original transcript stays available.',
+          }),
+      }),
+    );
+  }
+  await mockRuntimeConversation(page, {
+    id: childId,
+    agentSlug: 'connection-qualification',
+    title: 'Owned continuation',
+    provider: 'station-agent',
+    model: 'station-connection-qualification:latest',
+    canContinue: true,
+    turns: () =>
+      buildLongSessionTurns({
+        threadId: childId,
+        provider: 'station-agent',
+        turnCount: 1,
+        promptText: () => 'Continue this exact draft.',
+        replyText: () => 'The owned child is open.',
+      }),
+  });
+  await page.route('**/api/starter-work/continue-session', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: {
+              state: 'bound',
+              binding: {
+                schemaVersion: 1,
+                starterId: 'continue-session',
+                targetRef: { kind: 'session', id: sourceId },
+                operationId: 'starter-session:shared-record',
+                boundAt: source.createdAt,
+              },
+            },
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/orchestration/commands', async (route) => {
+    if (route.request().method() !== 'POST')
+      return rejectUnexpectedFixtureRequest(route);
+    const command: { type: string; sourceThreadId?: string } = route
+      .request()
+      .postDataJSON();
+    commands.push(command.type);
+    if (command.type !== 'adoptSession' || command.sourceThreadId !== sourceId)
+      return rejectUnexpectedFixtureRequest(route);
+    continued = true;
+    await route.fulfill({
+      status: 201,
+      json: { success: true, data: adoption },
+    });
+  });
+  await page.route(`**/api/orchestration/chat/${childId}/continue`, (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: {
+              conversationId: childId,
+              sessionId: childId,
+              providerTurnId: 'owned-turn',
+            },
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.goto(
+    new URL(activityDeepLink({ sessionId: sourceId }), stations.source.ui).href,
+  );
+  const detail = page.getByTestId('session-detail');
+  await expect(
+    detail.locator('[data-conversation-density="record"]'),
+  ).toBeVisible();
+  await expect(detail.getByRole('log')).toContainText(
+    'The original transcript stays available.',
+  );
+  await expect(
+    detail.getByRole('button', { name: 'Stop the current turn' }),
+  ).toHaveCount(0);
+  await detail
+    .getByRole('textbox', { name: 'Message', exact: true })
+    .fill('Continue this exact draft.');
+  await detail.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Continue here?' }),
+  ).toBeVisible();
+  expect(commands).toEqual([]);
+  await page.getByRole('button', { name: 'Continue and send' }).click();
+  await expect.poll(() => commands).toEqual(['adoptSession']);
+  await expect(
+    page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .filter({ hasText: 'The owned child is open.' }),
+  ).toBeVisible();
 });

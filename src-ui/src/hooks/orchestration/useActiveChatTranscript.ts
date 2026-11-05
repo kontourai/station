@@ -31,7 +31,7 @@ import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import {
-  conversationPartToContentParts,
+  conversationMessageToChatMessage,
   stitchWindowWithLiveEvents,
 } from './conversationTranscriptParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
@@ -700,18 +700,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ),
       )
       .map<ChatMessage>((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.parts
-          .filter((part) => part.type === 'text')
-          .map((part) => part.text ?? '')
-          .join(''),
-        contentParts: message.parts.flatMap(conversationPartToContentParts),
-        timestamp: message.metadata?.timestamp,
-        model: message.metadata?.model ?? undefined,
-        modelOptions: message.metadata?.modelOptions,
-        turnId: message.metadata?.turnId,
-        sessionId: message.metadata?.sessionId,
+        ...conversationMessageToChatMessage(message),
         agentSlug: message.metadata?.sessionId
           ? agentBySessionId.get(message.metadata.sessionId)
           : undefined,
@@ -723,33 +712,6 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ? agentPresentationBySessionId.get(message.metadata.sessionId)
               ?.agentIcon
           : undefined,
-        sourceEventId: message.metadata?.sourceEventId,
-        ...(message.metadata?.steerInterruptedRun
-          ? { steerInterruptedRun: true }
-          : {}),
-        ...(message.metadata?.stationCheckBack
-          ? { stationCheckBack: true }
-          : {}),
-        ...(message.metadata?.stationMemoryContinuation
-          ? { stationMemoryContinuation: true }
-          : {}),
-        ...(message.metadata?.interruptedTurnBoundaryId
-          ? {
-              interruptedTurnBoundaryId:
-                message.metadata.interruptedTurnBoundaryId,
-            }
-          : {}),
-        ...(message.metadata?.sender
-          ? { sender: message.metadata.sender }
-          : {}),
-        answerEligible: message.metadata?.answerEligible,
-        provenance: message.metadata?.provenance,
-        ...(message.metadata?.hostImages
-          ? { hostImages: message.metadata.hostImages }
-          : {}),
-        turnEnded: message.metadata?.turnEnded,
-        turnEndedReason: message.metadata?.turnEndedReason,
-        turnStoppedBy: message.metadata?.turnStoppedBy,
       }));
     // A turn Station's restart cut off says so once, on its own row.
     const projected = withoutRepeatedRestartNotice(projectedRows);

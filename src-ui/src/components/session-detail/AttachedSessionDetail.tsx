@@ -13,12 +13,10 @@ import {
   getStarterWork,
   launchContinueSessionStarter,
 } from '@kontourai/station-sdk';
-import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -28,7 +26,6 @@ import {
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
-import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -40,19 +37,13 @@ import {
   type AttachedSessionContinuationRead,
   browserAttachedSessionContinuationStore,
 } from '../../lib/attached-session-continuation-store';
-import { copyToClipboard } from '../../lib/clipboard';
-import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
-import { MessageBubble } from '../chat/MessageBubble';
-import {
-  TranscriptMarker,
-  transcriptMarkerLabel,
-} from '../chat/TranscriptMarker';
+import { ConversationBody } from '../conversation/ConversationBody';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { Dialog } from '../Dialog';
-import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -82,24 +73,6 @@ function reservationFailure(
  * adopt it into a real Station-owned continuation — plus the imported
  * transcript. Split out of `SessionsView` per archive#1204.
  */
-type TranscriptPart = ReturnType<typeof conversationPartToContentParts>[number];
-
-/** A part as a read-only transcript shows it: never answerable from here. */
-function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
-  const {
-    needsApproval: _needsApproval,
-    approvalId: _approvalId,
-    approvalThreadId: _approvalThreadId,
-    approvalEventId: _approvalEventId,
-    approvalContentEvent: _approvalContentEvent,
-    approvalToolName: _approvalToolName,
-    approvalSessionGrant: _approvalSessionGrant,
-    approvalServerGrant: _approvalServerGrant,
-    ...rest
-  } = part as TranscriptPart & Record<string, unknown>;
-  return rest as TranscriptPart;
-}
-
 export function AttachedSessionDetail({
   draftScope,
   handoffScope,
@@ -233,11 +206,9 @@ export function AttachedSessionDetail({
   if (!continuationStore.current) {
     continuationStore.current = browserAttachedSessionContinuationStore();
   }
-  const messages = projectRuntimeEventsToMessages(
-    events.filter(hasCanonicalEventId),
-  );
+  const inheritedConnection = useOptionalConversationConnection();
+  const connection = inheritedConnection ?? { apiBase };
   const [replyRequested, setReplyRequested] = useState(false);
-  const unavailableReasonId = useId();
   const [localDraft, setLocalDraft] = useState('');
   const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
     draftScope !== undefined
@@ -276,19 +247,6 @@ export function AttachedSessionDetail({
     };
   }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const transcriptScrollRef = useRef<HTMLDivElement>(null);
-  const transcriptBodyRef = useRef<HTMLDivElement>(null);
-  const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(
-    {
-      identity: `${apiBase}\0${session.threadId}`,
-      scrollRef: transcriptScrollRef,
-      contentRef: transcriptBodyRef,
-      ready: events.length > 0 && !upgradeRequired && !streamError,
-      contentVersion: events,
-      preserveReading:
-        events.length > 0 && Boolean(upgradeRequired || streamError),
-    },
-  );
   const adoption = useMutation({
     mutationFn: async (_intent: number) => {
       setServerFailureReason(null);
@@ -654,162 +612,36 @@ export function AttachedSessionDetail({
         ))
       )}
 
-      <div
-        className="chat-messages"
-        role="log"
-        tabIndex={-1}
-        aria-label="Conversation messages"
-        ref={transcriptScrollRef}
-      >
-        {!atLatest && (
-          <div className="session-transcript__toolbar responsive-surface-actions">
-            <Button variant="secondary" onClick={jumpToLatest}>
-              Jump to latest
-            </Button>
-          </div>
-        )}
-        {onLoadOlder && (
-          <div className="session-history-controls responsive-surface-actions">
-            <Button
-              onClick={() => {
-                pauseFollowing();
-                void onLoadOlder().then(() => {
-                  if (transcriptScrollRef.current)
-                    transcriptScrollRef.current.scrollTop = 0;
-                });
-              }}
-            >
-              Show older messages
-            </Button>
-          </div>
-        )}
-        <div
-          className="sessions-detail__transcript"
-          data-testid="attached-session-transcript"
-          ref={transcriptBodyRef}
-        >
-          {messages.length === 0 ? (
-            // Nothing here claims the conversation is empty until history has
-            // loaded; an upgrade or a credential stop is explained above.
-            upgradeRequired || stoppedTerminal ? null : (
-              <p className="sessions-detail__feed-empty">
-                {historyLoaded
-                  ? 'No messages yet.'
-                  : connected || disconnected
-                    ? 'Waiting for this conversation’s messages…'
-                    : 'Connecting to this Station…'}
-              </p>
-            )
-          ) : (
-            messages.map((message, index) => {
-              // Chat's own mapping, so a runtime error's code (its
-              // translated copy), a file's reference and a cancelled call
-              // render here as they do in the dock — minus the approval
-              // binding: this view is read-only, and a bound part would
-              // offer Approve/Deny that nothing here can answer.
-              const contentParts = message.parts
-                .flatMap(conversationPartToContentParts)
-                .map(withoutApprovalBinding);
-              const marker = transcriptMarkerLabel(contentParts);
-              if (marker)
-                return <TranscriptMarker key={message.id} label={marker} />;
-              return (
-                <MessageBubble
-                  key={message.id}
-                  msg={{
-                    role: message.role,
-                    content: message.parts
-                      .filter((part) => part.type === 'text')
-                      .map((part) => part.text ?? '')
-                      .join('\n\n'),
-                    contentParts: contentParts as ChatMessage['contentParts'],
-                  }}
-                  idx={index}
-                  activeSession={{
-                    id: session.threadId,
-                    agentSlug: session.provider,
-                    agentName: displayProvider(session),
-                    messageCount: messages.length,
-                  }}
-                  agents={[]}
-                  chatFontSize={chatFontSize}
-                  showReasoning={false}
-                  showToolDetails={false}
-                  onCopy={(text) => {
-                    // copyToClipboard also answers false where there is no
-                    // clipboard at all (a plain http:// origin), which the
-                    // direct writeText call threw on instead of toasting.
-                    void copyToClipboard(text).then((copied) => {
-                      if (!copied)
-                        showToast(
-                          'Could not copy this message.',
-                          session.threadId,
-                        );
-                    });
-                  }}
-                />
-              );
-            })
-          )}
-        </div>
-      </div>
-      <fieldset
-        className="external-chat-composer chat-input"
-        aria-label="Message composer"
-      >
-        {!continuationSupported && (
-          <p className="external-chat-composer__note" id={unavailableReasonId}>
-            {continuationSupport.reason}
-          </p>
-        )}
-        <div className="chat-input__capsule">
-          <div className="chat-input__textarea-wrapper">
-            <textarea
-              ref={composerRef}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              disabled={composerDisabled}
-              aria-label="Message"
-              aria-describedby={
-                continuationSupported ? undefined : unavailableReasonId
-              }
-              placeholder="Type a message…"
-              rows={2}
-              onKeyDown={(event) => {
-                if (
-                  event.key === 'Enter' &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  requestSend();
-                }
-              }}
-            />
-          </div>
-          <div className="imported-conversation-send-row">
-            <button
-              type="button"
-              aria-label="Send message"
-              className={`chat-input__send-btn ${draft.trim() && !composerDisabled ? 'chat-input__send-btn--active' : 'chat-input__send-btn--inactive'}`}
-              disabled={!draft.trim() || composerDisabled}
-              onClick={requestSend}
-            >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path d="M12 19V5m-7 7 7-7 7 7" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </fieldset>
+      <ConversationBody
+        density="record"
+        connection={connection}
+        session={session}
+        readOnly
+        reader={{
+          agentLabel: displayProvider(session),
+          isStreaming: false,
+          fontSize: chatFontSize,
+        }}
+        source={{
+          events: events.filter(hasCanonicalEventId),
+          settled: historyLoaded ?? (connected && events.length > 0),
+          hasMore: Boolean(onLoadOlder),
+          loadOlder: onLoadOlder,
+          upgradeRequired,
+          error: streamError,
+          retry: onLoadOlder ?? onRetryCapabilityRecovery,
+        }}
+        composer={{
+          input: draft,
+          onInputChange: setDraft,
+          disabled: composerDisabled,
+          reason: continuationSupported
+            ? undefined
+            : continuationSupport.reason,
+          onSubmit: requestSend,
+          textareaRef: composerRef,
+        }}
+      />
       {replyRequested && !continued && (
         <Dialog
           title="Continue here?"

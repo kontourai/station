@@ -580,6 +580,9 @@ function gatedDecisionBody(
 
 /** Loading and failure of an approval's out-of-line content. */
 function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
+  const reason =
+    useOptionalConversationConnection()?.record?.answeringDeniedReason;
+  if (reason) return <p className="tool-call__approval-loading">{reason}</p>;
   if (!gate || gate.status === 'not-needed' || gate.status === 'ready')
     return null;
   if (gate.status === 'loading')
@@ -607,6 +610,9 @@ function useApprovalDecision(
   reference?: ApprovalAnswerReference,
 ) {
   const target = useOptionalConversationConnection();
+  const denied = Boolean(
+    target?.record?.readOnly || target?.record?.answeringDeniedReason,
+  );
   reference = reference
     ? { ...reference, authorityKey: target?.requestScope?.authorityKey }
     : undefined;
@@ -672,7 +678,7 @@ function useApprovalDecision(
         }
       : null);
   const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
-    if (phase !== 'idle' || admission.current) return;
+    if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
     setPhase('sending');
@@ -756,7 +762,7 @@ function useApprovalDecision(
     chosen,
     checking,
     check,
-    busy: phase !== 'idle',
+    busy: denied || phase !== 'idle',
   };
 }
 
@@ -972,12 +978,11 @@ function ToolApprovalButtons({
   serverGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, check, checking } = useApprovalDecision(
+  const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
     onApprove,
     onCheck,
     reference,
   );
-  const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the

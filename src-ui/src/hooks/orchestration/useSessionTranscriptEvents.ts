@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import { stitchWindowWithLiveEvents } from './conversationTranscriptParts';
 import { ensureOrchestrationEventStream } from './ensureOrchestrationEventStream';
@@ -43,6 +44,8 @@ export function useSessionTranscriptEvents(
   isStreaming: boolean,
   observation?: { live: false; revision: number },
 ) {
+  const target = useOptionalConversationConnection();
+  apiBase = target?.apiBase ?? apiBase;
   // The live half of this transcript is the app-wide stream. The chat dock
   // and the Agents pane start it, but the detail must not depend on either
   // being mounted: ensure it here (deduplicated per apiBase; the returned
@@ -58,6 +61,7 @@ export function useSessionTranscriptEvents(
       streamAuthorityKey,
       false,
       bootstrap.sharedRealtime,
+      target?.station,
     );
   }, [
     apiBase,
@@ -66,6 +70,7 @@ export function useSessionTranscriptEvents(
     bootstrap.status,
     bootstrap.sharedRealtime,
     observation?.live,
+    target?.station,
   ]);
 
   const [revision, setRevision] = useState(0);

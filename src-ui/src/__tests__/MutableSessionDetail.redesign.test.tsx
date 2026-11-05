@@ -1,3 +1,4 @@
+import { PreviewProvider } from '../contexts/PreviewContext';
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -17,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
  * toast host, and two heavy lazily-mounted children are stubbed): the
  * conversation replaces the Result card and is live while a turn streams,
  * Open in chat reopens the real conversation through the shared open policy,
- * Stop asks first, and a failed session shows exactly one failure card.
+ * Stop interrupts the current turn immediately; a failed session shows one failure card.
  */
 
 const interruptOrchestrationTurn = vi.hoisted(() =>
@@ -34,7 +35,14 @@ const agents = vi.hoisted(() => ({
   list: [{ slug: 'reviewer', name: 'Code Reviewer' }] as unknown[],
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  interruptTurn: (apiBase: string, input: { threadId: string }) =>
+    interruptOrchestrationTurn({ ...input, apiBase }),
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useAttentionQuery: () => ({
     data: { items: attention.items },
     isLoading: false,
@@ -62,7 +70,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   interruptOrchestrationTurn,
 }));
 
-// The conversation's own source is covered by SessionTranscript.test.tsx;
+// The conversation's own source is covered by ConversationReader.test.tsx;
 // here the durable window is an empty, settled read.
 vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
   useSessionEventWindow: () => ({
@@ -165,23 +173,32 @@ const ev = (
     ...event,
   }) as unknown as CanonicalRuntimeEvent;
 
-function renderDetail(session: any, events: CanonicalRuntimeEvent[] = []) {
+async function renderDetail(
+  session: any,
+  events: CanonicalRuntimeEvent[] = [],
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = (nextEvents: CanonicalRuntimeEvent[]) => (
     <QueryClientProvider client={queryClient}>
-      <MutableSessionDetail
-        apiBase="http://station.test"
-        session={session}
-        onTaskChanged={vi.fn()}
-        events={nextEvents as any}
-        connected
-        visualViewport={{ style: {}, height: 900 } as any}
-      />
+      <PreviewProvider>
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={nextEvents as any}
+          connected
+          visualViewport={{ style: {}, height: 900 } as any}
+        />
+      </PreviewProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree(events));
+  await screen.findByTestId('session-transcript');
+  await waitFor(() =>
+    expect(screen.queryByLabelText('Loading composer')).toBeNull(),
+  );
   return {
     ...rendered,
     rerenderEvents: (next: CanonicalRuntimeEvent[]) =>
@@ -202,26 +219,28 @@ afterEach(() => {
 });
 
 describe('composer', () => {
-  test('the reply composer names the agent and says why it is disabled only while a turn runs', () => {
-    const view = renderDetail(baseSession());
-    const box = screen.getByLabelText('Send input to session');
-    expect(box.getAttribute('placeholder')).toBe('Reply to Code Reviewer…');
-    expect((box as HTMLTextAreaElement).disabled).toBe(true);
+  test('the reply composer names the agent and says why it is disabled only while a turn runs', async () => {
+    const view = await renderDetail(baseSession());
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    expect(box.getAttribute('placeholder')).toContain('Draft a follow-up');
+    expect((box as HTMLTextAreaElement).disabled).toBe(false);
     expect(
       screen.getByText('You can reply when the current turn finishes.'),
     ).toBeTruthy();
     expect(screen.queryByText(/Turn-based:/)).toBeNull();
     view.unmount();
 
-    renderDetail(baseSession({ lifecycleState: 'idle', hasActiveTurn: false }));
+    await renderDetail(
+      baseSession({ lifecycleState: 'idle', hasActiveTurn: false }),
+    );
     expect(
       screen.queryByText('You can reply when the current turn finishes.'),
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
 
-  test('a delegated task asks for a follow-up, not a reply to the agent', () => {
-    renderDetail(
+  test('a delegated task asks for a follow-up, not a reply to the agent', async () => {
+    await renderDetail(
       baseSession({
         lifecycleState: 'idle',
         hasActiveTurn: false,
@@ -230,38 +249,38 @@ describe('composer', () => {
     );
     expect(
       screen
-        .getByLabelText('Continue delegated task')
+        .getByRole('textbox', { name: 'Message' })
         .getAttribute('placeholder'),
-    ).toBe('Add a follow-up for this task…');
+    ).toContain('Type a message');
   });
 });
 
 describe('header meta line', () => {
-  test('names the model the session runs, preferring the one the runtime reported', () => {
+  test('names the model the session runs, preferring the one the runtime reported', async () => {
     const metaText = () =>
       (
         screen
           .getByTestId('session-detail')
           .querySelector('.sessions-detail__meta-line') as HTMLElement
       ).textContent;
-    const configured = renderDetail(baseSession());
+    const configured = await renderDetail(baseSession());
     expect(metaText()).toContain('fixture-model');
     configured.unmount();
-    renderDetail(baseSession({ reportedModel: 'reported-model' }));
+    await renderDetail(baseSession({ reportedModel: 'reported-model' }));
     expect(metaText()).toContain('reported-model');
     expect(metaText()).not.toContain('fixture-model');
   });
 });
 
 describe('header', () => {
-  test('Open in chat reopens the real conversation through the shared open policy', () => {
+  test('Open in chat reopens the real conversation through the shared open policy', async () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
       openCollection: vi.fn(),
     });
     try {
-      renderDetail(baseSession());
+      await renderDetail(baseSession());
       fireEvent.click(screen.getByRole('button', { name: 'Open in chat' }));
       expect(focus).toHaveBeenCalledTimes(1);
       expect(focus).toHaveBeenCalledWith(
@@ -276,29 +295,17 @@ describe('header', () => {
     }
   });
 
-  test('offers no Open in chat when the chat cannot rehydrate the session', () => {
-    renderDetail(baseSession({ assignedAgentSlug: undefined }));
+  test('offers no Open in chat when the chat cannot rehydrate the session', async () => {
+    await renderDetail(baseSession({ assignedAgentSlug: undefined }));
     expect(screen.queryByRole('button', { name: 'Open in chat' })).toBeNull();
   });
 
-  test('Stop… asks first; only the confirmation stops the turn', async () => {
-    renderDetail(baseSession());
-    fireEvent.click(screen.getByRole('button', { name: 'Stop…' }));
-    const dialog = screen.getByRole('alertdialog', { name: 'Stop this task?' });
-    expect(interruptOrchestrationTurn).not.toHaveBeenCalled();
-
+  test('the shared Stop interrupts this turn immediately', async () => {
+    await renderDetail(baseSession());
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Keep running' }),
+      screen.getByRole('button', { name: 'Stop the current turn' }),
     );
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(interruptOrchestrationTurn).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Stop…' }));
-    fireEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
-        name: 'Stop task',
-      }),
-    );
     await waitFor(() =>
       expect(interruptOrchestrationTurn).toHaveBeenCalledWith({
         threadId: THREAD,
@@ -308,8 +315,8 @@ describe('header', () => {
     expect(interruptOrchestrationTurn).toHaveBeenCalledTimes(1);
   });
 
-  test('keeps the raw thread id out of the header; it lives in ⋯ and Details', () => {
-    renderDetail(baseSession(), [
+  test('keeps the raw thread id out of the header; it lives in ⋯ and Details', async () => {
+    await renderDetail(baseSession(), [
       ev({ method: 'turn.started', turnId: 't1', prompt: 'Tidy the docs' }),
     ]);
     const header = screen
@@ -336,8 +343,8 @@ describe('header', () => {
     expect(details.textContent).toContain(THREAD);
   });
 
-  test('a delegated task offers Delegate subtask with itself as the parent', () => {
-    renderDetail(
+  test('a delegated task offers Delegate subtask with itself as the parent', async () => {
+    await renderDetail(
       baseSession({
         delegation: { taskId: 'task:parent-42', mode: 'isolated-child' },
       }),
@@ -351,18 +358,20 @@ describe('header', () => {
     ).toBe('parent:task:parent-42');
   });
 
-  test('a disconnected feed says Connecting… only while the session is live', () => {
+  test('a disconnected feed says Connecting… only while the session is live', async () => {
     const queryClient = new QueryClient();
     const tree = (session: any) => (
       <QueryClientProvider client={queryClient}>
-        <MutableSessionDetail
-          apiBase="http://station.test"
-          session={session}
-          onTaskChanged={vi.fn()}
-          events={[]}
-          connected={false}
-          visualViewport={{ style: {}, height: 900 } as any}
-        />
+        <PreviewProvider>
+          <MutableSessionDetail
+            apiBase="http://station.test"
+            session={session}
+            onTaskChanged={vi.fn()}
+            events={[]}
+            connected={false}
+            visualViewport={{ style: {}, height: 900 } as any}
+          />
+        </PreviewProvider>
       </QueryClientProvider>
     );
     const view = render(tree(baseSession()));
@@ -386,9 +395,9 @@ describe('needs you: one failure card', () => {
     source: { threadId: THREAD },
   };
 
-  test('a failed session shows its failure once, with no self-pointing Open session link', () => {
+  test('a failed session shows its failure once, with no self-pointing Open session link', async () => {
     attention.items = [failedItem];
-    renderDetail(
+    await renderDetail(
       baseSession({
         lifecycleState: 'failed',
         hasActiveTurn: false,
@@ -426,7 +435,7 @@ describe('needs you: one failure card', () => {
     ].forEach((event, index) =>
       recordSequencedLiveEvent('http://station.test', event, index + 1),
     );
-    renderDetail(
+    await renderDetail(
       baseSession({
         lifecycleState: 'failed',
         hasActiveTurn: false,
@@ -446,11 +455,11 @@ describe('needs you: one failure card', () => {
 
   test.each([undefined, '2099-01-01T00:00:00.000Z'])(
     "the failure card's Dismiss acknowledges that exact attention item (snoozedUntil=%s)",
-    (snoozedUntil) => {
+    async (snoozedUntil) => {
       attention.items = [
         { ...failedItem, ...(snoozedUntil ? { snoozedUntil } : {}) },
       ];
-      renderDetail(
+      await renderDetail(
         baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
@@ -458,8 +467,8 @@ describe('needs you: one failure card', () => {
     },
   );
 
-  test('with nothing to acknowledge, the failure card offers no Dismiss', () => {
-    renderDetail(
+  test('with nothing to acknowledge, the failure card offers no Dismiss', async () => {
+    await renderDetail(
       baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
     );
     expect(screen.getByTestId('session-failure')).toBeTruthy();
@@ -469,19 +478,19 @@ describe('needs you: one failure card', () => {
 
 describe('fix round', () => {
   test('Details mounts linked pull requests with the manual link form collapsed', async () => {
-    renderDetail(baseSession());
+    await renderDetail(baseSession());
     const stub = await screen.findByTestId('pr-links-stub');
     expect(stub.getAttribute('data-link-form-collapsed')).toBe('true');
   });
 
-  test('a peer (paired-Station) record offers no local controls and says where its transcript lives', () => {
+  test('a peer (paired-Station) record offers no local controls and says where its transcript lives', async () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
       openCollection: vi.fn(),
     });
     try {
-      renderDetail(
+      await renderDetail(
         baseSession({
           delegation: {
             taskId: 'task:peer-1',
@@ -492,11 +501,9 @@ describe('fix round', () => {
       );
       expect(screen.queryByRole('button', { name: 'Open in chat' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
-      expect(screen.queryByLabelText('Continue delegated task')).toBeNull();
-      expect(screen.queryByTestId('session-transcript')).toBeNull();
-      expect(
-        screen.getByTestId('session-peer-transcript-note').textContent,
-      ).toContain('remain on the paired Station');
+      expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
+      expect(screen.getByTestId('session-transcript')).toBeTruthy();
+      expect(screen.queryByTestId('session-peer-transcript-note')).toBeNull();
       fireEvent.click(
         screen.getByRole('button', { name: 'More session actions' }),
       );
@@ -509,7 +516,7 @@ describe('fix round', () => {
     }
   });
 
-  test('a peer record runs no local run probes and offers no inline answer to its attention item', () => {
+  test('a peer record runs no local run probes and offers no inline answer to its attention item', async () => {
     runProbes.flow.mockClear();
     runProbes.builder.mockClear();
     attention.items = [
@@ -523,7 +530,7 @@ describe('fix round', () => {
         source: { threadId: THREAD },
       },
     ];
-    renderDetail(
+    await renderDetail(
       baseSession({
         lifecycleState: 'needs_input',
         hasActiveTurn: false,
@@ -549,9 +556,9 @@ describe('fix round', () => {
     expect(within(elsewhere).queryByRole('textbox')).toBeNull();
   });
 
-  test('a local delegated task still probes its runs (control)', () => {
+  test('a local delegated task still probes its runs (control)', async () => {
     runProbes.flow.mockClear();
-    renderDetail(
+    await renderDetail(
       baseSession({
         delegation: { taskId: 'task:local-1', mode: 'isolated-child' },
       }),
@@ -563,7 +570,7 @@ describe('fix round', () => {
     ).toBe(true);
   });
 
-  test('an already-acknowledged failure offers no Dismiss', () => {
+  test('an already-acknowledged failure offers no Dismiss', async () => {
     attention.items = [
       {
         id: `session-failed:${THREAD}`,
@@ -576,30 +583,32 @@ describe('fix round', () => {
         source: { threadId: THREAD },
       },
     ];
-    renderDetail(
+    await renderDetail(
       baseSession({ lifecycleState: 'failed', hasActiveTurn: false }),
     );
     expect(screen.getByTestId('session-failure')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
-  test('a turn that ends while Stop is being confirmed withdraws the question and never interrupts', () => {
+  test('an ending turn removes Stop without interrupting again', async () => {
     const queryClient = new QueryClient();
     const tree = (session: any) => (
       <QueryClientProvider client={queryClient}>
-        <MutableSessionDetail
-          apiBase="http://station.test"
-          session={session}
-          onTaskChanged={vi.fn()}
-          events={[]}
-          connected
-          visualViewport={{ style: {}, height: 900 } as any}
-        />
+        <PreviewProvider>
+          <MutableSessionDetail
+            apiBase="http://station.test"
+            session={session}
+            onTaskChanged={vi.fn()}
+            events={[]}
+            connected
+            visualViewport={{ style: {}, height: 900 } as any}
+          />
+        </PreviewProvider>
       </QueryClientProvider>
     );
     const view = render(tree(baseSession()));
-    fireEvent.click(screen.getByRole('button', { name: 'Stop…' }));
-    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    await screen.findByRole('textbox');
+    await screen.findByRole('button', { name: 'Stop the current turn' });
     view.rerender(
       tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
     );
@@ -607,32 +616,34 @@ describe('fix round', () => {
     expect(interruptOrchestrationTurn).not.toHaveBeenCalled();
   });
 
-  test('a turn that ends while Stop is being confirmed lands focus on Open in chat, not <body>', async () => {
+  test('an ending turn returns Stop focus to the shared composer', async () => {
     const queryClient = new QueryClient();
     const tree = (session: any) => (
       <QueryClientProvider client={queryClient}>
-        <MutableSessionDetail
-          apiBase="http://station.test"
-          session={session}
-          onTaskChanged={vi.fn()}
-          events={[]}
-          connected
-          visualViewport={{ style: {}, height: 900 } as any}
-        />
+        <PreviewProvider>
+          <MutableSessionDetail
+            apiBase="http://station.test"
+            session={session}
+            onTaskChanged={vi.fn()}
+            events={[]}
+            connected
+            visualViewport={{ style: {}, height: 900 } as any}
+          />
+        </PreviewProvider>
       </QueryClientProvider>
     );
     const view = render(tree(baseSession()));
-    const stop = screen.getByRole('button', { name: 'Stop…' });
+    await screen.findByRole('textbox');
+    const stop = screen.getByRole('button', { name: 'Stop the current turn' });
     stop.focus();
-    fireEvent.click(stop);
-    expect(screen.getByRole('alertdialog')).toBeTruthy();
+
     view.rerender(
       tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
     );
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: 'Open in chat' }),
+        screen.getByRole('textbox', { name: 'Message' }),
       ),
     );
   });
@@ -642,18 +653,20 @@ describe('fix round', () => {
     ["this detail's evidence region (deep link)", 'evidence'],
   ])(
     'when a turn ends, focus deliberately on %s is left where it is',
-    (_label, where) => {
+    async (_label, where) => {
       const queryClient = new QueryClient();
       const tree = (session: any) => (
         <QueryClientProvider client={queryClient}>
-          <MutableSessionDetail
-            apiBase="http://station.test"
-            session={session}
-            onTaskChanged={vi.fn()}
-            events={[]}
-            connected
-            visualViewport={{ style: {}, height: 900 } as any}
-          />
+          <PreviewProvider>
+            <MutableSessionDetail
+              apiBase="http://station.test"
+              session={session}
+              onTaskChanged={vi.fn()}
+              events={[]}
+              connected
+              visualViewport={{ style: {}, height: 900 } as any}
+            />
+          </PreviewProvider>
         </QueryClientProvider>
       );
       const view = render(tree(baseSession()));
@@ -678,32 +691,37 @@ describe('fix round', () => {
     },
   );
 
-  test('when Stop… goes away with focus on nothing, focus lands on Open in chat, not <body>', () => {
+  test('when the shared Stop leaves, focus returns to the composer', async () => {
     const queryClient = new QueryClient();
     const tree = (session: any) => (
       <QueryClientProvider client={queryClient}>
-        <MutableSessionDetail
-          apiBase="http://station.test"
-          session={session}
-          onTaskChanged={vi.fn()}
-          events={[]}
-          connected
-          visualViewport={{ style: {}, height: 900 } as any}
-        />
+        <PreviewProvider>
+          <MutableSessionDetail
+            apiBase="http://station.test"
+            session={session}
+            onTaskChanged={vi.fn()}
+            events={[]}
+            connected
+            visualViewport={{ style: {}, height: 900 } as any}
+          />
+        </PreviewProvider>
       </QueryClientProvider>
     );
     const view = render(tree(baseSession()));
-    const stop = screen.getByRole('button', { name: 'Stop…' });
+    await screen.findByRole('textbox');
+    const stop = screen.getByRole('button', { name: 'Stop the current turn' });
     stop.focus();
     view.rerender(
       tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
     );
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Open in chat' }),
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('textbox', { name: 'Message' }),
+      ),
     );
   });
 
-  test('an unknown client surface is left out of the meta line (a known one is named)', () => {
+  test('an unknown client surface is left out of the meta line (a known one is named)', async () => {
     const origin = (surface: string) => [
       {
         createdAt: '2026-09-28T00:00:00.000Z',
@@ -717,11 +735,11 @@ describe('fix round', () => {
           .querySelector('.sessions-detail__meta-line') as HTMLElement
       ).textContent;
     receipts.data = origin('cli');
-    const known = renderDetail(baseSession());
+    const known = await renderDetail(baseSession());
     expect(metaText()).toContain('from CLI');
     known.unmount();
     receipts.data = origin('unknown');
-    renderDetail(baseSession());
+    await renderDetail(baseSession());
     expect(metaText()).not.toMatch(/Unknown surface|from /);
   });
 });

@@ -1,5 +1,8 @@
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
-import type { MessagePart } from '@kontourai/station-shared/conversation-message';
+import type {
+  ConversationMessage,
+  MessagePart,
+} from '@kontourai/station-shared/conversation-message';
 import type { ChatMessage } from '../../types';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
@@ -133,4 +136,37 @@ export function stitchWindowWithLiveEvents(input: {
     events.every((item, index) => item === previous[index])
     ? previous
     : events;
+}
+
+/** Preserve message provenance and content consistently in dock and record readers. */
+export function conversationMessageToChatMessage(
+  message: ConversationMessage,
+): ChatMessage {
+  const metadata = message.metadata;
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.parts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join(''),
+    contentParts: message.parts.flatMap(conversationPartToContentParts),
+    timestamp: metadata?.timestamp,
+    model: metadata?.model ?? undefined,
+    modelOptions: metadata?.modelOptions,
+    turnId: metadata?.turnId,
+    sessionId: metadata?.sessionId,
+    sourceEventId: metadata?.sourceEventId,
+    steerInterruptedRun: metadata?.steerInterruptedRun,
+    stationCheckBack: metadata?.stationCheckBack,
+    stationMemoryContinuation: metadata?.stationMemoryContinuation,
+    interruptedTurnBoundaryId: metadata?.interruptedTurnBoundaryId,
+    sender: metadata?.sender,
+    answerEligible: metadata?.answerEligible,
+    provenance: metadata?.provenance,
+    hostImages: metadata?.hostImages,
+    turnEnded: metadata?.turnEnded,
+    turnEndedReason: metadata?.turnEndedReason,
+    turnStoppedBy: metadata?.turnStoppedBy,
+  };
 }

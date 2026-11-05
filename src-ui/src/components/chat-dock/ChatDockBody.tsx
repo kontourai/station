@@ -1,4 +1,4 @@
-import { type ComponentProps, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useStationConnectionsOptional } from '../../connections/StationConnectionsContext';
 import type { StationConnection } from '../../connections/station-connection';
 import { useChatStationConnection } from '../../connections/use-chat-station-connection';
@@ -8,7 +8,10 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
-import { ConversationBody } from '../conversation/ConversationBody';
+import {
+  ConversationBody,
+  type ConversationBodyProps,
+} from '../conversation/ConversationBody';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { ErrorState, SkeletonList } from '../state';
 
@@ -25,7 +28,7 @@ export {
 export function ChatDockBody({
   connection: provided,
   ...props
-}: ComponentProps<typeof ConversationBody> & {
+}: ConversationBodyProps & {
   connection?: StationConnection;
 }) {
   const { apiBase } = useApiBase();

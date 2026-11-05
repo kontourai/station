@@ -1,4 +1,5 @@
 import {
+  continueExecutionMessage,
   getTurnDelivery,
   inspectAttentionRequest,
   interruptTurn,
@@ -12,6 +13,29 @@ import type {
   ConversationTransport,
   StationConnection,
 } from '../../connections/station-connection';
+import type { ConversationConnection } from './ConversationConnectionContext';
+
+/** The explicit host adapter also supports readers mounted outside the dock. */
+export function createRecordConversationTransport(
+  target: ConversationConnection,
+) {
+  if (target.station) return createConversationTransport(target.station);
+  const options = () => {
+    if (target.requestScope?.isCurrent?.() === false)
+      throw new StationRequestAuthorityError();
+    return { requestScope: target.requestScope };
+  };
+  return {
+    continue: (
+      id: string,
+      input: Parameters<typeof continueExecutionMessage>[2],
+    ) => continueExecutionMessage(target.apiBase, id, input, options()),
+    stop: (input: Parameters<typeof interruptTurn>[1]) =>
+      interruptTurn(target.apiBase, input, options()),
+    recheckDelivery: (id: string, key: string) =>
+      getTurnDelivery(target.apiBase, id, key, options()),
+  };
+}
 
 /** Bind route, credentials and currency once; no caller can retarget an action. */
 export function createConversationTransport(
@@ -30,6 +54,13 @@ export function createConversationTransport(
   };
   const base = connection.targetApiBase;
   return {
+    continue: (conversationId, input, options) =>
+      continueExecutionMessage(
+        base,
+        conversationId,
+        input,
+        optionsFor('send', options?.signal),
+      ),
     send: (input, inventory, options) =>
       sendExecutionMessageWithInventory(
         base,

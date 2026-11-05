@@ -30,6 +30,11 @@ import {
  * answer lost its opening words and an early tool call vanished.
  */
 
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn(), dismissToast: vi.fn() }),
+}));
+
 const markdownRendered = vi.hoisted(() => vi.fn());
 vi.mock('../components/chat/LazyMarkdown', async (importOriginal) => {
   const actual =
@@ -108,7 +113,7 @@ vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
 }));
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionTranscript } from '../components/session-detail/SessionTranscript';
+import { SessionConversationReader } from '../components/conversation/ConversationReader';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import {
   recordSequencedLiveEvent,
@@ -170,7 +175,7 @@ function renderTranscript(
     <QueryClientProvider client={queryClient}>
       <PreviewProvider>
         <CanonicalActivityBinding>
-          <SessionTranscript
+          <SessionConversationReader
             apiBase={API}
             session={session}
             agentLabel="Code Reviewer"
@@ -215,7 +220,7 @@ beforeEach(() => {
   sequence = 0;
 });
 
-describe('SessionTranscript source', () => {
+describe('SessionConversationReader source', () => {
   test('the receiver transcript reads bounded history under the captured source authority', async () => {
     windowState.realWindow = true;
     const scope = {
@@ -274,7 +279,7 @@ describe('SessionTranscript source', () => {
           <ConversationConnectionContext.Provider
             value={{ apiBase, requestScope: scope }}
           >
-            <SessionTranscript
+            <SessionConversationReader
               apiBase={apiBase}
               session={{ threadId: THREAD, conversationId: THREAD }}
               agentLabel="Codex"
@@ -303,7 +308,7 @@ describe('SessionTranscript source', () => {
     const tree = (revision: number) => (
       <QueryClientProvider client={queryClient}>
         <PreviewProvider>
-          <SessionTranscript
+          <SessionConversationReader
             apiBase="http://source.test/api/environments/peers/desktop-win/chat-api"
             session={{ threadId: THREAD, conversationId: THREAD }}
             agentLabel="Codex"
@@ -424,7 +429,7 @@ describe('SessionTranscript source', () => {
       }),
     ]);
     expect(position).toBe(150);
-    fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Scroll to bottom' }));
     expect(position).toBe(1500);
     height = 2100;
     live([
@@ -487,6 +492,7 @@ describe('SessionTranscript source', () => {
       undefined,
       false,
       false,
+      undefined,
     );
     live([
       ev({ method: 'turn.started', turnId: 'solo', prompt: 'Alone' }),
@@ -724,7 +730,7 @@ describe('SessionTranscript source', () => {
     windowState.hasMore = true;
     renderTranscript(false);
     act(() => {
-      screen.getByRole('button', { name: 'Show older messages' }).click();
+      screen.getByRole('button', { name: 'Earlier messages' }).click();
     });
     expect(windowState.loadOlder).toHaveBeenCalledOnce();
   });
@@ -806,10 +812,16 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     renderTranscript(false);
     const rows = screen.getAllByTestId('session-transcript-message');
     expect(rows).toHaveLength(2);
-    expect(within(rows[0]!).getByText('You')).toBeTruthy();
-    expect(rows[0]!.classList.contains('agent-incoming')).toBe(false);
+    expect(
+      within(rows[0]!).getByRole('button', { name: 'Copy your message' }),
+    ).toBeTruthy();
+    expect(Boolean(rows[0]!.querySelector('.message.agent-incoming'))).toBe(
+      false,
+    );
 
-    expect(rows[1]!.classList.contains('agent-incoming')).toBe(true);
+    expect(Boolean(rows[1]!.querySelector('.message.agent-incoming'))).toBe(
+      true,
+    );
     expect(rows[1]!.getAttribute('aria-label')).toBe(
       'Message from another agent: Fix login, Claude Code',
     );
@@ -856,7 +868,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     ];
     renderTranscript(false);
     const [row] = screen.getAllByTestId('session-transcript-message');
-    expect(row!.classList.contains('agent-incoming')).toBe(true);
+    expect(Boolean(row!.querySelector('.message.agent-incoming'))).toBe(true);
     expect(within(row!).queryByText('You')).toBeNull();
     expect(row!.getAttribute('aria-label')).toBe(
       'Non-person input: sender not recorded',
@@ -864,7 +876,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
   });
 });
 
-describe('SessionTranscript transcript markers (station#3415)', () => {
+describe('SessionConversationReader transcript markers (station#3415)', () => {
   test('a live compaction waits for its turn to close, then renders a marker line after it', () => {
     const view = renderTranscript(true);
     live([
@@ -932,9 +944,7 @@ describe('engine-opened transcript cause (#3419)', () => {
       'The engine replied on its own',
     );
     expect(row.textContent).toContain('Checks finished.');
-    expect(row.querySelector('details summary')?.textContent).toContain(
-      'The engine replied on its own',
-    );
+    expect(within(row).getByText('The engine replied on its own')).toBeTruthy();
     expect(within(row).queryByText('You')).toBeNull();
   });
 });
@@ -1048,7 +1058,7 @@ describe('exact send/receive navigation through Activity and older pages (#3419)
       );
       renderTranscript(false);
       await waitFor(() =>
-        expect(screen.getByRole('status').textContent).toContain(
+        expect(screen.getByText(/Opened the exact/).textContent).toContain(
           `Opened the exact ${direction === 'sent' ? 'sending call' : 'received message'}`,
         ),
       );
@@ -1131,7 +1141,8 @@ describe('real anchor paging failure and resource bound (#3419)', () => {
         );
         expect(pages).toBe(21);
       } else {
-        await screen.findByText('Older history unavailable');
+        await screen.findByText('Conversation could not be loaded');
+        expect(screen.queryByText('Older history unavailable')).toBeNull();
         expect(pages).toBe(2);
       }
       expect(screen.queryByText(/Opened the exact/)).toBeNull();

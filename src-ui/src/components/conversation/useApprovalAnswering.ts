@@ -54,7 +54,8 @@ function orchestrationDecisionForToolApproval(
 export function useApprovalAnswering(apiBase: string) {
   const target = useOptionalConversationConnection();
   apiBase = target?.apiBase ?? apiBase;
-  const { updateChat } = useActiveChatActions();
+  const actions = useActiveChatActions(true);
+  const updateChat = actions?.updateChat ?? activeChatsStore.updateChat;
   const { dismissToast } = useToast();
 
   return useCallback(
@@ -68,6 +69,8 @@ export function useApprovalAnswering(apiBase: string) {
       approvalEventId?: string,
     ): Promise<ToolApprovalOutcome> => {
       const station = target?.station;
+      if (target?.record?.readOnly || target?.record?.answeringDeniedReason)
+        throw new Error('This session is read only.');
       const capability =
         action === 'trust-server'
           ? 'approvalTrustServer'
@@ -110,6 +113,10 @@ export function useApprovalAnswering(apiBase: string) {
         }
       }
 
+      if (target?.record) {
+        target.record.onAnswered?.();
+        return outcome;
+      }
       const state = activeChatsStore.getSnapshot()[sessionId];
       if (!state) return outcome;
 
