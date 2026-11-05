@@ -162,10 +162,6 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await page.evaluate(() =>
     window.stationConnectionFaults.disconnectObservation(false),
   );
-  await page
-    .getByRole('region', { name: 'Conversation status', exact: true })
-    .getByRole('button', { name: /resync this conversation/ })
-    .click();
   await expect(transcript).toContainText('The local uncertain turn ran once.');
   await stationJson(
     stations.source,
