@@ -11,6 +11,7 @@ import { CliSessionGroupsPanel } from './CliSessionGroupsPanel';
 import { EnsembleCliGroupForm } from './EnsembleCliGroupForm';
 import { EnsembleInspectionResult } from './EnsembleInspectionResult';
 import { EnsemblePresetUpload } from './EnsemblePresetUpload';
+import { EnsembleRecordedGroupInspection } from './EnsembleRecordedGroupInspection';
 import { ReportGroupsPanel } from './ReportGroupsPanel';
 import './EnsembleInspectionView.css';
 
@@ -198,6 +199,13 @@ function InspectionForm({
           </Button>
         )}
       </form>
+      {source && (
+        <EnsembleRecordedGroupInspection
+          scope={scope}
+          path={path}
+          hash={source.hash}
+        />
+      )}
       {inspection.isError && <p role="alert">{failure}</p>}
       {source && result && scope.isCurrent() && (
         <EnsembleCliGroupForm

@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useRef, useState } from 'react';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { EnsembleCliGroupForm } from './EnsembleCliGroupForm';
+import { EnsembleRecordedGroupInspection } from './EnsembleRecordedGroupInspection';
 
 export function EnsemblePresetUpload({
   scope,
@@ -105,6 +106,11 @@ export function EnsemblePresetUpload({
               </li>
             ))}
           </ul>
+          <EnsembleRecordedGroupInspection
+            scope={scope}
+            presetJson={source.json}
+            hash={source.hash}
+          />
           <EnsembleCliGroupForm
             key={source.hash}
             scope={scope}

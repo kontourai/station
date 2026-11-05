@@ -18,6 +18,12 @@ export function EnsembleInspectionResult({
   return (
     <>
       <h2>{result.source.name}</h2>
+      {result.groupInspection?.state === 'bound' && (
+        <p>
+          Recorded group <code>{result.groupInspection.groupId}</code> ·{' '}
+          <span>Revision {result.groupInspection.revision}</span>
+        </p>
+      )}
       <p>
         Source <code>{result.source.sha256}</code> · Environment{' '}
         {result.environmentId} · Observed {result.observedAt}

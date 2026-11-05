@@ -2717,6 +2717,14 @@ discards execution admission. Scalar login status without the native witness
 cannot produce an authenticated fact. The client offers the read only when the
 current response declares it available and clears that offer on draft edits.
 
+The [recorded-group control](../../src-ui/src/views/EnsembleRecordedGroupInspection.tsx)
+first requests the host's inspection offer, then accepts an explicit group ID.
+It passes the exact path or uploaded bytes and preset hash through the same SDK
+hook, without a receiver draft or sign-in check. Authorized bound responses
+show the group ID and revision with the recorded references. Source or authority
+changes hide the prior result; unsupported hosts offer no bound request. This
+read neither creates nor runs a group.
+
 The [result component](../../src-ui/src/views/EnsembleInspectionResult.tsx) uses
 the same configuration facts for its provenance table and diagram. Optional
 `needs` references supply declared prerequisite arrows; node cards and labelled

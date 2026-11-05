@@ -6556,6 +6556,11 @@ source and `expectedPresetHash`, with empty `bindings` and no `groupBindings` or
 ID and safe integer revision on success. The SDK validates its closed shape and
 bounded strings. A bound request rejects a different group, missing cell or
 silent unbound success; older ordinary responses remain compatible.
+The Ensemble inspector exposes this as **Inspect a recorded group** after loading
+a preset or upload. It first checks the host's offer; only `available` exposes the
+explicit group-ID input. The result labels its recorded group and revision.
+Source or authority changes clear the displayed bound result. No group creation,
+run or sign-in check is implied by this read.
 Recorded Session/output and context ACK references are metadata observations,
 not output availability, native/shared memory, acceptance or execution grants.
 
