@@ -81,6 +81,23 @@ Project. **Details** contains identity, local workspace metadata, Basis,
 references and inspection.
 Subtask completion does not automatically complete its parent.
 
+With **Task capabilities** enabled in **Settings → Advanced → Feature previews**,
+Overview connects three steps: **Plan**, **Work chats**, and **Artifacts and
+receipts**. Open **Inspect Project tools** to search the existing tool catalog
+for the Task's Project. Project Agent management access is required; viewers
+and contributors do not load the catalog. Closing inspection, leaving Overview,
+or disabling the preview stops its reads. While open, the SDK refreshes access
+and catalog setup every five seconds.
+
+For example, define a documentation change and its acceptance checks in Plan.
+Inspect the documentation tool source, then follow the Agent's linked Work chat.
+Return to Artifacts and receipts to inspect the recorded output and evidence.
+Installation, source enablement and Project policy are catalog facts. They do
+not establish the chosen Agent's tool selection, engine support, account sign-in,
+or approval. Those checks remain with the execution owners. A completed chat
+also does not establish a passed gate. Failed catalog reads hide the prior setup
+until a retry succeeds; no tools are installed or configured from this view.
+
 The Inbox presents a Task with its authorized work chats underneath, including
 independent Agent requests from the Task Room. Selecting the Task reveals
 Overview; selecting a work chat opens that conversation. A conversation linked

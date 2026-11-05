@@ -282,11 +282,12 @@ jobs:
         run: |
           set -euo pipefail
           tag=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.releaseTag)')
-          version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.version)')
           release_preflight=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease)
           node --input-type=module -e 'const value=JSON.parse(process.argv[1]); if(value.isDraft!==false||value.isPrerelease!==true) process.exit(1)' "$release_preflight"
           node scripts/publish-nightly-desktop.mjs cohort desktop-publication github-release-observation.json
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "Rolling Nightly desktop $version at ${{ inputs.source_sha }}"
+          GITHUB_TOKEN="$GH_TOKEN" node scripts/desktop-release-notes.mjs publish cohort/cohort-plan.json desktop-publication/latest.json
+          node --input-type=module -e 'import {readFileSync,writeFileSync} from "node:fs"; writeFileSync("desktop-release-notes.md", JSON.parse(readFileSync("desktop-publication/latest.json", "utf8")).notes)'
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file desktop-release-notes.md
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="${{ inputs.source_sha }}" -F force=true >/dev/null
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "${{ inputs.source_sha }}"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --method GET > github-release-observation.json

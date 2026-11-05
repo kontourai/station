@@ -276,6 +276,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'distribution-profile': 'station',
   'builtin-agent-engine': 'station',
   'desktop-app-updates': 'station',
+  'show-release-notes': 'device',
   'core-app-updates': 'station',
   'deployed-build': 'informational',
   'log-level': 'station',

@@ -17,6 +17,7 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({ data: acpConnections.current }),
 }));
 
+import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 import { AgentEditorApprovalDefault } from '../views/agent-editor/AgentEditorApprovalDefault';
 import {
   buildAgentPayload,
@@ -133,5 +134,44 @@ describe('AgentEditorApprovalDefault', () => {
       />,
     );
     expect(container.firstChild).toBeNull();
+  });
+});
+
+/** #4518: the managed approval ceiling in the Agent's default picker. */
+describe('AgentEditorApprovalDefault under a managed ceiling of Auto', () => {
+  const renderUnder = (initial: AgentFormData) =>
+    render(
+      <ManagedPolicyContext.Provider
+        value={{
+          organization: 'Acme',
+          supportUrl: 'https://help.acme.example',
+          lockedSettings: [],
+          limits: { maxApprovalMode: 'auto' },
+        }}
+      >
+        <Harness initial={initial} onForm={() => {}} />
+      </ManagedPolicyContext.Provider>,
+    );
+  const option = (value: string) =>
+    screen
+      .getAllByRole('option')
+      .find((entry) => (entry as HTMLOptionElement).value === value) as
+      | HTMLOptionElement
+      | undefined;
+
+  test('Full access is disabled and marked Managed, under the policy sentence', () => {
+    renderUnder(agent({}));
+    expect(option('never')?.disabled).toBe(true);
+    expect(option('never')?.textContent).toMatch(/ \(Managed\)$/);
+    expect(option('auto')?.disabled).toBe(false);
+    expect(
+      screen.getByText(/Acme's policy manages approval modes/),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Get help' })).toBeTruthy();
+  });
+
+  test('a Full access default saved before the policy stays selected so an unrelated save can resend it', () => {
+    renderUnder(agent({ approvalMode: 'never' }));
+    expect(option('never')?.disabled).toBe(false);
   });
 });

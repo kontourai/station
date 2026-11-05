@@ -238,6 +238,17 @@ export function createAgentTerminalRunRoutes(deps: AgentTerminalRunRoutesDeps) {
         409,
         NO_STORE,
       );
+    if (result.outcome === 'capacity-reached')
+      return c.json(
+        {
+          success: false,
+          code: 'terminal_run_capacity_reached',
+          error:
+            'Too many commands are waiting for approval across chats. Try again after some are answered or expire.',
+        },
+        429,
+        NO_STORE,
+      );
     return c.json(
       {
         success: true,

@@ -8,6 +8,9 @@ import {
   runWithAgentTurn,
 } from '../index.js';
 
+const started = performance.now();
+let frameMs = 0;
+let ipcMs = 0;
 const total = Number(process.argv[3] ?? 400);
 if (!Number.isSafeInteger(total) || total < 400 || total > 3200)
   throw new Error('Invalid fixture delta count');
@@ -36,6 +39,8 @@ const lease = await runtime.start({
   input: 'input',
   implementation: 'prefix/1',
 });
+const initialized = performance.now();
+process.send?.({ kind: 'ready' });
 let finish!: () => void;
 const displayed = new Promise<void>((resolve) => {
   finish = resolve;
@@ -86,16 +91,52 @@ const result = await runWithAgentTurn(lease, () =>
   model.doStream({ prompt: [] }),
 );
 let count = 0;
-for await (const part of result.stream) {
-  if (part.type !== 'text-delta') continue;
+const batchSize = total > 400 ? 50 : 1;
+let pending: Array<{ index: number; delta: string }> = [];
+const publish = async () => {
+  const batch = pending;
+  pending = [];
   const acknowledged = new Promise<void>((resolve) =>
     process.once('message', () => resolve()),
   );
-  await lease.frame(`answer:${count}`, `data: ${JSON.stringify(part)}\n\n`);
-  await lease.frame(`control:${count}`, 'data: {"type":"checkpoint"}\n\n');
-  process.send?.({ index: count++, delta: part.delta });
+  const frameStart = performance.now();
+  const frames = batch.flatMap(({ index, delta }) => [
+    {
+      id: `answer:${index}`,
+      wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
+    },
+    { id: `control:${index}`, wire: 'data: {"type":"checkpoint"}\n\n' },
+  ]);
+  if (batchSize === 1) {
+    for (const frame of frames) await lease.frame(frame.id, frame.wire);
+  } else await lease.frameBatch(frames);
+  frameMs += performance.now() - frameStart;
+  if (count === 1 || count % 100 === 0)
+    console.error(
+      '[prefix-phase]',
+      JSON.stringify({
+        count,
+        initMs: initialized - started,
+        elapsedMs: performance.now() - initialized,
+        frameMs,
+        ipcMs,
+      }),
+    );
+  process.send?.(batch);
+  const ipcStart = performance.now();
   await acknowledged;
-  if (count === total) finish();
+  ipcMs += performance.now() - ipcStart;
+};
+for await (const part of result.stream) {
+  if (part.type !== 'text-delta') continue;
+  pending.push({ index: count++, delta: part.delta });
+  // Keep small probes individually acknowledged; the large probe uses the
+  // foreground's atomic frame-batch contract before showing any of the batch.
+  if (pending.length === batchSize) await publish();
+  if (count === total) {
+    if (pending.length) await publish();
+    finish();
+  }
 }
 await journal.close();
 database.close();

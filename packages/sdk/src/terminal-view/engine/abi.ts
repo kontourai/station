@@ -136,7 +136,9 @@ export const GestureEventType = {
 export const GestureEventOpt = {
   REF: 0,
   POSITION: 1,
+  REPEAT_DISTANCE: 2,
   TIME_NS: 3,
+  REPEAT_INTERVAL_NS: 4,
   GEOMETRY: 8,
 } as const;
 

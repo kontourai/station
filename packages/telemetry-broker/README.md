@@ -443,15 +443,34 @@ separate acceptance work.
 
 `POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
-`parseStationDailyPing`. It requires no installation credential. Unknown fields,
+`parseStationDailyPing`. It requires no installation credential. The optional
+`engine_tokens_today` array admits old builds that omit it and up to eight
+unique positive-throughput engine buckets from new builds. These count only
+conversations run in Station; outside CLI use and followed transcripts are
+excluded. Senders omit this field when empty or unavailable. **Upgrade Lite
+receivers before senders emit nonempty `engine_tokens_today`**: older strict
+receivers reject the new key. Empty-field omission keeps idle pings compatible,
+but there is no receiver-support negotiation. Token buckets are
+counted in exact operator marginals (`engine:bucket`); they remain outside the
+public fixed domain, so public releases and their sensitivity are unchanged. Unknown fields,
 unknown nested fields, excessive or duplicate array entries, unlisted registry
-IDs or catalog-policy versions, invalid enum/count values, and a channel different from the
-source's configured channel are refused with 400. Bodies, including streaming
+IDs or catalog-policy versions, invalid enum/count values, and a channel the
+source does not list are refused with 400. Bodies, including streaming
 bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
 202 response is always `{ "accepted": true }`, including a retained
 source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
+
+The storage-independent Lite rules live in
+[`src/lite-core.ts`](src/lite-core.ts). They cover validation glue, ping
+normalization and marginal values driven by `STATION_DAILY_FIELDS`, daily
+network keys and attempt budgets, source parsing, publication cells and
+cursors, response shapes and error status. This PostgreSQL receiver and the
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md) (one
+SQLite Durable Object) both use them and keep only their own storage adapters.
+A field added to `STATION_DAILY_FIELDS` appears in the operator marginals
+without edits here. Public release stays limited to `PUBLIC_FIELDS`.
 
 Feedback uses the shared `TelemetryFeedback` contract and strict
 `parseTelemetryFeedback` parser. Its only fields are `publisher`, `action`
@@ -485,9 +504,9 @@ a secret embedded in a binary. Example operator-authenticated request body for
 
 ```json
 {
-  "id": "kontour-stable-v1",
+  "id": "station",
   "publisher": "kontour",
-  "channel": "stable",
+  "channels": ["nightly", "preview", "stable"],
   "registryIds": [],
   "releaseVersions": ["1.2.3"],
   "versionPolicy": "semver"
@@ -496,6 +515,12 @@ a secret embedded in a binary. Example operator-authenticated request body for
 
 The original five fields are required; `versionPolicy` is optional and defaults
 to `catalog`. Migration 8 preserves this default for existing sources.
+`channels` lists the channels the source admits (each a contract channel or
+`unknown`, at least one, no repeats). The ping's own `channel` selects among
+them, so one source and one baked-in URL serve every release ring; the
+publisher still comes only from the source mapping. Migration 10 replaced the
+earlier single `channel` with this list and kept each existing source as a
+one-element list.
 `catalog` accepts only listed `releaseVersions` plus `custom`. `semver` accepts
 any valid SemVer up to 64 characters plus `custom`, using the sender's shared
 validator, including prerelease/build metadata. Use it for official senders whose
@@ -513,9 +538,9 @@ hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Under the default `catalog` policy, empty catalogs admit only contract
 sentinels (`custom` version,
-`none`/`custom`/`unknown` distribution, no public plugins). Sources may select
-channel `unknown` for a sender without channel metadata; channel equality still
-applies. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
+`none`/`custom`/`unknown` distribution, no public plugins). A source may list
+channel `unknown` for a sender without channel metadata; a ping must still carry
+a listed channel. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
 a new source and revoke the old one with
 `DELETE /v1/operator/lite/sources/:source`; existing IDs cannot be repurposed.
 Only enabled sources ingest. The trusted mapping, never the request body,
@@ -535,7 +560,9 @@ contributor key. IPv4-mapped IPv6 aliases use the same IPv4 key. The least
 recently used entry is evicted at capacity, so new clients remain admissible;
 eviction can reset an old client's attempt budget, but never changes its daily
 contributor hash. Keys use HMAC-SHA256 with a random process-only salt, replaced
-on the next UTC-day request. The salt is never stored. Raw IPs and user agents
+on the next UTC-day request. This receiver never stores the salt. (The
+[Worker receiver](../../deploy/telemetry-worker/README.md#state-and-lifecycle)
+stores it for the open day; its README states what erasure covers.) Raw IPs and user agents
 never enter SQL, logs, errors, marginals or receipts. By default forwarded-IP
 headers are ignored: without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, **all
 clients behind cloudflared share the connector's key**. NAT also merges contributors.
@@ -662,9 +689,12 @@ profile/adoption questions. Counters, friction, setup, age, private-plugin and
 customization fields remain available only to the exact operator view.
 
 The public domain is fixed independently of traffic: every enum value, both
-boolean values, empty-set `none`, operator-configured `releaseVersions` and
-`registryIds`, plus `custom` for catalog-policy version/distribution and `none`
-for distribution. SemVer-policy versions contribute only their configured
+boolean values, empty-set `none`, operator-configured `releaseVersions`,
+`registryIds` and `channels`, plus `custom` for catalog-policy
+version/distribution and `none` for distribution. Channel cells are only the
+channels the publisher's sources list, so a channel no source admits (such as
+`unknown` for a stable-only publisher) is not released as pure noise. Weeks
+published before this rule keep their frozen cells. SemVer-policy versions contribute only their configured
 catalog entries; an empty catalog contributes no public version cells.
 All values always receive noise, including true zero. **There is no true-count
 k pre-filter.** Nine attacker networks plus a victim cannot change the release
@@ -722,7 +752,18 @@ and `nextCursor`. Follow `?cursor=<nextCursor>` until null. Cursors are bounded,
 HMAC-authenticated keyset positions scoped to the publisher, not filters.
 Unknown/duplicate query parameters, malformed or forged cursors return 400.
 Unverified cursors cannot occupy or evict a cached public page. There is no 10,000-row published cap. The dashboard
-follows every page and selects its week/dimension locally. It uses text nodes,
+follows every page. It charts each week's `first_active_this_week=true`
+estimate and per-dimension bars for the latest week. It never adds cells
+together: each is clipped at zero, so a sum of empty cells would read as about
++140 network-days apiece. One rule decides every number it shows: each card
+shows a cell only above a Bonferroni threshold for its m candidate cells,
+`ln(m / (0.05·(1+α))) / ε` with α = e^(−ε). A card therefore has at most a 5%
+chance of showing any false bar: about 645 network-days for one cell, 1,033
+for four weeks and 1,692 for 42 cells. A week at or below it is a muted column
+with no number, bars fold those values into "N other values within noise", and
+tables say "within noise". It names a top harness or platform only when the leader also beats its
+runner-up by the 95% bound for the difference of two independent noisy cells
+(about 1,151; derived in `src/public-dashboard.ts`). It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
 
 ### Finalization, migration and retention

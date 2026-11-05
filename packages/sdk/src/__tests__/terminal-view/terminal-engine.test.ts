@@ -251,6 +251,35 @@ describe('TerminalEngine over libghostty-vt', () => {
     expect(e.selectionText()).toBe('');
   });
 
+  // #3994: Ghostty refuses a press that carries drag geometry and a drag that
+  // carries a time, so a pointer selection threw and stopped the terminal.
+  it('selects by dragging the pointer across cells', async () => {
+    const { e } = await engine(20, 3);
+    e.write(text('echo select me'));
+    // Left of the first cell's middle and right of the last one's.
+    const at = (x: number, edge: number) => ({
+      cell: { x, y: 0 },
+      pixel: { x: x * 8 + edge, y: 8 },
+    });
+    const start = at(5, 1);
+    const end = at(10, 7);
+    e.selectionGesture('press', start.cell, start.pixel, 1000);
+    e.selectionGesture('drag', end.cell, end.pixel, 1050);
+    e.selectionGesture('release', end.cell, end.pixel, 1100);
+    expect(e.selectionText()).toBe('select');
+  });
+
+  it('selects a word on the double press a long touch sends', async () => {
+    const { e } = await engine(20, 3);
+    e.write(text('echo select me'));
+    const cell = { x: 7, y: 0 };
+    const pixel = { x: 7 * 8 + 2, y: 8 };
+    e.selectionGesture('press', cell, pixel, 400_000.5);
+    e.selectionGesture('press', cell, pixel, 400_001.5);
+    e.selectionGesture('release', cell, pixel, 400_200);
+    expect(e.selectionText()).toBe('select');
+  });
+
   it('reads OSC 8 hyperlinks from cells', async () => {
     const { e } = await engine();
     e.write(

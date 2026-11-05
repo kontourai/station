@@ -1620,7 +1620,11 @@
 
     "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
 
-    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts",
+
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
+
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
   ],
 
   "checks": [

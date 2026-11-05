@@ -1,5 +1,269 @@
 [
   {
+    "timestampUtc": "2026-11-05T10:18:38Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2500",
+    "sha": "3876f626e588bcaac041582594506f6c82c45d6c",
+    "artifactBuiltAt": "2026-11-05T09:16:41.941Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41998120703",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 41998120703)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:41998120703:github-release-upload-or-readback (the provider effect may already be live))",
+      "windows: NOT_VERIFIED (windows provider outcome unknown: unresolved:run:41998120703:desktop-upload-or-readback (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "970191e5e1c4e848415971473e362f79449eca8e",
+      "groups": {
+        "feat": [
+          "[#4591](https://github.com/kontourai/station/pull/4591) feat(telemetry): add a Cloudflare Worker Lite receiver with visual dashboards",
+          "[#4596](https://github.com/kontourai/station/pull/4596) feat(updates): add changelogs, release history and download progress",
+          "[#4556](https://github.com/kontourai/station/pull/4556) feat(tasks): GitHub follow-ups and lead wake for tracker-backed Tasks (preview)",
+          "[#4570](https://github.com/kontourai/station/pull/4570) feat(managed-policy): approval-mode ceiling (limits.maxApprovalMode)",
+          "[#4569](https://github.com/kontourai/station/pull/4569) feat: prioritize interactive engine starts"
+        ],
+        "fix": [
+          "[#4598](https://github.com/kontourai/station/pull/4598) fix(terminal): phone keyboards, hidden-view redraw, touch selection, Windows scripts and Desktop webdriver build",
+          "[#4597](https://github.com/kontourai/station/pull/4597) fix(ci): verify cancelled metadata workflow against live main",
+          "[#4542](https://github.com/kontourai/station/pull/4542) fix(ui): announce accent preset selection",
+          "[#4581](https://github.com/kontourai/station/pull/4581) fix(terminal): bound pending approvals, owner-only journal ACLs on Windows, command custody, output credit and observer views",
+          "[#4564](https://github.com/kontourai/station/pull/4564) fix(orchestration): retire stale adapter event consumers",
+          "[#4576](https://github.com/kontourai/station/pull/4576) fix(settings): unblock cross-origin appearance preference saves",
+          "[#4561](https://github.com/kontourai/station/pull/4561) fix(chat): keep Stop failures with their interrupted turn",
+          "[#4551](https://github.com/kontourai/station/pull/4551) fix(ui): confirm occupied shortcut default restores",
+          "[#4574](https://github.com/kontourai/station/pull/4574) fix(chat): name the checks in the restart Continue prompt",
+          "[#4547](https://github.com/kontourai/station/pull/4547) fix(ui): retain current local restart failure notice"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4594](https://github.com/kontourai/station/pull/4594) docs(marketing): align Station around coding and shared Task rooms",
+          "[#4588](https://github.com/kontourai/station/pull/4588) docs(contributing): link pull requests back to their agent sessions"
+        ],
+        "other": [
+          "[#4595](https://github.com/kontourai/station/pull/4595) perf(agent-runtime): bound 1300-delta prefix cost (Refs #4467 #3558)"
+        ]
+      },
+      "note": null,
+      "commitCount": 18
+    }
+  },
+  {
+    "timestampUtc": "2026-11-05T09:07:52Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2500.41998120703",
+    "sha": "3876f626e588bcaac041582594506f6c82c45d6c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41998120703",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2500.41998120703 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "970191e5e1c4e848415971473e362f79449eca8e",
+      "groups": {
+        "feat": [
+          "[#4591](https://github.com/kontourai/station/pull/4591) feat(telemetry): add a Cloudflare Worker Lite receiver with visual dashboards",
+          "[#4596](https://github.com/kontourai/station/pull/4596) feat(updates): add changelogs, release history and download progress",
+          "[#4556](https://github.com/kontourai/station/pull/4556) feat(tasks): GitHub follow-ups and lead wake for tracker-backed Tasks (preview)",
+          "[#4570](https://github.com/kontourai/station/pull/4570) feat(managed-policy): approval-mode ceiling (limits.maxApprovalMode)",
+          "[#4569](https://github.com/kontourai/station/pull/4569) feat: prioritize interactive engine starts"
+        ],
+        "fix": [
+          "[#4598](https://github.com/kontourai/station/pull/4598) fix(terminal): phone keyboards, hidden-view redraw, touch selection, Windows scripts and Desktop webdriver build",
+          "[#4597](https://github.com/kontourai/station/pull/4597) fix(ci): verify cancelled metadata workflow against live main",
+          "[#4542](https://github.com/kontourai/station/pull/4542) fix(ui): announce accent preset selection",
+          "[#4581](https://github.com/kontourai/station/pull/4581) fix(terminal): bound pending approvals, owner-only journal ACLs on Windows, command custody, output credit and observer views",
+          "[#4564](https://github.com/kontourai/station/pull/4564) fix(orchestration): retire stale adapter event consumers",
+          "[#4576](https://github.com/kontourai/station/pull/4576) fix(settings): unblock cross-origin appearance preference saves",
+          "[#4561](https://github.com/kontourai/station/pull/4561) fix(chat): keep Stop failures with their interrupted turn",
+          "[#4551](https://github.com/kontourai/station/pull/4551) fix(ui): confirm occupied shortcut default restores",
+          "[#4574](https://github.com/kontourai/station/pull/4574) fix(chat): name the checks in the restart Continue prompt",
+          "[#4547](https://github.com/kontourai/station/pull/4547) fix(ui): retain current local restart failure notice"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4594](https://github.com/kontourai/station/pull/4594) docs(marketing): align Station around coding and shared Task rooms",
+          "[#4588](https://github.com/kontourai/station/pull/4588) docs(contributing): link pull requests back to their agent sessions"
+        ],
+        "other": [
+          "[#4595](https://github.com/kontourai/station/pull/4595) perf(agent-runtime): bound 1300-delta prefix cost (Refs #4467 #3558)"
+        ]
+      },
+      "note": null,
+      "commitCount": 18
+    }
+  },
+  {
+    "timestampUtc": "2026-11-04T23:58:11Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2499.3",
+    "sha": "970191e5e1c4e848415971473e362f79449eca8e",
+    "artifactBuiltAt": "2026-11-04T22:39:02.416Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41923272661",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41923272661)"
+    ],
+    "changelog": {
+      "previousSha": "d6ec144b4550a6d129da1bd95b24b615517d8385",
+      "groups": {
+        "feat": [
+          "[#4563](https://github.com/kontourai/station/pull/4563) feat(policy): managed settings defaults and locks",
+          "[#4482](https://github.com/kontourai/station/pull/4482) feat(troubleshoot): add Troubleshoot entry points where errors appear",
+          "[#4526](https://github.com/kontourai/station/pull/4526) feat(policy): load a machine managed policy at startup and fail closed",
+          "[#4481](https://github.com/kontourai/station/pull/4481) feat(cli): run station triage as an interactive troubleshooting session"
+        ],
+        "fix": [
+          "[#4530](https://github.com/kontourai/station/pull/4530) fix(boards): preserve recovery drafts and contain dock scrolling",
+          "[#4557](https://github.com/kontourai/station/pull/4557) fix(ui): distinguish account preference load failures",
+          "[#4549](https://github.com/kontourai/station/pull/4549) fix: report first Fallow interruption cause and timing",
+          "[#4552](https://github.com/kontourai/station/pull/4552) fix(profile): preserve access and keyboard context through usage recovery",
+          "[#4562](https://github.com/kontourai/station/pull/4562) fix(ci): repair nightly no-op caching and qualification fixtures",
+          "[#4545](https://github.com/kontourai/station/pull/4545) fix(tooling): handle asynchronous Windows abort IPC failures",
+          "[#4538](https://github.com/kontourai/station/pull/4538) fix(tooling): launch pinned Playwright CLI on Windows",
+          "[#4535](https://github.com/kontourai/station/pull/4535) fix(connect): resume shared health checks after reattachment",
+          "[#4532](https://github.com/kontourai/station/pull/4532) fix(tasks): preserve focus when renaming a Task",
+          "[#4534](https://github.com/kontourai/station/pull/4534) fix(ui): let Files retry a failed listing",
+          "[#4533](https://github.com/kontourai/station/pull/4533) fix(setup): invalidate changed import reviews and show failures"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4537](https://github.com/kontourai/station/pull/4537) docs: map whole-app UX campaign scope and integrated acceptance"
+        ],
+        "other": [
+          "[#4572](https://github.com/kontourai/station/pull/4572) test(devices): start cleanup observer before publishing cancellation PID",
+          "[#4566](https://github.com/kontourai/station/pull/4566) test(orchestration): separate path and credential redaction probes",
+          "[#4539](https://github.com/kontourai/station/pull/4539) test(ui): cover mounted desktop updater recovery"
+        ]
+      },
+      "note": null,
+      "commitCount": 19
+    }
+  },
+  {
+    "timestampUtc": "2026-11-04T23:58:08Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2499.3",
+    "sha": "970191e5e1c4e848415971473e362f79449eca8e",
+    "artifactBuiltAt": "2026-11-04T22:32:57.492Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41923272661",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41923272661)"
+    ],
+    "changelog": {
+      "previousSha": "d6ec144b4550a6d129da1bd95b24b615517d8385",
+      "groups": {
+        "feat": [
+          "[#4563](https://github.com/kontourai/station/pull/4563) feat(policy): managed settings defaults and locks",
+          "[#4482](https://github.com/kontourai/station/pull/4482) feat(troubleshoot): add Troubleshoot entry points where errors appear",
+          "[#4526](https://github.com/kontourai/station/pull/4526) feat(policy): load a machine managed policy at startup and fail closed",
+          "[#4481](https://github.com/kontourai/station/pull/4481) feat(cli): run station triage as an interactive troubleshooting session"
+        ],
+        "fix": [
+          "[#4530](https://github.com/kontourai/station/pull/4530) fix(boards): preserve recovery drafts and contain dock scrolling",
+          "[#4557](https://github.com/kontourai/station/pull/4557) fix(ui): distinguish account preference load failures",
+          "[#4549](https://github.com/kontourai/station/pull/4549) fix: report first Fallow interruption cause and timing",
+          "[#4552](https://github.com/kontourai/station/pull/4552) fix(profile): preserve access and keyboard context through usage recovery",
+          "[#4562](https://github.com/kontourai/station/pull/4562) fix(ci): repair nightly no-op caching and qualification fixtures",
+          "[#4545](https://github.com/kontourai/station/pull/4545) fix(tooling): handle asynchronous Windows abort IPC failures",
+          "[#4538](https://github.com/kontourai/station/pull/4538) fix(tooling): launch pinned Playwright CLI on Windows",
+          "[#4535](https://github.com/kontourai/station/pull/4535) fix(connect): resume shared health checks after reattachment",
+          "[#4532](https://github.com/kontourai/station/pull/4532) fix(tasks): preserve focus when renaming a Task",
+          "[#4534](https://github.com/kontourai/station/pull/4534) fix(ui): let Files retry a failed listing",
+          "[#4533](https://github.com/kontourai/station/pull/4533) fix(setup): invalidate changed import reviews and show failures"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4537](https://github.com/kontourai/station/pull/4537) docs: map whole-app UX campaign scope and integrated acceptance"
+        ],
+        "other": [
+          "[#4572](https://github.com/kontourai/station/pull/4572) test(devices): start cleanup observer before publishing cancellation PID",
+          "[#4566](https://github.com/kontourai/station/pull/4566) test(orchestration): separate path and credential redaction probes",
+          "[#4539](https://github.com/kontourai/station/pull/4539) test(ui): cover mounted desktop updater recovery"
+        ]
+      },
+      "note": null,
+      "commitCount": 19
+    }
+  },
+  {
+    "timestampUtc": "2026-11-04T22:33:16Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2499.41923272661",
+    "sha": "970191e5e1c4e848415971473e362f79449eca8e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41923272661",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2499.41923272661 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e0b0cec0d1da8e58d29f3c496c1b12b04e8b405a",
+      "groups": {
+        "feat": [
+          "[#4563](https://github.com/kontourai/station/pull/4563) feat(policy): managed settings defaults and locks"
+        ],
+        "fix": [
+          "[#4530](https://github.com/kontourai/station/pull/4530) fix(boards): preserve recovery drafts and contain dock scrolling",
+          "[#4557](https://github.com/kontourai/station/pull/4557) fix(ui): distinguish account preference load failures",
+          "[#4549](https://github.com/kontourai/station/pull/4549) fix: report first Fallow interruption cause and timing"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4572](https://github.com/kontourai/station/pull/4572) test(devices): start cleanup observer before publishing cancellation PID"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-11-04T17:19:19Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2499.41868844308",
+    "sha": "e0b0cec0d1da8e58d29f3c496c1b12b04e8b405a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41868844308",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2499.41868844308 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b73f47e5a8a6752f037e0e006d6afcdcb19a2702",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4566](https://github.com/kontourai/station/pull/4566) test(orchestration): separate path and credential redaction probes"
+        ]
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-04T15:11:50Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2499.41852274071",

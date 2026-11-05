@@ -270,6 +270,38 @@ keeps two independent mechanisms and separately labelled actions:
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
+The update proposal shows **What’s new** for the offered version. Release notes
+come from the exact version’s GitHub Release, with the native updater’s notes
+available as a fallback for desktop downloads. GitHub prose is informational;
+it never determines whether an update is available or safe to install. The
+sidebar icon shows a circular download indicator using the updater’s byte
+counts, or an indeterminate arc when the total size is unknown. An observed
+server download can also drive the ring while the panel stays closed.
+
+**Previous versions and changelogs** opens a release picker in the same panel.
+It lists versioned releases from GitHub’s most recent 100 releases; **All
+releases on GitHub** reaches older entries. Rolling release pointers are not
+presented as a particular historical version. Missing notes, network errors,
+and retry actions remain separate from the update controls.
+
+After an installed app version increases, **Updated to Station …** opens once
+on that device. The first observed installation records a baseline without a
+popup; downgrades and repeated launches do not show one. **Show changelog after
+updates** is enabled by default and can be changed in that dialog, Updates, or
+Settings → System. It is a device preference. Automatic presentation requires
+working local storage and a release identity; an unstamped development UI
+never triggers it. Changing the connected server does not trigger it.
+
+Nightly desktop planning generates GitHub release notes from the previous
+`nightly-desktop` source to the planned source. The generated notes travel
+with the cohort into the assembled updater manifest. Desktop publication
+archives the same notes in a `desktop-v<version>` GitHub prerelease before
+advancing the rolling marker. Those changelog releases carry no installers and
+do not become GitHub’s Latest release. Historical comparison links use commit
+SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
+did not produce an archive for a partial cohort, the notes remain unavailable.
+Earlier Nightlies without a versioned changelog are not reconstructed.
+
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, including the
 built-in server in that app update and its restart confirmation. The server

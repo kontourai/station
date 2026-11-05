@@ -1,8 +1,9 @@
 # Contributing to Station
 
-Station is the agent workspace where work ships with receipts. Start with the
-path that matches the change instead of treating every request as a pull
-request.
+Help developers run coding agents, continue work across devices, and review
+the results. Plugins and selected Project sharing build on that personal coding
+experience. The [constitution](docs/strategy/constitution.md) owns the product
+direction. Start with the path that matches the change.
 
 ## Choose a path
 
@@ -84,6 +85,16 @@ You remain responsible for every submitted change, including text or code
 created with an AI tool. In the pull request, disclose the tool or tools used,
 the material areas affected, and the personal inspection you performed. Do not
 include prompts, private context, secrets, or customer data in that disclosure.
+
+When agent sessions produced the change, list them under **Agent sessions** in
+the pull request so the author can return to the work and reviewers can see
+what produced it: the
+harness, a resumable session or thread identifier, the model or models, the
+number of sessions, and input and output token totals where the harness records
+them. Identifiers and resume links are allowed; transcripts and message text are
+not. Because squash merges here keep commit messages but not the pull request
+body, agent-made commits should also end with an `Agent-Session:` trailer that
+names the harness and session identifier.
 
 ## External forks
 

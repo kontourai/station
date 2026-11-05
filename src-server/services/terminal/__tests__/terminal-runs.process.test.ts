@@ -53,7 +53,7 @@ async function envelope<T>(response: Response): Promise<Envelope<T>> {
 }
 /** `terminal_read`: the run, and once it started, a page of its output. */
 type ReadRun = TerminalRun & Partial<TerminalRunOutput>;
-const posix = process.platform !== 'win32';
+const windows = process.platform === 'win32';
 const WAIT = { timeout: 20_000, interval: 50 };
 const project = { id: 'project-a', slug: 'alpha' };
 const SESSION = 'session-1';
@@ -68,7 +68,9 @@ async function harness(options: { fakePackageManager?: string } = {}) {
   const root = await realpath(makeTempDir('terminal-runs-root-'));
   const sessions = new TerminalSessions<Request>(
     home,
-    new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
+    new InProcessShellHost(new NodePtyAdapter(), () =>
+      windows ? (process.env.COMSPEC ?? 'cmd.exe') : '/bin/sh',
+    ),
     {
       authorize: (request) => principalOf(request) === 'operator',
       resolveRoot: async () => root,
@@ -207,7 +209,7 @@ async function readRun(app: Hono, runId: string, query = '') {
   return { status: response.status, body: await envelope<ReadRun>(response) };
 }
 
-describe.runIf(posix)('agent terminal runs', () => {
+describe('agent terminal runs', () => {
   it('asks the person for every run: an approved command does not approve the next one', async () => {
     const { app, sessions } = await harness();
     const first = await requestRun(app, 'echo first-run-output');
@@ -256,11 +258,30 @@ describe.runIf(posix)('agent terminal runs', () => {
     await sessions.dispose();
   }, 60_000);
 
+  it('runs the command exactly as the person approved it, quotes included', async () => {
+    const { app, sessions } = await harness();
+    // cmd.exe keeps the quotes in what it echoes; sh removes them. Node's
+    // own argument quoting had turned them into \" before cmd saw them.
+    const run = await requestRun(app, 'echo "two  words"');
+    await person(app, `/runs/${run.runId}/approve`, 'POST');
+    await expect
+      .poll(async () => (await readRun(app, run.runId)).body.data.state, WAIT)
+      .toBe('exited');
+    const { output, exitCode } = (await readRun(app, run.runId)).body.data;
+    expect(exitCode).toBe(0);
+    expect(output?.replace(/\r\n/g, '\n')).toContain(
+      windows ? '"two  words"\n' : 'two  words\n',
+    );
+    expect(output).not.toContain('\\"');
+    await sessions.dispose();
+  }, 60_000);
+
   it('shows the exact command and directory, and refuses to run it anywhere else', async () => {
     const { app, root, sessions } = await harness();
     await mkdir(join(root, 'first'));
     await mkdir(join(root, 'second'));
-    await symlink(join(root, 'first'), join(root, 'here'));
+    // A junction needs no privilege on Windows; POSIX ignores the type.
+    await symlink(join(root, 'first'), join(root, 'here'), 'junction');
     const run = await requestRun(app, 'pwd', 'here');
     expect(run.cwd).toBe(join(root, 'first'));
     const listed = await envelope<{ runs: TerminalRun[] }>(
@@ -273,7 +294,7 @@ describe.runIf(posix)('agent terminal runs', () => {
 
     // The directory now resolves somewhere the person was not shown.
     await unlink(join(root, 'here'));
-    await symlink(join(root, 'second'), join(root, 'here'));
+    await symlink(join(root, 'second'), join(root, 'here'), 'junction');
     const approved = await person(app, `/runs/${run.runId}/approve`, 'POST');
     expect(approved.status).toBe(409);
     expect((await envelope<null>(approved)).error).toBe(
@@ -323,11 +344,18 @@ describe.runIf(posix)('agent terminal runs', () => {
   }, 60_000);
 });
 
-describe.runIf(posix)('script runner', () => {
+describe('script runner', () => {
   it('lists package scripts, runs one by name as a command session and restarts it', async () => {
     const bin = await realpath(makeTempDir('terminal-runs-bin-'));
-    const manager = join(bin, 'fake-pm');
-    await writeFile(manager, '#!/bin/sh\necho "pm $@ in $(pwd)"\n');
+    // On Windows a batch shim, as npm and pnpm install there: only cmd.exe
+    // runs one, and spawning it directly fails with EINVAL.
+    const manager = join(bin, windows ? 'fake pm.cmd' : 'fake-pm');
+    await writeFile(
+      manager,
+      windows
+        ? '@echo off\r\necho pm %* in %CD%\r\n'
+        : '#!/bin/sh\necho "pm $@ in $(pwd)"\n',
+    );
     await chmod(manager, 0o755);
     const { app, root, sessions } = await harness({
       fakePackageManager: manager,
@@ -380,7 +408,8 @@ describe.runIf(posix)('script runner', () => {
     const output = async () =>
       (await sessions.readInternal(scope, record.terminalId)).journal.records
         .map((entry) => entry.data)
-        .join('');
+        .join('')
+        .replace(/\r\n/g, '\n');
     await expect.poll(output, WAIT).toBe(`pm run test in ${root}\n`);
     await expect
       .poll(

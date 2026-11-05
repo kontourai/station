@@ -1,0 +1,79 @@
+# Daily throughput: third review fix evidence
+
+This supersedes the adoption behavior and fresh-restart wording in
+[round 2](lite-engine-tokens-round2.md). It is local source and fixture evidence,
+not live-provider, installed-shell, deployment, billing or release qualification.
+
+## Inherited-counter boundary
+
+The daily projection now recognizes `usageAvailability: 'unavailable'` or
+`continuation: 'native-fork'` on either `session.started` or
+`session.configured` for cumulative providers. Each first-reported component
+establishes an undated baseline; only later increases count. Default lifetime
+accounting and per-turn providers are unchanged.
+
+Source audit found exactly two unavailable-usage emission sites in the Codex
+adapter: start and configuration, both conditioned on source affinity. That
+affinity comes from either native adoption or the resume cursor. The tests cover
+the paired adoption event shape, each availability marker independently, and a
+native-fork marker without availability metadata. The adapter currently suppresses
+usage notifications for source-affinity continuations; these retained-event tests
+qualify the fold's metadata handling, not live provider reporting completeness.
+
+Every repeated cumulative-engine session start withholds a new baseline,
+including a fresh start after a lost native session. This rule is unchanged and
+can undercount, never leak inherited usage. The whole first reported figure of
+each token component is withheld: the whole first turn when usage is reported
+once per turn, or part of it when updates arrive more often. Sparse components
+establish baselines independently. The reset/correction undercount is unchanged.
+
+## Red before repair
+
+Tests were committed first in `4f2a61159d88`. On the previous production head,
+the accounting and privacy suites produced **6 intended failures / 64 passes**:
+
+- All four inherited-counter cases attributed **42,050,000** input tokens where
+  the first figure must contribute **zero**. A later 42,100,000 figure must
+  contribute only **50,000**; lifetime input remains 42,100,000.
+- Both generated disclosure renderers lacked the repeated-start and whole-figure
+  undercount wording. The corrected inventory drives both policy and Play output.
+- The Codex resume fixture now uses the actual matched-identity configuration,
+  replacing the Claude-only `nativeSessionResumed` start marker. This fixture
+  correction passes the unchanged production behavior; it is not a new product
+  defect.
+
+## Green after repair
+
+```sh
+npm run test:focused -- src-server/analytics/__tests__/usage-observation-projection.test.ts packages/shared/src/__tests__/usage-fold.test.ts src-server/services/__tests__/privacy-inventory.test.ts src-server/providers/__tests__/codex-adapter-adoption.test.ts src-server/services/__tests__/telemetry-publishers.test.ts src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts
+```
+
+All six suites passed **207/207** in **117.92 seconds**, including the native
+adoption adapter, canonical accounting, publisher, runtime composition and
+byte-identical generated privacy artifacts. The inherited first figure contributes
+zero, the subsequent increase contributes 50,000, and lifetime accounting retains
+42,100,000. The corrected Codex fixture uses matched configuration metadata.
+
+## Codex fixture coverage control
+
+At committed clean head `5d6f95c49904`, disabled repeated-start detection and
+matched-native-identity detection while leaving the Claude-only marker check
+intact. The real Codex-shape fixtures then produced exactly **2 intended
+failures / 34 passes** in **17.69 seconds**:
+
+- Repeated resume: 9,120,000 day-two input versus expected 70,000.
+- Initially matched resume: 42,050,000 versus expected 50,000.
+
+Restored the original fold byte-for-byte and confirmed a clean tree. No mutation
+was committed. This is test-fidelity evidence for item 3; production behavior was
+already correct before replacing the inaccurate fixture marker.
+
+The initial focused green covered the restored production fold bytes. A new
+six-suite run also follows the clean merge of the then-current `origin/main`.
+
+## Limits
+
+NOT_VERIFIED: real outside-CLI/native adoption or resume handoffs, live-provider
+completeness, Codex cache inclusivity, installed/native behavior, Worker execution,
+production rollout, endpoint enablement, billing equivalence and release
+qualification. No live model call or endpoint enablement is part of this round.
