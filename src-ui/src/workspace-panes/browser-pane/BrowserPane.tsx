@@ -337,6 +337,11 @@ function BrowserDriverChip({
   );
 }
 
+/** A viewport's identity: any field that changes what the page lays out. */
+function viewportKey(viewport: BrowserViewportView): string {
+  return `${viewport.width}x${viewport.height}@${viewport.deviceScaleFactor}${viewport.mobile ? ' mobile' : ''}`;
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host || url;
@@ -627,6 +632,17 @@ function BrowserMigration({
   );
 }
 
+/**
+ * Sessions this tab just opened from its own address field or server list. On
+ * a narrow pane, the opening pane sizes the new page to itself once, as soon
+ * as it is live (see `NARROW_PANE_WIDTH`). A session someone else opened, or
+ * one this pane attaches to later, keeps its viewport: that is shared.
+ */
+const sizeToOpeningPane = new Set<string>();
+
+/** Below this stage width (CSS px) a new page opens at the pane's own size. */
+export const NARROW_PANE_WIDTH = 600;
+
 /** A pane with no session yet: open a page, or attach to an existing one. */
 function BrowserNewSession({
   apiBase,
@@ -642,10 +658,14 @@ function BrowserNewSession({
   canDrive: boolean;
 }) {
   const [address, setAddress] = useState('');
+  const addressRef = useRef<HTMLInputElement>(null);
   const open = useMutation({
     mutationFn: (url: string) =>
       api.create({ projectSlug, url: browserAddressInput(url) }),
-    onSuccess: (session) => onAttach(session.browserSessionId),
+    onSuccess: (session) => {
+      sizeToOpeningPane.add(session.browserSessionId);
+      onAttach(session.browserSessionId);
+    },
   });
   const targets = useQuery({
     queryKey: browserPaneKeys.localTargets(apiBase, projectSlug),
@@ -657,6 +677,7 @@ function BrowserNewSession({
     <>
       {canDrive ? (
         <div className="browser-pane__start">
+          <h2 className="browser-pane__start-kicker">Browser</h2>
           <h3 className="browser-pane__start-title">
             Enter a URL or pick a local server
           </h3>
@@ -665,10 +686,13 @@ function BrowserNewSession({
             aria-label="Open a page"
             onSubmit={(event) => {
               event.preventDefault();
+              // Put a phone's keyboard away: it covers the page that opens.
+              addressRef.current?.blur();
               open.mutate(address.trim() || 'about:blank');
             }}
           >
             <input
+              ref={addressRef}
               className="browser-pane__address"
               aria-label="Address"
               placeholder="Search or enter an address"
@@ -679,6 +703,7 @@ function BrowserNewSession({
               autoCorrect="off"
               spellCheck={false}
               inputMode="url"
+              enterKeyHint="go"
             />
             <Button
               type="submit"
@@ -689,7 +714,24 @@ function BrowserNewSession({
               Open
             </Button>
           </form>
-          {targets.data?.length ? (
+          {targets.isPending ? (
+            <SkeletonBlock count={1} label="Loading local servers" />
+          ) : targets.isError ? (
+            <ErrorState
+              variant="compact"
+              title="Local servers could not be read"
+              description={describeBrowserFailure(targets.error)}
+              action={
+                <Button
+                  size="sm"
+                  className="browser-pane__control"
+                  onClick={() => void targets.refetch()}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          ) : targets.data.length ? (
             <ul className="browser-pane__targets" aria-label="Local servers">
               {targets.data.map((target) => (
                 <li key={target.id}>
@@ -708,7 +750,13 @@ function BrowserNewSession({
                 </li>
               ))}
             </ul>
-          ) : null}
+          ) : (
+            <Empty
+              variant="compact"
+              label="Local servers appear here once shared"
+              description="The operator shares them in Settings › Advanced › Browser & devices."
+            />
+          )}
         </div>
       ) : (
         <p className="browser-pane__hint">
@@ -905,10 +953,16 @@ function BrowserSessionPane({
     },
     onError: (error) => setNotice(describeBrowserFailure(error)),
   });
+  /**
+   * The page viewport this pane last saw. It is the session's, shared by
+   * everyone watching and any agent; a change this pane did not make is said.
+   */
+  const seenViewport = useRef<string | null>(null);
   const viewport = useMutation({
     mutationFn: (next: BrowserViewportView) =>
       api.viewport(browserSessionId, next, generation),
     onSuccess: (next) => {
+      seenViewport.current = viewportKey(next.viewport);
       apply(next);
       setNotice(null);
     },
@@ -1025,7 +1079,10 @@ function BrowserSessionPane({
   });
   const openNew = useMutation({
     mutationFn: () => api.create({ projectSlug, url: 'about:blank' }),
-    onSuccess: (next) => onAttach(next.browserSessionId),
+    onSuccess: (next) => {
+      sizeToOpeningPane.add(next.browserSessionId);
+      onAttach(next.browserSessionId);
+    },
     onError: (error) => setNotice(describeBrowserFailure(error)),
   });
 
@@ -1045,6 +1102,31 @@ function BrowserSessionPane({
   });
   const busy = navigate.isPending || history.isPending;
   const canDriveLive = live && canDrive;
+  // A page this pane just opened, on a narrow pane: size it to the pane once,
+  // so a phone does not start on a desktop page drawn at a quarter scale.
+  // Nobody else is watching a session that has only just opened.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per live session; `viewport.mutate` is stable in effect.
+  useEffect(() => {
+    if (!canDriveLive || !sizeToOpeningPane.has(browserSessionId)) return;
+    sizeToOpeningPane.delete(browserSessionId);
+    const box = stageRef.current?.getBoundingClientRect();
+    if (!box || box.width <= 0 || box.width >= NARROW_PANE_WIDTH) return;
+    const fill = viewportToFill(box.width, box.height);
+    if (fill) viewport.mutate(fill);
+  }, [canDriveLive, browserSessionId]);
+  const recordViewport = record ? viewportKey(record.viewport) : null;
+  const recordViewportSize = record
+    ? `${record.viewport.width} × ${record.viewport.height}`
+    : '';
+  useEffect(() => {
+    if (recordViewport === null) return;
+    const previous = seenViewport.current;
+    seenViewport.current = recordViewport;
+    if (previous !== null && previous !== recordViewport && !viewport.isPending)
+      setNotice(
+        `The page size changed to ${recordViewportSize} for everyone watching.`,
+      );
+  }, [recordViewport, recordViewportSize, viewport.isPending]);
   const zoomFactor = record?.zoomFactor ?? 1;
   const canAnnotate = live && !floating && generation !== undefined;
   const canToggleRecording =
@@ -1387,6 +1469,8 @@ function BrowserSessionPane({
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canDrive) return;
+    // Put a phone's keyboard away: it covers the page being opened.
+    addressRef.current?.blur();
     const value = (draft ?? record?.url ?? '').trim();
     navigate.mutate(value);
   };
@@ -1551,6 +1635,11 @@ function BrowserSessionPane({
       : `${record.viewport.width} × ${record.viewport.height}`
     : '';
   const errors = consoleState.unreadErrors;
+  // A finger has no chord to press: on a coarse primary pointer the menu
+  // shows no keyboard hint (the composer menu's rule). Accepted limit: a
+  // touch-first tablet with a hardware keyboard loses the hint too.
+  const shortcutHint = (shortcut: { label: string; aria: string }) =>
+    coarsePointer ? {} : { hint: shortcut.label, hintKeys: shortcut.aria };
   const menuItems: PaneMenuItem[] = [
     { kind: 'heading', id: 'capture', label: 'Capture' },
     {
@@ -1558,8 +1647,7 @@ function BrowserSessionPane({
       id: 'screenshot',
       label: 'Screenshot',
       glyph: <CameraGlyph />,
-      hint: SCREENSHOT_SHORTCUT.label,
-      hintKeys: SCREENSHOT_SHORTCUT.aria,
+      ...shortcutHint(SCREENSHOT_SHORTCUT),
       disabled: !live || screenshot.isPending,
       onSelect: () => screenshot.mutate(),
     },
@@ -1583,7 +1671,10 @@ function BrowserSessionPane({
           },
         ]
       : []),
-    { kind: 'heading', id: 'view', label: 'View' },
+    // Zoom, appearance and viewport are the page's, not this pane's: one
+    // page is streamed to every viewer and read by agents. Each viewer's own
+    // fit and pinch zoom live in the live view and change nothing shared.
+    { kind: 'heading', id: 'view', label: 'View for everyone watching' },
     ...(experienceEnabled
       ? [
           {
@@ -1626,7 +1717,7 @@ function BrowserSessionPane({
       choices: [
         {
           id: 'fill',
-          label: 'Fit to this pane',
+          label: 'Match this pane',
           checked: false,
           onSelect: () => onViewport('fill'),
         },
@@ -1688,8 +1779,7 @@ function BrowserSessionPane({
       id: 'hard-reload',
       label: 'Reload without cache',
       glyph: <RefreshGlyph />,
-      hint: HARD_RELOAD_SHORTCUT.label,
-      hintKeys: HARD_RELOAD_SHORTCUT.aria,
+      ...shortcutHint(HARD_RELOAD_SHORTCUT),
       disabled: !canDriveLive || busy,
       onSelect: () => history.mutate('hard-reload'),
     },
