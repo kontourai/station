@@ -121,8 +121,8 @@ afterEach(() => {
   queryState.retryRemote.mockClear();
 });
 
-test('remote record status comes from the exact receiver child without reading its inventory', () => {
-  const connection: StationConnection = {
+function receiverConnection(): StationConnection {
+  return {
     environmentId: 'receiver',
     stationName: 'Receiver',
     stationKey: 'receiver',
@@ -161,6 +161,49 @@ test('remote record status comes from the exact receiver child without reading i
     ),
     isCurrent: () => true,
   };
+}
+
+test('a proposed receiver conversation is not read as an execution before dispatch confirms it', () => {
+  const connection = receiverConnection();
+  const initialProps: Props = {
+    activeSessionId: 's1',
+    availableModels,
+    agents,
+    connection,
+    sessions: [
+      {
+        ...sessions[0],
+        conversationId: 'proposed',
+        stationBinding: connection.binding,
+      },
+    ],
+  };
+  const { rerender } = renderHook(
+    (props: Props) => useChatDockViewModel(props),
+    {
+      initialProps,
+    },
+  );
+  expect(queryState.activityReads).toHaveBeenLastCalledWith(
+    '',
+    connection.targetApiBase,
+    expect.objectContaining({ enabled: false, readTarget: connection }),
+  );
+  // A server receipt may use the proposed id unchanged. That confirmation
+  // must enable a new read, rather than retain an earlier missing-record error.
+  rerender({
+    ...initialProps,
+    sessions: [{ ...initialProps.sessions[0]!, currentSessionId: 'proposed' }],
+  });
+  expect(queryState.activityReads).toHaveBeenLastCalledWith(
+    'proposed',
+    connection.targetApiBase,
+    expect.objectContaining({ enabled: true, readTarget: connection }),
+  );
+});
+
+test('remote record status comes from the exact receiver child without reading its inventory', () => {
+  const connection = receiverConnection();
   queryState.remoteWindow = {
     protocolVersion: 1,
     watermark: 1,

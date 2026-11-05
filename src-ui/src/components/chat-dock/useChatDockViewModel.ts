@@ -160,12 +160,15 @@ export function useChatDockViewModel({
     activeSessionForHook?.conversationId ||
     activeSessionForHook?.id ||
     null;
+  // New remote tabs propose a conversation id before dispatch creates its
+  // execution. Only the receipt/open resolution establishes a readable child.
+  const remoteSessionThreadId = activeSessionForHook?.currentSessionId ?? '';
   // Relays authorize a bounded read of this execution, not a Station inventory.
   const remoteSession = useOrchestrationSessionActivityQuery(
-    sessionThreadId ?? '',
+    remote ? remoteSessionThreadId : (sessionThreadId ?? ''),
     connection?.targetApiBase,
     {
-      enabled: remote && Boolean(connection),
+      enabled: remote && Boolean(connection) && Boolean(remoteSessionThreadId),
       readTarget: connection,
       refetchInterval: 60_000,
     },
