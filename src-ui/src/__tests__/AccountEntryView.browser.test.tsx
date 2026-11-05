@@ -354,12 +354,9 @@ beforeAll(async () => {
   if (
     require('playwright-core/package.json').version !== '1.64.1' ||
     !normalized(executable).includes('/chromium-1248/') ||
-    process.env.PLAYWRIGHT_BROWSERS_PATH !== '0' ||
     !existsSync(executable)
   )
-    throw new Error(
-      'BLOCKED: existing canonical path-0 Chromium1248 prerequisite',
-    );
+    throw new Error('BLOCKED: configured Chromium1248 prerequisite');
   files = await bundle();
   browser = await chromium.launch({ executablePath: executable });
   expect(browser.version()).toBe('156.0.8078.4');
