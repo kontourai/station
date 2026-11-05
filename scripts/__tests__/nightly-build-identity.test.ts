@@ -19,7 +19,6 @@ import {
   NIGHTLY_PUBLISHED_VERSION_CODE_FLOOR,
   NIGHTLY_VERSION_CODE_TAG_PREFIX,
   nightlyCliVersion,
-  nightlyDayNumber,
   nightlyIdentifier,
   nightlyVersion,
   nightlyVersionCode,
@@ -273,18 +272,17 @@ describe('Nightly reservation API response classification', () => {
 });
 
 describe('marketing version and version code cannot drift', () => {
-  it('carries the same day number in both identities', () => {
+  it('shows the UTC calendar date while retaining the native build counter', () => {
     const date = new Date('2026-08-09T09:00:00Z');
-    const day = nightlyDayNumber(date);
-    expect(nightlyVersion('0.1.0', date)).toBe(`0.1.0-nightly.${day}`);
-    expect(nightlyVersionCode(date)).toBe(day * 100);
+    expect(nightlyVersion('0.1.0', date)).toBe('0.1.0-nightly.20260809');
+    expect(nightlyVersionCode(date)).toBe(241200);
   });
 
   it('makes a same-day rebuild a strictly higher updater SemVer', () => {
     const date = new Date('2026-08-09T09:00:00Z');
     const build0 = nightlyVersion('0.1.0', date, 0);
     const build7 = nightlyVersion('0.1.0', date, 7);
-    expect(build0).toBe(`0.1.0-nightly.${nightlyDayNumber(date)}`);
+    expect(build0).toBe('0.1.0-nightly.20260809');
     expect(build7).toBe(`${build0}.7`);
     expect(gt(build7, build0)).toBe(true);
     const android = createNightlyConfig({
@@ -302,6 +300,29 @@ describe('marketing version and version code cannot drift', () => {
     });
     expect(android.version).toBe(build7);
     expect(desktop.version).toBe(build7);
+  });
+
+  it.each([
+    ['2026-11-03T17:00:00-07:00', '20261104'],
+    ['2026-12-31T23:59:59Z', '20261231'],
+    ['2027-01-01T00:00:00Z', '20270101'],
+    ['2028-02-29T12:00:00Z', '20280229'],
+  ])('uses the UTC date of %s', (iso, stamp) => {
+    expect(nightlyVersion('0.1.0', new Date(iso))).toBe(
+      `0.1.0-nightly.${stamp}`,
+    );
+  });
+
+  it('orders dated releases after legacy versions and across midnight', () => {
+    const today = nightlyVersion('0.1.0', new Date('2026-11-04T00:00:00Z'));
+    const lastBuild = nightlyVersion(
+      '0.1.0',
+      new Date('2026-11-03T23:59:59Z'),
+      99,
+    );
+    expect(today).toBe('0.1.0-nightly.20261104');
+    expect(gt(today, '0.1.0-nightly.2499.99')).toBe(true);
+    expect(gt(today, lastBuild)).toBe(true);
   });
 
   it('produces a SemVer-valid prerelease', () => {
@@ -351,7 +372,7 @@ describe('the tauri config overlay', () => {
     });
     expect(config).toEqual({
       productName: 'Station Nightly',
-      version: '0.1.0-nightly.2412.2',
+      version: '0.1.0-nightly.20260809.2',
       identifier: 'io.kontourai.station.nightly',
       build: { features: ['native-devtools'] },
       plugins: {
@@ -382,7 +403,7 @@ describe('the tauri config overlay', () => {
     });
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readdirSync(directory)).toEqual(['tauri.nightly.version.json']);
-    expect(config.version).toBe('0.1.2-nightly.2412.3');
+    expect(config.version).toBe('0.1.2-nightly.20260809.3');
     expect(config.bundle.android.versionCode).toBe(241_203);
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
@@ -422,7 +443,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     });
     expect(config).toEqual({
       productName: 'Station Nightly',
-      version: '0.1.0-nightly.2412.3',
+      version: '0.1.0-nightly.20260809.3',
       identifier: 'io.kontourai.station.nightly',
       build: { features: ['native-devtools'] },
       bundle: {
@@ -513,7 +534,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readFileSync(githubOutput, 'utf8')).toBe(
       [
-        'version=0.1.2-nightly.2412.3',
+        'version=0.1.2-nightly.20260809.3',
         'identifier=io.kontourai.station.nightly',
         'product_name=Station Nightly',
         'bundle_version=241203',
@@ -524,7 +545,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       'github-output',
       'tauri.nightly-desktop.conf.json',
     ]);
-    expect(config.version).toBe('0.1.2-nightly.2412.3');
+    expect(config.version).toBe('0.1.2-nightly.20260809.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
     // The written overlay, not only the in-memory object, restricts bundling:
@@ -1129,6 +1150,7 @@ describe('CLI publications do not collide within a UTC day', () => {
   it('sorts a replacement after the already published day-only version and a prior run', () => {
     const prior = nightlyCliVersion('0.6.0', date, '33929822729');
     const replacement = nightlyCliVersion('0.6.0', date, '33965345304');
+    expect(prior).toBe('0.6.0-nightly.20260905.33929822729');
     expect(gt(prior, '0.6.0-nightly.2439')).toBe(true);
     expect(gt(replacement, prior)).toBe(true);
     expect(replacement).not.toBe(prior);

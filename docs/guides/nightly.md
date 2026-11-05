@@ -48,10 +48,14 @@ promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
 
-**Identity.** The version is `X.Y.Z-nightly.<day>`, where `<day>` is a
-monotonic day counter (whole UTC days since 2020-01-01, deliberately not a
-calendar date), with an Android `versionCode` derived from the same counter —
-both from `scripts/lib/nightly-build-identity.mjs`. Since the reservation
+**Identity.** Native versions show the UTC build date as
+`X.Y.Z-nightly.YYYYMMDD` (for example `0.1.11-nightly.20261104`). Same-day
+rebuilds append `.1` through `.99`. CLI npm versions append the immutable
+GitHub run ID after the date, so separate publications cannot collide.
+Android `versionCode` and macOS bundle numbers retain the monotonic counter
+`days since 2020-01-01 × 100 + build`; calendar dates do not consume the
+native platform's numeric range. Both identities come from
+`scripts/lib/nightly-build-identity.mjs`. Since the reservation
 ledger was introduced, every code is reserved before the build via an
 immutable `nightly-version-code/<code>` tag, so a failed or repeated run can
 never reuse a code that might already be installed somewhere (the one
@@ -95,13 +99,17 @@ before retrying or changing a marker.
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
 `portable-nightly` after source usability succeeds, builds the five
 `station-server-<os>-<arch>` archives through the reusable
-`portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
-`<code>` is the native Nightly's reserved version code (re-checked against the
-`nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
+`portable-server-archives.yml` under version `X.Y.Z-nightly.YYYYMMDDNN`, where
+`NN` is the zero-padded build index (`00`–`99`), for example
+`0.1.11-nightly.2026110401`. The UTC date and build come from the native
+Nightly's reserved version code (re-checked against the
+`nightly-version-code/<code>` tag). The single numeric suffix preserves the
+installer and signed-manifest grammar and sorts after legacy counter versions.
+It assembles the schema v2 manifest from
 the archive descriptors, signs it with a throwaway key, verifies it, and
 confirms the pinned key table refuses that envelope. Publication is enabled:
 the owner set `STATION_PORTABLE_NIGHTLY_PUBLISH=enabled`, and Nightlies
-publish versioned `vX.Y.Z-nightly.<code>` releases and replace the rolling
+publish versioned `vX.Y.Z-nightly.YYYYMMDDNN` releases and replace the rolling
 `portable-nightly` manifest (as read on 2026-10-12, the newest was
 `v0.1.11-nightly.247504`). Without the gate, or on a direct dispatch, the run
 stops after the dry run and uploads only short-lived run artifacts.
@@ -174,7 +182,7 @@ draft a failed run left behind (the error names the release id to delete).
 To enable it (owner only):
 
 - Plan retention first. Each publish adds a permanent prerelease and tag
-  `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
+  `vX.Y.Z-nightly.YYYYMMDDNN` (the versioned assets pinned and rollback manifests
   point at): one for each Nightly that builds. The default six-hour minimum permits
   about four publication opportunities a day; hourly decisions that skip add no
   release, and a shorter configured interval increases retention needs.
@@ -323,9 +331,10 @@ A desktop or mobile app whose version a release pipeline stamped
 (`STATION_BUILD_VERSION`) compares that version with the one a prebuilt
 archive server reports on the same route, in Station's release order
 ([`release-version-order.ts`](../../packages/shared/src/release-version-order.ts)).
-A native Nightly's `X.Y.Z-nightly.<day>[.<build>]` is first written as the
-portable `X.Y.Z-nightly.<day × 100 + build>` that names the same nightly
-allocation; #2962 is meant to replace that bridge with one identity. An iOS
+A native Nightly's `X.Y.Z-nightly.YYYYMMDD[.<build>]` is first written as the
+portable `X.Y.Z-nightly.YYYYMMDDNN` that names the same nightly allocation.
+The comparison bridge also retains legacy day-counter identities; #2962
+tracks replacing the bridge with one identity. An iOS
 build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
 stamped with the cohort's full Nightly version, or a Beta's full release
 version, instead. A bare `X.Y.Z` client never counts as newer than a
