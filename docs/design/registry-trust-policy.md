@@ -31,6 +31,9 @@ algorithm check live where the policy identity is computed
 admitted, or published as applied. A syntactically accepted public-key envelope
 is not proof that its contents form a valid Ed25519 key.
 There are at most 16 profiles and 16 keys per profile. A registry cannot supply or install its own trust anchors.
+A machine's [managed policy](../guides/managed-policy.md#settings) can set
+`registryTrust` as a whole; when it locks it, the policy's value is the
+candidate every observer reads and `PUT /config/app` refuses changes.
 
 Profiles apply to their selected registry. An unrelated unsigned local source
 continues to work without a registry account. A supplied registry claim without

@@ -221,6 +221,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
   // #4521: a capability the machine's managed policy turned off.
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
+  // #4517: a managed policy locks the setting a write would change.
+  managed_setting_locked: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

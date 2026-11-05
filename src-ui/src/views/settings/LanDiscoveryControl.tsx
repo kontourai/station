@@ -1,11 +1,13 @@
 import type { LanDiscoveryStatus } from '@kontourai/station-contracts/config';
 import {
+  useConfigProvenanceQuery,
   useConfigQuery,
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
 import { SettingsToggle } from './feature-toggle';
+import { isManagedLock, ManagedSettingBadge } from './SettingRowStatus';
 import { settingsRow } from './settings-catalog';
 
 export function LanDiscoveryControl() {
@@ -13,12 +15,21 @@ export function LanDiscoveryControl() {
   const update = useUpdateConfigMutation();
   const status: LanDiscoveryStatus | undefined = query.data?.lanDiscoveryStatus;
   const enabled = query.data?.lanDiscoveryEnabled === true;
+  // #4517: the managed policy may lock this setting.
+  const managed = useConfigProvenanceQuery().data?.lanDiscoveryEnabled;
   return (
     <div {...settingsRow('lan-discovery')} tabIndex={-1}>
+      {/* Outside the toggle: the badge's help link cannot sit in a button. */}
+      <ManagedSettingBadge provenance={managed} />
       <SettingsToggle
         className="settings__feature-toggle"
         checked={enabled}
-        disabled={query.isPending || query.isError || update.isPending}
+        disabled={
+          query.isPending ||
+          query.isError ||
+          update.isPending ||
+          isManagedLock(managed)
+        }
         label="Discover this Station nearby"
         describedBy="lan-discovery-description"
         onChange={() => update.mutate({ lanDiscoveryEnabled: !enabled })}

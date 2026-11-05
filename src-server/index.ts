@@ -17,6 +17,7 @@ import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-htt
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import { assertManagedSettingsValid } from './domain/managed-settings.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
 import { reportSelfUpdateRestartAtBoot } from './routes/system/self-update-boot-report.js';
@@ -214,6 +215,14 @@ async function main() {
   try {
     // The same load the OTel bootstrap read before `main()` (#4521).
     managedPolicy = bootManagedPolicy();
+    // #4517: composite values and cross-field rules are checked against
+    // the settings file schema, which the contract parser cannot see.
+    if (managedPolicy?.document.settings) {
+      const { validator } = await import('./domain/validator.js');
+      assertManagedSettingsValid(managedPolicy, (config) =>
+        validator.validateAppConfig(config),
+      );
+    }
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
