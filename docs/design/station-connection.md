@@ -72,12 +72,12 @@ assumptions could exit a host chat on a peer snapshot or misroute remote queue
 work. Collision and late-result fixtures exercise these boundaries; they do not
 establish real two-machine execution by themselves.
 
-T3 Code's reference model is an environment registry, one connection resolver,
-and environment-scoped state consumed by one chat view. Its transport is
-WebSocket RPC; Station retains its existing HTTP plus SSE protocol. Its cloud
-relay supplies a remotely reachable endpoint, rather than an S-to-R HTTP proxy.
-Station needs the proxy described below because server-owned peer enrollment
-does not pair the browser with the receiver.
+The model is one connection registry, one resolver, and Station-scoped state
+consumed by one conversation body, so a remote chat differs from a local one
+only in which connection it holds. Station keeps its existing HTTP plus SSE
+protocol. A relayed chat needs the source-to-receiver proxy described below
+because server-owned peer enrollment does not pair the browser with the
+receiver.
 
 ## Connection model
 
