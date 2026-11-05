@@ -384,6 +384,147 @@ test('a re-registered root recovers an interrupted intent for the same bound sto
   }
 });
 
+test('an erasure key cannot be reused for another target, kind or revision', async () => {
+  const f = await setup();
+  try {
+    const proposal = await f.manager.propose(
+      owner,
+      f.root,
+      current,
+      {
+        type: 'raw',
+        title: 'Second',
+        body: 'Second body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'retry-identity-second',
+    );
+    const secondId = await f.manager.applyCreate(
+      owner,
+      f.root,
+      current,
+      proposal,
+    );
+    const first = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    const second = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      secondId,
+    );
+    if (!first || !second) throw new Error('Expected both previews');
+    expect(first.impact.revision).toBe(second.impact.revision);
+    await f.coordinator.erase(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+      first.impact.revision,
+      'identity-key',
+    );
+    for (const [kind, id, revision] of [
+      ['record', secondId, first.impact.revision],
+      ['proposal', f.id, first.impact.revision],
+      ['record', f.id, `${first.impact.revision}-different`],
+    ] as const) {
+      await expect(
+        f.coordinator.erase(
+          owner,
+          f.root,
+          current,
+          kind,
+          id,
+          revision,
+          'identity-key',
+        ),
+      ).rejects.toMatchObject({ code: 'REQUEST_KEY_CONFLICT' });
+    }
+    expect(
+      await (await f.store.adapterFor(f.root.id)).get(secondId),
+    ).not.toBeNull();
+  } finally {
+    f.index.close();
+  }
+});
+
+test('an interrupted erasure can be retried in process after the same store is re-registered', async () => {
+  const f = await setup();
+  try {
+    const preview = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    const fault = vi
+      .spyOn(f.index, 'removeErasedRecords')
+      .mockRejectedValueOnce(new Error('interrupted cleanup'));
+    await expect(
+      f.coordinator.erase(
+        owner,
+        f.root,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'inflight-retry',
+      ),
+    ).rejects.toThrow('interrupted cleanup');
+    fault.mockRestore();
+    await f.store.removeRoot(f.root.id, f.root);
+    await f.persistence.saveKnowledgeStoreRoot({
+      ...f.root,
+      registrationId: 'da6b5d07-5851-4ba0-8b7b-05e4f18405e2',
+    });
+    await expect(
+      f.coordinator.erase(
+        owner,
+        f.root,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'inflight-retry',
+      ),
+    ).rejects.toThrow();
+    const root = await f.store.getRoot(f.root.id);
+    if (!root) throw new Error('Expected re-registered root');
+    await expect(
+      f.coordinator.erase(
+        owner,
+        root,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'inflight-retry',
+      ),
+    ).resolves.toBeNull();
+    expect((await f.index.stats(root.id)).chunks).toBe(0);
+    const journal = new MemoryErasureIntentStore(f.home);
+    try {
+      expect(journal.open()).toMatchObject({ kind: 'entries', entries: [] });
+    } finally {
+      await journal.close();
+    }
+  } finally {
+    f.index.close();
+  }
+});
+
 test('refuses recovery if the Corpus store is replaced after the intent', async () => {
   const f = await setup();
   try {
