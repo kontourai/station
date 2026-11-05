@@ -54,6 +54,7 @@ import {
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
   type TokenUsageUpdatedEvent,
+  type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -102,6 +103,7 @@ import {
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
+  type ForegroundMessageContext,
   type ForegroundMessageHandle,
   ForegroundMessageIndeterminateError,
   type ForegroundMessageInput,
@@ -2671,12 +2673,17 @@ function executionResolverDependencies(
  * #4005: how a Task dispatch starts its Session as the Task's Agent on this
  * Station. It resolves the Agent through the same resolver and reads as a
  * foreground `/chat` start, so the Session gets the same provider, model and
- * the same Environment + Agent binding a continuation later verifies. The
- * Session runs in the Project's working directory, in the shared checkout:
- * Task dispatch provisions no worktree, so it records `shared` rather than
- * the Project's default isolation. Throws, before any effect, when the Agent
- * is unknown or unavailable, its engine is not ready, or the model is not
- * launchable.
+ * the same Environment + Agent binding a continuation later verifies.
+ *
+ * #4507: the workspace isolation is the Project's own, resolved as a
+ * foreground start resolves it (the Project's choice, then this Station's
+ * default, then `shared`). For `shared`, the Session runs in the Project's
+ * working directory. For `worktree`, the returned `cwd` is still the
+ * Project's directory (the repository to provision from) and the Task
+ * dispatch adapter provisions the Task's own worktree and moves the start
+ * there; this resolver creates nothing. Throws, before any effect, when the
+ * Agent is unknown or unavailable, its engine is not ready, or the model is
+ * not launchable.
  */
 export async function resolveTaskDispatchAgentStart(
   input: {
@@ -2700,7 +2707,6 @@ export async function resolveTaskDispatchAgentStart(
       workspace: {
         kind: 'project',
         projectSlug: input.projectSlug,
-        workspaceIsolation: { mode: 'shared' },
       },
       ...(input.modelId?.trim() || input.modelOptions
         ? {
@@ -2719,6 +2725,10 @@ export async function resolveTaskDispatchAgentStart(
   );
   const projectCwd =
     resolved.workspace?.kind === 'project' ? resolved.workspace.cwd : undefined;
+  const workspaceIsolation =
+    resolved.workspace?.kind === 'project'
+      ? resolved.workspace.workspaceIsolation
+      : { mode: 'shared' as const };
   if (!projectCwd)
     throw new Error(
       `Project '${input.projectSlug}' has no working directory to run the Agent in`,
@@ -2739,10 +2749,11 @@ export async function resolveTaskDispatchAgentStart(
       : {}),
     cwd: projectCwd,
     environmentId: resolved.access.environmentId,
+    workspaceIsolation,
     metadata: {
       ...agentExecutionBindingMetadata(resolved),
       projectSlug: input.projectSlug,
-      workspaceIsolation: { mode: 'shared' },
+      workspaceIsolation,
     },
   };
 }
@@ -6460,6 +6471,8 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            // #4512: the delegated Session's first turn, sent by Station.
+            dispatchOrigin: 'delegation',
             ...(input.taskRoomInvocationAdmission
               ? {
                   receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -6634,12 +6647,29 @@ export async function delegateTask(
  * CLI/UI/MCP callers never receive or construct the target Environment's
  * apiBase, SSH tunnel, credential, or engine connection binding.
  */
+/**
+ * #4512: the origin a delegated send records: `delegation` for a new
+ * conversation (the delegated child it starts) or one whose current Session
+ * is itself unattended, else `unknown`.
+ */
+function delegatedTargetOrigin(
+  orchestrationService: OrchestrationService | undefined,
+  conversationId: string | undefined,
+): TurnDispatchOrigin {
+  if (!conversationId) return 'delegation';
+  if (!orchestrationService) return 'unknown';
+  const facts = orchestrationService.sessionDispatchFacts(
+    orchestrationService.currentConversationSessionId(conversationId),
+  );
+  return facts.taskBound || facts.delegatedChild ? 'delegation' : 'unknown';
+}
+
 export async function executeExecutionTargetMessage(
   input: AuthorityBearingForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
@@ -7216,18 +7246,32 @@ export async function executeExecutionTargetMessage(
             SESSION_BINDING_EVENTS,
           )
         : undefined;
+      const retained = retainedWorktree as
+        | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+        | undefined;
+      // #4507: a Task-owned worktree is admitted only for a Session the
+      // server bound to that same Task when it dispatched it; the
+      // metadata's own `owner` names which Task to check, not whether to.
+      const owningTask =
+        retained?.owner?.kind === 'task'
+          ? orchestrationService.readTaskRoomExecutionBinding(conversationId)
+              ?.taskId
+          : undefined;
+      if (retained?.owner && owningTask !== retained.owner.taskId)
+        throw new Error('The owned conversation worktree is unavailable.');
       const executionWorkspace =
-        retainedWorktree &&
-        typeof workspaceProject === 'string' &&
-        startInput.cwd
+        retained && typeof workspaceProject === 'string' && startInput.cwd
           ? await captureExecutionWorkspaceBinding({
               threadId: startInput.threadId,
-              ownerThreadId:
-                workspaceOwner?.session.threadId ?? startInput.threadId,
               projectSlug: workspaceProject,
               cwd: startInput.cwd,
-              worktree:
-                retainedWorktree as import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata,
+              worktree: retained,
+              ...(owningTask
+                ? { ownerTaskId: owningTask }
+                : {
+                    ownerThreadId:
+                      workspaceOwner?.session.threadId ?? startInput.threadId,
+                  }),
             })
           : undefined;
       // #484 continuation: a portable follow-up that needs a new child
@@ -7412,6 +7456,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7442,6 +7489,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7463,7 +7513,33 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies, context);
+  // #4512: a send carrying a delegation context Station itself derived from
+  // the calling Session or its own runtime attested (a Station Control
+  // `send_message`) is a delegated turn, but only into a Session that is
+  // itself unattended. Into an existing conversation it counts only when that
+  // conversation's current Session is bound to a Task or is a delegated child
+  // Station derived; an agent messaging a person's own chat leaves that chat
+  // the person's (`unknown`). A `direct-claim` context is a requester's own
+  // word and never counts.
+  const delegatedSend =
+    input.delegation &&
+    (input.delegationProvenance === 'caller-derived' ||
+      input.delegationProvenance === 'runtime-attested') &&
+    !context?.dispatchOrigin;
+  const turnContext: ForegroundMessageContext | undefined = delegatedSend
+    ? {
+        ...context,
+        dispatchOrigin: delegatedTargetOrigin(
+          orchestrationService,
+          input.conversationId,
+        ),
+      }
+    : context;
+  return executeResolvedForegroundMessage(
+    input,
+    resolverDependencies,
+    turnContext,
+  );
 }
 
 /**
@@ -7633,7 +7709,7 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId)

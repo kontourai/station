@@ -106,7 +106,7 @@ import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
@@ -127,7 +127,6 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
-import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
@@ -236,7 +235,7 @@ import { composeTaskDispatcher } from '../../services/projects/task-dispatch-com
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
-  assertWorktreeMetadataSessionBinding,
+  sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
@@ -585,6 +584,15 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  /**
+   * #4507: the boot sweep that reaps engine processes a previous Station
+   * left running (`sweepOrphanedOwnedProcesses`). An engine is spawned
+   * detached, so one can outlive a crashed or restarted core and keep
+   * working in a Task's worktree until this settles; the startup retry of
+   * deferred Task worktree finalizations waits for it. Absent: nothing to
+   * wait for.
+   */
+  orphanEngineSweep?: Promise<unknown>;
   /** Trusted connector composition; no virtual listener is enabled by default. */
   virtualApplication?: {
     origin: string;
@@ -1903,6 +1911,22 @@ export class StationRuntime {
         }),
         assignmentClaimService: this.taskDispatchAssignmentClaims,
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+        // #4507: a Task worktree is never removed while a Session in it has a
+        // running turn. Read when finalization runs, not at construction.
+        isWorkspaceBusy: (path) => {
+          const root = resolve(path);
+          return this.orchestrationService
+            .listActiveTurnThreadIds()
+            .some((threadId) => {
+              const cwd =
+                this.orchestrationEventStore?.readSessionByThread(
+                  threadId,
+                )?.cwd;
+              if (!cwd) return false;
+              const at = resolve(cwd);
+              return at === root || at.startsWith(`${root}${sep}`);
+            });
+        },
       });
       // Release a task's assignment claim when its orchestration session ends
       // (natural completion or `stopSession`/cancel — both surface as the
@@ -1936,6 +1960,23 @@ export class StationRuntime {
               exitCode?: number;
             }
           | undefined;
+        // #4507: a turn or Session ending may free a finished Task's
+        // worktree that was kept while a turn ran in it. Retried after this
+        // event's own handling, so the turn no longer counts as running.
+        if (
+          event?.method === 'turn.completed' ||
+          event?.method === 'turn.aborted' ||
+          event?.method === 'session.exited'
+        )
+          setImmediate(() => {
+            void this.taskGraphService
+              .retryDeferredTaskWorktreeFinalizations()
+              .catch((error) => {
+                this.logger.warn('Deferred Task worktree finalization failed', {
+                  error: errorMessage(error),
+                });
+              });
+          });
         if (event?.method !== 'session.exited' || !event.sessionId) return;
         const sessionId = event.sessionId;
         void this.taskGraphService
@@ -1996,7 +2037,7 @@ export class StationRuntime {
                 occurredAt: detail.session.updatedAt,
               });
             }
-            const metadata = worktreeMetadataFromEvents(
+            const metadata = sessionExitWorktreeMetadata(
               detail.events,
               sessionId,
             );
@@ -2030,6 +2071,24 @@ export class StationRuntime {
       // which it is at this point in the constructor. See
       // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
       // for the accepted residual gap this sweep does not close.
+      // #4507: retry Task worktree finalizations a previous process
+      // deferred. Started only after the boot orphan-engine sweep settles,
+      // so it does not run while that sweep is still reaping a previous
+      // process's detached engines; a sweep that settled has not proved
+      // every orphan is gone (it reaps only what it can identify), and the
+      // later turn-end retries do not wait for it. Finalization's own
+      // checks (running turns here, a clean checkout, git refusing a dirty
+      // removal) still apply on every retry.
+      void Promise.resolve(options.orphanEngineSweep)
+        .catch(() => undefined)
+        .then(() =>
+          this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
+        )
+        .catch((error) => {
+          this.logger.warn('Deferred Task worktree finalization failed', {
+            error: errorMessage(error),
+          });
+        });
       void this.taskGraphService
         .reconcileStaleAssignmentClaims()
         .then((result) => {
@@ -6277,47 +6336,4 @@ export class StationRuntime {
       // Diagnostics are observer-only and cannot change runtime lifecycle.
     }
   }
-}
-
-function worktreeMetadataFromEvents(
-  events: unknown[],
-  sessionId: string,
-): WorktreeSessionMetadata | undefined {
-  for (const event of events) {
-    if (!event || typeof event !== 'object') continue;
-    const sessionStart = event as {
-      method?: unknown;
-      sessionId?: unknown;
-      metadata?: unknown;
-    };
-    if (
-      sessionStart.method !== 'session.started' ||
-      sessionStart.sessionId !== sessionId
-    ) {
-      continue;
-    }
-    const metadata = sessionStart.metadata;
-    if (!metadata || typeof metadata !== 'object') continue;
-    const worktree = (metadata as Record<string, unknown>).worktree;
-    if (!worktree || typeof worktree !== 'object') continue;
-    const candidate = worktree as Partial<WorktreeSessionMetadata>;
-    if (
-      candidate.mode === 'worktree' &&
-      typeof candidate.repoPath === 'string' &&
-      typeof candidate.path === 'string' &&
-      typeof candidate.branch === 'string' &&
-      typeof candidate.baseRef === 'string' &&
-      (candidate.cleanupPolicy === 'cleanup' ||
-        candidate.cleanupPolicy === 'preserve') &&
-      typeof candidate.preserveOnFailure === 'boolean' &&
-      typeof candidate.createdAt === 'string'
-    ) {
-      assertWorktreeMetadataSessionBinding(
-        candidate as WorktreeSessionMetadata,
-        sessionId,
-      );
-      return candidate as WorktreeSessionMetadata;
-    }
-  }
-  return undefined;
 }

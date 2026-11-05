@@ -51,7 +51,7 @@ export function workflowRun(
 export const QUALIFICATION_RULE: AutomationRule = {
   id: 'rule-qualification',
   name: 'Repair main qualification',
-  enabled: true,
+  mode: 'live',
   sourceId: 'source-1',
   match: {
     type: 'github.workflow_run.completed',

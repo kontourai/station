@@ -441,6 +441,7 @@ export function staleSendFailureIds(
     terminalSession?: boolean;
     stationCheckBack?: boolean;
     stationMemoryContinuation?: boolean;
+    stationRestartContinuation?: boolean;
     id?: string;
   }[],
 ): ReadonlySet<string> {
@@ -455,7 +456,8 @@ export function staleSendFailureIds(
     if (
       message.role === 'user' &&
       !message.stationCheckBack &&
-      !message.stationMemoryContinuation
+      !message.stationMemoryContinuation &&
+      !message.stationRestartContinuation
     ) {
       for (const id of failures) stale.add(id);
       failures = [];

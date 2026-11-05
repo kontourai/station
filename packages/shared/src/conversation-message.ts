@@ -203,6 +203,11 @@ export interface ConversationMessage {
      */
     stationMemoryContinuation?: true;
     /**
+     * #4512: Station's own continuation after a restart cut the turn off
+     * (`isStationRestartContinuationTurn`). Shown as Station's.
+     */
+    stationRestartContinuation?: true;
+    /**
      * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
      * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The
      * chat's Continue keys its send on it.
@@ -292,4 +297,19 @@ export function turnInterruptedContinueBoundaryId(
     TURN_INTERRUPTED_CONTINUE_KEY_PREFIX.length,
   );
   return boundaryId || undefined;
+}
+
+/**
+ * #4512: whether a turn is Station's own continuation after a restart: the
+ * Continue key, sent by Station rather than by the person (whose Continue
+ * stays their message).
+ */
+export function isStationRestartContinuationTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    turnInterruptedContinueBoundaryId(turn.clientTurnId) !== undefined
+  );
 }

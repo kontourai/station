@@ -1,3 +1,4 @@
+import type { AutomationDeliveryPage } from '@kontourai/station-contracts/automation';
 import { afterEach, expect, test, vi } from 'vitest';
 import { StationHttpError } from '../client/api-error-message';
 import { listAutomationDeliveries } from '../client/automations';
@@ -70,4 +71,57 @@ test('non-JSON transport failures retain their HTTP status', async () => {
   await expect(
     listAutomationDeliveries('http://station.test'),
   ).rejects.toBeInstanceOf(StationHttpError);
+});
+
+test('returns per-rule modes and decisions on each delivery (#4509)', async () => {
+  const page: AutomationDeliveryPage = {
+    deliveries: [
+      {
+        deliveryKey: 'a'.repeat(64),
+        sourceId: 'source-1',
+        semanticKey: 'workflow_run:1:1:completed',
+        eventType: 'github.workflow_run.completed',
+        receivedAt: '2026-11-04T00:00:00.000Z',
+        updatedAt: '2026-11-04T00:00:00.000Z',
+        outcome: 'matched',
+        ruleId: 'rule-live',
+        decisions: [
+          {
+            ruleId: 'rule-live',
+            ruleName: 'Live',
+            mode: 'live',
+            outcome: 'intent-retained',
+            actionKind: 'dispatch-task',
+            projectId: 'station',
+            agentId: 'repairer',
+            episodeId: '1',
+            decidedAt: '2026-11-04T00:00:00.000Z',
+          },
+          {
+            ruleId: 'rule-observe',
+            ruleName: 'Observe',
+            mode: 'observe',
+            outcome: 'suppressed',
+            reason: 'rate-limited',
+            actionKind: 'isolated-repair',
+            projectId: 'station',
+            agentId: 'repairer',
+            episodeId: '1',
+            decidedAt: '2026-11-04T00:00:00.000Z',
+          },
+        ],
+      },
+    ],
+    polls: [],
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ success: true, data: page })),
+  );
+  const result = await listAutomationDeliveries('http://station.test');
+  expect(result.deliveries[0]?.decisions).toEqual(
+    page.deliveries[0]?.decisions,
+  );
 });

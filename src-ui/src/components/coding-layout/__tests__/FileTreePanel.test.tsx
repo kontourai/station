@@ -256,12 +256,40 @@ describe('FileTreePanel', () => {
     }
   });
 
-  test('the header + button opens a New File / New Folder menu', () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: 'New file or folder' }));
-    expect(screen.getByRole('menuitem', { name: 'New File' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'New Folder' })).toBeTruthy();
-  });
+  test.each(['origin', 'chosen control'] as const)(
+    'New file keeps dialog focus and respects %s focus after cancel',
+    async (destination) => {
+      renderPanel();
+      const trigger = screen.getByRole('button', {
+        name: 'New file or folder',
+      });
+      trigger.focus();
+      fireEvent.click(trigger);
+      const newFile = screen.getByRole('menuitem', { name: 'New File' });
+      expect(screen.getByRole('menuitem', { name: 'New Folder' })).toBeTruthy();
+      expect(document.activeElement).toBe(newFile);
+
+      fireEvent.click(newFile);
+      const name = screen.getByRole('textbox', { name: 'Name' });
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(name);
+
+      fireEvent.keyDown(name, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: 'New file' })).toBeNull();
+      const chosen = screen.getByRole('searchbox', { name: 'Filter files' });
+      if (destination === 'chosen control') chosen.focus();
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      expect(document.activeElement).toBe(
+        destination === 'origin' ? trigger : chosen,
+      );
+      expect(createMutate).not.toHaveBeenCalled();
+    },
+  );
 
   test('the labeled empty file-tree region keeps the root menu available alongside the header action', () => {
     renderPanel();

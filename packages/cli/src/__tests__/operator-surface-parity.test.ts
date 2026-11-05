@@ -66,6 +66,34 @@ function concretePath(template: string): string {
     .replace(':target', 'daily-report');
 }
 
+const automationPage = {
+  deliveries: [
+    {
+      deliveryKey: 'a'.repeat(64),
+      sourceId: 'source-1',
+      semanticKey: 'workflow_run:1:1:completed',
+      eventType: 'github.workflow_run.completed',
+      receivedAt: '2026-11-04T00:00:00.000Z',
+      updatedAt: '2026-11-04T00:00:00.000Z',
+      outcome: 'matched',
+      ruleId: 'rule-observe',
+      decisions: [
+        {
+          ruleId: 'rule-observe',
+          ruleName: 'Observe',
+          mode: 'observe',
+          outcome: 'would-start',
+          actionKind: 'dispatch-task',
+          projectId: 'station',
+          agentId: 'repairer',
+          episodeId: '1',
+          decidedAt: '2026-11-04T00:00:00.000Z',
+        },
+      ],
+    },
+  ],
+  polls: [],
+};
 const requests: string[] = [];
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -75,7 +103,9 @@ const server = createServer(async (req, res) => {
   // real shapes; scheduler replies are printed as-is.
   const reviews = url.pathname.match(/^\/api\/projects\/demo\/reviews(\/.*)?$/);
   const data = !reviews
-    ? {}
+    ? url.pathname === '/automations/deliveries'
+      ? automationPage
+      : {}
     : reviews[1]?.startsWith('/requests/') || req.method === 'POST'
       ? completedReviewRequest
       : reviews[1]
@@ -179,6 +209,23 @@ describe('automation operator surface', () => {
     expect(await dispatch('automation', [entry.cli, '--limit=5'])).toEqual([
       `${entry.method} ${entry.path}`,
     ]);
+  });
+
+  it('prints each delivery rule mode and decision (#4509)', async () => {
+    await dispatch('automation', ['deliveries']);
+    const printed = vi
+      .mocked(console.log)
+      .mock.calls.map((call) => call.join(' '))
+      .concat(
+        vi
+          .mocked(process.stdout.write)
+          .mock.calls.map((call) => String(call[0])),
+      )
+      .join('\n');
+    const json = JSON.parse(printed.slice(printed.indexOf('{')));
+    expect(json.deliveries[0].decisions).toEqual(
+      automationPage.deliveries[0]!.decisions,
+    );
   });
 
   it('refuses a non-numeric limit before any request', async () => {

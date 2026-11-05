@@ -208,6 +208,8 @@ export type ChatMessage = {
   stationCheckBack?: boolean;
   /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
   stationMemoryContinuation?: boolean;
+  /** See `ChatMessage.stationRestartContinuation` in types.ts. */
+  stationRestartContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
