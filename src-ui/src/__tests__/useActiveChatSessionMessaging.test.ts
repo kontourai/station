@@ -55,6 +55,17 @@ const accountPreferenceFixture = vi.hoisted(() => ({
     values: { interactiveApprovalModes: {} as Record<string, string> },
   },
 }));
+// #4518: the managed approval ceiling the connected Station reports.
+const managedCeilingFixture = vi.hoisted(() => ({
+  current: undefined as 'ask' | 'auto' | undefined,
+}));
+vi.mock('../contexts/ManagedPolicyContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../contexts/ManagedPolicyContext')
+  >()),
+  useManagedApprovalCeiling: () => ({ ceiling: managedCeilingFixture.current }),
+}));
+
 vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => accountPreferenceFixture,
 }));
@@ -1210,6 +1221,30 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         });
         expect(body).not.toHaveProperty('personalApprovalDefault');
       } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('#4518: under a managed ceiling, outside a Project, the default goes as a hint the server lowers, never as a pick', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+      managedCeilingFixture.current = 'auto';
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({ personalApprovalDefault: 'never' });
+        expect(body).not.toHaveProperty('setApprovalMode');
+      } finally {
+        managedCeilingFixture.current = undefined;
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
     });

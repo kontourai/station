@@ -300,7 +300,11 @@
 
     "src-ui/src/__tests__/inbox-swipe.browser.test.tsx",
 
-    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx"
+    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
+
+    "docs/guides/deployment-authentication.md",
+
+    "docs/guides/plugins.md"
   ],
 
   "checks": [

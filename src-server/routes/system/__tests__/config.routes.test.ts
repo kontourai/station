@@ -6,6 +6,7 @@ import { withOperatorPrincipal } from '../../../__test-utils__/operator-principa
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { replaceRuntimeTemplateVariables } from '../../../runtime/agents/runtime-template-variables.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
@@ -2436,5 +2437,78 @@ describe('PUT /config/app refusal diagnostics', () => {
         },
       ],
     ]);
+  });
+});
+
+/**
+ * #4518: the Station default is a choice the operator makes, so raising it
+ * above the machine's managed approval ceiling is refused, for the operator
+ * in person too. A value saved before the policy was installed may be resent
+ * (Settings round-trips the whole config); it is lowered where it applies.
+ */
+describe('Station default approval mode under a managed ceiling', () => {
+  const ceiling = () =>
+    installManagedApprovalCeiling({
+      summary: {
+        organization: 'Acme',
+        supportUrl: null,
+        lockedSettings: [],
+        limits: { maxApprovalMode: 'ask' },
+      },
+    });
+  const put = (app: Hono<any>, body: unknown) =>
+    app.request('/app', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  test('a raise above the ceiling is refused with the managed message and saves nothing', async () => {
+    ceiling();
+    try {
+      const loader = createMockConfigLoader({ defaultApprovalMode: 'ask' });
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
+      for (const raised of ['auto', 'never']) {
+        const response = await put(app, { defaultApprovalMode: raised });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({
+          success: false,
+          code: 'managed-policy-approval-ceiling',
+          error:
+            "Acme's policy manages approval modes: the broadest allowed is Ask first. Contact your administrator for help.",
+        });
+      }
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+  });
+
+  test('resending a value saved before the policy, and lowering, still save', async () => {
+    ceiling();
+    try {
+      const loader = createMockConfigLoader({ defaultApprovalMode: 'auto' });
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
+      const resent = await put(app, { defaultApprovalMode: 'auto' });
+      expect(resent.status, await resent.clone().text()).toBe(200);
+      const lowered = await put(app, { defaultApprovalMode: 'ask' });
+      expect(lowered.status, await lowered.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('ask');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+  });
+
+  test('control: without a ceiling the operator may raise it to Auto', async () => {
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'ask' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    const response = await put(app, { defaultApprovalMode: 'auto' });
+    expect(response.status, await response.clone().text()).toBe(200);
   });
 });

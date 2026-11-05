@@ -558,12 +558,11 @@ export function projectAgentFrames(
       ) + 1,
     );
   const result: AgentFrame[] = [];
-  let pending: AgentFrame[] = [];
-  let pendingBytes = 0;
-  const flush = () => {
-    if (pending.length) putBlock(database, turnId, pending);
-    pending = [];
-    pendingBytes = 0;
+  const pending = new Map<string, { frames: AgentFrame[]; bytes: number }>();
+  const flush = (group: string) => {
+    const batch = pending.get(group);
+    if (batch) putBlock(database, turnId, batch.frames);
+    pending.delete(group);
   };
   for (const command of commands) {
     const existing = readAgentFrame(database, turnId, command.id);
@@ -595,18 +594,25 @@ export function projectAgentFrames(
       createdAt: new Date(now).toISOString(),
     });
     if (compact) {
-      const previous = pending.at(-1);
       const address = frameAddress(frame.id);
+      let batch = pending.get(address.group);
+      const previous = batch?.frames.at(-1);
       if (
+        batch &&
         previous &&
-        (frameAddress(previous.id).group !== address.group ||
-          frameAddress(previous.id).ordinal + 1 !== address.ordinal ||
-          pending.length === 1024 ||
-          pendingBytes + Buffer.byteLength(frame.wire) > 64 * 1024)
-      )
-        flush();
-      pending.push(frame);
-      pendingBytes += Buffer.byteLength(frame.wire);
+        (frameAddress(previous.id).ordinal + 1 !== address.ordinal ||
+          batch.frames.length === 1024 ||
+          batch.bytes + Buffer.byteLength(frame.wire) > 64 * 1024)
+      ) {
+        flush(address.group);
+        batch = undefined;
+      }
+      if (!batch) {
+        batch = { frames: [], bytes: 0 };
+        pending.set(address.group, batch);
+      }
+      batch.frames.push(frame);
+      batch.bytes += Buffer.byteLength(frame.wire);
     } else
       agentStatement(
         database,
@@ -614,7 +620,7 @@ export function projectAgentFrames(
       ).run(turnId, frame.id, frame.position, canonical(frame));
     result.push(frame);
   }
-  flush();
+  for (const group of pending.keys()) flush(group);
   return result;
 }
 export function projectAgentFrame(

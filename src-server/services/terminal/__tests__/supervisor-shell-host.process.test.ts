@@ -32,6 +32,7 @@ import { TerminalSessions } from '../terminal-sessions.js';
 
 const makeTempDir = trackTempDirs();
 const scope = { projectId: 'project-a', bindingKey: 'project' };
+const agentScope = { projectId: 'project-a', bindingKey: 'thread:agent' };
 const WAIT = { timeout: 30_000, interval: 50 };
 const windows = process.platform === 'win32';
 const SHELL = windows ? (process.env.COMSPEC ?? 'cmd.exe') : '/bin/sh';
@@ -108,6 +109,7 @@ function core(home: string, root: string, channel: WorkloadChannel) {
     {
       authorize: () => true,
       resolveRoot: async () => root,
+      authorizeAgentCommand: async () => {},
     },
   );
 }
@@ -405,7 +407,16 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
     const client = createACPBridgeClient({
       cwd: root,
       terminals: new Map(),
-      sessionTerminals: new AcpSessionTerminals(before, scope, root),
+      sessionTerminals: new AcpSessionTerminals(
+        before,
+        agentScope,
+        root,
+        () => ({
+          threadId: 'agent',
+          confinement: 'host',
+        }),
+      ),
+      terminalConfinement: () => 'host',
       approvalRegistry: new ApprovalRegistry({
         info() {},
         warn() {},
@@ -453,13 +464,13 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
       status: 'running',
       pid: workload.pid,
     });
-    await after.write('operator', scope, opened!.terminalId, 'go\n');
+    await after.write('operator', agentScope, opened!.terminalId, 'go\n');
     await vi.waitFor(async () => {
       const [record] = await after.listObservable('operator');
       expect(record).toMatchObject({ status: 'exited', exitCode: 4 });
     }, WAIT);
     const replay = (
-      await after.read('operator', scope, opened!.terminalId)
+      await after.read('operator', agentScope, opened!.terminalId)
     ).journal.records
       .map((record) => record.data)
       .join('');

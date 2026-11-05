@@ -22,6 +22,7 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { NATIVE_RESUME_IDENTITY_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -363,8 +364,14 @@ class UsageObservationCollector {
   private ambiguousPrincipalTurns = new Set<string>();
   private costTurns = new Set<string>();
   private completedTurns = new Set<string>();
+  private cumulativeStarts = new Set<string>();
+  private pendingCumulativeBaselines = new Set<AllocatedFigure>();
+  private awaitingResumeIdentity?: string;
 
-  constructor(events: readonly CanonicalRuntimeEvent[]) {
+  constructor(
+    events: readonly CanonicalRuntimeEvent[],
+    private readonly withholdResumedCumulativeUsage = false,
+  ) {
     for (const event of events) {
       if (event.method === 'token-usage.updated' && event.turnId)
         this.turnUsageObservations.set(
@@ -386,6 +393,37 @@ class UsageObservationCollector {
   }
 
   observe(event: CanonicalRuntimeEvent): void {
+    if (
+      this.withholdResumedCumulativeUsage &&
+      CUMULATIVE_USAGE_PROVIDERS.has(event.provider)
+    ) {
+      if (
+        (event.method === 'session.started' ||
+          event.method === 'session.configured') &&
+        (event.metadata?.usageAvailability === 'unavailable' ||
+          event.metadata?.continuation === 'native-fork')
+      )
+        this.withholdNextCumulativeFigures();
+      if (event.method === 'session.started') {
+        if (
+          this.cumulativeStarts.has(event.provider) ||
+          this.previous.size > 0 ||
+          sessionStartedResumedNativeSession(event)
+        )
+          this.withholdNextCumulativeFigures();
+        this.cumulativeStarts.add(event.provider);
+        this.awaitingResumeIdentity = event.provider;
+      } else if (
+        event.method === 'session.configured' &&
+        this.awaitingResumeIdentity === event.provider
+      ) {
+        if (event.metadata?.[NATIVE_RESUME_IDENTITY_METADATA_KEY] === 'matched')
+          this.withholdNextCumulativeFigures();
+        this.awaitingResumeIdentity = undefined;
+      } else if (event.method === 'token-usage.updated') {
+        this.awaitingResumeIdentity = undefined;
+      }
+    }
     if (event.method === 'session.configured') {
       const model = readSessionConfiguredModel(event);
       if (model && model !== this.modelId) {
@@ -402,6 +440,17 @@ class UsageObservationCollector {
       this.completedTurns.add(event.turnId);
       this.activity.push({ ...this.attribution(event), messages: 1 });
     }
+  }
+
+  private withholdNextCumulativeFigures(): void {
+    for (const field of [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ] as const)
+      this.pendingCumulativeBaselines.add(field);
   }
 
   private attribution(event: CanonicalRuntimeEvent): UsageObservation {
@@ -478,6 +527,13 @@ class UsageObservationCollector {
         principalId: this.attribution(event).principal?.id,
       });
     }
+    if (cumulative && this.pendingCumulativeBaselines.delete(field)) {
+      // A resumed counter can include outside work. Preserve the canonical
+      // amount as unallocated; only later component increases get a day.
+      delete row.recordedAt;
+      delete row.modelId;
+      delete row.principal;
+    }
     figures.set(event.eventId, { ...row, [field]: amount });
   }
 
@@ -502,8 +558,12 @@ class UsageObservationCollector {
 export function foldUsageObservationProjection(
   events: CanonicalRuntimeEvent[],
   onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
+  options: { withholdResumedCumulativeUsage?: boolean } = {},
 ): SessionUsageObservationProjection {
-  const collector = new UsageObservationCollector(events);
+  const collector = new UsageObservationCollector(
+    events,
+    options.withholdResumedCumulativeUsage,
+  );
   const usage = foldUsageEventsInner(events, onDroppedFigure, collector);
   return collector.finish(usage);
 }

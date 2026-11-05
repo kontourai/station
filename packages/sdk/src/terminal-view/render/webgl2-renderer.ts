@@ -101,6 +101,9 @@ function compile(
   return program;
 }
 
+/** How long a shown view waits for a lost context before drawing in 2D. */
+const CONTEXT_RESTORE_DEADLINE_MS = 1500;
+
 export class WebGl2Renderer implements TerminalRenderer {
   readonly kind = 'webgl2' as const;
   private gpu: Gpu | null = null;
@@ -111,6 +114,13 @@ export class WebGl2Renderer implements TerminalRenderer {
   private uploadedGeneration = -1;
   private lost = false;
   private suspended = false;
+  /**
+   * Held from while the context was live: a lost context answers
+   * `getExtension` with null, so a handle looked up then can never restore it
+   * and the view stayed blank after the page was hidden (#3994).
+   */
+  private loseContextExt: WEBGL_lose_context | null = null;
+  private restoreTimer: ReturnType<typeof setTimeout> | null = null;
   private rectFloats = new Float32Array(4096);
   private rectColors = new Uint8Array(4096);
   private glyphFloats = new Float32Array(4096);
@@ -119,12 +129,18 @@ export class WebGl2Renderer implements TerminalRenderer {
     event.preventDefault();
     this.lost = true;
     this.gpu = null;
+    // A shown view lost its context to the browser, not to suspend().
+    if (!this.suspended) this.awaitRestore();
   };
   private readonly onRestored = () => {
     this.lost = false;
+    this.clearRestoreTimer();
     try {
       this.gpu = this.createGpu();
       this.uploadedGeneration = -1;
+      // The new texture starts empty: glyphs drawn before the loss would
+      // otherwise never reach it, leaving only the cursor on screen.
+      this.atlas?.markAllDirty();
       this.callbacks.invalidated();
     } catch {
       this.callbacks.failed();
@@ -167,6 +183,7 @@ export class WebGl2Renderer implements TerminalRenderer {
 
   private createGpu(): Gpu {
     const gl = this.context();
+    this.loseContextExt = gl.getExtension('WEBGL_lose_context');
     const rectProgram = compile(gl, RECT_VS, RECT_FS);
     const glyphProgram = compile(gl, GLYPH_VS, GLYPH_FS);
     const corners = gl.createBuffer();
@@ -254,18 +271,38 @@ export class WebGl2Renderer implements TerminalRenderer {
     this.suspended = true;
     // Give the context back so hidden terminals do not hold GPU memory or
     // count against the browser's context limit.
-    this.gpu?.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    this.clearRestoreTimer();
+    if (!this.lost) this.loseContextExt?.loseContext();
   }
 
   resume(): void {
     if (!this.suspended) return;
     this.suspended = false;
-    if (this.lost) {
-      const ext = this.canvas
-        .getContext('webgl2')
-        ?.getExtension('WEBGL_lose_context');
-      ext?.restoreContext();
+    if (!this.lost) return;
+    try {
+      this.loseContextExt?.restoreContext();
+    } catch {
+      // Refused: the deadline below falls back.
     }
+    this.awaitRestore();
+  }
+
+  /**
+   * A browser may decline to give a context back (Android Chrome after the
+   * app was in the background, or after too many losses). Draw with Canvas 2D
+   * rather than show a blank terminal.
+   */
+  private awaitRestore(): void {
+    this.clearRestoreTimer();
+    this.restoreTimer = setTimeout(() => {
+      this.restoreTimer = null;
+      if (this.lost && !this.suspended) this.callbacks.failed();
+    }, CONTEXT_RESTORE_DEADLINE_MS);
+  }
+
+  private clearRestoreTimer(): void {
+    if (this.restoreTimer) clearTimeout(this.restoreTimer);
+    this.restoreTimer = null;
   }
 
   render(model: ScreenModel, overlay: Overlay): void {
@@ -476,7 +513,9 @@ export class WebGl2Renderer implements TerminalRenderer {
   dispose(): void {
     this.canvas.removeEventListener('webglcontextlost', this.onLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
-    this.gpu?.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    this.clearRestoreTimer();
+    if (!this.lost) this.loseContextExt?.loseContext();
+    this.loseContextExt = null;
     this.gpu = null;
   }
 }

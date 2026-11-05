@@ -977,8 +977,11 @@ real ConPTY shells, and a journey whose shell keeps its pid and journal across
 a handoff of built supervisor and workload host bundles. The command-session
 suite runs there as well: output caps, exits and ACP engine terminals without a
 PTY (its PTY restart cases are POSIX-only). So do the terminal session,
-real-socket and retention suites, typing into cmd.exe on ConPTY (#3994); their
-cases built on POSIX job control are POSIX-only. A ConPTY cannot change
+real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
+built on POSIX job control POSIX-only; and the agent-run and script-runner
+suite with the launch builder's cases: package managers' batch shims run
+through cmd.exe, and an approved command reaches cmd with its quotes as shown
+(#3994). A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -1002,7 +1005,10 @@ candidate changes an input that crate reads: `src-desktop/`, any Cargo
 manifest, lockfile or toolchain file, and the few outside files the crate
 pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
-compiles. The job, and so the required check, runs either way. TypeScript is
+compiles. A relevant compile also checks the Desktop test build's `webdriver`
+feature, whose WebDriver plugin must use the same Windows crates as Tauri; a
+mismatch compiles elsewhere and fails only on Windows (#3994). The job, and so
+the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
 After a relevant compile, the same job runs the real Credential Manager
 recovery test. It creates uniquely named Station entries, verifies their raw

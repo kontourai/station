@@ -220,6 +220,19 @@ with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
 results also include `busy` in the failed reason union. These exports require a build
 containing this change. See [local speech](../guides/local-speech.md).
 
+## Managed policy
+
+The root exports `fetchManagedPolicyStatus(apiBase?)` and
+`useManagedPolicyStatusQuery(apiBase?, config?)`, which read
+`GET /api/settings/managed-policy` as a `ManagedPolicyStatus` from
+`@kontourai/station-contracts/managed-policy`. A host older than the route
+answers 404, which reads as `{ state: 'none' }`; any other failure, or a body
+the contract parser refuses, throws. The status is fixed for the server's
+lifetime, so the query never goes stale. The server enforces the policy
+whatever a client shows; use it to explain a managed control, such as the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling).
+This surface requires a published SDK version containing it.
+
 ## Telemetry delivery
 
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
@@ -6668,3 +6681,15 @@ establish activation or an observed effect.
 
 See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
 flow and the separate setup, provider and release boundaries.
+
+### Station release notes
+
+`@kontourai/station-sdk/release-notes-query` exports
+`useStationReleaseNotesQuery(version, nativeApp, enabled?)` and
+`useStationReleaseHistoryQuery(enabled?)`. They read public GitHub Releases
+without Station credentials, using the host’s QueryClient. An exact-version
+404 returns `null`; transport and response failures remain errors for retry.
+Native app Nightlies use the cohort’s `desktop-v<version>` changelog releases; other versions
+use `v<version>`. History includes versioned entries from the latest 100
+GitHub releases, with `STATION_RELEASE_HISTORY_URL` for older entries. Release
+prose never authorizes an update.
