@@ -411,12 +411,17 @@ downloads from the default location.
 The desktop app reads the policy itself when it starts, not from the server, so
 the updater obeys the policy even when the bundled server cannot start, and
 even when the server refuses to start because of the policy. It reads only the
-[policy file](#where-to-install-it): a policy delivered by a
+[policy file](#where-to-install-it). When device management delivers a policy
+instead, through a
 [configuration profile](#deploy-with-a-macos-configuration-profile) or
-[Group Policy](#deploy-with-group-policy-or-intune) governs the server,
-`station upgrade` and the Station service's update, but not yet the desktop
-app's own updater. To control desktop app updates, install the policy as the
-file. If the desktop app
+[Group Policy](#deploy-with-group-policy-or-intune), the desktop app does not
+read it: it turns its own updates off and shows "Station's update policy comes
+from your organization's device management; desktop updates are managed
+there". It does this whatever the file says, because a file beside a profile
+or the registry key is already a startup error. So a mirror delivered through
+device management leaves desktop updates off rather than mirrored; to route
+desktop updates to a mirror, install the policy as the file. The server,
+`station upgrade` and the Station service's update read every source. If the desktop app
 cannot use the installed policy file (for example it is not valid JSON, it is
 not owned by root, or `limits.updates` contains a value it does not
 understand), it turns updates off rather than guess. If only another part of
@@ -528,7 +533,7 @@ preference domain `io.kontourai.station`. macOS installs it as
 that file. Station ignores user-scoped profiles, which land under
 `/Library/Managed Preferences/<user>/`.
 
-The desktop app's own updater does not read the profile yet; see
+With a profile installed, the desktop app turns its own updates off; see
 [What each surface does](#what-each-surface-does).
 
 Generate a complete profile from a checked policy:
@@ -579,8 +584,8 @@ so a 32-bit tool writes the same key. WSL runs Linux, so Station inside WSL
 reads `/etc/station/policy.json` in that distribution, not the Windows
 registry.
 
-The desktop app's own updater does not read the registry key yet; see
-[What each surface does](#what-each-surface-does).
+With the registry key present, the desktop app turns its own updates off;
+see [What each surface does](#what-each-surface-does).
 
 The key holds the policy one of two ways, never both:
 

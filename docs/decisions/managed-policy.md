@@ -714,10 +714,20 @@ second time the same way to stand in for the `lstat` identity, as libuv's own
 point or a directory, and an identity Windows cannot report refuses the
 policy. Only the macOS and Linux behavior is executed in tests; the Windows
 path is compile-checked only. The desktop shell does not yet apply the
-Windows owner and ACL rule the server applies to the policy file (#4524), and
-it reads only the policy file, not a macOS configuration profile (#4523) or the
-Windows registry key (#4524): a `limits.updates` delivered those ways governs
-every update surface but the desktop updater, and the guide says so. The shell enforces only `limits.updates`:
+Windows owner and ACL rule the server applies to the policy file (#4524).
+
+**Device management turns desktop updates off.** The shell reads only the
+policy file; it does not parse a macOS configuration profile (#4523) or the
+Windows Policies key (#4524), so it never holds a second reader that could
+disagree with the server's. It checks only that one is present: `lstat` of
+`/Library/Managed Preferences/io.kontourai.station.plist` (a link counts,
+unfollowed), or `RegOpenKeyExW` on `HKLM\SOFTWARE\Policies\Kontour\Station`
+in the 64-bit view. Either one present turns the shell's updates off, whatever
+the file says (a file beside it is a startup error on the server), and any
+error but "not found" counts as present. A mirror delivered through device
+management therefore leaves desktop updates off rather than mirrored;
+administrators route desktop updates to a mirror by installing the policy as
+the file. The shell enforces only `limits.updates`:
 
 - a policy it cannot use, a `schemaVersion` other than 1, or a
   `limits.updates` with an unknown key or a bad value turns updates **off**,

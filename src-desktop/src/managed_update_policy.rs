@@ -29,9 +29,20 @@
 //! `@kontourai/station-contracts/managed-policy`). The update the mirror's
 //! feed offers must also download from the mirror.
 //!
+//! The organization's device management can deliver the policy instead of
+//! the file: a macOS configuration profile (#4523) or the Windows Policies
+//! registry key (#4524). The shell does not parse either, so it never holds a
+//! second reader that could disagree with the server's. When either is
+//! present, the shell turns its own updates off, whatever the file says: it
+//! cannot tell what that source allows, and a file beside it is a startup
+//! error on the server anyway. A mirror delivered that way therefore leaves
+//! desktop updates off rather than mirrored; the guide tells administrators to
+//! install the policy as the file to route desktop updates to a mirror.
+//!
 //! This module depends only on `std`, `serde`, `serde_json`, `url` and (on
-//! unix) `libc`, so its tests compile and run standalone (`rustc --test` or a
-//! scratch crate) without building the desktop crate.
+//! unix) `libc`, or (on Windows) `windows-sys`, so its tests compile and run
+//! standalone (`rustc --test` or a scratch crate) without building the
+//! desktop crate.
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
@@ -46,6 +57,20 @@ pub const TEST_FILE_ENV: &str = "STATION_MANAGED_POLICY_TEST_FILE";
 /// Station's default release download location. Mirrors
 /// `STATION_RELEASE_DOWNLOAD_BASE` in the contracts package.
 pub const RELEASE_DOWNLOAD_BASE: &str = "https://github.com/kontourai/station/releases/download/";
+
+/// Where a System-scope macOS configuration profile for Station's preference
+/// domain is installed, relative to the filesystem root (#4523). The server
+/// reads it; the shell only checks that it is there.
+pub const MACOS_MANAGED_PREFERENCES: &str =
+    "Library/Managed Preferences/io.kontourai.station.plist";
+
+/// The Windows Policies key, relative to `HKEY_LOCAL_MACHINE`, that Group
+/// Policy or Intune writes (#4524). The server reads it; the shell only
+/// checks that it exists.
+pub const WINDOWS_POLICY_SUBKEY: &str = "SOFTWARE\\Policies\\Kontour\\Station";
+
+/// The sentence the window shows when device management delivers the policy.
+pub const DEVICE_MANAGED_SENTENCE: &str = "Station's update policy comes from your organization's device management; desktop updates are managed there";
 
 /// Larger than any real policy; a bigger file is refused, as on the server.
 const MAX_POLICY_BYTES: u64 = 1024 * 1024;
@@ -79,6 +104,9 @@ pub enum InstalledPolicy {
     Limited(UpdatesLimit),
     /// A policy is installed and the shell cannot use it; why, for the log.
     Unusable(String),
+    /// Device management (a configuration profile or the Policies registry
+    /// key) delivers a policy, which the shell does not read.
+    DeviceManaged,
 }
 
 /// Where the updater may look, decided once at startup.
@@ -106,17 +134,89 @@ struct Ownership {
     root: PathBuf,
 }
 
-/// Reads the installed policy: the system path, then the test override.
+/// Reads the installed policy: device management first, then the system
+/// path, then the test override.
 pub fn load_installed(test_override: Option<&str>) -> InstalledPolicy {
     let system = Ownership {
         uid: 0,
         root: PathBuf::from("/"),
     };
-    load_from(
+    load_with_device_management(
+        device_managed_policy_present(),
         Path::new(system_policy_path()),
         Some(&system),
         test_override,
     )
+}
+
+/// `load_from`, unless device management delivers the policy: then the
+/// shell stops at that, whatever the file says.
+fn load_with_device_management(
+    device_managed: bool,
+    system: &Path,
+    ownership: Option<&Ownership>,
+    test_override: Option<&str>,
+) -> InstalledPolicy {
+    if device_managed {
+        return InstalledPolicy::DeviceManaged;
+    }
+    load_from(system, ownership, test_override)
+}
+
+/// Whether this OS's device-management source is present.
+fn device_managed_policy_present() -> bool {
+    if cfg!(target_os = "macos") {
+        macos_profile_present(Path::new("/"))
+    } else {
+        windows_policy_key_present(WINDOWS_POLICY_SUBKEY)
+    }
+}
+
+/// Whether `<root>/Library/Managed Preferences/io.kontourai.station.plist`
+/// exists. `lstat`, so a link counts without being followed. Any error but
+/// "not found" counts as present: the shell fails closed when it cannot
+/// tell.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn macos_profile_present(root: &Path) -> bool {
+    match std::fs::symlink_metadata(root.join(MACOS_MANAGED_PREFERENCES)) {
+        Ok(_) => true,
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
+/// Whether `HKEY_LOCAL_MACHINE\<subkey>` exists, in the 64-bit view (the
+/// Policies key is shared by both views). Any error but "not found" counts
+/// as present: the shell fails closed when it cannot tell.
+#[cfg(windows)]
+fn windows_policy_key_present(subkey: &str) -> bool {
+    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
+    };
+    let wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut key: HKEY = std::ptr::null_mut();
+    // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the
+    // call, and `key` is a valid out pointer; the handle is closed below.
+    let status = unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            wide.as_ptr(),
+            0,
+            KEY_QUERY_VALUE | KEY_WOW64_64KEY,
+            &mut key,
+        )
+    };
+    if status == ERROR_SUCCESS {
+        // SAFETY: `key` was opened by the successful call above.
+        unsafe { RegCloseKey(key) };
+        return true;
+    }
+    status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND
+}
+
+#[cfg(not(windows))]
+fn windows_policy_key_present(_subkey: &str) -> bool {
+    false
 }
 
 fn load_from(
@@ -711,6 +811,9 @@ pub fn route(policy: &InstalledPolicy, channel: &str, endpoints: &[String]) -> U
                     .into(),
             )
         }
+        InstalledPolicy::DeviceManaged => {
+            return UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
+        }
         InstalledPolicy::Limited(limit) => limit,
     };
     if limit.off {
@@ -788,6 +891,81 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// A root holding a System-scope profile for Station's domain, as macOS
+    /// installs it, under a scratch directory instead of `/`.
+    fn root_with_profile(name: &str) -> PathBuf {
+        let root = scratch(name);
+        let profile = root.join(MACOS_MANAGED_PREFERENCES);
+        std::fs::create_dir_all(profile.parent().unwrap()).unwrap();
+        std::fs::write(&profile, b"<plist version=\"1.0\"><dict/></plist>").unwrap();
+        root
+    }
+
+    #[test]
+    fn a_macos_profile_counts_as_present_and_its_absence_does_not() {
+        assert!(macos_profile_present(&root_with_profile("profile")));
+        assert!(!macos_profile_present(&scratch("no-profile")));
+        // An empty Managed Preferences folder holds no Station profile.
+        let empty = scratch("empty-managed-preferences");
+        std::fs::create_dir_all(empty.join("Library/Managed Preferences")).unwrap();
+        assert!(!macos_profile_present(&empty));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_profile_path_counts_as_present_without_being_followed() {
+        let root = scratch("profile-link");
+        let profile = root.join(MACOS_MANAGED_PREFERENCES);
+        std::fs::create_dir_all(profile.parent().unwrap()).unwrap();
+        // Dangling: following it would find nothing, so only lstat sees it.
+        std::os::unix::fs::symlink(root.join("missing.plist"), &profile).unwrap();
+        assert!(macos_profile_present(&root));
+    }
+
+    #[test]
+    fn device_management_turns_desktop_updates_off_whatever_the_file_says() {
+        // A usable file that names a mirror, beside a device-managed source.
+        let dir = scratch("device-managed");
+        let system = dir.join("policy.json");
+        std::fs::write(
+            &system,
+            r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"feedUrl":"https://mirror.example/station"}}}"#,
+        )
+        .unwrap();
+        let device_managed = macos_profile_present(&root_with_profile("device-managed-root"));
+        let policy = load_with_device_management(device_managed, &system, None, None);
+        assert_eq!(policy, InstalledPolicy::DeviceManaged);
+        let route = route(&policy, "stable", &[STABLE.to_string()]);
+        assert_eq!(
+            route,
+            UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
+        );
+        assert!(!download_allowed(&route, STABLE));
+        assert!(!download_allowed(&route, "https://mirror.example/station/stable-desktop/latest.json"));
+        // Without device management the same file is read as before.
+        assert!(matches!(
+            load_with_device_management(false, &system, None, None),
+            InstalledPolicy::Limited(_)
+        ));
+        // And with neither, there is no policy.
+        assert_eq!(
+            load_with_device_management(false, &dir.join("absent.json"), None, None),
+            InstalledPolicy::Unlimited
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_policy_key_check_reads_hklm() {
+        // A key every Windows installation has, and one none has.
+        assert!(windows_policy_key_present(
+            "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
+        ));
+        assert!(!windows_policy_key_present(
+            "SOFTWARE\\Policies\\Kontour\\StationTestKeyThatDoesNotExist"
+        ));
     }
 
     #[test]
