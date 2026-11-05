@@ -1,0 +1,23 @@
+{
+  "revision": "89d2c02f6011c71f8e19cea0c3d4f12120b0661e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed preset-derived create/run composition against composeEnsembleBrief and the real route integration. Each fresh brief now has an escaped own-seat ID, codename, role and Stationmaster marker alongside the shared roster; authored additions are preserved and old records retain stored briefs. Baseline role regressions failed before repair; 33 contract/runtime integration cases pass. The fresh initialized native Claude/Codex run at 89d2c02f6011 returned all three own-role tokens with one start/terminal each and Flow join order. This is basic native-group evidence only, not streaming/elicitation, context-sync, portable lineage, billing or whole-epic acceptance.","inputs":["docs/reference/api.md","packages/contracts/src/ensemble.ts","src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed preset client descriptions against the unchanged request/response schemas and corrected server brief compiler. The SDK still submits authored preset bytes plus receiver selections; it neither chooses credentials nor grants authority. Documented explicit current-member assignment and retained-brief immutability. No SDK API field or parser contract changes; no package publication or full native acceptance claimed.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the Ensemble export row against the pure formatter, parser and caller. Deterministic escaped current-member assignments are now explicit, appends remain byte-preserved, and roster/member data grant no permissions. Same-engine empty-append regression catches the previous identical briefs. Contracts typecheck and affected consumer checks pass; changeset records the output behavior change.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Scoped dependency review of Ensemble contract change. Local station ensemble inspect still parses declarations and renders the same roster; composeEnsembleBrief is used by server group preparation and adds per-member assignment only to fresh execution briefs. Command verbs, local-file inspection output, authentication behavior and publication limits are unchanged.","inputs":["docs/reference/cli.md","packages/contracts/src/ensemble.ts","src-ui/src/views/activity/__tests__/ActivityList.test.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"Scoped API-reference review: the changed paragraph concerns preset-derived member briefs only. Terminal transport, session lifecycle, PTY/journal ownership and operator admission are unchanged. No terminal or native-shell qualification follows from the basic CLI engine group run.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Scoped contracts-reference review: a member assignment is run context attached to an existing Agent/engine receiver, not a new authenticated principal or grant. Current Agent/Session vocabulary and the cited contract boundaries remain accurate; no glossary prose correction needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped public-reference review: API, SDK and contract owners now describe explicit own-member assignment in fresh briefs, preserve byte-exact authored additions and retain old stored briefs. No deployment, tenant, released-package, automated group trigger or full qualification promise is added.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the changed formatter against normative contracts routing: it remains deterministic, environment-free and domain-owned, imports no Node or app internals, and is consumed by real server preparation. The changeset and contract/consumer tests make the prompt behavior change explicit.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Scoped SDK-reference review: canonical docs now describe server-composed own-member data, with no app-internal import or SDK request change. Existing authority and retry semantics remain unchanged. Runtime integration verifies the actual dispatched prompts; this note does not claim SDK publication or full group qualification.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
