@@ -648,7 +648,8 @@ export function applyOrchestrationSnapshot(
   const replayId = options?.replayThreadId;
   if (replayId && !isReplayThread(replayId))
     throw new Error('Snapshot replay requires a registered replay thread');
-  if (!replayId) backgroundTasksStore.reconcileSnapshot(payload);
+  if (!replayId && options?.apiBase)
+    backgroundTasksStore.reconcileSnapshot(payload, options.apiBase);
 
   const snapshot = Object.fromEntries(
     Object.entries(activeChatsStore.getSnapshot()).filter(([id]) =>
@@ -751,10 +752,38 @@ export function applyOrchestrationSnapshot(
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
     reconcileChildWorkSnapshot(payload.sessions);
-    // A snapshot names its Station; one without (no caller today) folds into
-    // no partition rather than a guessed one.
-    if (options?.apiBase)
+    if (options?.apiBase) {
       childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+      const chats = Object.entries(activeChatsStore.getSnapshot());
+      const matchingChats = (id: string) =>
+        chats
+          .filter(
+            ([key, chat]) =>
+              key === id ||
+              chat.currentSessionId === id ||
+              chat.conversationId === id,
+          )
+          .map(([key]) => key);
+      for (const session of payload.sessions) {
+        const direct = matchingChats(session.threadId);
+        const candidates = direct.length
+          ? direct
+          : session.conversationId
+            ? matchingChats(session.conversationId)
+            : [];
+        const chatKey = candidates.length === 1 ? candidates[0] : undefined;
+        if (chatKey)
+          backgroundTasksStore.bindProviderReporter(
+            options.apiBase,
+            session.threadId,
+            chatKey,
+          );
+      }
+      backgroundTasksStore.reconcileProviderReporters(
+        options.apiBase,
+        new Set(payload.sessions.map((session) => session.threadId)),
+      );
+    }
   }
 
   if (!replayId && options?.apiBase) {

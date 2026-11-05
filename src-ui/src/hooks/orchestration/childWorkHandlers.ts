@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { ChatBackgroundTask } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { childWorkSummaryLabel } from '../../utils/child-work-display';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -129,7 +130,8 @@ function settleHeading(status: ChildWorkTerminalDisplayStatus): string {
  * outcome exactly once, on the settle that brought its RESULT. The engine's
  * first terminal has identity but no result, its second the result; the
  * reducer records the first and enriches it with the second, so "this settle
- * added a result" is the one moment to speak.
+ * added a result" is the one moment to speak. A later structured tool return
+ * corrects that notice in place without another announcement.
  *
  * station#1877: registry membership alone does not mean the user saw the
  * child as "still working" — an inline tool part already reports a same-turn
@@ -142,7 +144,11 @@ function announceSettle(
   before: ChildWorkItem | undefined,
   after: ChildWorkItem | undefined,
 ): void {
-  if (!after || hasResult(before) || !hasResult(after)) return;
+  if (!after || !hasResult(after)) return;
+  const returned =
+    after.result?.source === 'tool-return' &&
+    before?.result?.source !== 'tool-return';
+  if (hasResult(before) && !returned) return;
   if (after.backgrounded !== true && before?.backgrounded !== true) return;
   // R6: the registry's resulting status, which is sticky — a later terminal
   // that only enriches must not relabel the outcome it enriches.
@@ -152,16 +158,36 @@ function announceSettle(
   const heading = settleHeading(status);
   const label = after.title ? `${heading} — ${after.title}` : heading;
   const summary = after.result?.summary;
-  activeChatsStore.addEphemeralMessage(threadId, {
-    role: 'system',
+  const notice = {
+    role: 'system' as const,
     childWorkKey: childWorkKey(after),
-    content: summary ? `${label}\n\n${summary}` : label,
+    content: summary
+      ? `${label}\n\n${after.result?.source ? `${childWorkSummaryLabel(after.result.source)}: ` : ''}${summary}`
+      : label,
     backgroundTaskNotice: {
       status,
       ...(after.title ? { title: after.title } : {}),
       ...(summary ? { summary } : {}),
+      ...(summary && after.result?.source
+        ? { summarySource: after.result.source }
+        : {}),
     },
-  });
+  };
+  if (hasResult(before)) {
+    const messages =
+      activeChatsStore.getSnapshot()[threadId]?.ephemeralMessages;
+    if (
+      !messages?.some((message) => message.childWorkKey === notice.childWorkKey)
+    )
+      return;
+    activeChatsStore.updateChat(threadId, {
+      ephemeralMessages: messages.map((message) =>
+        message.childWorkKey === notice.childWorkKey
+          ? { ...message, ...notice }
+          : message,
+      ),
+    });
+  } else activeChatsStore.addEphemeralMessage(threadId, notice);
 }
 
 function deltaReporter(delta: ChildWorkDelta): string {

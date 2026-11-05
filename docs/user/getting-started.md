@@ -853,6 +853,20 @@ can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
 when you return to the conversation.
 
+### Read child-work outcomes
+
+Child-work cards distinguish **Returned result**, **Provider summary**,
+**Child message**, and **Provider error**. Older text may show that its source
+was not recorded. A summary or transcript handle alone does not establish a
+returned result. An existing completion notice is corrected when a later
+structured tool return arrives.
+
+Background-task **Recent activity** is a bounded cache. Older tool rows and
+closed-chat history can be omitted; counts marked **shown** describe retained
+rows. Closing a chat does not stop its child work. Use Activity to inspect the
+Session history available from that Station. Missing snapshot evidence keeps an
+outcome unresolved rather than declaring success.
+
 ### Send a follow-up while an engine works
 
 For a running Codex subagent that supports direct instructions, expand its

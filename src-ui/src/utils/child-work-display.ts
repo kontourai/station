@@ -1,6 +1,7 @@
 import type {
   ChildWorkDisplayStatus,
   ChildWorkModel,
+  ChildWorkSummarySource,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
@@ -97,4 +98,21 @@ export function latestChildTool(
     }
   }
   return undefined;
+}
+
+export function childWorkSummaryLabel(
+  source: ChildWorkSummarySource | undefined,
+): string {
+  switch (source) {
+    case 'tool-return':
+      return 'Returned result';
+    case 'provider-summary':
+      return 'Provider summary';
+    case 'child-message':
+      return 'Child message';
+    case 'provider-error':
+      return 'Provider error';
+    default:
+      return 'Summary · source not recorded';
+  }
 }
