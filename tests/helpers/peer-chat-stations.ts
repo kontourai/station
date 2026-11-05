@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   type DevicePairingOffer,
   pairingScopePresetString,
@@ -739,6 +739,20 @@ export async function captureConnectionState(
         path: testInfo.outputPath(name),
         contentType: 'image/png',
       });
+      // The product runner removes successful outputs after settlement.
+      // Retain the original and Playwright's actual attachment before cleanup.
+      const evidence = join(
+        tmpdir(),
+        'station-p17-evidence',
+        basename(dirname(dirname(testInfo.outputDir))),
+        basename(testInfo.outputDir),
+      );
+      mkdirSync(join(evidence, 'attachments'), { recursive: true });
+      copyFileSync(testInfo.outputPath(name), join(evidence, name));
+      const attachment = testInfo.attachments.find((item) => item.name === name);
+      if (!attachment?.path)
+        throw new Error(`Playwright did not retain the ${name} attachment`);
+      copyFileSync(attachment.path, join(evidence, 'attachments', name));
       const kept = join(tmpdir(), 'station-p17-visual');
       mkdirSync(kept, { recursive: true });
       copyFileSync(testInfo.outputPath(name), join(kept, name));
