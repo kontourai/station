@@ -563,6 +563,10 @@ export async function captureConnectionState(
 /** The mobile Inbox is a page in the dock, with its own named entry. */
 export async function ensureConnectionInboxOpen(page: Page) {
   const mobileHeader = page.getByTestId('chat-dock-mobile-header');
+  // Reload resolves before the responsive dock chrome has mounted.
+  await expect(
+    mobileHeader.or(page.getByRole('button', { name: /^(Show|Hide) inbox/ })),
+  ).toBeVisible();
   if (await mobileHeader.isVisible()) {
     const entry = mobileHeader.getByRole('button', {
       name: 'Inbox',
