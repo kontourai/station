@@ -5461,18 +5461,23 @@ extends only their own current hold at the current epoch, never claims, and
 is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
 controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
-resurrect old work. A claim or input batch may carry a viewer `requestId`; the
-lease records, for the current epoch, the id of the request whose handoff
-created it (`epochCause`, null for an Agent or a request without one). A
-renewal by the controller already holding the lease (another tab of the same
-person and device) creates no epoch and changes no cause. Answers carry
-`epochCause` when the request named an id, and state records carry it on a
-stream opened with `epochCause=1`, so an older viewer never sees the key
-(`liveSurfaceEpochCause` capability). The registry serializes and fences
-input, records what each controller pressed, and releases a controller's
-presses (never completing them) on handoff, on lapse to no holder, on the
-fenced `release-pressed` lease action, and when that controller's last viewer
-stream closes. It marks a timed-out dispatch wedged until it settles.
+resurrect old work. Each frames stream opened with `epochCause=1` is issued an
+unguessable `viewerId`, told only to that stream; a replacement stream (new
+stream params, a reconnect) presents it and stays that viewer. Claims, input and
+`release-pressed` carry it, and the registry honours it only from the
+controller it was issued to. The lease records which viewer's handoff created
+the current epoch; each stream's state records and each answer carry only
+`epochCause` for that viewer (`self`, `other` or `agent`), with the lease read
+at the same snapshot, so no viewer ever learns another's id. A renewal by the
+controller already holding the lease (another tab of the same person and
+device) creates no epoch and changes no cause. An older viewer that does not
+ask sees neither key (`liveSurfaceEpochCause` capability). The registry
+serializes and fences input, records what each controller pressed, and releases
+a controller's presses (never completing them) on handoff, on lapse to no
+holder, on the fenced `release-pressed` lease action, and once the controller
+has had no open stream for a grace window (checked again when it ends), so a
+replacement stream releases nothing. It marks a timed-out dispatch wedged
+until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
@@ -5558,15 +5563,20 @@ Project context changes, the viewer discards queued input, aborts its requests
 and ignores responses from the previous target. Within a target, every input
 item carries the control lineage it was created in (`useLiveSurface`'s
 `controlLineage`). It advances on every change of control except this viewer's
-own takeover: an epoch whose server-attested `epochCause` is one of this
-viewer's request ids. Another tab of the same person and device is a change of
-control. Queued input, a held-back press and a kept gesture are checked against
+own takeover: an epoch whose server-attested `epochCause` for this viewer is
+`self`. Another tab of the same person and device is a change of control.
+Requests name this viewer only while the stream that confirmed its id is open,
+and the host is asked which Station it is (`environmentId`) and whether it
+attests on every (re)connect: a different Station behind the same address
+resets the viewer. The published lease never moves back to an older snapshot. Queued input, a held-back press and a kept gesture are checked against
 it immediately before dispatch, a release goes out only in the lineage its press
 was sent in (otherwise the server already released it), and an answer for an
 ended lineage is ignored. Input and claim requests are bounded (10 s); after any
 completion the viewer reconciles to the newest lease its stream reported. The
 viewer asks the server to release its presses on blur, a hidden page, unmount
-and an answer lost for a press. Against a host without `liveSurfaceEpochCause`
+and an answer lost for a press, and keeps that obligation until the server
+confirms it (retried with backoff, retried at the reported epoch when stale,
+ended by a change of control); queued releases are never discarded. Against a host without `liveSurfaceEpochCause`
 it sends none of these fields: an input answer that took exactly the next epoch
 is its own, a report naming this device waits for its own request, and the
 releases queued behind a lost answer still go. This does not yet bind the queue

@@ -264,7 +264,9 @@ person's hold to lapse. Closing the pane does not release the lease; it
 can lapse. What a person pressed (buttons, keys, touches) is released by
 Station, not completed: when control passes to someone else or lapses, when
 the viewer asks (blur, a hidden page, closing the pane, or an answer lost for
-a press), and when that person's last open view of the surface closes. A second
+a press), and when that person has had no open view of the surface for a few
+seconds (a view reopening with a larger picture or after a dropped connection
+is the same view, and releases nothing). A second
 tab of the same person on the same device shares that control; a tap made in
 one tab before the other took control is not sent into it. A timeout or
 interrupted operation does not establish that an already-sent browser effect
