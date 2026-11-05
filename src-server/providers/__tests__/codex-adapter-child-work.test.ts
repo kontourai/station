@@ -662,9 +662,13 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
       const item = child(events);
       expect(item.status).toBe(expected);
       expect(item.usage).toEqual({ totalTokens: 123, durationMs: 42 });
-      if (expected === 'completed') expect(item.result?.summary).toBe('final');
+      if (expected === 'completed') {
+        expect(item.result?.summary).toBe('final');
+        expect(item.result?.source).toBe('child-message');
+      }
       if (expected === 'failed') {
         expect(item.result?.summary).toBe('usage limit');
+        expect(item.result?.source).toBe('provider-error');
       }
     });
   }
@@ -1289,4 +1293,79 @@ describe('#2458 fix round 2: shared thread ids, late child streams, byte order',
     expect(child(events, 'A').usage).toEqual({ totalTokens: 3 });
     expect(child(events, 'B').usage).toBeUndefined();
   });
+});
+
+test('captured child tool activity is attributed without its command inputs or parent tools', () => {
+  const capture = CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED;
+  const toolIndex = capture.findIndex((line) => {
+    const { msg } = JSON.parse(line);
+    return (
+      msg.method === 'item/started' &&
+      msg.params.threadId === CHILD &&
+      msg.params.item.type === 'fileChange'
+    );
+  });
+  expect(toolIndex).toBeGreaterThan(0);
+  const { events } = replayCodexCapture(capture, { limit: toolIndex + 1 });
+  expect(child(events)).toMatchObject({
+    status: 'running',
+    latestTool: 'apply_patch',
+  });
+  expect(JSON.stringify(child(events))).not.toContain(
+    '/workspace/repo/hello.txt',
+  );
+});
+
+test('child tool activity survives same-turn steer but clears for a new turn and excludes late old tools', () => {
+  const start = (id: string): Msg => ({
+    method: 'turn/started',
+    params: { threadId: CHILD, turn: { id } },
+  });
+  const tool = (turnId: string, name: string): Msg => ({
+    method: 'item/started',
+    params: {
+      threadId: CHILD,
+      turnId,
+      item: {
+        type: 'dynamicToolCall',
+        id: name,
+        tool: name,
+        arguments: { secret: 'not projected' },
+      },
+    },
+  });
+  expect(
+    child(
+      replayCodexCapture(synthetic([spawn(), tool('a', 'Read'), start('a')]))
+        .events,
+    ).latestTool,
+  ).toBe('Read');
+  const first = [spawn(), start('a'), tool('a', 'Read'), start('a')];
+  const padded = replayCodexCapture(
+    synthetic([...first, tool('a', `${' '.repeat(1024 * 1024)}Write `)]),
+  );
+  expect(child(padded.events).latestTool).toBe('Write');
+  for (const delta of deltasOf(padded.events)) {
+    if (delta.kind === 'upsert')
+      expect(delta.item.latestTool?.length ?? 0).toBeLessThanOrEqual(200);
+  }
+  const invalid = replayCodexCapture(
+    synthetic([...first, tool('a', 'x'.repeat(1024 * 1024))]),
+  );
+  expect(child(invalid.events).latestTool).toBe('Read');
+  for (const delta of deltasOf(invalid.events)) {
+    if (delta.kind === 'upsert')
+      expect(delta.item.latestTool?.length ?? 0).toBeLessThanOrEqual(200);
+  }
+  expect(child(replayCodexCapture(synthetic(first)).events).latestTool).toBe(
+    'Read',
+  );
+  const next = [...first, start('b'), tool('a', 'Stale')];
+  expect(
+    child(replayCodexCapture(synthetic(next)).events).latestTool,
+  ).toBeUndefined();
+  expect(
+    child(replayCodexCapture(synthetic([...next, tool('b', 'Write')])).events)
+      .latestTool,
+  ).toBe('Write');
 });
