@@ -1067,9 +1067,9 @@ async function openConversationHistoryFromInbox(
     .click();
 }
 
-async function expandSettledShelf(chatList: ReturnType<Page['getByRole']>) {
+async function expandOpenShelf(chatList: ReturnType<Page['getByRole']>) {
   const toggle = chatList.getByRole('button', {
-    name: /^Settled(?: · \d+)?$/,
+    name: /^Open(?: · \d+)?$/,
   });
   await expect(toggle).toBeVisible();
   if ((await toggle.getAttribute('aria-expanded')) === 'false')
@@ -1429,7 +1429,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
 
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await expandSettledShelf(chatList);
+    await expandOpenShelf(chatList);
     await expect(
       chatList
         .getByRole('button', { name: /^Station Chat/ })
@@ -1580,7 +1580,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       project: 'Alpha Project',
     });
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await expandSettledShelf(chatList);
+    await expandOpenShelf(chatList);
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     const send = page.getByRole('button', { name: 'Send', exact: true });
     const observations: UiObservation[] = [];
@@ -1612,7 +1612,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
-    await expandSettledShelf(
+    await expandOpenShelf(
       page.getByRole('complementary', { name: 'Inbox chats' }),
     );
     await selectProductPath(page, path);
@@ -1641,7 +1641,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await seedCrossRuntimeRoutes(page);
 
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
-    await expandSettledShelf(
+    await expandOpenShelf(
       page.getByRole('complementary', { name: 'Inbox chats' }),
     );
     await expect(
@@ -1675,7 +1675,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     await seedCrossRuntimeRoutes(page, executionRequests);
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await expandSettledShelf(chatList);
+    await expandOpenShelf(chatList);
     await expect(
       chatList
         .getByRole('button', { name: /^Station Chat/ })
