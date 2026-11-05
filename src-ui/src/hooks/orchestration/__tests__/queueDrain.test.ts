@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { StationStateScope } from '../../../connections/station-state';
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
 let resumePendingSendNowOnTurnTerminal: typeof import('../queueDrain').resumePendingSendNowOnTurnTerminal;
@@ -12,6 +13,27 @@ const interruptMock = vi.fn();
 const sendExecutionMessageMock = vi.fn().mockResolvedValue(undefined);
 
 const threadId = 'thread-drain-1';
+const receiver: StationStateScope = {
+  runtimeKey: 'receiver-relay',
+  targetApiBase: 'https://source.test/relay/receiver',
+  authorityNamespace: 'source:delegation',
+  requestScope: {
+    apiBase: 'https://source.test',
+    authorityKey: 'source-owner',
+  },
+  isCurrent: () => true,
+  binding: {
+    version: 1,
+    environmentId: 'receiver',
+    stationName: 'Receiver',
+    affinity: {
+      kind: 'peer',
+      sourceEnvironmentId: 'source',
+      sourceConnectionId: 'profile',
+      principalNamespace: 'delegation',
+    },
+  },
+};
 
 describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   beforeEach(async () => {
@@ -124,6 +146,106 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     await vi.waitFor(async () =>
       expect(await queue.outboundDispatch.snapshot()).toEqual([]),
     );
+  });
+
+  test('a peer queue waits through a host drain and dispatches durably through its owning scope', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, update) => {
+        stored = update(stored);
+      },
+    });
+    activeChatsStore.updateChat(threadId, {
+      stationBinding: receiver.binding,
+      conversationId: 'peer-conversation',
+      queuedMessages: ['peer follow-up'],
+      queuedMessageMetadata: [{ id: 'peer-queue-key', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('https://source.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual([
+      'peer follow-up',
+    ]);
+    let rowAtPost: unknown;
+    sendExecutionMessageMock.mockImplementationOnce(async () => {
+      rowAtPost = (await queue.outboundDispatch.snapshot())[0];
+      return {
+        conversationId: 'peer-conversation',
+        sessionId: 'peer-execution',
+        providerTurnId: 'peer-turn',
+        target: { kind: 'agent', id: 'claude' },
+        resolution: {},
+      };
+    });
+    drainQueuedMessageOnTurnCompleted(
+      'https://source.test',
+      threadId,
+      false,
+      false,
+      receiver,
+    );
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(sendExecutionMessageMock.mock.calls[0]?.[0]).toBe(
+      receiver.targetApiBase,
+    );
+    expect(sendExecutionMessageMock.mock.calls[0]?.[2]).toMatchObject({
+      requestScope: receiver.requestScope,
+    });
+    expect(rowAtPost).toMatchObject({
+      clientTurnId: 'peer-queue-key',
+      status: 'invoking',
+      station: {
+        environmentId: 'receiver',
+        apiBase: receiver.targetApiBase,
+        authorityNamespace: receiver.authorityNamespace,
+      },
+    });
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  test('retiring a peer during the settle delay restores its exact held head without dispatch', async () => {
+    let current = true;
+    const scope = { ...receiver, isCurrent: () => current };
+    activeChatsStore.updateChat(threadId, {
+      stationBinding: receiver.binding,
+      queuedMessages: ['one', 'two'],
+      queuedMessageMetadata: [
+        { id: 'one', mode: 'queue' },
+        { id: 'two', mode: 'queue' },
+      ],
+    });
+    drainQueuedMessageOnTurnCompleted(
+      receiver.targetApiBase,
+      threadId,
+      false,
+      false,
+      scope,
+    );
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.pendingQueueDispatch?.metadata
+        .id,
+    ).toBe('one');
+    current = false;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+      queuedMessages: ['one', 'two'],
+      queuedMessageMetadata: [{ id: 'one' }, { id: 'two' }],
+    });
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.pendingQueueDispatch,
+    ).toBeUndefined();
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.queueDrainSettling,
+    ).toBeUndefined();
   });
 
   test('a queued message the outbox already holds as possibly started is not sent again by the drain', async () => {

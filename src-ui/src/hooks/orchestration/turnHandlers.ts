@@ -15,7 +15,10 @@ import {
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
 import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
-import type { StationStateScope } from '../../connections/station-state';
+import {
+  outboundStationIdentity,
+  type StationStateScope,
+} from '../../connections/station-state';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -61,11 +64,16 @@ function reconcileDurableTurn(
   providerTurnId: string,
   station?: StationStateScope,
 ): void {
-  if (station && station.binding.affinity.kind !== 'host') return;
   const chatStore = activeChatsStore.forStation(station);
   void import('../../lib/outboundQueue')
     .then(({ outboundDispatch }) =>
-      outboundDispatch.completeAcceptedTurn(sessionId, providerTurnId),
+      station
+        ? outboundDispatch.completeAcceptedTurn(
+            sessionId,
+            providerTurnId,
+            outboundStationIdentity(station),
+          )
+        : outboundDispatch.completeAcceptedTurn(sessionId, providerTurnId),
     )
     .catch((error) => {
       chatStore.updateChat(sessionId, {

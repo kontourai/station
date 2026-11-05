@@ -1,9 +1,13 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import type { StationConnection } from '../connections/station-connection';
 import {
   chatBelongsToStation,
+  outboundStationIdentity,
   type StationStateScope,
   stationStateKey,
 } from '../connections/station-state';
+import { outboundDispatch, rowBelongsToStation } from '../lib/outboundQueue';
+import { migratePeerChatState } from '../lib/peer-chat';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { migrateInboxDismissal } from '../utils/inbox-dismissal-store';
@@ -200,6 +204,81 @@ export class ActiveChatsStore {
   };
 
   getSnapshot = () => this.snapshot;
+
+  async migratePeerChat(
+    sessionId: string,
+    connection: StationConnection,
+    options: { confirmedRecovery: boolean },
+  ): Promise<void> {
+    if (options?.confirmedRecovery !== true)
+      throw new Error(
+        'Confirm the new Station connection before restoring this chat.',
+      );
+    const original = this.chats[sessionId];
+    if (!original?.peerChat || original.stationBinding) return;
+    const updates = await migratePeerChatState(sessionId, original, connection);
+    const latest = this.chats[sessionId];
+    if (
+      !latest ||
+      latest.stationBinding ||
+      latest.peerChat !== original.peerChat
+    )
+      return;
+    // Preserve edits made while importing. No asynchronous gap before the write.
+    if (updates.queuedMessageMetadata?.[0] && updates.queuedMessages?.[0]) {
+      const metadata = updates.queuedMessageMetadata[0];
+      const content = updates.queuedMessages[0];
+      const alreadyQueued = latest.queuedMessageMetadata?.some(
+        (entry) => entry.id === metadata.id,
+      );
+      updates.queuedMessages = alreadyQueued
+        ? latest.queuedMessages
+        : [content, ...latest.queuedMessages];
+      updates.queuedMessageMetadata = alreadyQueued
+        ? latest.queuedMessageMetadata
+        : [metadata, ...(latest.queuedMessageMetadata ?? [])];
+    }
+    this.chats[sessionId] = { ...latest, ...updates };
+    if (!this.saveToStorage()) {
+      this.chats[sessionId] = latest;
+      this.notify(false);
+      throw new Error(
+        'The paired chat migration could not be saved. Retry to continue.',
+      );
+    }
+    this.notify(false);
+    await outboundDispatch.activateLegacyImports(
+      sessionId,
+      outboundStationIdentity(connection),
+      this.chats[sessionId]?.conversationId,
+    );
+  }
+
+  /** Recover the crash after chat write, or persist a chat restored from its row. */
+  async recoverLegacyImports(connection: StationConnection): Promise<void> {
+    const station = outboundStationIdentity(connection);
+    const rows = await outboundDispatch.snapshot();
+    if (!connection.isCurrent()) return;
+    const chats = this.forStation(connection).getSnapshot();
+    const eligible = rows.filter(
+      (row) =>
+        row.legacyImport &&
+        rowBelongsToStation(row, station) &&
+        chats[row.sessionId]?.conversationId ===
+          (row.conversationId ?? row.sessionId),
+    );
+    if (!eligible.length) return;
+    if (!this.saveToStorage())
+      throw new Error(
+        'The restored chat could not be saved. Retry to continue.',
+      );
+    for (const row of eligible)
+      await outboundDispatch.activateLegacyImports(
+        row.sessionId,
+        station,
+        row.conversationId ?? row.sessionId,
+      );
+  }
 
   /** Capture a single-use seed capability for this exact composer draft. */
   captureComposerDraft(sessionId: string) {

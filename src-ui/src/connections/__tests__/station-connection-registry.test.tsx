@@ -146,6 +146,26 @@ afterEach(() => {
 });
 
 describe('Station connection registry', () => {
+  it('refuses non-host operations when the chat preview is disabled while host remains usable', async () => {
+    const { source, registry } = setup();
+    source.remoteIsCurrent = () => false;
+    const host = await resolveStationConnection({
+      source,
+      registry,
+      profiles: [],
+    });
+    expect(host.connection.isCurrent()).toBe(true);
+    await expect(
+      resolveStationConnection({
+        source,
+        registry,
+        profiles: [],
+        environmentId: 'receiver',
+      }),
+    ).rejects.toMatchObject({ reason: 'authority-unavailable' });
+    expect(host.connection.isCurrent()).toBe(true);
+    host.release();
+  });
   it('shares preparation, releases individual readers and retires all connections with the source client', async () => {
     const { source, registry, client } = setup();
     const unregister = registerStationConnectionRegistry(client, registry);
@@ -320,8 +340,35 @@ describe('Station connection registry', () => {
     expect(lease.connection.capabilities.folderSelect.state).toBe('denied');
     expect(lease.connection.capabilities.fullAccess.state).toBe('denied');
     const binding = lease.connection.binding;
-    lease.release();
     lineage = 'receiver-principal-two';
+    const recovered = await resolveStationConnection({
+      source,
+      registry,
+      profiles: [],
+      environmentId: 'receiver',
+      legacyPeer: true,
+    });
+    expect(recovered.connection.runtimeKey).not.toBe(
+      lease.connection.runtimeKey,
+    );
+    expect(recovered.connection.binding.affinity).toMatchObject({
+      kind: 'peer',
+      principalNamespace: lineage,
+    });
+    expect(binding.affinity).toMatchObject({
+      kind: 'peer',
+      principalNamespace: 'receiver-principal-one',
+    });
+    const pinned = await resolveStationConnection({
+      source,
+      registry,
+      profiles: [],
+      binding: recovered.connection.binding,
+    });
+    expect(pinned.connection.binding).toEqual(recovered.connection.binding);
+    pinned.release();
+    recovered.release();
+    lease.release();
     await expect(
       resolveStationConnection({ source, registry, profiles: [], binding }),
     ).rejects.toMatchObject({ reason: 'authority-unavailable' });
@@ -380,6 +427,17 @@ describe('Station connection registry', () => {
 
   it('retires direct and host leases when the mounted authority namespace is replaced', async () => {
     const client = new QueryClient();
+    client.setQueryData(
+      ['feature-previews', 'default'],
+      [
+        {
+          id: 'paired-station-chats',
+          label: 'Paired Station chats',
+          description: '',
+          enabled: true,
+        },
+      ],
+    );
     let connections: MountedConnections | null = null;
     const capture = (value: MountedConnections) => {
       connections = value;

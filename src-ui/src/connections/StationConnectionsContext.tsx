@@ -1,11 +1,14 @@
 import { useConnections } from '@kontourai/station-connect';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   type ReactNode,
   useContext,
+  useEffect,
   useInsertionEffect,
   useMemo,
+  useRef,
 } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -21,9 +24,11 @@ import {
 } from './station-connection-registry';
 
 interface StationConnections {
+  readonly remoteEnabled: boolean;
   resolve(options?: {
     environmentId?: string;
     binding?: ChatStationBindingV1;
+    legacyPeer?: boolean;
   }): ReturnType<typeof resolveStationConnection>;
 }
 
@@ -40,6 +45,17 @@ export function StationConnectionsProvider({
   const queryClient = useQueryClient();
   const { activeConnection, connections } = useConnections();
   const scope = useHostRequestAuthorityScope();
+  const previews = useFeaturePreviewsQuery();
+  const remoteEnabled =
+    previews.data?.some(
+      (preview) => preview.id === 'paired-station-chats' && preview.enabled,
+    ) === true;
+  const remotePreviewRef = useRef({ enabled: remoteEnabled, epoch: 0 });
+  if (remotePreviewRef.current.enabled !== remoteEnabled)
+    remotePreviewRef.current = {
+      enabled: remoteEnabled,
+      epoch: remotePreviewRef.current.epoch + 1,
+    };
   // biome-ignore lint/correctness/useExhaustiveDependencies: replacing a query client must mint fresh leases even under the same namespace and scope.
   const registry = useMemo(
     () =>
@@ -54,13 +70,18 @@ export function StationConnectionsProvider({
     () => registerStationConnectionRegistry(queryClient, registry),
     [queryClient, registry],
   );
+  useEffect(() => {
+    if (!remoteEnabled) registry.retireRemote();
+  }, [registry, remoteEnabled]);
   const value = useMemo<StationConnections>(
     () => ({
+      remoteEnabled,
       resolve: (options = {}) => {
         if (!namespace || !observation || !scope || !activeConnection)
           return Promise.reject(
             new StationConnectionUnavailableError('authority-unavailable'),
           );
+        const remoteEpoch = remotePreviewRef.current.epoch;
         const source: StationConnectionSource = {
           authorityNamespace: namespace,
           observation,
@@ -71,6 +92,9 @@ export function StationConnectionsProvider({
             !activeConnection.brokerRoute &&
             !activeConnection.nativeBrokerRoute,
           isCurrent: scope.isCurrent,
+          remoteIsCurrent: () =>
+            remotePreviewRef.current.enabled &&
+            remotePreviewRef.current.epoch === remoteEpoch,
         };
         return resolveStationConnection({
           registry,
@@ -80,7 +104,15 @@ export function StationConnectionsProvider({
         });
       },
     }),
-    [registry, namespace, observation, scope, activeConnection, connections],
+    [
+      registry,
+      namespace,
+      observation,
+      scope,
+      activeConnection,
+      connections,
+      remoteEnabled,
+    ],
   );
   return (
     <StationConnectionsContext.Provider value={value}>

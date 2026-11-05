@@ -358,7 +358,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Send this message from the remote chat composer.',
+        message:
+          'Reconnect to the Station that owns this conversation before sending.',
       }),
     );
   });

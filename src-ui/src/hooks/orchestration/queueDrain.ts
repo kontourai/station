@@ -14,7 +14,11 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import type { StationStateScope } from '../../connections/station-state';
+import {
+  outboundStationIdentity,
+  type StationStateScope,
+  stationStateKey,
+} from '../../connections/station-state';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
@@ -158,7 +162,7 @@ export function resumeHeldQueueDrain(
   chatKey: string,
   station?: StationStateScope,
 ): void {
-  if (station && station.binding.affinity.kind !== 'host') return;
+  if (station && !station.isCurrent()) return;
   const chatStore = activeChatsStore.forStation(station);
   const chat = chatStore.getSnapshot()[chatKey];
   if (!chat?.queueDrainHeldForOpen || !conversationCanMutate(chat)) return;
@@ -197,11 +201,16 @@ function scheduleProviderTurnRedrain(
   code: string,
   station?: StationStateScope,
 ): void {
-  if (station && station.binding.affinity.kind !== 'host') return;
+  if (station && !station.isCurrent()) return;
   const chatStore = activeChatsStore.forStation(station);
-  const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
+  const attempts =
+    providerTurnRedrainAttempts.get(
+      JSON.stringify([station?.runtimeKey, threadId]),
+    ) ?? 0;
   if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
-    providerTurnRedrainAttempts.delete(threadId);
+    providerTurnRedrainAttempts.delete(
+      JSON.stringify([station?.runtimeKey, threadId]),
+    );
     // Out of automatic retries: nothing else would send this message, so
     // say so beside it and offer Retry rather than leaving it silently
     // queued. The message itself stays at the head of the queue.
@@ -221,28 +230,39 @@ function scheduleProviderTurnRedrain(
     }
     return;
   }
-  providerTurnRedrainAttempts.set(threadId, attempts + 1);
+  providerTurnRedrainAttempts.set(
+    JSON.stringify([station?.runtimeKey, threadId]),
+    attempts + 1,
+  );
   const scheduled = chatStore.getSnapshot()[threadId];
   const binding = [scheduled?.conversationId, scheduled?.currentSessionId];
-  const previous = providerTurnRedrainTimers.get(threadId);
+  const previous = providerTurnRedrainTimers.get(
+    JSON.stringify([station?.runtimeKey, threadId]),
+  );
   if (previous) clearTimeout(previous);
   providerTurnRedrainTimers.set(
-    threadId,
+    JSON.stringify([station?.runtimeKey, threadId]),
     setTimeout(() => {
-      providerTurnRedrainTimers.delete(threadId);
+      providerTurnRedrainTimers.delete(
+        JSON.stringify([station?.runtimeKey, threadId]),
+      );
       const chat = chatStore.getSnapshot()[threadId];
       if (
         !chat ||
         chat.conversationId !== binding[0] ||
         chat.currentSessionId !== binding[1]
       ) {
-        providerTurnRedrainAttempts.delete(threadId);
+        providerTurnRedrainAttempts.delete(
+          JSON.stringify([station?.runtimeKey, threadId]),
+        );
         return;
       }
       // An open turn drains the queue when it ends; only a queue nothing
       // would drain is retried here.
       if (!chat.queuedMessages?.length || serverTurnLive(chat) === true) {
-        providerTurnRedrainAttempts.delete(threadId);
+        providerTurnRedrainAttempts.delete(
+          JSON.stringify([station?.runtimeKey, threadId]),
+        );
         return;
       }
       drainQueuedMessageOnTurnCompleted(
@@ -262,7 +282,7 @@ export function resumePendingSendNowOnTurnTerminal(
   turnId: string,
   station?: StationStateScope,
 ): void {
-  if (station && station.binding.affinity.kind !== 'host') return;
+  if (station && !station.isCurrent()) return;
   const chatStore = activeChatsStore.forStation(station);
   const chatKey =
     chatStore.getChatKeyForExecutionSession(executionSessionId) ??
@@ -309,7 +329,7 @@ export async function sendPendingMessageNow(
   messageId: string,
   station?: StationStateScope,
 ): Promise<void> {
-  if (station && station.binding.affinity.kind !== 'host') return;
+  if (station && !station.isCurrent()) return;
   const chatStore = activeChatsStore.forStation(station);
   const chat = chatStore.getSnapshot()[threadId];
   if (!chat || chat.queueSendNowPending) return;
@@ -369,7 +389,8 @@ export async function sendPendingMessageNow(
       });
       const result = await interruptOrchestrationTurn({
         ...target,
-        apiBase,
+        apiBase: station?.targetApiBase ?? apiBase,
+        requestScope: station?.requestScope,
         ...(chat.pendingClientTurnId
           ? { clientTurnId: chat.pendingClientTurnId }
           : {}),
@@ -459,7 +480,7 @@ export function drainQueuedMessageOnTurnCompleted(
   userInitiated = false,
   station?: StationStateScope,
 ) {
-  if (station && station.binding.affinity.kind !== 'host') return;
+  if (station && !station.isCurrent()) return;
   const chatStore = activeChatsStore.forStation(station);
   if (isReplayThread(threadId)) return;
   const chat = chatStore.getSnapshot()[threadId];
@@ -552,35 +573,60 @@ export function drainQueuedMessageOnTurnCompleted(
   });
 
   let dispatchAccepted = false;
+  let dispatchAttempted = false;
   setTimeout(async () => {
     try {
       await dispatchDrainedHead();
     } finally {
-      if (chatStore.getSnapshot()[threadId]?.queueDrainSettling) {
-        chatStore.updateChat(threadId, {
-          queueDrainSettling: undefined,
-          pendingQueueDispatch: undefined,
-        });
-      }
-      const settled = chatStore.getSnapshot()[threadId];
-      if (
-        dispatchAccepted &&
-        settled?.queuedMessages.length &&
-        settled.orchestrationStatus !== 'aborted' &&
-        !isTurnInFlight(settled)
-      ) {
-        drainQueuedMessageOnTurnCompleted(
-          apiBase,
-          threadId,
-          undefined,
-          undefined,
-          station,
-        );
+      if (station && !station.isCurrent()) {
+        const retained = activeChatsStore.getSnapshot()[threadId];
+        if (
+          retained?.pendingQueueDispatch?.metadata.id === nextMetadata.id &&
+          stationStateKey(retained.stationBinding) ===
+            stationStateKey(station.binding)
+        ) {
+          activeChatsStore.updateChat(threadId, {
+            pendingQueueDispatch: undefined,
+            queueDrainSettling: undefined,
+            ...(!dispatchAttempted
+              ? {
+                  queuedMessages: [nextMessage, ...retained.queuedMessages],
+                  queuedMessageMetadata: [
+                    nextMetadata,
+                    ...(retained.queuedMessageMetadata ?? []),
+                  ],
+                }
+              : {}),
+          });
+        }
+      } else {
+        if (chatStore.getSnapshot()[threadId]?.queueDrainSettling) {
+          chatStore.updateChat(threadId, {
+            queueDrainSettling: undefined,
+            pendingQueueDispatch: undefined,
+          });
+        }
+        const settled = chatStore.getSnapshot()[threadId];
+        if (
+          dispatchAccepted &&
+          settled?.queuedMessages.length &&
+          settled.orchestrationStatus !== 'aborted' &&
+          !isTurnInFlight(settled)
+        ) {
+          drainQueuedMessageOnTurnCompleted(
+            apiBase,
+            threadId,
+            undefined,
+            undefined,
+            station,
+          );
+        }
       }
     }
   }, 100);
 
   async function dispatchDrainedHead() {
+    if (station && !station.isCurrent()) return;
     let dispatchForeground: typeof import('../../lib/foregroundMessageDispatch').dispatchForeground;
     try {
       ({ dispatchForeground } = await import(
@@ -681,6 +727,7 @@ export function drainQueuedMessageOnTurnCompleted(
     try {
       const { outboundDispatch } = await import('../../lib/outboundQueue');
       const durable = outboundDispatch.beginLive({
+        station: station ? outboundStationIdentity(station) : undefined,
         clientTurnId: clientId,
         sessionId: threadId,
         agentSlug: current.agentSlug,
@@ -751,8 +798,14 @@ export function drainQueuedMessageOnTurnCompleted(
       live = undefined;
     }
 
+    if (station && !station.isCurrent()) {
+      await live?.hold();
+      return;
+    }
+    dispatchAttempted = true;
     await dispatchForeground({
-      apiBase,
+      apiBase: station?.targetApiBase ?? apiBase,
+      requestScope: station?.requestScope,
       sessionId: threadId,
       clientTurnId: clientId,
       agentSlug: current.agentSlug,
@@ -778,7 +831,9 @@ export function drainQueuedMessageOnTurnCompleted(
       .then(async (receipt) => {
         await live?.accepted();
         dispatchAccepted = true;
-        providerTurnRedrainAttempts.delete(threadId);
+        providerTurnRedrainAttempts.delete(
+          JSON.stringify([station?.runtimeKey, threadId]),
+        );
         // Settled only by what the server reports became of the pick (see
         // the composer send path).
         const carried = current.queuedApprovalMode;

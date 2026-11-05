@@ -1,5 +1,8 @@
 import { activeChatsStore } from '../contexts/active-chats-store';
-import { outboundDispatch } from './outboundQueue';
+import {
+  type OutboundStationIdentity,
+  outboundDispatch,
+} from './outboundQueue';
 
 /**
  * What a user can do with one of their own messages that has not reached the
@@ -13,8 +16,14 @@ export const ALREADY_DELIVERED =
   'Station had already started this message, so it was kept.';
 
 /** Sends a not-sent message again under its own key (`outboundDispatch.retry`). */
-export async function retryNotSentMessage(clientTurnId: string): Promise<void> {
-  await outboundDispatch.retry(clientTurnId);
+export async function retryNotSentMessage(
+  clientTurnId: string,
+  station?: OutboundStationIdentity,
+  conversationId?: string,
+): Promise<void> {
+  if (station)
+    await outboundDispatch.retry(clientTurnId, station, conversationId);
+  else await outboundDispatch.retry(clientTurnId);
 }
 
 /**
@@ -28,14 +37,26 @@ export async function discardMessage(
   chatKey: string,
   clientTurnId: string,
   kind: 'not-sent' | 'unconfirmed',
+  station?: OutboundStationIdentity,
+  conversationId?: string,
 ): Promise<'removed' | 'delivered'> {
-  if (kind === 'unconfirmed')
-    await outboundDispatch.dismissUnconfirmed(clientTurnId);
-  else await outboundDispatch.discard(clientTurnId);
+  if (kind === 'unconfirmed') {
+    if (station)
+      await outboundDispatch.dismissUnconfirmed(
+        clientTurnId,
+        station,
+        conversationId,
+      );
+    else await outboundDispatch.dismissUnconfirmed(clientTurnId);
+  } else {
+    if (station)
+      await outboundDispatch.discard(clientTurnId, station, conversationId);
+    else await outboundDispatch.discard(clientTurnId);
+  }
   // Its row may already be gone because Station started it (the delivery
   // lookup retires the key as accepted): then it was delivered, and its
   // bubble stays, recording that answer.
-  if (await wasAccepted(clientTurnId)) {
+  if (await wasAccepted(clientTurnId, station, conversationId)) {
     recordStarted(chatKey, clientTurnId);
     return 'delivered';
   }
@@ -43,8 +64,14 @@ export async function discardMessage(
   return 'removed';
 }
 
-async function wasAccepted(clientTurnId: string): Promise<boolean> {
-  const { accepted } = await outboundDispatch.retiredKeys();
+async function wasAccepted(
+  clientTurnId: string,
+  station?: OutboundStationIdentity,
+  conversationId?: string,
+): Promise<boolean> {
+  const { accepted } = station
+    ? await outboundDispatch.retiredKeys(station, { conversationId })
+    : await outboundDispatch.retiredKeys();
   return accepted.includes(clientTurnId);
 }
 
@@ -69,9 +96,13 @@ export async function editMessageInComposer(
   chatKey: string,
   clientTurnId: string,
   text: string,
+  station?: OutboundStationIdentity,
+  conversationId?: string,
 ): Promise<'removed' | 'delivered'> {
-  await outboundDispatch.discard(clientTurnId);
-  if (await wasAccepted(clientTurnId)) {
+  if (station)
+    await outboundDispatch.discard(clientTurnId, station, conversationId);
+  else await outboundDispatch.discard(clientTurnId);
+  if (await wasAccepted(clientTurnId, station, conversationId)) {
     recordStarted(chatKey, clientTurnId);
     return 'delivered';
   }

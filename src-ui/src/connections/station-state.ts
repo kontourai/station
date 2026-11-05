@@ -6,7 +6,17 @@ import type {
 export type StationStateScope = Pick<
   StationConnection,
   'binding' | 'runtimeKey' | 'isCurrent' | 'targetApiBase' | 'requestScope'
->;
+> & { readonly authorityNamespace?: string };
+
+export function outboundStationIdentity(station: StationStateScope) {
+  return {
+    binding: station.binding,
+    apiBase: station.targetApiBase,
+    environmentId: station.binding.environmentId,
+    authorityNamespace: station.authorityNamespace,
+    host: station.binding.affinity.kind === 'host',
+  };
+}
 
 type ChatOwner = {
   stationBinding?: ChatStationBindingV1;

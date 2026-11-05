@@ -459,6 +459,27 @@ legacy read and serialization boundary. Add a versioned `stationBinding` and a
 pure migration. No binding means host only when no legacy peer marker exists.
 A malformed remote marker becomes a retained unavailable binding, never host.
 
+**Owner clarification, 2026-11-04:** the old `peerChat` envelope has no source
+profile or principal receipt. `activeChats` uses global sessionStorage, and a
+native origin is shared across connections. Neither the current profile nor
+the page origin proves which source authored a legacy chat. Such chats remain
+visible with their retained transcript, pending text and draft; they are never
+automatically imported, sent or deleted.
+
+The [shared recovery view](../../src-ui/src/components/conversation/LegacyConversationRecovery.tsx)
+offers one **Reconnect chat** action. Its dialog explicitly confirms use of
+the current source Station. Only that confirmation permits resolving a fresh
+relay connection and recording its attributed `stationBinding`. This is the
+recovery exception for otherwise unattributable legacy work: a pending send
+whose `dispatched` flag is true or absent must be looked up on the receiver
+under the new binding before any resend. A failed or unauthorized lookup is
+no permission to resend. Retained local text remains readable while the preview
+is off; confirmation cannot start operations until it is enabled.
+
+Station-less outbox rows are host-only legacy work, but that does not identify
+their source principal. Without an original host namespace receipt they remain
+held; the current host namespace must not adopt them merely because it is active.
+
 Migration preserves tab id, ordering, title, draft, receiver conversation/session,
 agent override/fingerprint, Project identity/name, model/provider options and
 original pending id/text. Use typed fixtures containing the actual old persisted
@@ -472,6 +493,12 @@ marking the chat migrated. Repeating migration after a crash or from two tabs
 must find the same row. Merge newer existing evidence without downgrading started
 to pending. If persistence/import fails, retain the legacy binding and block
 cutover for that tab with a retry action.
+
+An imported row remains inactive until the canonical chat write commits. If
+the app closes between these steps, restoring the row must commit its chat
+before releasing that barrier. Pending import evidence is retained across
+queue synchronization and capacity/age cleanup. The migration and confirmation
+cases are owned by [peer-chat-migration.test.ts](../../src-ui/src/__tests__/peer-chat-migration.test.ts).
 
 Populate normal conversation identity only after Station partitions exist.
 Read legacy fields throughout one compatibility window; new dispatch never

@@ -6,8 +6,15 @@
  * Drives the real `useSendMessage` and the real outbox Module over an
  * in-memory storage Adapter; only the network call is scripted.
  */
+
+import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  conversationCapabilitiesFromAuthority,
+  type StationConnection,
+} from '../connections/station-connection';
+import { outboundStationIdentity } from '../connections/station-state';
 
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
@@ -18,6 +25,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
 
 const sendExecutionMessageMock = vi.fn();
 const getTurnDeliveryMock = vi.fn();
+const interruptMock = vi.fn();
+const getQueryDataMock = vi.fn();
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
@@ -58,7 +67,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     }),
     useAgentsQuery: () => ({ data: [], error: null }),
     useInvalidateQuery: () => vi.fn(),
-    useQueryClient: () => ({ getQueryData: () => undefined }),
+    useQueryClient: () => ({
+      getQueryData: (...args: unknown[]) => getQueryDataMock(...args),
+    }),
+    interruptOrchestrationTurn: (...args: unknown[]) => interruptMock(...args),
     isProvablyNotSent: actual.isProvablyNotSent,
   };
 });
@@ -69,18 +81,66 @@ import {
 } from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
-import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
+import {
+  useCancelMessage,
+  useSendMessage,
+} from '../hooks/useActiveChatSessionMessaging';
 import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
+  noteCurrentStation,
   type OutboundDispatchTurn,
   outboundDispatch,
 } from '../lib/outboundQueue';
 import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
 
 const chat = 'chat-delivery-1';
+const hostStation = {
+  apiBase: 'http://api.test',
+  authorityNamespace: 'authority-1',
+  host: true,
+};
+const peerConnection: StationConnection = {
+  environmentId: 'peer',
+  stationName: 'Peer',
+  stationKey: 'peer',
+  runtimeKey: 'peer-runtime',
+  routeKind: 'relay',
+  targetApiBase: 'https://source.test/api/environments/peers/peer/chat-api',
+  authorityNamespace: 'source:peer-principal',
+  requestScope: {
+    apiBase: 'https://source.test',
+    authorityKey: 'source-owner',
+  },
+  isCurrent: () => true,
+  binding: {
+    version: 1,
+    environmentId: 'peer',
+    stationName: 'Peer',
+    affinity: {
+      kind: 'peer',
+      sourceEnvironmentId: 'source',
+      sourceConnectionId: 'profile',
+      principalNamespace: 'peer-principal',
+    },
+  },
+  capabilities: conversationCapabilitiesFromAuthority(
+    {
+      schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+      environmentId: 'peer',
+      principal: { kind: 'human', id: 'human:owner' },
+      grant: {
+        kind: 'device',
+        deviceId: 'peer-device',
+        grantedScopes: ['orchestration:operate'],
+      },
+    },
+    { remote: true, mutationAllowed: true },
+  ),
+};
 
 function memoryStorage() {
+  noteCurrentStation(hostStation);
   const values = new Map<string, unknown>();
   _setOutboundQueueStorage({
     getItem: async (key) => values.get(key),
@@ -117,7 +177,127 @@ describe('useSendMessage: durable before the request', () => {
   afterEach(() => {
     vi.useRealTimers();
     _resetOutboundQueueStorage();
+    noteCurrentStation(undefined);
     activeChatsStore.removeChat(chat);
+    activeChatsStore.removeChat('peer-stop-tab');
+  });
+
+  it('issues a peer send through its pinned principal and target catalog, with peer-owned durable evidence', async () => {
+    activeChatsStore.updateChat(chat, {
+      stationBinding: peerConnection.binding,
+      executionOnCurrentStation: true,
+    });
+    let durable: unknown;
+    sendExecutionMessageMock.mockImplementationOnce(async () => {
+      durable = (await outboundDispatch.snapshot())[0];
+      return receipt();
+    });
+    const { result } = renderHook(() => useSendMessage('http://host.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'for the peer',
+        undefined,
+        undefined,
+        'peer-send-key',
+        { connection: peerConnection },
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(sendExecutionMessageMock.mock.calls[0]?.[0]).toBe(
+      peerConnection.targetApiBase,
+    );
+    expect(sendExecutionMessageMock.mock.calls[0]?.[1]).toMatchObject({
+      clientTurnId: 'peer-send-key',
+      target: { environment: { kind: 'current' } },
+    });
+    expect(sendExecutionMessageMock.mock.calls[0]?.[2]).toMatchObject({
+      requestScope: peerConnection.requestScope,
+    });
+    expect(durable).toMatchObject({
+      station: outboundStationIdentity(peerConnection),
+      clientTurnId: 'peer-send-key',
+      status: 'invoking',
+    });
+    expect(getQueryDataMock).toHaveBeenCalledWith([
+      'agents',
+      peerConnection.targetApiBase,
+      peerConnection.requestScope.authorityKey,
+    ]);
+    expect(getQueryDataMock).not.toHaveBeenCalledWith(['agents']);
+  });
+
+  it('binds Stop to B and leaves an A turn with colliding execution ids running', async () => {
+    activeChatsStore.updateChat(chat, {
+      status: 'sending',
+      orchestrationSessionStarted: true,
+      conversationId: 'same-conversation',
+      currentSessionId: 'same-execution',
+      conversationActivity: {
+        conversationId: 'same-conversation',
+        asOfSequence: 1,
+        openTurn: {
+          threadId: 'same-execution',
+          turnId: 'same-turn',
+          startedAt: '2026-11-04T00:00:00.000Z',
+        },
+      },
+      openTurnId: 'same-turn',
+      orchestrationTurnOpen: true,
+    });
+    activeChatsStore.initChat('peer-stop-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Peer',
+      stationBinding: peerConnection.binding,
+    });
+    activeChatsStore.updateChat('peer-stop-tab', {
+      status: 'sending',
+      orchestrationSessionStarted: true,
+      conversationId: 'same-conversation',
+      currentSessionId: 'same-execution',
+      conversationActivity: {
+        conversationId: 'same-conversation',
+        asOfSequence: 1,
+        openTurn: {
+          threadId: 'same-execution',
+          turnId: 'same-turn',
+          startedAt: '2026-11-04T00:00:00.000Z',
+        },
+      },
+      openTurnId: 'same-turn',
+      orchestrationTurnOpen: true,
+    });
+    interruptMock.mockResolvedValueOnce({
+      outcome: 'cooperative',
+      threadId: 'same-execution',
+      turnId: 'same-turn',
+    });
+    const { result } = renderHook(() =>
+      useCancelMessage('http://host.test', peerConnection),
+    );
+    await act(async () => {
+      await result.current('peer-stop-tab');
+    });
+    expect(interruptMock).toHaveBeenCalledOnce();
+    expect(interruptMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiBase: peerConnection.targetApiBase,
+        requestScope: peerConnection.requestScope,
+        threadId: 'same-execution',
+        turnId: 'same-turn',
+      }),
+    );
+    expect(activeChatsStore.getSnapshot()[chat]).toMatchObject({
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    expect(activeChatsStore.getSnapshot()['peer-stop-tab']).toMatchObject({
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
   });
 
   it('records the send invoking, then lets the draft go, then makes the request; the bubble and the request share one key', async () => {
@@ -231,7 +411,7 @@ describe('useSendMessage: durable before the request', () => {
         conversationId: turn.conversationId!,
         clientTurnId: turn.clientTurnId,
       }),
-      { station: { apiBase: 'http://api.test' } },
+      { station: hostStation },
     );
     expect(await outboundDispatch.snapshot()).toEqual([
       expect.objectContaining({
@@ -335,7 +515,7 @@ describe('useSendMessage: durable before the request', () => {
           conversationId: chat,
           status: 'invoking',
           awaitingLookup: true,
-          station: { apiBase: 'http://api.test' },
+          station: hostStation,
         }),
       ]);
       await expect(outboundDispatch.edit(key, 'changed')).rejects.toThrow();
@@ -345,7 +525,7 @@ describe('useSendMessage: durable before the request', () => {
         return { kind: 'accepted' as const, providerTurnId: 'duplicate-turn' };
       });
       await outboundDispatch.flush(replay, {
-        station: { apiBase: 'http://api.test' },
+        station: hostStation,
       });
       expect(replay).not.toHaveBeenCalled();
       const lookup = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
@@ -356,13 +536,13 @@ describe('useSendMessage: durable before the request', () => {
         turnId: 'provider-turn-original',
       }));
       await outboundDispatch.reconcile(lookup, {
-        station: { apiBase: 'http://api.test' },
+        station: hostStation,
       });
       expect(lookup).toHaveBeenCalledWith(
         expect.objectContaining({ clientTurnId: key }),
       );
       await outboundDispatch.flush(replay, {
-        station: { apiBase: 'http://api.test' },
+        station: hostStation,
       });
       expect(replay).not.toHaveBeenCalled();
       expect(turns).toEqual([key]);
@@ -1210,7 +1390,7 @@ describe('useSendMessage: durable before the request', () => {
         conversationId: turn.conversationId!,
         clientTurnId: turn.clientTurnId,
       }),
-      { station: { apiBase: 'http://api.test' } },
+      { station: hostStation },
     );
     let answer!: (value: unknown) => void;
     sendExecutionMessageMock.mockImplementationOnce(
@@ -1314,6 +1494,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
   });
   afterEach(() => {
     _resetOutboundQueueStorage();
+    noteCurrentStation(undefined);
     activeChatsStore.removeChat(chat);
   });
 

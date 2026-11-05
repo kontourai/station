@@ -85,25 +85,25 @@ export class StationConnectionRegistry {
   async acquire(
     environmentId: string,
     prepare: () => Promise<PreparedStationConnection>,
+    slot = environmentId,
   ): Promise<StationConnectionLease> {
     if (!this.isCurrent()) throw new StationRequestAuthorityError();
-    let entry = this.entries.get(environmentId);
+    let entry = this.entries.get(slot);
     if (entry && !entry.connection.isCurrent()) {
-      this.entries.delete(environmentId);
+      this.entries.delete(slot);
       entry.dispose();
       entry = undefined;
     }
     if (!entry) {
-      let pending = this.preparing.get(environmentId);
+      let pending = this.preparing.get(slot);
       if (!pending) {
-        pending = this.prepare(environmentId, prepare);
-        this.preparing.set(environmentId, pending);
+        pending = this.prepare(environmentId, prepare, slot);
+        this.preparing.set(slot, pending);
       }
       try {
         entry = await pending;
       } finally {
-        if (this.preparing.get(environmentId) === pending)
-          this.preparing.delete(environmentId);
+        if (this.preparing.get(slot) === pending) this.preparing.delete(slot);
       }
     }
     if (!entry.connection.isCurrent()) throw new StationRequestAuthorityError();
@@ -120,9 +120,9 @@ export class StationConnectionRegistry {
         leasedEntry.readers.delete(reader);
         if (
           !leasedEntry.readers.size &&
-          this.entries.get(environmentId) === leasedEntry
+          this.entries.get(slot) === leasedEntry
         ) {
-          this.entries.delete(environmentId);
+          this.entries.delete(slot);
           leasedEntry.dispose();
         }
       },
@@ -132,6 +132,7 @@ export class StationConnectionRegistry {
   private async prepare(
     environmentId: string,
     prepare: () => Promise<PreparedStationConnection>,
+    slot: string,
   ): Promise<Entry> {
     const prepared = await prepare();
     if (
@@ -163,11 +164,11 @@ export class StationConnectionRegistry {
         ),
         isCurrent: () =>
           this.isCurrent() &&
-          this.entries.get(environmentId) === entry &&
+          this.entries.get(slot) === entry &&
           target.isCurrent(),
       },
     };
-    this.entries.set(environmentId, entry);
+    this.entries.set(slot, entry);
     return entry;
   }
 
@@ -176,5 +177,13 @@ export class StationConnectionRegistry {
     this.retired = true;
     for (const entry of this.entries.values()) entry.dispose();
     this.entries.clear();
+  }
+
+  retireRemote(): void {
+    for (const [key, entry] of this.entries) {
+      if (entry.connection.routeKind === 'host') continue;
+      this.entries.delete(key);
+      entry.dispose();
+    }
   }
 }

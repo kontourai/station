@@ -1,3 +1,4 @@
+import { readPeerChatBinding } from '../lib/peer-chat';
 // @vitest-environment jsdom
 
 import { webcrypto } from 'node:crypto';
@@ -251,7 +252,7 @@ test('an uncertain send survives remount without replay; explicit retry keeps it
   const [persisted] = serializeActiveChats({
     'peer-tab': activeChatsStore.getSnapshot()['peer-tab']!,
   });
-  expect(persisted?.peerChat?.pending).toEqual({
+  expect(readPeerChatBinding(persisted?.peerChat)?.pending).toEqual({
     id: 'first-key',
     text: 'Which machine?',
     dispatched: true,

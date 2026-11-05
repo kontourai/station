@@ -18,6 +18,20 @@ import {
 import type { PlanArtifact } from '../utils/planArtifacts';
 
 describe('active chat state helpers', () => {
+  test('a host binding alone does not turn an unused host draft into persisted work', () => {
+    const chat = createDefaultChatState({
+      agentSlug: 'planner',
+      agentName: 'Planner',
+      title: 'New chat',
+      stationBinding: {
+        version: 1,
+        environmentId: 'host',
+        stationName: 'Host',
+        affinity: { kind: 'host' },
+      },
+    });
+    expect(serializeActiveChats({ draft: chat })).toEqual([]);
+  });
   test('creates default chat state with metadata merged in', () => {
     expect(
       createDefaultChatState({

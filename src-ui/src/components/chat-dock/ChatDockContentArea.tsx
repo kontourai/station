@@ -9,7 +9,7 @@ import type {
 } from '../chat/fork-turn-source';
 import { LazyBoundary, LazyBoundaryError } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { Empty, SkeletonList } from '../state';
 import '../skill-experiences/skill-experiences.css';
 import { ChatDockBody } from './ChatDockBody';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
@@ -17,10 +17,12 @@ import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 // Stable module-scope loader: LazyBoundary rebuilds its lazy component when
 // the load identity changes, so an inline loader re-suspends on every parent
 // render (station#2605).
-const loadPeerChatBody = () =>
-  import('./PeerChatBody').then(({ PeerChatBody }) => ({
-    default: PeerChatBody,
-  }));
+const loadLegacyConversationRecovery = () =>
+  import('../conversation/LegacyConversationRecovery').then(
+    ({ LegacyConversationRecovery }) => ({
+      default: LegacyConversationRecovery,
+    }),
+  );
 
 const loadConversationHistory = () =>
   import('../chat/ConversationHistory').then(({ ConversationHistory }) => ({
@@ -155,28 +157,15 @@ function ChatDockContentAreaImpl({
   onResendFromMessage,
   onNewChat,
   onRetryConversationOpen,
-  onEditPeerChatDraft,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
-  if (activeSession?.peerChatInvalid)
-    return (
-      <ErrorState
-        title="This remote chat’s saved destination could not be read"
-        description="Start a new chat and choose its Station again."
-        action={<NewChatAction onClick={() => onNewChat()} />}
-      />
-    );
-  if (activeSession?.peerChat)
+  if (activeSession?.peerChat || activeSession?.peerChatInvalid)
     return (
       <LazyBoundary
         key={activeSession.id}
-        load={loadPeerChatBody}
-        componentProps={{
-          chat: activeSession,
-          binding: activeSession.peerChat,
-          onEditDraft: onEditPeerChatDraft,
-        }}
-        pending={<SkeletonList label="Opening remote chat" />}
+        load={loadLegacyConversationRecovery}
+        componentProps={{ chat: activeSession, onNewChat: () => onNewChat() }}
+        pending={<SkeletonList label="Opening saved chat" />}
       />
     );
   return (
