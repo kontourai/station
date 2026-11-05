@@ -13,6 +13,7 @@ import {
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import type {
   ThreadInboxPayload,
@@ -55,6 +56,8 @@ export function submitStationFramedTurn(
     readonly clientTurnId: string;
     readonly message: string;
     readonly actor: StationFramedTurnActor;
+    /** #4512: who caused the turn, when the sender knows (an Automation run). */
+    readonly dispatchOrigin?: TurnDispatchOrigin;
   },
 ): ThreadInboxSubmission {
   return submit({
@@ -70,6 +73,7 @@ export function submitStationFramedTurn(
         ...(input.actor.principal ? { principal: input.actor.principal } : {}),
       },
       clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
+      ...(input.dispatchOrigin ? { dispatchOrigin: input.dispatchOrigin } : {}),
     },
   });
 }

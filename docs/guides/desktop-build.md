@@ -117,6 +117,10 @@ maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
 RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
 and license; its browser distributions and TypeScript sources are omitted.
+The OTLP transformer likewise retains its Node `build/src` implementation,
+metadata and license. Its alternate `build/esm` and `build/esnext` bundler
+distributions are omitted; normal Node imports and `require` share the retained
+implementation. The 512 MiB runtime ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture

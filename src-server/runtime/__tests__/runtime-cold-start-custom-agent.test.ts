@@ -84,6 +84,7 @@ import type { LoadedLocalAccounts } from '../../services/identity/local-account-
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
+import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -696,6 +697,38 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     ).toThrow(/STATION_HOME_RESET_REQUIRED/);
     expect(existsSync(join(home, 'monitoring'))).toBe(false);
     expect(existsSync(join(home, 'config', 'agent-registry.json'))).toBe(false);
+  });
+
+  // #4507: a restarted Station finishes Task worktree finalizations the
+  // previous process deferred, but only once the sweep that reaps that
+  // process's detached engines has settled.
+  it('retries deferred Task worktree finalizations at startup, after the orphan engine sweep', async () => {
+    home = await createSchemaHome('station-task-worktree-startup-');
+    const retry = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockResolvedValue(undefined);
+    try {
+      let settleSweep!: () => void;
+      const orphanEngineSweep = new Promise<void>((resolve) => {
+        settleSweep = resolve;
+      });
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+        orphanEngineSweep,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(retry).not.toHaveBeenCalled();
+
+      settleSweep();
+      await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+    } finally {
+      retry.mockRestore();
+    }
   });
 
   it('refuses to construct a runtime when STATION_TRUSTED_CONSENT_ORIGIN is malformed', () => {

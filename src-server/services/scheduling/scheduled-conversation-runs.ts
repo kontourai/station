@@ -174,6 +174,8 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
         conversationId,
         clientTurnId,
         message,
+        // #4512: an Automation's run, whatever Session it lands in.
+        dispatchOrigin: 'automation',
         actor: {
           userId: input.createdBy.userId,
           ...(input.createdBy.ownerAttribution

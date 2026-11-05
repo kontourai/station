@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
+import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
@@ -11,6 +12,12 @@ import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  createGalleryAssetDiagnostics,
+  inventoryGalleryAssets,
+  readGalleryLifecycle,
+  retainGalleryAssetDiagnostics,
+} from './helpers/gallery-asset-diagnostics';
 import {
   auditGalleryScreen,
   type GalleryUiAudit,
@@ -4320,6 +4327,66 @@ ${tiles}
 </html>`;
 }
 
+function readGalleryCheckout() {
+  try {
+    const values = String(
+      execFileSyncBounded(
+        'git',
+        ['rev-parse', '--show-toplevel', 'HEAD', 'HEAD^{tree}'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 5000,
+          maxBuffer: 4096,
+        },
+      ),
+    )
+      .trim()
+      .split(/\r?\n/);
+    if (
+      values.length !== 3 ||
+      realpathSync(values[0]) !== realpathSync(process.cwd()) ||
+      !/^[a-f0-9]{40}$/.test(values[1]) ||
+      !/^[a-f0-9]{40}$/.test(values[2])
+    ) {
+      return {
+        sha: null,
+        tree: null,
+        dirty: null,
+        complete: false,
+        error: 'INVALID_GIT_IDENTITY',
+      };
+    }
+    const status = execFileSyncBounded(
+      'git',
+      ['status', '--porcelain=v1', '-z', '--untracked-files=normal'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5000,
+        maxBuffer: 65536,
+      },
+    );
+    const dirty = String(status).length !== 0;
+    return {
+      sha: values[1],
+      tree: values[2],
+      dirty,
+      complete: !dirty,
+      error: null,
+    };
+  } catch {
+    return {
+      sha: null,
+      tree: null,
+      dirty: null,
+      complete: false,
+      error: 'GIT_IDENTITY_READ_FAILED',
+    };
+  }
+}
 test('build gallery — capture key screens', async ({ page }) => {
   const browserErrors: string[] = [];
   page.on('console', (message) => {
@@ -4365,6 +4432,25 @@ test('build gallery — capture key screens', async ({ page }) => {
   test.setTimeout(Math.max(90_000, selectedScreens.length * 7_000));
 
   mkdirSync(join(GALLERY_DIR, GALLERY_DIAGNOSTICS), { recursive: true });
+  const checkoutStart = readGalleryCheckout();
+  const assets = createGalleryAssetDiagnostics(
+    new URL(process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '')
+      .origin,
+    selectedScreens.map((screen) => screen.name),
+  );
+  const onRequest = assets.request;
+  const onResponse = assets.response;
+  const onFinished = assets.finished;
+  const onFailed = assets.failed;
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+  page.on('requestfinished', onFinished);
+  page.on('requestfailed', onFailed);
+  const emittedBefore = process.env.STATION_E2E_UI_DIR
+    ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
+    : null;
+  let assetDiagnosticsRetention = 'NOT_ATTEMPTED';
+  let assetDiagnosticsBudget: object | null = null;
   const capturedAt = new Date().toISOString();
   const shots: Shot[] = [];
 
@@ -4522,6 +4608,7 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   try {
     for (const screen of selectedScreens) {
+      assets.screen(screen.name);
       browserErrors.length = 0;
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
@@ -4793,9 +4880,58 @@ test('build gallery — capture key screens', async ({ page }) => {
         });
       } finally {
         await screen.cleanup?.();
+        assets.screenFinished(screen.name);
       }
     }
   } finally {
+    page.off('request', onRequest);
+    page.off('response', onResponse);
+    page.off('requestfinished', onFinished);
+    page.off('requestfailed', onFailed);
+    try {
+      const network = await assets.finish();
+      const checkoutEnd = readGalleryCheckout();
+      const lifecycle = process.env.STATION_E2E_OUTPUT_DIR
+        ? readGalleryLifecycle(
+            join(
+              dirname(process.env.STATION_E2E_OUTPUT_DIR),
+              'lifecycle.ndjson',
+            ),
+          )
+        : { incomplete: true, events: [] };
+      const result = retainGalleryAssetDiagnostics(
+        join(GALLERY_DIR, GALLERY_DIAGNOSTICS),
+        network,
+        emittedBefore,
+        process.env.STATION_E2E_UI_DIR
+          ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
+          : null,
+        {
+          complete:
+            checkoutStart.complete &&
+            checkoutEnd.complete &&
+            checkoutStart.sha === checkoutEnd.sha &&
+            checkoutStart.tree === checkoutEnd.tree &&
+            !lifecycle.incomplete,
+          checkoutStart,
+          checkoutEnd,
+          workflowEventSha: /^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA ?? '')
+            ? process.env.GITHUB_SHA
+            : null,
+          selectedScreens: selectedScreens.map((screen) => screen.name),
+          nodeVersion: process.version,
+          lifecycle,
+          uiProcessLifecycle: 'UNKNOWN',
+        },
+      );
+      assetDiagnosticsRetention = result.retention;
+      assetDiagnosticsBudget = result;
+    } catch {
+      assetDiagnosticsRetention = 'INCOMPLETE';
+      console.error(
+        'Gallery asset diagnostics incomplete: metadata retention failed.',
+      );
+    }
     // Written in a finally so an abort mid-loop still (best-effort — a hard
     // worker kill can outrun it) leaves the partial gallery and capture.json
     // behind: losing every screen's evidence because one screen was slow
@@ -4812,6 +4948,8 @@ test('build gallery — capture key screens', async ({ page }) => {
           schemaVersion: 1,
           runId: process.env.STATION_E2E_RUN_ID ?? null,
           capturedAt,
+          assetDiagnosticsRetention,
+          assetDiagnosticsBudget,
           expected: SCREENS.length,
           // `null` marks a full run over every declared SCREENS entry; a
           // requested-name array marks a targeted run so downstream tooling

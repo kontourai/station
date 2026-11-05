@@ -144,6 +144,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Spawns short-lived fake-Chromium shell scripts through the production
   // launcher (owned process group, CDP pipe); each exits immediately.
   'src-server/routes/__tests__/browser-launch-failure.routes.test.ts',
+  // Owns a production AccountEntry Vite bundle and pinned Chromium lifecycle.
+  'src-ui/src/__tests__/AccountEntryView.browser.test.tsx',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
   'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
@@ -175,7 +177,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
-  // Loads node-pty with a fake PTY and mocked child-process observations.
+  // Loads node-pty with a fake PTY and mocked child-process observations;
+  // on Windows two real ConPTY shells, one at a time, in the OS temp directory.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
@@ -1356,6 +1359,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // checkout that a test moves between checks.
   'src-server/services/execution-target/__tests__/execution-preparation.test.ts',
   'src-server/tools/__tests__/station-control-delegation-preparation.test.ts',
+  // #4507: Task worktrees over real repositories: provisioning, finalization
+  // (planted config, changes between checks and removal), recovery and the
+  // keep/close-on-merge route, each spawning real git. Their waits are
+  // liveness caps around git work, not deadlines under test.
+  'src-server/routes/orchestration/__tests__/task-dispatch-worktree-isolation.routes.test.ts',
+  'src-server/runtime/routes/__tests__/runtime-routes-declare-pull-request-engine.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-finalization.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-ownership.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-removal-race.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

@@ -16,6 +16,7 @@ import {
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
 import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
+import { isStationRestartContinuationTurn } from '@kontourai/station-shared/conversation-message';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -225,6 +226,9 @@ export function handleTurnStartedEvent(
         ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
         ...(isStationMemoryContinuationTurn(event)
           ? { stationMemoryContinuation: true }
+          : {}),
+        ...(isStationRestartContinuationTurn(event)
+          ? { stationRestartContinuation: true }
           : {}),
       });
     }

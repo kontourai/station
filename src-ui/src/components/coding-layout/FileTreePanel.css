@@ -152,6 +152,16 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .file-tree-panel__action,
+  .coding-workbench__panel-head button.file-tree-panel__action {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .file-tree-panel__search-input {
+    min-height: 44px;
+  }
+
   .file-tree-row {
     min-height: 40px;
   }
