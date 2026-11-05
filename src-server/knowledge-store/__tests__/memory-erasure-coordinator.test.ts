@@ -540,6 +540,66 @@ test('Corpus rejects an outside write between the final preview and purge', asyn
   }
 });
 
+test('an erasure also reconciles a stale index row from an outside purge', async () => {
+  const f = await setup();
+  const external = new KitDefaultStoreAdapter({
+    storeRoot: f.root.storeRoot,
+    coordinationDirectory: join(
+      f.home,
+      'coordination',
+      'knowledge-file-transactions',
+    ),
+    lock: acquireFileMutationLockAsync,
+    coordinationIdentity: () => () => {},
+    allowPurge: true,
+  });
+  try {
+    const plan = await external.previewPurge([f.id]);
+    await external.purge(
+      [f.id],
+      { agent: 'outside', rationale: 'test' },
+      { expectedRevision: plan.revision },
+    );
+    expect((await f.index.stats(f.root.id)).chunks).toBe(1);
+    const proposal = await f.manager.propose(
+      owner,
+      f.root,
+      current,
+      {
+        type: 'raw',
+        title: 'Second',
+        body: 'Second body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'second-for-reconcile',
+    );
+    const id = await f.manager.applyCreate(owner, f.root, current, proposal);
+    const preview = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    await f.coordinator.erase(
+      owner,
+      f.root,
+      current,
+      'record',
+      id,
+      preview.impact.revision,
+      'reconcile-after',
+    );
+    expect((await f.index.stats(f.root.id)).chunks).toBe(0);
+  } finally {
+    f.index.close();
+  }
+});
+
 test('a purge between snapshot and publication prevents a stale rebuild', async () => {
   const f = await setup();
   let release!: () => void;
