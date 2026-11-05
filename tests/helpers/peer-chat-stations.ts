@@ -36,6 +36,8 @@ declare global {
       loseNextSend(): void;
       disconnectEvents(disconnected: boolean): void;
       disconnectObservation(disconnected: boolean): void;
+      holdDeliveryLookups(): void;
+      releaseDeliveryLookups(): void;
     };
   }
 }
@@ -51,9 +53,19 @@ async function installConnectionFaults(page: Page) {
       sessionStorage.getItem('qualification-windows-offline') === 'true';
     const eventControllers = new Set<AbortController>();
     const snapshotControllers = new Set<AbortController>();
+    let deliveryLookupsHeld = false;
+    const deliveryWaiters = new Set<() => void>();
     window.stationConnectionFaults = {
       loseNextSend: () => {
         loseSend = true;
+      },
+      holdDeliveryLookups: () => {
+        deliveryLookupsHeld = true;
+      },
+      releaseDeliveryLookups: () => {
+        deliveryLookupsHeld = false;
+        for (const resume of deliveryWaiters) resume();
+        deliveryWaiters.clear();
       },
       disconnectEvents: (value) => {
         disconnected = value;
@@ -76,6 +88,8 @@ async function installConnectionFaults(page: Page) {
       );
       const method =
         init?.method ?? (input instanceof Request ? input.method : 'GET');
+      if (deliveryLookupsHeld && url.pathname.includes('/turn-deliveries/'))
+        await new Promise<void>((resolve) => deliveryWaiters.add(resolve));
       const eventRequest = url.pathname.endsWith('/api/orchestration/events');
       const snapshotRequest = url.pathname.endsWith('/event-window');
       if (eventRequest || snapshotRequest) {

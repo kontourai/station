@@ -226,7 +226,10 @@ function buildOrchestrationSession(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function renderDock(session: ChatSession = buildSession()) {
+function renderDock(
+  session: ChatSession = buildSession(),
+  recordRead: { read?: 'error'; retry?: () => void } = {},
+) {
   agentsMock.current = [{ slug: agentId('codex'), name: 'Codex' }];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -236,6 +239,8 @@ function renderDock(session: ChatSession = buildSession()) {
       <ChatDockBody
         activeSession={activeSession}
         activeOrchestrationSession={buildOrchestrationSession()}
+        activeOrchestrationSessionRead={recordRead.read}
+        onRetryOrchestrationSessions={recordRead.retry}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -320,6 +325,30 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     );
     expect(markup).toContain('tool-call-batch__summary');
     expect(markup).not.toContain('Pending standalone calls');
+  });
+
+  test('Resync refreshes both the failed transcript and the failed execution record', async () => {
+    const retryRecord = vi.fn();
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.error = new Error(
+      'Observation was disconnected',
+    );
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'Retained message', timestamp: 1 },
+    ];
+    renderDock(buildSession({ orchestrationSessionStarted: true }), {
+      read: 'error',
+      retry: retryRecord,
+    });
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Status unavailable — resync this conversation',
+      }),
+    );
+    await waitFor(() => {
+      expect(transcriptStateMock.current.reload).toHaveBeenCalledOnce();
+      expect(retryRecord).toHaveBeenCalledOnce();
+    });
   });
 
   test('a stalled real SDK history reload aborts, releases Resync and permits a slow successful retry', async () => {

@@ -133,9 +133,10 @@ test('host and peer dock adopt the same writable conversation controls', async (
     'The new chat uses the direct receiver Device.',
   );
   await expect(composer).toHaveValue(localDraft);
-  await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectEvents(true),
-  );
+  await page.evaluate(() => {
+    window.stationConnectionFaults.disconnectObservation(true);
+    window.stationConnectionFaults.holdDeliveryLookups();
+  });
   await page.evaluate(() => window.stationConnectionFaults.loseNextSend());
   await composer.fill('Check this local lost acknowledgement.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -152,12 +153,19 @@ test('host and peer dock adopt the same writable conversation controls', async (
   streams[5]!.stream.text('The local uncertain turn ran once.');
   streams[5]!.stream.finish();
   await page.getByRole('button', { name: 'Check', exact: true }).click();
+  await page.evaluate(() =>
+    window.stationConnectionFaults.releaseDeliveryLookups(),
+  );
   await expect(
     page.getByRole('button', { name: 'Check', exact: true }),
   ).toHaveCount(0);
   await page.evaluate(() =>
-    window.stationConnectionFaults.disconnectEvents(false),
+    window.stationConnectionFaults.disconnectObservation(false),
   );
+  await page
+    .getByRole('region', { name: 'Conversation status', exact: true })
+    .getByRole('button', { name: /resync this conversation/ })
+    .click();
   await expect(transcript).toContainText('The local uncertain turn ran once.');
   await stationJson(
     stations.source,

@@ -742,6 +742,9 @@ function LiveConversationBody({
       resyncOrchestrationEventStream(apiBase);
       await Promise.allSettled([
         ...(transcriptReadFailed ? [reloadTranscript()] : []),
+        ...(activeOrchestrationSessionRead === 'error'
+          ? [onRetryOrchestrationSessions?.()]
+          : []),
         ...(unverifiedOpen ? [onRetryConversationOpen?.()] : []),
       ]);
     } finally {
@@ -753,6 +756,8 @@ function LiveConversationBody({
     resyncKey,
     transcriptReadFailed,
     reloadTranscript,
+    activeOrchestrationSessionRead,
+    onRetryOrchestrationSessions,
     unverifiedOpen,
     onRetryConversationOpen,
   ]);
