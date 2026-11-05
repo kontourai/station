@@ -3882,7 +3882,12 @@ With one:
 ```
 
 `source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+summary never contains a setting value. A policy that sets `limits.engines`
+(#4520) adds `summary.engines`, which names the allowed engines (`null` for
+all), whether ACP registry agents may run, and each pinned engine's `locked`,
+pinned `fields` and `environmentNames`, never a launch value; `summary.limits`
+then omits `engines`. Routes refuse an engine the policy does not allow with
+`403` and code `managed-policy-engine-refused`. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy.
 

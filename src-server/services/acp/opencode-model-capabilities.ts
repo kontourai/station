@@ -28,6 +28,7 @@ import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
+import { managedEngineLaunch } from '../../security/managed-engine-limits.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
 const OPENCODE_LISTING_TIMEOUT_MS = 8_000;
@@ -147,11 +148,27 @@ export async function runOpenCodeModelListing(
   command: string,
   options: OpenCodeListingOptions,
 ): Promise<OpenCodeListingResult> {
+  // #4520: a listing runs the engine too, so it uses a managed policy's
+  // pinned binary and environment. Pinned arguments belong to an agent
+  // session (`acp-process.ts`), not to the `models` subcommand.
+  const pinnedCommand = managedEngineLaunch(
+    'acp',
+    { command, args: [], env: {} },
+    'user',
+  ).command;
   const resolved = await (options.resolveCommand ?? findCliBinaryAsync)(
-    command,
+    pinnedCommand,
   );
   if (!resolved) return { ok: false, reason: 'not-installed' };
-  const env = await (options.env ?? augmentedSpawnEnv)();
+  const env = managedEngineLaunch(
+    'acp',
+    {
+      command: resolved,
+      args: [],
+      env: await (options.env ?? augmentedSpawnEnv)(),
+    },
+    'user',
+  ).env;
   const timeoutMs = options.timeoutMs ?? OPENCODE_LISTING_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? OPENCODE_LISTING_MAX_BYTES;
   return new Promise<OpenCodeListingResult>((resolve) => {

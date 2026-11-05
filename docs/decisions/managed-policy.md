@@ -291,6 +291,110 @@ of an installed plugin is not a new acquisition. Installing a plugin or skill
 straight from a source rather than through a registry is not governed by
 `limits.registries`; a source allow list would be a separate limit.
 
+## Engines
+
+`limits.engines` (#4520) is the engine slice. It lives in its own contract
+module (`@kontourai/station-contracts/managed-policy-engines`), registered as
+one entry in the limit-slice list, so the parsed document, the summary and
+the status decode all rebuild it the same way.
+
+**Engine ids.** The policy names the built-in adapters' provider ids
+(`claude`, `codex`, `muse`, `acp`, `station-agent`). The contract keeps the
+list statically, because the parser runs in clients and the CLI where no
+adapter is registered. Station's own agent is the provider `station-agent` and
+the engine `station`; the server maps the second to the first. A plugin
+engine's id is never on the list, so an allow list turns plugin engines off:
+an administrator who lists engines has said which ones run.
+
+**Disallowed engines.** One predicate, read at four seams:
+
+- `assertAdapterReady`, which every engine start (new, recovered, child work)
+  crosses before the adapter is asked;
+- the `sendTurn` dispatch, before an engine is restored for the thread;
+- runtime connection saves (`ConnectionService.saveConnection`) and ACP
+  connection create and registry install;
+- connection readiness, which reports the engine as disabled.
+
+The refusal is a `SendTurnRefusedError` with code
+`managed-policy-engine-refused` (`permission_denied`, not retryable), so the
+dispatch records the command as `rejected`, forwards the code, and the chat,
+continue, handoff and command routes answer `403`. A start refused this way
+counts as rejected, not indeterminate. Threads are not deleted or rewritten:
+removing the policy makes them runnable again.
+
+`acpRegistryAgents: false` is narrower than `acp` off: a connection whose
+config carries `publicRegistry` provenance does not run or get added. It does
+not stop a user from adding the same command as a custom connection; pinning
+`instances.acp` is how an administrator controls the ACP command.
+
+**Pinned launch fields.** Every engine spawn passes its launch through one
+function, `managedEngineLaunch`, at the spawn site itself, so no caller can
+skip it:
+
+| Engine | Spawn site | Binary |
+| --- | --- | --- |
+| Codex | `spawnCodexProcess` | replaced before `cliInvocation` |
+| Muse | `createMuseProcess` (`muse exec`) and `createMuseServeHost` (`muse serve`) | replaced |
+| ACP | `ACPProcess.start` (sessions, availability probes, sign-in) and the OpenCode model listing | a locked pin replaces the connection's command |
+| Claude | `createClaudeEngineProcess` (sessions, adoption, model discovery) | handed to the Agent SDK as `pathToClaudeCodeExecutable` |
+
+Claude is different because the Agent SDK chooses the command: a native
+executable runs directly, a `.js` one runs under Node. So the pinned program
+goes in through `resolveClaudeExecutable` (reason `managed-pin`, with no
+version comparison), and the spawn checks that the launch runs it. A launch
+that does not (the SDK's bundled copy, because the pinned path is missing or
+cannot be spawned) is refused, rather than starting a program the policy did
+not choose.
+
+Whose a field is decides what `locked: false` means. Claude, Codex and Muse
+have no user-chosen program or arguments, so their pinned program is always
+used and pinned arguments follow Station's own. An ACP connection names its
+own command and arguments, so a locked pin replaces them and an unlocked one
+fills only an empty argument list. Environment is keyed per variable: locked
+overrides every layer, unlocked fills only an unset variable.
+
+A locked `environment` also stops the connection's own `env`, `configHome`
+and model-proxy route from being applied (`connectionSpawnEnv`,
+`engineProxyLaunch`). Each of those points the engine at configuration or an
+endpoint the user chose, so merging them under the administrator's variables
+would leave a variable the administrator did not pin in the user's hands.
+
+`binaryPath` must be absolute. A bare name is looked up on a `PATH` the user
+controls, which is the wrapper gap a pin exists to close; accepting it would
+make a locked program mean less than it says.
+
+**Runtimes that bypass the pins.** A plugin adapter normally replaces the
+built-in adapter for its provider id. While an engine's entry is locked,
+`getProviderAdapters` keeps the built-in one, because a plugin runtime has no
+obligation to call `managedEngineLaunch`. The Claude bundled-copy fallback
+above is the other bypass, and is refused at the spawn.
+
+**Client summary.** Launch arguments and environment values can carry a
+gateway address or token, and the summary reaches every paired device. So,
+like `lockedSettings`, the summary's `engines` names what is managed (allowed
+engines, whether ACP registry agents may run, and per pinned engine whether it
+is locked, which fields and which variable names) and carries no value. The
+summary's `limits` omits `engines`, and the status decode refuses one that
+carries it. The UI decodes this through the light engines module only, never
+the full `managed-policy` module, to stay inside the UI bundle budget.
+
+**With an approval ceiling.** The ceiling (#4518) decides which mode Station
+asks an engine for; it cannot stop a user from launching the engine
+differently. A locked entry with an absolute `binaryPath` and a pinned
+`environment` closes the three launch gaps the ceiling's guide lists: a
+wrapper on `PATH`, a connection's environment and config folder, and an ACP
+connection's command and arguments. It does not close the engine's default
+config folder (pin `CLAUDE_CONFIG_DIR` or `CODEX_HOME`), the `PATH` the engine
+uses for its own child programs (pin `PATH`), or Station's own environment.
+
+**Not covered.** The Connections page's installed check for Claude, Codex and
+Muse finds the program by name, because its prerequisite ids are derived from
+the command; with only the pinned program installed it can report the engine
+missing while chats run. Claude and Codex account sign-in
+(`device-code-login.ts`, `browser-code-login.ts`) runs the program by name and
+gets no pinned arguments or environment; it signs a person in and runs no
+agent.
+
 ## Status of later slices
 
 Settings, the remaining limits, the macOS profile, the Windows registry, and

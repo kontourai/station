@@ -10,6 +10,7 @@ import {
 } from './execution-target.js';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from './managed-policy.js';
+import { MANAGED_POLICY_ENGINE_REFUSED_CODE } from './managed-policy-engines.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
@@ -221,6 +222,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
   // #4521: a capability the machine's managed policy turned off.
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
+  // #4520: an engine the managed policy does not allow, or a launch that
+  // cannot honor a locked pin.
+  [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

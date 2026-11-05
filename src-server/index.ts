@@ -51,6 +51,7 @@ import {
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
 import { installManagedCapabilityLimits } from './security/managed-capability-limits.js';
+import { installManagedEngineLimits } from './security/managed-engine-limits.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -232,6 +233,9 @@ async function main() {
   // #4521: the capability switches every seam reads, installed before
   // anything they govern is built.
   installManagedCapabilityLimits(managedPolicy);
+  // #4520: the engine allow list and pinned launch fields, before any engine
+  // is started.
+  installManagedEngineLimits(managedPolicy);
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
       source: managedPolicy.source,

@@ -272,7 +272,21 @@ describe('limits from every slice survive each reconstruction', () => {
       defaultSkillRegistries: false,
       acpRegistryInstalls: false,
     },
+    engines: {
+      allowed: ['claude', 'acp'],
+      acpRegistryAgents: false,
+      instances: {
+        claude: {
+          locked: true,
+          binaryPath: '/opt/acme/bin/claude',
+          launchArgs: ['--settings', '/opt/acme/claude.json'],
+          environment: { ANTHROPIC_BASE_URL: 'https://gateway.example.com' },
+        },
+      },
+    },
   };
+  // The summary withholds the engine slice's launch values (#4520).
+  const { engines: _engines, ...summarizedLimits } = everyLimit;
 
   test('the fixture sets every enforced limit key', () => {
     expect(Object.keys(everyLimit).sort()).toEqual(
@@ -285,7 +299,21 @@ describe('limits from every slice survive each reconstruction', () => {
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
     expect(parsed.document.limits).toEqual(everyLimit);
     const summary = summarizeManagedPolicy(parsed.document);
-    expect(summary.limits).toEqual(everyLimit);
+    expect(summary.limits).toEqual(summarizedLimits);
+    const engineSummary = {
+      allowed: ['claude', 'acp'],
+      acpRegistryAgents: false,
+      pinned: [
+        {
+          engine: 'claude',
+          locked: true,
+          fields: ['binaryPath', 'launchArgs', 'environment'],
+          environmentNames: ['ANTHROPIC_BASE_URL'],
+        },
+      ],
+    };
+    expect(summary.engines).toEqual(engineSummary);
+    expect(JSON.stringify(summary)).not.toContain('gateway.example.com');
     const status = parseManagedPolicyStatus(
       JSON.parse(
         JSON.stringify({
@@ -298,7 +326,10 @@ describe('limits from every slice survive each reconstruction', () => {
     );
     expect(status?.state).toBe('loaded');
     expect(status?.state === 'loaded' && status.summary.limits).toEqual(
-      everyLimit,
+      summarizedLimits,
+    );
+    expect(status?.state === 'loaded' && status.summary.engines).toEqual(
+      engineSummary,
     );
   });
 });

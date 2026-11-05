@@ -13,11 +13,20 @@
  * yet enforce (any `settings` entry and every `limits` key, until each
  * enforcement slice lands) would make the machine look managed when it is
  * not. Both are rejected with a problem that names the key. The capability
- * switches (`telemetry`, `webhookAutomations`, `registries`; #4521) are
+ * switches (`telemetry`, `webhookAutomations`, `registries`; #4521) and the
+ * engine slice (`engines`, #4520, in `./managed-policy-engines.js`) are
  * enforced.
  */
 import { boundaryText, isRecord } from './contract-validation.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
+import {
+  engineLimitProblems,
+  engineLimitsOf,
+  type ManagedPolicyEngineLimits,
+  type ManagedPolicyEngineSummary,
+  parseManagedEngineSummary,
+  summarizeManagedEngineLimits,
+} from './managed-policy-engines.js';
 
 export const MANAGED_POLICY_SCHEMA_VERSION = 1;
 
@@ -45,6 +54,8 @@ export interface ManagedPolicyLimits {
   webhookAutomations?: false;
   /** #4521: narrows where plugins and skills may be acquired from. */
   registries?: ManagedPolicyRegistryLimits;
+  /** #4520: which engines may run, and how the ones Station launches start. */
+  engines?: ManagedPolicyEngineLimits;
 }
 
 export interface ManagedPolicyDocument {
@@ -94,6 +105,7 @@ export interface ManagedPolicyRegistryLimits {
 /** Limit keys this build enforces. */
 export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
   ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
+  'engines',
 ];
 
 /**
@@ -104,7 +116,6 @@ export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
 export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'maxApprovalMode',
   'clients',
-  'engines',
   'updates',
 ];
 
@@ -420,12 +431,23 @@ export interface ManagedPolicySummary {
   organization: string;
   supportUrl: string | null;
   lockedSettings: string[];
-  limits: ManagedPolicyLimits;
+  /** Every limit except `engines`, whose launch values are withheld. */
+  limits: Omit<ManagedPolicyLimits, 'engines'>;
+  /** #4520: `limits.engines` without values; absent when the policy sets none. */
+  engines?: ManagedPolicyEngineSummary;
+}
+
+function summaryLimits(
+  limits: ManagedPolicyLimits,
+): Omit<ManagedPolicyLimits, 'engines'> {
+  const { engines: _engines, ...rest } = limits;
+  return rest;
 }
 
 export function summarizeManagedPolicy(
   document: ManagedPolicyDocument,
 ): ManagedPolicySummary {
+  const limits = acceptedManagedPolicyLimits(document.limits);
   return {
     organization: document.organization,
     supportUrl: document.supportUrl ?? null,
@@ -433,7 +455,10 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: acceptedManagedPolicyLimits(document.limits),
+    limits: summaryLimits(limits),
+    ...(limits.engines
+      ? { engines: summarizeManagedEngineLimits(limits.engines) }
+      : {}),
   };
 }
 
@@ -477,6 +502,10 @@ export function parseManagedPolicyStatus(
   if (value.state === 'none') return { state: 'none' };
   if (value.state !== 'loaded') return null;
   const { source, digest, summary } = value;
+  const engines =
+    isRecord(summary) && summary.engines !== undefined
+      ? parseManagedEngineSummary(summary.engines)
+      : undefined;
   if (
     !isRecord(source) ||
     (source.kind !== 'file' && source.kind !== 'test-override') ||
@@ -488,7 +517,9 @@ export function parseManagedPolicyStatus(
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
     !isRecord(summary.limits) ||
-    managedPolicyLimitProblems(summary.limits).length > 0
+    summary.limits.engines !== undefined ||
+    managedPolicyLimitProblems(summary.limits).length > 0 ||
+    engines === null
   ) {
     return null;
   }
@@ -500,7 +531,8 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: acceptedManagedPolicyLimits(summary.limits),
+      limits: summaryLimits(acceptedManagedPolicyLimits(summary.limits)),
+      ...(engines ? { engines } : {}),
     },
   };
 }
@@ -728,6 +760,7 @@ interface ManagedPolicyLimitSlice {
  */
 const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
   { problems: capabilityLimitProblems, accepted: capabilityLimitsOf },
+  { problems: engineLimitProblems, accepted: engineLimitsOf },
 ];
 
 /** Problems with every enforced limit in `limits`, from every slice. */

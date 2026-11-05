@@ -1349,3 +1349,23 @@
 .agent-inline-editor .info-tip {
   margin-left: var(--k-space-1);
 }
+
+/* #4520: an engine the managed policy governs. */
+.managed-engine-notice {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-md);
+  background: var(--bg-secondary);
+}
+
+.managed-engine-notice__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.managed-engine-notice .editor-help {
+  margin: 0;
+}

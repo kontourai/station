@@ -17,6 +17,7 @@ import {
   managedToolServerCatalogDenial,
   registryLocationAllowedByManagedPolicy,
 } from '../../security/managed-capability-limits.js';
+import { managedEnginePin } from '../../security/managed-engine-limits.js';
 import { adapterRegistration } from '../../telemetry/metrics.js';
 import {
   awaitSettlementWithin,
@@ -760,7 +761,11 @@ export function getProviderAdapters(
   for (const entry of listProviders('providerAdapter', view)) {
     const adapter = entry.provider as ProviderAdapterShape;
     const current = active.get(adapter.provider);
-    if (!current || !entry.builtin) {
+    // #4520: a plugin adapter normally replaces the built-in one for its
+    // engine. While the managed policy locks that engine's launch, the
+    // built-in adapter is kept: a plugin runtime would not apply the pins.
+    const preferBuiltin = managedEnginePin(adapter.provider)?.locked === true;
+    if (!current || (preferBuiltin ? entry.builtin : !entry.builtin)) {
       active.set(adapter.provider, entry);
     }
   }

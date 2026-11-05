@@ -98,6 +98,7 @@ import {
   type SeatbeltEvidence,
   seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
+import { managedEngineBinaryPath } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -515,6 +516,11 @@ type InstalledVersionObservation =
  * decision the spawn did not make.
  */
 type ClaudeLaunchReason =
+  /**
+   * #4520: a managed policy pins the executable, so it is launched with no
+   * version comparison and never replaced by the bundled copy.
+   */
+  | 'managed-pin'
   /** Installed CLI is the same version as the bundle or newer. */
   | 'installed-not-older'
   /** Installed CLI predates the bundle, so the SDK's own copy is safer. */
@@ -596,6 +602,10 @@ function claudeExecutableSentence(
     ? `Claude Code ${resolution.bundledVersion} bundled with the Agent SDK`
     : 'Claude Code CLI bundled with the Agent SDK';
   switch (resolution.reason) {
+    case 'managed-pin':
+      return resolution.spawnable
+        ? `Station launches ${resolution.spawnable}, the Claude Code executable this computer's managed policy pins.`
+        : `This computer's managed policy pins the Claude Code executable ${resolution.resolved}, which Station cannot launch, so Claude sessions do not start.`;
     case 'installed-not-older':
       return `Station launches the installed Claude Code ${resolution.installedVersion} at ${resolution.spawnable} (the Agent SDK bundles ${resolution.bundledVersion}).`;
     case 'installed-older':
@@ -5053,6 +5063,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     let bundledVersion: string | null = null;
     try {
       bundledVersion = this.bundledClaudeVersion();
+      // #4520: a pinned executable is the only one launched. When it cannot
+      // be spawned, `spawnable` is null and the spawn refuses rather than
+      // falling back to the bundled copy (`createClaudeEngineProcess`).
+      const pinned = managedEngineBinaryPath('claude');
+      if (pinned) {
+        const resolvedPin = await (
+          this.options.findBinary ?? findCliBinaryAsync
+        )(pinned);
+        const spawnablePin = resolvedPin
+          ? resolveSpawnableClaudeExecutable(resolvedPin, {
+              ...(this.options.executablePlatform
+                ? { platform: this.options.executablePlatform }
+                : {}),
+              ...(this.options.executableFileExists
+                ? { fileExists: this.options.executableFileExists }
+                : {}),
+            }).executable
+          : null;
+        return {
+          resolved: pinned,
+          spawnable: spawnablePin,
+          installedVersion: null,
+          bundledVersion,
+          launch: 'installed',
+          reason: 'managed-pin',
+        };
+      }
       const resolved =
         (await (this.options.findBinary ?? findCliBinaryAsync)(
           CLAUDE_CLI_COMMAND,

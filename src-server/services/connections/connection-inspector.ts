@@ -26,6 +26,7 @@ import {
   connectionStatusFromRuntimeReadiness,
   resolveRuntimeAdapterReadiness,
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import {
   awaitSettlementWithin,
   mapWithConcurrency,
@@ -340,7 +341,11 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
             },
           );
     const settings = runtimeSettingsFor(appConfig, engineIdValue);
-    const enabled = settings.enabled ?? true;
+    // #4520: an engine the managed policy does not allow reads as disabled
+    // to every client; its threads are kept and run nothing.
+    const enabled =
+      (settings.enabled ?? true) &&
+      engineAllowedByManagedPolicy(adapter.provider);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
       engineId: engineIdValue,
