@@ -2,9 +2,9 @@
 
 > **Status: implemented, 2026-11-05.** Connection routing, relay, observation,
 > delivery, legacy recovery and shared dock, Activity, attached-session, coding-tab,
-> Task-history and Inbox owners are implemented. Native shells, physical devices
-> and POSIX product journeys remain pending parent qualification. This record
-> does not establish release or physical-provider qualification. The
+> Task-history and Inbox owners are implemented. The two-Station browser journey
+> passed all nine tests on macOS at `8ea8a9793d`. Native shells, physical devices,
+> releases and physical external providers remain unqualified. The
 > [chat composer policy](chat-composer.md) owns interaction decisions; the
 > [remote access threat model](../security/remote-access-threat-model.md) owns
 > authorization. Changes must update those owners together.
@@ -34,16 +34,20 @@ acceptance route. Their deterministic HTTP model is a provider fixture, not a
 physical external engine. Results and incomplete journey steps must be reported
 separately; spec presence and screenshots alone establish no authorization claim.
 Native direct/broker custody, installed shells and physical devices remain
-**NOT_VERIFIED** by this browser route. The final review-ledger notes record
-source claims separately from these pending journeys.
+**NOT_VERIFIED** by this browser route. Review-ledger notes distinguish source
+claims from executed journeys.
 
-The product command was attempted on Windows and stopped before browser
-startup: `assertSupportedE2EPlatform` requires POSIX process-group settlement and
-a separately owned host lane on Windows. Consequently all live journey steps,
-new viewport/theme captures and the reconnect clip are **NOT_VERIFIED** here.
-No lifecycle guard was bypassed and earlier fixture screenshots were not relabeled
-as new evidence. The specs retain actionable assertions for execution on a supported
-host; Windows component/policy results cannot substitute for that run.
+On 2026-11-05, the supported macOS product lane passed all nine tests at
+`8ea8a9793d` (14.3 minutes), using disposable Stations, real Device pairing, a real
+peer grant, and live HTTP/SSE with the deterministic model. The run exercised
+shared controls, Activity and attached-record continuation, owner/member/guest
+history recovery, desktop/mobile Inbox activation, and source-versus-target
+refusal attribution. This is browser qualification with a controlled provider.
+
+The Windows product command stopped before browser startup:
+`assertSupportedE2EPlatform` requires POSIX process-group settlement and a
+separately owned host lane on Windows. No lifecycle guard was bypassed. Windows
+component/policy results do not qualify that browser lane or native shells.
 
 A chat on a paired Station uses the same conversation, messages, composer,
 approval controls, delivery feedback, and live events as a chat on this Station.
