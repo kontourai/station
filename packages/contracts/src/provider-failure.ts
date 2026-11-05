@@ -227,6 +227,8 @@ export const PROVIDER_FAILURE_KINDS = {
   client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
+  // #4517: a managed policy locks the setting a write would change.
+  managed_setting_locked: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

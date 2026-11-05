@@ -503,7 +503,11 @@ refreshes when the chat reloads. Not covered: the approval-delivery failure
 line on a tool call, which has its own copy. A read-only verdict says only
 "Retry resolution to check again." A session
 that cannot take another message (`terminalSession`) offers Send again to no
-caller. A failed retry from the picker keeps the last answer for that
+caller. A failed turn's error card also offers **Troubleshoot this**, outside a
+replay, to a caller who may start a chat: it opens a new Station Assistant
+conversation seeded with the error and this conversation's ids
+([troubleshoot with an agent](troubleshoot-in-app.md)), and sends nothing to
+this one. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,
 shortcut, inbox, task switcher), because the answer is per conversation, and
 Fork from turn (and Regenerate and Edit and resend, which fork the same way),

@@ -460,7 +460,20 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     ['pwd', false],
     ['mysql', false],
     ['host', false],
+    // Station's pairing and chat-link codes; a bare `code` stays readable.
+    ['manualCode', true],
+    ['pairing_code', true],
+    ['chatLinkCode', true],
+    ['code', false],
+    ['errorCode', false],
+    ['confirmationCode', false],
   ])('isSecretField(%j) is %s', (key, expected) => {
     expect(isSecretField(key)).toBe(expected);
   });
+});
+
+test('a pairing code in key=value text is redacted', () => {
+  expect(redactSecrets('pairing failed manualCode=23456789AB')).not.toContain(
+    '23456789AB',
+  );
 });

@@ -49,8 +49,8 @@ case "$*" in
   *ro.build.version.sdk) echo 35 ;;
   *"install -r"*) if [ "$mode" = slow ]; then
     for apk; do :; done
-    echo $$ > "$HOME/install-pid.tmp"; mv "$HOME/install-pid.tmp" "$HOME/install-pid"
     (sleep 0.5; if [ -e "$apk" ]; then echo present > "$HOME/stage-at-close"; fi) &
+    echo $$ > "$HOME/install-pid.tmp"; mv "$HOME/install-pid.tmp" "$HOME/install-pid"
     exec sleep 30
   else echo Success; fi ;;
   *"dumpsys package"*) if [ "$mode" = wrong-version ]; then echo versionCode=99; else printf 'versionCode=12\\nversionName=1.2\\n'; fi ;;
@@ -305,6 +305,7 @@ test('disconnect stops the install child before cleaning its staged files', asyn
     code: 'interrupted',
     effect: 'unknown',
   });
+  // Publish the cancellation trigger only after the stdio-holding helper starts.
   // The fake adb renames its PID file into place, so the watcher that ends
   // stdin never sees an empty file. An empty read was `Number('') === 0`, and
   // `process.kill(0, 0)` signals this test's own process group and succeeds.

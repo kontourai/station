@@ -54,6 +54,7 @@ import {
   layoutOwnerDirectory,
   normalizeProjectLayoutRecord,
 } from './layout-owner-storage.js';
+import { withoutLockedProjectOverrides } from './managed-settings.js';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -157,7 +158,8 @@ export class FileStorageAdapter implements IStorageAdapter {
           hasKnowledge: pathExists(
             join(dir, name, 'documents', 'metadata.json'),
           ),
-          defaultProviderId: config.defaultProviderId,
+          defaultProviderId:
+            withoutLockedProjectOverrides(config).defaultProviderId,
           ...(config.position !== undefined
             ? { position: config.position }
             : {}),
@@ -170,8 +172,14 @@ export class FileStorageAdapter implements IStorageAdapter {
     return projects.sort(compareProjectListOrder);
   }
 
+  /**
+   * The project as readers see it: a setting the managed policy locks drops
+   * its override field (#4517). Writes go through {@link projectRevision},
+   * which keeps the stored record, so the override returns when the policy
+   * is removed.
+   */
   getProject(slug: string): ProjectConfig {
-    return this.projectRevision(slug).value;
+    return withoutLockedProjectOverrides(this.projectRevision(slug).value);
   }
 
   projectRevision(slug: string): ProjectStoredFileRevision<ProjectConfig> {

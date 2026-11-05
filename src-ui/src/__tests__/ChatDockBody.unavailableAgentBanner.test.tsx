@@ -124,6 +124,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import type { ChatSession } from '../types';
 
 /**
@@ -397,5 +398,30 @@ describe('ChatDockBody unavailable-agent banner (station#3136)', () => {
 
     expect(screen.queryByText(NOT_SET_UP_LEAD_IN)).toBeNull();
     expect(screen.queryByText(MODEL_LEAD_IN)).toBeNull();
+  });
+
+  // #4470: an engine or readiness failure can be troubleshot from the banner.
+  test('a model problem offers Troubleshoot seeded with the reason and the conversation', () => {
+    window.history.pushState({}, '', '/chat');
+    const capture = captureTroubleshootSeeds();
+    try {
+      renderDock({
+        agent: modelProblemAgent({
+          unavailableFix: { kind: 'connection-broken', target: 'bedrock-prod' },
+        }),
+        session: buildSession({ conversationId: 'conv-unavailable' }),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+      expect(capture.seeds).toEqual([
+        {
+          route: '/chat',
+          errorSummary: `connection-broken: ${MODEL_PROBLEM_REASON}`,
+          conversationId: 'conv-unavailable',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
   });
 });

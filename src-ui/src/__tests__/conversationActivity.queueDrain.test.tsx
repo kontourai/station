@@ -721,6 +721,96 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
 });
 
 describe('#2309 "Send now" when the automatic drain will not come', () => {
+  test('a delayed Stop denial cannot change the replacement execution or report its queue as refused', async () => {
+    let denyStop!: (error: Error) => void;
+    mocks.interruptOrchestrationTurn.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          denyStop = reject;
+        }),
+    );
+    chatWithQueue(['keep this follow-up', 'and its successor'], CHILD);
+    connect(API, open(140));
+    const mounted = render(<Queue apiBase={API} />);
+    fireEvent.click(screen.getByRole('button', { name: /pending messages?/ }));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send pending message 1 now' }),
+      );
+      await vi.dynamicImportSettled();
+    });
+    expect(mocks.interruptOrchestrationTurn).toHaveBeenCalledExactlyOnceWith({
+      threadId: CHILD,
+      turnId: TURN,
+      apiBase: API,
+    });
+    expect(chat().queueSendNowPending).toBe(true);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    const queuedIdentity = chat().queuedMessageMetadata;
+
+    const replacementSession = `${CONVERSATION}:session:replacement`;
+    const replacementTurn = `${TURN}-replacement`;
+    const replacementActivity: ConversationTurnActivity = {
+      ...open(141),
+      openTurn: {
+        threadId: replacementSession,
+        turnId: replacementTurn,
+        startedAt: '2026-09-22T19:00:00.000Z',
+      },
+    };
+    act(() =>
+      deliverSnapshot(API, {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: CONVERSATION,
+            currentSessionId: replacementSession,
+            status: 'running',
+            hasActiveTurn: true,
+            conversationActivity: replacementActivity,
+          },
+          {
+            provider: 'claude',
+            threadId: replacementSession,
+            status: 'running',
+            hasActiveTurn: true,
+            conversationActivity: replacementActivity,
+          },
+        ],
+      }),
+    );
+    expect(chat().currentSessionId).toBe(replacementSession);
+    expect(chat().conversationActivity?.openTurn?.turnId).toBe(replacementTurn);
+    await act(async () => {
+      denyStop(new Error('Old execution no longer permits interruption'));
+      await vi.dynamicImportSettled();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().currentSessionId).toBe(replacementSession);
+    expect(chat().conversationActivity?.openTurn?.turnId).toBe(replacementTurn);
+    expect(chat().queuedMessages).toEqual([
+      'keep this follow-up',
+      'and its successor',
+    ]);
+    expect(chat().queuedMessageMetadata).toEqual(queuedIdentity);
+    expect(chat().queueSendNowPending).toBe(false);
+    expect(
+      screen
+        .getByRole('button', { name: 'Send pending message 1 now' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+    const feedback = (chat().ephemeralMessages ?? []).map(
+      (message) => message.content,
+    );
+    mounted.unmount();
+    expect(
+      feedback.some((message) =>
+        message.includes('Old execution no longer permits interruption'),
+      ),
+    ).toBe(false);
+  });
+
   test('a Stop on another device, seen after a reconnect: nothing is sent, "Send now" is offered, and one click sends exactly one', async () => {
     chatWithQueue(['after the stop', 'and this later'], CHILD);
     connect(API, open(50));

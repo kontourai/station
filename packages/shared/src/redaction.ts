@@ -123,7 +123,16 @@ function keySegments(key: string): string[] {
  * not. Compared against the segment-joined form, so `MYSQL_PWD`, `mysql-pwd`
  * and `mysqlPwd` all match while a bare `pwd` does not.
  */
-const WHOLE_NAME_SECRET_KEYS = new Set(['pgpassword', 'mysqlpwd']);
+// Station's own short-lived pairing and chat-link codes are credentials while
+// they are valid; `code` alone is not (error codes, exit codes).
+const WHOLE_NAME_SECRET_KEYS = new Set([
+  'pgpassword',
+  'mysqlpwd',
+  'manualcode',
+  'pairingcode',
+  'linkcode',
+  'chatlinkcode',
+]);
 
 export function isSecretField(key: string): boolean {
   const segments = keySegments(key);

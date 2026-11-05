@@ -836,8 +836,9 @@ opens on that entry's first step.
    **Retry check** (or add it again) if it was not ready by then.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
-   the cause, or **Edit setup** for a custom engine. The engine's Agent is
-   added only once its check succeeds.
+   the cause, or **Edit setup** for a custom engine. On a saved engine that
+   isn't connected yet, **Troubleshoot** asks the Station Assistant about the
+   failure. The engine's Agent is added only once its check succeeds.
 5. When it is **Ready**, **Start a chat with** the engine opens New chat with
    its Agent selected. A Project-owned Agent uses its own Project; otherwise
    New chat uses the dock's current Project, or no Project when none is open.
@@ -1372,7 +1373,10 @@ the [credential check](../../src-server/providers/llm/bedrock.ts).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-A Project can override them with `defaultProviderId` and `defaultModel`. Its
+A Project can override them with `defaultProviderId` and `defaultModel`, unless
+the machine's [managed policy](managed-policy.md#settings) locks either
+setting; a lock outranks the Project's pair and its `last-used` model
+selection. Its
 **New chats** settings can instead start each new chat on the model the
 person's last chat in that Project started with (`defaultModelSelection:
 'last-used'`), falling back to the chain above when that model is no longer

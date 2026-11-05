@@ -18,6 +18,7 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   TROUBLESHOOT_CLI_COMMAND,
   type TroubleshootPrepareResponse,
+  type TroubleshootSeed,
 } from '@kontourai/station-contracts/troubleshoot';
 import {
   useEngineConnectionsQuery,
@@ -74,62 +75,65 @@ export function useStartTroubleshoot() {
     [upsertToast],
   );
 
-  const start = useCallback(async () => {
-    if (starting.current) return;
-    if (
-      !station ||
-      !agentRunnability(station).runnable ||
-      !canAgentStartChat(station, connections)
-    ) {
-      fallBack('The Station Assistant has no engine to troubleshoot with.');
-      return;
-    }
-    starting.current = true;
-    // Read at click time, not on app load: `null` (handshake unreadable)
-    // still tries, and a failure there lands in the failure toast below.
-    if ((await readTroubleshootCapability(apiBase)) === false) {
-      starting.current = false;
-      fallBack(
-        'This Station can’t troubleshoot in the app. Updating it may help.',
-      );
-      return;
-    }
-    let pendingToast: string | undefined;
-    const pendingTimer = setTimeout(() => {
-      pendingToast = upsertToast({
-        dedupeKey: 'troubleshoot-pending',
-        message: 'Preparing troubleshooting…',
-        duration: 0,
-      });
-    }, TROUBLESHOOT_PENDING_TOAST_DELAY_MS);
-    try {
-      setPrepared(await prepare.mutateAsync({}));
-    } catch (error) {
-      upsertToast({
-        dedupeKey: 'troubleshoot-failed',
-        message: 'Troubleshooting couldn’t start.',
-        detail: error instanceof Error ? error.message : undefined,
-        tone: 'error',
-        duration: 0,
-        actions: [
-          { label: 'Report a problem', onClick: requestReportProblem },
-          COPY_CLI_ACTION,
-        ],
-      });
-    } finally {
-      clearTimeout(pendingTimer);
-      if (pendingToast) dismissToast(pendingToast);
-      starting.current = false;
-    }
-  }, [
-    station,
-    connections,
-    apiBase,
-    prepare,
-    upsertToast,
-    dismissToast,
-    fallBack,
-  ]);
+  const start = useCallback(
+    async (seed?: TroubleshootSeed) => {
+      if (starting.current) return;
+      if (
+        !station ||
+        !agentRunnability(station).runnable ||
+        !canAgentStartChat(station, connections)
+      ) {
+        fallBack('The Station Assistant has no engine to troubleshoot with.');
+        return;
+      }
+      starting.current = true;
+      // Read at click time, not on app load: `null` (handshake unreadable)
+      // still tries, and a failure there lands in the failure toast below.
+      if ((await readTroubleshootCapability(apiBase)) === false) {
+        starting.current = false;
+        fallBack(
+          'This Station can’t troubleshoot in the app. Updating it may help.',
+        );
+        return;
+      }
+      let pendingToast: string | undefined;
+      const pendingTimer = setTimeout(() => {
+        pendingToast = upsertToast({
+          dedupeKey: 'troubleshoot-pending',
+          message: 'Preparing troubleshooting…',
+          duration: 0,
+        });
+      }, TROUBLESHOOT_PENDING_TOAST_DELAY_MS);
+      try {
+        setPrepared(await prepare.mutateAsync(seed ? { seed } : {}));
+      } catch (error) {
+        upsertToast({
+          dedupeKey: 'troubleshoot-failed',
+          message: 'Troubleshooting couldn’t start.',
+          detail: error instanceof Error ? error.message : undefined,
+          tone: 'error',
+          duration: 0,
+          actions: [
+            { label: 'Report a problem', onClick: requestReportProblem },
+            COPY_CLI_ACTION,
+          ],
+        });
+      } finally {
+        clearTimeout(pendingTimer);
+        if (pendingToast) dismissToast(pendingToast);
+        starting.current = false;
+      }
+    },
+    [
+      station,
+      connections,
+      apiBase,
+      prepare,
+      upsertToast,
+      dismissToast,
+      fallBack,
+    ],
+  );
 
   const launch = useCallback(
     async (description: string) => {
