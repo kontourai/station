@@ -60,7 +60,11 @@
 
     "tests/live/terminal-restart-journey.mjs",
 
-    "packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts"
+    "packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts",
+
+    "src-server/services/terminal/pty-workload-host.ts",
+
+    "src-server/adapters/__tests__/node-pty-adapter.test.ts"
   ],
 
   "checks": [
