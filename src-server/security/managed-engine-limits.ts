@@ -39,7 +39,7 @@ export function installManagedEngineLimits(
  * dispatch records the command as rejected and forwards the code, and every
  * route answers it with 403.
  */
-export class ManagedEngineRefusedError extends SendTurnRefusedError {
+class ManagedEngineRefusedError extends SendTurnRefusedError {
   readonly code = MANAGED_POLICY_ENGINE_REFUSED_CODE;
   readonly status = 403;
 
@@ -68,7 +68,7 @@ function denial(subject: string): string {
  * is the provider `station-agent` and the engine `station`
  * (`station-agent-adapter.ts`); a policy names it `station-agent`.
  */
-export function managedPolicyEngineId(engine: string): string {
+function managedPolicyEngineId(engine: string): string {
   return engine === 'station' ? 'station-agent' : engine;
 }
 
@@ -78,7 +78,7 @@ export function engineAllowedByManagedPolicy(engine: string): boolean {
 }
 
 /** False when the policy sets `limits.engines.acpRegistryAgents: false`. */
-export function acpRegistryAgentsAllowedByManagedPolicy(): boolean {
+function acpRegistryAgentsAllowedByManagedPolicy(): boolean {
   return installedEngines?.acpRegistryAgents !== false;
 }
 
