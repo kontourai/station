@@ -292,13 +292,16 @@ On Windows the operation ends the shell's process tree with `taskkill /T /F`
 before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
-stop (#3994). After a successful `taskkill` both hosts wait for the exit as
-after a natural one and never call node-pty's `kill()`. Once its shell has gone,
-that call lists the console's processes through a helper that cannot attach,
-and five seconds later signals the old shell pid, which Windows may have
-reused (on a loaded runner, a later shell's console host, which failed its
-CreateProcess with error 87). `kill()` remains the fallback for a tree
-`taskkill` could not end, which is reported. `taskkill` follows
+stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+node-pty 1.1 releases a ConPTY (its pseudoconsole and output-reader thread)
+only in `kill()`, and that call first lists the console's processes through
+a helper that cannot attach once the shell has gone, then five seconds later
+signals the old shell pid, which Windows may have reused (on a loaded runner,
+a later shell's console host, which failed its CreateProcess with error 87).
+So on every exit, natural or not, the adapter releases the ConPTY through
+`kill()` with that listing answered empty. Before the exit, `kill()` is only
+the fallback for a tree `taskkill` could not end, which is reported.
+`taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
 The real PTY tests qualify macOS cleanup of the tested descendants and, on
@@ -1033,9 +1036,12 @@ verification.
   paints from its top-left. On Windows the divider is now followed by a
   screenful of line feeds, so both move into scrollback first. And on a
   loaded host, close followed `taskkill` with node-pty's `kill()` when the
-  exit event was late, which signalled the dead shell's pid five seconds on
-  (see the same section); the adapter and supervisor-host suites hold the
-  exit back past the old grace and fail if `kill()` is called.
+  exit event was late, which signalled the dead shell's pid five seconds on,
+  and a first fix that skipped `kill()` left every closed shell's ConPTY open
+  (see the same section). The adapter suite closes real ConPTY shells by
+  `taskkill` and by `exit`, and fails on a leaked output-reader thread or a
+  later signal to the old pid; the supervisor-host suite holds the exit back
+  past the old grace and fails if the host calls `kill()`.
 
   Known on ConPTY, not fixed: the journal does not record resizes, so
   replaying a resize repaint at another size can overwrite a scrolled row in
