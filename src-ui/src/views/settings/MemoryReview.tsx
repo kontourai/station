@@ -285,7 +285,7 @@ export function MemoryReview() {
           {queue.isFetching && !queue.data && <SkeletonList count={2} />}
           {refused && (
             <Empty
-              label="No memory to review here"
+              label="Nothing to review here yet"
               description="Collected memory shows up here."
             />
           )}
