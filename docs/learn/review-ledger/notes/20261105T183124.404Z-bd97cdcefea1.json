@@ -1,0 +1,7 @@
+{
+  "revision": "5bd6d9482fdf72d2e4eeebf661f6d3e847c295b6",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Scoped generated-content review at 5bd6d9482fdf72d2e4eeebf661f6d3e847c295b6. Parsed and compared the generated CliSessionGroups topic body: only the new recorded-group control and final source/Knowledge/current-record explanation were inserted from the canonical module map. Topic IDs, tool schemas, manifest metadata, bounds, credential-free manual delivery and separate station-control/knowledge authority are unchanged. Generated 137 topics; reviewed content does not qualify live execution, a provider, native memory, output availability or group acceptance. Existing manual reference remains accurate; no prose change or broader approval.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
