@@ -693,3 +693,44 @@ test('R6-6: a restarted Station with the same id starts the viewer over at its e
   a.unmount();
   await restarted.dispose();
 });
+
+test("R6-2b: a release refused as stale only because this viewer's own takeover moved the epoch goes again, so the press is not left down", async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  await server.agentClaim();
+  let openStream!: () => void;
+  const streamGate = new Promise<void>((resolve) => {
+    openStream = resolve;
+  });
+  // The takeover is applied; its answer is held back, then lost.
+  let loseAnswer!: () => void;
+  const answerGate = new Promise<void>((_resolve, reject) => {
+    loseAnswer = () => reject(new TypeError('network connection was lost'));
+  });
+  answerGate.catch(() => {});
+  let firstInput = true;
+  const a = viewer(
+    server.transport({
+      // The stream says nothing new, and the takeover's answer is lost.
+      streamGate: () => streamGate,
+      delay: (url) => {
+        if (!url.endsWith('/input') || !firstInput) return null;
+        firstInput = false;
+        return answerGate;
+      },
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  act(() => a.result.current.sendInput([shiftUp]));
+  loseAnswer();
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  openStream();
+  await settle();
+  expect(server.remotePressed()).toEqual([]);
+  a.unmount();
+});

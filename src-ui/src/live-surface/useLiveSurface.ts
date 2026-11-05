@@ -1175,6 +1175,22 @@ export function useLiveSurface(
       } else if (
         result &&
         !result.ok &&
+        result.code === 'stale-epoch' &&
+        parseLiveSurfaceEpochCause(result.epochCause) === 'self' &&
+        lineage === lineageRef.current &&
+        epochRef.current > batchEpoch
+      ) {
+        // Stale only because this viewer's own takeover moved the epoch
+        // (its answer lost or still on the way): refused before any of it
+        // was dispatched and still meant for this control, so it goes again
+        // at the epoch just adopted. A release here must not be lost.
+        queueRef.current = [
+          ...batch.map((event) => ({ event, lineage })),
+          ...queueRef.current,
+        ];
+      } else if (
+        result &&
+        !result.ok &&
         (result.code === 'stale-epoch' || result.code === 'stale-fence')
       ) {
         queueRef.current = [];
