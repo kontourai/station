@@ -1,13 +1,14 @@
 /**
- * #4515: every managed-policy slice adds keys, and the parsed document, the
- * client summary and the status decode each rebuild `limits` from
- * `MANAGED_POLICY_LIMIT_SLICES`. This sets every enforced key at once and
- * checks each one survives all three, so a merge that registers a slice in
- * only one reader, or drops one from the list, fails here.
+ * #4515: every managed-policy slice adds keys. The parsed document and the
+ * client summary rebuild `limits` from `MANAGED_POLICY_LIMIT_SLICES`, and the
+ * status decode reads it with `MANAGED_POLICY_SUMMARY_LIMIT_READERS`. This
+ * sets every enforced key at once and checks each one survives all three, so
+ * a merge that registers a slice in only one place, or drops one, fails here.
  */
 import { describe, expect, test } from 'vitest';
 import {
   MANAGED_POLICY_ENFORCED_LIMIT_KEYS,
+  MANAGED_POLICY_SUMMARY_LIMIT_READERS,
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
@@ -34,6 +35,11 @@ describe('a policy that sets every enforced key at once', () => {
       'updates',
       'webhookAutomations',
     ]);
+    // The status decode reads the summary with one reader per limit, apart
+    // from the document slices; every enforced key needs one.
+    expect(Object.keys(MANAGED_POLICY_SUMMARY_LIMIT_READERS).sort()).toEqual(
+      [...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort(),
+    );
   });
 
   test('every value survives the parsed document, the summary and the status decode', () => {

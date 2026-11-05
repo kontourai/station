@@ -159,15 +159,18 @@ The policy must not hold credentials: every user on the machine can read it.
 The parser refuses a support link that contains a user name or password.
 
 **Limits are rebuilt from every slice.** Each enforced limit is one entry in
-`MANAGED_POLICY_LIMIT_SLICES`: its problems and its accepted value. The parsed
-document, the client summary and the status decode each rebuild `limits` by
-merging every entry, rather than from one slice's own fields. A slice reads
-either shape, the document or the summary it projects to, because the status
-decode re-checks the summary a server sent. Two slices differ between the
-shapes: `clients` does not require the local kinds in a summary, since a newer
-server may enforce a list this build refuses in a document, and `updates` is
-projected to `mirror` (see [Update control](#update-control)) only when the
-summary is built, so the parsed document keeps its `feedUrl`. One round-trip
+`MANAGED_POLICY_LIMIT_SLICES`: its document problems, its accepted value and,
+where clients see something else, its summary projection. The parsed document
+and the client summary both rebuild `limits` by merging every entry, rather
+than from one slice's own fields; `updates` is projected to `mirror` (see
+[Update control](#update-control)) only when the summary is built, so the
+parsed document keeps its `feedUrl`. The status decode reads the summary a
+server sent with one reader per limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`
+in the registry-free `managed-policy-status` subpath), so the browser does not
+carry the document checks and the settings registries. A reader checks the
+value's shape, not every document rule: `clients` does not require the local
+kinds there, since a newer server may enforce a list this build refuses in a
+document. The readers' type requires one per summary key, and one round-trip
 test sets every enforced key at once and fails when a key is missing from any
 of the three, so merging two slices cannot silently drop a restriction.
 

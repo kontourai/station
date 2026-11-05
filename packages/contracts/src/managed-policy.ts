@@ -31,15 +31,16 @@ import { boundaryText, isRecord } from './contract-validation.js';
 import { DEVICE_SETTINGS_REGISTRY } from './device-settings.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
 import {
-  acceptedManagedPolicyLimits,
-  describeManagedPolicyKey,
-  MANAGED_POLICY_ENFORCED_LIMIT_KEYS,
+  MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
+  MANAGED_POLICY_CLIENT_KINDS,
+  type ManagedPolicyClientKind,
   type ManagedPolicyLimits,
-  type ManagedPolicyProblem,
+  type ManagedPolicyRegistryLimits,
   type ManagedPolicySummary,
+  type ManagedPolicySummaryLimits,
   type ManagedPolicyUpdatesLimit,
-  managedPolicyLimitProblems,
-  summarizeManagedPolicyLimits,
+  type ManagedPolicyUpdatesSummary,
+  normalizeManagedRegistryUrl,
 } from './managed-policy-status.js';
 import {
   APP_SETTINGS_REGISTRY,
@@ -160,7 +161,7 @@ export function duplicateJsonMemberPath(text: string): string | null {
     skipSpace();
     if (text[i] !== '"') fail();
     const name = readString();
-    const memberPath = describeManagedPolicyKey(frame.path, name);
+    const memberPath = describeKey(frame.path, name);
     if (frame.seen.has(name)) return memberPath;
     frame.seen.add(name);
     skipSpace();
@@ -231,7 +232,7 @@ function unknownKeyProblems(
         !(DOCUMENT_KEYS as readonly string[]).includes(key),
     )
     .map((key) => ({
-      path: describeManagedPolicyKey('', String(key)),
+      path: describeKey('', String(key)),
       message:
         'unknown key; this version of Station refuses keys it cannot enforce',
     }));
@@ -264,9 +265,7 @@ function reservedMapProblems(
   if (!isRecord(value)) return [{ path: name, message: 'must be an object' }];
   return Reflect.ownKeys(value).flatMap((key) => {
     const message = entryMessage(String(key));
-    return message
-      ? [{ path: describeManagedPolicyKey(name, String(key)), message }]
-      : [];
+    return message ? [{ path: describeKey(name, String(key)), message }] : [];
   });
 }
 
@@ -489,7 +488,7 @@ export function managedSettingsProblems(
     return [{ path: 'settings', message: 'must be an object' }];
   const problems: ManagedPolicyProblem[] = [];
   for (const key of Reflect.ownKeys(settings)) {
-    const path = describeManagedPolicyKey('settings', String(key));
+    const path = describeKey('settings', String(key));
     const pathProblem =
       typeof key === 'string'
         ? managedSettingPathProblem(key, registry)
@@ -509,7 +508,7 @@ export function managedSettingsProblems(
     for (const entryKey of Reflect.ownKeys(entry)) {
       if (!(SETTING_ENTRY_KEYS as readonly unknown[]).includes(entryKey))
         problems.push({
-          path: describeManagedPolicyKey(path, String(entryKey)),
+          path: describeKey(path, String(entryKey)),
           message:
             'unknown key; this version of Station refuses keys it cannot enforce',
         });
@@ -603,7 +602,7 @@ export function parseManagedPolicyDocument(
   problems.push(
     ...managedSettingsProblems(settings),
     ...reservedMapProblems('limits', limits, limitProblem),
-    ...managedPolicyLimitProblems(limits, 'document'),
+    ...managedPolicyLimitProblems(limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -744,4 +743,439 @@ export function managedUpdateServerManifestUrl(
     `${STATION_RELEASE_DOWNLOAD_BASE}portable-${ring}/station-portable-${ring}-manifest.json`,
     feedUrl,
   );
+}
+
+/** Limit keys this build enforces. */
+export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
+  'clients',
+  'updates',
+];
+
+const UPDATES_KEYS = ['mode', 'feedUrl', 'allowNightly'] as const;
+
+/** One reason a document is refused; `path` is a dotted document path. */
+export interface ManagedPolicyProblem {
+  path: string;
+  message: string;
+}
+
+/**
+ * Longest key name quoted in a problem path. Key names come from the policy
+ * file, and the paths end up in the server's one-line fatal message, so an
+ * enormous key must not make that line enormous.
+ */
+export const MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS = 64;
+
+function describeKey(parent: string, key: string): string {
+  if (key.length > MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS) {
+    const shown = JSON.stringify(
+      key.slice(0, MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS),
+    );
+    return `${parent}[${shown}… (${key.length} characters)]`;
+  }
+  return /^[A-Za-z_$][\w$]*$/.test(key)
+    ? parent
+      ? `${parent}.${key}`
+      : key
+    : `${parent}[${JSON.stringify(key)}]`;
+}
+
+/** #4522: every problem with `limits.updates`, its keys and its values. */
+function updatesLimitProblems(updates: unknown): ManagedPolicyProblem[] {
+  if (updates === undefined) return [];
+  if (!isRecord(updates))
+    return [{ path: 'limits.updates', message: 'must be an object' }];
+  const problems: ManagedPolicyProblem[] = Reflect.ownKeys(updates)
+    .filter(
+      (key) =>
+        typeof key !== 'string' ||
+        !(UPDATES_KEYS as readonly string[]).includes(key),
+    )
+    .map((key) => ({
+      path: describeKey('limits.updates', String(key)),
+      message:
+        'unknown key; this version of Station refuses keys it cannot enforce',
+    }));
+  const mode = ownLimitValue(updates, 'mode');
+  if (mode !== undefined && mode !== 'auto' && mode !== 'off')
+    problems.push({
+      path: 'limits.updates.mode',
+      message: 'must be "auto" or "off"',
+    });
+  const feedUrl = ownLimitValue(updates, 'feedUrl');
+  const feedProblem =
+    feedUrl === undefined ? null : updateFeedUrlProblem(feedUrl);
+  if (feedProblem)
+    problems.push({ path: 'limits.updates.feedUrl', message: feedProblem });
+  const allowNightly = ownLimitValue(updates, 'allowNightly');
+  if (allowNightly !== undefined && typeof allowNightly !== 'boolean')
+    problems.push({
+      path: 'limits.updates.allowNightly',
+      message: 'must be true or false',
+    });
+  return problems;
+}
+
+/** #4522: the accepted `limits.updates`, from a value already checked. */
+function parsedUpdatesLimit(
+  updates: Record<string, unknown>,
+): ManagedPolicyUpdatesLimit {
+  const parsed: ManagedPolicyUpdatesLimit = {};
+  const mode = ownLimitValue(updates, 'mode');
+  if (mode === 'auto' || mode === 'off') parsed.mode = mode;
+  const feedUrl = ownLimitValue(updates, 'feedUrl');
+  if (typeof feedUrl === 'string') parsed.feedUrl = feedUrl;
+  const allowNightly = ownLimitValue(updates, 'allowNightly');
+  if (typeof allowNightly === 'boolean') parsed.allowNightly = allowNightly;
+  return parsed;
+}
+
+/**
+ * #4522: an update feed is an https base URL that release paths are appended
+ * to, so it has no query or fragment, and no user name or password (every
+ * user on the machine can read the policy).
+ */
+function updateFeedUrlProblem(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0)
+    return 'must be an https URL';
+  if (value.length > SUPPORT_URL_MAX_CHARS)
+    return `must be at most ${SUPPORT_URL_MAX_CHARS} characters`;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'must be an https URL';
+  }
+  if (url.protocol !== 'https:') return 'must be an https URL';
+  if (url.username || url.password)
+    return 'must not contain a user name or password';
+  if (value.includes('?') || value.includes('#'))
+    return 'must not contain a query or fragment; release paths are appended to it';
+  // Release paths are appended to the parsed form, so the text must be that
+  // form: `new URL` silently drops tabs and newlines and resolves `..`.
+  if (url.href !== value && url.href !== `${value}/`)
+    return 'must be a plain URL in canonical form';
+  return null;
+}
+
+function summarizeUpdatesLimit(
+  updates: ManagedPolicyUpdatesLimit,
+): ManagedPolicyUpdatesSummary {
+  return {
+    mode: updates.mode ?? 'auto',
+    mirror: updates.feedUrl !== undefined,
+    allowNightly: updates.allowNightly ?? true,
+  };
+}
+
+const REGISTRY_LIMIT_KEYS = [
+  'allowedUrls',
+  'unsignedPackages',
+  'defaultSkillRegistries',
+  'acpRegistryInstalls',
+] as const;
+const REGISTRY_ALLOWED_URLS_MAX = 64;
+const REGISTRY_URL_MAX_CHARS = 2048;
+
+function offOnlyProblem(value: unknown, subject: string): string | null {
+  if (value === undefined || value === false) return null;
+  return `must be false; a policy can turn ${subject} off but never on, so omit the key to leave it to each user`;
+}
+
+function allowedUrlsProblems(value: unknown): ManagedPolicyProblem[] {
+  const path = 'limits.registries.allowedUrls';
+  if (!Array.isArray(value))
+    return [{ path, message: 'must be an array of https URLs' }];
+  if (value.length > REGISTRY_ALLOWED_URLS_MAX)
+    return [
+      {
+        path,
+        message: `must list at most ${REGISTRY_ALLOWED_URLS_MAX} URLs`,
+      },
+    ];
+  const seen = new Set<string>();
+  const problems: ManagedPolicyProblem[] = [];
+  value.forEach((entry, index) => {
+    const at = `${path}[${index}]`;
+    if (
+      typeof entry !== 'string' ||
+      entry.length === 0 ||
+      entry.length > REGISTRY_URL_MAX_CHARS ||
+      entry.startsWith('github:')
+    ) {
+      problems.push({
+        path: at,
+        message: `must be an https URL of at most ${REGISTRY_URL_MAX_CHARS} characters`,
+      });
+      return;
+    }
+    const normalized = normalizeManagedRegistryUrl(entry);
+    if (normalized === null) {
+      problems.push({
+        path: at,
+        message:
+          'must be an https URL without a user name, password, query or fragment',
+      });
+      return;
+    }
+    // A registry read over plain http can be altered in transit, so a policy
+    // cannot vouch for one (the update mirror is https-only for the same
+    // reason). Comparison still normalizes http, so an http location simply
+    // matches no entry.
+    if (!normalized.startsWith('https://')) {
+      problems.push({
+        path: at,
+        message:
+          'must use https; a registry read over http can be altered in transit',
+      });
+      return;
+    }
+    if (seen.has(normalized))
+      problems.push({ path: at, message: 'repeats an earlier URL' });
+    seen.add(normalized);
+  });
+  return problems;
+}
+
+function registryLimitProblems(value: unknown): ManagedPolicyProblem[] {
+  if (value === undefined) return [];
+  if (!isRecord(value))
+    return [{ path: 'limits.registries', message: 'must be an object' }];
+  const problems: ManagedPolicyProblem[] = Reflect.ownKeys(value)
+    .filter(
+      (key) =>
+        typeof key !== 'string' ||
+        !(REGISTRY_LIMIT_KEYS as readonly string[]).includes(key),
+    )
+    .map((key) => ({
+      path: describeKey('limits.registries', String(key)),
+      message:
+        'unknown key; this version of Station refuses keys it cannot enforce',
+    }));
+  const allowedUrls = ownLimitValue(value, 'allowedUrls');
+  if (allowedUrls !== undefined)
+    problems.push(...allowedUrlsProblems(allowedUrls));
+  const switches: Array<[string, string]> = [
+    ['unsignedPackages', 'unsigned packages'],
+    ['defaultSkillRegistries', 'the default skill registries'],
+    ['acpRegistryInstalls', 'ACP registry installs'],
+  ];
+  for (const [key, subject] of switches) {
+    const message = offOnlyProblem(ownLimitValue(value, key), subject);
+    if (message) problems.push({ path: `limits.registries.${key}`, message });
+  }
+  return problems;
+}
+
+/** Problems with the capability switches in `limits`; other keys are not checked. */
+export function capabilityLimitProblems(
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(limits)) return [];
+  const problems: ManagedPolicyProblem[] = [];
+  for (const [key, subject] of [
+    ['telemetry', 'telemetry'],
+    ['webhookAutomations', 'webhook automations'],
+  ] as const) {
+    const message = offOnlyProblem(ownLimitValue(limits, key), subject);
+    if (message) problems.push({ path: `limits.${key}`, message });
+  }
+  problems.push(...registryLimitProblems(ownLimitValue(limits, 'registries')));
+  return problems;
+}
+
+/**
+ * The capability switches of a `limits` value that passed
+ * {@link capabilityLimitProblems}, copied. URLs are kept as written.
+ */
+export function capabilityLimitsOf(limits: unknown): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  const result: ManagedPolicyLimits = {};
+  if (ownLimitValue(limits, 'telemetry') === false) result.telemetry = false;
+  if (ownLimitValue(limits, 'webhookAutomations') === false)
+    result.webhookAutomations = false;
+  const registries = ownLimitValue(limits, 'registries');
+  if (isRecord(registries)) {
+    const copy: ManagedPolicyRegistryLimits = {};
+    const allowedUrls = ownLimitValue(registries, 'allowedUrls');
+    if (Array.isArray(allowedUrls))
+      copy.allowedUrls = allowedUrls.filter(
+        (url): url is string => typeof url === 'string',
+      );
+    if (ownLimitValue(registries, 'unsignedPackages') === false)
+      copy.unsignedPackages = false;
+    if (ownLimitValue(registries, 'defaultSkillRegistries') === false)
+      copy.defaultSkillRegistries = false;
+    if (ownLimitValue(registries, 'acpRegistryInstalls') === false)
+      copy.acpRegistryInstalls = false;
+    result.registries = copy;
+  }
+  return result;
+}
+
+/**
+ * The kinds every accepted `limits.clients` must keep. This build enforces
+ * only the absence of `remote`; it cannot keep the desktop app or a local
+ * browser out, so a list without one of them is refused rather than accepted
+ * and ignored.
+ */
+const REQUIRED_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+];
+
+/**
+ * Why `value` is not an accepted `limits.clients` in a document, or null.
+ * The summary reader (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`) skips the
+ * required-kinds rule: a newer server may enforce lists this build refuses
+ * in a policy.
+ */
+function clientsValueProblem(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (kind) =>
+        typeof kind === 'string' &&
+        (MANAGED_POLICY_CLIENT_KINDS as readonly string[]).includes(kind),
+    )
+  )
+    return 'must be a list of "desktop", "local-browser" and "remote"';
+  if (new Set(value).size !== value.length)
+    return 'must not list a client kind twice';
+  const missing = REQUIRED_CLIENT_KINDS.filter((kind) => !value.includes(kind));
+  return missing.length > 0
+    ? `must include ${missing.map((kind) => `"${kind}"`).join(' and ')}; this version of Station can only leave out "remote"`
+    : null;
+}
+
+/** #4519: problems with `limits.clients`. */
+function clientsLimitProblems(
+  limits: Record<string, unknown>,
+): ManagedPolicyProblem[] {
+  const message = clientsValueProblem(ownLimitValue(limits, 'clients'));
+  return message ? [{ path: 'limits.clients', message }] : [];
+}
+
+/**
+ * #4519: `{ clients }` from limits that passed {@link clientsLimitProblems},
+ * else `{}`. The kinds are put in canonical order; the summary is the same.
+ */
+function acceptedClientsLimit(
+  limits: Record<string, unknown>,
+): ManagedPolicyLimits {
+  const clients = ownLimitValue(limits, 'clients');
+  return Array.isArray(clients)
+    ? {
+        clients: MANAGED_POLICY_CLIENT_KINDS.filter((kind) =>
+          clients.includes(kind),
+        ),
+      }
+    : {};
+}
+
+/** `record[key]` when it is the record's own member (no `Object.hasOwn`: ES2020). */
+function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(record, key)?.value;
+}
+
+/**
+ * #4522: `limits.updates` in a document: its problems and its value. The
+ * client projection (`feedUrl` to `mirror`) is {@link summarizeUpdatesLimit}.
+ */
+function updatesSliceProblems(
+  limits: Record<string, unknown>,
+): ManagedPolicyProblem[] {
+  return updatesLimitProblems(ownLimitValue(limits, 'updates'));
+}
+
+function updatesSliceAccepted(
+  limits: Record<string, unknown>,
+): ManagedPolicyLimits {
+  const updates = ownLimitValue(limits, 'updates');
+  return isRecord(updates) ? { updates: parsedUpdatesLimit(updates) } : {};
+}
+
+function updatesSliceSummary(
+  limits: ManagedPolicyLimits,
+): ManagedPolicySummaryLimits {
+  return limits.updates
+    ? { updates: summarizeUpdatesLimit(limits.updates) }
+    : {};
+}
+
+/**
+ * One limit slice in a policy document: the problems with its keys, its
+ * accepted value copied out of a `limits` object that passed, and, when
+ * clients see something else, its projection for the summary (without it
+ * the summary carries the accepted value). Each returns only its own keys;
+ * the readers merge them. The summary a client decodes is read by
+ * `MANAGED_POLICY_SUMMARY_LIMIT_READERS` in `./managed-policy-status.js`,
+ * kept apart so the browser does not carry the document checks.
+ */
+interface ManagedPolicyLimitSlice {
+  problems(limits: Record<string, unknown>): ManagedPolicyProblem[];
+  accepted(limits: Record<string, unknown>): ManagedPolicyLimits;
+  summary?(limits: ManagedPolicyLimits): ManagedPolicySummaryLimits;
+}
+
+/**
+ * Every limit slice this build enforces. The parsed document and the summary
+ * both rebuild limits from this list, so a slice added here reaches both; a
+ * site that rebuilt limits from one slice's own fields would silently drop
+ * every other slice's restriction.
+ */
+const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
+  { problems: capabilityLimitProblems, accepted: capabilityLimitsOf },
+  { problems: clientsLimitProblems, accepted: acceptedClientsLimit },
+  {
+    problems: updatesSliceProblems,
+    accepted: updatesSliceAccepted,
+    summary: updatesSliceSummary,
+  },
+];
+
+/** Problems with every enforced limit in a document's `limits`. */
+export function managedPolicyLimitProblems(
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(limits)) return [];
+  return MANAGED_POLICY_LIMIT_SLICES.flatMap((slice) => slice.problems(limits));
+}
+
+/**
+ * The accepted limits of a document's `limits` that passed
+ * {@link managedPolicyLimitProblems}: every slice's result, merged.
+ */
+export function acceptedManagedPolicyLimits(
+  limits: unknown,
+): ManagedPolicyLimits {
+  if (!isRecord(limits)) return {};
+  let result: ManagedPolicyLimits = {};
+  for (const slice of MANAGED_POLICY_LIMIT_SLICES)
+    result = { ...result, ...slice.accepted(limits) };
+  return result;
+}
+
+/**
+ * What clients see of a parsed document's limits: each slice's projection
+ * (or its value, copied), merged. A secret such as the update feed URL is
+ * dropped here and nowhere else.
+ */
+export function summarizeManagedPolicyLimits(
+  limits: ManagedPolicyLimits | undefined,
+): ManagedPolicySummaryLimits {
+  if (!limits) return {};
+  const record = limits as Record<string, unknown>;
+  let result: ManagedPolicySummaryLimits = {};
+  for (const slice of MANAGED_POLICY_LIMIT_SLICES)
+    result = {
+      ...result,
+      // A slice without a projection shows clients its document value.
+      ...(slice.summary
+        ? slice.summary(limits)
+        : (slice.accepted(record) as ManagedPolicySummaryLimits)),
+    };
+  return result;
 }
