@@ -13,7 +13,8 @@ import type { ITool, RuntimeContext } from '../../../runtime/types.js';
 import { createProjectNativeToolLoader } from '../../../services/projects/project-native-tools.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 
-vi.mock('../chat-request-preparation.js', () => ({
+vi.mock('../chat-request-preparation.js', async (importActual) => ({
+  ...(await importActual<typeof import('../chat-request-preparation.js')>()),
   prepareChatRequest: vi.fn(async () => ({
     options: { model: 'gpt-5.4' },
     resolvedProviderConn: null,
@@ -236,6 +237,48 @@ describe('Chat Routes', () => {
       }
       expect(ctx.activeAgents.size).toBe(2);
       expect(ctx.activeAgents.get(runtimeKey)).toBe(registered);
+
+      // A memory brief counts as delivered only once the turn is on its way to the
+      // model: after every refusal this route can make, and never on one.
+      const post = () =>
+        app.request(`/${publicSlug}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: 'hello',
+            options: { model: 'model-a' },
+          }),
+        });
+      const prepared = (commit: () => void) => ({
+        options: { model: 'model-a' },
+        resolvedProviderConn: provider,
+        injectContext: null,
+        ragContext: null,
+        contextInjection: {},
+        memoryBriefCommit: commit,
+      });
+      const refusedCommit = vi.fn();
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(
+        prepared(refusedCommit),
+      );
+      vi.mocked(resolveChatAgentModelOverride).mockResolvedValueOnce({
+        error: 'A configured provider connection is required.',
+        status: 400,
+      } as never);
+      expect((await post()).status).toBe(400);
+      expect(refusedCommit).not.toHaveBeenCalled();
+
+      const sentCommit = vi.fn();
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sentCommit));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
+      );
+      streamPrimaryAgentChat.mockClear();
+      expect((await post()).status).toBe(200);
+      expect(sentCommit).toHaveBeenCalledTimes(1);
+      expect(sentCommit.mock.invocationCallOrder[0]).toBeLessThan(
+        streamPrimaryAgentChat.mock.invocationCallOrder[0] as number,
+      );
     },
   );
 

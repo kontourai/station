@@ -270,6 +270,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         injectContext,
         ragContext: preparedRagContext,
         contextInjection,
+        memoryBriefCommit,
       } = await prepareChatRequest({
         ctx,
         slug,
@@ -382,6 +383,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
 
       agent = await projectToolContext(ctx, slug, projectSlug, agent);
 
+      // Every refusal above has passed: the turn, brief included, is on its way to the
+      // model. Only now does the conversation count as briefed.
+      memoryBriefCommit?.();
       return streamPrimaryAgentChat({
         c,
         ctx,

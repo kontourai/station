@@ -106,6 +106,21 @@ describe('chat-request-preparation', () => {
       });
     });
 
+    test('the brief hands back its commit, to call once the turn is on its way', async () => {
+      const commit = vi.fn();
+      const result = await prepareChatRequest({
+        ctx: baseCtx(vi.fn(async () => ({ text, entries: 1, commit }))),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+        options: {},
+      });
+      // Preparing the turn does not count it as briefed; the caller commits later.
+      expect(commit).not.toHaveBeenCalled();
+      result.memoryBriefCommit?.();
+      expect(commit).toHaveBeenCalledTimes(1);
+    });
+
     test('a later turn is not briefed again', async () => {
       const memoryBrief = vi.fn(async () => ({ text, entries: 1 }));
       const result = await prepareChatRequest({

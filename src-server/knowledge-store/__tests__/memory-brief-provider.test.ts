@@ -63,7 +63,9 @@ async function setup() {
     { outcome: 'accept' },
     'human',
   );
+  const clock = { now: 1_000_000 };
   const provider = createMemoryBriefProvider({
+    now: () => clock.now,
     manager,
     review,
     enabled: () => state.enabled,
@@ -73,7 +75,12 @@ async function setup() {
     guardReadResponse: async (_request, _roots, response) =>
       state.deliver ? response : new Response(null, { status: 403 }),
   });
-  return { state, provider, request: new Request('http://station.test/chat') };
+  return {
+    state,
+    clock,
+    provider,
+    request: new Request('http://station.test/chat'),
+  };
 }
 
 test('the person’s own reviewed memory is briefed, as background', async () => {
@@ -137,9 +144,13 @@ test('a relayed session is briefed only from its recorded owner’s memory', asy
 });
 
 test('a conversation is briefed once, however many turns the relay sends', async () => {
-  const { provider, request } = await setup();
+  const { provider, request, clock } = await setup();
   const session = { relayOwner: OWNER, conversationId: 'thread-1' };
-  expect((await provider(request, session))?.entries).toBe(1);
+  const first = await provider(request, session);
+  expect(first?.entries).toBe(1);
+  first?.commit?.();
+  // Committed: not again, however long ago.
+  clock.now += 24 * 60 * 60 * 1000;
   expect(await provider(request, session)).toBeNull();
   expect(await provider(request, session)).toBeNull();
   // Another conversation is a new session.
@@ -147,6 +158,20 @@ test('a conversation is briefed once, however many turns the relay sends', async
     (await provider(request, { ...session, conversationId: 'thread-2' }))
       ?.entries,
   ).toBe(1);
+});
+
+test('a brief whose turn never reached the model does not use up the conversation', async () => {
+  const { provider, request, clock } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-refused' };
+  expect((await provider(request, session))?.entries).toBe(1);
+  // The turn is being sent: a second turn waits.
+  expect(await provider(request, session)).toBeNull();
+  // The request was refused before dispatch and never committed. The reservation lapses.
+  clock.now += 61_000;
+  const retry = await provider(request, session);
+  expect(retry?.entries).toBe(1);
+  retry?.commit?.();
+  expect(await provider(request, session)).toBeNull();
 });
 
 test('a refused or failed attempt does not use up a conversation’s brief', async () => {

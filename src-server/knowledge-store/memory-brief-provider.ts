@@ -25,30 +25,53 @@ export interface MemoryBriefProviderDeps {
  * check they may read it, and let the delivery guard have the last word.
  * Anything short of all of that is no brief, never someone else's memory.
  */
-export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
+export interface MemoryBrief {
+  text: string | null;
+  entries: number;
+  /**
+   * Call once the turn carrying the brief is on its way to the model. Until then
+   * the conversation is only reserved, and the reservation lapses, so a request
+   * refused before dispatch does not use up the brief.
+   */
+  commit?: () => void;
+}
+
+export function createMemoryBriefProvider(
+  deps: MemoryBriefProviderDeps & { now?: () => number },
+) {
   // A conversation is briefed once. Station's relay sends every turn as plain
   // text, so "first turn" cannot be read from the message; it is the first time
-  // this person's conversation gets a brief. A restart forgets, and briefs a
-  // long-running conversation once more, still as labelled background.
+  // this person's conversation gets a brief to the model. A restart forgets, and
+  // briefs a long-running conversation once more, still as labelled background.
   //
-  // `done` holds conversations whose brief was built and delivered (including an
-  // empty one); `working` holds those being built right now, so two turns cannot
-  // both brief. A refused or failed attempt is in neither, so a later turn retries.
-  // Keys are hashes, so a long caller-chosen id costs a fixed 32 bytes.
+  // `done`: briefed (or nothing to brief). `reserved`: a brief is being built or is
+  // on its way, until `commit` or the reservation lapses. A refused or failed
+  // attempt leaves neither, so a later turn retries. Keys are hashes, so a long
+  // caller-chosen id costs a fixed 64 characters.
+  const now = deps.now ?? Date.now;
   const done = new Set<string>();
-  const working = new Set<string>();
+  const reserved = new Map<string, number>();
   const MAX_REMEMBERED = 5000;
+  const RESERVATION_MS = 60_000;
   const keyOf = (userId: string, conversationId: string) =>
     createHash('sha256')
       .update(`${userId}\u0000${conversationId}`)
       .digest('hex');
+  const finish = (key: string) => {
+    reserved.delete(key);
+    done.add(key);
+    if (done.size > MAX_REMEMBERED) {
+      const oldest = done.values().next().value;
+      if (oldest !== undefined) done.delete(oldest);
+    }
+  };
   return async (
     request: Request,
     session: {
       relayOwner?: string | null;
       conversationId?: string;
     } = {},
-  ): Promise<{ text: string | null; entries: number } | null> => {
+  ): Promise<MemoryBrief | null> => {
     if (!deps.enabled()) return null;
     const scope = deps.authority(request);
     if (!scope || scope.mode !== 'personal' || !deps.isRequestCurrent(request))
@@ -62,8 +85,12 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
     const key = session.conversationId
       ? keyOf(scope.userId, session.conversationId)
       : undefined;
-    if (key && (done.has(key) || working.has(key))) return null;
-    if (key) working.add(key);
+    if (key) {
+      const until = reserved.get(key);
+      if (done.has(key) || (until !== undefined && until > now())) return null;
+      reserved.set(key, now() + RESERVATION_MS);
+    }
+    let handedOff = false;
     try {
       const assertCurrent = () => {
         if (!deps.enabled() || request.signal.aborted)
@@ -78,16 +105,20 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
         new Response(null, { status: 200 }),
       );
       if (!guarded.ok) return null;
-      if (key) {
-        done.add(key);
-        if (done.size > MAX_REMEMBERED) {
-          const oldest = done.values().next().value;
-          if (oldest !== undefined) done.delete(oldest);
-        }
+      if (!brief.text) {
+        if (key) finish(key);
+        return { text: null, entries: 0 };
       }
-      return { text: brief.text, entries: brief.entries.length };
+      handedOff = true;
+      return {
+        text: brief.text,
+        entries: brief.entries.length,
+        commit: () => {
+          if (key) finish(key);
+        },
+      };
     } finally {
-      if (key) working.delete(key);
+      if (key && !handedOff) reserved.delete(key);
     }
   };
 }

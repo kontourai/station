@@ -224,9 +224,10 @@ export class MemoryReviewService {
             claim: entry.claim,
             current: earlier.filter((claim) => !rejected.has(claim.id)),
             agreement: entry.agreement,
-            // Who could see the source: this root belongs to one person and is built from
-            // their own sessions, so that is the owner and no one else. It does not come from
-            // the envelope, where a producer (or a forged proposal) could say anything.
+            // Who could see the source. A memory root belongs to one person, so Station's
+            // conservative baseline is that person alone; a claim meant for anyone else is
+            // queued as widening. It does not come from the envelope, where a producer (or a
+            // forged proposal) could say anything. It is a policy, not verified source custody.
             sourceVisibility: ownerOnly,
           },
           ROUTING_POLICY,

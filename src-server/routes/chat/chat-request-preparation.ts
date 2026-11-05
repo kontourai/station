@@ -77,10 +77,13 @@ export async function prepareChatRequest(
    * its own conversation-feedback block and emits the finished record.
    */
   contextInjection: TurnProvenanceContextInjection;
+  /** Set when a memory brief was added: call it once the turn is on its way to the model. */
+  memoryBriefCommit?: () => void;
 }> {
   const options = { ...context.options };
   let resolvedProviderConn: ProviderConnectionConfig | null = null;
   const contextInjection: TurnProvenanceContextInjection = {};
+  let memoryBriefCommit: (() => void) | undefined;
 
   // Resolve provider-managed bindings even for an already-active Station
   // agent. The route passes the resolved connection and model into
@@ -266,6 +269,7 @@ export async function prepareChatRequest(
           entries: brief.entries,
           approxTokens: approxInjectedTokens(brief.text),
         };
+        memoryBriefCommit = brief.commit;
       }
     } catch (err: unknown) {
       context.ctx.logger.debug('Memory brief skipped', {
@@ -289,6 +293,7 @@ export async function prepareChatRequest(
     injectContext,
     ragContext,
     contextInjection,
+    ...(memoryBriefCommit ? { memoryBriefCommit } : {}),
   };
 }
 

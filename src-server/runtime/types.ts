@@ -694,7 +694,12 @@ export interface RuntimeContext {
       relayOwner?: string | null;
       conversationId?: string;
     },
-  ) => Promise<{ text: string | null; entries: number } | null>;
+  ) => Promise<{
+    text: string | null;
+    entries: number;
+    /** Call once the turn is on its way to the model; see `createMemoryBriefProvider`. */
+    commit?: () => void;
+  } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;
   storageAdapter: IStorageAdapter;
