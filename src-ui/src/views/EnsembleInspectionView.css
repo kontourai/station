@@ -4,6 +4,10 @@
   padding: var(--k-space-6);
   color: var(--k-text);
 }
+.ensemble-inspection button {
+  min-width: 44px;
+  min-height: 44px;
+}
 .ensemble-inspection form,
 .ensemble-inspection label {
   display: grid;
