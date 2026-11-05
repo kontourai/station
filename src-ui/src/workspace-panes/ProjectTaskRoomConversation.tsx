@@ -871,18 +871,28 @@ export function ProjectTaskRoomConversation({
   );
 }
 
-export function TaskRoomHistoryDetails({ taskId }: { taskId: string }) {
+export function TaskRoomHistoryDetails({
+  taskId,
+  requestScope,
+}: {
+  taskId: string;
+  requestScope: ReturnType<typeof useHostRequestAuthorityScope>;
+}) {
   const history = useProjectTaskRoomHistoryQuery(taskId);
+  const readable =
+    requestScope?.isCurrent() === true && !taskHistoryReadDenied(history.error);
   return (
     <details
       className="task-workspace__record-details"
       aria-busy={history.isFetching}
       onToggle={(event) => {
-        if (event.currentTarget.open) void history.refetch();
+        if (readable && event.currentTarget.open) void history.refetch();
       }}
     >
       <summary>Raw room history</summary>
-      {history.isError ? (
+      {!readable ? (
+        <p role="status">History is not shared with this connection.</p>
+      ) : history.isError ? (
         <p role="alert">Room history unavailable.</p>
       ) : (
         <pre>{JSON.stringify(history.data?.pages ?? [], null, 2)}</pre>

@@ -793,7 +793,10 @@ function TaskWorkspaceContent({
         ) : (
           <TaskExperienceBoundary experience={activeExperience} />
         )}
-        <TaskRoomHistoryDetails taskId={taskId} />
+        <TaskRoomHistoryDetails
+          taskId={taskId}
+          requestScope={supervisionAuthority}
+        />
       </div>
     </div>
   );

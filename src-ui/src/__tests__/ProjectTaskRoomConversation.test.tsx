@@ -131,7 +131,10 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   }),
 }));
 
-import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
+import {
+  ProjectTaskRoomConversation,
+  TaskRoomHistoryDetails,
+} from '../workspace-panes/ProjectTaskRoomConversation';
 
 function mount() {
   return render(
@@ -800,4 +803,31 @@ test('a denied owner page hides retained history, including open threads', () =>
   expect(screen.queryByText('Answer in markdown')).toBeNull();
 
   mocks.historyError = null;
+});
+
+test('raw history disclosure removes cached records when its authority retires', () => {
+  mocks.records = [record(1)];
+  const client = new QueryClient();
+  const requestScope = {
+    apiBase: 'http://station',
+    authorityKey: 'owner',
+    isCurrent: () => mocks.authorityCurrent,
+  };
+  const view = render(
+    <QueryClientProvider client={client}>
+      <TaskRoomHistoryDetails taskId="task-1" requestScope={requestScope} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByText('Raw room history'));
+  expect(screen.getByText(/"Hello room"/)).toBeTruthy();
+  mocks.authorityCurrent = false;
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <TaskRoomHistoryDetails taskId="task-1" requestScope={requestScope} />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByText(/"Hello room"/)).toBeNull();
+  expect(
+    screen.getByText('History is not shared with this connection.'),
+  ).toBeTruthy();
 });
