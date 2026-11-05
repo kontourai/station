@@ -11,8 +11,6 @@ import {
   systemManagedPolicySources,
 } from '../managed-policy.js';
 import {
-  BINARY_PLIST_VISIT_ALLOWANCE,
-  BINARY_PLIST_VISITS_PER_OBJECT,
   binaryPlistKeyScanProblem,
   duplicatePlistKeyPath,
   MACOS_MANAGED_PREFERENCES_PATH,
@@ -673,57 +671,96 @@ describe('a binary plist that shares references is scanned in bounded work', () 
     expect(performance.now() - started).toBeLessThan(500);
   }, 5_000);
 
-  test('a profile whose references exceed the visit budget is refused', () => {
-    // Pinned beside the constants under test.
-    expect(BINARY_PLIST_VISITS_PER_OBJECT).toBe(4);
-    expect(BINARY_PLIST_VISIT_ALLOWANCE).toBe(256);
-    // 20 arrays of 200 references to one string: 22 objects (a budget of
-    // 344 visits) and 4021 visits, each array expanded only once.
+  // #4515 fix round 4: a budget proportional to the object count refused
+  // valid native profiles, whose strings are shared. With finished objects
+  // remembered the scan is linear in the references the file stores, so
+  // there is no separate budget.
+  test('a profile that shares strings many times over reads', () => {
+    // 20 arrays of 200 references to one string: 22 objects, 4021 steps,
+    // which the round 3 budget (344) refused.
     const top = { array: Array.from({ length: 20 }, (_, i) => i + 1) };
     const arrays = Array.from({ length: 20 }, () => ({
       array: Array.from({ length: 200 }, () => 21),
     }));
-    const bytes = bplist([top, ...arrays, { string: 'x' }]);
-    expect(binaryPlistKeyScanProblem(bytes)).toBe(
-      'it is a binary property list Station cannot read',
-    );
-    // The same structure with fewer references (a well-formed file of the
-    // same encoding, two-byte offsets included) reads: the refusal above
-    // is the budget, not a malformed table.
-    // 4 objects allow 272 visits; this takes 203.
-    const fewer = bplist([
-      { array: [1, 2] },
-      { array: Array.from({ length: 100 }, () => 3) },
-      { array: Array.from({ length: 100 }, () => 3) },
-      { string: 'x'.repeat(120) },
-    ]);
-    expect(fewer.readUInt8(fewer.length - 26)).toBe(2);
-    expect(binaryPlistKeyScanProblem(fewer)).toBeNull();
-    // At the profile source, before conversion: the invalid-policy error,
-    // and the converter is never asked.
-    const path = join(makeTempDir('station-policy-budget-'), 'p.plist');
-    writeFileSync(path, bytes);
-    let converted = false;
-    const load = () =>
-      loadManagedPolicyFromSources([
-        macosProfileSource(path, null, () => {
-          converted = true;
-          return { ok: true, json: '{}' };
-        }),
-      ]);
-    expect(load).toThrow(ManagedPolicyInvalidError);
-    expect(load).toThrow('it is a binary property list Station cannot read');
-    expect(converted).toBe(false);
-    // Just inside the budget: one array of 200 references to one string
-    // (3 objects, 268 allowed, 201 visits) is read.
     expect(
-      binaryPlistKeyScanProblem(
-        bplist([
-          { array: [1] },
-          { array: Array.from({ length: 200 }, () => 2) },
-          { string: 'x' },
-        ]),
-      ),
+      binaryPlistKeyScanProblem(bplist([top, ...arrays, { string: 'x' }])),
     ).toBeNull();
   });
+
+  test('maximal sharing stays linear in the file: 50 levels of 200 references each', () => {
+    // 200^50 paths, 10,000 stored references.
+    const bytes = bplist([
+      ...Array.from({ length: 50 }, (_, i) => ({
+        array: Array.from({ length: 200 }, () => i + 1),
+      })),
+      { bool: true },
+    ]);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 5_000);
+
+  // The reviewer's profile: a valid policy that offers the same 100 Agents
+  // in 20 projects, written by the real plutil as macOS writes it.
+  test.skipIf(!hasPlutil)(
+    "the reviewer's native binary profile with shared slugs loads",
+    () => {
+      const dir = makeTempDir('station-policy-shared-');
+      const slugs = Array.from(
+        { length: 100 },
+        (_, i) => `<string>agent-${String(i).padStart(3, '0')}</string>`,
+      ).join('');
+      const project = (j: number) =>
+        `<key>project:p${String(j).padStart(2, '0')}</key><dict><key>agents</key><dict><key>slugs</key><array>${slugs}</array></dict><key>enabled</key><true/></dict>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>organization</key><string>Acme</string><key>schemaVersion</key><integer>1</integer><key>settings</key><dict><key>contribution</key><dict><key>locked</key><true/><key>value</key><dict>${Array.from({ length: 20 }, (_, j) => project(j)).join('')}</dict></dict></dict></dict></plist>`;
+      writeFileSync(join(dir, 'p.xml'), xml);
+      const path = join(dir, 'p.plist');
+      execFileSync('/usr/bin/plutil', [
+        '-convert',
+        'binary1',
+        '-o',
+        path,
+        join(dir, 'p.xml'),
+      ]);
+      const bytes = readFileSync(path);
+      // As the reviewer measured: binary, about 4 KB, ~216 objects.
+      expect(bytes.subarray(0, 8).toString('latin1')).toBe('bplist00');
+      expect(Number(bytes.readBigUInt64BE(bytes.length - 24))).toBeLessThan(
+        300,
+      );
+      expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+      const loaded = loadManagedPolicyFromSources([
+        macosProfileSource(path, null, plutilConverter()),
+      ]);
+      expect(loaded?.document.organization).toBe('Acme');
+      const value = loaded?.document.settings?.contribution?.value as Record<
+        string,
+        { agents: { slugs: string[] } }
+      >;
+      expect(Object.keys(value)).toHaveLength(20);
+      expect(value['project:p19']?.agents.slugs).toHaveLength(100);
+    },
+    30_000,
+  );
+
+  // The reviewer found the 34-level shape passes the scan, then takes plutil
+  // past its timeout. A timeout refuses the profile: it never loads as
+  // "no policy".
+  test.skipIf(process.platform === 'win32')(
+    'a plutil timeout refuses the profile with the invalid-policy marker',
+    () => {
+      const dir = makeTempDir('station-policy-plutil-timeout-');
+      const slow = join(dir, 'slow-plutil');
+      writeFileSync(slow, '#!/bin/sh\nsleep 5\n', { mode: 0o755 });
+      const path = join(dir, 'p.plist');
+      writeFileSync(path, shared(34));
+      const load = () =>
+        loadManagedPolicyFromSources([
+          macosProfileSource(path, null, plutilConverter(slow, 200)),
+        ]);
+      expect(load).toThrow(ManagedPolicyInvalidError);
+      expect(load).toThrow(/^STATION_MANAGED_POLICY_INVALID: .*ETIMEDOUT/);
+    },
+    10_000,
+  );
 });

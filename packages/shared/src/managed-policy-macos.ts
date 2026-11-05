@@ -201,27 +201,19 @@ export function plistKeyScanProblem(xml: string): string | null {
 const BINARY_PLIST_MAX_DEPTH = 64;
 
 /**
- * #4515: the scan's work bound. Each object is expanded once (a finished
- * one is remembered), so a scan visits each reference once; a profile is
- * refused when its references would take more than this many visits per
- * object, plus a fixed allowance. A real policy references few objects
- * more than once; the bound keeps a crafted one from making startup slow.
- */
-export const BINARY_PLIST_VISITS_PER_OBJECT = 4;
-export const BINARY_PLIST_VISIT_ALLOWANCE = 256;
-
-/**
  * Why a binary property list (`bplist00`) cannot be trusted as a policy, or
  * null: the dotted path of a key repeated within one dict, or a structure
  * this scan cannot read. plutil keeps the last of two equal keys here too, so
  * the object table is read before conversion: from the top object, every
  * dict's keys are decoded (ASCII or UTF-16 strings) and compared. Anything
  * the scan cannot read (a bad trailer, offset or reference, a key that is not
- * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}, more
- * reference visits than {@link BINARY_PLIST_VISITS_PER_OBJECT} per object
- * plus {@link BINARY_PLIST_VISIT_ALLOWANCE}) refuses the profile rather than
- * being passed on. An object reached twice (shared, not a cycle) is scanned
- * once: its keys are its own, whatever path reaches it.
+ * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}) refuses
+ * the profile rather than being passed on. An object reached twice (shared,
+ * not a cycle) is scanned once: its keys are its own, whatever path reaches
+ * it. So each container is expanded at most once, and the scan makes at most
+ * one step per reference the file stores, each of which takes at least a
+ * byte of it: the work is linear in the file's size (at most 1 MiB), with no
+ * separate budget for a legitimate profile to run into (#4515).
  */
 export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   const unreadable = 'it is a binary property list Station cannot read';
@@ -299,12 +291,7 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   // A finished object had no problem (a problem ends the scan), so it is
   // never scanned again: shared references stay linear, not exponential.
   const clean = new Set<number>();
-  const budget =
-    objectCount * BINARY_PLIST_VISITS_PER_OBJECT + BINARY_PLIST_VISIT_ALLOWANCE;
-  let visits = 0;
   const walk = (ref: number, path: string, depth: number): string | null => {
-    visits += 1;
-    if (visits > budget) return unreadable;
     if (clean.has(ref)) return null;
     if (depth > BINARY_PLIST_MAX_DEPTH || visiting.has(ref)) return unreadable;
     const at = offsetOf(ref);
@@ -383,12 +370,16 @@ export type PlistConverter = (
  * Convert with `/usr/bin/plutil`, reading the bytes on stdin. plutil
  * refuses a `<date>` or `<data>` value for JSON, which no policy holds.
  */
-export function plutilConverter(executable: string = PLUTIL): PlistConverter {
+export function plutilConverter(
+  executable: string = PLUTIL,
+  /** Injectable for tests; a timeout refuses the profile (ETIMEDOUT). */
+  timeoutMs: number = PLUTIL_TIMEOUT_MS,
+): PlistConverter {
   return (bytes) => {
     const result = spawnSync(executable, ['-convert', 'json', '-o', '-', '-'], {
       input: bytes,
       encoding: 'utf8',
-      timeout: PLUTIL_TIMEOUT_MS,
+      timeout: timeoutMs,
       maxBuffer: 8 * 1024 * 1024,
       windowsHide: true,
       env: {},

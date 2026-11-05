@@ -188,9 +188,10 @@ refused with `duplicate key <path>`, as a file is. An XML plist goes through a
 strict tokenizer that refuses any markup it cannot read rather than skipping
 it; a binary plist (what macOS writes) through its object table, refusing a
 structure it cannot read. Each object is scanned once, however many
-references share it, and a profile whose references need more than four
-visits per object (plus 256) is refused, so a crafted profile cannot make
-startup slow. Any other encoding plutil reads (JSON, old-style
+references share it, so the scan makes at most one step per reference the
+file stores: a crafted profile cannot make startup slow, and no separate
+budget refuses a valid profile whose strings plutil shares. The conversion
+itself runs plutil with a 10-second timeout; a timeout refuses the profile. Any other encoding plutil reads (JSON, old-style
 text) is not what macOS writes and is refused.
 
 **Windows registry (#4524).** Station reads `HKLM\SOFTWARE\Policies\Kontour\Station`
