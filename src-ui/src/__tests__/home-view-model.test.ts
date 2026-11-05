@@ -2742,7 +2742,7 @@ test('a recorded agent sender reaches Inbox and Activity markers without changin
     kind: 'agent-message',
     label: 'Agent message',
   });
-  expect(activityOriginShortLabel(personSession)).toBe('Browser');
+  expect(activityOriginShortLabel(personSession)).toBe('Browser (reported)');
 });
 
 test('Inbox retains identical conversation IDs on different Stations and principals', () => {

@@ -279,7 +279,7 @@ That source-key provisioning applies to the **opt-in full event stream**.
 The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
 instead accepts strict `station_daily` and fixed-enum `TelemetryFeedback` bodies
 through a public source ID
-mapped by the operator to one publisher/channel. It never needs an installation
+mapped by the operator to one publisher and its allowed channels. It never needs an installation
 secret. Publisher read keys are separate `stq_` credentials provisioned through
 the operator boundary. Do not route lite traffic through the authenticated
 full-tier endpoint or treat a public source ID as authenticating a binary.
@@ -298,7 +298,7 @@ included in public or third-party publisher aggregates in this PR.
 `/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
 Publisher keys receive only their own publisher's weekly publication. The ten
 profile/adoption fields use a fixed public domain of enum values and
-operator-configured public release versions/registry IDs. Every value, including
+operator-configured public release versions, registry IDs and channels. Every value, including
 true zero, is released with noise; no k threshold or remainder suppression
 remains. Catalogs must be independent of private traffic. Per-count ε=1/280,
 sensitivity 40 per added ping gives ε≤1/7 per ping. Published counts sum distinct
@@ -307,8 +307,9 @@ With at most 40 coordinates per network/day, week sensitivity is 280 and ε≤1.
 Arbitrary traffic can exceed that premise; the API computes the conservative
 D/40 network-week bound from its stored public domain. Expected absolute noise
 is about 280 weekly network-days; sparse cells
-have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this
-before selecting a week/dimension locally. See the
+have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this,
+then shows only values above the 95% noise bound and reports the rest as
+within noise. See the
 [receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
 
 Schema 6 atomically persists each publisher/week's marker and frozen noisy cells.
@@ -552,6 +553,13 @@ is not an emitted event, persisted metric, trace query or personal enrollment.
 
 ## Single-host Cloudflare Tunnel
 
+Kontour's own Lite receiver does not need this recipe. The
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md) serves
+the same Lite wire contract and public routes from one Durable Object, with no
+home server. It uses Workers rate-limit bindings instead of the WAF rule below.
+This recipe remains the self-hosted path for the PostgreSQL receiver, including
+its Full-tier routes.
+
 The separate [`compose.tunnel.yaml`](compose.tunnel.yaml) recipe runs only
 receiver, PostgreSQL 16 and cloudflared. It reuses the receiver/database service
 settings above, including persistent PostgreSQL storage and the numeric-loopback
@@ -571,8 +579,10 @@ private edited file. The example is inert until deliberately provisioned.
 Cloudflared has an outbound edge network and a dedicated internal connector
 network. Only cloudflared and the receiver join the latter. Its static connector
 address `172.30.242.2/32` is the sole trusted proxy; the receiver also remains on
-the private database network. Check that `172.30.242.0/29` is free on the host;
-if changing it, update both static addresses, subnet, dynamic `ip_range` and
+the private database network and on `product-ingress`, which carries its
+loopback-published operator port. The recipe defines `product-ingress` itself
+because `extends` does not import the base file's network definitions. Check
+that `172.30.242.0/29` is free on the host; if changing it, update both static addresses, subnet, dynamic `ip_range` and
 trusted CIDR together. The `172.30.242.4/30` dynamic pool excludes static .2/.3.
 Never trust the edge ranges or the whole Docker subnet: the trust decision is
 about the receiver's immediate socket peer. Keep one receiver process.
@@ -589,7 +599,7 @@ for trusted-proxy socket peers, including valid operator/publisher/Full
 credentials; only the listed POST/GET methods pass. Non-proxy peers retain
 private-route access. Trust configuration refuses broad ranges (/0, IPv4 wider
 than /24, IPv6 wider than /64), non-canonical host bits and whitespace at startup.
-A source with channel `unknown` admits a sender without channel metadata.
+A source that lists channel `unknown` admits a sender without channel metadata.
 Provision official sources with `"versionPolicy": "semver"` to accept real
 build versions without pre-populating `releaseVersions`; the default `catalog`
 policy accepts only listed versions plus `custom`. Both policies accept `custom`.
@@ -629,7 +639,7 @@ connector key for both admission and contributors. With it, an invalid single-IP
 header falls back to that same peer key and increments the private
 `/v1/operator/diagnostics` counter; no header value is logged or stored.
 
-Before public exposure, add a Cloudflare WAF rate-limit rule matching:
+Before exposing the tunnel recipe publicly, add a Cloudflare WAF rate-limit rule matching:
 
 ```text
 http.host eq "telemetry.example.com" and starts_with(http.request.uri.path, "/v1/lite/")

@@ -23,6 +23,7 @@ let rootsQueryResult: {
     id: string;
     scope: { kind: 'personal' } | { kind: 'project'; projectSlug: string };
     adapterId: string;
+    readPolicy?: { kind: 'author-private'; ownerId: string };
     storeRoot: string;
     displayName: string;
     createdAt: string;
@@ -59,6 +60,10 @@ const navigateMock = vi.fn(
 );
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: navigateMock }),
+}));
+
+vi.mock('../views/settings/MemoryErasurePreview', () => ({
+  MemoryErasurePreview: () => null,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -122,6 +127,22 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 }
 
 describe('KnowledgeStoreSection', () => {
+  test('does not present a private memory root as the ordinary personal store', () => {
+    rootsQueryResult.data = [
+      {
+        id: 'root:memory',
+        scope: { kind: 'personal' },
+        adapterId: 'corpus-private-memory',
+        storeRoot: '/private-memory',
+        displayName: 'Private memory',
+        createdAt: '2026-01-01T00:00:00Z',
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+      },
+    ];
+    render(<KnowledgeStoreSection />);
+    expect(screen.getByText('Personal knowledge is off')).toBeTruthy();
+    expect(screen.queryByText('/private-memory')).toBeNull();
+  });
   beforeEach(() => {
     createRootMutate.mockReset();
     validateRootMutateAsync.mockReset();

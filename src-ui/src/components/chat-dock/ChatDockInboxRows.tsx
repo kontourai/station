@@ -530,6 +530,11 @@ export function InboxRow({
   const chips = inboxRowChips(item, { isWoken, claims });
   // Provider identity does not establish which app originated a transcript.
   const agentText = item.agentLabel;
+  const directoryContext =
+    !item.projectSlug && item.projectLabel === 'No project' && item.cwdLabel;
+  const contextLabel = directoryContext
+    ? `Directory · ${directoryContext}`
+    : item.projectLabel;
   const hasTime = item.updatedAt > 0;
   const closable =
     !isDismissed &&
@@ -845,7 +850,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, read only` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, read only` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -931,11 +936,9 @@ export function InboxRow({
                     <ProjectAccentSwatch
                       accent={projectAccent}
                       icon={projectIcon}
-                      name={item.projectLabel}
+                      name={contextLabel}
                     />
-                    <span className="inbox-row__project">
-                      {item.projectLabel}
-                    </span>
+                    <span className="inbox-row__project">{contextLabel}</span>
                     {hasUnsentDraft && <DraftMarker />}
                   </>
                 )}
@@ -965,12 +968,12 @@ export function InboxRow({
                     size={24}
                     accent={projectAccent}
                     icon={projectIcon}
-                    name={item.projectLabel}
+                    name={contextLabel}
                   />
                 ) : (
                   <FolderGlyph />
                 )}
-                <span className="inbox-row__project">{item.projectLabel}</span>
+                <span className="inbox-row__project">{contextLabel}</span>
                 {hasUnsentDraft && <DraftMarker />}
               </span>
             )}

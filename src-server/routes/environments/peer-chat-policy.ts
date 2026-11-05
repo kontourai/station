@@ -42,6 +42,7 @@ const rules: readonly Rule[] = [
     path: /^\/api\/(?:projects|agents|connections\/(?:agents|models))$/,
   },
   { method: 'GET', path: /^\/api\/agents\/[^/]+$/ },
+  { method: 'GET', path: /^\/api\/settings\/managed-policy$/ },
   { method: 'GET', path: /^\/api\/conversations\/[^/]+\/open$/ },
   {
     method: 'GET',

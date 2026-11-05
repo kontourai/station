@@ -11,6 +11,7 @@ import { downloadPercent } from '../../components/desktop-update/desktopUpdatePr
 import { useDesktopRestartServerImpact } from '../../components/desktop-update/useDesktopRestartServerImpact';
 import { useDesktopUpdateState } from '../../components/desktop-update/useDesktopUpdateState';
 import { SkeletonBlock } from '../../components/state';
+import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
 import {
   checkForDesktopUpdate,
   downloadDesktopUpdate,
@@ -112,9 +113,11 @@ const ERROR_LEADS = {
 export function DesktopUpdateCheck({
   active = true,
   showPolicy = true,
+  showReleaseNotes = false,
 }: {
   active?: boolean;
   showPolicy?: boolean;
+  showReleaseNotes?: boolean;
 }) {
   const { target, isDesktop } = usePlatformProfile();
   const { state, error: readError, retry } = useDesktopUpdateState(isDesktop);
@@ -171,11 +174,21 @@ export function DesktopUpdateCheck({
         Installed app: Station {state.currentVersion}
       </p>
       <StatusLine state={state} />
-      {phase.status === 'available' && phase.notes && (
-        <details>
-          <summary>What’s new in {phase.version}</summary>
-          <p className="settings__field-hint">{phase.notes}</p>
-        </details>
+      {showReleaseNotes ? (
+        <ReleaseNotes
+          version={'version' in phase ? phase.version : state.currentVersion}
+          nativeApp
+          notes={phase.status === 'available' ? phase.notes : null}
+          active={active}
+        />
+      ) : (
+        phase.status === 'available' &&
+        phase.notes && (
+          <details>
+            <summary>What’s new in {phase.version}</summary>
+            <p className="settings__field-hint">{phase.notes}</p>
+          </details>
+        )
       )}
       {error && (
         <>

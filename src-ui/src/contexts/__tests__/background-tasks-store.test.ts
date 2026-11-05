@@ -1022,3 +1022,315 @@ describe('BackgroundTasksStore — the singleton wiring', () => {
     expect(store.getSnapshot().entries['call-1']).toBeDefined();
   });
 });
+
+describe('bounded delegate history and snapshot uncertainty (#88)', () => {
+  test('finished cards and recent resume bindings remain bounded independently', () => {
+    const store = new BackgroundTasksStore();
+    for (let index = 0; index < 160; index++) {
+      const threadId = `retained-delegate-${index}`;
+      store.ingest({
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date(2026, 0, 1, 0, 0, index).toISOString(),
+        metadata: { taskId: threadId, parentTaskId: 'bounded-parent' },
+      });
+      store.ingest({
+        provider: 'claude',
+        threadId,
+        method: 'turn.completed',
+        turnId: `turn-${index}`,
+        createdAt: new Date(2026, 0, 1, 0, 1, index).toISOString(),
+      });
+    }
+    expect(Object.keys(store.getSnapshot().entries)).toHaveLength(50);
+    expect(Object.keys(store.getSnapshot().delegateParents)).toHaveLength(100);
+    expect(
+      store.getSnapshot().delegateParents['retained-delegate-0'],
+    ).toBeUndefined();
+    expect(store.getSnapshot().delegateParents['retained-delegate-159']).toBe(
+      'bounded-parent',
+    );
+  });
+
+  test.each(['turn.completed', 'turn.aborted', 'runtime.error'] as const)(
+    'an active reconnect snapshot reopens a delegate after %s without a new turn event',
+    (terminal) => {
+      const store = new BackgroundTasksStore();
+      store.retainChat('parent');
+      store.ingest(
+        event('session.started', {
+          threadId: 'delegate',
+          sessionId: 'delegate',
+          metadata: { taskId: 'delegate', parentTaskId: 'parent' },
+        }),
+      );
+      store.ingest(
+        event(terminal, { threadId: 'delegate', turnId: 'previous-turn' }),
+      );
+      expect(
+        selectChatBackgroundTasks(store.getSnapshot(), 'parent', []).finished,
+      ).toHaveLength(1);
+      store.reconcileSnapshot({
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'delegate',
+            status: 'running',
+            hasActiveTurn: true,
+            delegation: { taskId: 'delegate', parentTaskId: 'parent' },
+            childWork: {
+              asChild: {
+                producer: 'station-delegate',
+                reporterThreadId: 'delegate',
+                childId: 'delegate',
+                parent: { taskId: 'parent' },
+                status: 'running',
+                startedAt: '2026-07-29T00:00:00.000Z',
+                controls: { stop: 'delegate-interrupt' },
+              },
+            },
+          },
+        ],
+      });
+      const view = selectChatBackgroundTasks(store.getSnapshot(), 'parent', []);
+      expect(view.running.map((entry) => entry.id)).toEqual(['delegate']);
+      expect(view.finished).toHaveLength(0);
+      expect(view.running[0].endedAt).toBeUndefined();
+      expect(view.running[0].stop).toEqual({ kind: 'delegate-interrupt' });
+    },
+  );
+
+  test('snapshot absence is no result, and a later completion corrects that uncertainty', () => {
+    const store = new BackgroundTasksStore();
+    store.ingest({
+      provider: 'claude',
+      threadId: 'missing-delegate',
+      method: 'session.started',
+      sessionId: 'missing-delegate',
+      createdAt: '2026-10-21T00:00:00.000Z',
+      metadata: { taskId: 'missing-delegate', parentTaskId: 'bounded-parent' },
+    });
+    store.reconcileSnapshot({ sessions: [] });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'unresolved',
+    );
+    expect(store.getSnapshot().delegateParents['missing-delegate']).toBe(
+      'bounded-parent',
+    );
+    store.reconcileSnapshot({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'missing-delegate',
+          status: 'running',
+          hasActiveTurn: true,
+          delegation: {
+            taskId: 'missing-delegate',
+            parentTaskId: 'bounded-parent',
+          },
+        },
+      ],
+    });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'running',
+    );
+    store.reconcileSnapshot({ sessions: [] });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'unresolved',
+    );
+
+    store.ingest({
+      provider: 'claude',
+      threadId: 'missing-delegate',
+      method: 'turn.completed',
+      turnId: 'settled-late',
+      createdAt: '2026-10-21T00:00:02.000Z',
+    });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'completed',
+    );
+  });
+
+  test('idle snapshot bindings without cards have a bounded recovery horizon', () => {
+    const store = new BackgroundTasksStore();
+    store.reconcileSnapshot({
+      sessions: Array.from({ length: 120 }, (_, index) => ({
+        provider: 'claude' as const,
+        threadId: `idle-${index}`,
+        status: 'idle' as const,
+        hasActiveTurn: false,
+        delegation: { taskId: `idle-${index}`, parentTaskId: 'bounded-parent' },
+      })),
+    });
+    expect(Object.keys(store.getSnapshot().entries)).toHaveLength(0);
+    expect(Object.keys(store.getSnapshot().delegateParents)).toHaveLength(50);
+    expect(store.getSnapshot().delegateParents['idle-0']).toBeUndefined();
+    store.ingest({
+      provider: 'claude',
+      threadId: 'idle-119',
+      method: 'turn.started',
+      turnId: 'late-idle-turn',
+      prompt: 'Continue this task',
+      createdAt: '2026-10-21T00:00:03.000Z',
+    });
+    expect(
+      selectChatBackgroundTasks(store.getSnapshot(), 'bounded-parent', [])
+        .running,
+    ).toEqual([
+      expect.objectContaining({ id: 'idle-119', title: 'Continue this task' }),
+    ]);
+  });
+});
+
+test('a burst of unfinished tools retains a bounded recent list and discloses omitted history', () => {
+  const store = new BackgroundTasksStore();
+  for (let index = 0; index < 250; index++) {
+    store.ingest({
+      provider: 'claude',
+      threadId: 'busy-chat',
+      method: 'tool.started',
+      itemId: `item-${index}`,
+      toolCallId: `busy-${index}`,
+      toolName: 'Read',
+      createdAt: new Date(2026, 0, 1, 0, 0, index).toISOString(),
+    });
+  }
+  const view = selectChatBackgroundTasks(store.getSnapshot(), 'busy-chat', []);
+  expect(view.running).toHaveLength(100);
+  expect(view.running[0].id).toBe('busy-150');
+  expect(view.finished).toHaveLength(0);
+  expect(view.toolHistoryLimited).toBe(true);
+  expect(Object.keys(store.getSnapshot().entries)).toHaveLength(100);
+  store.ingest({
+    provider: 'claude',
+    threadId: 'busy-chat',
+    method: 'turn.completed',
+    turnId: 'busy-turn',
+    createdAt: '2026-10-21T00:00:00.000Z',
+  });
+  const settled = selectChatBackgroundTasks(
+    store.getSnapshot(),
+    'busy-chat',
+    [],
+  );
+  expect(settled.running).toHaveLength(0);
+  expect(settled.toolHistoryLimited).toBeUndefined();
+});
+
+test('closed scopes do not resurrect terminal cards from reconnect snapshots', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('parent');
+  store.ingest(
+    event('session.started', {
+      threadId: 'child',
+      sessionId: 'child',
+      metadata: { taskId: 'child', parentTaskId: 'parent' },
+    }),
+  );
+  store.forgetChat('parent');
+  store.ingest(event('turn.completed', { threadId: 'child', turnId: 'done' }));
+  store.reconcileSnapshot({
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: 'child',
+        status: 'idle',
+        hasActiveTurn: false,
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'child',
+            childId: 'child',
+            status: 'completed',
+            parent: { taskId: 'parent' },
+          },
+        },
+      },
+    ],
+  });
+  expect(store.getSnapshot().entries).toEqual({});
+  expect(store.getSnapshot().delegateParents).toEqual({});
+});
+
+test('close and reopen preserves omitted-tool disclosure until authoritative idle evidence', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('chat-1');
+  for (let i = 0; i < 101; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `tool-${i}`, toolName: 'Read' }),
+    );
+  store.forgetChat('chat-1');
+  store.retainChat('chat-1');
+  expect(
+    selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', [])
+      .toolHistoryLimited,
+  ).toBe(true);
+});
+
+test('direct own-tool progress corrects snapshot uncertainty', () => {
+  const store = new BackgroundTasksStore();
+  store.ingest(event('tool.started', { toolCallId: 'tool', toolName: 'Read' }));
+  store.reconcileSnapshot({ sessions: [] });
+  store.ingest(
+    event('tool.progress', { toolCallId: 'tool', message: 'Reading source' }),
+  );
+  expect(store.getSnapshot().entries.tool).toMatchObject({
+    state: 'running',
+    detail: 'Reading source',
+  });
+});
+
+test('a closed scope keeps its retirement policy after unresolved card eviction and resume', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('parent');
+  for (let i = 0; i < 51; i++)
+    store.ingest(
+      event('session.started', {
+        threadId: `child-${i}`,
+        sessionId: `child-${i}`,
+        metadata: { taskId: `child-${i}`, parentTaskId: 'parent' },
+      }),
+    );
+  store.forgetChat('parent');
+  store.reconcileSnapshot({ sessions: [] });
+  store.ingest(
+    event('turn.completed', { threadId: 'child-0', turnId: 'done' }),
+  );
+  expect(store.getSnapshot().delegateParents['child-0']).toBeUndefined();
+  store.ingest(
+    event('turn.started', {
+      threadId: 'child-1',
+      turnId: 'resume',
+      prompt: 'Continue',
+    }),
+  );
+  store.ingest(
+    event('turn.completed', { threadId: 'child-1', turnId: 'resume' }),
+  );
+  expect(store.getSnapshot().entries['child-1']).toBeUndefined();
+});
+
+test('revived tool progress shares the running-row bound with new tools', () => {
+  const store = new BackgroundTasksStore();
+  for (let i = 0; i < 50; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `old-${i}`, toolName: 'Read' }),
+    );
+  store.reconcileSnapshot({ sessions: [] });
+  for (let i = 0; i < 100; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `new-${i}`, toolName: 'Read' }),
+    );
+  for (let i = 0; i < 50; i++)
+    store.ingest(
+      event('tool.progress', {
+        toolCallId: `old-${i}`,
+        message: 'Still reading',
+      }),
+    );
+  const view = selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []);
+  expect(view.running).toHaveLength(100);
+  expect(view.toolHistoryLimited).toBe(true);
+});

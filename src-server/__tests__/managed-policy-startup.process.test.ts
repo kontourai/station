@@ -408,4 +408,143 @@ describe('managed policy at real server startup', () => {
     expect(stale.installed.digest).not.toBe(expectedDigest);
     expect(stale.restartNeeded).toBe(true);
   }, 300_000);
+
+  test('refuses to start on a managed setting Station cannot apply (#4517)', async () => {
+    const unknown = await expectRefusal((policyPath) =>
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          settings: { noSuchSetting: { value: 1, locked: true } },
+        }),
+      ),
+    );
+    expect(unknown.stderr).toContain('settings.noSuchSetting: unknown setting');
+
+    // The contract parser cannot see a composite's structure; the server
+    // checks it against the settings schema before it listens.
+    const composite = await expectRefusal((policyPath) =>
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          settings: {
+            approvalGuardian: { value: { mode: 'sometimes' }, locked: true },
+          },
+        }),
+      ),
+    );
+    expect(composite.stderr).toContain(
+      'a managed setting does not match the settings schema',
+    );
+  }, 300_000);
+
+  test('a locked setting reaches the endpoint with managed provenance and refuses writes (#4517)', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        supportUrl: 'https://help.example/station',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          checkoutStaleAfterDays: { value: 9, locked: false },
+        },
+      }),
+    );
+    const env = isolatedEnv(root, policyPath);
+    const { owned } = startServer(env);
+    const child = owned.child;
+    if (!('stdout' in child) || !child.stdout)
+      throw new Error('Station stdout unavailable');
+    let pending = '';
+    const ready = new Promise<number>((resolveReady) => {
+      child.stdout?.on('data', (chunk: Buffer) => {
+        pending += chunk.toString('utf8');
+        const lines = pending.split('\n');
+        pending = lines.pop() ?? '';
+        for (const line of lines)
+          if (line.startsWith(readyPrefix))
+            resolveReady(JSON.parse(line).port as number);
+      });
+    });
+    const early = owned.completion.then((result) => {
+      throw new Error(`Station exited before listening (${result.status})`);
+    });
+    void early.catch(() => {});
+    const port = await bounded(
+      Promise.race([ready, early]),
+      'readiness',
+      150_000,
+    );
+    const apiBase = `http://127.0.0.1:${port}`;
+    const grant = await fetch(
+      `${apiBase}/.well-known/station/v1/pairing/local-grant`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: readFileSync(
+            join(env.STATION_HOME, 'runtime/local-grant.secret'),
+            'utf8',
+          ).trim(),
+          deviceName: 'managed-settings-test',
+          clientInstanceId: randomUUID(),
+        }),
+      },
+    );
+    const grantBody = await grant.text();
+    expect(grant.status, grantBody).toBe(200);
+    const { credential } = JSON.parse(grantBody) as { credential: string };
+    const auth = { Authorization: `Bearer ${credential}` };
+
+    const read = await fetch(`${apiBase}/config/app`, { headers: auth });
+    expect(read.status).toBe(200);
+    const body = (await read.json()) as {
+      data: Record<string, unknown>;
+      provenance: Record<string, unknown>;
+    };
+    expect(body.data.defaultMaxTurns).toBe(40);
+    expect(body.data.checkoutStaleAfterDays).toBe(9);
+    const managed = (locked: boolean) => ({
+      source: 'managed',
+      locked,
+      organization: 'Acme',
+      supportUrl: 'https://help.example/station',
+    });
+    expect(body.provenance.defaultMaxTurns).toEqual(managed(true));
+    expect(body.provenance.checkoutStaleAfterDays).toEqual(managed(false));
+
+    const status = await fetch(`${apiBase}/api/settings/managed-policy`, {
+      headers: auth,
+    });
+    expect(
+      ((await status.json()) as { data: { summary: unknown } }).data.summary,
+    ).toEqual({
+      organization: 'Acme',
+      supportUrl: 'https://help.example/station',
+      lockedSettings: ['defaultMaxTurns'],
+      limits: {},
+    });
+
+    const write = await fetch(`${apiBase}/config/app`, {
+      method: 'PUT',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultMaxTurns: 9 }),
+    });
+    expect(write.status).toBe(403);
+    expect(((await write.json()) as { error: string }).error).toBe(
+      "Acme's policy manages this setting. For help, visit https://help.example/station",
+    );
+    // Policy values never reach the user's file.
+    const stored = JSON.parse(
+      readFileSync(join(env.STATION_HOME, 'config', 'app.json'), 'utf8'),
+    );
+    expect(stored).not.toHaveProperty('defaultMaxTurns');
+    expect(stored).not.toHaveProperty('checkoutStaleAfterDays');
+  }, 300_000);
 });

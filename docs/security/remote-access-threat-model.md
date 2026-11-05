@@ -261,6 +261,13 @@ per-caller session reader. Registry/path management and HTTP member writes
 remain denied. No additional index, migration or host-path capability follows
 from this read allowlist.
 
+The default-off Private memory preview uses an author-private root. The
+operator creates proposals through its explicit endpoint; pending proposals are
+not records or search inputs. Project membership and delegation do not grant
+access. The owner or an approved personal-account device may read under the
+existing private-root rule; an unknown identity is refused. Disabling the
+preview retains the store and withholds it from Knowledge reads.
+
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
 and one ETag-pinned object. A source is an explicit operator grant to use a named
@@ -1148,7 +1155,13 @@ non-operator members is a separate program and is not widened here.
   `terminal:observe`, can therefore read an agent command's sanitized output,
   and with `terminal:operate` type into its input; no other principal gains
   either. The agent's requested directory must lie inside its session's
-  directory. `restart` requires `terminal:operate`, re-resolves the launch
+  directory. The engine chooses the program, so a command runs only under its
+  session's execution authority (#2497): a session whose server-derived
+  confinement is `host` (started by a caller who may grant full access) in
+  its own `thread:<id>` binding, checked before the record and at the spawn.
+  A `workspace` session's command is refused with the reason and nothing
+  starts, on a host without terminal sessions too: Station has no sandbox for
+  it. `restart` requires `terminal:operate`, re-resolves the launch
   profile instead of storing a program, keeps the directory inside the
   binding, and refuses server-owned launches and command sessions other than
   package scripts, which it resolves again by name.
@@ -1158,8 +1171,16 @@ non-operator members is a separate program and is not widened here.
   sessions the caller may observe and clearing only those it may operate. The
   usage answer names the history directory, a host path the operator already
   sees in Settings. Moving that directory is a settings write an agent is
-  refused; it must be absolute. A shell reopened after its host restarted is a
-  login shell in its recorded directory, only while its Project exists; no
+  refused; it must be absolute. Journals are private to the user Station runs
+  as: on Windows, where file modes set no ACL, each is created under a
+  protected current-user DACL, and a location where one cannot be established
+  is refused in Settings and for new terminals. A session list or journal read
+  under `terminal:observe` alone omits the launch directory and process id,
+  and no read returns where history is stored. A shell reopened after its host
+  restarted is a login shell in its recorded directory, only while that
+  directory lies inside its binding as it resolves then, read under the
+  binding's recorded owner (#492); otherwise it stays ended with the reason
+  recorded and shown; no
   command, agent or server-owned launch is replayed. `adopt` on the existing
   open route grants nothing new: it returns a running shell in the same
   binding under the same operate check.
@@ -1167,6 +1188,8 @@ non-operator members is a separate program and is not widened here.
   needs `terminal:observe`; running one needs `terminal:operate` and runs only
   a name the binding's `package.json` declares, through a package manager the
   server finds. An agent's `terminal_run` records a request and runs nothing.
+  At most three requests wait per chat and 64 across all chats; past that a
+  request is refused rather than queued.
   `POST /api/terminal/runs/:runId/approve` needs `terminal:operate`, the same
   operator test and sending to the conversation, refuses personal tokens and
   any request that may be an agent's, and starts that one command once as the

@@ -40,6 +40,7 @@ import {
   serializeActiveChats,
 } from './active-chats-state';
 
+import { backgroundTasksStore } from './background-tasks-store';
 import { conversationsStore } from './conversations-store';
 
 export type {
@@ -93,6 +94,10 @@ export class ActiveChatsStore {
     this.now = options.now ?? (() => Date.now());
     this.randomId = options.randomId ?? (() => Math.random().toString(36));
     this.loadFromStorage();
+    for (const [key, chat] of Object.entries(this.chats)) {
+      for (const id of [key, chat.conversationId, chat.currentSessionId])
+        if (id) backgroundTasksStore.retainChat(id, chat.stationBinding);
+    }
   }
 
   private loadFromStorage() {
@@ -524,6 +529,13 @@ export class ActiveChatsStore {
       createDefaultChatState(metadata, this.now()),
     );
     this.draftRevisions.set(sessionId, {});
+    for (const id of [
+      sessionId,
+      metadata?.conversationId,
+      metadata?.currentSessionId,
+    ]) {
+      if (id) backgroundTasksStore.retainChat(id, metadata?.stationBinding);
+    }
     this.notify(true);
   }
 
@@ -564,6 +576,27 @@ export class ActiveChatsStore {
     );
     const next = this.withKnownActivity(chat);
     this.chats[targetSessionId!] = next;
+    if (
+      next.conversationId !== current.conversationId ||
+      next.currentSessionId !== current.currentSessionId
+    ) {
+      for (const id of [next.conversationId, next.currentSessionId]) {
+        if (id) backgroundTasksStore.retainChat(id, next.stationBinding);
+      }
+      for (const id of [current.conversationId, current.currentSessionId]) {
+        if (
+          id &&
+          !Object.values(this.chats).some(
+            (candidate) =>
+              stationStateKey(candidate.stationBinding) ===
+                stationStateKey(current.stationBinding) &&
+              (candidate.conversationId === id ||
+                candidate.currentSessionId === id),
+          )
+        )
+          backgroundTasksStore.forgetChat(id, current.stationBinding);
+      }
+    }
     if (
       chat.conversationActivity &&
       chat.conversationActivity !== current.conversationActivity
@@ -655,6 +688,24 @@ export class ActiveChatsStore {
         removed.agentSlug,
         removed.conversationId,
       );
+    for (const id of new Set([
+      sessionId,
+      removed?.conversationId,
+      removed?.currentSessionId,
+    ])) {
+      if (
+        id &&
+        !Object.entries(this.chats).some(
+          ([key, candidate]) =>
+            stationStateKey(candidate.stationBinding) ===
+              stationStateKey(removed?.stationBinding) &&
+            (key === id ||
+              candidate.conversationId === id ||
+              candidate.currentSessionId === id),
+        )
+      )
+        backgroundTasksStore.forgetChat(id, removed?.stationBinding);
+    }
     for (const listener of this.chatRemovedListeners) listener(sessionId);
     this.notify(true);
   }
@@ -765,6 +816,7 @@ export class ActiveChatsStore {
     this.chats[sessionId] = this.withKnownActivity(
       assignConversationIdState(chat, conversationId),
     );
+    backgroundTasksStore.retainChat(conversationId, chat.stationBinding);
     // This is the transition from an ephemeral tab to a durable conversation.
     // Persist it synchronously so an immediate reload/navigation cannot lose
     // the session while the ordinary 300 ms coalescing timer is still pending.

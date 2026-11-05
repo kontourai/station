@@ -34,6 +34,7 @@ const input = () => ({
   version,
   sourceSha,
   pubDate: '2026-09-09T00:00:00Z',
+  notes: '## Features\n- New workspace tools',
   builds: [build('darwin-aarch64'), build('windows-x86_64')],
 });
 describe('Windows Nightly', () => {
@@ -62,6 +63,9 @@ describe('Windows Nightly', () => {
     },
   );
   it('assembles both platforms from the same verified source and version', () => {
+    expect(assembleNightlyDesktopManifest(input()).notes).toContain(
+      'New workspace tools',
+    );
     expect(
       Object.keys(assembleNightlyDesktopManifest(input()).platforms),
     ).toEqual(['darwin-aarch64', 'windows-x86_64']);

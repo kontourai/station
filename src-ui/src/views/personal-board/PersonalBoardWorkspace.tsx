@@ -210,6 +210,20 @@ function BoardWorkspace({
             </Button>
           </div>
         )}
+        {(edit || (!document.definition && !document.proposal)) &&
+          (projects.isError ? (
+            <ErrorState
+              variant="compact"
+              title="Could not load Projects"
+              action={
+                <Button onClick={() => void projects.refetch()}>
+                  Retry Projects
+                </Button>
+              }
+            />
+          ) : projects.isLoading ? (
+            <SkeletonBlock count={1} label="Loading Projects" />
+          ) : null)}
         {document.proposal && !edit && (
           <section
             className="personal-board__proposal"

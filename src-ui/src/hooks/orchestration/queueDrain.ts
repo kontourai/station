@@ -364,15 +364,15 @@ export async function sendPendingMessageNow(
   }
   chatStore.updateChat(threadId, { queueSendNowPending: true });
   const binding = [chat.conversationId, chat.currentSessionId];
+  const target = {
+    ...liveTurnTarget(chat, threadId),
+    turnId: chat.conversationActivity?.openTurn?.turnId ?? chat.openTurnId,
+  };
   try {
     if (serverTurnLive(chat) === true || chat.status === 'sending') {
       const { interruptOrchestrationTurn } = await import(
         '@kontourai/station-sdk'
       );
-      const target = {
-        ...liveTurnTarget(chat, threadId),
-        turnId: chat.conversationActivity?.openTurn?.turnId ?? chat.openTurnId,
-      };
       if (!target.turnId) {
         chatStore.addEphemeralMessage(threadId, {
           role: 'system',
@@ -451,6 +451,16 @@ export async function sendPendingMessageNow(
     });
     drainQueuedMessageOnTurnCompleted(apiBase, threadId, true, true, station);
   } catch (error) {
+    const latest = chatStore.getSnapshot()[threadId];
+    if (
+      !latest ||
+      latest.conversationId !== binding[0] ||
+      latest.currentSessionId !== binding[1] ||
+      liveTurnTarget(latest, threadId).threadId !== target.threadId ||
+      (latest.conversationActivity?.openTurn?.turnId ?? latest.openTurnId) !==
+        target.turnId
+    )
+      return;
     chatStore.addEphemeralMessage(threadId, {
       role: 'system',
       content: `Stop was not confirmed. Your message is still pending: ${userFacingErrorMessage(error)}`,

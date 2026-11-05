@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
   approvalModeChipLabel,
@@ -44,6 +45,7 @@ export function StartApprovalSummary({
   onPick?: (mode: ApprovalMode) => void;
 }) {
   const account = useAccountPreferences();
+  const managed = useManagedApprovalCeiling();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const config = useConfig();
@@ -70,10 +72,19 @@ export function StartApprovalSummary({
   });
   if (engine !== 'codex' && engine !== 'claude' && engine !== 'muse')
     return null;
+  // #4518: an inherited default above the managed ceiling starts the chat at
+  // the ceiling (the server lowers it), so the chip and the open picker show
+  // that. This start's own pick is shown as picked: above the ceiling the
+  // picker does not offer it, and the server refuses it.
+  const startMode =
+    resolved.source === 'session override'
+      ? resolved.mode
+      : managed.clamp(resolved.mode);
+  const lowered = startMode !== resolved.mode;
   const label =
     resolved.source === 'project unavailable'
       ? 'Set at start'
-      : approvalModeChipLabel(resolved.mode);
+      : approvalModeChipLabel(startMode);
   const title = `${
     resolved.source === 'session override'
       ? 'Chosen for this chat.'
@@ -83,7 +94,9 @@ export function StartApprovalSummary({
           ? engine === 'codex'
             ? approvalModeDescription('connection-default', 'codex')
             : 'The engine has not reported its active approval mode yet.'
-          : `Requested at startup, from ${resolved.source}.`
+          : lowered && managed.summary
+            ? `Requested at startup, from ${resolved.source}, lowered by ${managed.summary.organization}'s policy.`
+            : `Requested at startup, from ${resolved.source}.`
   }${
     resolved.source !== 'session override' &&
     projectDefault?.fallback === 'no-history'
@@ -123,7 +136,7 @@ export function StartApprovalSummary({
           load={loadComposerModeSheet}
           componentProps={{
             triggerRef,
-            effectiveMode: resolved.mode,
+            effectiveMode: startMode,
             engineConnectionId: engine,
             onClose: () => setIsSheetOpen(false),
             onSelect: onPick,

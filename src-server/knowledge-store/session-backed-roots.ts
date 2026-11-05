@@ -1,3 +1,4 @@
+import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { CONVERSATION_STORE_ADAPTER_ID } from './adapters/conversation-store.js';
 import type { KnowledgeStoreProvider } from './knowledge-store-provider.js';
 
@@ -15,7 +16,20 @@ import type { KnowledgeStoreProvider } from './knowledge-store-provider.js';
  *   registered). Nothing can decide per-caller readability, so a read fails
  *   closed: it returns nothing.
  */
-export type KnowledgeRootReadKind = 'shared' | 'session-backed' | 'unavailable';
+export type KnowledgeRootReadKind =
+  | 'shared'
+  | 'session-backed'
+  | 'author-private'
+  | 'unavailable';
+
+export function classifyKnowledgeRoot(
+  root: KnowledgeStoreRoot,
+): Exclude<KnowledgeRootReadKind, 'unavailable'> {
+  if (root.readPolicy?.kind === 'author-private') return 'author-private';
+  return root.adapterId === CONVERSATION_STORE_ADAPTER_ID
+    ? 'session-backed'
+    : 'shared';
+}
 
 export async function knowledgeRootReadKind(
   store: Pick<KnowledgeStoreProvider, 'getRoot' | 'listAdapters'>,
@@ -28,9 +42,7 @@ export async function knowledgeRootReadKind(
   // re-read anything as the caller either.
   if (!store.listAdapters().some((adapter) => adapter.id === root.adapterId))
     return 'unavailable';
-  return root.adapterId === CONVERSATION_STORE_ADAPTER_ID
-    ? 'session-backed'
-    : 'shared';
+  return classifyKnowledgeRoot(root);
 }
 
 export const KNOWLEDGE_ROOT_NOT_FOUND_ERROR = 'Knowledge root not found';

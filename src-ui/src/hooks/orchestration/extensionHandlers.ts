@@ -4,7 +4,7 @@ import {
   extensionNotificationBinding,
   takeUnboundExtensionNotice,
 } from '@shared/extension-notification-bindings';
-import type { StationStateScope } from '../../connections/station-state';
+import type { StationStateSource } from '../../connections/station-state';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { log } from '../../utils/logger';
@@ -59,9 +59,11 @@ function activityHintsEqual(
 function handleClaudeNotification(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
   consumer: ExtensionNotificationConsumer,
-  station?: StationStateScope,
+  station?: StationStateSource,
 ) {
-  const chatStore = activeChatsStore.forStation(station);
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
   if (consumer === 'ui.claude.api-retry') {
     const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
@@ -158,9 +160,11 @@ function handleClaudeNotification(
  */
 export function handleExtensionNotificationEvent(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
-  station?: StationStateScope,
+  station?: StationStateSource,
 ) {
-  const chatStore = activeChatsStore.forStation(station);
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
   const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   const binding = extensionNotificationBinding(event.namespace, event.type);

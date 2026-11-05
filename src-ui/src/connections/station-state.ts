@@ -133,3 +133,13 @@ export function chatBelongsToStation(
     return false;
   return stationStateKey(binding) === stationStateKey(station?.binding);
 }
+
+/** Explicit legacy bases stay partitioned; live peer streams include authority and route generation. */
+export type StationStateSource = StationStateScope | string;
+export function stationPartitionKey(source?: StationStateSource): string {
+  return typeof source === 'string'
+    ? source
+    : source?.binding.affinity.kind === 'host'
+      ? source.targetApiBase
+      : (source?.runtimeKey ?? '');
+}

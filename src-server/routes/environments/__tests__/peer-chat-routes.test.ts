@@ -430,3 +430,18 @@ describe('paired Station foreground chat bridge', () => {
     });
   });
 });
+
+test('relays only the value-free managed policy read, with the receiver credential', async () => {
+  const { call, fetch } = fixture();
+  expect((await call('/api/settings/managed-policy')).status).toBe(200);
+  expect(fetch.mock.calls[1]?.[0]).toBe(
+    'https://desktop.test/api/settings/managed-policy',
+  );
+  expect(
+    new Headers(fetch.mock.calls[1]?.[1]?.headers).get('Authorization'),
+  ).toBe('Bearer test-peer');
+  expect(
+    classifyPeerChatOperation('POST', '/api/settings/managed-policy'),
+  ).toBeNull();
+  expect(classifyPeerChatOperation('GET', '/api/settings')).toBeNull();
+});

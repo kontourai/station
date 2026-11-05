@@ -51,6 +51,7 @@ import {
   type ChatUIState,
 } from '../contexts/active-chats-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
+import { useManagedApprovalCeiling } from '../contexts/ManagedPolicyContext';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -377,6 +378,7 @@ export function useSendMessage(
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
+  const managedCeiling = useManagedApprovalCeiling().ceiling;
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
@@ -1174,21 +1176,32 @@ export function useSendMessage(
         // the Project's answer. Outside a Project, or to a Station whose
         // chat-defaults read answered 404 (it may predate the hint), there is
         // no Project layer and it goes as the pick it always was.
-        const carriedAsHint =
+        // #4518: except under a managed approval ceiling. As a pick, a saved
+        // default above the ceiling would be refused, and one within it
+        // recorded as a choice the next, tighter policy refuses. A Station
+        // that reports a ceiling postdates the hint, so the hint goes
+        // everywhere and the server lowers it as the default it is.
+        const asHintUnderCeiling =
+          managedCeiling !== undefined &&
           carriedApprovalPick !== undefined &&
           carriedApprovalPick !== 'connection-default' &&
-          currentState?.queuedApprovalDefaultNamespace !== undefined &&
-          !!currentState.projectSlug &&
-          !(
-            requestScope &&
-            queryClient.getQueryData(
-              projectChatDefaultsQueryKey(
-                requestScope,
-                experienceNamespace ?? undefined,
-                currentState.projectSlug,
-              ),
-            ) === null
-          );
+          currentState?.queuedApprovalDefaultNamespace !== undefined;
+        const carriedAsHint =
+          asHintUnderCeiling ||
+          (carriedApprovalPick !== undefined &&
+            carriedApprovalPick !== 'connection-default' &&
+            currentState?.queuedApprovalDefaultNamespace !== undefined &&
+            !!currentState.projectSlug &&
+            !(
+              requestScope &&
+              queryClient.getQueryData(
+                projectChatDefaultsQueryKey(
+                  requestScope,
+                  experienceNamespace ?? undefined,
+                  currentState.projectSlug,
+                ),
+              ) === null
+            ));
         const dispatchInput = {
           apiBase,
           sessionId,
@@ -2100,6 +2113,7 @@ export function useSendMessage(
       accountPreferences.requestScope,
       accountPreferences.status,
       accountPreferences.saving,
+      managedCeiling,
       experienceNamespace,
       experienceAuthorityStatus,
       hostApiBase,
@@ -2233,6 +2247,19 @@ export function useCancelMessage(
       }
       updateChat(sessionId, { stopPending: true });
       const target = liveTurnTarget(state, sessionId);
+      const stillOwnsTurn = () => {
+        const latest = activeChatsStore.getSnapshot()[sessionId];
+        const latestTarget = latest
+          ? liveTurnTarget(latest, sessionId)
+          : undefined;
+        return (
+          (!connection || connection.isCurrent()) &&
+          latest?.conversationId === state.conversationId &&
+          latest?.currentSessionId === state.currentSessionId &&
+          latestTarget?.threadId === target.threadId &&
+          latestTarget?.turnId === target.turnId
+        );
+      };
       let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
@@ -2254,9 +2281,11 @@ export function useCancelMessage(
           apiBase: connection?.targetApiBase ?? apiBase,
           requestScope: connection?.requestScope,
         });
+        if (!stillOwnsTurn()) return { kind: 'not-running' };
         settledResult = result;
         return { kind: 'settled', result };
       } catch (error) {
+        if (!stillOwnsTurn()) return { kind: 'not-running' };
         const message = describeStationFailure(error).body;
         // The SAME derivation the continuation path uses to separate "this
         // request provably never left the browser" from "no answer, and no
@@ -2285,7 +2314,14 @@ export function useCancelMessage(
         const turnSettled =
           settledResult !== undefined &&
           settledResult.outcome !== 'pending-turn-start';
-        if (!connection || connection.isCurrent())
+        if (!stillOwnsTurn()) {
+          // Only release the old button claim; the replacement execution owns all other state.
+          if (
+            (!connection || connection.isCurrent()) &&
+            activeChatsStore.getSnapshot()[sessionId]?.stopPending
+          )
+            updateChat(sessionId, { stopPending: false });
+        } else
           updateChat(sessionId, {
             status: 'idle',
             abortController: undefined,

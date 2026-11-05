@@ -127,7 +127,8 @@ vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => false,
 }));
-vi.mock('../../build-info', () => ({
+vi.mock('../../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../../build-info')>()),
   buildInfo: { version: '0.0.0-test', commit: 'test' },
 }));
 

@@ -3,7 +3,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  MANAGED_POLICY_APPROVAL_CEILING_CODE,
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  installManagedApprovalCeiling,
+  ManagedApprovalCeilingStartRefusedError,
+} from '../../../security/managed-approval-ceiling.js';
 import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
 import {
   type ExecutionTargetExecutionDependencies,
@@ -187,6 +196,56 @@ describe('inbound webhooks', () => {
     expect((startInput.metadata as Record<string, unknown>).agentId).toBe(
       agentId('station'),
     );
+  });
+
+  test('a start the managed approval ceiling refuses is a definitive 403 with the managed reason, not a retryable 503', async () => {
+    // #4570 delta review: the policy will refuse the same start again, so a
+    // webhook caller must not be told to retry it.
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      supportUrl: 'https://help.acme.example/station',
+      limits: { maxApprovalMode: 'ask' },
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    installManagedApprovalCeiling({
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+    try {
+      const homeDir = home();
+      writeEnabled(homeDir);
+      const deps = foregroundDependencies();
+      const reason = 'This engine runs here without approval prompts (Auto).';
+      deps.startSession = vi.fn(async () => {
+        throw new ManagedApprovalCeilingStartRefusedError(reason);
+      });
+      const { app: route } = app(homeDir, deps);
+      const refused = await request(route, body());
+      expect(refused.status).toBe(403);
+      const refusedBody = (await refused.json()) as Record<string, unknown>;
+      expect(refusedBody).toMatchObject({
+        success: false,
+        code: MANAGED_POLICY_APPROVAL_CEILING_CODE,
+        retryable: false,
+      });
+      expect(refusedBody.error).toContain(reason);
+      expect(refusedBody.error).toContain('https://help.acme.example/station');
+      expect(deps.sendTurn).not.toHaveBeenCalled();
+
+      // Control: any other start failure stays the retryable 503.
+      deps.startSession = vi.fn(async () => {
+        throw new Error('engine went away');
+      });
+      const failed = await request(app(homeDir, deps).app, body());
+      expect(failed.status).toBe(503);
+      expect(await failed.json()).toEqual({
+        success: false,
+        code: 'turn_start_failed',
+        retryable: true,
+      });
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
   });
 
   test('records an invalid signature and starts nothing', async () => {

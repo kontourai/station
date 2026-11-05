@@ -219,6 +219,21 @@ export function sessionProjectLabel(
   return null;
 }
 
+/** A compact directory display; it does not establish Project membership. */
+export function sessionCwdLabel(
+  session: Pick<OrchestrationSessionSummary, 'cwd'>,
+): string | undefined {
+  const cwd = session.cwd?.trim();
+  if (!cwd) return undefined;
+  if (/^(?:[/\\]+|[a-z]:[/\\]+)$/i.test(cwd)) return cwd;
+  const suffix = cwd
+    .split(/[/\\]+/)
+    .filter(Boolean)
+    .slice(-2)
+    .join('/');
+  return suffix ? `…/${suffix}` : undefined;
+}
+
 /*
  * `sessionProjectSection` lived here — `Project · <label>`, or `'Unassigned'`
  * when nothing was known — and its own docblock said to retire it if no

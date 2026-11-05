@@ -6,6 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   chatBelongsToStation,
   type StationStateScope,
+  stationPartitionKey,
 } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -656,7 +657,8 @@ export function applyOrchestrationSnapshot(
   const replayId = options?.replayThreadId;
   if (replayId && !isReplayThread(replayId))
     throw new Error('Snapshot replay requires a registered replay thread');
-  if (!replayId) backgroundTasksStore.reconcileSnapshot(payload, station);
+  if (!replayId && options?.apiBase)
+    backgroundTasksStore.reconcileSnapshot(payload, station ?? options.apiBase);
 
   const snapshot = Object.fromEntries(
     Object.entries(activeChatsStore.getSnapshot()).filter(([id, chat]) =>
@@ -765,11 +767,42 @@ export function applyOrchestrationSnapshot(
   // The live stream's snapshot is FULL (never thread-filtered), so a
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
-    reconcileChildWorkSnapshot(payload.sessions, station);
-    // A snapshot names its Station; one without (no caller today) folds into
-    // no partition rather than a guessed one.
-    if (options?.apiBase)
-      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+    reconcileChildWorkSnapshot(payload.sessions, station ?? options?.apiBase);
+    if (options?.apiBase) {
+      childWorkGlobalStore.reconcileSnapshot(
+        stationPartitionKey(station ?? options.apiBase),
+        payload.sessions,
+      );
+      const chats = Object.entries(chatStore.getSnapshot());
+      const matchingChats = (id: string) =>
+        chats
+          .filter(
+            ([key, chat]) =>
+              key === id ||
+              chat.currentSessionId === id ||
+              chat.conversationId === id,
+          )
+          .map(([key]) => key);
+      for (const session of payload.sessions) {
+        const direct = matchingChats(session.threadId);
+        const candidates = direct.length
+          ? direct
+          : session.conversationId
+            ? matchingChats(session.conversationId)
+            : [];
+        const chatKey = candidates.length === 1 ? candidates[0] : undefined;
+        if (chatKey)
+          backgroundTasksStore.bindProviderReporter(
+            station ?? options.apiBase,
+            session.threadId,
+            chatKey,
+          );
+      }
+      backgroundTasksStore.reconcileProviderReporters(
+        station ?? options.apiBase,
+        new Set(payload.sessions.map((session) => session.threadId)),
+      );
+    }
   }
 
   if (!replayId && options?.apiBase) {

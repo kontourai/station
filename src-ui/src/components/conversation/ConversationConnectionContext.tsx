@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import type { StationConnection } from '../../connections/station-connection';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { ManagedPolicyProvider } from '../../contexts/ManagedPolicyContext';
 import type { ChatMessage } from '../../types';
 import type { MessageDeliveryState } from '../../utils/messageDeliveryState';
 import type { DeliveryPort } from './DeliveryPort';
@@ -48,4 +49,26 @@ export function useConversationConnection() {
 /** Transitional read-only Task/detail adapters are migrated in P2. */
 export function useOptionalConversationConnection() {
   return useContext(ConversationConnectionContext);
+}
+
+/** A target policy read belongs to the approval picker, not every conversation control. */
+export function ConversationManagedPolicyProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const target = useOptionalConversationConnection();
+  return target?.station && target.station.routeKind !== 'host' ? (
+    <ManagedPolicyProvider
+      target={{
+        targetApiBase: target.apiBase,
+        runtimeKey: target.station.runtimeKey,
+        requestScope: target.station.requestScope,
+      }}
+    >
+      {children}
+    </ManagedPolicyProvider>
+  ) : (
+    children
+  );
 }

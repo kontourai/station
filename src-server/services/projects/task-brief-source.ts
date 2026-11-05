@@ -49,10 +49,12 @@ import {
   composeActiveWorkClaimReader,
 } from '../orchestration/work-claims.js';
 import type { WorkItemObserver } from '../work-item-providers/github-work-item-observer.js';
+import type { TaskFollowUpStore } from '../work-item-providers/task-follow-up-store.js';
 import {
   buildTaskBrief,
   renderTaskRecordListing,
   renderTaskSummaryHistory,
+  TASK_BRIEF_FOLLOW_UPS_LISTED,
   TASK_BRIEF_SUMMARY_HISTORY_REVISIONS,
   type TaskBriefInclude,
   type TaskBriefInput,
@@ -133,6 +135,11 @@ export interface TaskBriefSourceDeps {
   ): { projectId: string; taskId: string } | undefined;
   /** The runtime's one exact-identity tracker reader. */
   workItemObserver: WorkItemObserver;
+  /**
+   * What the follow-up poller recorded for the Task (#4508). Absent, or
+   * `undefined` for a Task, means the brief has no follow-up section.
+   */
+  followUps?(task: TaskRecord): TaskBriefInput['followUps'];
   observeTimeoutMs?: number;
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
 }
@@ -393,6 +400,21 @@ export function createTaskBriefSource(
     return { kind: 'task', task, projectId: binding.projectId };
   };
 
+  // A follow-up read that fails leaves the section out; it never stops a
+  // dispatch or a brief.
+  const followUpsOf = (task: TaskRecord) => {
+    try {
+      const followUps = deps.followUps?.(task);
+      return followUps ? { followUps } : {};
+    } catch (error) {
+      deps.logger?.warn('Task follow-ups could not be read for the brief', {
+        taskId: task.id,
+        error: errorText(error),
+      });
+      return {};
+    }
+  };
+
   const requiredWorkingContext = async (
     task: TaskRecord,
     owner: string | undefined,
@@ -465,6 +487,7 @@ export function createTaskBriefSource(
         ...(workingContext.learning
           ? { learningContext: workingContext.learning }
           : {}),
+        ...followUpsOf(task),
       });
       return {
         brief,
@@ -513,6 +536,7 @@ export function createTaskBriefSource(
           ...(workingContext.learning
             ? { learningContext: workingContext.learning }
             : {}),
+          ...followUpsOf(current),
         }),
       };
     },
@@ -610,6 +634,8 @@ export function composeTaskBriefSource(input: {
       }
     | undefined;
   workItemObserver: WorkItemObserver;
+  /** The runtime's follow-up store (#4508); read only once it exists. */
+  followUps?: { forRead(): TaskFollowUpStore | undefined };
   logger?: TaskBriefSourceDeps['logger'];
 }): TaskBriefSource {
   const store = input.eventStore;
@@ -688,6 +714,17 @@ export function composeTaskBriefSource(input: {
     readBinding: (sessionId) =>
       store?.readProjectTaskRoomExecutionBinding(sessionId),
     workItemObserver: input.workItemObserver,
+    ...(input.followUps
+      ? {
+          followUps: (task: TaskRecord) =>
+            input
+              .followUps!.forRead()
+              ?.briefView(
+                { taskId: task.id, taskCreatedAt: task.createdAt },
+                TASK_BRIEF_FOLLOW_UPS_LISTED,
+              ),
+        }
+      : {}),
     ...(input.logger ? { logger: input.logger } : {}),
   });
 }

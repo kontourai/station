@@ -1,6 +1,7 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
+  ChildWorkSummarySource,
   ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
@@ -246,6 +247,9 @@ export interface BackgroundTaskNotice {
   status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
+  summarySource?: ChildWorkSummarySource;
+  /** Verified name of the Station whose stream supplied this notice. */
+  stationName?: string;
 }
 
 export type EphemeralMessage = ChatMessage & {

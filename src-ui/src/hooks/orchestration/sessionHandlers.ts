@@ -1,5 +1,8 @@
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
-import type { StationStateScope } from '../../connections/station-state';
+import type {
+  StationStateScope,
+  StationStateSource,
+} from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import {
   type ActiveChatsStore,
@@ -134,9 +137,9 @@ type SessionActivityStore = Pick<
 export function handleSessionStateChangedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.state-changed' }>,
   store: SessionActivityStore = activeChatsStore,
-  station?: StationStateScope,
+  station?: StationStateSource,
 ) {
-  if (station) store = activeChatsStore.forStation(station);
+  if (typeof station === 'object') store = activeChatsStore.forStation(station);
   // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means
   // the runtime attached, not that a turn is open. Mirror the archive#1034 snapshot
   // guard using the client's turn fold (orchestrationTurnOpen — set by
@@ -216,9 +219,9 @@ export function handleSessionStateChangedEvent(
 export function handleSessionExitedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.exited' }>,
   store: SessionActivityStore = activeChatsStore,
-  station?: StationStateScope,
+  station?: StationStateSource,
 ) {
-  if (station) store = activeChatsStore.forStation(station);
+  if (typeof station === 'object') store = activeChatsStore.forStation(station);
   const chat = store.getSnapshot()[event.threadId];
   // A session the conversation has moved past (a stopped never-used
   // predecessor shares the chat's key) says nothing about the live one.
@@ -235,7 +238,7 @@ export function handleSessionExitedEvent(
         createdAt: event.createdAt,
         answerEligible: false,
       },
-      station,
+      typeof station === 'object' ? station : undefined,
     );
   }
   store.updateChat(event.threadId, {

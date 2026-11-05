@@ -55,6 +55,17 @@ const accountPreferenceFixture = vi.hoisted(() => ({
     values: { interactiveApprovalModes: {} as Record<string, string> },
   },
 }));
+// #4518: the managed approval ceiling the connected Station reports.
+const managedCeilingFixture = vi.hoisted(() => ({
+  current: undefined as 'ask' | 'auto' | undefined,
+}));
+vi.mock('../contexts/ManagedPolicyContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../contexts/ManagedPolicyContext')
+  >()),
+  useManagedApprovalCeiling: () => ({ ceiling: managedCeilingFixture.current }),
+}));
+
 vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => accountPreferenceFixture,
 }));
@@ -1212,6 +1223,30 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         });
         expect(body).not.toHaveProperty('personalApprovalDefault');
       } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('#4518: under a managed ceiling, outside a Project, the default goes as a hint the server lowers, never as a pick', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+      managedCeilingFixture.current = 'auto';
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({ personalApprovalDefault: 'never' });
+        expect(body).not.toHaveProperty('setApprovalMode');
+      } finally {
+        managedCeilingFixture.current = undefined;
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }
     });
@@ -4087,6 +4122,45 @@ describe('useCancelMessage', () => {
         content: expect.stringContaining('An unknown error occurred'),
       }),
     );
+  });
+
+  it('does not attach a delayed Stop failure or idle write to a replacement execution', async () => {
+    let deny!: (error: Error) => void;
+    interruptOrchestrationTurnMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          deny = reject;
+        }),
+    );
+    activeChatsStore.updateChat(sessionId, {
+      currentSessionId: 'old-session',
+      openTurnId: 'old-turn',
+    });
+    const { result } = renderHook(() => useCancelMessage('http://api.test'));
+    let stopped!: Promise<StopTurnOutcome>;
+    await act(async () => {
+      stopped = result.current(sessionId);
+      await Promise.resolve();
+    });
+    activeChatsStore.updateChat(sessionId, {
+      currentSessionId: 'new-session',
+      openTurnId: 'new-turn',
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    let outcome: StopTurnOutcome | undefined;
+    await act(async () => {
+      deny(new Error('connect ECONNREFUSED 127.0.0.1:3141'));
+      outcome = await stopped;
+    });
+    expect(outcome).toEqual({ kind: 'not-running' });
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      currentSessionId: 'new-session',
+      openTurnId: 'new-turn',
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      stopPending: false,
+    });
   });
 
   it('interrupts the receipted continuation Session instead of the conversation root', async () => {

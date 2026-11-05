@@ -17,6 +17,7 @@ import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
+import { MemoryErasurePreview } from './MemoryErasurePreview';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
@@ -154,6 +155,7 @@ export function KnowledgeStoreSection() {
       title="My knowledge store"
       id="section-knowledge"
     >
+      <MemoryErasurePreview />
       <div {...settingsRow('personal-knowledge-store')} tabIndex={-1}>
         <p className="knowledge-store-section__intro">
           Optional. Add a personal knowledge store when you want agents to keep
@@ -193,7 +195,8 @@ export function KnowledgeStoreSection() {
         ) : (
           (() => {
             const personalRoot = (rootsQuery.data ?? []).find(
-              (root) => root.scope.kind === 'personal',
+              (root) =>
+                root.scope.kind === 'personal' && root.readPolicy === undefined,
             );
 
             if (!personalRoot) {

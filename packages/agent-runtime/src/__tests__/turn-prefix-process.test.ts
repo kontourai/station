@@ -32,6 +32,9 @@ it.each([5, 130, 300, 389, 1300])(
     );
     temporary.push(directory);
     const path = join(directory.path, 'journal.sqlite');
+    const spawnStart = performance.now();
+    let killStart = 0;
+    let readyAt = 0;
     const child = spawn(
       process.execPath,
       [
@@ -53,14 +56,31 @@ it.each([5, 130, 300, 389, 1300])(
       child.once('error', reject);
       child.on('message', (raw) => {
         try {
-          const message = z
-            .object({ index: z.number().int(), delta: z.string() })
-            .strict()
+          if (
+            z
+              .object({ kind: z.literal('ready') })
+              .strict()
+              .safeParse(raw).success
+          ) {
+            readyAt = performance.now();
+            return;
+          }
+          const batch = z
+            .array(
+              z.object({ index: z.number().int(), delta: z.string() }).strict(),
+            )
+            .min(1)
+            .max(50)
             .parse(raw);
-          expect(message.index).toBe(visible.length);
-          visible.push(message.delta);
-          if (visible.length === threshold) child.kill('SIGKILL');
-          else child.send('next');
+          for (const message of batch) {
+            expect(message.index).toBe(visible.length);
+            visible.push(message.delta);
+          }
+          expect(visible.length).toBeLessThanOrEqual(threshold);
+          if (visible.length === threshold) {
+            killStart = performance.now();
+            child.kill('SIGKILL');
+          } else child.send('next');
         } catch (error) {
           reject(error);
         }
@@ -71,9 +91,11 @@ it.each([5, 130, 300, 389, 1300])(
           : reject(new Error(`Unexpected child exit ${signal}: ${stderr}`)),
       );
     });
+    const killed = performance.now();
     const database = new DatabaseSync(path);
     database.exec('PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
     const journal = openSqliteAgentJournal({ database });
+    const reopened = performance.now();
     try {
       const runtime = createAgentRuntime({
         journal,
@@ -93,6 +115,7 @@ it.each([5, 130, 300, 389, 1300])(
       });
       if (typeof lease === 'string')
         throw new Error(`Recovery refused: ${lease}`);
+      const recovered = performance.now();
       const { effect } = await lease.effect({
         type: 'effectRead',
         id: 'model:0',
@@ -118,12 +141,20 @@ it.each([5, 130, 300, 389, 1300])(
       expect(prefix.slice(0, visible.length)).toEqual(visible);
       const frames = readSqliteAgentFrames({ database, key: lease.key });
       expect(
-        frames
-          .filter((frame) => frame.id.startsWith('answer:'))
-          .map((frame) => JSON.parse(frame.wire.slice(6)).delta),
-      ).toEqual(visible);
-      expect(new Set(frames.map((frame) => frame.id)).size).toBe(
-        2 * visible.length,
+        frames.map(({ id, position, wire }) => ({ id, position, wire })),
+      ).toEqual(
+        visible.flatMap((delta, index) => [
+          {
+            id: `answer:${index}`,
+            position: 2 * index,
+            wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
+          },
+          {
+            id: `control:${index}`,
+            position: 2 * index + 1,
+            wire: 'data: {"type":"checkpoint"}\n\n',
+          },
+        ]),
       );
       let calls = 0;
       const model = durableLanguageModel({
@@ -143,6 +174,20 @@ it.each([5, 130, 300, 389, 1300])(
         runWithAgentTurn(lease, () => model.doStream({ prompt: [] })),
       ).rejects.toThrow('MODEL_INDETERMINATE');
       expect(calls).toBe(0);
+      process.stderr.write(
+        '[prefix-timing] ' +
+          JSON.stringify({
+            threshold,
+            spawnInitMs: readyAt - spawnStart,
+            displayMs: killStart - readyAt,
+            killMs: killed - killStart,
+            reopenMs: reopened - killed,
+            recoveryMs: recovered - reopened,
+            assertionsMs: performance.now() - recovered,
+            child: stderr,
+          }) +
+          '\n',
+      );
     } finally {
       await journal.close();
       database.close();

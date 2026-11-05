@@ -80,10 +80,21 @@ function fixture() {
     jobs: new Map<number, Job[]>([[10, structuredClone(jobs)]]),
     posts: [] as Array<{ state: string }>,
     comparison: { status: 'ahead', merge_base_commit: { sha: base } },
+    comparisons: new Map<
+      string,
+      { status: string; merge_base_commit: { sha: string } }
+    >(),
+    metadataRevision: base,
+    mainRef: {
+      ref: 'refs/heads/main',
+      object: { type: 'commit', sha: base },
+    },
     error: '',
     truncate: false,
     reads: 0,
+    mainRefReads: 0,
     move: false,
+    moveMain: false,
     metadataWorkflow: readFileSync(
       new URL('../../.github/workflows/ci.yml', import.meta.url),
       'utf8',
@@ -110,6 +121,12 @@ function fixture() {
         });
       if (parsed.pathname === '/repos/kontourai/station')
         return json({ id: 1 });
+      if (path === 'git/ref/heads/main') {
+        state.mainRefReads += 1;
+        if (state.moveMain && state.mainRefReads === 2)
+          state.mainRef.object.sha = advanced;
+        return json(state.mainRef);
+      }
       if (path === `commits/${head}/pulls`) {
         state.reads += 1;
         if (state.move && state.reads === 2) state.owners[0].head.ref = 'moved';
@@ -121,14 +138,15 @@ function fixture() {
           workflow_runs: state.runs,
         });
       if (path === 'contents/.github/workflows/ci.yml') {
-        expect(parsed.searchParams.get('ref')).toBe(base);
+        expect(parsed.searchParams.get('ref')).toBe(state.metadataRevision);
         return json({
           path: '.github/workflows/ci.yml',
           encoding: 'base64',
           content: Buffer.from(state.metadataWorkflow).toString('base64'),
         });
       }
-      if (path.startsWith('compare/')) return json(state.comparison);
+      if (path.startsWith('compare/'))
+        return json(state.comparisons.get(path) ?? state.comparison);
       const detail = /^actions\/runs\/(\d+)$/.exec(path);
       if (detail)
         return json(state.runs.find((entry) => entry.id === Number(detail[1])));
@@ -336,11 +354,31 @@ describe('source verification reconciler API boundary', () => {
       expect((await execute()).state).toBe('pending');
     },
   );
-  test('rereads ownership before publishing and refuses a moved owner', async () => {
-    const { state, execute } = fixture();
-    state.move = true;
-    expect((await execute()).state).toBe('pending');
-  });
+  test.each(['owner', 'main'])(
+    'rereads %s authority before publishing and refuses a changed snapshot',
+    async (authority) => {
+      const { state, execute } = fixture();
+      if (authority === 'owner') state.move = true;
+      else state.moveMain = true;
+      expect((await execute()).state).toBe('pending');
+      expect(state.posts).not.toContainEqual(
+        expect.objectContaining({ state: 'success' }),
+      );
+    },
+  );
+  test.each(['ref', 'type', 'sha'])(
+    'an untrusted main %s cannot publish source success',
+    async (field) => {
+      const { state, execute } = fixture();
+      if (field === 'ref') state.mainRef.ref = 'refs/heads/feature';
+      if (field === 'type') state.mainRef.object.type = 'tag';
+      if (field === 'sha') state.mainRef.object.sha = 'untrusted';
+      await expect(execute()).rejects.toThrow();
+      expect(state.posts).toMatchObject([
+        { context: 'Source verification policy', state: 'pending' },
+      ]);
+    },
+  );
   test.each(['api', 'pagination'])(
     'unavailable %s evidence invalidates old success with pending',
     async (kind) => {
@@ -477,10 +515,47 @@ describe('source verification reconciler API boundary', () => {
       expect((await execute()).state).not.toBe('success');
     },
   );
-  test.each(['pending', 'success'])(
-    'observed3974 cancelled metadata between newer metadata and genuine %s source does not mask source',
-    async (sourceState) => {
+  test.each([
+    ['pending', 'same revision', 'pending'],
+    ['success', 'same revision', 'success'],
+    ['pending', 'newer trusted workflow', 'pending'],
+    ['success', 'newer trusted workflow', 'success'],
+    ['pending', 'stale reported base', 'pending'],
+    ['success', 'stale reported base', 'success'],
+    ['success', 'future workflow', 'failure'],
+    ['success', 'diverged workflow', 'failure'],
+    ['success', 'diverged reported base', 'pending'],
+  ])(
+    'cancelled metadata with %s source and %s yields %s',
+    async (sourceState, lineage, expected) => {
       const { state, execute } = fixture();
+      const liveBase = 'd'.repeat(40);
+      const revision = lineage === 'same revision' ? base : advanced;
+      if (lineage !== 'same revision') {
+        if (lineage !== 'stale reported base')
+          state.owners[0].base.sha = liveBase;
+        state.mainRef.object.sha = liveBase;
+        state.metadataRevision = revision;
+        state.comparisons.set(`compare/${base}...${liveBase}`, {
+          status: lineage === 'diverged reported base' ? 'diverged' : 'ahead',
+          merge_base_commit: { sha: base },
+        });
+        state.comparisons.set(`compare/${revision}...${base}`, {
+          status: 'behind',
+          merge_base_commit: { sha: base },
+        });
+        state.comparisons.set(`compare/${revision}...${liveBase}`, {
+          status:
+            lineage === 'future workflow'
+              ? 'behind'
+              : lineage === 'diverged workflow'
+                ? 'diverged'
+                : 'ahead',
+          merge_base_commit: {
+            sha: lineage === 'future workflow' ? liveBase : revision,
+          },
+        });
+      }
       const source = {
         ...structuredClone(run),
         id: 39477519649,
@@ -490,6 +565,8 @@ describe('source verification reconciler API boundary', () => {
         status: sourceState === 'pending' ? 'pending' : 'completed',
         conclusion: sourceState === 'pending' ? null : 'success',
       };
+      if (lineage === 'diverged reported base')
+        source.pull_requests[0].base.sha = liveBase;
       const metadata = (id: number, time: string, conclusion: string): Run => ({
         ...structuredClone(run),
         id,
@@ -499,8 +576,8 @@ describe('source verification reconciler API boundary', () => {
         conclusion,
         referenced_workflows: [
           {
-            path: `kontourai/station/.github/workflows/source-verification-policy.yml@${base}`,
-            sha: base,
+            path: `kontourai/station/.github/workflows/source-verification-policy.yml@${revision}`,
+            sha: revision,
             ref: 'refs/heads/main',
           },
         ],
@@ -535,7 +612,7 @@ describe('source verification reconciler API boundary', () => {
             conclusion: index === 0 ? item.conclusion : 'skipped',
           })),
         );
-      expect((await execute()).state).toBe(sourceState);
+      expect((await execute()).state).toBe(expected);
     },
   );
 
@@ -613,6 +690,7 @@ describe('source verification reconciler API boundary', () => {
     newer('skipped');
     state.owners[0].base.sha = advanced;
     state.runs[0].pull_requests[0].base.sha = advanced;
+    state.mainRef.object.sha = advanced;
     const item = state.runs[0];
     item.conclusion = 'cancelled';
     item.name = 'PR metadata';

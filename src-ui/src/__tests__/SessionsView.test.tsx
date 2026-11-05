@@ -2251,7 +2251,7 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-attention')).toBeNull();
   });
 
-  test("replaces the generic compose box with the attention card's own answer form for needs_input with no live request", async () => {
+  test('a legacy needs-input item without exact request identity offers its session without an independent composer', () => {
     attentionItems = [
       {
         id: 'needs_input:thread-alpha',
@@ -2269,18 +2269,16 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(within(detail).queryByLabelText('Message')).toBeNull();
-    const answerBox = within(detail).getByLabelText('Answer this session');
-    fireEvent.change(answerBox, { target: { value: 'Use staging' } });
-    fireEvent.click(
-      within(detail).getByRole('button', { name: 'Send answer' }),
-    );
-
-    await waitFor(() =>
-      expect(sendTurn).toHaveBeenCalledWith({
-        threadId: 'thread-alpha',
-        text: 'Use staging',
-      }),
-    );
+    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
+    expect(
+      within(detail).getByText('Open the session to answer this request.'),
+    ).toBeTruthy();
+    expect(
+      within(detail)
+        .getByRole('link', { name: 'Open session' })
+        .getAttribute('href'),
+    ).toBe('/?surface=activity&session=thread-alpha');
+    expect(sendTurn).not.toHaveBeenCalled();
   });
 
   test('defers to the live in-turn request UI instead of duplicating it when both cover the same needs_input reason', async () => {
@@ -2398,7 +2396,7 @@ describe('SessionsView', () => {
 
     const attention = screen.getByTestId('session-attention');
     expect(
-      within(attention).getByLabelText('Answer this session'),
+      within(attention).getByText('Open the session to answer this request.'),
     ).toBeTruthy();
     expect(await screen.findByTestId('session-transcript')).toBeTruthy();
   });
@@ -2435,7 +2433,11 @@ describe('SessionsView', () => {
     expect(
       screen.getByText("Couldn't check whether this session needs attention"),
     ).toBeTruthy();
-    expect(screen.getByText('network unreachable')).toBeTruthy();
+    expect(
+      screen.getByText(
+        describeStationFailure(new Error('network unreachable')).body,
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(attentionRefetch).toHaveBeenCalledTimes(1);
@@ -2603,7 +2605,7 @@ describe('SessionsView', () => {
   //.`) silently stops mounting it. Keep both: this test would NOT catch
   // the CSS regression the reviewer fault-injected; only the Playwright
   // check does.
-  test('DOM PRESENCE ONLY (not visibility): the attention answer field stays mounted once the viewport goes compact (keyboard-open)', async () => {
+  test('DOM PRESENCE ONLY (not visibility): the legacy needs-input session action stays mounted in a compact viewport', async () => {
     class FakeViewport extends EventTarget {
       height = 844;
       offsetTop = 0;
@@ -2629,7 +2631,7 @@ describe('SessionsView', () => {
     ];
 
     renderView('thread-alpha');
-    expect(screen.getByLabelText('Answer this session')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open session' })).toBeTruthy();
 
     // Keyboard opens: the visual viewport shrinks below the compact
     // threshold, same signal the mobile chat dock already reacts to.
@@ -2641,10 +2643,10 @@ describe('SessionsView', () => {
       expect(detail.className).toContain('sessions-detail--viewport-compact');
     });
     const detail = screen.getByTestId('session-detail');
-    expect(within(detail).getByLabelText('Answer this session')).toBeTruthy();
     expect(
-      within(detail).getByRole('button', { name: 'Send answer' }),
+      within(detail).getByRole('link', { name: 'Open session' }),
     ).toBeTruthy();
+    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
 
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
@@ -5158,13 +5160,13 @@ describe('Activity presentation (sessions moved under Home)', () => {
     ];
     renderView();
     const startedFrom = screen.getByLabelText(
-      'Started from',
+      'Recorded origin',
     ) as HTMLSelectElement;
     expect(
       Array.from(startedFrom.options).map((option) => option.textContent),
-    ).toContain('Paired device · Mobile app (1)');
+    ).toContain('Paired device · Mobile app (reported) (1)');
     fireEvent.change(startedFrom, {
-      target: { value: 'Paired device · Mobile app' },
+      target: { value: 'Paired device · Mobile app (reported)' },
     });
     expect(
       screen
@@ -5196,7 +5198,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     // The unrecorded row is filed by what IS known (the attached engine),
     // never under a paired device the registry happens to hold.
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: 'Started in Claude Code' },
     });
     expect(
@@ -5205,12 +5207,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       ),
     ).toEqual(['No provenance session']);
     expect(container.textContent).not.toContain('Casey’s Pixel');
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: '' },
     });
     expect(
       container.querySelector('.split-pane__item [data-segment="origin"]')
         ?.textContent,
-    ).toBe('Browser and elsewhere');
+    ).toBe('Browser (reported) and elsewhere');
   });
 });

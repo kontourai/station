@@ -67,6 +67,7 @@ import {
   humanizeId,
   isStreamingSession,
   isTerminalSession,
+  sessionCwdLabel,
   sessionIconAgent,
   sessionKindLabel,
   sessionProjectLabel,
@@ -217,6 +218,7 @@ function ActivityRowMeta({
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
+  const cwdLabel = project ? undefined : sessionCwdLabel(session);
   // An attached row's origin is the app it was started in, which is also its
   // agent name; the "Elsewhere" word beside it says the rest.
   const origin = activityOriginShortLabel(session);
@@ -232,6 +234,8 @@ function ActivityRowMeta({
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
   if (agentName) segments.push({ key: 'agent', text: agentName });
   if (project) segments.push({ key: 'project', text: project });
+  else if (cwdLabel)
+    segments.push({ key: 'directory', text: `Directory · ${cwdLabel}` });
   if (originText) segments.push({ key: 'origin', text: originText });
   // NOT the `eventCount` proxy refused above: the sibling turn-sessions
   // folded behind this conversation row, a floor rather than an exact count.
@@ -239,7 +243,7 @@ function ActivityRowMeta({
     segments.push({ key: 'turns', text: `${foldedTurnCount} turns` });
   return (
     <span
-      className="activity-row-meta"
+      className={`activity-row-meta${cwdLabel ? ' activity-row-meta--directory' : ''}`}
       data-session-id={session.threadId}
       data-testid="activity-row-meta"
     >
@@ -294,7 +298,12 @@ function ActivityRowMeta({
       {segments.map((segment) => (
         <Fragment key={segment.key}>
           {' · '}
-          <span data-segment={segment.key}>{segment.text}</span>
+          <span
+            data-segment={segment.key}
+            title={segment.key === 'directory' ? segment.text : undefined}
+          >
+            {segment.text}
+          </span>
         </Fragment>
       ))}
       {recency > 0 && (

@@ -7,7 +7,10 @@ import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import type { StationConnection } from '../../connections/station-connection';
 import { onStationConnectionRetired } from '../../connections/station-connection-registry';
+import { stationPartitionKey } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
@@ -509,6 +512,10 @@ export function ensureOrchestrationEventStream(
     streamConnectionOwners.set(apiBase, connections);
     streamConnections.set(apiBase, station);
   }
+  const releaseTasks = backgroundTasksStore.retainPartition(station ?? apiBase);
+  const releaseChildren = childWorkGlobalStore.retainPartition(
+    stationPartitionKey(station ?? apiBase),
+  );
   owners.set(apiBase, (owners.get(apiBase) ?? 0) + 1);
   if (general)
     generalOwners.set(apiBase, (generalOwners.get(apiBase) ?? 0) + 1);
@@ -529,6 +536,8 @@ export function ensureOrchestrationEventStream(
     released = true;
     releaseRetirement();
     releaseClient();
+    releaseTasks();
+    releaseChildren();
     if (station) {
       const connections = streamConnectionOwners.get(apiBase);
       const index = connections?.indexOf(station) ?? -1;
@@ -698,6 +707,13 @@ function connectOrchestrationEventStream(
           (station && !station.isCurrent())
         )
           return;
+        if (
+          streamModes.get(apiBase) &&
+          response.headers.get('X-Station-General-Stream') !== '1'
+        ) {
+          streamModes.set(apiBase, false);
+          if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
+        }
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {

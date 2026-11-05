@@ -1,15 +1,21 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import { Badge } from '@kontourai/ui/react';
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
   approvalModeDescription,
 } from '../../utils/approvalMode';
 import { Button } from '../Button';
-import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import {
+  ConversationManagedPolicyProvider,
+  useOptionalConversationConnection,
+} from '../conversation/ConversationConnectionContext';
 import { EngineGlyph, HandGlyph, ReturnGlyph } from '../icons/Glyph';
+import { ManagedApprovalCeilingNote } from '../managed/ManagedApprovalCeilingNote';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -63,8 +69,14 @@ interface ComposerModeSheetProps {
  * confirmation (archive#727) — but as an inline confirm step inside the
  * sheet rather than a chip that silently rewrites itself into a confirm button.
  * Backing out of the confirm leaves the session's mode untouched.
+ *
+ * #4518: under the machine's managed approval ceiling, the modes above it are
+ * disabled and the sheet says whose policy limits them. The server refuses
+ * them whatever this shows; until the policy is read (or if it cannot be),
+ * nothing is disabled and a pick above the ceiling comes back refused with
+ * the same sentence.
  */
-export function ComposerModeSheet({
+function ComposerModeSheetContent({
   triggerRef,
   effectiveMode,
   engineConnectionId,
@@ -81,6 +93,7 @@ export function ComposerModeSheet({
   const personalDefaults =
     !target?.station ||
     target.station.capabilities.personalDefaults.state === 'allowed';
+  const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const apply = (mode: ApprovalMode) => {
     if (
@@ -102,6 +115,7 @@ export function ComposerModeSheet({
   const [pendingEscalation, setPendingEscalation] = useState(false);
 
   const choose = (mode: ApprovalMode) => {
+    if (aboveCeiling(mode)) return;
     if (mode === effectiveMode && !saveAsDefault) {
       onClose();
       return;
@@ -131,6 +145,7 @@ export function ComposerModeSheet({
         onClose={onClose}
       />
       <div className="composer-mode-sheet__notes">
+        <ManagedApprovalCeilingNote className="composer-mode-sheet__confirm-body" />
         <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
@@ -203,10 +218,13 @@ export function ComposerModeSheet({
               target.station.capabilities.fullAccess.state === 'allowed',
           ).map((option) => {
             const isSelected = option.value === effectiveMode;
+            const managed = aboveCeiling(option.value);
             return (
               <label
                 key={option.value}
-                className="composer-actions-menu__item composer-mode-sheet__option"
+                className={`composer-actions-menu__item composer-mode-sheet__option${
+                  managed ? ' composer-mode-sheet__option--managed' : ''
+                }`}
               >
                 <input
                   type="radio"
@@ -214,6 +232,7 @@ export function ComposerModeSheet({
                   value={option.value}
                   checked={isSelected}
                   aria-checked={isSelected}
+                  disabled={managed}
                   className="composer-mode-sheet__option-input"
                   // Native change fires only for a real selection transition,
                   // suppressing duplicate/no-op mode events by construction.
@@ -226,7 +245,17 @@ export function ComposerModeSheet({
                   {MODE_GLYPH[option.value]}
                 </span>
                 <span className="composer-mode-sheet__option-body">
-                  <strong>{option.label}</strong>
+                  <strong>
+                    {option.label}
+                    {/* The sentence above names whose policy; the badge only
+                        marks which rows it covers (one fact per surface). */}
+                    {managed ? (
+                      <>
+                        {' '}
+                        <Badge value="Managed" tone="neutral" />
+                      </>
+                    ) : null}
+                  </strong>
                   <small>
                     {approvalModeDescription(option.value, engineConnectionId)}
                   </small>
@@ -241,5 +270,13 @@ export function ComposerModeSheet({
         </div>
       )}
     </ResponsiveDialogSurface>
+  );
+}
+
+export function ComposerModeSheet(props: ComposerModeSheetProps) {
+  return (
+    <ConversationManagedPolicyProvider>
+      <ComposerModeSheetContent {...props} />
+    </ConversationManagedPolicyProvider>
   );
 }

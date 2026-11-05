@@ -15,8 +15,10 @@ export interface TerminalViewSessionListener {
   /**
    * PTY output in order. `replay` output predates this attachment: the view
    * renders it but answers none of its queries and rings none of its bells.
+   * The returned promise settles once the view's emulator has parsed it; a
+   * session should not take more output for the view until it does.
    */
-  output(bytes: Uint8Array, kind: 'replay' | 'live'): void;
+  output(bytes: Uint8Array, kind: 'replay' | 'live'): unknown;
   /** The retained output was lost; the view clears before the next replay. */
   reset?(): void;
   state?(state: TerminalViewSessionState, detail?: string): void;

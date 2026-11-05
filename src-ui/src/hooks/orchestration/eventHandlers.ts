@@ -3,7 +3,10 @@ import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
-import type { StationStateScope } from '../../connections/station-state';
+import {
+  type StationStateScope,
+  stationPartitionKey,
+} from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
@@ -168,14 +171,23 @@ export function handleOrchestrationEvent(
   // this costs nothing for chats that never touch background tasks.
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
-    backgroundTasksStore.ingest(event, station);
-    // #2456 D2: a session's end must reach the child-work registry even when
-    // its chat was since rebound to a newer session (the guard below would
-    // drop it), or the chat keeps the dead session's children.
-    observeChildWorkLifecycle(event, station);
-    // #2459: the Agents pane's "All" scope — every session's engine
-    // subagents, including sessions no chat has open (a CLI delegate).
-    childWorkGlobalStore.ingest(apiBase, event);
+    const taskSource = station ?? apiBase;
+    backgroundTasksStore.ingest(event, taskSource);
+    // Classify the transition before deciding which reporter aliases to retain.
+    childWorkGlobalStore.ingest(stationPartitionKey(taskSource), event);
+    if (
+      event.method === 'child-work.updated' ||
+      event.method === 'extension.notification'
+    ) {
+      const chatKey = chatStore.getChatKeyForExecutionSession(event.threadId);
+      if (chatKey)
+        backgroundTasksStore.bindProviderReporter(
+          taskSource,
+          event.threadId,
+          chatKey,
+        );
+    }
+    observeChildWorkLifecycle(event, taskSource);
     // A settled request's approval toast goes whether or not any chat still
     // routes this thread: the toast (and the header "Approval needed" count
     // built from it) is global, and the chat that raised it may be closed
@@ -287,10 +299,10 @@ function dispatchProjectedOrchestrationEvent(
       handleSessionLifecycleEvent(event, station);
       return;
     case 'session.state-changed':
-      handleSessionStateChangedEvent(event, undefined, station);
+      handleSessionStateChangedEvent(event, undefined, station ?? apiBase);
       return;
     case 'session.exited':
-      handleSessionExitedEvent(event, undefined, station);
+      handleSessionExitedEvent(event, undefined, station ?? apiBase);
       return;
     case 'session.cancellation-requested':
       // Intent is not a terminal outcome; settlement owns completion and queue handling.
@@ -401,10 +413,10 @@ function dispatchProjectedOrchestrationEvent(
       handlePlanUpdatedEvent(event, station);
       return;
     case 'extension.notification':
-      handleExtensionNotificationEvent(event, station);
+      handleExtensionNotificationEvent(event, station ?? apiBase);
       return;
     case 'child-work.updated':
-      handleChildWorkUpdatedEvent(event, station);
+      handleChildWorkUpdatedEvent(event, station ?? apiBase);
       return;
     case 'token-usage.updated':
       handleTokenUsageUpdatedEvent(event, station);

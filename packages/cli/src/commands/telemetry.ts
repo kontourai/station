@@ -264,7 +264,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
     await runProducersCommand(parsed);
     return;
   }
-  const [action = 'status', publisher, tier, ...extra] = parsed.positionals;
+  const [action = 'status', publisher, inputTier, ...extra] =
+    parsed.positionals;
+  const builtIn = publisher === 'kontour' || publisher === 'operator';
+  const tier = builtIn && inputTier === 'anonymous' ? 'lite' : inputTier;
   if (action === 'set') {
     if (
       !isTelemetryPublisherId(publisher) ||
@@ -272,7 +275,7 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       extra.length
     )
       throw new Error(
-        'Usage: station telemetry set <kontour|operator|publisher:id> <off|lite|full>',
+        'Usage: station telemetry set <kontour|operator> <off|anonymous|lite|full> | station telemetry set publisher:<id> <off|lite|full>',
       );
     if (parsed.flags.offline)
       throw new Error(
@@ -353,7 +356,13 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
         name === 'operator' && value.reason === 'environment'
           ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
           : '';
-      console.log(`${label}: ${choice} (${value.tier})${notice}${environment}`);
+      const displayTier =
+        (name === 'kontour' || name === 'operator') && value.tier === 'lite'
+          ? 'anonymous'
+          : value.tier;
+      console.log(
+        `${label}: ${choice} (${displayTier})${notice}${environment}`,
+      );
     }
   }
 }

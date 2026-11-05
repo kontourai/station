@@ -58,8 +58,14 @@ function shortcutBinding(shortcut: KeyboardShortcut): ShortcutBinding {
 }
 
 export function KeyboardShortcutsSection() {
-  const { getAllShortcuts, getDisplay, isMac, restoreBinding, setBinding } =
-    useShortcutRegistry();
+  const {
+    getAllShortcuts,
+    getDefaultBinding,
+    getDisplay,
+    isMac,
+    restoreBinding,
+    setBinding,
+  } = useShortcutRegistry();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [capturingId, setCapturingId] = useState<string | null>(null);
@@ -67,6 +73,7 @@ export function KeyboardShortcutsSection() {
     target: KeyboardShortcut;
     existing: KeyboardShortcut;
     binding: ShortcutBinding;
+    restoreDefault: boolean;
   } | null>(null);
   const shortcuts = getAllShortcuts();
   const filtered = useMemo(() => {
@@ -84,7 +91,11 @@ export function KeyboardShortcutsSection() {
     shortcut.id.startsWith('skill.'),
   );
 
-  function applyCapture(shortcut: KeyboardShortcut, binding: ShortcutBinding) {
+  function applyCapture(
+    shortcut: KeyboardShortcut,
+    binding: ShortcutBinding,
+    restoreDefault = false,
+  ) {
     const signature = bindingSignature(binding);
     const existing = shortcuts.find(
       (candidate) =>
@@ -93,10 +104,11 @@ export function KeyboardShortcutsSection() {
         bindingSignature(shortcutBinding(candidate)) === signature,
     );
     if (existing) {
-      setConflict({ target: shortcut, existing, binding });
+      setConflict({ target: shortcut, existing, binding, restoreDefault });
       return;
     }
-    setBinding(shortcut.id, binding);
+    if (restoreDefault) restoreBinding(shortcut.id);
+    else setBinding(shortcut.id, binding);
   }
 
   return (
@@ -193,7 +205,11 @@ export function KeyboardShortcutsSection() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => restoreBinding(shortcut.id)}
+                          onClick={() => {
+                            const binding = getDefaultBinding(shortcut.id);
+                            if (binding) applyCapture(shortcut, binding, true);
+                            else restoreBinding(shortcut.id);
+                          }}
                         >
                           Restore default
                         </button>
@@ -224,7 +240,8 @@ export function KeyboardShortcutsSection() {
         onConfirm={() => {
           if (!conflict) return;
           setBinding(conflict.existing.id, null);
-          setBinding(conflict.target.id, conflict.binding);
+          if (conflict.restoreDefault) restoreBinding(conflict.target.id);
+          else setBinding(conflict.target.id, conflict.binding);
           setConflict(null);
         }}
         onCancel={() => setConflict(null)}

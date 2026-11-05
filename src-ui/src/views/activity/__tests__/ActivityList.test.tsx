@@ -53,6 +53,11 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 }));
 // Activity no longer mounts the host-wide collaborator roster. Any
 // live-activity read from this surface would be that roster coming back.
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  interruptTurn: (apiBase: string, input: { threadId: string }) =>
+    interruptTurn({ apiBase, threadId: input.threadId }),
+}));
 vi.mock('@kontourai/station-sdk/live-activity', () => ({
   useLiveActivityQuery,
 }));
@@ -388,7 +393,7 @@ describe('Activity list', () => {
       'station',
     );
     expect(meta.querySelector('[data-segment="origin"]')?.textContent).toBe(
-      'CLI',
+      'CLI (reported)',
     );
     // The time is on line 1, outside the row button, and still in the row's
     // own text for assistive tech.
@@ -644,19 +649,21 @@ describe('Activity list', () => {
     );
   });
 
-  test('Started from groups by recorded origin with counts, and never guesses a missing one', () => {
+  test('Recorded origin groups by recorded origin with counts, and never guesses a missing one', () => {
     sessions = [
       runningChat(),
       session('Unrecorded chat'),
       session('Claude transcript', { controlMode: 'read-only-attached' }),
     ];
     renderView();
-    const origin = screen.getByLabelText('Started from') as HTMLSelectElement;
+    const origin = screen.getByLabelText(
+      'Recorded origin',
+    ) as HTMLSelectElement;
     expect(
       Array.from(origin.options).map((option) => option.textContent),
     ).toEqual([
       'Anywhere',
-      'Operator · CLI (1)',
+      'Operator · CLI (reported) (1)',
       'Origin not recorded (1)',
       'Started in Claude Code (1)',
     ]);
@@ -840,14 +847,16 @@ describe('Activity list', () => {
     ];
     const { container } = renderView();
     const startedFrom = screen.getByRole('combobox', {
-      name: /^Started from/,
+      name: /^Recorded origin/,
     }) as HTMLSelectElement;
     expect(Array.from(startedFrom.options).map((o) => o.textContent)).toEqual([
       'Anywhere',
-      'Operator · CLI (1)',
-      'Operator · Web browser (1)',
+      'Operator · CLI (reported) (1)',
+      'Operator · Web browser (reported) (1)',
     ]);
-    fireEvent.change(startedFrom, { target: { value: 'Operator · CLI' } });
+    fireEvent.change(startedFrom, {
+      target: { value: 'Operator · CLI (reported)' },
+    });
     expect(
       container.querySelectorAll('.split-pane__item-name-text'),
     ).toHaveLength(1);
@@ -1151,6 +1160,60 @@ describe('Home, the dock and Activity agree on one item', () => {
       expect(root.querySelector('.chat-dock-inbox__group-count')).toBeNull();
     }
   });
+
+  test.each([
+    {
+      cwd: '/work/worktrees/review',
+      projectSlug: undefined,
+      directory: 'Directory · …/worktrees/review',
+    },
+    {
+      cwd: 'E:\\code\\review',
+      projectSlug: undefined,
+      directory: 'Directory · …/code/review',
+    },
+    { cwd: '/', projectSlug: undefined, directory: 'Directory · /' },
+    { cwd: 'E:\\', projectSlug: undefined, directory: 'Directory · E:\\' },
+    { cwd: '/work/station', projectSlug: 'station', directory: undefined },
+    { cwd: undefined, projectSlug: undefined, directory: undefined },
+    { cwd: '   ', projectSlug: undefined, directory: undefined },
+  ])(
+    'directory context stays distinct from Project membership for $cwd',
+    ({ cwd, projectSlug, directory }) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(NOW);
+      summaries = [{ ...runningSummary(minutesAgo(3)), projectSlug, cwd }];
+      const { activity, home, dock, sheet } = surfaces();
+      const meta = within(activity).getByTestId('activity-row-meta');
+      if (directory) {
+        for (const root of [activity, home, dock, sheet])
+          expect(
+            within(root).getByText(directory, { exact: true }),
+          ).toBeTruthy();
+        expect(meta.querySelector('[data-segment="project"]')).toBeNull();
+        for (const root of [home, dock, sheet])
+          expect(
+            within(root).getByRole('button', {
+              name: (name) => name.includes(directory),
+            }),
+          ).toBeTruthy();
+      } else {
+        expect(meta.querySelector('[data-segment="directory"]')).toBeNull();
+        if (projectSlug)
+          for (const root of [home, dock, sheet]) {
+            expect(
+              within(root).getByRole('button', {
+                name: (name) => name.includes(`, ${projectSlug}`),
+              }),
+            ).toBeTruthy();
+            expect(within(root).queryByText(/^Directory ·/)).toBeNull();
+          }
+        expect(
+          meta.querySelector('[data-segment="project"]')?.textContent,
+        ).toBe(projectSlug);
+      }
+    },
+  );
 
   test('project marks follow each surface layout', () => {
     vi.useFakeTimers({ toFake: ['Date'] });

@@ -191,6 +191,27 @@ test('legacy attachment confirms member visibility and pins the exact registrati
   );
 });
 
+test('an author-private legacy root is not offered for Project attachment', () => {
+  state.roots = [
+    {
+      ...root,
+      projectId: undefined,
+      readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+    },
+  ];
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Attach to this Project' }),
+  ).toBeNull();
+  expect(screen.queryByText('Notes')).toBeNull();
+});
+
 test('a read-only connection can inspect its source without management actions', () => {
   state.manage = false;
   render(

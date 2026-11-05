@@ -80,6 +80,10 @@ import {
   isIndeterminateWriteFailure,
 } from './errors.js';
 import { PROJECT_HOME } from './helpers.js';
+import {
+  effectiveAppConfigOffline,
+  withoutManagedNoOpsOffline,
+} from './managed-settings-guard.js';
 
 const CONFIG_PATH = join(PROJECT_HOME, 'config', 'app.json');
 
@@ -324,6 +328,12 @@ function writeConfigOffline(key: string, rawValue: string): void {
     throw violationsError(violations);
   }
   printIgnoredKeysWarning(ignored);
+  // #4517: a locked key is refused; its own locked value writes nothing.
+  const writable = withoutManagedNoOpsOffline(accepted);
+  if (Object.hasOwn(accepted, key) && !Object.hasOwn(writable, key)) {
+    console.log(`  ✓ ${key} is already that value (managed by policy)`);
+    return;
+  }
 
   mergeConfigUpdate(config, accepted);
   writeConfigFileAtomically(config);
@@ -418,7 +428,9 @@ function printConfigValue(config: Record<string, unknown>, key?: string): void {
 }
 
 function printConfigFromFile(key?: string): void {
-  printConfigValue(loadConfigFile(), key);
+  // #4517: the values in effect, with the installed policy's locks and
+  // defaults applied; the file itself is not changed.
+  printConfigValue(effectiveAppConfigOffline(loadConfigFile()), key);
 }
 
 /**
@@ -429,6 +441,7 @@ function printConfigFromFile(key?: string): void {
  * told users their `config set` had not taken effect when it had.
  *
  * `source: 'file'|'default'` prints nothing extra — the unremarkable case.
+ * `source: 'managed'` names the organization whose policy supplied it.
  */
 function describeProvenanceNote(
   key: string,
@@ -440,6 +453,13 @@ function describeProvenanceNote(
     return entry.envVar
       ? `value comes from ${entry.envVar} (nothing stored)`
       : 'value comes from the environment (nothing stored)';
+  }
+  // #4517: the machine's managed policy supplied the value.
+  if (entry.source === 'managed') {
+    const organization = entry.organization ?? 'the managed policy';
+    return entry.locked
+      ? `managed by ${organization}; it cannot be changed here`
+      : `default from ${organization}; set a value to replace it`;
   }
   return undefined;
 }

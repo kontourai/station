@@ -235,6 +235,13 @@ A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug
   vocabulary, and an Agent that needs its own posture sets its own default,
   which wins.
 
+While the machine's [managed policy](../guides/managed-policy.md#settings)
+locks `defaultModel` or `defaultLLMProvider`, the Project's
+`defaultProviderId`, `defaultModel` and `defaultModelSelection` do not apply;
+while it locks `defaultApprovalMode`, `defaultApprovalMode` and
+`defaultApprovalModeSelection` do not. Reads omit those fields, and writes
+treat them as described under [Update App Configuration](#update-app-configuration).
+
 A chat whose first send carries an explicit **Default** pick
 (`connection-default`) records that pick, and it resolves to the Agent's
 default, then the Station's, without the Project layer; the composer shows the
@@ -268,7 +275,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
@@ -528,6 +540,26 @@ and `canCheckHostPaths` for the current request. It is a UI observation, not a
 grant; mutation routes enforce their own policy. Account-bound readers may query
 it and receive false for these operator capabilities. Missing or failed reads
 keep management controls unavailable until a successful refresh.
+
+## Private memory preview
+
+With the default-off `private-memory` Feature Preview enabled on a personal
+Station, `POST /api/knowledge/memory/root` lets the host operator register their
+author-private memory root. `POST /api/knowledge/memory/proposals` takes
+`{requestKey, candidate, evidence}` and stages a Corpus create proposal; the
+body is limited to 1 MiB. Matching retries return the same proposal ID, while
+a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
+/api/knowledge/memory/proposals` is the explicit owner-authorized proposal
+query. Pending proposals do not appear in ordinary record lists or search.
+
+`GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
+returns the target's `{ kind, id, title }` without changing it. It does not
+calculate a cascade or expose erasure.
+
+Unknown identity, hosted access, Project membership and delegation do not grant
+memory access. With the preview off, direct memory requests return the standard
+`feature_preview_disabled` 404. Review, application and erasure are not exposed
+by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity
 
@@ -2204,6 +2236,10 @@ public app-config projection with applicable runtime-derived fields; it is not
 a raw file dump. `?project=<slug>` adds Project provenance, while the values
 remain this Station's config. It does not automatically return fully composed
 Project-effective settings. Invalid/missing Project selections return 400/404.
+With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
+holds the managed values in effect, and `provenance` reports `{source:
+'managed', locked, organization, supportUrl}` for each value the policy
+supplied; it never carries the value.
 
 ### Update App Configuration
 
@@ -2222,6 +2258,15 @@ Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
+A change to a setting the managed policy locks is refused before any other
+check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
+policy's denial sentence; nothing in the request is saved. Sending exactly the
+locked value is dropped as a no-op. `PUT /config/app/log-level` and
+`POST /config/first-run` refuse with the same body. Project create
+(`POST /api/projects`) and update (`PUT /api/projects/:slug`) refuse a value for a
+project field a lock outranks with the same 403 body; resending `null`, `''`
+or the stored value is dropped instead, and a successful response omits those
+fields, as `GET /api/projects/:slug` does.
 See [config reference](config.md) for effective defaults and consumer limits.
 
 Raising telemetry tiers (including legacy enabled writes), or changing destinations
@@ -3906,16 +3951,42 @@ With one:
       "organization": "Example Corp",
       "supportUrl": "https://help.example.com/station",
       "lockedSettings": [],
-      "limits": {}
+      "limits": { "maxApprovalMode": "auto" }
     }
   }
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance.
+`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
+sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
-`station policy show` reports as a server too old to report a policy.
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding
 
@@ -5702,7 +5773,10 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
-  query for a non-default binding.
+  query for a non-default binding. A record carries its launch directory
+  (`cwd`) and a read its process id (`pid`) only for a caller who may operate
+  the terminal; an observer gets neither (`pid: null`). Where its history is
+  stored is never returned.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
@@ -5755,7 +5829,9 @@ with the same pid and its whole journal, by the next core generation after a
 restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
 that ended because its host restarted reopens on start under the same id, in its
 directory, after a "restored after restart" divider, without re-running anything
-(`restoredAt` is set). History persistence, location, maximum age and the
+(`restoredAt` is set). It reopens only while that directory lies inside its
+binding as the binding resolves then; otherwise it stays ended and its record
+carries `restoreRefused: { reason, at }`, with the reason also in its output. History persistence, location, maximum age and the
 per-terminal and total sizes are the `terminalHistory*`
 [settings](config.md); see [Journal](../design/terminal.md#journal).
 
@@ -5795,7 +5871,9 @@ and act for the verified caller's own conversation:
   owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
   outside a Project is refused (409 `terminal_run_needs_project`), as is one
   with no recorded owner (409 `terminal_run_owner_required`), and a fourth
-  waiting request (409 `terminal_run_limit_reached`). It answers
+  waiting request (409 `terminal_run_limit_reached`). Across all chats, at
+  most 64 requests wait at once and 512 are retained; past either, a request
+  is refused (429 `terminal_run_capacity_reached`). It answers
   `{runId, state: "needs_approval", command, cwd, …}` at once.
 - `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
   `waitSeconds` (0–50) waits for its state to change first. Once it started,
@@ -6139,7 +6217,8 @@ HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
-The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+The preflight allow-list includes `If-Match` for revisioned writes, including
+account preference saves. It also includes `X-Station-Client-Protocol`. Cross-origin
 browser callers send it only after observing
 `compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
 handshake. The UI forgets the prior origin observation before re-handshaking;

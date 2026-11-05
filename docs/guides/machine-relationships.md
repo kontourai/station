@@ -141,7 +141,10 @@ operator channel. The CLI reports this policy refusal distinctly.
 chat, an Agent's default, or a Project's new-chat approval mode at approval mode
 `never`: the agent runs with no
 sandbox and no approval prompts, as the operator. A device without it that
-asks for full access is refused (`approval-full-access-not-granted`). The
+asks for full access is refused (`approval-full-access-not-granted`). On a
+machine whose [managed policy](managed-policy.md#approval-mode-ceiling) caps
+approval below full access, no device or operator has it, and the refusal is
+the policy's (`managed-policy-approval-ceiling`). The
 refusal names the device (its short id, and its name shown as plain text),
 the Station that refused, and the exact command above, and it separates what
 the caller asked for from what only the operator can grant. In a chat the
