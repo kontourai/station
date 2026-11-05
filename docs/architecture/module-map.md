@@ -5476,7 +5476,12 @@ serializes and fences input, records what each controller pressed, and releases
 a controller's presses (never completing them) on handoff, on lapse to no
 holder, on the fenced `release-pressed` lease action, and once the controller
 has had no open stream for a grace window (checked again when it ends), so a
-replacement stream releases nothing. It marks a timed-out dispatch wedged
+replacement stream releases nothing. `release-pressed` answers ok only after
+the producer's cancel succeeded; a failed cancel keeps the presses recorded
+and answers `release-failed`. The grace window is 2 s by default: measured, a
+stream reopened for new params attaches about 1 ms after the old one closes
+and a dropped connection reconnects in about 0.5 s; a longer window only
+keeps an abandoned press down longer. It marks a timed-out dispatch wedged
 until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
@@ -5574,9 +5579,17 @@ was sent in (otherwise the server already released it), and an answer for an
 ended lineage is ignored. Input and claim requests are bounded (10 s); after any
 completion the viewer reconciles to the newest lease its stream reported. The
 viewer asks the server to release its presses on blur, a hidden page, unmount
-and an answer lost for a press, and keeps that obligation until the server
-confirms it (retried with backoff, retried at the reported epoch when stale,
-ended by a change of control); queued releases are never discarded. Against a host without `liveSurfaceEpochCause`
+and an answer lost for a press or a release. Each press carries its own
+generation, and one worker per target keeps the joined obligation until the
+server confirms it, retiring only the generations confirmed, so a later press
+of the same key keeps its own release. Release answers are reconciled like
+input answers, with their attested cause; tries back off to at most 5 s, never
+give up, and resume at once on reconnect, and a change of control ends them.
+Queued releases are never discarded, and a batch refused as stale only because
+of this viewer's own takeover goes again at the adopted epoch. A stream about
+to present an existing viewer id first asks which Station answers, and a
+connection reporting a lower epoch (a restarted Station) resets the viewer's
+epoch. Against a host without `liveSurfaceEpochCause`
 it sends none of these fields: an input answer that took exactly the next epoch
 is its own, a report naming this device waits for its own request, and the
 releases queued behind a lost answer still go. This does not yet bind the queue
