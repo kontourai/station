@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import {
   generateDesktopReleaseNotes,
   publishDesktopReleaseNotes,
@@ -11,6 +11,8 @@ const tag = `desktop-v${version}`;
 const plan = { sourceSha: source, versionIdentities: { desktop: { version } } };
 const options = { plan, repository: 'kontourai/station', token: 'test-token' };
 
+afterEach(() => vi.unstubAllGlobals());
+
 test('GitHub generates the staged version’s notes and the full changelog retains immutable source bounds', async () => {
   const request = vi
     .fn()
@@ -21,7 +23,8 @@ test('GitHub generates the staged version’s notes and the full changelog retai
       }),
     )
     .mockResolvedValueOnce(Response.json({ sha: previous }));
-  const notes = await generateDesktopReleaseNotes({ ...options, request });
+  vi.stubGlobal('fetch', request);
+  const notes = await generateDesktopReleaseNotes(options);
   expect(notes).toContain('- New tools (#123)');
   expect(notes).toContain(`/compare/${previous}...${source}`);
   const [, generated] = request.mock.calls[1];
@@ -38,9 +41,8 @@ test('a moving previous desktop marker refuses ambiguous generated notes', async
     .mockResolvedValueOnce(Response.json({ sha: previous }))
     .mockResolvedValueOnce(Response.json({ body: '- Some changes' }))
     .mockResolvedValueOnce(Response.json({ sha: 'c'.repeat(40) }));
-  await expect(
-    generateDesktopReleaseNotes({ ...options, request }),
-  ).rejects.toThrow('moved');
+  vi.stubGlobal('fetch', request);
+  await expect(generateDesktopReleaseNotes(options)).rejects.toThrow('moved');
 });
 
 test('publication archives the exact updater notes as a versioned prerelease without changing latest', async () => {
@@ -51,10 +53,10 @@ test('publication archives the exact updater notes as a versioned prerelease wit
     .mockResolvedValueOnce(
       Response.json({ tag_name: tag, body: '- New features', draft: false }),
     );
+  vi.stubGlobal('fetch', request);
   await publishDesktopReleaseNotes({
     ...options,
     manifest: { version, notes: '- New features' },
-    request,
   });
   expect(request.mock.calls[0][0]).toBe(
     `https://api.github.com/repos/kontourai/station/releases/tags/${tag}`,
@@ -74,11 +76,11 @@ test.each([401, 403, 503])(
   'a failed archive lookup (HTTP %s) never becomes a release creation',
   async (status) => {
     const request = vi.fn(async () => new Response('', { status }));
+    vi.stubGlobal('fetch', request);
     await expect(
       publishDesktopReleaseNotes({
         ...options,
         manifest: { version, notes: '- Notes' },
-        request,
       }),
     ).rejects.toThrow(`HTTP ${status}`);
     expect(request).toHaveBeenCalledTimes(1);
@@ -96,10 +98,10 @@ test('an existing archive is reused only for identical source and notes', async 
   const request = vi.fn(async (url: string) =>
     Response.json(url.includes('/commits/') ? { sha: source } : existing),
   );
+  vi.stubGlobal('fetch', request);
   await publishDesktopReleaseNotes({
     ...options,
     manifest: { version, notes: '- Notes' },
-    request,
   });
   expect(request).toHaveBeenCalledTimes(2);
   request.mockClear();
@@ -107,7 +109,6 @@ test('an existing archive is reused only for identical source and notes', async 
     publishDesktopReleaseNotes({
       ...options,
       manifest: { version, notes: '- Different notes' },
-      request,
     }),
   ).rejects.toThrow('already differs');
   expect(request).toHaveBeenCalledTimes(2);
@@ -118,11 +119,11 @@ test('an existing tag at another source cannot acquire a misleading changelog', 
     .fn()
     .mockResolvedValueOnce(new Response('', { status: 404 }))
     .mockResolvedValueOnce(Response.json({ sha: previous }));
+  vi.stubGlobal('fetch', request);
   await expect(
     publishDesktopReleaseNotes({
       ...options,
       manifest: { version, notes: '- Notes' },
-      request,
     }),
   ).rejects.toThrow('different source');
   expect(request).toHaveBeenCalledTimes(2);

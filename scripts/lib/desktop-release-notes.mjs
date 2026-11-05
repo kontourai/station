@@ -10,11 +10,11 @@ function identity(plan) {
   return { version, source: plan.sourceSha, tag: `desktop-v${version}` };
 }
 
-function github(repository, token, request) {
+function github(repository, token) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !token)
     throw new Error('GitHub repository and token are required');
   return async (path, body) => {
-    const response = await request(`${API}/repos/${repository}${path}`, {
+    const response = await fetch(`${API}/repos/${repository}${path}`, {
       method: body ? 'POST' : 'GET',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -31,14 +31,9 @@ function github(repository, token, request) {
   };
 }
 
-export async function generateDesktopReleaseNotes({
-  plan,
-  repository,
-  token,
-  request = fetch,
-}) {
+export async function generateDesktopReleaseNotes({ plan, repository, token }) {
   const { tag, source } = identity(plan);
-  const api = github(repository, token, request);
+  const api = github(repository, token);
   const previous = await api('/commits/nightly-desktop');
   if (!/^[a-f0-9]{40}$/.test(previous?.sha ?? ''))
     throw new Error('Previous desktop source is unavailable');
@@ -64,7 +59,6 @@ export async function publishDesktopReleaseNotes({
   manifest,
   repository,
   token,
-  request = fetch,
 }) {
   const { tag, source, version } = identity(plan);
   if (
@@ -73,7 +67,7 @@ export async function publishDesktopReleaseNotes({
     !manifest.notes.trim()
   )
     throw new Error('Desktop changelog differs from the published update');
-  const api = github(repository, token, request);
+  const api = github(repository, token);
   const existing = await api(`/releases/tags/${tag}`);
   const tagSource = await api(`/commits/${tag}`);
   if (tagSource && tagSource.sha !== source)

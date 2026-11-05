@@ -113,16 +113,12 @@
   stroke-linecap: round;
 }
 .updates-control__progress--indeterminate {
-  animation: update-download-spin 1.5s linear infinite;
+  animation: update-download-spin var(--motion-status-spin) var(--ease-linear)
+    infinite;
 }
 @keyframes update-download-spin {
   to {
     transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .updates-control__progress--indeterminate {
-    animation: none;
   }
 }
 .release-notes,

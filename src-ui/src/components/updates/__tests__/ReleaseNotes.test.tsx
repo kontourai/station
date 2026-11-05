@@ -104,7 +104,9 @@ test('a missing exact release never substitutes the rolling latest release', asy
   const fetcher = vi.fn(async () => new Response('', { status: 404 }));
   vi.stubGlobal('fetch', fetcher);
   mount(<ReleaseNotes version="0.1.11-nightly.2499.3" nativeApp />);
-  await screen.findByText('No changelog was published for this version.');
+  await screen.findByText(
+    'A changelog has not been published for this version.',
+  );
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('alert')).toBeNull();
 });

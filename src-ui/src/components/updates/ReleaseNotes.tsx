@@ -8,7 +8,7 @@ import { useId, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '../Button';
-import { ErrorState, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './Updates.css';
 
 function NotesBody({ body }: { body: string }) {
@@ -32,13 +32,23 @@ function NotesBody({ body }: { body: string }) {
   );
 }
 
+function MissingNotes() {
+  return (
+    <Empty
+      variant="compact"
+      label="Nothing here yet"
+      description="A changelog has not been published for this version."
+    />
+  );
+}
+
 function PublishedNotes({ release }: { release: StationReleaseNotes }) {
   return (
     <>
       {release.body.trim() ? (
         <NotesBody body={release.body} />
       ) : (
-        <p>No changelog was published for this version.</p>
+        <MissingNotes />
       )}
       <a href={release.url} target="_blank" rel="noopener noreferrer">
         View this release on GitHub
@@ -81,10 +91,7 @@ export function ReleaseNotes({
               }
             />
           ) : (
-            !query.isFetching &&
-            !notes?.trim() && (
-              <p>No changelog was published for this version.</p>
-            )
+            !query.isFetching && !notes?.trim() && <MissingNotes />
           )}
         </>
       )}
@@ -139,7 +146,11 @@ export function ReleaseHistory({ active = true }: { active?: boolean }) {
                 {release && <PublishedNotes release={release} />}
               </>
             ) : (
-              <p>No versioned releases are available.</p>
+              <Empty
+                variant="compact"
+                label="Nothing here yet"
+                description="Versioned releases have not been published yet."
+              />
             ))}
         </>
       )}
