@@ -107,8 +107,9 @@ node packages/cli/dist/station.mjs --help
 ```
 
 The bundle inlines the Station workspace packages, so it needs neither `tsx`
-nor a checkout at runtime. The package declares `@napi-rs/keyring` and `qrcode`
-dependencies. `esbuild` is an optional peer loaded for plugin-authoring builds;
+nor a checkout at runtime. The package declares `@napi-rs/keyring`, `koffi` and
+`qrcode` dependencies; `koffi` reads the Windows registry and access lists for
+`station policy show` and is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
 client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
 and [bundle externals](../../packages/cli/bundle-externals.mjs).
 
@@ -770,13 +771,20 @@ repository; otherwise it gives the person the form link.
 
 ### `policy`
 
-Machine administrators use these commands to check and confirm a
+Machine administrators use these commands to check, deploy and confirm a
 [managed policy](../guides/managed-policy.md).
 
 ```bash
 station policy check <file> [--json]
 station policy show [--json] [--api-base=<url>|--station=<name>]
+station policy templates <dir> [--policy <file>]
 ```
+
+`templates` writes `macos/station.mobileconfig`, `windows/station.admx` and
+`windows/en-US/station.adml` under `<dir>`. With `--policy` (or
+`--policy=<file>`), the configuration profile carries that policy after the
+same validation as `check`, and nothing is written if it is invalid or holds a
+`null`. Without it, the profile names a placeholder organization.
 
 `check` is offline and runs the same validation as server startup, including
 each managed setting value against the settings schema (`schemas/app.schema.json`,
@@ -784,7 +792,8 @@ bundled into the CLI), so a composite value such as `approvalGuardian` with a
 field of the wrong type fails `check` exactly as it would refuse startup. It
 exits `0` and prints the organization, the support link,
 one line per managed setting saying whether it is locked or a default, the
-number of limits it sets, and its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+number of limits it sets, and its `sha256:` fingerprint. It exits `1` and
+names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
 invalid JSON, repeats a key name, or does not match the schema. It does not
 check root ownership; the server checks that only at the installed path.

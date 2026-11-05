@@ -500,17 +500,19 @@ const VERBS: Record<string, VerbSpec> = {
   },
   policy: {
     summary:
-      'Check a managed policy file, or show the installed policy and whether the running server loaded it',
+      'Check a managed policy file, show the installed policy and whether the running server loaded it, or write deployment templates',
     usage: [
       'station policy check <file> [--json]',
       'station policy show [--json]',
+      'station policy templates <dir> [--policy <file>]',
     ],
-    actions: ['check', 'show'],
+    actions: ['check', 'show', 'templates'],
     targets: true,
     group: 'Configuration',
     detail: [
       'check is offline: it runs the same validation as server startup, exits 1 with each problem, or prints what the policy does.',
       'show reads the installed system policy and its fingerprint, compares it with what the running server loaded, and says when a restart is needed. Only a target on this machine is compared. It exits 1 when the installed policy is invalid.',
+      'templates writes macos/station.mobileconfig, windows/station.admx and windows/en-US/station.adml under <dir>. With --policy, the profile carries that policy after the same validation as check.',
       'See docs/guides/managed-policy.md.',
     ],
   },

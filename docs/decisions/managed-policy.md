@@ -15,6 +15,10 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4519
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4522
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4523
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4524
 ---
 
 # Managed policy
@@ -132,16 +136,103 @@ Anyone who can write the policy folder can delete the policy, so administrators
 must keep that folder writable by root only. `station policy check` applies the
 ownership rule only when it is given the system path itself.
 
-Windows: Station rejects a link at the file, but it does not yet check the
-owner or ACL of the file and its folders. That check, and the reparse point
-types Node does not report as links, are a follow-up in #4524.
+**Windows files must be the administrators'.** On Windows (#4524) the file,
+its folder and every folder up to the drive must be owned by Administrators,
+SYSTEM or TrustedInstaller, and no allow ACE may grant anyone else a right
+that changes them. For the file and its folder that is any write right; for
+the folders above, the rights that remove or re-permission what is below
+(delete, delete child, write DAC, write owner, generic all). The rule reads
+the owner and DACL through the Win32 API, converts them to SDDL and checks
+them in TypeScript (`managed-policy-windows.ts`), so the rule itself is tested
+on every OS against SDDL captured from a stock Windows 11 host. Inherit-only
+ACEs are skipped, deny ACEs are ignored (the rule only asks whether anyone
+else is granted a write right, which is conservative), an unrecognized right
+counts as every right, and a DACL Station cannot parse fails closed. Every
+entry in the path must also not be a reparse point
+(`FILE_ATTRIBUTE_REPARSE_POINT`), which covers the reparse types Node's
+`lstat` does not report as links.
 
 Sources implement one interface. A source reports "no policy", returns raw
 input (JSON text or an already-decoded value), or throws the fail-closed error.
-The macOS configuration profile (#4523) and the Windows registry (#4524) join
-the system source list. More than one source with a policy is an error: Station
-cannot tell which one the administrator meant, and merging them could weaken
-either.
+On macOS the system sources are the file and the configuration profile; on
+Windows, the file and the registry key. More than one source with a policy is
+an error: Station cannot tell which one the administrator meant, and merging
+them could weaken either.
+
+**macOS configuration profile (#4523).** Station reads only
+`/Library/Managed Preferences/io.kontourai.station.plist`, where a
+System-scope profile lands. User-scope profiles (under
+`/Library/Managed Preferences/<user>/`) are ignored: a user's own enrollment
+could write them. The plist gets the file's checks (no link, regular file,
+root-owned chain) on the opened descriptor, and the checked bytes go to
+`/usr/bin/plutil -convert json` on stdin. plutil is called by absolute path,
+with an empty environment and a timeout, so a PATH entry cannot answer for
+it, and a failure (including plutil missing) fails closed. A converter was
+chosen over a parser written for Station: plutil reads binary and XML
+property lists, which is the format macOS writes, and it is part of the OS.
+The result is raw kind `value`, decoded by the same parser as a file. Profile
+metadata keys macOS writes beside the payload's keys are dropped by exact
+name; the `Forced[0].mcx_preference_settings` wrapper is unwrapped only in
+its exact single-entry form, so anything beside it reaches the parser and is
+refused. A property list cannot hold `null`, so `station policy templates`
+refuses to make a profile from a policy that uses one. plutil keeps the last
+of two equal keys, so an XML plist is scanned for a key repeated within one
+`<dict>` before conversion and refused with `duplicate key <path>`, as a file
+is. A binary plist is not scanned: conversion has already merged its keys, and
+the tools that write binary plists cannot repeat one.
+
+**Windows registry (#4524).** Station reads `HKLM\SOFTWARE\Policies\Kontour\Station`
+in the 64-bit view (`KEY_WOW64_64KEY`) through the Win32 API in its own
+process, never `reg.exe`, which an organization may block. There is no
+fallback to `HKEY_CURRENT_USER` or another view a user can write;
+`SOFTWARE\Policies` is shared by both views on current Windows (checked on the
+test host: a `/reg:32` write is the same key). The key holds either one
+`Policy` `REG_SZ` with the JSON document (raw kind `text`) or the template's
+values (raw kind `value`); both is an error. The key and every key above it to
+`HKLM\SOFTWARE` are checked like files, with the registry write rights
+(set value, create subkey, create link, delete, write DAC, write owner). An
+empty key is no policy, and its ACL is not consulted, as for an absent file.
+
+**Native access is through koffi.** Node has no registry or security API, and
+the reads must be synchronous because startup loads the policy before the
+server is built. `koffi` (an FFI) was chosen over a native addon: it reaches
+`advapi32` for the registry and the security descriptors with no compiled
+Station code, and it ships each platform's binary as an optional
+`@koromix/koffi-<os>-<arch>` package, the same model as the CLI's keyring
+binding. Its build-from-source install hook is denied in the lifecycle
+allowlist. The packages that read the policy (the server bundle, the
+published CLI and `@kontourai/station-shared`) declare it, and both bundlers
+keep it external, so the desktop and portable stagers carry it with the
+server's runtime closure. It is loaded only on Windows. A Windows Station that
+cannot load it cannot tell whether a policy is installed, so it refuses to
+start.
+
+### Group Policy template
+
+One control table (`managed-policy-controls.ts`) drives both the registry
+reader and the ADMX/ADML generator, so a template setting is always one the
+reader maps. Each control names the limit key it writes. The template offers a
+limit's controls only when the contract lists that key in
+`MANAGED_POLICY_ENFORCED_LIMIT_KEYS`, and a test fails when an enforced key
+has no control. Controls for later slices' keys may be listed early: the
+reader maps their values, and the parser then refuses the key as not
+supported, which fails closed.
+
+**Disabled is defined per kind.** An "Allow …" capability switch writes
+`REG_DWORD` 1 when Enabled and 0 when Disabled; Disabled writes the limit's
+off value, Enabled leaves the capability to users exactly like Not
+Configured. Every other setting writes its own state value (1/0), and
+Disabled on it is a startup error. Group Policy deletes a Disabled policy's
+element values, so without a state value Disabled would read as Not
+Configured: "no restriction", which an administrator who disabled "Allowed
+clients" did not ask for. Organization has no state value; Disabled deletes
+it, and any other configured setting then fails for want of it.
+
+Unknown value names and any subkey are refused, because they may be settings
+of a newer template. Names compare without case, as the registry does. The
+generated ADMX/ADML validate against the ADMX schema of [MS-GPREG] §7; the
+schema files are test fixtures, with the two edits libxml2 needs recorded
+beside them.
 
 ## Fingerprint and client summary
 
@@ -507,7 +598,8 @@ fixed system location the system owns, with a fixed, minimal environment:
 the macOS app bundle, root-owned and accepted by `codesign` against Tailscale
 Inc.'s team; a root-owned Linux binary whose whole directory chain passes the
 policy file's own ownership check; or the Windows installer's path, whose
-ACLs are not yet checked (#4524). `/Applications` is admin-group writable, so
+owner and ACLs are not yet checked (the Windows ownership rule, #4524, covers
+the policy file, not this program). `/Applications` is admin-group writable, so
 on macOS the signature stands in for a root-owned chain. Homebrew's CLI is
 user-owned and not trusted. Without a trusted CLI, "not installed" stands
 only when nothing looks like Tailscale: no `tailscale` or `tailscaled` on
@@ -621,8 +713,11 @@ second time the same way to stand in for the `lstat` identity, as libuv's own
 `lstat` does. Both handles must name the same file, neither may be a reparse
 point or a directory, and an identity Windows cannot report refuses the
 policy. Only the macOS and Linux behavior is executed in tests; the Windows
-path is compile-checked only. Windows owners and ACLs are #4524 on both
-sides. The shell enforces only `limits.updates`:
+path is compile-checked only. The desktop shell does not yet apply the
+Windows owner and ACL rule the server applies to the policy file (#4524), and
+it reads only the policy file, not a macOS configuration profile (#4523) or the
+Windows registry key (#4524): a `limits.updates` delivered those ways governs
+every update surface but the desktop updater, and the guide says so. The shell enforces only `limits.updates`:
 
 - a policy it cannot use, a `schemaVersion` other than 1, or a
   `limits.updates` with an unknown key or a bad value turns updates **off**,
@@ -696,7 +791,6 @@ client errors at Error and request URLs at Debug).
 
 ## Status of later slices
 
-The remaining limits (`maxApprovalMode` and `engines`), the macOS profile,
-the Windows registry, and `station policy templates` are tracked by
-#4518–#4524. Until each one lands, its keys are refused, as
-described above.
+The remaining limits (`maxApprovalMode` and `engines`) are tracked by #4518
+and #4520. Until each one lands, its keys are refused, as described above, and
+the Group Policy template leaves out its controls.

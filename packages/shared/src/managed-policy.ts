@@ -3,9 +3,10 @@
  *
  * The document shape, its parser and the client summary live in
  * `@kontourai/station-contracts/managed-policy`. This module owns the Node
- * side: the fixed per-OS file path, the source abstraction later sources
- * (a macOS configuration profile, the Windows registry) plug into, the test
- * override, the fingerprint, and the one error every failure becomes.
+ * side: the fixed per-OS file path, the source abstraction, the system
+ * sources (the file, a macOS configuration profile, the Windows registry),
+ * the test override, the fingerprint, and the one error every failure
+ * becomes.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -33,6 +34,24 @@ import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import {
+  registryPolicyInput,
+  WINDOWS_POLICY_KEY,
+  WINDOWS_POLICY_SUBKEY,
+} from './managed-policy-controls.js';
+import {
+  duplicatePlistKeyPath,
+  MACOS_MANAGED_PREFERENCES_PATH,
+  managedPreferencesDocument,
+  type PlistConverter,
+  plutilConverter,
+} from './managed-policy-macos.js';
+import {
+  koffiWindowsSecurityApi,
+  type WindowsSecurityApi,
+  windowsKeyChainProblem,
+  windowsPathChainProblem,
+} from './managed-policy-windows.js';
 
 /**
  * The test-only override: an absolute path to a policy file. It is honored
@@ -151,6 +170,19 @@ export interface ManagedPolicyFileOwnership {
   ownerUid: number;
   /** The highest directory checked, inclusive. */
   trustedRoot: string;
+  /**
+   * Windows: where owners and ACLs are read from. Unset means the Win32 API
+   * of this process; tests substitute a fake.
+   */
+  windowsSecurity?: WindowsSecurityApi;
+}
+
+let defaultWindowsSecurity: WindowsSecurityApi | undefined;
+
+/** The Win32 reader this process uses, created on first use. */
+export function processWindowsSecurityApi(): WindowsSecurityApi {
+  defaultWindowsSecurity ??= koffiWindowsSecurityApi();
+  return defaultWindowsSecurity;
 }
 
 export const SYSTEM_MANAGED_POLICY_OWNERSHIP: ManagedPolicyFileOwnership = {
@@ -196,8 +228,8 @@ function ancestorsUpTo(start: string, root: string): string[] | null {
  * means nothing, so only its owner is checked), and the resolved chain is
  * checked too, so a root-owned link cannot lead into a user's directory.
  *
- * Windows: not checked here. Owner and ACL inheritance under
- * `C:\Program Files` need their own verification (#4524).
+ * Windows has no uid or mode bits; the file source checks owners and ACLs
+ * there instead, with `windowsPathChainProblem` (#4524).
  */
 export function managedPolicyDirectoryProblem(
   directory: string,
@@ -355,10 +387,15 @@ function checkOpenedPolicy(
       path,
       'it changed while Station was opening it',
     );
-  if (ownership && process.platform !== 'win32') {
+  if (ownership) {
     const problem =
-      ownershipProblem(path, stats, ownership, true) ??
-      managedPolicyDirectoryProblem(dirname(path), ownership);
+      process.platform === 'win32'
+        ? windowsPathChainProblem(
+            path,
+            ownership.windowsSecurity ?? processWindowsSecurityApi(),
+          )
+        : (ownershipProblem(path, stats, ownership, true) ??
+          managedPolicyDirectoryProblem(dirname(path), ownership));
     if (problem) throw new ManagedPolicyInvalidError(path, problem);
   }
   if (stats.size > MANAGED_POLICY_MAX_BYTES)
@@ -369,7 +406,7 @@ function checkOpenedPolicy(
  * Read to the end, one byte past the limit, so a file that grew after
  * `fstat` is refused rather than silently truncated.
  */
-function readPolicyBytes(path: string, fd: number): string {
+function readPolicyBytes(path: string, fd: number): Buffer {
   const buffer = Buffer.alloc(MANAGED_POLICY_MAX_BYTES + 1);
   let length = 0;
   for (;;) {
@@ -379,7 +416,7 @@ function readPolicyBytes(path: string, fd: number): string {
     if (length > MANAGED_POLICY_MAX_BYTES)
       throw new ManagedPolicyInvalidError(path, TOO_LARGE_REASON);
   }
-  return buffer.subarray(0, length).toString('utf8');
+  return buffer.subarray(0, length);
 }
 
 /**
@@ -397,11 +434,25 @@ export function readManagedPolicyFile(
   path: string,
   ownership?: ManagedPolicyFileOwnership,
 ): ManagedPolicyRawInput | undefined {
+  const bytes = readManagedPolicyFileBytes(path, ownership);
+  return bytes === undefined
+    ? undefined
+    : { kind: 'text', text: bytes.toString('utf8') };
+}
+
+/**
+ * The bytes of a policy file, with every check of
+ * {@link readManagedPolicyFile}; undefined when nothing is at `path`.
+ */
+export function readManagedPolicyFileBytes(
+  path: string,
+  ownership?: ManagedPolicyFileOwnership,
+): Buffer | undefined {
   const opened = openPolicyEntry(path);
   if (!opened) return undefined;
   try {
     checkOpenedPolicy(path, opened.fd, opened.entry, ownership);
-    return { kind: 'text', text: readPolicyBytes(path, opened.fd) };
+    return readPolicyBytes(path, opened.fd);
   } catch (error) {
     throw asPolicyError(path, error);
   } finally {
@@ -421,16 +472,104 @@ export function managedPolicyFileSource(
 }
 
 /**
- * Every system source on `platform`, in a stable order. Later slices add the
- * macOS configuration profile and the Windows registry here.
+ * The device-level managed preferences a macOS configuration profile
+ * installs (#4523). The plist gets the policy file's checks (no link,
+ * regular file, root-owned chain), then `/usr/bin/plutil` converts its
+ * bytes; the decoded value goes to the same decoder as a file.
+ */
+export function macosProfileSource(
+  path: string = MACOS_MANAGED_PREFERENCES_PATH,
+  /** `null` skips the ownership rule; tests only. */
+  ownership: ManagedPolicyFileOwnership | null = SYSTEM_MANAGED_POLICY_OWNERSHIP,
+  convert: PlistConverter = plutilConverter(),
+): ManagedPolicySource {
+  return {
+    descriptor: { kind: 'macos-profile', location: path },
+    read: () => {
+      const bytes = readManagedPolicyFileBytes(path, ownership ?? undefined);
+      if (bytes === undefined) return undefined;
+      if (!bytes.subarray(0, 8).equals(Buffer.from('bplist00'))) {
+        const duplicate = duplicatePlistKeyPath(bytes.toString('utf8'));
+        if (duplicate !== null)
+          throw new ManagedPolicyInvalidError(
+            path,
+            `duplicate key ${duplicate}`,
+          );
+      }
+      const converted = convert(bytes);
+      if (!converted.ok)
+        throw new ManagedPolicyInvalidError(path, converted.reason);
+      let preferences: unknown;
+      try {
+        preferences = JSON.parse(converted.json);
+      } catch (error) {
+        throw new ManagedPolicyInvalidError(
+          path,
+          `the converted profile is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      return { kind: 'value', value: managedPreferencesDocument(preferences) };
+    },
+  };
+}
+
+/**
+ * `HKLM\SOFTWARE\Policies\Kontour\Station` (#4524), in the 64-bit view
+ * only, read through the Win32 API. An empty key is no policy. A key that
+ * holds anything must, with every key above it, be changeable only by
+ * Administrators, SYSTEM or TrustedInstaller.
+ */
+export function windowsRegistrySource(
+  api?: WindowsSecurityApi,
+): ManagedPolicySource {
+  const location = WINDOWS_POLICY_KEY;
+  return {
+    descriptor: { kind: 'windows-registry', location },
+    read: () => {
+      const windows = api ?? processWindowsSecurityApi();
+      let snapshot: ReturnType<WindowsSecurityApi['readMachineKey']>;
+      try {
+        snapshot = windows.readMachineKey(
+          WINDOWS_POLICY_SUBKEY,
+          MANAGED_POLICY_MAX_BYTES,
+        );
+      } catch (error) {
+        throw new ManagedPolicyInvalidError(
+          location,
+          `the registry cannot be read (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      if (snapshot === undefined) return undefined;
+      const input = registryPolicyInput(snapshot);
+      if (input.kind === 'absent') return undefined;
+      const problem = windowsKeyChainProblem(WINDOWS_POLICY_SUBKEY, windows);
+      if (problem) throw new ManagedPolicyInvalidError(location, problem);
+      if (input.kind === 'problem')
+        throw new ManagedPolicyInvalidError(location, input.reason);
+      return input.kind === 'text'
+        ? { kind: 'text', text: input.text }
+        : { kind: 'value', value: input.value };
+    },
+  };
+}
+
+/**
+ * Every system source on `platform`, in a stable order: the policy file,
+ * then the platform's device-management source. More than one holding a
+ * policy is a startup error (see {@link loadManagedPolicyFromSources}).
  */
 export function systemManagedPolicySources(
   platform: NodeJS.Platform = process.platform,
   filePath: string = managedPolicyFilePath(platform),
 ): ManagedPolicySource[] {
-  return [
-    managedPolicyFileSource(filePath, 'file', SYSTEM_MANAGED_POLICY_OWNERSHIP),
-  ];
+  const file = managedPolicyFileSource(
+    filePath,
+    'file',
+    SYSTEM_MANAGED_POLICY_OWNERSHIP,
+  );
+  if (platform === 'darwin') return [file, macosProfileSource()];
+  if (platform === 'win32') return [file, windowsRegistrySource()];
+  return [file];
 }
 
 /** Decode and validate raw input; throws {@link ManagedPolicyInvalidError}. */
