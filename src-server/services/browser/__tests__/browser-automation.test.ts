@@ -915,7 +915,7 @@ describe('BrowserAutomation: control through the live-surface lease', () => {
     });
     // An agent is pointed at Reopen, not told to wait.
     const refused = await h.automation.click(authority, id, { x: 10, y: 10 });
-    expect(refused).toMatchObject({ ok: false });
+    expect(refused).toMatchObject({ ok: false, code: 'release-stuck' });
     expect(String((refused as { message: string }).message)).toMatch(
       /browser_open/,
     );

@@ -804,6 +804,10 @@ export class BrowserAutomation {
     const record = this.select(authority, browserSessionId);
     if ('ok' in record) return record;
     const live = this.deps.sessions.liveTarget(record.browserSessionId);
+    // Stopped because a key may be stuck: the same code and advice as the
+    // surface's own refusal (the stop happens as it becomes stuck).
+    if (record.state === 'needs-reopen' && record.endReason === 'input-stuck')
+      return releaseStuckRefusal();
     if (record.state !== 'live' || !live)
       return refuse(
         'not-live',
@@ -2980,13 +2984,7 @@ function inputRefusal(
       ),
     );
   if (code === 'release-stuck')
-    return new ToolRefusal(
-      refuse(
-        'release-stuck',
-        'A key or button may be stuck on this page, so it takes no input, and waiting will not fix it. Station stops the session: reopen it with browser_open (pass its browserSessionId), which releases what was stuck, before trying again.',
-        { accepted },
-      ),
-    );
+    return new ToolRefusal(releaseStuckRefusal(accepted));
   if (code === 'release-pending')
     return new ToolRefusal(
       refuse(
@@ -3014,6 +3012,15 @@ function inputRefusal(
     refuse('browser-error', `The browser did not take the input (${code}).`, {
       accepted,
     }),
+  );
+}
+
+/** A key or button may be stuck: waiting will not help, reopening will. */
+function releaseStuckRefusal(accepted?: number): BrowserToolRefusal {
+  return refuse(
+    'release-stuck',
+    'A key or button may be stuck on this page, so it takes no input, and waiting will not fix it. Station stops the session: reopen it with browser_open (pass its browserSessionId), which releases what was stuck, before trying again.',
+    accepted === undefined ? {} : { accepted },
   );
 }
 
