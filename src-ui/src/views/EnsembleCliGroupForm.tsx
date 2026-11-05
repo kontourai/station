@@ -59,6 +59,8 @@ export function EnsembleCliGroupForm({
   const [inputError, setInputError] = useState(false);
   const current = scope.isCurrent();
   const saved = current ? create.data : undefined;
+  const authenticationOffered =
+    current && inspection.data?.authenticationCheck?.state === 'available';
   const submitted = !create.isIdle;
   const complete =
     brief.trim() &&
@@ -151,17 +153,20 @@ export function EnsembleCliGroupForm({
                 return;
               }
               setInputError(false);
-              if (
-                event.nativeEvent instanceof SubmitEvent &&
-                event.nativeEvent.submitter?.getAttribute('data-action') ===
-                  'inspect'
-              ) {
+              const action =
+                event.nativeEvent instanceof SubmitEvent
+                  ? event.nativeEvent.submitter?.getAttribute('data-action')
+                  : undefined;
+              if (action === 'inspect' || action === 'inspect-authentication') {
                 inspection.mutate({
                   path,
                   presetJson,
                   expectedPresetHash: hash,
                   bindings: {},
                   groupBindings: input.bindings,
+                  ...(action === 'inspect-authentication'
+                    ? { verifyAuthentication: true }
+                    : {}),
                 });
               } else {
                 onDirtyChange(false);
@@ -298,15 +303,23 @@ export function EnsembleCliGroupForm({
             })}
             <Button
               type="submit"
-              data-action="inspect"
+              data-action={
+                authenticationOffered ? 'inspect-authentication' : 'inspect'
+              }
               variant="secondary"
               pending={inspection.isPending}
-              pendingLabel="Inspecting configuration…"
+              pendingLabel={
+                inspection.variables?.verifyAuthentication
+                  ? 'Checking engine sign-in…'
+                  : 'Inspecting configuration…'
+              }
               disabled={
                 !current || submitted || !complete || inspection.isPending
               }
             >
-              Inspect group configuration
+              {authenticationOffered
+                ? 'Check engine sign-in'
+                : 'Inspect group configuration'}
             </Button>
             <Button
               type="submit"
@@ -325,6 +338,9 @@ export function EnsembleCliGroupForm({
                 Configuration observation only. Saving and running resolve the
                 current configuration again.
               </p>
+              {inspection.data.authenticationCheck?.state === 'unavailable' && (
+                <p>{inspection.data.authenticationCheck.detail}</p>
+              )}
               <EnsembleInspectionResult result={inspection.data} />
             </>
           )}

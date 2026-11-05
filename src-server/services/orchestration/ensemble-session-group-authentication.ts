@@ -23,12 +23,25 @@ export type EnsembleSessionGroupAuthenticationInput = {
   signal: AbortSignal;
 };
 
+/** Public status only; the native continuation stays private to the run owner. */
+export interface EnsembleSessionAuthenticationObservation {
+  seatId: string;
+  state: 'authenticated' | 'unauthenticated' | 'unknown';
+  checkedAt?: number;
+}
+
+export type EnsembleSessionAuthenticationObserver = (
+  observation: EnsembleSessionAuthenticationObservation,
+  assertObservationCurrent: () => void,
+) => void;
+
 /** Login observations are private run prerequisites, never execution grants. */
 export async function authenticateEnsembleSessionGroup(
   input: EnsembleSessionGroupAuthenticationInput,
   inventory: ExecutionTargetResolverDependencies,
   principalId: string,
   assertAuthority: () => void,
+  onObservation?: EnsembleSessionAuthenticationObserver,
 ): Promise<CliSessionGroupRunAdmission> {
   const members = structuredClone(input.members);
   const fence = inventory.capturePreparationFence?.(
@@ -160,15 +173,37 @@ export async function authenticateEnsembleSessionGroup(
       assertCurrent,
     });
     (await assertCurrent())();
-    if (
-      observation.state !== 'authenticated' ||
-      !Number.isFinite(observation.checkedAt) ||
-      observation.checkedAt < started ||
-      observation.checkedAt > Date.now() ||
-      Date.now() - observation.checkedAt > 30_000
-    )
-      throw new CliSessionGroupUnavailable('ensemble_auth_unverified');
     const continuation = nativeAuthenticationContinuation(observation);
+    const timely =
+      Number.isFinite(observation.checkedAt) &&
+      observation.checkedAt >= started &&
+      observation.checkedAt <= Date.now() &&
+      Date.now() - observation.checkedAt <= 30_000;
+    if (observation.state !== 'authenticated' || !timely) {
+      const assertObservedCurrent = () => {
+        assertSelection(selection);
+        continuation?.assertCurrent();
+        if (
+          timely &&
+          (Date.now() < observation.checkedAt ||
+            Date.now() - observation.checkedAt >= 30_000)
+        )
+          throw new CliSessionGroupUnavailable('ensemble_auth_stale');
+      };
+      assertObservedCurrent();
+      onObservation?.(
+        {
+          seatId: selection.seatId,
+          state:
+            timely && continuation && observation.state === 'unauthenticated'
+              ? 'unauthenticated'
+              : 'unknown',
+          ...(timely ? { checkedAt: observation.checkedAt } : {}),
+        },
+        assertObservedCurrent,
+      );
+      throw new CliSessionGroupUnavailable('ensemble_auth_unverified');
+    }
     if (!continuation)
       throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
     continuation.assertCurrent();
@@ -181,6 +216,25 @@ export async function authenticateEnsembleSessionGroup(
     selection.nativeContinuation?.assertCurrent();
     if (Date.now() - selection.checkedAt >= 30_000)
       throw new CliSessionGroupUnavailable('ensemble_auth_stale');
+  }
+  for (const selection of selections) {
+    const checkedAt = selection.checkedAt;
+    const continuation = selection.nativeContinuation;
+    if (!continuation)
+      throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+    onObservation?.(
+      { seatId: selection.seatId, state: 'authenticated', checkedAt },
+      () => {
+        assertSelection(selection);
+        continuation.assertCurrent();
+        if (
+          selection.checkedAt !== checkedAt ||
+          Date.now() < checkedAt ||
+          Date.now() - checkedAt >= 30_000
+        )
+          throw new CliSessionGroupUnavailable('ensemble_auth_stale');
+      },
+    );
   }
   const refreshing = new Map<string, Promise<void>>();
   return {

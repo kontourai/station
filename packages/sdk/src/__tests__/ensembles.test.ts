@@ -1,3 +1,4 @@
+import type { EnsembleInspection } from '@kontourai/station-contracts/ensemble';
 import { afterEach, expect, test, vi } from 'vitest';
 import { inspectEnsemble } from '../client/ensembles';
 import { setClientCredentialResolver } from '../client/http';
@@ -79,3 +80,67 @@ test('a changed request authority cannot dispatch inspection under another calle
   ).rejects.toThrow();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test.each([
+  ['older host', undefined, true],
+  ['available', { state: 'available' }, true],
+  [
+    'unavailable',
+    { state: 'unavailable', detail: 'Local operator access required.' },
+    true,
+  ],
+  ['null', null, false],
+  ['unknown state', { state: 'ready' }, false],
+  [
+    'extra grant',
+    { state: 'available', launchGrant: 'not-an-observation' },
+    false,
+  ],
+  ['missing reason', { state: 'unavailable' }, false],
+  ['blank reason', { state: 'unavailable', detail: '  ' }, false],
+  [
+    'oversized reason',
+    { state: 'unavailable', detail: 'x'.repeat(257) },
+    false,
+  ],
+] as const)(
+  'inspection auth-check offer: %s',
+  async (_name, authenticationCheck, valid) => {
+    const base: EnsembleInspection = {
+      version: 'station.ensemble.inspection/v1',
+      source: {
+        sha256: `sha256:${'a'.repeat(64)}`,
+        presetId: 'team',
+        name: 'Team',
+        stationmaster: 'lead',
+      },
+      environmentId: 'this-station',
+      observedAt: '2026-11-05T00:00:00Z',
+      facts: [],
+      resolutions: [],
+      limits:
+        'Authentication, entitlement, execution limits and live group bindings are unverified.',
+    };
+    const data = {
+      ...base,
+      ...(authenticationCheck === undefined ? {} : { authenticationCheck }),
+    };
+    const fetch = vi.fn(
+      async (_url: unknown, _init?: RequestInit) =>
+        new Response(JSON.stringify({ success: true, data })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const input = {
+      path: '/team.json',
+      bindings: {},
+      verifyAuthentication: true,
+    };
+    const pending = inspectEnsemble('https://station.test', input);
+    if (valid) await expect(pending).resolves.toEqual(data);
+    else
+      await expect(pending).rejects.toThrow(
+        'Invalid Ensemble inspection response',
+      );
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(input);
+  },
+);

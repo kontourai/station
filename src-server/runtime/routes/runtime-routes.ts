@@ -201,7 +201,11 @@ import {
   EnsembleExecutionContext,
 } from '../../services/orchestration/ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
-import { authenticateEnsembleSessionGroup } from '../../services/orchestration/ensemble-session-group-authentication.js';
+import {
+  authenticateEnsembleSessionGroup,
+  type EnsembleSessionAuthenticationObserver,
+  type EnsembleSessionGroupAuthenticationInput,
+} from '../../services/orchestration/ensemble-session-group-authentication.js';
 import { DelegationGroupRuntime } from '../../services/orchestration/portable-group-runtime.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
@@ -7099,7 +7103,24 @@ export function configureRuntimeRoutes(
     getProviderAdapter: (provider) =>
       context.orchestrationService.getProviderAdapter(provider),
   });
+  const authenticateEnsemble = (
+    input: EnsembleSessionGroupAuthenticationInput,
+    principal: PrincipalRef,
+    assertCurrent: () => void,
+    observe?: EnsembleSessionAuthenticationObserver,
+  ) =>
+    authenticateEnsembleSessionGroup(
+      input,
+      ensembleInventory,
+      principal.id,
+      () =>
+        context.environmentSecurityService.withCurrentAuthority(assertCurrent),
+      observe,
+    );
   const ensembleInspection = new EnsembleInspectionService({
+    verifyAuthentication: async (...args) => {
+      await authenticateEnsemble(...args);
+    },
     readProject: (slug) => context.projectService.getProject(slug),
     observeKnowledgeRoots: () =>
       context.storageAdapter.observeKnowledgeStoreRoots(),
@@ -7397,20 +7418,7 @@ export function configureRuntimeRoutes(
       ...(isPersonalHost
         ? {
             cliSessionGroupHome: context.configLoader.getProjectHomeDir(),
-            authenticateEnsembleSessionGroup: (
-              input,
-              principal,
-              assertCurrent,
-            ) =>
-              authenticateEnsembleSessionGroup(
-                input,
-                ensembleInventory,
-                principal.id,
-                () =>
-                  context.environmentSecurityService.withCurrentAuthority(
-                    assertCurrent,
-                  ),
-              ),
+            authenticateEnsembleSessionGroup: authenticateEnsemble,
             prepareEnsembleSessionGroup: (
               input,
               request,

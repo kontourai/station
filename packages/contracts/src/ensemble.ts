@@ -13,6 +13,8 @@ export const ENSEMBLE_INSPECTION_LIMITS = {
 
 /** Receiver-owned selections only; the model always belongs to the preset. */
 export interface EnsembleInspectionInput {
+  /** Explicit, local-operator request; ordinary inspection never probes sign-in. */
+  verifyAuthentication?: boolean;
   path?: string;
   presetJson?: string;
   expectedPresetHash?: string;
@@ -80,12 +82,18 @@ export interface EnsembleInspection {
   };
   environmentId: string;
   observedAt: string;
+  /** An offered read, not cached authority or an execution grant. Older hosts omit it. */
+  authenticationCheck?:
+    | { readonly state: 'available' }
+    | { readonly state: 'unavailable'; readonly detail: string };
   facts: readonly EnsembleInspectionFact[];
   resolutions: readonly {
     memberId: string;
     receipt: import('./execution-target.js').ExecutionResolutionReceipt;
   }[];
-  limits: 'Authentication, entitlement, execution limits and live group bindings are unverified.';
+  limits:
+    | 'Authentication, entitlement, execution limits and live group bindings are unverified.'
+    | 'Engine sign-in checks grant no execution authority; model entitlement, execution limits and live group bindings are unverified.';
 }
 
 export interface EnsembleModelOptions {

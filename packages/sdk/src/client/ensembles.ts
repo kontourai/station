@@ -9,6 +9,27 @@ import {
   readEnvelopeOrThrow,
 } from './http';
 
+function validAuthenticationOffer(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !('state' in value)
+  )
+    return false;
+  const keys = Object.keys(value);
+  if (value.state === 'available') return keys.length === 1;
+  return (
+    value.state === 'unavailable' &&
+    keys.length === 2 &&
+    'detail' in value &&
+    typeof value.detail === 'string' &&
+    value.detail.trim().length > 0 &&
+    value.detail.length <= 256
+  );
+}
+
 export async function inspectEnsemble(
   apiBase: string,
   input: EnsembleInspectionInput,
@@ -34,6 +55,7 @@ export async function inspectEnsemble(
   const result = await readEnvelopeOrThrow<EnsembleInspection>(response);
   if (
     result?.version !== 'station.ensemble.inspection/v1' ||
+    !validAuthenticationOffer(result.authenticationCheck) ||
     !result.source ||
     !/^sha256:[0-9a-f]{64}$/.test(result.source.sha256) ||
     (input.expectedPresetHash !== undefined &&

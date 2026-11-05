@@ -804,3 +804,67 @@ test('group inspection uses the launch draft and discards its facts when the dra
   const saved = JSON.parse(String(fetch.mock.calls[3][1]?.body));
   expect(saved.bindings).toEqual(inspected.groupBindings);
 });
+
+test('engine sign-in is checked only after the current host offers it, and editing the receiver clears the offer', async () => {
+  navigationStore.navigate('/agents?tab=ensembles');
+  let inspections = 0;
+  const fetch = vi.fn(async (url: unknown, _init?: RequestInit) => {
+    expect(String(url).endsWith('/inspect')).toBe(true);
+    inspections++;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          ...result,
+          ...(inspections > 1
+            ? { authenticationCheck: { state: 'available' } }
+            : {}),
+        },
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  await draftGroup();
+  fireEvent.change(screen.getByLabelText('Engine connection ID for lead'), {
+    target: { value: 'codex' },
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Check engine sign-in' }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inspect group configuration' }),
+  );
+  const check = await screen.findByRole('button', {
+    name: 'Check engine sign-in',
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).not.toHaveProperty(
+    'verifyAuthentication',
+  );
+  fireEvent.click(check);
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  expect(JSON.parse(String(fetch.mock.calls[2][1]?.body))).toMatchObject({
+    verifyAuthentication: true,
+    expectedPresetHash: result.source.sha256,
+    groupBindings: {
+      lead: {
+        target: {
+          expectedEngine: { kind: 'connection', connectionId: 'codex' },
+        },
+      },
+    },
+  });
+  await screen.findByRole('button', { name: 'Check engine sign-in' });
+  fireEvent.change(screen.getByLabelText('Engine connection ID for lead'), {
+    target: { value: 'claude' },
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Check engine sign-in' }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Inspect group configuration' }),
+  ).toBeTruthy();
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(screen.queryByText(/Saved session group/)).toBeNull();
+});

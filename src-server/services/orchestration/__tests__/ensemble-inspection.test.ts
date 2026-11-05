@@ -41,6 +41,7 @@ async function fixture({ observeProject = true } = {}) {
   const home = join(root, 'home');
   await mkdir(home);
   const loader = new ConfigLoader({ projectHomeDir: home });
+  await loader.loadStoredAppConfig();
   const storage = new FileStorageAdapter(home);
   const logger = createLogger({ name: 'inspection-test', level: 'error' });
   const agents = new AgentService(

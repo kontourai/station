@@ -15,6 +15,7 @@ import {
 const id = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/);
 const schema = z
   .object({
+    verifyAuthentication: z.boolean().optional(),
     path: z.string().min(1).max(4096).optional(),
     presetJson: z.string().min(1).max(131_072).optional(),
     groupBindings: z

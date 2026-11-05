@@ -34,6 +34,7 @@ import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../../../providers/app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../../../providers/app-home/credential-profile-registry.js';
 import { observeExecutableInvocation } from '../../../providers/auth/executable-observation.js';
+import { createEnsembleInspectionRoutes } from '../../../routes/orchestration/ensemble-inspection.js';
 import { createEnsemblePreparationRoutes } from '../../../routes/orchestration/ensemble-preparation.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
@@ -47,6 +48,7 @@ import {
   createLocalEnsembleInventory,
   EnsembleExecutionContext,
 } from '../ensemble-execution-context.js';
+import { EnsembleInspectionService } from '../ensemble-inspection.js';
 import { authenticateEnsembleSessionGroup } from '../ensemble-session-group-authentication.js';
 import { EventBus } from '../event-bus.js';
 
@@ -207,6 +209,7 @@ async function fixture(
   await mkdir(configurationHome);
   const configLoader = new ConfigLoader({ projectHomeDir: configurationHome });
   loaders.add(configLoader);
+  await configLoader.loadStoredAppConfig();
   const storage = new FileStorageAdapter(configurationHome);
   const metadata = new Map<string, AgentMetadata>();
   const agentService = new AgentService(
@@ -384,6 +387,29 @@ async function fixture(
       }),
     ),
   );
+  app.route(
+    '/api/orchestration/ensembles',
+    createEnsembleInspectionRoutes(
+      new EnsembleInspectionService({
+        security,
+        inventory,
+        readIntegration: () => undefined,
+        readProject: (slug) => storage.getProject(slug),
+        verifyAuthentication: async (input, principal, current, observe) => {
+          await authenticateEnsembleSessionGroup(
+            input,
+            inventory,
+            principal.id,
+            () => security.withCurrentAuthority(current),
+            observe,
+          );
+        },
+      }),
+      createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+      }),
+    ),
+  );
   const preset = {
     version: ENSEMBLE_PRESET_VERSION,
     id: 'team',
@@ -421,10 +447,11 @@ async function fixture(
     input: unknown = body,
     remoteAddress = '127.0.0.1',
     headers: Record<string, string> = {},
+    route = endpoint,
   ) => {
     await persist();
     const response = await app.request(
-      endpoint,
+      route,
       {
         method: 'POST',
         headers: {
@@ -1626,6 +1653,189 @@ describe('production Ensemble preparation authentication', () => {
     expect((await f.send()).body.code).toBe(
       'ensemble_preparation_authority_required',
     );
+    f.assertNoInvocations();
+  });
+});
+
+describe('explicit Ensemble inspection login checks', () => {
+  const inspectionPath = '/api/orchestration/ensembles/inspect';
+  const inputFor = (f: Awaited<ReturnType<typeof fixture>>) => ({
+    path: f.path,
+    expectedPresetHash: f.body.expectedPresetHash,
+    bindings: f.body.bindings,
+  });
+  test.each(['codex', 'claude'] as const)(
+    '%s checks its real selected auth context without starting a member',
+    async (engine) => {
+      const f = await fixture(engine);
+      const ordinary = await f.send(
+        f.operator,
+        inputFor(f),
+        '127.0.0.1',
+        {},
+        inspectionPath,
+      );
+      expect(ordinary.status).toBe(200);
+      expect(ordinary.body).toMatchObject({
+        data: { authenticationCheck: { state: 'available' } },
+      });
+      expect(execFile).not.toHaveBeenCalled();
+      const checked = await f.send(
+        f.operator,
+        { ...inputFor(f), verifyAuthentication: true },
+        '127.0.0.1',
+        {},
+        inspectionPath,
+      );
+      expect(checked.status).toBe(200);
+      expect(checked.body).toMatchObject({
+        data: {
+          facts: expect.arrayContaining([
+            {
+              id: 'authentication:lead',
+              memberId: 'lead',
+              category: 'members/models',
+              label: 'Engine sign-in',
+              value: expect.stringMatching(/^Signed in when checked/),
+              origin: 'runtime-derived',
+              state: 'configured',
+              owner: expect.any(Object),
+            },
+          ]),
+        },
+      });
+      expect(
+        execFile.mock.calls.some((call) => call[1].includes('status')),
+      ).toBe(true);
+      f.assertNoInvocations();
+    },
+  );
+  test('a signed-out engine stays unavailable and never becomes an execution grant', async () => {
+    const f = await fixture('claude');
+    execFile.mockImplementation((_command, args, _options, callback) =>
+      callback(null, {
+        stdout:
+          args[0] === '--version'
+            ? '99.0.0 (Claude Code)'
+            : '{"loggedIn":false}',
+        stderr: '',
+      }),
+    );
+    const response = await f.send(
+      f.operator,
+      { ...inputFor(f), verifyAuthentication: true },
+      '127.0.0.1',
+      {},
+      inspectionPath,
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      data: {
+        facts: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'authentication:lead',
+            state: 'unavailable',
+            value: expect.stringMatching(/^Not signed in/),
+          }),
+        ]),
+      },
+    });
+    f.assertNoInvocations();
+  });
+  test('a browser can inspect uploaded configuration but cannot request a native auth command', async () => {
+    const f = await fixture();
+    const offer = f.security.devicePairing.createOffer({
+      endpoint: 'http://127.0.0.1',
+    });
+    const pending = f.security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Browser inspection',
+    });
+    f.security.devicePairing.confirmRequest(pending.requestId, {
+      kind: 'ui-bootstrap',
+    });
+    const browser = f.security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'ui-bootstrap',
+    }).credential;
+    const { path: _path, ...uploaded } = inputFor(f);
+    const input = { ...uploaded, presetJson: JSON.stringify(f.preset) };
+    expect(
+      (await f.send(browser, input, '127.0.0.1', {}, inspectionPath)).status,
+    ).toBe(200);
+    const response = await f.send(
+      browser,
+      { ...input, verifyAuthentication: true },
+      '127.0.0.1',
+      {},
+      inspectionPath,
+    );
+    expect(response).toMatchObject({
+      status: 403,
+      body: { code: 'ensemble_inspection_authority_required' },
+    });
+    expect(execFile).not.toHaveBeenCalled();
+    f.assertNoInvocations();
+  });
+  test('a replaced native executable after login cannot publish an authenticated inspection', async () => {
+    const f = await fixture('codex');
+    let observed = false;
+    execFile.mockImplementation((_command, _args, _options, callback) => {
+      observed = true;
+      callback(null, { stdout: 'Logged in using ChatGPT', stderr: '' });
+    });
+    const resolve = f.inventory.resolveEnvironmentAccess.bind(f.inventory);
+    let replaced = false;
+    f.inventory.resolveEnvironmentAccess = async (target) => {
+      const access = await resolve(target);
+      if (observed && target.agent === 'station') {
+        await writeFile(f.executable, 'changed-after-probe');
+        replaced = true;
+      }
+      return access;
+    };
+    const response = await f.send(
+      f.operator,
+      { ...inputFor(f), verifyAuthentication: true },
+      '127.0.0.1',
+      {},
+      inspectionPath,
+    );
+    expect(replaced).toBe(true);
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: 'ensemble_inspection_stale' },
+    });
+    f.assertNoInvocations();
+  });
+
+  test('revocation during the version probe prevents login and the checked projection', async () => {
+    const f = await fixture('claude');
+    execFile.mockImplementation((_command, args, _options, callback) => {
+      expect(args).toEqual(['--version']);
+      void f
+        .revokeCurrent()
+        .then(() =>
+          callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' }),
+        );
+    });
+    const response = await f.send(
+      f.operator,
+      { ...inputFor(f), verifyAuthentication: true },
+      '127.0.0.1',
+      {},
+      inspectionPath,
+    );
+    expect(response).toMatchObject({
+      status: 403,
+      body: { code: 'ensemble_inspection_authority_required' },
+    });
+    expect(execFile.mock.calls.map((call) => call[1])).toEqual([['--version']]);
     f.assertNoInvocations();
   });
 });

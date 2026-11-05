@@ -34,6 +34,11 @@ import {
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import { projectMcpServers } from '../projects/project-tools.js';
 import { loadEnsemblePreset } from './ensemble-presets.js';
+import type {
+  EnsembleSessionAuthenticationObservation,
+  EnsembleSessionAuthenticationObserver,
+  EnsembleSessionGroupAuthenticationInput,
+} from './ensemble-session-group-authentication.js';
 
 export class EnsembleInspectionRefusal extends Error {
   constructor(
@@ -114,6 +119,12 @@ export class EnsembleInspectionService {
       inventory: ExecutionTargetResolverDependencies;
       readIntegration: (id: string) => ToolDef | undefined;
       readProject?: (slug: string) => ProjectConfig;
+      verifyAuthentication?: (
+        input: EnsembleSessionGroupAuthenticationInput,
+        principal: PrincipalRef,
+        assertCurrent: () => void,
+        onObservation: EnsembleSessionAuthenticationObserver,
+      ) => Promise<void>;
       observeKnowledgeRoots?: () => KnowledgeRootObservation;
     },
   ) {}
@@ -151,7 +162,8 @@ export class EnsembleInspectionService {
       throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
     const current = () => {
       request.signal.throwIfAborted();
-      if (input.path !== undefined) this.assertAuthority(request, principal);
+      if (input.path !== undefined || input.verifyAuthentication)
+        this.assertAuthority(request, principal);
       else this.assertConfigurationAuthority(request, principal);
     };
     current();
@@ -613,6 +625,107 @@ export class EnsembleInspectionService {
         owner,
       });
     }
+    let localOperator = true;
+    try {
+      this.assertAuthority(request, principal);
+    } catch {
+      localOperator = false;
+    }
+    const supported = source.preset.members.every((member) => {
+      const resolution = resolutions.find(
+        (item) => item.memberId === member.id,
+      )?.receipt;
+      const workspace = resolution?.workspace;
+      return (
+        targets.has(member.id) &&
+        resolution?.engine.kind === 'connection' &&
+        Boolean(
+          this.owners.inventory.getProviderAdapter(resolution.provider)
+            ?.observeExecutionAuthentication,
+        ) &&
+        workspace !== undefined &&
+        (workspace.kind === 'directory' ||
+          workspace.workspaceIsolation.mode === 'shared') &&
+        !facts.some((fact) => fact.id === `binding:${member.id}`)
+      );
+    });
+    const canCheckAuthentication =
+      Boolean(this.owners.verifyAuthentication) && localOperator && supported;
+    const authenticationCheck: NonNullable<
+      EnsembleInspection['authenticationCheck']
+    > = canCheckAuthentication
+      ? { state: 'available' }
+      : {
+          state: 'unavailable',
+          detail: !localOperator
+            ? 'Engine sign-in checks require current local operator access.'
+            : 'Choose every receiver with a supported native engine and shared workspace before checking sign-in.',
+        };
+    const observations = new Map<
+      string,
+      EnsembleSessionAuthenticationObservation
+    >();
+    const authenticationCurrency: Array<() => void> = [];
+    let authenticationSucceeded = false;
+    if (input.verifyAuthentication && canCheckAuthentication) {
+      try {
+        await this.owners.verifyAuthentication?.(
+          {
+            groupId: `inspection:${source.preset.id}`,
+            intentDigest: createHash('sha256')
+              .update(JSON.stringify([source.sha256, [...targets]]))
+              .digest('hex'),
+            members: [...targets].map(([seatId, target]) => ({
+              seatId,
+              target,
+            })),
+            signal: request.signal,
+          },
+          principal,
+          current,
+          (observation, assertObservedCurrent) => {
+            observations.set(observation.seatId, observation);
+            authenticationCurrency.push(assertObservedCurrent);
+          },
+        );
+        authenticationSucceeded = true;
+      } catch {
+        current();
+        fence();
+      }
+      current();
+      fence();
+    }
+    for (const member of source.preset.members) {
+      const observation = observations.get(member.id);
+      const checkedAt = observation?.checkedAt;
+      const signedIn =
+        authenticationSucceeded &&
+        observation?.state === 'authenticated' &&
+        checkedAt !== undefined &&
+        checkedAt <= Date.now() &&
+        Date.now() - checkedAt < 30_000;
+      const signedOut = observation?.state === 'unauthenticated';
+      add({
+        id: `authentication:${member.id}`,
+        memberId: member.id,
+        category: 'members/models',
+        label: 'Engine sign-in',
+        value: signedIn
+          ? `Signed in when checked at ${new Date(checkedAt).toISOString()}. Sign-in is checked again before launch.`
+          : signedOut
+            ? 'Not signed in to the selected engine context.'
+            : input.verifyAuthentication
+              ? 'Sign-in could not be verified in the selected execution context.'
+              : 'Not checked.',
+        origin: observation ? 'runtime-derived' : 'unknown',
+        state: signedIn ? 'configured' : signedOut ? 'unavailable' : 'unknown',
+        owner: {
+          label: 'Engine connection settings',
+          href: '/connections/engines',
+        },
+      });
+    }
     for (const [id, category, value] of [
       [
         'routing',
@@ -663,6 +776,14 @@ export class EnsembleInspectionService {
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     }
     current();
+    for (const assertObservedCurrent of authenticationCurrency) {
+      try {
+        assertObservedCurrent();
+      } catch {
+        current();
+        throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
+      }
+    }
     return {
       version: 'station.ensemble.inspection/v1',
       source: {
@@ -675,8 +796,10 @@ export class EnsembleInspectionService {
       observedAt: new Date().toISOString(),
       facts,
       resolutions,
-      limits:
-        'Authentication, entitlement, execution limits and live group bindings are unverified.',
+      authenticationCheck,
+      limits: input.verifyAuthentication
+        ? 'Engine sign-in checks grant no execution authority; model entitlement, execution limits and live group bindings are unverified.'
+        : 'Authentication, entitlement, execution limits and live group bindings are unverified.',
     };
   }
 }
