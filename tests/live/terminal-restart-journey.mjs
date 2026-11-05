@@ -2,7 +2,7 @@
  * The terminal's restart journey against a real isolated Station on this
  * checkout, in a real browser:
  *
- *   node tests/live/terminal-restart-journey.mjs --out <dir>
+ *   npm run test:live:terminal-restart -- --out <dir>
  *
  * Opens a shell in the Coding terminal, starts a program that prints a
  * numbered line every half second, reloads the page and restarts the server
@@ -19,9 +19,8 @@
  * touches another instance. Writes results.json and screenshots to <dir>.
  */
 
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { arch, cpus, platform, release, tmpdir, totalmem } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { chromium } from '@playwright/test';
@@ -29,6 +28,7 @@ import {
   apiOk,
   pairBrowser,
   poll,
+  runProvenance,
   runStation,
   startTempHomeInstance,
 } from './helpers/station-instance.mjs';
@@ -57,23 +57,7 @@ const enter = '\r';
 
 const home = mkdtempSync(join(tmpdir(), 'station-terminal-journey-'));
 const repo = mkdtempSync(join(tmpdir(), 'station-terminal-journey-repo-'));
-const results = {
-  revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT })
-    .toString()
-    .trim(),
-  uncommittedChanges:
-    execFileSync('git', ['status', '--porcelain'], { cwd: ROOT })
-      .toString()
-      .trim() !== '',
-  environment: {
-    platform: `${platform()} ${release()} ${arch()}`,
-    cpus: `${cpus().length} × ${cpus()[0]?.model ?? 'unknown'}`,
-    memoryGiB: Math.round(totalmem() / 2 ** 30),
-    node: process.version,
-  },
-  steps: [],
-  passed: false,
-};
+const results = { ...runProvenance(ROOT), steps: [], passed: false };
 const step = (name, detail = {}) => {
   results.steps.push({ name, at: new Date().toISOString(), ...detail });
   console.log(`✓ ${name}`, Object.keys(detail).length ? detail : '');

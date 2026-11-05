@@ -269,6 +269,7 @@
     "dogfood:daily-driver:scenarios": "node scripts/daily-driver-scenario-qualification.mjs",
     "test:e2e:extended": "node scripts/run-e2e-suite.mjs --suite=extended",
     "test:live:cold-bootstrap": "node tests/live/cold-bootstrap.mjs",
+    "test:live:terminal-restart": "node tests/live/terminal-restart-journey.mjs",
     "walkthrough:fresh-home": "tsx tests/live/fresh-home-walkthrough.mjs",
     "journeys:core-loop": "tsx tests/live/core-loop-journeys.mjs",
     "test:e2e:screenshot": "node scripts/run-e2e-suite.mjs --suite=screenshot",
