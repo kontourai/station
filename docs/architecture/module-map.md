@@ -5367,7 +5367,11 @@ listener coverage. This boundary does not isolate arbitrary same-OS-user code.
 
 **Callers and lifecycle.** `BrowserPreviewWorkspacePane.tsx` resolves bound
 Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
-`browserPaneApi.ts` own the human workflow. `BrowserTabs.tsx` persists bounded,
+`browserPaneApi.ts` own the human workflow. The session's viewport, zoom and
+appearance are registry-applied emulation shared by every viewer and Agent; the
+pane sizes a page it just opened from a narrow stage once and announces changes
+it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+`BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
 the registry records its opener and profile without retargeting an Agent. Human
