@@ -268,6 +268,16 @@ access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
 
+Review, recall and the session brief read under the same rule and delivery-time
+recheck. A review decision is accepted from any current caller for that owner, but
+Station records it as human only for the operator in person; an agent tool call,
+Station's internal token or a delegated device is recorded as an agent, whose
+decision annotates and never promotes. The reviewer is derived from the request,
+and a request body that names one is refused. The brief a new Station-engine chat
+starts with holds only memory a person confirmed, and it reaches that chat's model
+provider; no brief is built for an unknown identity, a hosted request or a request
+that fails the root-access or delivery check.
+
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
 and one ETag-pinned object. A source is an explicit operator grant to use a named
