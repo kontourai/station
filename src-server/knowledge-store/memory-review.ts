@@ -839,5 +839,5 @@ export class MemoryReviewService {
   }
 }
 
-/** A refusal the person can fix; the route turns it into a 400. */
+/** A correction with no value. The route answers it with fixed wording, never this message. */
 export class MemoryDecisionError extends Error {}

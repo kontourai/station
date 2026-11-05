@@ -352,7 +352,13 @@ export function createMemoryRoutes(deps: MemoryRouteDeps) {
       );
     } catch (error) {
       if (error instanceof MemoryDecisionError)
-        return c.json({ success: false, error: error.message }, 400);
+        return c.json(
+          {
+            success: false,
+            error: 'A correction needs the value you say is right.',
+          },
+          400,
+        );
       return c.json(
         { success: false, error: 'Private memory is unavailable.' },
         503,

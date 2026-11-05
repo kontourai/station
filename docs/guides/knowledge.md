@@ -202,14 +202,20 @@ What this does not cover yet:
 - **Surface accumulation.** Station does not run Surface's projection (it needs
   custody records Station does not hold), so a conflict is found by comparing
   claims in the same subject and property. The Kit reports these as
-  `not-evaluated`.
+  `not-evaluated` ([surface#361](https://github.com/kontourai/surface/issues/361)).
 - **Claims that name a replacement** show their supersession history, but
   Station does not yet verify a succession edge with Survey support checks.
 - **External engines.** The brief reaches Station-engine chats. Claude Code and
   Codex sessions build their own context; Station does not write their brief
   files.
-- **Recall is a plain word match** over claims, titles and excerpts. The Kit's
-  question-answering recall is not yet published as a package.
+- **Recall is a plain word match** over claims, titles and excerpts, and the
+  brief applies a smaller version of the Kit's rules. The Kit's question-answering
+  recall, brief compiler, envelope decoder and marker are not yet published
+  ([flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)).
+- **The queue uses Console's owner-verb wording** (a short question per item,
+  evidence beside it), built with the shared UI components, because Console does
+  not yet publish its queue derivation
+  ([console#312](https://github.com/kontourai/console/issues/312)).
 
 ### Measuring whether review is worth it
 
