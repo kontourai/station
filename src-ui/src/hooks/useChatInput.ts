@@ -56,6 +56,7 @@ import {
   updateModelRuntimeOption,
 } from '../utils/modelCapabilities';
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
+import { describeStationFailure } from '../utils/stationFailure';
 import { clearLastChosenModel } from './lastChosenModel';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
@@ -325,7 +326,7 @@ export function useChatInput({
       // visible.
       const noticeHasVisibleSurface = hasSessionContext && isChatVisible;
       if (!noticeHasVisibleSurface) {
-        showToast(`Error: ${error.message}`, 'error');
+        showToast(`Error: ${describeStationFailure(error).body}`, 'error');
       }
     },
     slashCommandHandler,

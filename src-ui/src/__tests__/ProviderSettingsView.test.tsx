@@ -124,7 +124,8 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
 
     render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-    expect(screen.getByText('model connections unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('model connections unavailable')).toBeNull();
     expect(screen.queryByText('No model connections yet')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));

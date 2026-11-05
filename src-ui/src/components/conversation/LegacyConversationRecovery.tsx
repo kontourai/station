@@ -6,6 +6,7 @@ import {
   readRetainedPeerPendingText,
 } from '../../lib/peer-chat';
 import type { ChatSession } from '../../types';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { NewChatAction } from '../NewChatAction';
@@ -70,11 +71,7 @@ export function LegacyConversationRecovery({
         lease.release();
       }
     } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : 'The chat could not reconnect.',
-      );
+      setError(describeStationFailure(failure).body);
     } finally {
       inFlight.current = false;
       setBusy(false);

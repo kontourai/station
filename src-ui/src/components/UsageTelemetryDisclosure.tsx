@@ -35,6 +35,7 @@ import {
   useRecoveryConfig,
 } from '../hooks/useRecoveryConfig';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import { describeStationFailure } from '../utils/stationFailure';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
@@ -1053,11 +1054,7 @@ function useUsageTelemetryDecision(
             });
           },
           onError: (error) =>
-            setSettingError(
-              error instanceof Error
-                ? error.message
-                : 'The usage telemetry setting could not be saved.',
-            ),
+            setSettingError(describeStationFailure(error).body),
         },
       );
       return;
@@ -1115,12 +1112,7 @@ function useUsageTelemetryDecision(
             tier: next,
           });
         },
-        onError: (error) =>
-          setSettingError(
-            error instanceof Error
-              ? error.message
-              : 'The usage telemetry setting could not be saved.',
-          ),
+        onError: (error) => setSettingError(describeStationFailure(error).body),
       },
     );
   };

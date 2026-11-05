@@ -1659,7 +1659,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   it.each([
     [
       'thread t-1 already has an active writer',
-      /^\*\*The chat didn't start\*\*\n\nthread t-1 already has an active writer\n\n/,
+      /^\*\*The chat didn't start\*\*\n\nStation could not complete this request\./,
     ],
     [
       'OAuth session expired and could not be refreshed',
@@ -1932,7 +1932,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     const chat = activeChatsStore.getSnapshot()[sessionId];
     expect(chat?.error).toBe('Write a message to send.');
-    const notice = chat?.ephemeralMessages?.at(-1)?.content ?? '';
+    const notice = chat?.messages?.at(-1)?.deliveryNotice?.description ?? '';
     expect(notice).toContain('Write a message to send.');
     expect(notice).not.toContain('Validation failed');
   });
@@ -2873,7 +2873,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
     expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
       status: 'error',
-      error: 'Discard failed: disk full',
+      error: 'Discard failed: Try again in a moment.',
     });
   });
 
@@ -2890,7 +2890,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
       status: 'error',
-      error: 'Send unavailable: Persistent outbound queue requires IndexedDB',
+      error: 'Try again in a moment.',
     });
   });
 
@@ -3009,12 +3009,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(chat.queuedMessages).toEqual([]);
       expect(chat.input).toBe('keep the draft');
       expect(chat.queueDrainSettling).not.toBe(true);
-      expect(
-        chat.messages?.some(
-          (message) =>
-            message.role === 'user' && message.content === 'keep the draft',
-        ),
-      ).toBe(false);
+      expect(chat.messages?.at(-1)?.deliveryNotice?.state).toBe('not-sent');
+      expect(chat.messages?.at(-1)?.content).toBe('keep the draft');
     },
   );
 
@@ -3042,7 +3038,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       attachments: [stagedAttachment],
       attachmentStages: [stagedSnapshot],
     });
-    expect(chat.ephemeralMessages?.at(-1)?.content).toBeTruthy();
+    expect(chat.messages?.at(-1)?.deliveryNotice?.state).toBe('not-sent');
   });
 
   it('#2324 review J4b: a durable dispatch refused by a provider turn is not also put in the in-memory queue', async () => {
@@ -4128,7 +4124,7 @@ describe('useCancelMessage', () => {
 
     expect(outcome).toEqual({
       kind: 'failed',
-      reason: 'connect ECONNREFUSED 127.0.0.1:3141',
+      reason: 'Try again in a moment.',
     });
     expect(describeStopTurnOutcome(outcome as StopTurnOutcome)).toContain(
       'Stop failed',

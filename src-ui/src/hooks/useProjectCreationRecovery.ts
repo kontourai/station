@@ -16,6 +16,7 @@ import {
   removeProjectCreationRecovery,
   writeProjectCreationRecovery,
 } from '../lib/project-onboarding-recovery';
+import { describeStationFailure } from '../utils/stationFailure';
 
 const pendingSchema = z
   .object({
@@ -159,7 +160,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
     operation,
     statusMessage:
       operation.error instanceof Error
-        ? operation.error.message
+        ? describeStationFailure(operation.error).body
         : operation.data?.phase === 'uncertain'
           ? 'Station cannot confirm whether this creation completed. Check its result before starting another.'
           : operation.data?.phase === 'unavailable'

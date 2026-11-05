@@ -32,6 +32,7 @@ import {
   serverTurnLive,
 } from '../../utils/conversation-activity';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
 
@@ -641,7 +642,7 @@ export function drainQueuedMessageOnTurnCompleted(
             ? [nextMetadata, ...(failed.queuedMessageMetadata ?? [])]
             : undefined,
           queuedMessageFailure: {
-            message: error instanceof Error ? error.message : String(error),
+            message: describeStationFailure(error).body,
             at: Date.now(),
           },
         });
@@ -873,9 +874,7 @@ export function drainQueuedMessageOnTurnCompleted(
           const indeterminate =
             (error as { outcome?: unknown })?.outcome === 'indeterminate';
           if (isDefinitiveClientRejection(error))
-            await live.notSent(
-              error instanceof Error ? error.message : String(error),
-            );
+            await live.notSent(describeStationFailure(error).body);
           else if (indeterminate)
             await live.indeterminate('Station could not confirm the start.', {
               listed: true,
@@ -1051,10 +1050,10 @@ export function drainQueuedMessageOnTurnCompleted(
               `This chat had already ended, so your queued message was not sent.\nYour message: ${nextMessage}`
             : dropPermanentlyRejected
               ? `Your queued message was refused and removed from the queue: ${
-                  error instanceof Error ? error.message : String(error)
+                  describeStationFailure(error).body
                 }\nYour message: ${nextMessage}`
               : `Queued message failed to send: ${
-                  error instanceof Error ? error.message : String(error)
+                  describeStationFailure(error).body
                 }`,
         });
       });

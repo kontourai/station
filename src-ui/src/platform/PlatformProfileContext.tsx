@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../utils/stationFailure';
 /**
  * PlatformProfileContext — the single first-paint gate that resolves which host
  * Station is running on before the app shell (and its connection seeding) can
@@ -254,7 +255,7 @@ let cachedProfileBootstrapError: string | null = null;
 const profileResolution = profileReady.then(
   (profile) => ({ status: 'ok' as const, profile }),
   (error) => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeStationFailure(error).body;
     cachedProfileBootstrapError = message;
     return { status: 'error' as const, message };
   },

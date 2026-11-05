@@ -8,6 +8,7 @@ import { get, update } from 'idb-keyval';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { recordedDeliveryPort } from '../conversation/DeliveryPort';
@@ -261,7 +262,9 @@ export function ChildWorkInstructionPanel({
           variant="compact"
           title="Could not load instructions"
           description={
-            history.error instanceof Error ? history.error.message : undefined
+            history.error
+              ? describeStationFailure(history.error).body
+              : undefined
           }
           action={
             <Button

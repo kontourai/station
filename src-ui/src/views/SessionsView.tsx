@@ -73,6 +73,7 @@ import {
   sessionRecency,
   sessionTitle,
 } from '../utils/sessionDisplay';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ActivityFilterBar } from './activity/ActivityFilterBar';
 import {
   type ActivityRowAction,
@@ -1251,7 +1252,7 @@ export function SessionsView({
             <ErrorState
               title="This activity isn't in the current list"
               description={
-                routedSession.error?.message ??
+                describeStationFailure(routedSession.error).body ??
                 'Station did not return the requested activity item.'
               }
               action={

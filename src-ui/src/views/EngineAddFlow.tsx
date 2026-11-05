@@ -22,6 +22,7 @@ import type {
   ACPConnectionRegistryEntry,
 } from '../hooks/useACPConnections';
 import { connectionEngineId } from '../utils/execution';
+import { describeStationFailure } from '../utils/stationFailure';
 import { resolveProviderPresentation } from './provider-settings/providerCatalog';
 import './EngineAddFlow.css';
 
@@ -166,8 +167,9 @@ function EngineAddCatalog({
             name={connection.name}
             tag="Not connected yet"
             detail={
-              connection.lastError?.message ??
-              'Saved, but Station has not connected to it yet.'
+              connection.lastError
+                ? describeStationFailure(connection.lastError).body
+                : 'Saved, but Station has not connected to it yet.'
             }
             action={
               <Button
@@ -299,7 +301,7 @@ function NativeEngineSetup({
       setStage('result');
     },
     onError: (mutationError: Error) => {
-      setError(mutationError.message);
+      setError(describeStationFailure(mutationError).body);
       setStage('error');
     },
   });

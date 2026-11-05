@@ -10,6 +10,7 @@ import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { PromptModal } from '../modals/PromptModal';
@@ -222,13 +223,14 @@ export function FileTreePanel({
     [tree, deferredSearch],
   );
 
-  const loadError = queryError?.message ?? null;
+  const loadError = queryError ? describeStationFailure(queryError).body : null;
   const opError =
     actionError ??
-    createMut.error?.message ??
-    renameMut.error?.message ??
-    deleteMut.error?.message ??
-    null;
+    ([createMut.error, renameMut.error, deleteMut.error].find(Boolean)
+      ? describeStationFailure(
+          createMut.error ?? renameMut.error ?? deleteMut.error,
+        ).body
+      : null);
 
   const openMenu = useCallback(
     (entry: FileEntry | null, at: ContextMenuPoint, origin: HTMLElement) =>
@@ -257,7 +259,7 @@ export function FileTreePanel({
         );
       }
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Failed to attach file');
+      setActionError(describeStationFailure(e).body);
     }
   };
 

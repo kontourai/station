@@ -34,6 +34,7 @@ import { useElapsedClock } from '../hooks/useElapsedClock';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomAttachmentImages } from './TaskRoomAttachmentImages';
@@ -263,14 +264,9 @@ export function ProjectTaskRoomConversation({
       try {
         attachments = await replyAttachments.prepare();
       } catch (error) {
-        throw Object.assign(
-          new Error(
-            error instanceof Error
-              ? error.message
-              : 'Files could not be uploaded.',
-          ),
-          { code: 'task_room_reply_refused' },
-        );
+        throw Object.assign(new Error(describeStationFailure(error).body), {
+          code: 'task_room_reply_refused',
+        });
       }
       if (!scope.isCurrent()) throw new Error('Task connection changed.');
       replyOperation.current ??= randomCorrelationId();
@@ -320,7 +316,7 @@ export function ProjectTaskRoomConversation({
         code === 'receiver_execution_authority_changed';
       setUncertain(!notSent);
       setNotice(
-        `Not delivered · ${error.message}${notSent ? '' : ' Check the full run before resending.'}`,
+        `Not delivered · ${describeStationFailure(error).body}${notSent ? '' : ' Check the full run before resending.'}`,
       );
     },
   });
@@ -374,7 +370,7 @@ export function ProjectTaskRoomConversation({
       void history.refetch();
       void requests.refetch();
     },
-    onError: (error) => setNotice(error.message),
+    onError: (error) => setNotice(describeStationFailure(error).body),
   });
   const roots = new Map<string, number>();
   for (const record of records)
@@ -527,11 +523,7 @@ export function ProjectTaskRoomConversation({
                       );
                       setNotice('Answer kept in Results.');
                     } catch (error) {
-                      setNotice(
-                        error instanceof Error
-                          ? error.message
-                          : 'Could not keep this answer.',
-                      );
+                      setNotice(describeStationFailure(error).body);
                     }
                   }}
                 >

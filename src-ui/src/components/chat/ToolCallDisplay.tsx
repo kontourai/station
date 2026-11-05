@@ -33,6 +33,7 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
@@ -149,7 +150,7 @@ export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
   action: 'once' | 'trust' | 'trust-server' | 'deny',
-) => void | Promise<ToolApprovalOutcome | void>;
+) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
   toolCall: ToolCallData;
@@ -670,11 +671,7 @@ function useApprovalDecision(
     (shared?.phase === 'unconfirmed'
       ? {
           summary:
-            shared.error?.message ?? 'Station has not confirmed this decision.',
-          detail:
-            shared.error?.cause instanceof Error
-              ? shared.error.cause.message
-              : undefined,
+            'Station has not confirmed this decision. Check its status before trying again.',
         }
       : null);
   const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
@@ -703,20 +700,7 @@ function useApprovalDecision(
           error.code === 'approval_delivery_unconfirmed';
         setPhase(unconfirmed ? 'unconfirmed' : 'idle');
         admission.current = unconfirmed;
-        const translation = await import('../../utils/stationFailure').catch(
-          () => undefined,
-        );
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Station did not accept this decision.';
-        const translated = translation?.describeStationFailure(
-          error,
-          target?.station,
-        ) ?? {
-          title: 'Decision delivery failed',
-          body: 'Check this request before trying again.',
-        };
+        const translated = describeStationFailure(error, target?.station);
         if (
           unconfirmed &&
           reference &&
@@ -724,13 +708,7 @@ function useApprovalDecision(
         )
           return;
         setFailure({
-          summary: unconfirmed
-            ? message
-            : `${translated.title}. ${('hint' in translated ? translated.hint : undefined) ?? translated.body}`,
-          detail:
-            error instanceof Error && error.cause instanceof Error
-              ? error.cause.message
-              : message,
+          summary: translated.body,
         });
       },
     );
@@ -746,9 +724,7 @@ function useApprovalDecision(
           setFailure(null);
         } catch (error) {
           setFailure({
-            summary:
-              'Station still could not confirm this decision. Reconnect and check again.',
-            detail: error instanceof Error ? error.message : undefined,
+            summary: describeStationFailure(error, target?.station).body,
           });
         } finally {
           setChecking(false);

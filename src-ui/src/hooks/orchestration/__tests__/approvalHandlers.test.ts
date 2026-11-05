@@ -583,7 +583,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        'Your decision on Bash was not delivered: Station is not reachable.',
+        'Your decision on Bash was not delivered: Try again in a moment.',
         'thread-1',
         9000,
         undefined,

@@ -232,7 +232,7 @@ describe('usePushNotifications', () => {
     );
 
     await waitFor(() =>
-      expect(result.current.error).toBe('service worker unavailable'),
+      expect(result.current.error).toBe('Try again in a moment.'),
     );
   });
 
@@ -318,7 +318,7 @@ describe('usePushNotifications', () => {
     await act(async () => result.current.subscribe());
 
     expect(result.current.pairingRequired).toBe(false);
-    expect(result.current.error).toBe('VAPID unavailable');
+    expect(result.current.error).toBe('Try again in a moment.');
     expect(result.current.subscribed).toBe(false);
   });
 

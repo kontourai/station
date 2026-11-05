@@ -9,6 +9,7 @@ import {
   useConnectedServerUpdateContext,
 } from '../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { describeStationFailure } from '../utils/stationFailure';
 import {
   clearUpdateNotice,
   publishUpdateNotice,
@@ -154,11 +155,7 @@ export function CoreUpdateLaunchCheck({
       trustedOrigin = normalizedOrigin(providerOrigin);
       immutableVersion(installedVersion, 'installed');
     } catch (error) {
-      setFailure(
-        error instanceof Error
-          ? error.message
-          : 'Invalid update configuration.',
-      );
+      setFailure(describeStationFailure(error).body);
       return;
     }
     if (feed.protocol !== 'https:' || feed.origin !== trustedOrigin) {
@@ -185,11 +182,7 @@ export function CoreUpdateLaunchCheck({
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setFailure(
-            error instanceof Error
-              ? error.message
-              : 'Native app update check failed.',
-          );
+          setFailure(describeStationFailure(error).body);
       });
     return () => controller.abort();
   }, [attempt, channel, feedUrl, installedVersion, isMobile, providerOrigin]);

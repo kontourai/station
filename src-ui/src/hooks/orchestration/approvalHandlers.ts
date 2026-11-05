@@ -24,6 +24,7 @@ import {
 } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { isChatInForeground } from './chatForeground';
 import { contentRefreshVersion } from './contentRefresh';
 import { isReplayThread } from './replay/replay-registry';
@@ -407,10 +408,7 @@ async function answerFromToast(
       );
     }
   } catch (error) {
-    const reason =
-      error instanceof Error && error.message
-        ? error.message
-        : 'Station did not accept this decision.';
+    const reason = describeStationFailure(error).body;
     const unconfirmed =
       error instanceof Error &&
       'code' in error &&

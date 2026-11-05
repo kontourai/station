@@ -38,6 +38,7 @@ import {
   isChatErrorMarker,
   pruneStaleFailureMarkers,
 } from '../../utils/sessionFailure';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
@@ -78,7 +79,7 @@ function reconcileDurableTurn(
     .catch((error) => {
       chatStore.updateChat(sessionId, {
         status: 'error',
-        error: `Could not reconcile the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Could not reconcile the durable offline turn: ${describeStationFailure(error).body}`,
       });
     });
 }

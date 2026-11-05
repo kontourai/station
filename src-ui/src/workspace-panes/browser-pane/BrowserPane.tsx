@@ -73,6 +73,7 @@ import {
   type LiveSurfaceControllerTone,
   type LiveSurfaceControlState,
 } from '../../live-surface/LiveSurfaceCanvas';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { type PaneMenuItem, PaneOverflowMenu } from '../PaneOverflowMenu';
 import { BrowserAcquisitionPanel } from './BrowserAcquisitionPanel';
 import { BrowserAnnotationFlow } from './BrowserAnnotationFlow';
@@ -1018,9 +1019,7 @@ function BrowserSessionPane({
       setNotice(
         error instanceof BrowserApiError
           ? describeBrowserFailure(error)
-          : error instanceof Error
-            ? error.message
-            : 'The screenshot could not be attached.',
+          : describeStationFailure(error).body,
       ),
   });
   const openNew = useMutation({
@@ -1996,11 +1995,7 @@ function BrowserSessionPane({
                           .then(
                             () => setShot(null),
                             (error) =>
-                              setNotice(
-                                error instanceof Error
-                                  ? error.message
-                                  : 'Could not attach screenshot.',
-                              ),
+                              setNotice(describeStationFailure(error).body),
                           );
                       }
                     : undefined

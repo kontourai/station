@@ -186,7 +186,8 @@ describe('translateChatError', () => {
       message: 'Synthetic provider failure',
     });
 
-    expect(result.body).toContain('Synthetic provider failure');
+    expect(result.body).not.toContain('Synthetic provider failure');
+    expect(result.disclosureRaw).toBe(true);
     // archive#3299: the fallback classified NOTHING, so its hint must not
     // assert that retrying helps — a stale credential does not improve on
     // retry, and telling the user it will is an unfounded claim.

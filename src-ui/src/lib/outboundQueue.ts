@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../utils/stationFailure';
 /**
  * Durable offline message dispatch.
  *
@@ -1849,7 +1850,7 @@ async function enqueue(
     if (retired) throw new OutboundKeyRetiredError(retired);
     const entries = prune(state.turns, Date.now());
     const index = entries.findIndex((entry) => sameTurn(entry, safeIntent));
-    const lastError = error instanceof Error ? error.message : undefined;
+    const lastError = describeStationFailure(error).body;
     if (index === -1) {
       // A pending draft has no possible provider effect, so the Module may
       // evict the oldest ordinary draft to make room. Fenced evidence is never
@@ -2295,9 +2296,7 @@ async function flush(
       // invocation occurred. Latch it before allowing any observer to react.
       if (!capability.settled()) {
         const settled = await capability.public.indeterminate(
-          error instanceof Error
-            ? error.message
-            : 'transport threw after invocation began',
+          describeStationFailure(error).body,
         );
         unavailable ||= settled === 'unavailable';
       }
@@ -2618,7 +2617,7 @@ async function beginLive(
       await transition(({ deliveryCheck: _stale, ...entry }) => ({
         ...entry,
         status: 'pending',
-        lastError: error instanceof Error ? error.message : undefined,
+        lastError: describeStationFailure(error).body,
         dispatchBootId: undefined,
         claimedAt: undefined,
       }));

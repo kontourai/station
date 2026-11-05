@@ -1,3 +1,4 @@
+import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { PreviewProvider } from '../contexts/PreviewContext';
 // @vitest-environment jsdom
 
@@ -298,6 +299,25 @@ describe('header', () => {
   test('offers no Open in chat when the chat cannot rehydrate the session', async () => {
     await renderDetail(baseSession({ assignedAgentSlug: undefined }));
     expect(screen.queryByRole('button', { name: 'Open in chat' })).toBeNull();
+  });
+
+  test('a refused Stop request renders safe copy in the real detail and keeps replies writable', async () => {
+    interruptOrchestrationTurn.mockRejectedValueOnce(
+      new ChatHttpError(403, 'insufficient_scope private_diagnostic'),
+    );
+    await renderDetail(baseSession());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Stop the current turn' }),
+    );
+    await screen.findByText("Station didn't accept this message.");
+    const detail = screen.getByTestId('session-detail');
+    expect(detail.textContent).not.toMatch(
+      /insufficient_scope|private_diagnostic|could not confirm/i,
+    );
+    expect(
+      screen.getByRole('textbox', { name: 'Message' }).hasAttribute('disabled'),
+    ).toBe(false);
+    expect(interruptOrchestrationTurn).toHaveBeenCalledTimes(1);
   });
 
   test('the shared Stop interrupts this turn immediately', async () => {

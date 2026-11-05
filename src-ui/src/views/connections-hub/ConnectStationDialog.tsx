@@ -27,6 +27,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { checkHostCompatibility } from '../../lib/compatibilityLoader';
 import type { OpenConnectionsModalDetail } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './ConnectStationDialog.css';
 
 interface Destination {
@@ -344,11 +345,14 @@ export function ConnectStationDialog({
   );
   const failure =
     error ||
-    identify.error?.message ||
+    (identify.error
+      ? describeStationFailure(identify.error).body
+      : undefined) ||
     (!peerAuthorityRefused &&
-      (start.error?.message ||
-        complete.error?.message ||
-        cancel.error?.message));
+      ([start.error, complete.error, cancel.error].some(Boolean)
+        ? describeStationFailure(start.error ?? complete.error ?? cancel.error)
+            .body
+        : undefined));
 
   let failedBrowserOrigin: string | undefined;
   if (identify.isError && !profile.isTauri && identify.variables) {

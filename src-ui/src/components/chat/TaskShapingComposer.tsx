@@ -18,6 +18,7 @@ import {
   type TaskShapingRequest,
 } from '../../lib/task-shaping';
 import { resolveAgentExecution } from '../../utils/execution';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 export function TaskShapingHost() {
   const { apiBase } = useApiBase();
@@ -115,11 +116,7 @@ export function TaskShapingHost() {
           );
       }
     } catch (error) {
-      toastStore.show(
-        error instanceof Error
-          ? error.message
-          : 'The shaping message could not be sent. Try again.',
-      );
+      toastStore.show(describeStationFailure(error).body);
     } finally {
       pending.current = false;
     }

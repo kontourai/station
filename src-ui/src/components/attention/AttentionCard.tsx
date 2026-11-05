@@ -62,6 +62,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { Dialog } from '../Dialog';
@@ -1369,7 +1370,7 @@ function MutationError({ error }: { error: unknown }) {
   if (error == null) return null;
   return (
     <p className="attention-error" role="alert">
-      {error instanceof Error ? error.message : 'Unable to update inbox item.'}
+      {describeStationFailure(error).body}
     </p>
   );
 }

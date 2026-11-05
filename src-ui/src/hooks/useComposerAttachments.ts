@@ -11,6 +11,7 @@ import type {
   FileIntakeResult,
 } from '../lib/conversation-file-intake';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
+import { describeStationFailure } from '../utils/stationFailure';
 
 interface ComposerAttachmentCapabilities {
   images: boolean;
@@ -243,10 +244,7 @@ export function useComposerAttachments(options: {
             !task.controller.signal.aborted &&
             task.requestScope?.isCurrent?.() !== false
           ) {
-            const message =
-              failure instanceof Error
-                ? failure.message
-                : 'Attachment staging failed.';
+            const message = describeStationFailure(failure).body;
             const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );

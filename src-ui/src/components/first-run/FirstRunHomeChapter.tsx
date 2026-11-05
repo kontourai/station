@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * FirstRunHomeChapter — the guided first run, as one chapter with a surface of
  * its own (UX audit RT-02, SHELL-12).
@@ -620,7 +621,7 @@ export function FirstRunHomeChapter({
                     if (generation !== completionGeneration.current) return;
                     setSaveError(
                       error instanceof Error
-                        ? `Station could not save your answers: ${error.message}`
+                        ? `Station could not save your answers: ${describeStationFailure(error).body}`
                         : 'Station could not save your answers.',
                     );
                   } finally {

@@ -30,6 +30,7 @@ import type {
 } from '../lib/outboundQueue';
 import { outboundStationKey, rowBelongsToStation } from '../lib/outboundQueue';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
+import { describeStationFailure } from '../utils/stationFailure';
 import {
   getStreamConnectionState,
   subscribeStreamConnectionState,
@@ -432,10 +433,7 @@ export function useOutboundQueueFlush(
                   )
                     return {
                       kind: 'refused' as const,
-                      reason:
-                        error instanceof Error
-                          ? error.message
-                          : 'Station refused the steer.',
+                      reason: describeStationFailure(error).body,
                     };
                   return { kind: 'unanswered' as const };
                 }
@@ -495,9 +493,7 @@ export function useOutboundQueueFlush(
           const { reportOutboundQueueUnavailable } = await import(
             '../lib/outboundQueueReporting'
           );
-          reportOutboundQueueUnavailable(
-            error instanceof Error ? error.message : String(error),
-          );
+          reportOutboundQueueUnavailable(describeStationFailure(error).body);
         })
         .finally(() => {
           supervisor.flushing = false;
@@ -626,7 +622,7 @@ export function useOutboundQueueFlush(
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
-                error instanceof Error ? error.message : String(error),
+                describeStationFailure(error).body,
               );
             }
           });

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { SettingsToggle } from './feature-toggle';
 import { settingsRow } from './settings-catalog';
 
@@ -56,11 +57,7 @@ export function LanDiscoveryControl() {
         </p>
       )}
       {update.isError && (
-        <p role="alert">
-          {update.error instanceof Error
-            ? update.error.message
-            : 'Discovery setting could not be saved.'}
-        </p>
+        <p role="alert">{describeStationFailure(update.error).body}</p>
       )}
       {query.isError && (
         <Button size="sm" onClick={() => void query.refetch()}>

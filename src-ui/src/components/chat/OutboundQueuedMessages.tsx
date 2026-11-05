@@ -5,6 +5,7 @@ import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
 import { outboxTurnDeliveryState } from '../../utils/messageDeliveryState';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { useDockDeliveryPort } from '../chat-dock/useDockDeliveryPort';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { EditGlyph } from '../icons/Glyph';
@@ -111,7 +112,7 @@ export function OutboundQueuedMessages({
       )
       .catch((error) =>
         onError(
-          `Could not reorder queued message: ${error instanceof Error ? error.message : String(error)}`,
+          `Could not reorder queued message: ${describeStationFailure(error).body}`,
         ),
       );
 
@@ -127,7 +128,7 @@ export function OutboundQueuedMessages({
       setEditing((current) => (current === editing ? null : current));
     } catch (error) {
       onError(
-        `Could not edit the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not edit the durable offline turn: ${describeStationFailure(error).body}`,
       );
     } finally {
       saveInFlight.current = false;
@@ -221,7 +222,7 @@ export function OutboundQueuedMessages({
                       .then(() => setMergePreviewId(null))
                       .catch((error) =>
                         onError(
-                          `Could not merge queued messages: ${error instanceof Error ? error.message : String(error)}`,
+                          `Could not merge queued messages: ${describeStationFailure(error).body}`,
                         ),
                       );
                   }}
@@ -262,7 +263,7 @@ export function OutboundQueuedMessages({
                           error instanceof Error &&
                             error.name === 'NewChatUnavailableError'
                             ? error.message
-                            : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
+                            : `New chat created; old queued turn kept: ${describeStationFailure(error).body}`,
                         ),
                       )
                     }
@@ -325,7 +326,7 @@ export function OutboundQueuedMessages({
                         )
                         .catch((error) =>
                           onError(
-                            `Could not undo queued-message merge: ${error instanceof Error ? error.message : String(error)}`,
+                            `Could not undo queued-message merge: ${describeStationFailure(error).body}`,
                           ),
                         )
                     }
@@ -360,7 +361,7 @@ export function OutboundQueuedMessages({
                       })
                       .catch((error) =>
                         onError(
-                          `Could not discard the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                          `Could not discard the durable offline turn: ${describeStationFailure(error).body}`,
                         ),
                       )
                   }

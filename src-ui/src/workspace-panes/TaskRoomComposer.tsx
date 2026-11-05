@@ -20,6 +20,7 @@ import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
@@ -365,11 +366,7 @@ export function TaskRoomComposer({
           setNotice('');
         } catch (error) {
           if (currentOwner.current === owner)
-            setNotice(
-              error instanceof Error
-                ? error.message
-                : 'Status could not be changed. Draft retained.',
-            );
+            setNotice(describeStationFailure(error).body);
         }
         return;
       }
@@ -534,8 +531,8 @@ export function TaskRoomComposer({
             if (!unconfirmed) setUnconfirmed(undefined);
             setNotice(
               unconfirmed
-                ? `${error.message} The original request is still unconfirmed.`
-                : error.message,
+                ? `${describeStationFailure(error).body} The original request is still unconfirmed.`
+                : describeStationFailure(error).body,
             );
             return;
           }
@@ -598,11 +595,7 @@ export function TaskRoomComposer({
         );
       }
     } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : 'Attachments could not be sent. Draft retained.',
-      );
+      setNotice(describeStationFailure(error).body);
     } finally {
       sendInFlight.current = false;
       setPreparing(false);

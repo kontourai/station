@@ -1,4 +1,5 @@
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import { describeStationFailure } from '../utils/stationFailure';
 import {
   LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS,
   localUiSessionIdentityDeadlineMs,
@@ -324,7 +325,7 @@ export function resolveLocalUiSession(
       }
       return {
         kind: 'access-required',
-        message: error instanceof Error ? error.message : String(error),
+        message: describeStationFailure(error).body,
       };
     }
   })();

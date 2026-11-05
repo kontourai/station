@@ -26,6 +26,7 @@ import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { relativeTimeAgo } from '../../../utils/relativeTime';
+import { describeStationFailure } from '../../../utils/stationFailure';
 import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
 import { useReviewContext } from './ReviewContext';
 import { copyReviewThreadsForAgent } from './review-copy';
@@ -271,9 +272,7 @@ export function ReviewThreadCard({
       await action();
       if (clearDraft) discard();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Review action failed.',
-      );
+      setError(describeStationFailure(cause).body);
     } finally {
       setPending(false);
     }

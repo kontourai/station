@@ -25,6 +25,7 @@ import {
   unsubscribePushNotifications,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { describeStationFailure } from '../utils/stationFailure';
 
 type NotificationPermission = 'default' | 'denied' | 'granted';
 
@@ -205,9 +206,7 @@ export function usePushNotifications({
         setError(
           cause instanceof DevicePairingRequiredError
             ? 'Pair this device first'
-            : cause instanceof Error
-              ? cause.message
-              : 'Push notifications could not be checked.',
+            : describeStationFailure(cause).body,
         );
       }
     };
@@ -238,8 +237,10 @@ export function usePushNotifications({
         const perm = await Notification.requestPermission();
         if (!isCurrent()) return;
         setPermission(perm);
-        if (perm !== 'granted')
-          throw new Error('Notification permission denied');
+        if (perm !== 'granted') {
+          setError('Notification permission denied');
+          return;
+        }
         const key = await fetchVapidPublicKey(apiBase);
         if (!isCurrent()) return;
         publicKeys.current.set(apiBase, key);
@@ -294,9 +295,7 @@ export function usePushNotifications({
         setError(
           cause instanceof DevicePairingRequiredError
             ? 'Pair this device first'
-            : cause instanceof Error
-              ? cause.message
-              : 'Push notifications could not be enabled.',
+            : describeStationFailure(cause).body,
         );
       }
     };
@@ -325,11 +324,7 @@ export function usePushNotifications({
         if (subscription) await removeSubscription(subscription, apiBase);
       } catch (cause) {
         if (version === scopeRef.current.version)
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Push notifications could not be disabled.',
-          );
+          setError(describeStationFailure(cause).body);
       }
     })();
     cleanupRef.current = cleanup;

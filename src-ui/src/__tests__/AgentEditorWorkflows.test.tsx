@@ -81,7 +81,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useDeleteWorkflowMutation: (
     _slug: string,
     options?: {
-      onSuccess?: (d: void, v: string) => void;
+      onSuccess?: (d: undefined, v: string) => void;
       onError?: (e: Error) => void;
     },
   ) => ({
@@ -214,7 +214,7 @@ describe('AgentEditorWorkflows', () => {
     expect(deleteMutate).toHaveBeenCalledWith('triage.ts');
   });
 
-  test('a server refusal surfaces verbatim', () => {
+  test('a server refusal shows safe feedback', () => {
     createSucceeds = false;
     try {
       renderSection();
@@ -223,7 +223,9 @@ describe('AgentEditorWorkflows', () => {
         target: { value: 'draft.ts' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Create workflow' }));
-      expect(screen.getByRole('alert').textContent).toBe('refused');
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Try again in a moment.',
+      );
     } finally {
       createSucceeds = true;
     }

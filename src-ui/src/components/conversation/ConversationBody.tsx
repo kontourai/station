@@ -100,6 +100,7 @@ import {
   transcriptCarriesFailureText,
   transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
@@ -1030,7 +1031,7 @@ function LiveConversationBody({
       <span className="session-history-error__detail">
         {transcript.upgradeRequired
           ? ' Update Station to use bounded managed-session history.'
-          : ` ${transcript.error?.message ?? 'Retry the history request.'}`}
+          : ` ${describeStationFailure(transcript.error, station).body}`}
       </span>
       <button
         type="button"
@@ -1197,7 +1198,7 @@ function LiveConversationBody({
       // (station#2600 review).
       addEphemeralMessage(activeSession.id, {
         role: 'system',
-        content: `[SYSTEM_EVENT] ${error instanceof Error ? error.message : String(error)}`,
+        content: `[SYSTEM_EVENT] ${describeStationFailure(error).body}`,
       });
     },
     [activeSession.id, addEphemeralMessage],
@@ -1816,7 +1817,7 @@ function LiveConversationBody({
                   );
                 } catch (error) {
                   surfaceRecoveryFailure(
-                    `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                    `Could not retry the durable offline turn: ${describeStationFailure(error).body}`,
                   );
                 }
               },

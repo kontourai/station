@@ -20,6 +20,7 @@ import {
   parseBrowserRelayTurnConfiguration,
 } from '../../lib/browserRelayTurnCustody';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
 import { RelaySetupHelp } from './RelaySetupHelp';
 import '../page-layout.css';
@@ -233,9 +234,7 @@ export function BrowserRelayRoutes({
       setApplicationOrigin('');
     } catch (cause) {
       if (!controller.signal.aborted)
-        setError(
-          cause instanceof Error ? cause.message : 'Could not accept route.',
-        );
+        setError(describeStationFailure(cause).body);
       if (savedTurnConfiguration && !routeMetadataSaved)
         await turnCustody?.forget().catch(() => undefined);
     } finally {
@@ -257,9 +256,7 @@ export function BrowserRelayRoutes({
     try {
       await setActiveConnection(id);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Could not reach Station.',
-      );
+      setError(describeStationFailure(cause).body);
     } finally {
       setBusy(false);
     }
@@ -329,11 +326,7 @@ export function BrowserRelayRoutes({
       setConfiguringTurn(null);
     } catch (cause) {
       if (!isMounted.current) return;
-      setTurnError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not update TURN settings.',
-      );
+      setTurnError(describeStationFailure(cause).body);
       // IndexedDB writes are atomic. If the update failed, reconnect the
       // selected route with its previous saved settings when they still exist.
       if (!updated && canReconnect()) {
@@ -362,11 +355,7 @@ export function BrowserRelayRoutes({
       });
       await updateSavedTurn(connection, configuration);
     } catch (cause) {
-      setTurnError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not update TURN settings.',
-      );
+      setTurnError(describeStationFailure(cause).body);
     }
   }
 
@@ -395,9 +384,7 @@ export function BrowserRelayRoutes({
       await new BrowserRoutingGrantCustody().forgetRoute(route);
       removeConnection(id);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Could not forget route.',
-      );
+      setError(describeStationFailure(cause).body);
     } finally {
       setBusy(false);
     }

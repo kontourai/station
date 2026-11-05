@@ -851,7 +851,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     await waitFor(() =>
       expect(onError).toHaveBeenCalledWith(
-        'New chat created; old queued turn kept: storage failed',
+        'New chat created; old queued turn kept: Try again in a moment.',
       ),
     );
   });

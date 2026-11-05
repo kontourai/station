@@ -726,7 +726,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
       queuedMessages: ['first', 'second'],
       queuedMessageFailure: {
-        message: expect.stringContaining('error when mocking a module'),
+        message: 'Try again in a moment.',
       },
     });
   });
@@ -875,7 +875,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       expect.objectContaining({
         id: expect.any(String),
         content: 'refused message',
-        reason: expect.stringMatching(/authored Agent definition/i),
+        reason: 'Try again in a moment.',
         at: expect.any(Number),
       }),
     ]);
@@ -1510,7 +1510,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(kept.unsentMessages ?? []).toEqual([]);
     expect(kept.queuedMessageFailure).toMatchObject({
       code: 'provider_session_start_failed',
-      message: expect.stringContaining("couldn't start"),
+      message: 'Try again in a moment.',
     });
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.dynamicImportSettled();

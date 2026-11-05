@@ -1,3 +1,4 @@
+import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { describe, expect, test } from 'vitest';
 import {
   describeReadFailure,
@@ -12,6 +13,11 @@ import {
  * allowed to show lives here rather than being retyped per view.
  */
 describe('describeReadFailure', () => {
+  test('uses target context for an access refusal without leaking the machine code', () => {
+    expect(
+      describeReadFailure(new ChatHttpError(403, 'insufficient_scope')),
+    ).toBe("Station didn't accept this message.");
+  });
   test('keeps an unknown diagnostic out of user copy', () => {
     expect(describeReadFailure(new Error('skills read failed'))).toBe(
       READ_FAILURE_FALLBACK,

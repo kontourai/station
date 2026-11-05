@@ -1516,7 +1516,7 @@ export function useSendMessage(
           clearStreamingMessage(sessionId);
           addEphemeralMessage(sessionId, {
             role: 'system',
-            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${error instanceof Error ? error.message : String(error)}`,
+            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${describeStationFailure(error).body}`,
           });
           invalidate(['orchestration-sessions']);
           return false;
@@ -1773,10 +1773,7 @@ export function useSendMessage(
             }
             updateChat(sessionId, {
               status: 'error',
-              error:
-                queueError instanceof Error
-                  ? `Send unavailable: ${queueError.message}`
-                  : 'Send unavailable',
+              error: describeStationFailure(queueError, connection).body,
               abortController: undefined,
             });
             return false;
@@ -1830,7 +1827,7 @@ export function useSendMessage(
                 } catch (discardError) {
                   updateChat(sessionId, {
                     status: 'error',
-                    error: `Discard failed: ${discardError instanceof Error ? discardError.message : String(discardError)}`,
+                    error: `Discard failed: ${describeStationFailure(discardError).body}`,
                   });
                 }
               },
@@ -2028,11 +2025,6 @@ export function useSendMessage(
             (message) => message.clientId === resolvedTurnId,
           );
           updateChat(sessionId, {
-            input:
-              !transaction.composed &&
-              latest?.input === transaction.submittedDraft
-                ? ''
-                : latest?.input,
             messages: [
               ...(latest?.messages ?? []).filter(
                 (message) => message.clientId !== resolvedTurnId,
@@ -2262,8 +2254,7 @@ export function useCancelMessage(
         settledResult = result;
         return { kind: 'settled', result };
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error ?? '');
+        const message = describeStationFailure(error).body;
         // The SAME derivation the continuation path uses to separate "this
         // request provably never left the browser" from "no answer, and no
         // way to know." A POST that timed out may already have interrupted

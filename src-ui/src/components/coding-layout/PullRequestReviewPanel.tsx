@@ -27,6 +27,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
@@ -932,7 +933,7 @@ function ReviewOwner({
         <ErrorState
           variant="compact"
           title="Review unavailable"
-          description={review.error.message}
+          description={describeStationFailure(review.error).body}
         />
       ) : !data ? (
         <ErrorState

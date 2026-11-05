@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { SkeletonBlock } from '../../components/state';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './ChildWorkTranscript.css';
 
 /**
@@ -24,7 +25,7 @@ function failureText(error: unknown): string {
     return 'The engine no longer has this transcript.';
   if (error instanceof StationHttpError && error.status === 404)
     return 'No transcript is available for this subagent.';
-  return 'Could not load the transcript.';
+  return describeStationFailure(error).body;
 }
 
 function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {

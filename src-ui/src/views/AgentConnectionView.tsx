@@ -71,6 +71,7 @@ import {
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { formatBytes } from '../utils/formatBytes';
+import { describeStationFailure } from '../utils/stationFailure';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import { EngineAccountOverview } from './EngineAccountOverview';
@@ -273,7 +274,7 @@ export function AgentConnectionView({
       onNavigate({ type: 'connections-engine-edit', id: saved.id });
     },
     onError: (mutationError: Error) => {
-      setError(mutationError.message);
+      setError(describeStationFailure(mutationError).body);
     },
   });
 
@@ -282,7 +283,7 @@ export function AgentConnectionView({
       setError(null);
     },
     onError: (mutationError: Error) => {
-      setError(mutationError.message);
+      setError(describeStationFailure(mutationError).body);
     },
   });
 
@@ -302,7 +303,7 @@ export function AgentConnectionView({
       void refetchRuntimes();
     },
     onError: (mutationError: Error) => {
-      setError(mutationError.message);
+      setError(describeStationFailure(mutationError).body);
       // A failed check changed the engine's readiness too; re-read it so the
       // status beside this message does not keep saying Ready.
       void refetchRuntimes();
@@ -1073,9 +1074,7 @@ export function AgentConnectionView({
                 )}
               {testMutation.error && (
                 <p className="editor-error">
-                  {testMutation.error instanceof Error
-                    ? testMutation.error.message
-                    : String(testMutation.error)}
+                  {describeStationFailure(testMutation.error).body}
                 </p>
               )}
               {error && <p className="editor-error">{error}</p>}
@@ -1280,9 +1279,7 @@ function AppHomeProfileField({
             )}
             {importMutation.error && (
               <p className="editor-error">
-                {importMutation.error instanceof Error
-                  ? importMutation.error.message
-                  : String(importMutation.error)}
+                {describeStationFailure(importMutation.error).body}
               </p>
             )}
           </div>
@@ -1318,9 +1315,7 @@ function AppHomeProfileField({
             )}
             {clearMutation.error && (
               <p className="editor-error">
-                {clearMutation.error instanceof Error
-                  ? clearMutation.error.message
-                  : String(clearMutation.error)}
+                {describeStationFailure(clearMutation.error).body}
               </p>
             )}
           </div>
@@ -1966,5 +1961,5 @@ function CredentialRecoveryErrors({ errors }: { errors: unknown[] }) {
 
 function mutationErrorMessage(error: unknown): string | null {
   if (!error) return null;
-  return error instanceof Error ? error.message : String(error);
+  return describeStationFailure(error).body;
 }

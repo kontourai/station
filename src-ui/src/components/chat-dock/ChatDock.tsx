@@ -1,5 +1,6 @@
 import { chatBelongsToStation } from '../../connections/station-state';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -1139,11 +1140,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }),
       )
       .catch((error: unknown) => {
-        showToast(
-          error instanceof Error
-            ? error.message
-            : 'Could not open event replay for this conversation.',
-        );
+        showToast(describeStationFailure(error).body);
       });
   }, [activeSession, apiBase, showToast]);
   // The occurrence store's key for THIS dock's inventory. Owned here because

@@ -41,6 +41,7 @@ import {
   sessionTitle,
 } from '../utils/sessionDisplay';
 import { isFailedSession, sessionFailureText } from '../utils/sessionFailure';
+import { describeStationFailure } from '../utils/stationFailure';
 import type { OrchestrationEvent } from './orchestration/types';
 
 /** Flow-agents sidecar statuses excluded from the "Project workflows"
@@ -371,10 +372,9 @@ export function useMutableSessionDetailState({
   // Distinguishing the two here, rather than absorbing the failure into a
   // silent empty list, is what "reliably show why" actually requires.
   const attentionCheckFailed = attentionQuery.isError;
-  const attentionErrorMessage =
-    attentionQuery.error instanceof Error
-      ? attentionQuery.error.message
-      : 'The attention check failed to load — this session may still need a response.';
+  const attentionErrorMessage = describeStationFailure(
+    attentionQuery.error,
+  ).body;
   // A `needs_input` session's own generic compose box must never flash
   // visible before the attention query resolves and `hideGenericCompose`
   // flips it back off — `session.lifecycleState` is available synchronously

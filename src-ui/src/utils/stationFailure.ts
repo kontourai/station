@@ -63,13 +63,31 @@ export function describeStationFailure(
         ? 'target'
         : 'unknown';
   const station = connection?.stationName ?? 'Station';
-  if (remoteStatus === 401 || remoteStatus === 403) {
+  const message = value?.message ?? (typeof error === 'string' ? error : '');
+  const localCopy = [
+    'Attachments must complete supervised staging before Send.',
+    'Choose the file again before sending this attachment.',
+  ].find((copy) => copy === message);
+  const domain = code ? translateChatError({ code, message }) : undefined;
+  if (code === 'approval_delivery_unconfirmed')
+    return {
+      title: 'Decision not confirmed',
+      body: 'Check this request before trying again.',
+      retryable: false,
+      authority,
+      delivery: 'uncertain',
+      recovery: 'check',
+    };
+  if (
+    (remoteStatus === 401 || remoteStatus === 403) &&
+    (!domain || domain.title === 'Error')
+  ) {
     const body =
       remoteStatus === 401
         ? `Reconnect to ${target || connection?.routeKind !== 'relay' ? station : 'the source Station'}.`
         : `${target || connection?.routeKind !== 'relay' ? station : 'The source Station'} didn't accept this message.`;
     return {
-      title: 'Not sent',
+      title: refused ? 'Not sent' : 'Access unavailable',
       body,
       disclosureRaw: true,
       retryable: false,
@@ -104,14 +122,17 @@ export function describeStationFailure(
       delivery: 'uncertain',
       recovery: 'check',
     };
-  const translated = translateChatError({
-    status: remoteStatus,
-    code,
-    message: value?.message ?? '',
-  });
+  const translated =
+    domain ??
+    translateChatError({
+      // Only legacy chat responses use prose-based provider classification.
+      // A settings/read diagnostic mentioning credentials is not model evidence.
+      message: value && 'stationEnvelope' in value ? message : '',
+    });
   const reasons = envelopeReasons(details);
-  const safe =
-    status === 400 && reasons.length > 0
+  const safe = localCopy
+    ? { title: 'Request not ready', body: localCopy, retryable: false }
+    : connection?.routeKind !== 'relay' && status === 400 && reasons.length > 0
       ? { title: 'Not sent', body: reasons.join(' '), retryable: false }
       : translated.title === 'Error'
         ? {
