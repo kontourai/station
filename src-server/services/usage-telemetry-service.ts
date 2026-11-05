@@ -85,6 +85,9 @@ interface UsageTelemetryServiceOptions {
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
   telemetrySecretResolver?: TelemetrySecretResolver;
+  dailyUsage?: ConstructorParameters<
+    typeof TelemetryPublisherService
+  >[0]['usage'];
   dailyFacts?: ConstructorParameters<
     typeof TelemetryPublisherService
   >[0]['facts'];
@@ -213,6 +216,7 @@ export class UsageTelemetryService {
         configuration: () => this.resolvedConfiguration(),
         operatorEndpoint: () => this.endpoint,
         facts: options.dailyFacts,
+        usage: options.dailyUsage,
         fetch: this.fetchImpl,
       });
     if (publisher === 'operator' && options.pluginTelemetry)

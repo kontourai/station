@@ -2,15 +2,23 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { cacheInclusivePromptTokens } from '@kontourai/station-shared/usage-fold';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
+import { OllamaLLMProvider } from '../../providers/llm/ollama-provider.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { SessionTranscriptReads } from '../../services/orchestration/session-transcript-reads.js';
+import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { UsageAggregator } from '../usage-aggregator.js';
 import type { UsageStats } from '../usage-aggregator-state.js';
 
@@ -90,8 +98,8 @@ function fixture() {
         .resolveEventContent(store.listEvents(threadId))
         .map((row) => row.payload),
     readUsageRevision: (threadId) => store.readUsageRevision(threadId),
-    listUsageEventPayloads: (threadId) =>
-      store.listUsageEventPayloads(threadId),
+    listUsageEventPayloads: (threadId, clock) =>
+      store.listUsageEventPayloads(threadId, clock),
     listUsageReceiptEvents: (options) => store.listUsageReceiptEvents(options),
     listUsageCoverageEvents: (options) =>
       store.listUsageCoverageEvents(options),
@@ -188,7 +196,18 @@ function fixture() {
     const body = await readJson<{ data: UsageStats }>(response);
     return body.data;
   }
-  return { home, store, aggregator, app, start, turn, current, event };
+  return {
+    home,
+    store,
+    aggregator,
+    app,
+    start,
+    turn,
+    current,
+    event,
+    reads,
+    authority,
+  };
 }
 
 test('agent cost fields preserve reported and estimated zero separately from missing cost', async () => {
@@ -909,3 +928,405 @@ test('opaque model and agent keys remain data and arbitrary saved provider metad
     f.store.close();
   }
 });
+
+test('canonical engine usage reaches the next-day Lite ping without cumulative, replay or cross-day double counting', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-01T12:00:00Z');
+  const f = fixture();
+  const orchestration = new OrchestrationService({
+    eventStore: f.store,
+    eventBus: new EventBus(),
+    adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+    logger: { debug() {}, warn() {} },
+  });
+  const bodies: unknown[] = [];
+  const options = {
+    homeDir: f.home,
+    appConfig: {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      productTelemetryEndpoint: 'https://receiver.test/lite',
+    },
+    version: '1.2.3',
+    env: {},
+    logger: { warn: () => {} },
+    dailyUsage: (day: string) =>
+      orchestration.listDailyUsage(day, INTERNAL_SESSION_READ_SCOPE),
+    fetch: (async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response('{}');
+    }) as typeof fetch,
+  };
+  let telemetry = new UsageTelemetryService(options);
+  try {
+    await telemetry.stationStarted();
+    f.start('cumulative', 'codex');
+    f.turn('cumulative', 'codex', 'baseline', day1, {
+      promptTokens: 1_000_000,
+      completionTokens: 100_000,
+    });
+    vi.setSystemTime('2026-08-02T12:00:00Z');
+    await telemetry.track('engine_turn', {
+      engine: 'codex',
+      outcome: 'completed',
+    });
+    // Provider clock skew cannot pull a locally observed receipt into day 1.
+    f.turn('cumulative', 'codex', 'next', day1, {
+      promptTokens: 1_050_000,
+      completionTokens: 110_000,
+    });
+    const replay = f.store
+      .listEvents('cumulative')
+      .find(
+        (row) => row.method === 'token-usage.updated' && row.turnId === 'next',
+      )!;
+    expect(() => f.store.appendEvent(replay.payload)).toThrow(
+      'UNIQUE constraint',
+    );
+    f.turn('cumulative', 'codex', 'restatement', day1, {
+      promptTokens: 1_050_000,
+      completionTokens: 110_000,
+    });
+    f.start('per-turn', 'claude');
+    f.turn('per-turn', 'claude', 'first', day1, {
+      promptTokens: 4_000,
+      completionTokens: 3_000,
+      cacheReadTokens: 10_000_000,
+    });
+    f.turn('per-turn', 'claude', 'second', day1, {
+      promptTokens: 2_000,
+      completionTokens: 1_000,
+    });
+    f.store.appendEvent({
+      eventId: 'child-summary',
+      provider: 'claude',
+      threadId: 'per-turn',
+      createdAt: day1,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: 'per-turn',
+        childId: 'child',
+        status: 'completed',
+        usage: { totalTokens: 10_000_000 },
+      },
+    });
+    f.start('zero', 'ollama');
+    f.turn('zero', 'ollama', 'zero-turn', day1, {
+      promptTokens: 0,
+      completionTokens: 0,
+    });
+    // Drive a real adapter turn from its reported finish chunk into durable accounting.
+    const llm = new OllamaLLMProvider({ baseUrl: 'http://ollama.test' });
+    vi.spyOn(llm, 'listModelCatalog').mockResolvedValue({
+      source: 'live',
+      models: [{ id: 'model-a', name: 'Model A' }],
+    });
+    vi.spyOn(llm, 'createStream').mockImplementation(async function* () {
+      yield {
+        type: 'finish',
+        finishReason: 'stop',
+        usage: {
+          inputTokens: 10_000,
+          outputTokens: 1,
+          raw: { prompt_tokens: 10_000, completion_tokens: 1 },
+        },
+      };
+    });
+    const adapter = new OllamaAdapter('http://ollama.test', { llm });
+    const adapterEvents = adapter.streamEvents();
+    const adapterSession = await adapter.startSession({
+      provider: 'ollama',
+      threadId: 'adapter-turn',
+      modelId: 'model-a',
+      metadata: { userId: 'reader' },
+    });
+    f.store.upsertSession(adapterSession);
+    try {
+      await adapter.sendTurn({
+        threadId: adapterSession.threadId,
+        input: 'Report throughput',
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+    for await (const event of adapterEvents) f.store.appendEvent(event);
+    await telemetry.flushDaily();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      engine_tokens_today: [{ engine: 'codex', bucket: '1M-10M' }],
+    });
+    await telemetry.shutdown();
+    telemetry = new UsageTelemetryService(options);
+    await telemetry.stationStarted();
+    vi.setSystemTime('2026-08-03T12:00:00Z');
+    f.turn('cumulative', 'codex', 'today', day1, {
+      promptTokens: 5_000_000,
+      completionTokens: 1_000_000,
+    });
+    await telemetry.flushDaily();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toMatchObject({
+      engine_tokens_today: [
+        { engine: 'codex', bucket: '10k-100k' },
+        { engine: 'claude', bucket: '10M+' },
+        { engine: 'ollama', bucket: '10k-100k' },
+      ],
+    });
+    await telemetry.flushDaily();
+    expect(bodies).toHaveLength(2);
+  } finally {
+    await telemetry.shutdown();
+    await orchestration.shutdown();
+    f.store.close();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  }
+});
+
+test('daily Lite usage excludes followed Claude, Codex and OpenCode histories while retaining Station-run sessions', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  const service = new OrchestrationService({
+    eventStore: f.store,
+    eventBus: new EventBus(),
+    adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+    logger: { debug() {}, warn() {} },
+  });
+  try {
+    for (const provider of ['claude', 'codex', 'opencode'] as const) {
+      const thread = `followed-${provider}`;
+      f.start(thread, provider, day1);
+      f.store.upsertSession({
+        ...f.store.readSessionByThread(thread)!,
+        controlMode: 'read-only-attached',
+      });
+      f.turn(thread, provider, 'imported-history', day1, {
+        promptTokens: provider === 'codex' ? 42_000_000 : 500_000,
+      });
+    }
+    f.start('station-run', 'claude', day1);
+    f.turn('station-run', 'claude', 'owned-turn', day1, { promptTokens: 123 });
+    const usage = service.listDailyUsage(
+      '2026-08-02',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(usage.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0)).toBe(
+      123,
+    );
+  } finally {
+    await service.shutdown();
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('a cumulative decrease leaves earlier dates unallocated and counts only later daily increases', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('reset', 'codex');
+    for (const [index, promptTokens] of [500_000, 20_000, 40_000].entries())
+      f.turn('reset', 'codex', `reset-${index}`, day1, { promptTokens });
+    expect(
+      f.reads
+        .listDailyUsage('2026-08-02', f.authority)
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(20_000);
+  } finally {
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('daily cumulative throughput excludes outside jumps on each Station resume and reattach', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-01T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('resumed-codex', 'codex');
+    f.turn('resumed-codex', 'codex', 'station-day-one', day1, {
+      promptTokens: 100_000,
+    });
+    vi.setSystemTime('2026-08-02T12:00:00Z');
+    f.start('resumed-codex', 'codex', day2, 'model-a', {
+      nativeResumeIdentity: 'matched',
+    });
+    f.turn('resumed-codex', 'codex', 'first-after-terminal', day2, {
+      promptTokens: 5_150_000,
+    });
+    f.turn('resumed-codex', 'codex', 'station-day-two', day2, {
+      promptTokens: 5_200_000,
+    });
+    f.start('resumed-codex', 'codex', day2);
+    f.turn('resumed-codex', 'codex', 'first-after-reattach', day2, {
+      promptTokens: 9_200_000,
+      completionTokens: 40_000,
+    });
+    f.turn('resumed-codex', 'codex', 'station-after-reattach', day2, {
+      promptTokens: 9_220_000,
+      completionTokens: 45_000,
+    });
+    const inputFor = (day: string) =>
+      f.reads
+        .listDailyUsage(day, f.authority)
+        .reduce((total, row) => total + (row.inputTokens ?? 0), 0);
+    expect(inputFor('2026-08-01')).toBe(100_000);
+    expect(inputFor('2026-08-02')).toBe(70_000);
+    expect(
+      f.reads
+        .listDailyUsage('2026-08-02', f.authority)
+        .reduce((total, row) => total + (row.outputTokens ?? 0), 0),
+    ).toBe(5_000);
+    // A non-daily caller still receives canonical lifetime accounting.
+    expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
+      9_220_000,
+    );
+  } finally {
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test('first observed native resume baselines cumulative components while per-turn engines keep their first turn', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-08-02T12:00:00Z');
+  const f = fixture();
+  try {
+    f.start('initial-resume', 'codex', day2, 'model-a', {
+      nativeResumeIdentity: 'matched',
+    });
+    f.turn('initial-resume', 'codex', 'inherited', day2, {
+      promptTokens: 42_000_000,
+      cacheReadTokens: 20_000_000,
+    });
+    f.turn('initial-resume', 'codex', 'after-inherited', day2, {
+      promptTokens: 42_050_000,
+      cacheReadTokens: 20_020_000,
+    });
+    f.start('per-turn', 'claude', day2, 'model-a', {}, true);
+    f.turn('per-turn', 'claude', 'claude-first', day2, { promptTokens: 1_000 });
+    const daily = f.reads.listDailyUsage('2026-08-02', f.authority);
+    expect(
+      daily
+        .filter((row) => row.provider === 'codex')
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(50_000);
+    expect(
+      daily
+        .filter((row) => row.provider === 'codex')
+        .reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0),
+    ).toBe(20_000);
+    expect(
+      daily
+        .filter((row) => row.provider === 'claude')
+        .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+    ).toBe(1_000);
+  } finally {
+    f.store.close();
+    vi.useRealTimers();
+  }
+});
+
+test.each([
+  {
+    name: 'native adoption with both adapter lifecycle events',
+    started: {
+      continuation: 'native-fork',
+      continuationBoundaryTurnId: 'outside-turn',
+      continuationBoundaryObservedEventId: 'outside-observation',
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+    configured: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+  },
+  {
+    name: 'source-affinity start without a fork marker',
+    started: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+    configured: {},
+  },
+  {
+    name: 'source-affinity configuration without a start marker',
+    started: {},
+    configured: {
+      usageAvailability: 'unavailable',
+      usageUnavailableReason:
+        'inherited-cumulative-counter-without-durable-baseline',
+    },
+  },
+  {
+    name: 'native fork without availability metadata',
+    started: { continuation: 'native-fork' },
+    configured: {},
+  },
+])(
+  'daily Codex usage baselines inherited counters for $name',
+  ({ started, configured }) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(day2);
+    const f = fixture();
+    const threadId = 'adopted-codex';
+    try {
+      f.store.upsertSession({
+        provider: 'codex',
+        threadId,
+        status: 'ready',
+        controlMode: 'station-owned',
+        model: 'model-a',
+        createdAt: day2,
+        updatedAt: day2,
+      });
+      f.store.appendEvent({
+        ...f.event(threadId, 'codex', day2),
+        eventId: 'adoption-start',
+        method: 'session.started',
+        sessionId: threadId,
+        initialState: 'created',
+        metadata: {
+          userId: 'reader',
+          codexThreadId: 'native-child',
+          ...started,
+        },
+      });
+      f.store.appendEvent({
+        ...f.event(threadId, 'codex', day2),
+        eventId: 'adoption-configured',
+        method: 'session.configured',
+        sessionId: threadId,
+        model: 'model-a',
+        metadata: { codexThreadId: 'native-child', ...configured },
+      });
+      const dailyInput = () =>
+        f.reads
+          .listDailyUsage('2026-08-02', f.authority)
+          .reduce((sum, row) => sum + (row.inputTokens ?? 0), 0);
+      f.turn(threadId, 'codex', 'first-station-report', day2, {
+        promptTokens: 42_050_000,
+      });
+      expect(dailyInput()).toBe(0);
+      f.turn(threadId, 'codex', 'later-station-report', day2, {
+        promptTokens: 42_100_000,
+      });
+      expect(dailyInput()).toBe(50_000);
+      expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
+        42_100_000,
+      );
+    } finally {
+      f.store.close();
+      vi.useRealTimers();
+    }
+  },
+);

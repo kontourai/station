@@ -443,7 +443,16 @@ separate acceptance work.
 
 `POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
-`parseStationDailyPing`. It requires no installation credential. Unknown fields,
+`parseStationDailyPing`. It requires no installation credential. The optional
+`engine_tokens_today` array admits old builds that omit it and up to eight
+unique positive-throughput engine buckets from new builds. These count only
+conversations run in Station; outside CLI use and followed transcripts are
+excluded. Senders omit this field when empty or unavailable. **Upgrade Lite
+receivers before senders emit nonempty `engine_tokens_today`**: older strict
+receivers reject the new key. Empty-field omission keeps idle pings compatible,
+but there is no receiver-support negotiation. Token buckets are
+counted in exact operator marginals (`engine:bucket`); they remain outside the
+public fixed domain, so public releases and their sensitivity are unchanged. Unknown fields,
 unknown nested fields, excessive or duplicate array entries, unlisted registry
 IDs or catalog-policy versions, invalid enum/count values, and a channel the
 source does not list are refused with 400. Bodies, including streaming

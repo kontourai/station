@@ -40,6 +40,11 @@ function createMockConfigLoader(
   const loader = {
     getProjectHomeDir: vi.fn(() => projectHome),
     loadAppConfig: vi.fn().mockImplementation(async () => ({ ...config })),
+    // With no managed policy installed the stored config IS the effective
+    // one, which is what the real loader returns from both (#4517).
+    loadStoredAppConfig: vi
+      .fn()
+      .mockImplementation(async () => loader.loadAppConfig()),
     updateAppConfig: vi.fn().mockImplementation(async (updates: any) => {
       config = { ...config, ...updates };
       return config;

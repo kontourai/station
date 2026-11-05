@@ -98,6 +98,7 @@ async function send(address: string, rare = false) {
       body: JSON.stringify({
         ...dailyPing(),
         surfaces_today: ['web', 'cli'],
+        engine_tokens_today: [{ engine: 'codex', bucket: '100k-1M' }],
         safe_mode_entered: 127,
         public_plugins_enabled: rare ? ['rare.plugin'] : ['public.plugin'],
       }),
@@ -166,6 +167,16 @@ test('padding probe always releases rare values, including zero, on identical fi
         r.dimension === 'public_plugins_enabled' && r.value === 'rare.plugin',
     ),
   ).toMatchObject({ pings: 9, clients: 9 });
+  expect(
+    truths.find(
+      (row) =>
+        row.dimension === 'engine_tokens_today' &&
+        row.value === 'codex:100k-1M',
+    ),
+  ).toMatchObject({ pings: 9, clients: 9 });
+  expect(before.some((cell) => cell.dimension === 'engine_tokens_today')).toBe(
+    false,
+  );
   expect(
     before.some(
       (c) =>

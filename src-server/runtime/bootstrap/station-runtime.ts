@@ -150,6 +150,7 @@ import {
 } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
+import { installManagedAppSettings } from '../../domain/managed-settings.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
@@ -1554,6 +1555,9 @@ export class StationRuntime {
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
       this.managedPolicy = options.managedPolicy ?? null;
+      // #4517: before any config is loaded, so every reader (this runtime's
+      // loader and the ones plugin routes build) sees the managed values.
+      installManagedAppSettings(this.managedPolicy);
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -3638,6 +3642,11 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
+        dailyUsage: (day) =>
+          this.orchestrationService.listDailyUsage(
+            day,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
         dailyFacts: async () => {
           const homeDir = this.configLoader.getProjectHomeDir();
           const pluginsDir = `${homeDir}/plugins`;

@@ -73,7 +73,7 @@ architecture, surfaces used today, first-active-week/month flags, installation-a
 and paired-device buckets, known engines, public distribution ID or none/custom,
 at most 20 public plugin IDs, a private-plugin count bucket, branding/home/layout
 customization booleans, abandoned setup step, per-engine connection-failure
-buckets, and safe-mode/crash-disable counts capped at 65,535. Arrays are bounded,
+and token-throughput buckets, and safe-mode/crash-disable counts capped at 65,535. Arrays are bounded,
 unique sets. Only catalog-verified public IDs/versions are accepted; private
 names and custom build labels cannot be laundered through a string-shaped ID.
 The ping carries a random event UUID for retry deduplication, never an installation
@@ -81,6 +81,59 @@ ID or cross-day key. First-run and last-active day/week/month dates stay local.
 Flags permit WAU/MAU estimates by counting first-active flags without identifiers;
 exactness requires complete daily delivery and deduplication and cannot be promised
 over network loss, uninstall/reinstall, or local-state resets.
+
+Daily throughput decision (2026-11-04): token throughput covers only
+**conversations run in Station**. Outside CLI use is excluded, including all
+read-only-attached/followed Claude Code, Codex and OpenCode transcripts. Import
+observation times and first-seen outside cumulative totals cannot establish
+Station-run daily throughput.
+
+The positive-only buckets are `1-10k` (1–10,000), `10k-100k`
+(10,001–100,000), `100k-1M` (100,001–1,000,000), `1M-10M`
+(1,000,001–10,000,000), and `10M+` (above 10,000,000). Powers of ten
+withhold precise consumption. The shared canonical allocation uses Station's
+observation UTC day through the completed day's cutoff. The declared
+`cacheInclusivePromptTokens` rule adds cache reads/writes for disjoint providers
+such as Claude and Bedrock, then output is added. Other providers retain
+reported input without adding cache again. Codex's cache inclusivity remains
+`unverified` in the shared declaration; this change does not certify that
+provider or make billing-equivalent comparisons. Reasoning is included only
+where already present in reported output, never as an additional component.
+Child-work summaries are not added to parent usage.
+
+Cumulative resets or corrections can undercount daily tokens. The canonical
+fold cannot distinguish a reset from a downward correction, so it discards the
+thread's earlier dated figures and leaves the lower baseline unallocated.
+For example, 500,000 then 20,000 then 40,000 input tokens on one day contributes
+only the later 20,000 increase. Keeping the earlier 500,000 would overcount a
+correction; this reset/correction rule is unchanged.
+
+Daily cumulative-engine usage withholds the whole first reported figure of each
+token component after every repeated session start, including a fresh start
+after a lost native session. An initially recorded native resume
+establishes the same baseline. Conversations taken over from an outside Codex
+CLI session currently contribute no tokens: the Codex adapter withholds every
+usage update for sessions that run from the outside CLI's home. The fold recognizes inherited-counter metadata
+on either session start or configuration, including native forks. None of the
+baseline jump is assigned a day; only later component increases count. For
+example, 100k in Station, then 5M outside, then a resumed 5.15M report and a
+5.20M report contributes 50k after the resume. Withholding can undercount the
+whole first turn when the engine reports once per turn, or part of it when it
+reports more often. Withholding after a repeated fresh start is an undercount,
+never an outside-usage leak.
+Sparse components establish their baselines when first reported. The policy
+is opt-in for the Lite daily projection; lifetime accounting keeps its existing
+canonical totals. Undated usage, undeclared scopes and
+hosted home-wide totals are also omitted. A failed accounting read omits only
+the throughput field. The history read runs outside the daily-state mutation
+lock. These are retained observations, not complete billing totals.
+
+The optional wire field preserves old-sender admission. Senders omit it when
+empty or unavailable. **Upgrade Lite receivers before senders emit nonempty
+`engine_tokens_today`**: older strict receivers reject the new key. Empty-field
+omission preserves idle pings but does not negotiate receiver support. The
+changed catalog re-shows the Lite notice. Token buckets remain in exact
+operator marginals, outside the fixed public domain and its sensitivity bound.
 
 Full keeps the classified startup, recovery, and engine-turn events and defines
 pane opened, plugin installed/removed, setting category changed, client connected,

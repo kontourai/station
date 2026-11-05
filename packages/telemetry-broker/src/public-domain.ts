@@ -2,6 +2,7 @@ import { STATION_DAILY_FIELDS } from '@kontourai/station-contracts/product-telem
 
 // Seven scalar counts plus at most 5 surfaces, 8 engines and 20 plugins = 40.
 // These profile/adoption fields exclude counters, friction and customization.
+// Token-throughput buckets remain operator-only, like connection failures.
 export const PUBLIC_FIELDS = [
   'channel',
   'version',
