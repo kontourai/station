@@ -1,6 +1,8 @@
 import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { KitDefaultStoreAdapter } from '@kontourai/corpus-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
@@ -24,6 +26,69 @@ const current = () => {};
 afterEach(() => vi.unstubAllEnvs());
 
 describe('private memory root', () => {
+  test('refuses a preview if a Corpus writer changes the target during lookup', async () => {
+    const home = makeTempDir('station-memory-preview-race-');
+    vi.stubEnv('STATION_HOME', home);
+    const persistence = new FileStorageAdapter(home);
+    const store = new KnowledgeStoreProvider(persistence);
+    const manager = new MemoryRootManager(store, persistence, home, () => true);
+    const root = await manager.ensureRoot(owner, current);
+    const proposalId = await manager.propose(
+      owner,
+      root,
+      current,
+      {
+        type: 'raw',
+        title: 'Before',
+        body: 'body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'source',
+    );
+    const recordId = await manager.applyCreate(
+      owner,
+      root,
+      current,
+      proposalId,
+    );
+    const writer = new KitDefaultStoreAdapter({
+      storeRoot: root.storeRoot,
+      coordinationDirectory: join(
+        home,
+        'coordination',
+        'knowledge-file-transactions',
+      ),
+      lock: acquireFileMutationLockAsync,
+      coordinationIdentity: () => () => {},
+    });
+    const originalGet = KitDefaultStoreAdapter.prototype.get;
+    let reads = 0;
+    const spy = vi
+      .spyOn(KitDefaultStoreAdapter.prototype, 'get')
+      .mockImplementation(async function (
+        this: KitDefaultStoreAdapter,
+        target,
+      ) {
+        const result = await originalGet.call(this, target);
+        if (++reads === 2)
+          await writer.update(
+            recordId,
+            { title: 'After' },
+            { agent: 'writer' },
+          );
+        return result;
+      });
+    try {
+      await expect(
+        manager.previewErasureTarget(owner, root, current, 'record', recordId),
+      ).rejects.toThrow('Private memory changed during preview.');
+    } finally {
+      spy.mockRestore();
+    }
+  });
   test('previews Corpus effects for an applied proposal and dependent record', async () => {
     const home = makeTempDir('station-memory-impact-');
     vi.stubEnv('STATION_HOME', home);
