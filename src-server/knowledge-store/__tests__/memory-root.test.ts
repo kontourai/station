@@ -6,6 +6,7 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 import { MEMORY_ADAPTER_ID, MemoryRootManager } from '../memory-root.js';
@@ -26,6 +27,78 @@ const current = () => {};
 afterEach(() => vi.unstubAllEnvs());
 
 describe('private memory root', () => {
+  test('refuses index publication when a Station write changes the captured Corpus revision', async () => {
+    const home = makeTempDir('station-memory-rebuild-fence-');
+    vi.stubEnv('STATION_HOME', home);
+    const persistence = new FileStorageAdapter(home);
+    const store = new KnowledgeStoreProvider(persistence);
+    const manager = new MemoryRootManager(store, persistence, home, () => true);
+    const root = await manager.ensureRoot(owner, current);
+    const evidence = { agent: 'source', proposal: 'evidence' };
+    const candidate = {
+      type: 'raw' as const,
+      title: 'Original',
+      body: 'Private body',
+      category: 'memory',
+      provenance: { agent: 'source' },
+    };
+    const first = await manager.propose(
+      owner,
+      root,
+      current,
+      candidate,
+      evidence,
+      'agent:source',
+      'first',
+    );
+    await manager.applyCreate(owner, root, current, first);
+    const second = await manager.propose(
+      owner,
+      root,
+      current,
+      { ...candidate, title: 'Second' },
+      evidence,
+      'agent:source',
+      'second',
+    );
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const index = new SqliteVecIndexProvider({
+      dbPath: join(home, 'index.db'),
+    });
+    try {
+      const build = index.rebuildRoot(root.id, {
+        store,
+        embedder: {
+          id: 'test',
+          displayName: 'test',
+          dimensions: () => 3,
+          embed: async (texts) => {
+            entered();
+            await paused;
+            return texts.map(() => [1, 0, 0]);
+          },
+        },
+        withRootRevision: manager.rebuildFence(owner, root, current),
+      });
+      await started;
+      await manager.applyCreate(owner, root, current, second);
+      release();
+      await expect(build).rejects.toThrow(
+        'Memory changed during index rebuild.',
+      );
+      expect((await index.stats(root.id)).chunks).toBe(0);
+    } finally {
+      release();
+      index.close();
+    }
+  });
   test('refuses a preview if a Corpus writer changes the target during lookup', async () => {
     const home = makeTempDir('station-memory-preview-race-');
     vi.stubEnv('STATION_HOME', home);

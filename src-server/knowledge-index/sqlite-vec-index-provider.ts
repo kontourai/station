@@ -524,7 +524,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       return records;
     };
     const records = deps.withRootRevision
-      ? await deps.withRootRevision(readRecords)
+      ? await deps.withRootRevision(readRecords, 'snapshot')
       : await readRecords(await deps.store.adapterFor(rootId));
 
     const embeddingIdentity = knowledgeEmbeddingIdentity(deps.embedder);
@@ -551,7 +551,8 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       });
     }
 
-    if (deps.withRootRevision) await deps.withRootRevision(async () => {});
+    if (deps.withRootRevision)
+      await deps.withRootRevision(async () => {}, 'pre-embed');
     const vectors =
       pending.length > 0
         ? await deps.embedder.embed(pending.map((p) => p.text))
@@ -577,7 +578,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
 
       this.setLastRebuiltAt(rootId);
     };
-    if (deps.withRootRevision) await deps.withRootRevision(publish);
+    if (deps.withRootRevision) await deps.withRootRevision(publish, 'publish');
     else await publish();
 
     const durationMs = performance.now() - start;

@@ -8,6 +8,7 @@ import {
   KitDefaultStoreAdapter,
   type ProposeEvidence,
 } from '@kontourai/corpus-store';
+import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import type {
   KitRecord,
   KnowledgeStoreAdapter,
@@ -323,6 +324,43 @@ export class MemoryRootManager {
     return this.withOwner(authority, root, assertCurrent, (adapter) =>
       adapter.listProposals(),
     );
+  }
+
+  /** Fence Station-mediated writes while the index snapshots and publishes. */
+  rebuildFence(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+  ): NonNullable<
+    Parameters<KnowledgeIndexProvider['rebuildRoot']>[1]['withRootRevision']
+  > {
+    let captured = false;
+    let anchor: string | undefined;
+    let revision: string | undefined;
+    return (operation, phase) =>
+      this.withOwner(authority, root, assertCurrent, async (adapter) => {
+        const readAdapter = reader(adapter, () => this.corpus(root.storeRoot));
+        if (phase === 'snapshot') {
+          if (captured)
+            throw new Error('Memory snapshot was already captured.');
+          const records = await operation(readAdapter);
+          if (!Array.isArray(records))
+            throw new Error('Memory snapshot is invalid.');
+          anchor = records[0]?.id;
+          if (anchor)
+            revision = (await adapter.previewPurge([anchor])).revision;
+          captured = true;
+          return records;
+        }
+        if (!captured || (phase !== 'pre-embed' && phase !== 'publish'))
+          throw new Error('Memory snapshot is unavailable.');
+        if (
+          anchor &&
+          (await adapter.previewPurge([anchor])).revision !== revision
+        )
+          throw new Error('Memory changed during index rebuild.');
+        return operation(readAdapter);
+      });
   }
 
   async previewErasureTarget(

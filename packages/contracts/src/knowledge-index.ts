@@ -122,6 +122,7 @@ export interface KnowledgeIndexProvider {
       /** If supplied, the provider must use this for record reads, immediately before embedding, and while publishing index rows. */
       withRootRevision?: <T>(
         operation: (adapter: KnowledgeStoreAdapter) => Promise<T>,
+        phase?: 'snapshot' | 'pre-embed' | 'publish',
       ) => Promise<T>;
     },
   ): Promise<{ records: number; chunks: number }>;

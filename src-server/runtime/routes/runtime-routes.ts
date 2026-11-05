@@ -10989,6 +10989,7 @@ export function configureRuntimeRoutes(
       Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>
     >[],
     response: Response,
+    validateDelivery?: () => Promise<boolean>,
   ) =>
     guardProjectResponse(response, async () => {
       const currentRoots = await context.knowledgeStoreProvider.listRoots();
@@ -11002,7 +11003,7 @@ export function configureRuntimeRoutes(
         )
           return false;
       }
-      return true;
+      return validateDelivery ? validateDelivery() : true;
     });
   context.app.route(
     '/api/knowledge',
@@ -11084,6 +11085,20 @@ export function configureRuntimeRoutes(
       mayBuildSessionBackedRoot,
       mayBuildPrivateRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'edit'),
+      memoryRebuildFence: (request, root) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        if (!authority || !isOperatorAtHostNotAgent(request)) return undefined;
+        return memoryRootManager.rebuildFence(authority, root, () => {
+          if (
+            !isOperatorAtHostNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new Error('Private memory authority ended.');
+        });
+      },
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
       mayReadHitRoot: (request, root) =>
