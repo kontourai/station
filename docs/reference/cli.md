@@ -783,8 +783,8 @@ each managed setting value against the settings schema (`schemas/app.schema.json
 bundled into the CLI), so a composite value such as `approvalGuardian` with a
 field of the wrong type fails `check` exactly as it would refuse startup. It
 exits `0` and prints the organization, the support link,
-one line per managed setting saying whether it is locked or a default, and
-its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+one line per managed setting saying whether it is locked or a default, the
+number of limits it sets, and its `sha256:` fingerprint. It exits `1` and names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
 invalid JSON, repeats a key name, or does not match the schema. It does not
 check root ownership; the server checks that only at the installed path.
