@@ -749,7 +749,9 @@ export async function captureConnectionState(
       );
       mkdirSync(join(evidence, 'attachments'), { recursive: true });
       copyFileSync(testInfo.outputPath(name), join(evidence, name));
-      const attachment = testInfo.attachments.find((item) => item.name === name);
+      const attachment = testInfo.attachments.find(
+        (item) => item.name === name,
+      );
       if (!attachment?.path)
         throw new Error(`Playwright did not retain the ${name} attachment`);
       copyFileSync(attachment.path, join(evidence, 'attachments', name));
