@@ -36,6 +36,10 @@ import {
   readPeerChatMessages,
 } from '../lib/peer-chat';
 import {
+  type RetainedChatTranscript,
+  readRetainedChatTranscript,
+} from '../lib/retained-chat-transcript';
+import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
 } from '../lib/skill-experience-draft';
@@ -385,6 +389,7 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  retainedTranscript?: RetainedChatTranscript;
   stationConnectionUnavailable?: boolean;
   stationBinding?: ChatStationBindingV1;
   stationBindingInvalid?: boolean;
@@ -861,6 +866,7 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  retainedTranscript?: unknown;
   stationBinding?: unknown;
   stationBindingInvalid?: boolean;
   stationBindingLegacy?: unknown;
@@ -1120,6 +1126,11 @@ export function hydrateActiveChats(
       session.peerChatTranscript ??
       (session.peerChat !== undefined ? candidate.messages : undefined);
     chats[session.sessionId] = {
+      retainedTranscript: readRetainedChatTranscript(
+        session.retainedTranscript,
+        stationBinding,
+        session.conversationId,
+      ),
       ...(peerChatTranscript !== undefined
         ? {
             messages: readPeerChatMessages(peerChatTranscript),
@@ -1451,6 +1462,11 @@ export function serializeActiveChats(
         : {}),
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
+      retainedTranscript: readRetainedChatTranscript(
+        chat.retainedTranscript,
+        chat.stationBinding,
+        chat.conversationId,
+      ),
       agentSlug: chat.agentSlug!,
       stationBinding: chat.stationBinding ?? chat.stationBindingLegacy,
       stationBindingLegacy: chat.stationBindingLegacy,
@@ -1696,6 +1712,7 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'retainedTranscript' in nextUpdates ||
     ('input' in nextUpdates &&
       Boolean(
         chat.stationBinding?.affinity.kind !== 'host' &&

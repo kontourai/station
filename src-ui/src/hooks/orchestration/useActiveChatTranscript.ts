@@ -23,8 +23,11 @@ import {
 } from 'react';
 import { withoutRepeatedRestartNotice } from '../../components/chat/message-bubble/visibleContent';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useChatStationConnection } from '../../connections/use-chat-station-connection';
+import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { retainChatTranscript } from '../../lib/retained-chat-transcript';
 import type { ChatMessage, ChatSession } from '../../types';
 import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
 import { serverTurnLive } from '../../utils/conversation-activity';
@@ -1021,6 +1024,54 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,
+  ]);
+
+  const retainingTurnInFlight = isTurnInFlight(session);
+  useEffect(() => {
+    if (
+      !connection ||
+      connection.binding.affinity.kind === 'host' ||
+      contextTarget?.record ||
+      !enabled ||
+      replay ||
+      !window.settled ||
+      window.loading ||
+      window.error ||
+      serverWindow.catchingUp ||
+      liveGap ||
+      retainingTurnInFlight ||
+      !session.conversationId ||
+      !messages.length
+    )
+      return;
+    const latest = activeChatsStore.getSnapshot()[session.id];
+    if (
+      !latest ||
+      latest.conversationId !== session.conversationId ||
+      !chatBelongsToStation(latest, connection)
+    )
+      return;
+    const copy = retainChatTranscript(
+      connection.binding,
+      session.conversationId,
+      messages,
+    );
+    if (JSON.stringify(copy) !== JSON.stringify(latest.retainedTranscript))
+      activeChatsStore.updateChat(session.id, { retainedTranscript: copy });
+  }, [
+    connection,
+    contextTarget?.record,
+    enabled,
+    replay,
+    window.settled,
+    window.loading,
+    window.error,
+    serverWindow.catchingUp,
+    liveGap,
+    retainingTurnInFlight,
+    session.id,
+    session.conversationId,
+    messages,
   ]);
 
   return {

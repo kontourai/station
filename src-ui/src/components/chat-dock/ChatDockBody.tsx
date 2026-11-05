@@ -7,7 +7,9 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { readRetainedChatTranscript } from '../../lib/retained-chat-transcript';
 import { Button } from '../Button';
+import { LazyMarkdown } from '../chat/LazyMarkdown';
 import {
   ConversationBody,
   type ConversationBodyProps,
@@ -51,11 +53,17 @@ export function ChatDockBody({
         : { apiBase, requestScope },
     [connection, apiBase, requestScope],
   );
+  const retained = readRetainedChatTranscript(
+    props.activeSession.retainedTranscript,
+    props.activeSession.stationBinding,
+    props.activeSession.conversationId,
+  );
   if (resolving) return <SkeletonList label="Connecting to Station" />;
   if (unavailable)
     return (
-      <div>
+      <div className="chat-messages">
         <ErrorState
+          variant="compact"
           title="Station unavailable"
           description={
             connections?.remoteEnabled === false
@@ -72,9 +80,28 @@ export function ChatDockBody({
             )
           }
         />
-        {props.activeSession.messages.map((message) => (
-          <p key={message.id}>{message.content}</p>
+        {retained?.messages.map((message, index) => (
+          <div
+            key={`${index}:${message.role}`}
+            className="chat-message-content"
+          >
+            <LazyMarkdown>{message.content}</LazyMarkdown>
+          </div>
         ))}
+        {props.activeSession.messages
+          .filter(
+            (message) =>
+              !retained ||
+              (message.role === 'user' &&
+                message.clientId &&
+                !retained.messages.some(
+                  (row) =>
+                    row.role === 'user' && row.content === message.content,
+                )),
+          )
+          .map((message) => (
+            <p key={message.id}>{message.content}</p>
+          ))}
         {props.activeSession.input && <p>{props.activeSession.input}</p>}
       </div>
     );

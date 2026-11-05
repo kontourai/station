@@ -366,6 +366,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  retainedTranscript?: import('./lib/retained-chat-transcript').RetainedChatTranscript;
   stationConnectionUnavailable?: boolean;
   stationBinding?: ChatStationBindingV1;
   stationBindingInvalid?: boolean;
