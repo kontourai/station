@@ -299,6 +299,10 @@ test('requires confirmation of the plan and renders the returned receipt', async
   const receipt = await screen.findByRole('region', {
     name: 'Erasure receipt',
   });
+  expect(within(receipt).getByText('Records erased')).toBeTruthy();
+  expect(within(receipt).getByText('Dependent records erased')).toBeTruthy();
+  expect(within(receipt).getByText('Proposals rejected')).toBeTruthy();
+  expect(within(receipt).getByText('Proposals cleared')).toBeTruthy();
   expect(within(receipt).getByText('record-4')).toBeTruthy();
   expect(within(receipt).queryByText('record-2')).toBeNull();
 });

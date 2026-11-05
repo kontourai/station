@@ -112,17 +112,28 @@ function impactSummary(data: z.infer<typeof responseSchema>['data']): string {
 
 function RecordImpact({
   impact,
+  completed = false,
 }: {
   impact: z.infer<typeof recordImpactSchema>;
+  completed?: boolean;
 }) {
   const groups = [
-    ['Records to erase', impact.purged],
-    ['Dependent records to erase', impact.cascaded],
+    [completed ? 'Records erased' : 'Records to erase', impact.purged],
+    [
+      completed ? 'Dependent records erased' : 'Dependent records to erase',
+      impact.cascaded,
+    ],
     ['Records to review', impact.survivors],
     ['Records that link to erased records', impact.referrers],
     ['Already erased records', impact.alreadyPurged],
-    ['Proposals to reject', impact.proposalsRejected],
-    ['Proposals to clear', impact.proposalsScrubbed],
+    [
+      completed ? 'Proposals rejected' : 'Proposals to reject',
+      impact.proposalsRejected,
+    ],
+    [
+      completed ? 'Proposals cleared' : 'Proposals to clear',
+      impact.proposalsScrubbed,
+    ],
     ['Proposals blocked from approval', impact.proposalsBlocked],
   ] as const;
   return (
@@ -457,11 +468,11 @@ export function MemoryErasurePreview() {
             <>
               <p>Proposal erased: {receipt.value.result.proposalId}</p>
               {receipt.value.result.record && (
-                <RecordImpact impact={receipt.value.result.record} />
+                <RecordImpact impact={receipt.value.result.record} completed />
               )}
             </>
           ) : (
-            <RecordImpact impact={receipt.value.result} />
+            <RecordImpact impact={receipt.value.result} completed />
           )}
         </section>
       )}
