@@ -841,9 +841,7 @@ export function useAgentsViewModel({
       const slug = (data as { slug?: string })?.slug;
       if (slug) urlSelect(slug);
     } catch (err: any) {
-      setEnableError(
-        err instanceof Error ? userFacingErrorMessage(err) : String(err),
-      );
+      setEnableError(userFacingErrorMessage(err));
     }
   }
 

@@ -24,8 +24,10 @@ Stop uses `components/conversation/ConversationStopControl.tsx`, approvals use
 `utils/stationFailure.ts` (composed with the provider-domain translator).
 
 Register adapters and required owner consumption in
-`scripts/conversation-surfaces.json`. Planned P2 history/Inbox owners are named
-there; activate them when implemented. Run `npm run gate:for -- <paths>` and
+`scripts/conversation-surfaces.json`, including its failure publishers. History and
+Inbox owners are active. Exact fingerprint contracts describe host-shell/domain
+adapters and diagnostic disclosures; they do not exempt new conversation code.
+Run `npm run gate:for -- <paths>` and
 `node scripts/conversation-boundary-gate.mjs`. Its G1–G5 scanner only proves
 structural rules: keep real consumer/action and two-Station isolation tests.
 The syntax/file baseline may only shrink with `--update`; never add an exception
@@ -34,6 +36,14 @@ for a new surface or move inherited debt to another filename.
 For performance or test cleanup, use the [journey profiling and mutation route](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). Measure actual mounted behavior before changing memoization or adding caches. Prefer canonical identity keys, bounded collections, and batched I/O; preserve authority/freshness when sharing a snapshot. DOM/source-string assertions do not establish CSS layout, hit testing, or writability.
 
 For compact value pickers, reuse `.choice-trigger`, `.choice-caret`, and `ArrowDownGlyph`; keep picker behavior in its existing owner. Use `Button` for standard actions and `Dialog` for standard dialog chrome. `ResponsiveDialogSurface` supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Validate shared-style changes in each affected surface, including narrow widths and both themes.
+
+| Conversation surface | Shared owner |
+| --- | --- |
+| Dock, Activity, attached session, coding tab | `components/conversation/ConversationBody` |
+| Reply and exact needs-input draft | `components/chat/ChatInputArea`; exact adapters retain request identity |
+| Owner, member and guest Task history | `components/conversation/SharedTaskHistoryList` |
+| Desktop and mobile Inbox | `components/chat-dock/useInboxPanelController` |
+| Request failure and durable error publisher | `utils/stationFailure`; provider policy stays in `utils/chatErrorTranslation` |
 
 ## UI definition of done
 

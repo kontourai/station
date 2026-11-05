@@ -10,6 +10,7 @@ const panelState = vi.hoisted(() => ({
     orchestrationSessionStarted: true,
   } as Record<string, unknown>,
   updateChat: vi.fn(),
+  body: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -20,7 +21,10 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
-  useProjectQuery: () => ({ data: undefined, isLoading: false }),
+  useProjectQuery: (slug: string) => ({
+    data: { slug, workingDirectory: `C:/work/${slug}` },
+    isLoading: false,
+  }),
   // #2144 slice 6: the panel reads the Station-scope default approval
   // mode through `useConfig`. No stored value is the neutral answer here.
   useConfigQuery: () => ({ data: undefined, dataUpdatedAt: 0 }),
@@ -59,11 +63,31 @@ vi.mock('../components/chat/ChatMessageList', () => ({
   ChatMessageList: () => <div data-testid="acp-messages" />,
 }));
 
+// This adapter test observes the shared-body input; its real rendering is covered by ownerWiring.
+vi.mock('../components/conversation/ConversationBody', () => ({
+  ConversationBody: ({
+    activeSession,
+    workingDirectory,
+  }: {
+    activeSession: import('../types').ChatSession;
+    workingDirectory?: string | null;
+  }) => {
+    panelState.body({ activeSession, workingDirectory });
+    return (
+      <>
+        <div data-testid="acp-messages" />
+        <div data-testid="acp-composer" />
+      </>
+    );
+  },
+}));
+
 import { ACPChatPanel } from '../components/acp-connections/ACPChatPanel';
 
 describe('ACPChatPanel workspace identity', () => {
   beforeEach(() => {
     panelState.updateChat.mockReset();
+    panelState.body.mockReset();
     sessionStorage.clear();
   });
 
@@ -98,5 +122,32 @@ describe('ACPChatPanel workspace identity', () => {
         projectName: undefined,
       });
     });
+  });
+
+  test('the shared body keeps file mentions in the restored conversation Project', () => {
+    panelState.chat = {
+      status: 'idle',
+      conversationId: 'stored-conversation',
+      orchestrationSessionStarted: true,
+      projectSlug: 'stored-project',
+      requestedModel: null,
+    };
+    render(
+      <ACPChatPanel
+        projectSlug="different-panel"
+        agentSlug="codex"
+        tabId="tab"
+      />,
+    );
+    expect(panelState.body).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        workingDirectory: 'C:/work/stored-project',
+        activeSession: expect.objectContaining({
+          projectSlug: 'stored-project',
+          requestedModel: null,
+        }),
+      }),
+    );
+    expect(panelState.updateChat).not.toHaveBeenCalled();
   });
 });

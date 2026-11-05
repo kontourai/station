@@ -231,6 +231,9 @@ function manifestErrors(files, manifest, asts) {
   }
   for (const file of manifest.modules)
     if (!files.has(file)) errors.push(`missing registered module: ${file}`);
+  for (const surface of manifest.failureSurfaces ?? [])
+    if (!files.has(surface.file) || !surface.reason)
+      errors.push(`invalid failure surface: ${surface.file}`);
   for (const contract of manifest.contracts) {
     if (
       !files.has(contract.file) ||
@@ -508,6 +511,13 @@ export function scanConversationSources(
         return node.properties.some(
           (prop) => ts.isPropertyAssignment(prop) && rawText(prop.initializer),
         );
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.getText(ast) === 'String'
+      )
+        return node.arguments.some(
+          (argument) => errorObject(argument) || rawText(argument),
+        );
       return false; // A translator call is an explicit dataflow boundary.
     }
     for (let pass = 0; pass < 4; pass++)
@@ -587,7 +597,7 @@ export function scanConversationSources(
           add('G2', node, 'transcript polling');
         if (
           !owns(file, 'failure') &&
-          (/^(?:set\w*(?:Error|Failure|Notice)|setError|showToast|toast)$/.test(
+          (/^(?:set\w*(?:Error|Failure|Notice)|setError|showToast|toast|updateChat|addEphemeralMessage|reportOutboundQueueUnavailable)$/.test(
             name,
           ) ||
             (['error', 'warning'].includes(name) &&
@@ -729,9 +739,13 @@ export function scanConversationSources(
       if (concern && concern.file !== file)
         add('G2', ast, `duplicate owner ${name}`);
     }
-    for (const surface of manifest.surfaces.filter(
-      (surface) => surface.file === file,
-    ))
+    for (const surface of [
+      ...manifest.surfaces,
+      ...(manifest.failureSurfaces ?? []).map((surface) => ({
+        ...surface,
+        requires: ['failure'],
+      })),
+    ].filter((surface) => surface.file === file))
       for (const concern of surface.requires) {
         const owner = manifest.owners.find((item) => item.concern === concern);
         if (!owner) continue;

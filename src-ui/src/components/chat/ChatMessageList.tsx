@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { conversationAccessFor } from '../../connections/station-connection';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
@@ -592,15 +593,10 @@ function ChatMessageListComponent({
         !target?.record &&
         (!target?.station ||
           target.station.capabilities.childInstruction.state === 'allowed') &&
-        activeSession.conversationOpenState?.callerAccess?.continue === true,
+        conversationAccessFor(activeSession, target?.station)?.continue ===
+          true,
     }),
-    [
-      submitForm,
-      formScope,
-      target,
-      activeSession.replay,
-      activeSession.conversationOpenState?.callerAccess?.continue,
-    ],
+    [submitForm, formScope, target, activeSession.replay, activeSession],
   );
 
   const messages = useMemo(() => {
@@ -1675,10 +1671,14 @@ function ChatMessageListComponent({
       }).length,
     [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
-  const callerContinue =
-    activeSession.conversationOpenState?.callerAccess?.continue;
-  const callerStartChat =
-    activeSession.conversationOpenState?.callerAccess?.startChat;
+  const callerContinue = conversationAccessFor(
+    activeSession,
+    target?.station,
+  )?.continue;
+  const callerStartChat = conversationAccessFor(
+    activeSession,
+    target?.station,
+  )?.startChat;
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
@@ -2315,7 +2315,9 @@ function LiveChatMessageList(props: ChatMessageListProps) {
       {...props}
       sendMessage={sendMessage}
       apiBase={target?.apiBase ?? host.apiBase}
-      agents={agents}
+      agents={
+        target?.station ? (props.recordAgents ?? EMPTY_RECORD_AGENTS) : agents
+      }
     />
   );
 }

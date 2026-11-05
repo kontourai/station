@@ -34,6 +34,7 @@ import {
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback, useRef } from 'react';
 import type { StationConnection } from '../connections/station-connection';
+import { conversationAccessFor } from '../connections/station-connection';
 import {
   chatBelongsToStation,
   outboundStationIdentity,
@@ -1922,8 +1923,10 @@ export function useSendMessage(
         // whether this caller may start one (`callerAccess.startChat`).
         const failureHint = chatErrorHintFor(
           translated,
-          activeChatsStore.getSnapshot()[sessionId]?.conversationOpenState
-            ?.callerAccess,
+          conversationAccessFor(
+            activeChatsStore.getSnapshot()[sessionId],
+            connection,
+          ),
         );
         clearEphemeralMessages(sessionId);
         const failureMessage = {

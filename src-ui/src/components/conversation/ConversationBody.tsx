@@ -29,6 +29,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { conversationAccessFor } from '../../connections/station-connection';
 import { outboundStationIdentity } from '../../connections/station-state';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -93,6 +94,7 @@ import type {
   ModelProviderOption,
   SelectableModel,
 } from '../../utils/modelCapabilities';
+import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { accountableHumanFromUser } from '../../utils/ownerAttribution';
 import {
   sessionFailureNote,
@@ -149,6 +151,7 @@ import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import { ConversationComposer } from './ConversationComposer';
 import { useConversationConnection } from './ConversationConnectionContext';
+import { ConversationStopControl } from './ConversationStopControl';
 import {
   RecordConversationBody,
   type RecordConversationBodyProps,
@@ -284,6 +287,7 @@ const LOADING_LONG_MESSAGE =
   'This conversation is taking longer to load. Waiting for Station.';
 
 export interface ConversationBodyProps {
+  owner?: OwnerAttribution | null;
   activeSession: ChatSession;
   workingDirectory?: string | null;
   /**
@@ -558,6 +562,7 @@ function LiveConversationBody({
   modelsLoading = false,
   chatInput,
   onComposerEnabledChange,
+  owner,
   secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -672,7 +677,7 @@ function LiveConversationBody({
   // means unknown, and unknown shows. The answer is as of the last open read:
   // a scope changed mid-session shows on the next one, and until then the
   // server's own refusal still stands.
-  const callerAccess = activeSession.conversationOpenState?.callerAccess;
+  const callerAccess = conversationAccessFor(activeSession, station);
   const callerMayContinue = callerAccess?.continue !== false;
   const callerMayStartChat = callerAccess?.startChat !== false;
   const onNewChat = callerMayStartChat ? onNewChatProp : undefined;
@@ -1949,6 +1954,7 @@ function LiveConversationBody({
           pending={CHAT_MESSAGE_LIST_PENDING}
           componentProps={{
             activeSession: renderedSession,
+            recordAgents: agents,
             suppressStreamingRow: transcript.openTurnProjected,
             fontSize: chatFontSize,
             layoutHeight: dockHeight,
@@ -1982,6 +1988,7 @@ function LiveConversationBody({
                   activeSession.conversationId ?? activeSession.id,
                 ) ?? observationUnavailable),
             accountableHuman,
+            owner,
             onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,
             onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
@@ -2764,14 +2771,12 @@ function LiveConversationBody({
               }
             />
             {'. '}
-            <button
-              type="button"
-              onClick={() => void chatInput.handleCancel()}
-              disabled={!!activeSession.stopPending}
-              style={BANNER_LINK_BUTTON_STYLE}
+            <ConversationStopControl
+              onCancel={chatInput.handleCancel}
+              stopPending={!!activeSession.stopPending}
             >
               Stop this turn
-            </button>
+            </ConversationStopControl>
           </div>
         )}
       {activeSession.replay?.mode === 'timeline' ? (

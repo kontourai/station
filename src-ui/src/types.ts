@@ -452,7 +452,8 @@ export interface ChatSession {
   executionAgentId?: string;
   executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
-  requestedModel?: string;
+  /** Null explicitly resets the picker override; see ChatUIState.requestedModel. */
+  requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
   defaultModel?: string;

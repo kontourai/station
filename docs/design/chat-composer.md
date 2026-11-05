@@ -307,6 +307,18 @@ the request URL, content and authority; unsupported trust choices stay unavailab
 Full access, arbitrary folders, remote mentions, offline copies/replay, personal
 defaults and local skill/workspace integrations are unavailable on relayed chats.
 
+Dock, Activity, attached records and coding tabs use the same conversation body.
+Attached records retain their read-only access and explicit Continue action.
+Owner, member and guest Task histories share record rendering and pagination;
+publication removal still clears a member's readable records. Desktop and mobile
+Inbox share search, activation currency, snooze, dismissal and Undo.
+
+Request failures use the owning Station's shared translator. Source and target
+access failures name the appropriate Station; provider repair hints keep their
+existing access restrictions. Unknown codes and parser text stay out of normal
+copy. Exact input requests use the common reply editor with their original request
+reference; an older unbound request directs the reader to its session.
+
 A definite refusal appears inside the ordinary not-sent user bubble with Retry
 and Edit, a short target-aware reason and closed Details. An uncertain send keeps
 its key and offers **Check delivery**; it is never automatically replayed remotely.

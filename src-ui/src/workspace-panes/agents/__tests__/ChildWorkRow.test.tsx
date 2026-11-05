@@ -47,6 +47,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: () => ({
     mutate: interruptMutate,
+    mutateAsync: interruptMutate,
     isPending: false,
     isSuccess: false,
     isError: false,
@@ -102,6 +103,7 @@ beforeEach(() => {
     .mockReturnValue({ data: undefined });
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
+    mutateAsync: stopMutate,
     isPending: false,
     isSuccess: false,
     isError: false,
@@ -122,6 +124,27 @@ test('an unreported start and unreported usage render absent, not as zero', () =
   // Only the kind: no elapsed (no start was reported) and no usage clause.
   expect(meta).toBe('Subagent');
   expect(container.textContent).not.toMatch(/0 tokens|0:00|tool use/);
+});
+
+test('a failed provider Stop is translated once by the shared control', async () => {
+  const stop = vi
+    .fn()
+    .mockRejectedValue(new Error('private_stop_machine_failure'));
+  useStopProviderTaskMutation.mockReturnValue({
+    mutateAsync: stop,
+    isPending: false,
+    isSuccess: false,
+    isError: true,
+  });
+  mount(row({}, { stop: 'provider-task-stop' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe('Try again in a moment.');
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(document.body.textContent).not.toContain(
+    'private_stop_machine_failure',
+  );
+  expect(stop).toHaveBeenCalledWith({ threadId: 'exec-1', taskId: 'task-1' });
 });
 
 test('reported values print — including a reported zero', () => {
@@ -443,6 +466,7 @@ test('#2486: Stop says it also ends the parent turn only when the row model says
 test('#2486 review: a no-active-task response resets the row instead of leaving it stuck on "Stopping…", with an honest note — engine-generic, not Codex-specific copy', () => {
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
+    mutateAsync: stopMutate,
     // A mutation that resolved successfully — react-query's own shape for
     // "the call finished, without error" — but the ENGINE-neutral
     // `ProviderTaskStopResult` it resolved to says there was nothing to

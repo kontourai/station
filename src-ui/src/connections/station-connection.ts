@@ -234,3 +234,28 @@ export function stationConnectionRuntimeKey(
 ): string {
   return JSON.stringify([targetApiBase, authorityKey, generation]);
 }
+
+/** Translate an open response once, narrowing it by the owning connection ceiling. */
+export function conversationAccessFor(
+  session:
+    | {
+        conversationOpenState?: {
+          callerAccess?: { continue: boolean; startChat: boolean };
+        };
+      }
+    | undefined,
+  connection?: StationConnection,
+) {
+  const access = session?.conversationOpenState?.callerAccess;
+  if (!access && !connection) return undefined;
+  return {
+    continue:
+      connection && connection.capabilities.continue.state !== 'allowed'
+        ? false
+        : access?.continue,
+    startChat:
+      connection && connection.capabilities.startChat.state !== 'allowed'
+        ? false
+        : access?.startChat,
+  };
+}

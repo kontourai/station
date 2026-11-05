@@ -1239,6 +1239,16 @@ automatically. See [Scheduler identity and recovery](https://github.com/kontoura
 
 ## When Something Goes Wrong
 
+An access refusal names the Station to reconnect to or says it did not accept the
+message. Your draft stays editable. **Check delivery** is for an unanswered send;
+a refusal does not mean delivery is uncertain. Unknown technical errors use a
+short recovery message, with diagnostics in Details where available.
+
+The Activity reader and coding tabs use the same reply controls as the dock.
+Shared Task history keeps the records already loaded when an earlier page fails;
+use **Retry** to read that page again. Inbox search, snooze, dismissal and Undo
+work across its desktop and mobile layouts.
+
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →
 Diagnostics.

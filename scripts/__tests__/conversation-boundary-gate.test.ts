@@ -180,6 +180,10 @@ describe('conversation boundaries: known-bad catches', () => {
     `read().catch(problem => showToast({message: problem.message}));`,
     `try {read()} catch(err) {setFailure(err.code)}`,
     `try {read()} catch(err) {const detail = err.message; setError(detail || 'Failed')}`,
+    `try {read()} catch(error) {setError(String(error))}`,
+    `try {read()} catch(error) {updateChat(id,{error:error.message})}`,
+    `try {read()} catch(error) {addEphemeralMessage(id,{content:error.message})}`,
+    `try {read()} catch(error) {reportOutboundQueueUnavailable(error.message)}`,
   ])('G3 catches visible raw failure flow: %s', (source) =>
     expect(rules(source)).toContain('G3'),
   );
@@ -251,6 +255,35 @@ describe('conversation boundaries: known-bad catches', () => {
 });
 
 describe('conversation boundaries: harmless controls and ratchet', () => {
+  test('the migration has no inherited conversation baseline rows', () => {
+    const baseline = JSON.parse(
+      readFileSync('scripts/conversation-boundary-baseline.json', 'utf8'),
+    );
+    expect(baseline.exceptions).toEqual([]);
+  });
+  test('a registered error publisher must actually consume the shared failure owner', () => {
+    const manifest = {
+      ...fixtureManifest(),
+      failureSurfaces: [{ file: surface, reason: 'Visible request failure' }],
+    };
+    const extra = {
+      'src-ui/src/shared/failure.ts':
+        'export function describeStationFailure(){return {body:"safe"}}',
+    };
+    expect(
+      scan('export const View=()=> <p>Failed</p>', extra, manifest).sites.some(
+        (site) => site.syntax === 'adopt failure',
+      ),
+    ).toBe(true);
+    expect(
+      scan(
+        `import {describeStationFailure} from '../shared/failure'; export const View=()=> <p>{describeStationFailure(error).body}</p>`,
+        extra,
+        manifest,
+      ).sites,
+    ).toEqual([]);
+  });
+
   test.each([
     `const record = {message:'insufficient_scope'}; const View = () => <p>{record.message}</p>`,
     `try {read()} catch(error) { console.error(error.message, error.code); }`,

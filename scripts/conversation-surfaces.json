@@ -195,8 +195,8 @@
     },
     {
       "file": "src-ui/src/views/task-workspace/TaskSupervisionPanel.tsx",
-      "requires": ["stop"],
-      "reason": "P2.2 whole-Task supervision adapter."
+      "requires": [],
+      "reason": "Task supervision schedules future wakes; cancellation is not interruption of a running conversation."
     },
     {
       "file": "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
@@ -258,7 +258,7 @@
       "file": "src-ui/src/components/conversation/ConversationBody.tsx",
       "rule": "G1",
       "symbols": ["useAgents"],
-      "reason": "Transitional host catalog fallback only when no Station exists; resolved targets use useAgentsQuery with scoped readTarget. P2.6 removes transitional callers."
+      "reason": "Explicit host catalog fallback only without a Station lease; resolved conversation catalogs come from the target and are passed to the transcript."
     },
     {
       "file": "src-ui/src/components/chat-dock/DockStartComposer.tsx",
@@ -383,6 +383,769 @@
       "rule": "G2",
       "symbols": ["respondToRequest"],
       "reason": "Shared exact-request answer preserves the inspected event and captured authority; the inspection owner retains its uncertainty latch."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useAgents"],
+      "fingerprints": ["11197e6de9c1b1f756f5", "11165bb14189ab6ab359"],
+      "reason": "Coding-tab host composition: seeds a host chat and binds its explicit host scope, Project and attribution before mounting the shared body."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useApiBase"],
+      "fingerprints": ["9217febc83055d1c7ce1", "87f34b0432601f054fd2"],
+      "reason": "Coding-tab host composition: seeds a host chat and binds its explicit host scope, Project and attribution before mounting the shared body."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Coding-tab host composition: seeds a host chat and binds its explicit host scope, Project and attribution before mounting the shared body."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useProject"],
+      "fingerprints": ["26fc7a1083fa43a03803", "fea89ec68e6b4ad265f8"],
+      "reason": "Coding-tab host composition: seeds a host chat and binds its explicit host scope, Project and attribution before mounting the shared body."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useActiveStationName"],
+      "fingerprints": ["113ea89515b2b41a8db5", "65caf903fce06da0798b"],
+      "reason": "Coding-tab host composition: seeds a host chat and binds its explicit host scope, Project and attribution before mounting the shared body."
+    },
+    {
+      "file": "src-ui/src/components/attention/AttentionCard.tsx",
+      "rule": "G1",
+      "symbols": ["useApiBase"],
+      "fingerprints": ["9217febc83055d1c7ce1", "87f34b0432601f054fd2"],
+      "reason": "Host attention inbox/domain adapter; exact remote answers retain the source authority and peer request reference."
+    },
+    {
+      "file": "src-ui/src/components/attention/AttentionCard.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Host attention inbox/domain adapter; exact remote answers retain the source authority and peer request reference."
+    },
+    {
+      "file": "src-ui/src/components/attention/AttentionCard.tsx",
+      "rule": "G2",
+      "symbols": ["reply textarea"],
+      "fingerprints": ["7931e959df3b34a98f2b", "1b52859d635b556604df"],
+      "reason": "Exact peer input question and required denial-reason form; shared answering owns the decision. These fields are not generic conversation replies."
+    },
+    {
+      "file": "src-ui/src/components/attention/ExactRequestInline.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Host attention adapter captures the immutable scope passed to shared exact-request answering."
+    },
+    {
+      "file": "src-ui/src/components/attention/NeedsInputReply.tsx",
+      "rule": "G2",
+      "symbols": ["sendExecutionMessage"],
+      "fingerprints": ["0d5a4623c4b068d9f47b"],
+      "reason": "Exact expectedInputRequest send adapter; captures the original scope and operation identity before the common composer can submit."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatMessageList.tsx",
+      "rule": "G1",
+      "symbols": ["useAgents"],
+      "fingerprints": ["11197e6de9c1b1f756f5", "11165bb14189ab6ab359"],
+      "reason": "Legacy host-shell fallback only; a Station-bound body supplies explicit target base and catalog."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatMessageList.tsx",
+      "rule": "G1",
+      "symbols": ["useApiBase"],
+      "fingerprints": ["9217febc83055d1c7ce1", "87f34b0432601f054fd2"],
+      "reason": "Legacy host-shell fallback only; a Station-bound body supplies explicit target base and catalog."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Child instruction protocol captures the original host scope and exact child/turn identity; it is not a receiver chat resolver."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
+      "rule": "G2",
+      "symbols": ["reply textarea"],
+      "fingerprints": ["95d7a2f166192d455d6d"],
+      "reason": "Exact child/turn instruction form retains its protocol binding and shared delivery owner; not a general conversation composer."
+    },
+    {
+      "file": "src-ui/src/components/chat/InputRequestRequest.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Host exact-request composition; shared request control receives the captured scope."
+    },
+    {
+      "file": "src-ui/src/components/chat/MessageBubble.tsx",
+      "rule": "G4",
+      "symbols": ["callerAccess"],
+      "fingerprints": ["2a77ea879f7fe14db8f5"],
+      "reason": "Forwarded hint restrictions, unchanged, to MessageContent and the shared domain translator. This metadata grants no operation."
+    },
+    {
+      "file": "src-ui/src/components/chat/TaskProposalCard.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["de6f1a833cf79caea921"],
+      "reason": "Typed task-document/revision capacity refusal uses the server-owned capacity sentence; unknown failures use fixed copy."
+    },
+    {
+      "file": "src-ui/src/components/conversation/ConversationBody.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["04fbfa585645107d915c", "f347101a16d263e3bae2"],
+      "reason": "Raw diagnostic props to the existing closed Details and redacted troubleshoot flow; human card copy is translated."
+    },
+    {
+      "file": "src-ui/src/components/desktop-update/DesktopUpdateRestartDialog.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["3e5201e487d84f6f6368"],
+      "reason": "TechnicalDetails payload and prop; the visible summary is a fixed install-failure sentence."
+    },
+    {
+      "file": "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["df1db7e7a3809923ac6b"],
+      "reason": "Diagnostic error text is inside a closed Details disclosure beside the classified summary."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
+      "rule": "G4",
+      "symbols": ["sessionUnanswerable"],
+      "fingerprints": ["082b6dbfe5305be10539"],
+      "reason": "Consumes already-resolved unanswerable state from the record controller; no local wire permission classifier."
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/approvalHandlers.ts",
+      "rule": "G2",
+      "symbols": ["answerOrchestrationRequest"],
+      "fingerprints": ["fb9845a770e9700cd301"],
+      "reason": "Approval-toast transport adapter retains exact request proof and owning Station; UI controls share the answer owner."
+    },
+    {
+      "file": "src-ui/src/hooks/useChatInput.ts",
+      "rule": "G1",
+      "symbols": ["useAgent"],
+      "fingerprints": ["f1dcf0890acc7e1ce627", "761004fb3c1687136b8e"],
+      "reason": "Host-only Agent fallback. Bound Station inputs never read this value for the peer binding."
+    },
+    {
+      "file": "src-ui/src/hooks/useConversationInbox.ts",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Host Inbox composition and host-lane controls; remote entries use their explicit Station binding."
+    },
+    {
+      "file": "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["de4dfb5d3549a454ac44"],
+      "reason": "Connection error code inside the existing Connection troubleshooting Details disclosure."
+    },
+    {
+      "file": "src-ui/src/views/CredentialProfileDeviceCodeLogin.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["598f5cc0d95f81e6ddee"],
+      "reason": "DeviceCodeLoginRefusal carries locally authored protocol refusal copy; unknown outcomes keep the sign-in recovery warning."
+    },
+    {
+      "file": "src-ui/src/views/SessionsView.tsx",
+      "rule": "G1",
+      "symbols": ["useAgents"],
+      "fingerprints": ["11197e6de9c1b1f756f5", "11165bb14189ab6ab359"],
+      "reason": "Host Activity inventory shell; individual conversations mount the resolved record boundary."
+    },
+    {
+      "file": "src-ui/src/views/SettingsView.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["2362670af424d71dc0fa"],
+      "reason": "DeviceSettingsImportVersionError is local file-version validation, not arbitrary network copy."
+    },
+    {
+      "file": "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["aba263d2898c19b738e9"],
+      "reason": "Cleanup code inside Device setup troubleshooting Details; separate fixed human error summary."
+    },
+    {
+      "file": "src-ui/src/views/settings/CoreUpdateCheck.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["6908d6a09f4172173a54"],
+      "reason": "TechnicalDetails diagnostic prop; inline update mutation failures are translated."
+    },
+    {
+      "file": "src-ui/src/views/settings/DesktopUpdateCheck.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["def4b0e4c27ed992a5db", "e9899b19fb486162b86c"],
+      "reason": "TechnicalDetails diagnostic state/prop; human action and summary come from closed update-context copy."
+    },
+    {
+      "file": "src-ui/src/views/settings/SourceInstallerDisclosure.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["6908d6a09f4172173a54"],
+      "reason": "TechnicalDetails diagnostic prop; inline rebuild failures are translated."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/TaskSupervisionPanel.tsx",
+      "rule": "G2",
+      "symbols": ["Stop control"],
+      "fingerprints": ["dea4669a058654f43b6d"],
+      "reason": "Cancels future supervision wakes, independently of any running turn. This is a scheduler control, not conversation Stop."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
+      "rule": "G2",
+      "symbols": ["reply textarea"],
+      "fingerprints": ["0ce2dbe7008316f30952"],
+      "reason": "Collaboration review comment editor, with document/thread draft semantics; not an engine conversation reply."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "fingerprints": ["2f28d1025988a74bb1d1", "2631666cedef4c71bb09"],
+      "reason": "Task-room domain composition captures its host scope; the Task protocol owns access and delegation routing."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+      "rule": "G4",
+      "symbols": ["historyRead"],
+      "fingerprints": ["b42a3a423510567aea54"],
+      "reason": "Designated Task-room authority adapter maps server message/history grants into shared history and control decisions. Task APIs retain their own authorization."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+      "rule": "G4",
+      "symbols": ["messageWrite"],
+      "fingerprints": ["3aea671c90e26ff496aa"],
+      "reason": "Designated Task-room authority adapter maps server message/history grants into shared history and control decisions. Task APIs retain their own authorization."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+      "rule": "G2",
+      "symbols": ["transcript polling"],
+      "fingerprints": ["253df423d62f590e3a29", "54daa4e04d32d9e42ca0"],
+      "reason": "Bounded lifetime accounting and latest-tool metadata reads only. Neither query renders a conversation transcript or pages history."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/device/DeviceRecordingPicker.tsx",
+      "rule": "G3",
+      "symbols": ["raw failure sink"],
+      "fingerprints": ["0c3aa8523c4956a41e97"],
+      "reason": "Typed recording-unavailable domain refusal is user-facing capability/installation copy; unknown errors use a fixed fallback."
+    }
+  ],
+  "failureSurfaces": [
+    {
+      "file": "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/UsageTelemetryDisclosure.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/useACPConnectionSetup.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/action-operations/ActionOperationsSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/attention/AttentionCard.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/attention/PluginProposalAttentionActions.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/timelineOpen.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/ConversationTimeline.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/OutboundQueuedMessages.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/QuoteSelectionToolbar.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/ReplayCaptureControls.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/ReplayTransport.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/SessionSummaryCard.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/TaskShapingComposer.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/ToolCallDisplay.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/BranchToolbar.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/CodingInspectorPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/DiffPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/FileTreePanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/PullRequestGuide.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/PullRequestsPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/coding-layout/TerminalPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/conversation/ConversationBody.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/conversation/LegacyConversationRecovery.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/desktop-update/DesktopUpdateRestartDialog.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/desktop-update/useDesktopUpdateState.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/first-run/FirstRunHomeChapter.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/first-run/first-run-engines.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/flow/FlowRunConsole.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/header/StationSwitcherMenu.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/modals/FolderBrowserModal.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/monitoring/PersonalInsights.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/profile/ToolRequestsPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/readiness/ReadinessPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/registry/KitCatalog.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/registry/MarketplaceSources.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/registry/RegistryCatalog.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/registry/RegistryCatalogItems.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/OwnedWorkCleanup.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/SessionDetailErrors.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/state/describeReadFailure.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/troubleshoot/useStartTroubleshoot.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/trust/TrustPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/components/usage-stats/UsageStatsPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/queueDrain.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/turnHandlers.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useChatInput.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useComposerAttachments.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useMutableSessionDetailState.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useNewProjectSubmit.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useOutboundQueueFlush.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useProjectCreationRecovery.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/usePushNotifications.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useSessionManagementMenu.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useShareReceiver.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useSlashCommandHandler.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/hooks/useTaskRoomAttachments.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/lib/local-ui-bootstrap.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/lib/outboundQueue.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/platform/PlatformProfileContext.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/platform/native/agentActivity.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/slashCommands/builtins.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/slashCommands/dispatch.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/slashCommands/mcpPrompt.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/utils/errorText.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/AgentConnectionView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/EngineAccountOverview.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/EngineAddFlow.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/KnowledgeConnectionView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/NotConnectedEngineDetail.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/PersonalBoardView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/ProviderSettingsView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/RegistryView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/SessionsView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/SkillsView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/TaskWorkspaceView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/agentEditorReadState.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/connections-hub/ComputersSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/developer/CompanionManaged.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/integrations/SecretBindingsSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/plugin-management/WorkspaceHomeRoleSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/plugin-management/useStartPluginFlow.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/project-page/PluginPublishDialog.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/project-page/ProjectPluginPublishSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/project-settings/ProjectAgentsPanel.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/CoreUpdateCheck.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/FeaturePreviewsSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/LanDiscoveryControl.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/NotificationDeliverySettings.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/ServerUpdateStageApply.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/SourceInstallerDisclosure.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/StationRoutesSection.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/TerminalHistoryUsage.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/settings/WorkloadBudgetSettings.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/TaskTurnReferenceView.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/review/ReviewAnchorComposer.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/review/ReviewSendControl.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/PluginDraftPreviewPane.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/TaskRoomComposer.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/browser-pane/BrowserAnnotationFlow.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/browser-pane/BrowserRecording.tsx",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     }
   ]
 }

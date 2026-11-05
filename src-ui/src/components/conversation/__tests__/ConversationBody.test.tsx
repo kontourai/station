@@ -4,7 +4,7 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
@@ -102,8 +102,28 @@ afterEach(() => {
     activeChatsStore.removeChat(id);
 });
 
-function Harness({ route }: { route: 'host' | 'direct' | 'relay' }) {
-  const [connection] = useState(() => conversationConnection(route));
+function Harness({
+  route,
+  denyContinue = false,
+}: {
+  route: 'host' | 'direct' | 'relay';
+  denyContinue?: boolean;
+}) {
+  const connection = useMemo(() => {
+    const value = conversationConnection(route);
+    return denyContinue
+      ? {
+          ...value,
+          capabilities: {
+            ...value.capabilities,
+            continue: {
+              state: 'denied' as const,
+              reason: 'permission-required' as const,
+            },
+          },
+        }
+      : value;
+  }, [route, denyContinue]);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [messages, setMessages] = useState<ChatSession['messages']>([]);
@@ -234,6 +254,49 @@ function Harness({ route }: { route: 'host' | 'direct' | 'relay' }) {
     </ConversationConnectionProvider>
   );
 }
+
+test('the real composer applies a narrowed connection ceiling and retains its draft without an open caller-access response', async () => {
+  const connection = conversationConnection('relay');
+  setClientCredentialResolver(() => ({
+    origin: connection.requestScope.apiBase,
+    credential: 'fixture-token',
+    requestAuthority: { ...connection.requestScope, isCurrent: () => true },
+  }));
+  const request = vi.fn<typeof fetch>(async (input) =>
+    Response.json({
+      success: true,
+      data: String(input).endsWith('/api/agents') ? [agent] : [],
+    }),
+  );
+  vi.stubGlobal('fetch', request);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const tree = (denied: boolean) => (
+    <QueryClientProvider client={client}>
+      <PreviewProvider>
+        <Harness route="relay" denyContinue={denied} />
+      </PreviewProvider>
+    </QueryClientProvider>
+  );
+  const view = render(tree(false));
+  const composer = await screen.findByRole('textbox');
+  await waitFor(() => expect(composer.hasAttribute('disabled')).toBe(false));
+  await userEvent.setup().type(composer, 'A retained answer');
+  expect(
+    screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+  ).toBe(false);
+  view.rerender(tree(true));
+  await waitFor(() => expect(composer.hasAttribute('disabled')).toBe(true));
+  expect((composer as HTMLTextAreaElement).value).toBe('A retained answer');
+  expect(
+    screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+  ).toBe(true);
+  expect(
+    request.mock.calls.filter(([, options]) => options?.method === 'POST'),
+  ).toEqual([]);
+});
 
 test.each(['host', 'direct', 'relay'] as const)(
   '%s uses the shared composer, transcript and turn Stop',

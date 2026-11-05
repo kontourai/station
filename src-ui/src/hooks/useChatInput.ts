@@ -244,7 +244,8 @@ export function useChatInput({
     sessionId || '',
     selectComposerSlice,
   );
-  const currentAgent = useAgent(agentSlug || '');
+  const hostAgent = useAgent(agentSlug || '');
+  const currentAgent = connection ? undefined : hostAgent;
   const cancelMessage = useCancelMessage(apiBase, connection);
 
   // Slash commands

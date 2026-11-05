@@ -788,7 +788,9 @@ export function drainQueuedMessageOnTurnCompleted(
         chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           content: retired
-            ? `${(error as Error).message} It was not sent again.`
+            ? error.reason === 'discarded'
+              ? 'This message was discarded. It was not sent again.'
+              : 'This message was already delivered. It was not sent again.'
             : 'This queued message is already on its way or may have reached the agent. It was not sent again; check it in the outbox list.',
         });
         // It left the queue: the next one may go.
@@ -927,10 +929,7 @@ export function drainQueuedMessageOnTurnCompleted(
         }
         const dropPermanentlyRejected = isDefinitiveClientRejection(error);
         // A validation refusal reads as its reasons, not schema keys (#2708).
-        const reason =
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : String(error);
+        const reason = userFacingErrorMessage(error);
         const code =
           error instanceof ChatHttpError && typeof error.code === 'string'
             ? error.code

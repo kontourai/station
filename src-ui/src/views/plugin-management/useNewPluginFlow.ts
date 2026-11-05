@@ -164,11 +164,7 @@ export function useNewPluginFlow(onDone: () => void) {
       setProject(project.slug);
       onDone();
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? userFacingErrorMessage(caught)
-          : String(caught),
-      );
+      setError(userFacingErrorMessage(caught));
     }
   }
 

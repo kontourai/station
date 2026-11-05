@@ -336,9 +336,7 @@ export function useNewProjectSubmit({
         onComplete(project.slug, project.layoutSlug, project.startIntent);
       else onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? userFacingErrorMessage(err) : String(err),
-      );
+      setError(userFacingErrorMessage(err));
     }
   }
 
@@ -356,11 +354,7 @@ export function useNewProjectSubmit({
         setCreatedProject(null);
         setError(null);
       } catch (error) {
-        setError(
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : String(error),
-        );
+        setError(userFacingErrorMessage(error));
       }
     },
     error,

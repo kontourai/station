@@ -4542,9 +4542,20 @@ JS fixtures do not establish installed-shell qualification.
 [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
 [useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
 and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
-own dock transcript, send, Stop, approval, delivery, media and stats. The shell
-supplies layout and ports. Activity, attached sessions, history and Inbox adoption
-remain the planned migrations in [Station connections](../design/station-connection.md).
+own the dock, Activity, attached-session and coding-tab conversation composition.
+Record density changes framing; the adapters retain read-only access and explicit
+continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
+receives owner/member/guest history projections and paging ports without changing
+their publication or redaction rules. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
+owns activation currency, search, snooze, dismissal and undo for both Inbox shells.
+
+[describeStationFailure](../../src-ui/src/utils/stationFailure.ts) translates request
+failures at this boundary, composing provider repair policy with source/target
+attribution. A relay refusal needs the source-authored observation, current lease,
+expected target and original mutation key before it proves non-delivery. Unknown
+response text remains diagnostic. The [surface manifest](../../scripts/conversation-surfaces.json)
+registers shared owners and error publishers; its exact host/domain and diagnostic
+contracts are structural scope declarations, not permission or runtime evidence.
 
 [Orchestration streams](../../src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts)
 and [work observation](../../src-ui/src/contexts/work-observation.ts) partition

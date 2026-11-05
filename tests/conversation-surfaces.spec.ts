@@ -141,6 +141,11 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await expect(
     page.getByRole('button', { name: 'Check', exact: true }),
   ).toBeVisible();
+  await expect(
+    transcript.getByText('Check this local lost acknowledgement.', {
+      exact: true,
+    }),
+  ).toHaveCount(1);
   await captureConnectionState(page, testInfo, 'host-uncertain');
   streams[5]!.stream.text('The local uncertain turn ran once.');
   streams[5]!.stream.finish();
@@ -162,6 +167,13 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(transcript).toContainText("didn't accept this message.");
   await expect(composer).toBeEditable();
+  await expect(composer).toHaveValue(
+    'Keep this local refused message editable.',
+  );
+  await expect(transcript).not.toContainText('could not confirm');
+  await expect(
+    page.getByText('insufficient_scope', { exact: true }),
+  ).not.toBeVisible();
   await captureConnectionState(page, testInfo, 'host-refused');
   expect(streams).toHaveLength(6);
 });
@@ -502,7 +514,7 @@ for (const access of ['owner', 'member', 'guest'] as const) {
               status: 503,
               json: {
                 success: false,
-                error: 'History temporarily unavailable',
+                error: 'private_history_machine_code',
               },
             });
         }
@@ -635,10 +647,19 @@ for (const access of ['owner', 'member', 'guest'] as const) {
         page.getByRole('button', { name: 'Retry', exact: true }),
       ).toBeVisible();
       await expect(list).toContainText('A published decision');
+      await expect(
+        page.getByText('private_history_machine_code', { exact: true }),
+      ).toHaveCount(0);
+      await expect(list.locator('pre')).toHaveCount(0);
       await page.getByRole('button', { name: 'Retry', exact: true }).click();
       await expect(list).toContainText('The next published decision');
       expect(pageAttempts).toBe(2);
-      await captureConnectionState(page, testInfo, access + '-paged-history');
+      await captureConnectionState(
+        page,
+        testInfo,
+        access + '-paged-history',
+        'history',
+      );
       if (access === 'member') {
         await page.route(
           '**/api/projects/' +
@@ -826,10 +847,62 @@ for (const layout of ['desktop', 'mobile'] as const) {
               document.activeElement !== document.body,
           ),
         ).toBe(true);
+        if (layout === 'mobile')
+          await page.getByRole('button', { name: /^Show inbox/ }).click();
+        await search.fill('First cold');
+        const firstTitle = 'First cold selection';
+        const firstRow = inbox.getByRole('button', {
+          name: /First cold selection,/,
+        });
+        await expect(firstRow).toBeVisible();
+        if (layout === 'mobile') {
+          await inbox
+            .getByRole('button', { name: 'Details for ' + firstTitle })
+            .click();
+          await page
+            .getByRole('dialog')
+            .getByRole('button', { name: '1 hour', exact: true })
+            .click();
+        } else {
+          await inbox
+            .getByRole('button', { name: 'Snooze ' + firstTitle, exact: true })
+            .click();
+          await page
+            .getByRole('menuitem', { name: '1 hour', exact: true })
+            .click();
+        }
+        const snoozed = inbox.getByRole('button', { name: /^Snoozed/ });
+        await expect(snoozed).toContainText('1');
+        await snoozed.click();
+        await inbox
+          .getByRole('button', { name: 'Details for ' + firstTitle })
+          .click();
+        await page
+          .getByRole('dialog')
+          .getByRole('button', { name: 'Unsnooze', exact: true })
+          .click();
+        await expect(firstRow).toBeVisible();
+        const details = inbox.getByRole('button', {
+          name: 'Details for ' + firstTitle,
+        });
+        if (layout === 'mobile') {
+          const bounds = await details.boundingBox();
+          expect(bounds?.width).toBeGreaterThanOrEqual(44);
+          expect(bounds?.height).toBeGreaterThanOrEqual(44);
+        }
+        await details.click();
+        await page
+          .getByRole('dialog')
+          .getByRole('button', { name: 'Dismiss from inbox', exact: true })
+          .click();
+        await page.getByRole('button', { name: 'Undo', exact: true }).click();
+        await expect(firstRow).toBeVisible();
+        await search.fill('');
         await captureConnectionState(
           page,
           testInfo,
           layout + '-inbox-latest-selection',
+          'inbox',
         );
       } finally {
         releaseFirst();

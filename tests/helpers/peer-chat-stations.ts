@@ -476,6 +476,7 @@ export async function captureConnectionState(
   page: Page,
   testInfo: TestInfo,
   state: string,
+  surface: 'conversation' | 'history' | 'inbox' = 'conversation',
 ) {
   const original = page.viewportSize();
   for (const width of [390, 1440])
@@ -498,6 +499,18 @@ export async function captureConnectionState(
             name: 'Open Feature previews',
             exact: true,
           }),
+        ).toBeVisible();
+      } else if (surface === 'history') {
+        await expect(
+          page.getByRole('list', {
+            name: /^(Task room history|Shared history records)$/,
+          }),
+        ).toBeVisible();
+      } else if (surface === 'inbox') {
+        await expect(
+          page.locator(
+            '[aria-label="Inbox chats"]:visible, [role="region"][aria-label="Inbox"]:visible',
+          ),
         ).toBeVisible();
       } else {
         await expect(

@@ -166,7 +166,7 @@ export function UsageStatsPanel() {
           <WarningGlyph />
         </div>
         <div className="usage-stats-error-message">
-          Error: {describeStationFailure(error as Error).body ?? String(error)}
+          Error: {describeStationFailure(error).body}
         </div>
         <button
           type="button"

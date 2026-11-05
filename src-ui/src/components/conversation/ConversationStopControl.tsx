@@ -8,6 +8,7 @@ import { ConfirmModal } from '../modals/ConfirmModal';
 type StopIntent = { kind: 'turn' } | { kind: 'task'; name?: string };
 
 interface StopProps {
+  title?: string;
   intent?: StopIntent;
   onCancel: () => unknown;
   stopPending?: boolean;
@@ -21,6 +22,7 @@ interface StopProps {
 
 /** Turn interruption uses the controller's keyed cancel; Task stop stays confirmed. */
 export function ConversationStopControl({
+  title,
   intent = { kind: 'turn' },
   onCancel,
   stopPending = false,
@@ -90,6 +92,7 @@ export function ConversationStopControl({
           />
         ) : (
           <Button
+            title={title}
             ref={button}
             size="sm"
             variant="ghost"
