@@ -2297,11 +2297,15 @@ Requires management access and the **GitHub automation observations** Feature
 Preview. Prints `deliveries` (default 50) and `polls` through
 `GET /automations/deliveries`: each row's outcome (`matched`, `no-match`,
 `ignored`, `refused` with a reason, or `duplicate`), its semantic key, and its
-rule and episode ids. `polls` retains partial coverage and failed observations
-with their last poll time and cursor; missing coverage is not success. Station
-currently records matches for `github-poll`
-sources and starts no Automation work. The other `AUTOMATION_OPERATOR_SURFACE`
-verbs are not available yet.
+rule and episode ids. Each row's `decisions` lists every matched `observe` or
+`live` rule with its mode and outcome: `would-start` or `suppressed` (with a
+reason) for an `observe` rule, `intent-retained` or `suppressed` for a `live`
+one, plus the rule name, action kind, Project, Agent and episode id. `polls`
+retains partial coverage and failed observations with their last poll time and
+cursor; missing coverage is not success. This command reads history only; an
+`observe` rule never starts work, and `live` rules act only through the separate
+action previews. The other `AUTOMATION_OPERATOR_SURFACE` verbs are not available
+yet.
 
 ### `runs`
 
