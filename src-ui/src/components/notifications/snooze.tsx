@@ -118,13 +118,28 @@ export function useInboxSnooze() {
               [
                 {
                   label: 'Undo',
-                  onClick: () => unsnoozeAttention.mutate(item.id),
+                  onClick: () => unsnoozeAttention.mutateAsync(item.id),
                 },
               ],
             ),
         },
       ),
-    unsnooze: (item: AttentionItem) => unsnoozeAttention.mutate(item.id),
+    unsnooze: (item: AttentionItem) =>
+      unsnoozeAttention.mutate(item.id, {
+        onError: (error) =>
+          toastStore.show(
+            `Couldn't unsnooze: ${errorText(error)}`,
+            undefined,
+            6000,
+            undefined,
+            undefined,
+            'error',
+          ),
+      }),
+    unsnoozePending: unsnoozeAttention.isPending,
+    unsnoozingItemId: unsnoozeAttention.isPending
+      ? unsnoozeAttention.variables
+      : undefined,
     notification: (notification: Notification, until: Date) =>
       snoozeStored.mutate(
         { id: notification.id, until: until.toISOString() },
@@ -136,7 +151,10 @@ export function useInboxSnooze() {
             ),
         },
       ),
-    pending: snoozeAttention.isPending || snoozeStored.isPending,
+    pending:
+      snoozeAttention.isPending ||
+      snoozeStored.isPending ||
+      unsnoozeAttention.isPending,
   };
 }
 

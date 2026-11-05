@@ -54,6 +54,7 @@ only when this Station's build can run it; if none is, the section says
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
+| `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
@@ -108,6 +109,24 @@ Anything you were writing stays in the composer. A second tap, here or on
 another device, does not send it again. A newer message retires the button.
 If the agent refuses it as busy, that Continue cannot be sent again; type a
 message instead.
+
+**Continue unattended work after restart** (`continue-unattended-after-restart`):
+with the preview on, after Station restarts it continues work nobody was
+watching. That covers a turn Station itself sent into a Task's Session (such as
+a Task question wake) and a delegated Session's work, including a result a
+delegated child returned to a Task's Session or to another delegated Session.
+A result returned into your own chat, or an agent's message into it, belongs
+to your chat and is not continued. Each such turn the restart cut off gets one turn with the same note
+**Continue** sends, oldest Task first, as the Session's owner. The chat shows it
+as **Continued after restart**. It is never sent for a turn you sent yourself
+(including Station's automatic continuation of your turn after a memory kill),
+an Automation's run (Automations keep their own recovery), a coordinator, or a
+turn whose cause Station did not record. It also skips a Task that is done,
+canceled or blocked, a chat that has moved on since, and a turn that was itself
+such a continuation, so a second restart does not continue it again. It uses
+the same key as **Continue**, so the agent is continued once whichever comes
+first. A continuation that needs to start the agent's engine waits for
+engine-start capacity.
 
 **Stale checkout warning** (`stale-project-checkout`): an agent started in a
 Project reads that checkout's instructions, so a checkout far behind its

@@ -361,6 +361,8 @@ export function NotificationsPage() {
                 items={snoozedItems}
                 notifications={deferredNotifications}
                 onUnsnooze={snooze.unsnooze}
+                isUnsnoozing={snooze.unsnoozePending}
+                unsnoozingItemId={snooze.unsnoozingItemId}
               />
             )}
           </>
@@ -520,10 +522,14 @@ function SnoozedSection({
   items,
   notifications,
   onUnsnooze,
+  isUnsnoozing,
+  unsnoozingItemId,
 }: {
   items: AttentionItem[];
   notifications: Notification[];
   onUnsnooze: (item: AttentionItem) => void;
+  isUnsnoozing: boolean;
+  unsnoozingItemId?: string;
 }) {
   return (
     <section
@@ -555,6 +561,9 @@ function SnoozedSection({
               variant="secondary"
               size="sm"
               onClick={() => onUnsnooze(item)}
+              pending={item.id === unsnoozingItemId}
+              disabled={isUnsnoozing}
+              pendingLabel="Unsnoozing…"
             >
               Unsnooze
             </Button>

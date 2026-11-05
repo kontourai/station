@@ -348,6 +348,9 @@ export class TaskReviewSend {
                     actor: { kind: 'internal' },
                     reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
                   },
+                  // #4512: only a person's review is sent (the author check
+                  // above), so the turn is theirs.
+                  dispatchOrigin: 'interactive',
                 },
               }).outcome
             : 'unavailable';

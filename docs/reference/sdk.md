@@ -6654,7 +6654,10 @@ for expiry, source/Device revalidation and remaining qualification limits.
 `listAutomationDeliveries(apiBase, { limit? }, options?)` from
 `@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
 management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. The server requires
+`polls`, including partial coverage and source failures. Each delivery may
+carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
+rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
+`intent-retained`) and a bounded action snapshot. The server requires
 **GitHub automation observations** in Feature previews. A `StationHttpError`
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is

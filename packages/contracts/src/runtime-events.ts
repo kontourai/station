@@ -411,6 +411,64 @@ export interface SessionCancellationRequestedEvent
   action: 'stop' | 'cancel';
 }
 
+/**
+ * #4512: the server-classified cause of a turn, stamped on `turn.started`
+ * when Station admits the send. Never accepted from a client or an engine.
+ *
+ * - `interactive`: a person's own send (an operator or paired-device
+ *   client), and Station sends a person triggered: their memory-exhaustion
+ *   Continue and their Task review send. Station's automatic continuation
+ *   after a memory kill takes the killed turn's own origin, so continuing a
+ *   person's turn stays `interactive`.
+ * - `task-dispatch`: an entry Station itself queued on the conversation
+ *   inbox with no more specific origin (a Task question wake, a check-back)
+ *   and placed on a Session whose room
+ *   execution binding names a Task. Off a Task's Session those are
+ *   `unknown`.
+ * - `delegation`: a delegated Session's first turn, a send carrying a
+ *   delegation context Station derived or attested (Station Control
+ *   `send_message`; a requester's own `direct-claim` context does not
+ *   count) into a new conversation or one whose current Session is itself
+ *   unattended (an agent messaging a person's own chat is `unknown`), and a delegated child's result delivered into a parent that is
+ *   itself unattended: a Task's Session or a delegated child Station
+ *   derived. A result delivered into anyone else's chat takes that chat's
+ *   own classification (a person's chat stays `interactive`).
+ * - `automation`: a scheduled Automation run, queued on its target
+ *   conversation's inbox or starting its dedicated conversation, and an
+ *   Automation action's inbox entry. Never `task-dispatch`, even on a Task's
+ *   Session.
+ * - `unknown`: coordinator and Project supervision wakes (a person's
+ *   coordinator), anything else, and every turn persisted before the field.
+ *
+ * It is the claim of the Station that admitted the turn. A `turn.started`
+ * mirrored from another Station carries that Station's classification, so
+ * anything that acts on this field (restart recovery) must act only on this
+ * Station's own Sessions.
+ */
+export const TURN_DISPATCH_ORIGINS = [
+  'interactive',
+  'task-dispatch',
+  'delegation',
+  'automation',
+  'unknown',
+] as const;
+export type TurnDispatchOrigin = (typeof TURN_DISPATCH_ORIGINS)[number];
+
+/**
+ * The origin a `turn.started` payload records, or `unknown` when it records
+ * none or a value this build does not know (a newer Station's), so a reader
+ * never treats an unrecognised origin as one it acts on.
+ */
+export function turnDispatchOrigin(event: {
+  dispatchOrigin?: unknown;
+}): TurnDispatchOrigin {
+  const value = event.dispatchOrigin;
+  return typeof value === 'string' &&
+    (TURN_DISPATCH_ORIGINS as readonly string[]).includes(value)
+    ? (value as TurnDispatchOrigin)
+    : 'unknown';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -424,6 +482,15 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * produced (an engine-opened turn, another app's transcript).
    */
   clientTurnId?: string;
+  /**
+   * #4512: who caused this turn, as Station classified it when it admitted
+   * the send — never an adapter's or a client's claim (an adapter-supplied
+   * value is dropped and replaced, like `clientTurnId`). Absent on events
+   * persisted before it existed, on steers, and on turns no send produced;
+   * read it through {@link turnDispatchOrigin}, which reports those as
+   * `unknown`.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
