@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -16,7 +15,7 @@ import { createLogger } from '../../../../src-server/utils/logger.js';
 
 const makeTempDir = trackTempDirs();
 const PLUGIN = 'publisher:writer';
-const NAMESPACED_PLUGIN = `publisher:${'a'.repeat(24)}/writer`;
+const NAMESPACED_PLUGIN = `publisher:${'a'.repeat(24)}/writer` as const;
 const STATUS = {
   publishers: {
     kontour: { tier: 'lite', reason: 'user' },
@@ -27,7 +26,7 @@ const STATUS = {
   liteInventoryRevision: 'fixture-revision',
 };
 let home: string;
-let server: Server;
+let server: ReturnType<typeof serve>;
 let loader: ConfigLoader;
 let base: string;
 
@@ -106,11 +105,14 @@ function run(args: string[]) {
   );
 }
 
-test.each(['kontour', 'operator'])(
+test.each(['kontour', 'operator'] as const)(
   'anonymous and lite both persist lite for %s through the published CLI',
   async (publisher) => {
     for (const input of ['anonymous', 'lite']) {
-      await loader.updateAppConfig({ telemetryTier: { [publisher]: 'off' } });
+      await loader.updateAppConfig({
+        telemetryTier:
+          publisher === 'kontour' ? { kontour: 'off' } : { operator: 'off' },
+      });
       const result = await run(['set', publisher, input]);
       expect(result.status, result.stderr).toBe(0);
       const saved = JSON.parse(
@@ -123,7 +125,7 @@ test.each(['kontour', 'operator'])(
 );
 
 test('plugin anonymous is refused and plugin lite remains accepted', async () => {
-  for (const publisher of [PLUGIN, NAMESPACED_PLUGIN]) {
+  for (const publisher of [PLUGIN, NAMESPACED_PLUGIN] as const) {
     const refused = await run(['set', publisher, 'anonymous']);
     expect(refused.status).not.toBe(0);
     expect(refused.stderr).toContain('Usage: station telemetry set');
@@ -151,7 +153,7 @@ test.each([
     expect(result.stdout).toContain(
       'Additional destination: Anonymous usage counts (anonymous)',
     );
-    for (const publisher of [PLUGIN, NAMESPACED_PLUGIN]) {
+    for (const publisher of [PLUGIN, NAMESPACED_PLUGIN] as const) {
       const label = publisher.slice('publisher:'.length);
       const pluginLine = result.stdout
         .split('\n')
