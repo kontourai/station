@@ -502,3 +502,67 @@ describe('station policy templates', () => {
     },
   );
 });
+
+// #4515 fix round 3: `policy show` reports the installed policy with the
+// same lines `policy check` prints for it (managed settings included).
+describe('station policy show', () => {
+  test('prints the lines policy check prints for the same file', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        supportUrl: 'https://help.example/station',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          checkoutStaleAfterDays: { value: 9, locked: false },
+        },
+        limits: { maxApprovalMode: 'auto', telemetry: false },
+      }),
+    );
+    const root = fixture();
+    const show = spawnSyncBounded(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        join(repoRoot, 'scripts/station-cli.ts'),
+        'policy',
+        'show',
+      ],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+        killSignal: 'SIGKILL',
+        env: {
+          ...process.env,
+          STATION_HOME: join(root, 'home'),
+          STATION_ROOT: join(root, 'station-root'),
+          STATION_MANAGED_POLICY_TEST_FILE: path,
+          STATION_PORT: '9',
+        },
+      },
+    );
+    expect(show.status, show.stderr).toBe(0);
+    const checked = check(path);
+    expect(checked.status, checked.stderr).toBe(0);
+    // The effect lines: from the organization to the fingerprint.
+    const effect = (text: string) => {
+      const lines = String(text).split('\n');
+      const start = lines.findIndex((line) =>
+        line.startsWith('  Organization: '),
+      );
+      const end = lines.findIndex((line) => line.startsWith('  Fingerprint: '));
+      return lines.slice(start, end);
+    };
+    const shown = effect(show.stdout);
+    expect(shown).toEqual(effect(checked.stdout));
+    // Pinned: the settings lines and the limits are there.
+    expect(shown.join('\n')).toContain('Managed settings: 2');
+    expect(shown.join('\n')).toMatch(
+      /defaultMaxTurns \([^)]+\): locked to 40;/,
+    );
+    expect(shown).toContain('  Limits: maxApprovalMode, telemetry');
+  }, 180_000);
+});

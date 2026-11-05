@@ -868,6 +868,7 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | --- | --- | --- |
 | Organization | `Organization` (`REG_SZ`), `SupportUrl` (`REG_SZ`, blank for none) | `organization`, `supportUrl` |
 | Managed settings (JSON) | `ManagedSettings` (`REG_DWORD` state), `ManagedSettingsJson` (`REG_MULTI_SZ`, lines joined) | `settings` (see [Settings](#settings)) |
+| Broadest approval mode | `ApprovalCeiling` (`REG_DWORD` state), `MaxApprovalMode` (`REG_SZ`: `ask`, `auto` or `never`) | `limits.maxApprovalMode` |
 | Allow usage data and telemetry | `Telemetry` (`REG_DWORD`) | `limits.telemetry: false` when Disabled |
 | Allow webhook automations | `WebhookAutomations` (`REG_DWORD`) | `limits.webhookAutomations: false` when Disabled |
 | Allowed plugin and skill registries | `RegistryAllowList` (`REG_DWORD` state), `RegistryAllowedUrls` (`REG_MULTI_SZ`, one URL per line) | `limits.registries.allowedUrls` |

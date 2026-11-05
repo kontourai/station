@@ -260,26 +260,39 @@ async function readRunning(args: string[]): Promise<RunningState> {
   }
 }
 
-function readInstalled(): InstalledState {
+/**
+ * The installed policy as `show` reports it, and its document for the
+ * human-readable lines. The document stays out of the JSON report: it can
+ * carry values the summary withholds (a mirror URL, a pinned gateway).
+ */
+function readInstalled(): {
+  installed: InstalledState;
+  document?: ManagedPolicyDocument;
+} {
   try {
     const loaded = loadInstalledManagedPolicyChecked();
     if (!loaded)
       return {
-        state: 'none',
-        path: managedPolicyFilePath(),
-        checked: systemManagedPolicySources().map(
-          (source) => source.descriptor.location,
-        ),
+        installed: {
+          state: 'none',
+          path: managedPolicyFilePath(),
+          checked: systemManagedPolicySources().map(
+            (source) => source.descriptor.location,
+          ),
+        },
       };
     return {
-      state: 'installed',
-      source: loaded.source,
-      digest: loaded.digest,
-      summary: loaded.summary,
+      installed: {
+        state: 'installed',
+        source: loaded.source,
+        digest: loaded.digest,
+        summary: loaded.summary,
+      },
+      document: loaded.document,
     };
   } catch (error) {
     if (!(error instanceof ManagedPolicyInvalidError)) throw error;
-    return { state: 'invalid', error: error.message };
+    return { installed: { state: 'invalid', error: error.message } };
   }
 }
 
@@ -299,7 +312,7 @@ function restartNeeded(
  * with what the running local server loaded at its startup.
  */
 async function runShow(args: string[], json: boolean): Promise<void> {
-  const installed = readInstalled();
+  const { installed, document } = readInstalled();
   const running = await readRunning(args);
   const restart = restartNeeded(installed, running);
   if (installed.state === 'invalid') process.exitCode = 1;
@@ -321,15 +334,10 @@ async function runShow(args: string[], json: boolean): Promise<void> {
     console.log(
       `Installed policy: ${installed.source.location}${installed.source.kind === 'test-override' ? ' (test override)' : ''}`,
     );
-    console.log(`  Organization: ${installed.summary.organization}`);
-    console.log(`  Support link: ${installed.summary.supportUrl ?? 'none'}`);
-    // The summary carries engines beside `limits` (#4520).
-    for (const line of describeLimits(
-      [
-        ...Object.keys(installed.summary.limits),
-        ...(installed.summary.engines ? ['engines'] : []),
-      ],
-      installed.summary.limits,
+    // The same lines `policy check` prints for the file (#4515).
+    for (const line of describeEffect(
+      document as ManagedPolicyDocument,
+      installed.summary,
     ))
       console.log(line);
     console.log(`  Fingerprint: ${installed.digest}`);
