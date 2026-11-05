@@ -6,8 +6,8 @@
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Run Station on a computer you control, connect Claude Code, Codex, or another
-supported coding agent, and open your project. Direct a Task from your desk or
+Run Station on a computer you control, connect a supported coding agent,
+and open your project. Direct a Task from your desk or
 a paired phone. The plan, Session history, changed files, and check results stay
 with the Task so you can review the work before continuing. Station is open
 source, stores its data under `~/.station`, and has a public SDK for plugins.
