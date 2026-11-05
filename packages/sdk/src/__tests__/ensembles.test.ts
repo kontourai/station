@@ -195,3 +195,49 @@ test.each([
       );
   },
 );
+
+test('inspection snapshots the requested group and source before awaiting credentials', async () => {
+  let releaseCredential!: (value: undefined) => void;
+  const credentials = new Promise<undefined>((resolve) => {
+    releaseCredential = resolve;
+  });
+  setClientCredentialResolver(() => credentials);
+  const sha256 = `sha256:${'a'.repeat(64)}`;
+  const fetch = vi.fn(
+    async (_url: unknown, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            version: 'station.ensemble.inspection/v1',
+            source: { sha256 },
+            facts: [],
+            resolutions: [],
+            groupInspection: {
+              state: 'bound',
+              groupId: 'group-1',
+              revision: 0,
+            },
+          },
+        }),
+      ),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const input = {
+    path: '/team.json',
+    expectedPresetHash: sha256,
+    bindings: {},
+    groupId: 'group-1',
+  };
+  const pending = inspectEnsemble('https://station.test', input);
+  input.groupId = 'group-2';
+  input.expectedPresetHash = `sha256:${'b'.repeat(64)}`;
+  releaseCredential(undefined);
+  await expect(pending).resolves.toMatchObject({
+    groupInspection: { state: 'bound', groupId: 'group-1' },
+  });
+  expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+    groupId: 'group-1',
+    expectedPresetHash: sha256,
+  });
+});

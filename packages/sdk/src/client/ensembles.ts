@@ -62,6 +62,7 @@ export async function inspectEnsemble(
   input: EnsembleInspectionInput,
   options?: ClientRequestOptions,
 ): Promise<EnsembleInspection> {
+  input = structuredClone(input);
   if (
     new TextEncoder().encode(JSON.stringify(input)).length >
     (input.presetJson === undefined
