@@ -137,9 +137,12 @@ test('plugin anonymous is refused and plugin lite remains accepted', async () =>
   expect(saved.telemetryTier[PLUGIN]).toBe('lite');
 }, 60_000);
 
-test.each([[], ['status']])(
-  'human status %j labels only built-in lite anonymous',
-  async (...args) => {
+test.each([
+  { label: 'station telemetry', args: [] as string[] },
+  { label: 'station telemetry status', args: ['status'] },
+])(
+  'human status ($label) labels only built-in lite anonymous',
+  async ({ args }) => {
     const result = await run(args);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(
