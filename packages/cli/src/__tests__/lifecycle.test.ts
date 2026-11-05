@@ -10142,6 +10142,14 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       stderr: '',
       stdout: '{"trusted":true}',
     }));
+    // No managed policy is installed. The real reader would open the Windows
+    // registry, which this process only pretends to be on, and fail closed.
+    vi.doMock('../commands/managed-update-installer.js', async () => ({
+      ...(await vi.importActual<
+        typeof import('../commands/managed-update-installer.js')
+      >('../commands/managed-update-installer.js')),
+      installedManagedUpdates: () => null,
+    }));
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'win32' });
     try {
@@ -10152,6 +10160,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       await lifecycle.upgrade();
     } finally {
       if (platform) Object.defineProperty(process, 'platform', platform);
+      vi.doUnmock('../commands/managed-update-installer.js');
     }
 
     const powershell =
