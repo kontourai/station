@@ -87,6 +87,86 @@ test.each([401, 403, 503])(
   },
 );
 
+test('a rejected release reports bounded validation and permission diagnostics without request secrets or retries', async () => {
+  const notes = '- Private staged notes';
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(new Response('', { status: 404 }))
+    .mockResolvedValueOnce(new Response('', { status: 404 }))
+    .mockResolvedValueOnce(
+      Response.json(
+        {
+          message: 'Validation Failed',
+          errors: [
+            {
+              resource: 'Release',
+              field: 'tag_name',
+              code: 'custom',
+              message: `tag_name is not a valid tag ${options.token} ${notes}`,
+              value: 'provider value must not be logged',
+            },
+          ],
+          debug: 'provider debug must not be logged',
+        },
+        {
+          status: 422,
+          headers: {
+            'x-github-request-id': 'ABCD:1234',
+            'x-accepted-github-permissions': 'contents=write;workflows=write',
+            'x-oauth-scopes': 'repo, workflow',
+            'set-cookie': 'provider cookie must not be logged',
+          },
+        },
+      ),
+    );
+  vi.stubGlobal('fetch', request);
+  const result = publishDesktopReleaseNotes({
+    ...options,
+    manifest: { version, notes },
+  });
+  await expect(result).rejects.toThrow('HTTP 422 POST /releases');
+  await expect(result).rejects.toThrow('Validation Failed');
+  await expect(result).rejects.toThrow('tag_name is not a valid tag');
+  await expect(result).rejects.toThrow('contents=write;workflows=write');
+  await expect(result).rejects.toThrow('repo, workflow');
+  await expect(result).rejects.toThrow('ABCD:1234');
+  for (const secret of [
+    options.token,
+    notes,
+    'provider value',
+    'provider debug',
+    'provider cookie',
+  ]) {
+    await expect(result).rejects.not.toThrow(secret);
+  }
+  expect(request).toHaveBeenCalledTimes(3);
+});
+
+test.each([
+  'not JSON: secret response',
+  JSON.stringify({
+    message: 'x'.repeat(20_000),
+    errors: Array(100).fill({ code: 'x'.repeat(20_000) }),
+  }),
+])(
+  'unstructured or excessive provider errors cannot flood the diagnostic',
+  async (body) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(body, { status: 503 })),
+    );
+    const result = publishDesktopReleaseNotes({
+      ...options,
+      manifest: { version, notes: '- Notes' },
+    });
+    const error = await result.catch((value: Error) => value);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain('HTTP 503 GET /releases/tags/');
+    expect(String(error)).not.toContain('secret response');
+    expect(String(error).length).toBeLessThan(4096);
+  },
+);
+
 test('an existing archive is reused only for identical source and notes', async () => {
   const existing = {
     tag_name: tag,

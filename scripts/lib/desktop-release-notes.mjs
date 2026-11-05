@@ -14,8 +14,9 @@ function github(repository, token) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !token)
     throw new Error('GitHub repository and token are required');
   return async (path, body) => {
+    const method = body ? 'POST' : 'GET';
     const response = await fetch(`${API}/repos/${repository}${path}`, {
-      method: body ? 'POST' : 'GET',
+      method,
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token}`,
@@ -25,8 +26,35 @@ function github(repository, token) {
       signal: AbortSignal.timeout(30_000),
     });
     if (response.status === 404 && !body) return null;
-    if (!response.ok)
-      throw new Error(`GitHub release notes: HTTP ${response.status}`);
+    if (!response.ok) {
+      const safe = (value) =>
+        typeof value === 'string'
+          ? value
+              .replaceAll(token, '[redacted]')
+              .replaceAll(body?.body || token, '[redacted]')
+              .slice(0, 160)
+          : undefined;
+      const detail = await response.json().catch(() => null);
+      const diagnostic = {
+        message: safe(detail?.message),
+        errors: Array.isArray(detail?.errors)
+          ? detail.errors.slice(0, 3).map((error) => ({
+              resource: safe(error?.resource),
+              field: safe(error?.field),
+              code: safe(error?.code),
+              message: safe(error?.message),
+            }))
+          : undefined,
+        requestId: safe(response.headers.get('x-github-request-id')),
+        acceptedPermissions: safe(
+          response.headers.get('x-accepted-github-permissions'),
+        ),
+        oauthScopes: safe(response.headers.get('x-oauth-scopes')),
+      };
+      throw new Error(
+        `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
+      );
+    }
     return response.json();
   };
 }
