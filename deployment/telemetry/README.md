@@ -307,8 +307,9 @@ With at most 40 coordinates per network/day, week sensitivity is 280 and ε≤1.
 Arbitrary traffic can exceed that premise; the API computes the conservative
 D/40 network-week bound from its stored public domain. Expected absolute noise
 is about 280 weekly network-days; sparse cells
-have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this
-before selecting a week/dimension locally. See the
+have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this,
+then shows only values above the 95% noise bound and reports the rest as
+within noise. See the
 [receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
 
 Schema 6 atomically persists each publisher/week's marker and frozen noisy cells.
