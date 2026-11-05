@@ -5544,7 +5544,9 @@ principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. `?codec=h264` asks for access units; a producer
-without them sends images. A refused frames request names the key it was
+without them sends images. `?fold=1` asks for a foldable's `fold` state and
+display-tagged frames; without it a viewer gets the records a released shell
+validates, and a host older than the key is asked again without it. A refused frames request names the key it was
 refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within

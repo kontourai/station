@@ -98,7 +98,9 @@ infers one from a frame's shape.
 - **Android foldable emulators**: the helper reads the emulator's hinge
   sensor and posture when the input channel connects, and can fold an
   emulator closed or unfold it flat (`closed` and `open` only). Other
-  stands and hinge angles are refused before anything is sent. A fold made
+  stands and hinge angles are refused before anything is sent. Folding goes
+  only through this fold input, under the control lease; the device hub
+  proxy refuses it. A fold made
   outside Station (the emulator's own controls) is not observed until the
   input channel reconnects.
 
