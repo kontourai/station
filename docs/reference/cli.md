@@ -778,8 +778,12 @@ station policy check <file> [--json]
 station policy show [--json] [--api-base=<url>|--station=<name>]
 ```
 
-`check` is offline and runs the same validation as server startup. It exits
-`0` and prints the organization, the support link, what the policy manages and
+`check` is offline and runs the same validation as server startup, including
+each managed setting value against the settings schema (`schemas/app.schema.json`,
+bundled into the CLI), so a composite value such as `approvalGuardian` with a
+field of the wrong type fails `check` exactly as it would refuse startup. It
+exits `0` and prints the organization, the support link,
+one line per managed setting saying whether it is locked or a default, and
 its `sha256:` fingerprint. It exits `1` and names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
 invalid JSON, repeats a key name, or does not match the schema. It does not
@@ -802,6 +806,7 @@ publisher's choice through its authenticated configuration API:
 
 ```sh
 station telemetry status
+station telemetry set kontour anonymous
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
@@ -811,12 +816,17 @@ station telemetry outbox --publisher publisher:<registry-digest>/writer
 
 Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
-Status prints each destination's plain sharing label with its `off`, `lite` or
-`full` configuration value. Do Not Track and pending review use readable
-explanations. Kontour Detailed saving requires its own current acknowledgement when its build
+For `kontour` and `operator`, `anonymous` is an alias for `lite`; both inputs
+save `lite`. Plugin publishers accept `off|lite|full`, never `anonymous`.
+
+Status prints each destination's plain sharing label, with built-in Lite shown
+as `Anonymous usage counts (anonymous)`. Plugin Lite remains
+`Plugin usage counts (lite)`. Off and Full retain `off` and `full` in parentheses.
+Do Not Track and pending review use readable explanations. Kontour Detailed saving requires its own current acknowledgement when its build
 destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
-prints the status object. Full remains Lite until the current disclosure has
-been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+prints the unchanged status object with `lite` tier values. Stored configuration
+and `STATION_TELEMETRY_TIER` still use `off|lite|full`. Full remains Lite until the
+current disclosure has been acknowledged. DNT forces Off. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
@@ -869,7 +879,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
 
 `config get <key>` prints `(not set)` for an absent key.
 
@@ -892,9 +902,11 @@ once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
 side effects. `config get` reads through the live route when reachable
-(showing an env-override provenance note where one applies). On a transport
-failure it prints a notice and shows the local home's file instead; that is
-not a reading of the unavailable target Station's configuration.
+(showing a provenance note when the value comes from the environment or from
+the managed policy). On a transport
+failure it prints a notice and shows the local home's file instead, with the
+installed managed policy's locks and defaults applied; that is not a reading
+of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -3745,7 +3757,11 @@ tsx. Doctor also compares every exact-pinned `@kontourai/*` dependency in the
 Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
-separately.
+separately. External-agent readiness reads the agent connections in effect,
+with the installed [managed policy](../guides/managed-policy.md) applied as the
+server applies it, so a connection the policy disables is not counted. An
+installed policy the server would refuse is a fail-level `Managed policy`
+check, and no stored connection counts as ready while it stands.
 
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
@@ -4017,7 +4033,10 @@ installed state: the running Station owns that, and
 `station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
-file.
+file. A registry the installed
+[managed policy](../guides/managed-policy.md#settings) locks is used instead of
+either; a managed default is used only when neither is set. An installed
+policy that Station would refuse at startup refuses the read.
 
 With a URL argument, saves it to `<STATION_HOME>/config/app.json` and exits.
 

@@ -35,6 +35,7 @@ only when this Station's build can run it; if none is, the section says
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
+| `private-memory` | Private memory | Use a private memory store on a personal Station. Create it through the API. | Memory can contain personal information. Off by default; review and erasure are not available yet. Disabling hides access but retains the store. Hosted Stations do not offer it. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
@@ -45,7 +46,9 @@ only when this Station's build can run it; if none is, the section says
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
+| `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
+| `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
 | `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
@@ -97,7 +100,10 @@ restarts while an agent is working, the chat marks the cut-off turn ("Station
 restarted mid-turn" or the restart notice). With the preview on, that marker
 offers **Continue** while it is still the chat's latest message, the chat has
 caught up, and no turn is running. Continue sends the agent a fixed note, as your message, asking it to
-continue from where it stopped and to check what already finished first.
+first check its working directory (`git status`, `git log`), the Task's pull request and
+issue, and any background processes, not to repeat a push, pull request,
+comment or other outside action until it has confirmed that did not already
+happen, and then to continue from where it stopped.
 Anything you were writing stays in the composer. A second tap, here or on
 another device, does not send it again. A newer message retires the button.
 If the agent refuses it as busy, that Continue cannot be sent again; type a
@@ -225,12 +231,36 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+## Updates and changelogs
+
+Open **Updates** in the sidebar to review an app or server update. **What’s
+new** shows the offered version’s release notes. **Previous versions and
+changelogs** lets you browse published releases without starting an update.
+The circle around the sidebar update icon fills as a download progresses.
+
+After an app upgrade, its changelog opens once on this device. To turn that
+off, clear **Show changelog after updates** in the dialog, Updates, or
+**Settings → System**. Release history stays available. The first launch on a
+new device establishes the starting version without showing an upgrade dialog.
+
 ## About
 
 **Settings → About** shows the app version, links to **Build details** and
 **Diagnostics**, the open source packages bundled into the app with their
 licenses, and links to the privacy policy, license and support. Development
 servers have no license list.
+
+## Settings your organization manages
+
+On a machine your organization manages, some rows carry a **Managed by
+<organization>** badge. Your organization fixed that value: the control is
+disabled, and **Get help** opens its support page. A row marked
+**<organization> default** uses a value your organization suggested; change it
+like any other setting. Your own earlier values are kept and come back if the
+organization removes its policy. A managed value fixes the Station-wide
+setting only: what you set on an Agent, for a conversation, or on your own
+account (such as your chat font size) still applies. See the
+[managed policy guide](https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md#settings).
 
 ## Link to a setting
 

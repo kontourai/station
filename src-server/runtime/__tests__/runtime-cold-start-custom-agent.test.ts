@@ -91,6 +91,7 @@ import { EnvironmentSecurityService } from '../../services/ssh/environment-secur
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -1386,6 +1387,31 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           undefined,
           { workItemProvenance: 'project-board' },
         );
+        // #4508: what the runtime's own follow-up store recorded for the
+        // Task reaches the dispatch brief.
+        (Reflect.get(runtime, 'taskFollowUps') as TaskFollowUpStoreHolder)
+          .forWrite()!
+          .recordPage(
+            { taskId: task.id, taskCreatedAt: task.createdAt },
+            ref,
+            {
+              items: [
+                {
+                  kind: 'review',
+                  githubId: '7001',
+                  author: 'member-reviewer',
+                  actorClass: 'member',
+                  association: 'MEMBER',
+                  occurredAt: '2999-01-01T00:00:00Z',
+                  excerpt: 'Ship it after the rebase.',
+                  truncated: false,
+                  reviewState: 'APPROVED',
+                },
+              ],
+              cursors: {},
+            },
+            new Date().toISOString(),
+          );
         const dispatcher = Reflect.get(runtime, 'taskDispatcher') as {
           dispatch(taskId: string, input: object): Promise<{ kind: string }>;
         };
@@ -1407,6 +1433,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         expect(brief).toContain('Labels: bug, P1');
         // Comments since the Task's creation (it has no earlier read).
         expect(brief).toContain('Newer than the Task.');
+        expect(brief).toContain(
+          '- Review on github:acme/widgets#42 by member-reviewer (member, MEMBER) at 2999-01-01T00:00:00Z (APPROVED)\n> Ship it after the rebase.',
+        );
         expect(brief).not.toContain('Older than the Task.');
         expect(brief).not.toContain('linked item not re-read');
         // The read is the runtime's observer, through gh on PATH.

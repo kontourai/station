@@ -381,3 +381,193 @@ describe('TerminalController', () => {
     controller.dispose();
   });
 });
+
+/**
+ * The events Gboard sends Android Chrome, as recorded from a real emulator
+ * (#3994): every letter is a keydown 229 then `beforeinput insertText`; the
+ * Send key and a Backspace on an empty field are real keydowns with `key`
+ * set and `code` empty; a Backspace over text the keyboard typed is a
+ * keydown 229 then `beforeinput deleteContentBackward`.
+ */
+describe('TerminalController with an Android soft keyboard', () => {
+  const keydown = (key: string, keyCode: number) => {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      code: '',
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'keyCode', { value: keyCode });
+    return event;
+  };
+  const beforeinput = (inputType: string, data: string | null = null) =>
+    new InputEvent('beforeinput', {
+      inputType,
+      data,
+      bubbles: true,
+      cancelable: true,
+    });
+  const written = (session: { write: { mock: { calls: unknown[][] } } }) =>
+    session.write.mock.calls
+      .map(([bytes]) => new TextDecoder().decode(bytes as Uint8Array))
+      .join('');
+
+  it('runs a typed command with the Send key and deletes with Backspace', async () => {
+    const { controller, session } = await startController();
+    const input = document.querySelector('textarea')!;
+    const kept: boolean[] = [];
+    for (const char of 'echo hix') {
+      input.dispatchEvent(keydown('Unidentified', 229));
+      const insert = beforeinput('insertText', char);
+      input.dispatchEvent(insert);
+      kept.push(!insert.defaultPrevented);
+      // What the browser does with an insertion nobody cancelled.
+      input.value += char;
+    }
+    // The keyboard's edits are left in the field, so its view of the field
+    // stays true and its later deletes reach the page.
+    expect(kept.every(Boolean)).toBe(true);
+    input.dispatchEvent(keydown('Unidentified', 229));
+    const remove = beforeinput('deleteContentBackward');
+    input.dispatchEvent(remove);
+    expect(remove.defaultPrevented).toBe(false);
+    input.value = input.value.slice(0, -1);
+    // The field the keyboard believes empty: a real Backspace with no code.
+    input.dispatchEvent(keydown('Backspace', 8));
+    input.dispatchEvent(keydown('Enter', 13));
+    await vi.waitFor(() => expect(written(session)).toBe('echo hix\x7f\x7f\r'));
+    // The line went; the next one starts from an empty field.
+    expect(input.value).toBe('');
+    controller.dispose();
+  });
+
+  it('sends Tab and arrows that name no code', async () => {
+    const { controller, session } = await startController();
+    const input = document.querySelector('textarea')!;
+    input.dispatchEvent(keydown('Tab', 9));
+    input.dispatchEvent(keydown('ArrowUp', 38));
+    await vi.waitFor(() => expect(written(session)).toBe('\t\x1b[A'));
+    controller.dispose();
+  });
+});
+
+describe('output credit to the engine worker (#3994)', () => {
+  async function controllerWith(
+    createWorker: () => EnginePort,
+    session: TerminalViewSession,
+  ) {
+    const root = document.createElement('div');
+    root.getBoundingClientRect = () => DOMRect.fromRect(rect);
+    const canvas = document.createElement('canvas');
+    const input = document.createElement('textarea');
+    root.append(canvas, input);
+    document.body.append(root);
+    const controller = new TerminalController(
+      { root, canvas, input },
+      {
+        font: { family: 'monospace', size: 13, lineHeight: 1.2 },
+        screenReader: false,
+        reducedMotion: true,
+        createWorker,
+        createRenderer: () => new FakeRenderer(),
+        measureCell,
+      },
+    );
+    controller.setSession(session);
+    await controller.start();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().status).toBe('ready'),
+    );
+    return controller;
+  }
+
+  it('settles a view’s output only after its worker parsed it', async () => {
+    // The real engine, with its `written` answers held back.
+    const held: MessageEvent[] = [];
+    let release = () => {};
+    const createWorker = () => {
+      const port = inThreadPort();
+      let deliver: EnginePort['onmessage'] = null;
+      Object.defineProperty(port, 'onmessage', {
+        get: () => deliver,
+        set: (next: EnginePort['onmessage']) => {
+          release = () => {
+            for (const event of held.splice(0)) next?.(event);
+          };
+          deliver = (event: MessageEvent) => {
+            if ((event.data as { type?: string }).type === 'written')
+              held.push(event);
+            else next?.(event);
+          };
+        },
+      });
+      return port;
+    };
+    const { session, output } = fakeSession();
+    const controller = await controllerWith(createWorker, session);
+    let settled = false;
+    const consumed = output('parsed later') as unknown;
+    expect(consumed).toBeInstanceOf(Promise);
+    void (consumed as Promise<void>).then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+    release();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    controller.dispose();
+  });
+
+  it('bounds output posted to a worker that never parses it, and replays instead of dropping it', async () => {
+    let postedBytes = 0;
+    let resets = 0;
+    const stalled = (): EnginePort => {
+      const port: EnginePort = {
+        onmessage: null,
+        onerror: null,
+        postMessage: (message) => {
+          const request = message as { type: string; bytes?: Uint8Array };
+          if (request.type === 'init')
+            queueMicrotask(() =>
+              port.onmessage?.(
+                new MessageEvent('message', { data: { type: 'ready' } }),
+              ),
+            );
+          if (request.type === 'write')
+            postedBytes += request.bytes?.byteLength ?? 0;
+          if (request.type === 'reset') resets++;
+        },
+        terminate: () => undefined,
+      };
+      return port;
+    };
+    // A session that ignores the view's credit and floods it.
+    let subscriptions = 0;
+    let listener: TerminalViewSessionListener | null = null;
+    const session = {
+      state: 'ready' as const,
+      readOnly: false,
+      subscribe(next: TerminalViewSessionListener) {
+        subscriptions++;
+        listener = next;
+        return () => {
+          if (listener === next) listener = null;
+        };
+      },
+      write: () => true,
+      resize: () => undefined,
+    } satisfies TerminalViewSession;
+    const controller = await controllerWith(stalled, session);
+    const chunk = new Uint8Array(2048).fill(0x61);
+    for (let i = 0; i < 8192; i++)
+      (listener as TerminalViewSessionListener | null)?.output(chunk, 'live');
+    // 16 MiB offered; the worker was never given more than its bound.
+    expect(postedBytes).toBeLessThanOrEqual(4 * 1024 * 1024);
+    await vi.waitFor(() => expect(controller.resyncs).toBeGreaterThan(0));
+    // Recovery: the screen starts over and the session replays into it.
+    expect(resets).toBeGreaterThan(0);
+    expect(subscriptions).toBeGreaterThan(1);
+    controller.dispose();
+  });
+});

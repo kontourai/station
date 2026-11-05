@@ -23,6 +23,7 @@ function client(fileMethodsOffered?: boolean) {
     approvalRegistry: new ApprovalRegistry(silent as never),
     getActiveWriter: () => null,
     nextTerminalId: () => 'term',
+    terminalConfinement: () => 'host',
     onSessionUpdate: async () => {},
     onExtNotification: () => {},
     onExtMethod: () => ({}),

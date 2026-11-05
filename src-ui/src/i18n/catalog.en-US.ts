@@ -16,6 +16,8 @@ export const enUSCatalog = {
   'route.generic.description':
     'Trying again reloads just this view — the rest of Station, and anything open elsewhere, stays as it is.',
   'route.retryAction': 'Try again',
+  'route.troubleshootAction': 'Troubleshoot',
+  'route.moreActions': 'More actions for this view',
 } as const;
 
 export type MessageKey = keyof typeof enUSCatalog;

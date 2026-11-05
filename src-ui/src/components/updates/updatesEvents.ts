@@ -7,6 +7,7 @@ export interface UpdateNotice {
   target: UpdateTarget;
   message: string;
   detail?: string;
+  releaseVersion?: string;
   href?: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -15,6 +16,7 @@ export interface UpdateNotice {
    * this target renders the same fact itself, so the panel does not repeat it.
    */
   summaryOnly?: boolean;
+  progress?: { percent: number | null; text: string; label: string };
 }
 
 const listeners = new Set<() => void>();

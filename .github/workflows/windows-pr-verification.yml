@@ -120,6 +120,15 @@ jobs:
           }
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
+      - name: Check the Desktop webdriver build
+        if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
+        shell: pwsh
+        # The Desktop test build adds a WebDriver plugin whose Windows crates
+        # (`windows`, `webview2-com`) must match the versions Tauri uses. A
+        # mismatch compiles elsewhere and fails only on Windows (#3994).
+        # The step above staged the resources the build script reads.
+        run: cargo check --manifest-path src-desktop/Cargo.toml --features webdriver
+
       - name: Verify recovery against Windows Credential Manager
         if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh

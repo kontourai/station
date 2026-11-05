@@ -218,3 +218,67 @@ describe('AgentDefaultsSection', () => {
     });
   });
 });
+
+describe('AgentDefaultsSection under a managed policy (#4517)', () => {
+  const managed = (locked: boolean) => ({
+    source: 'managed' as const,
+    locked,
+    organization: 'Acme',
+    supportUrl: 'https://help.example/station',
+  });
+
+  function renderWith(provenance: Record<string, ReturnType<typeof managed>>) {
+    runtimeConnectionsMock = [];
+    return render(
+      <AgentDefaultsSection
+        {...baseProps}
+        config={{
+          defaultModel: 'managed-model',
+          systemPrompt: 'Managed prompt.',
+          templateVariables: [{ key: 'TEAM', type: 'static', value: 'a' }],
+        }}
+        provenance={provenance}
+        showRegion
+      />,
+    );
+  }
+
+  test('each bespoke editor of a locked setting is disabled, badged and linked to help', () => {
+    renderWith({
+      defaultModel: managed(true),
+      region: managed(true),
+      systemPrompt: managed(true),
+      templateVariables: managed(true),
+    });
+    for (const control of [
+      screen.getByLabelText('Default Model'),
+      document.getElementById('region'),
+      document.getElementById('systemPrompt'),
+      screen.getByDisplayValue('TEAM'),
+      screen.getByText('+ Add Variable'),
+    ])
+      expect(control?.matches(':disabled')).toBe(true);
+    expect(screen.getAllByText('Managed by Acme')).toHaveLength(4);
+    for (const link of screen.getAllByRole('link', { name: 'Get help' }))
+      expect(link.getAttribute('href')).toBe('https://help.example/station');
+  });
+
+  test('a provider lock disables the model too: they are one choice', () => {
+    renderWith({ defaultLLMProvider: managed(true) });
+    expect(screen.getByLabelText('Default Model').matches(':disabled')).toBe(
+      true,
+    );
+    expect(document.getElementById('systemPrompt')?.matches(':disabled')).toBe(
+      false,
+    );
+  });
+
+  test('a managed default stays editable and says whose default it is', () => {
+    renderWith({ systemPrompt: managed(false) });
+    expect(screen.getByText('Acme default')).toBeTruthy();
+    expect(document.getElementById('systemPrompt')?.matches(':disabled')).toBe(
+      false,
+    );
+    expect(screen.queryByRole('link', { name: 'Get help' })).toBeNull();
+  });
+});

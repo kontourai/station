@@ -842,11 +842,20 @@ for (const { name, label, transport } of registrations) {
     });
 
     it('stream cancellation — adapter-shape.ts streamEvents: "Implementations must settle pending reads when the signal is aborted"', async () => {
+      expect(() =>
+        engine.adapter.streamEvents()[Symbol.asyncIterator](),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'async_event_queue_consumer_conflict',
+        }),
+      );
+      signal.abort();
+      await reader;
       const abort = new AbortController();
       const iterator = engine.adapter
         .streamEvents({ signal: abort.signal })
         [Symbol.asyncIterator]();
-      // The primary reader has drained startup; this read is pending on an empty queue.
+      // The retired primary reader released ownership; its replacement waits on an empty queue.
       const pending = iterator.next();
       abort.abort();
       await expect(pending).resolves.toMatchObject({ done: true });

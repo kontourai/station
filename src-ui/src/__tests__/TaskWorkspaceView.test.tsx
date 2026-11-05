@@ -2122,6 +2122,47 @@ describe('TaskWorkspaceView', () => {
     ).toBe('true');
   });
 
+  test('reveals the capability path only with its preview and follows canonical Task navigation', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+    featurePreviews = [{ id: 'task-capabilities', enabled: true }];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    const path = screen.getByRole('region', {
+      name: 'Capabilities and evidence',
+    });
+    fireEvent.click(within(path).getByRole('button', { name: 'Work chats' }));
+    expect(
+      screen
+        .getByRole('tab', { name: 'Work chats' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: 'Work chats' }),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(
+      within(
+        screen.getByRole('region', { name: 'Capabilities and evidence' }),
+      ).getByRole('button', { name: 'Artifacts and receipts' }),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'details',
+    );
+    featurePreviews = [];
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+  });
+
   test('mounts write-back history only in Details while the chat apps preview is enabled', () => {
     featurePreviews = [{ id: 'chat-apps', enabled: true }];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />, {

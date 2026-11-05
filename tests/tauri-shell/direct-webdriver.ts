@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import {
   createWriteStream,
   existsSync,
@@ -613,6 +613,16 @@ export interface TauriShellFixtureOptions {
   realCredentialStore?: boolean;
 }
 
+/** On Windows, a file only the current user may access (inheritance off). */
+function protectForCurrentUser(path: string) {
+  if (process.platform !== 'win32') return;
+  const user = `${process.env.USERDOMAIN ?? '.'}\\${process.env.USERNAME}`;
+  execFileSync('icacls', [path, '/inheritance:r', '/grant:r', `${user}:F`], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+}
+
 export async function startTauriShellFixture(
   options: TauriShellFixtureOptions = {},
 ): Promise<TauriShellFixture> {
@@ -706,6 +716,10 @@ export async function startTauriShellFixture(
       )}\n`,
       { mode: 0o600 },
     );
+  // The app reads saved Station metadata only from a file whose own ACL is
+  // protected and grants the current user alone, as the app itself writes
+  // it; `mode` does not set that on Windows, so the seeded file is given it.
+  protectForCurrentUser(join(profileDirectory, 'profiles.json'));
   const outputDir = join(root, '.kontourai', 'tauri-shell-e2e');
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(

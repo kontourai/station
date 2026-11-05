@@ -84,3 +84,29 @@
     flex-wrap: wrap;
   }
 }
+.knowledge-memory-preview {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-bottom: var(--k-space-5);
+}
+
+.knowledge-memory-preview__form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+
+.knowledge-memory-preview__form label {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+.knowledge-memory-preview__form input {
+  width: 100%;
+}
+
+.knowledge-memory-preview__form label:last-of-type {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}

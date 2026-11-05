@@ -92,7 +92,7 @@ and retained cancellation/audit where applicable. Catalog membership is not acce
 | Consumer owner | Preview families to reconcile |
 | --- | --- |
 | Chat/Connections/Native | Session goals, interrupted Continue, compaction, durable Station Agent, coordinator picture, CLI reads, conversation resolution and paired chats; distinguish Agent binding/advertisement, UI control and same-home process restart |
-| Projects/Collaboration | Task review, Task collaboration, member passkeys and project-sharing controls; presentation gates do not replace independent membership/incarnation checks |
+| Projects/Collaboration | Task review, Task capabilities, Task collaboration, member passkeys and project-sharing controls; presentation gates do not replace independent membership/incarnation checks |
 | Browser/Device | Browser experience/artifacts, Device developer loop and Codex-bound Browser/Device tools |
 | Extensions | Plugin recovery inventory, visual skills and chat apps; CLI/API recovery inventory differs from activation recovery UI |
 | Knowledge | Local speech, walkthroughs, reviewed learning lifecycle and host-image consumers; host-image binding was enabled by default in the inventory revision |

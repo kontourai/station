@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { access, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
@@ -115,6 +116,9 @@ async function service(
     typeof UsageTelemetryService
   >[0]['logger'],
   fetchOverride?: typeof globalThis.fetch,
+  dailyUsage?: ConstructorParameters<
+    typeof UsageTelemetryService
+  >[0]['dailyUsage'],
 ) {
   const home = existingHome ?? makeTempDir('station-publishers-');
   const logger = loggerOverride ?? { warn: vi.fn() };
@@ -133,6 +137,7 @@ async function service(
     env,
     logger,
     fetch: fetchOverride,
+    dailyUsage,
   });
   services.push(live);
   return { live, home, config: configValue };
@@ -1301,4 +1306,122 @@ test('tier-change reason sends once before applying Off; standalone feedback req
   } finally {
     loader.dispose();
   }
+});
+
+test('omits empty daily token throughput so an idle ping retains old-receiver compatibility', async () => {
+  const sink = await receiver();
+  const { live } = await service(sink.endpoint);
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await live.flushDaily();
+  expect(daily(sink.payloads)).toHaveLength(1);
+  expect(daily(sink.payloads)[0]).not.toHaveProperty('engine_tokens_today');
+});
+
+test('daily throughput adds declared disjoint cache components once and leaves cumulative Codex input intact', async () => {
+  const sink = await receiver();
+  const { live } = await service(
+    sink.endpoint,
+    {},
+    {},
+    undefined,
+    undefined,
+    undefined,
+    () => [
+      {
+        sourceEventId: 'claude-turn',
+        provider: 'claude',
+        messages: 0,
+        inputTokens: 100,
+      },
+      {
+        sourceEventId: 'claude-turn',
+        provider: 'claude',
+        messages: 0,
+        cacheReadTokens: 60_000,
+      },
+      {
+        sourceEventId: 'claude-turn',
+        provider: 'claude',
+        messages: 0,
+        cacheWriteTokens: 100,
+      },
+      {
+        sourceEventId: 'claude-turn',
+        provider: 'claude',
+        messages: 0,
+        outputTokens: 100,
+      },
+      {
+        sourceEventId: 'codex-turn',
+        provider: 'codex',
+        messages: 0,
+        inputTokens: 60_200,
+        outputTokens: 100,
+        cacheReadTokens: 60_000,
+      },
+    ],
+  );
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await live.flushDaily();
+  expect(daily(sink.payloads)[0].engine_tokens_today).toEqual([
+    { engine: 'claude', bucket: '10k-100k' },
+    { engine: 'codex', bucket: '10k-100k' },
+  ]);
+});
+
+test('a failed usage read still sends the daily ping without a throughput field', async () => {
+  const sink = await receiver();
+  const { live } = await service(
+    sink.endpoint,
+    {},
+    {},
+    undefined,
+    undefined,
+    undefined,
+    () => {
+      throw new Error('accounting unavailable');
+    },
+  );
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await expect(live.flushDaily()).resolves.toBeUndefined();
+  expect(daily(sink.payloads)).toHaveLength(1);
+  expect(daily(sink.payloads)[0]).not.toHaveProperty('engine_tokens_today');
+});
+
+test('reads usage outside the daily-state mutation lock', async () => {
+  const sink = await receiver();
+  const home = makeTempDir('daily-read-lock-');
+  const heldDuringReads: boolean[] = [];
+  const { live } = await service(
+    sink.endpoint,
+    {},
+    {},
+    home,
+    undefined,
+    undefined,
+    () => {
+      heldDuringReads.push(
+        existsSync(join(home, 'config', 'telemetry-daily.json.mutation')),
+      );
+      return [
+        {
+          sourceEventId: 'turn',
+          provider: 'claude',
+          messages: 0,
+          inputTokens: 10,
+        },
+      ];
+    },
+  );
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await live.flushDaily();
+  expect(heldDuringReads.length).toBeGreaterThan(0);
+  expect(heldDuringReads).not.toContain(true);
+  expect(daily(sink.payloads)[0].engine_tokens_today).toEqual([
+    { engine: 'claude', bucket: '1-10k' },
+  ]);
 });

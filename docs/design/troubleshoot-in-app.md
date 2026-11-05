@@ -1,17 +1,18 @@
 # Design: troubleshoot with an agent
 
-> **Reading status: current in-app troubleshooting contract (#4470, Phases 1
-> and 3a).**
+> **Reading status: current in-app troubleshooting contract (#4470, Phases 1,
+> 2 and 3).**
 > The [prepare route](../../src-server/routes/system/diagnostics.ts),
 > [troubleshoot service](../../src-server/services/infra/troubleshoot-service.ts),
 > [shared context rules](../../packages/shared/src/triage-context.ts),
 > [playbook](../../packages/shared/src/troubleshoot-playbook.md),
-> [station-control tools](../../src-server/tools/station-control-troubleshoot-tools.ts)
-> and [start flow](../../src-ui/src/components/troubleshoot/useStartTroubleshoot.ts)
+> [station-control tools](../../src-server/tools/station-control-troubleshoot-tools.ts),
+> [start flow](../../src-ui/src/components/troubleshoot/useStartTroubleshoot.ts)
+> and [seed builder](../../src-ui/src/components/troubleshoot/troubleshootSeed.ts)
 > own this path. The CLI half is [bounded guided triage](cli-triage.md), whose
-> interactive terminal mode follows the same playbook. Phase 2 (entry points
-> where errors appear) and the Phase 3 maintainer skill are planned in #4470
-> and not built.
+> interactive terminal mode follows the same playbook. Maintainers work through
+> filed reports with the
+> [troubleshoot report intake skill](../../.agents/skills/troubleshoot-report-intake/SKILL.md).
 
 **Troubleshoot with an agent** opens a conversation with the Station
 Assistant (`station`) about a problem with Station itself. The assistant asks
@@ -27,7 +28,71 @@ problem, file it, both, or neither.
 - Settings → Diagnostics: **Troubleshoot**, below the diagnostics download.
 
 Each dispatches `station:open-troubleshoot`. `TroubleshootHost`, mounted in
-the deferred overlays chunk, runs the start flow.
+the deferred overlays chunk, runs the start flow. These three send no seed.
+
+### Where errors appear (Phase 2)
+
+Error surfaces dispatch the same event with the facts they hold
+(`TroubleshootRequest` in
+[`troubleshootEvents.ts`](../../src-ui/src/lib/troubleshootEvents.ts): a
+code, a message, and for a reply the conversation and turn ids). The host
+turns them into the seed, so the sanitizer runs in the deferred chunk and no
+surface can skip it. The shared action is
+[`TroubleshootAction`](../../src-ui/src/components/troubleshoot/TroubleshootAction.tsx);
+surfaces whose sibling controls are native buttons or banner actions call
+`requestTroubleshoot` directly.
+
+| Surface | Action | Code sent |
+| --- | --- | --- |
+| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Try again for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
+| Error-tone toasts with fewer than two actions, at the one renderer ([`NotificationContainer`](../../src-ui/src/components/notifications/NotificationContainer.tsx)); the flow's own `troubleshoot-*` toasts excluded | Troubleshoot | none; the message only |
+| A placed pane in `temporarily-unavailable` ([`ProjectLayoutRenderer`](../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx)), and the same state's card explanation ([`WorkspacePaneAvailabilityList`](../../src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx)); not while the renderer is still loading or when extension access is the cause | Troubleshoot | `pane-<reason code>` |
+| Unsupported layout tab ([`layouts/index.tsx`](../../src-ui/src/layouts/index.tsx)) | Troubleshoot | `unsupported-layout-tab` |
+| An engine that never connected ([`NotConnectedEngineDetail`](../../src-ui/src/views/NotConnectedEngineDetail.tsx)) | Troubleshoot | `engine-<failure phase>` |
+| The chat dock's "This agent is unavailable" banner ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx)), for a caller who may start a chat | Troubleshoot | the unavailable-fix kind; the conversation id |
+| The local-Station banner when it is `stopped` or `failed` and offers no Restart (an unresolved owner or a fail-closed home) ([`BundledServiceBanner`](../../src-ui/src/components/BundledServiceBanner.tsx)) | Troubleshoot | `local-station-<phase>` |
+| A failed turn's `[CHAT_ERROR]` marker, not in a replay and only for a caller who may start a chat (`callerAccess.startChat`) ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) through [`SystemEventMessage`](../../src-ui/src/components/chat/SystemEventMessage.tsx)) | Troubleshoot this | the marker's error code; conversation and turn ids |
+| A thumbs-down rating ([`MessageRating`](../../src-ui/src/components/chat/message-bubble/MessageRating.tsx)) | This looks like a Station bug | `reply-marked-station-bug`; conversation and turn ids |
+
+Runtime failures reach the UI as `[CHAT_ERROR]` markers, not as a failed
+assistant-turn outcome, so the failed-turn action hangs on the marker. The
+thumbs-down option appears once the rating is thumbs-down. The rating is
+saved as usual; the option writes nothing to it, so a Station bug never
+enters feedback analysis as a judgement of the agent's answer.
+
+Duplicates are left to the playbook, which tells the assistant to prefer
+adding evidence to a matching open issue over filing a new one. That is an
+instruction, not a check.
+
+A row shows at most two labelled actions (#3045), so a toast that already has
+two, and a banner that offers Restart, do not get Troubleshoot.
+
+Where it is offered, the action is always shown. When troubleshooting is unavailable (no engine
+for the Station Assistant, or no `troubleshootPrepare` capability), the start
+flow falls back exactly as it does for the help menu.
+
+**Not covered.** Error text shown without an error toast or one of the
+surfaces above: inline `ErrorState` panels in individual views, warning-tone
+toasts, error toasts that already carry two actions, a local-Station banner
+that offers Restart, tool-activity failure toasts, the connection and compatibility
+banners, other workspace-pane failure states (for example "Workspace pane
+cannot mount"), and the new-chat picker's engine states.
+
+### Seed from an error surface
+
+[`buildTroubleshootSeed`](../../src-ui/src/components/troubleshoot/troubleshootSeed.ts)
+builds:
+
+- `route`: `window.location.pathname` at dispatch time, without the query or
+  fragment. A path the host would refuse is left out.
+- `errorSummary`: `<code>: <first message line>`, skipping stack-frame
+  lines. It passes through `sanitizeFreeText`, which removes known credential
+  shapes, URLs (with their query strings) and filesystem paths, and is capped
+  at 300 characters.
+- `conversationId`, `turnId`: kept only when they fit the host's bounds;
+  otherwise left out, so troubleshooting still starts without them.
+
+The host re-checks every field.
 
 ## Start flow
 
@@ -64,7 +129,8 @@ conversation opens.
 ## Prepare route
 
 `POST /api/diagnostics/troubleshoot/prepare` takes
-`{ surface?, seed?: { route?, errorSummary? } }` (strict, at most 16 KiB).
+`{ surface?, seed?: { route?, errorSummary?, conversationId?, turnId? } }`
+(strict, at most 16 KiB).
 The request and response types are in
 [`@kontourai/station-contracts/troubleshoot`](../../packages/contracts/src/troubleshoot.ts).
 
@@ -78,9 +144,14 @@ The request and response types are in
 - **Surface.** The request's `surface`, else the client-origin header's
   reported surface, else `unknown`. Display-only.
 - **Seed.** A route over 512 characters, a route that is not an in-app path,
-  or an error summary over 2,000 characters is refused with 400 and a closed
-  `code` (`route-too-long`, `route-not-in-app`, `error-summary-too-long`)
-  plus both limits. Nothing is truncated. The route keeps only its path; the query and fragment are dropped.
+  an error summary over 2,000 characters, a conversation id over 256
+  characters or a turn id over 200 characters is refused with 400, a closed
+  `code` (`route-too-long`, `route-not-in-app`, `error-summary-too-long`,
+  `conversation-id-too-long`, `conversation-id-invalid`, `turn-id-too-long`,
+  `turn-id-invalid`) and every limit. An id must be printable ASCII with no
+  whitespace, because it is written into the model-facing seed. Nothing is
+  truncated. The route keeps only its path; the query and fragment are
+  dropped. The limits are in `@kontourai/station-contracts/troubleshoot`.
 - **Run.** The service writes `context.json`, `playbook.md` and `seed.md` to a
   new `<Station home>/cache/triage/<uuid>` with the same owner-only rules as
   `station triage` (directory `0700`, files `0600`, no symlinked cache
@@ -178,7 +249,18 @@ grant needs a new grant mechanism; it is not part of Phase 1.
   `src-server/tools/__tests__/station-control-troubleshoot-tools.test.ts`.
 - Terminal mode selection, launch arguments, the run's playbook bytes and
   `draft-report`: `packages/cli/src/__tests__/triage.test.ts`.
-- Start flow, agent selection and fallback:
+- Start flow, agent selection, fallback, and an error surface's facts
+  becoming the prepare seed:
   `src-ui/src/components/troubleshoot/__tests__/TroubleshootHost.test.tsx`.
+- Seed sanitizing and bounds:
+  `src-ui/src/components/troubleshoot/__tests__/troubleshootSeed.test.ts`.
+- Each Phase 2 entry point clicks its action and asserts the seed the host
+  builds from the event (`captureTroubleshootSeeds`): the
+  `RouteViewBoundary`, `NotificationContainer`,
+  `WorkspacePaneAvailabilityList`, `layout-renderer-dispatch`,
+  `ProjectLayoutRenderer`, `NotConnectedEngines`,
+  `ChatDockBody.unavailableAgentBanner`, `ChatDockBody.terminalSessionMarker`,
+  `BundledServiceBanner` and `MessageRating` suites. The banner suite calls the
+  presented action's handler rather than rendering the banner host.
 
 These tests do not prove how a given engine follows the playbook.

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useState } from 'react';
 import { isComposingKeyEvent } from '../../../lib/isComposingKeyEvent';
+import { requestTroubleshoot } from '../../../lib/troubleshootEvents';
 import { errorText } from '../../../utils/errorText';
 import { Button } from '../../Button';
 import { LazyBoundary } from '../../LazyBoundary';
@@ -229,6 +230,26 @@ export function MessageRating({
             </span>
           ) : null}
         </span>
+        {rating === 'thumbs_down' && (
+          // #4470: hands the reply to troubleshooting. The thumbs-down above is
+          // already recorded as usual; this records nothing in the rating, so
+          // a Station bug never becomes feedback about the agent's answer.
+          <button
+            type="button"
+            className="message__rating-bug"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
+              requestTroubleshoot({
+                code: 'reply-marked-station-bug',
+                message: 'The person marked this reply as a Station bug.',
+                conversationId,
+                turnId,
+              })
+            }
+          >
+            This looks like a Station bug
+          </button>
+        )}
       </span>
       {saveError && (
         <ErrorState

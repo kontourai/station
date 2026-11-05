@@ -17,7 +17,8 @@ export type EngineRequest =
       size: EngineSize;
       theme: EngineTheme;
     }
-  | { type: 'write'; bytes: Uint8Array; mode: 'live' | 'replay' }
+  /** `id` increases per write; the worker answers `written` once parsed. */
+  | { type: 'write'; id: number; bytes: Uint8Array; mode: 'live' | 'replay' }
   | { type: 'resize'; size: EngineSize }
   | { type: 'theme'; theme: EngineTheme }
   /** Hidden terminals parse output but produce no frames. */
@@ -70,4 +71,11 @@ export type EngineEvent =
   | { type: 'bell' }
   | { type: 'title'; title: string }
   | { type: 'result'; id: number; value: unknown }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** Every write through `id` is parsed. */
+  | { type: 'written'; id: number }
+  /**
+   * Output queued before the engine started passed its bound and was
+   * dropped, through write `id`: the screen must be rebuilt from replay.
+   */
+  | { type: 'overflow'; id: number };

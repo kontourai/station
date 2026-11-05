@@ -141,6 +141,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
@@ -207,6 +208,9 @@ beforeAll(async () => {
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
+// A token-shaped value for the redaction assertion below, built at runtime so
+// the secret scanner never sees a credential-shaped literal.
+const FAKE_GITHUB_TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`;
 
 function renderDock(
   session: ChatSession,
@@ -475,6 +479,74 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+  });
+
+  // #4470: a failed turn offers "Troubleshoot this", seeded with the
+  // conversation, the failed turn and the raw (redacted) error.
+  test('a failed turn offers Troubleshoot this, seeded with the conversation, turn and error', async () => {
+    window.history.pushState({}, '', '/chat?draft=secret');
+    const capture = captureTroubleshootSeeds();
+    try {
+      const session = buildSession({
+        conversationId: 'conversation-failed',
+        messages: [
+          {
+            role: 'user',
+            content: 'summarise the repo',
+            timestamp: 1,
+            turnId: 'turn-failed-1',
+          } as any,
+          {
+            role: 'user',
+            content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Engine exited with code 1 using token ${FAKE_GITHUB_TOKEN}`,
+            timestamp: 2,
+            turnId: 'turn-failed-1',
+          } as any,
+        ],
+      });
+      renderDock(session, vi.fn());
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: 'Troubleshoot this' },
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      );
+      expect(capture.seeds).toHaveLength(1);
+      const seed = capture.seeds[0]!;
+      expect(seed).toMatchObject({
+        route: '/chat',
+        conversationId: 'conversation-failed',
+        turnId: 'turn-failed-1',
+      });
+      expect(seed.errorSummary).toMatch(
+        /^engine-turn-failed: Engine exited with code 1 using token /,
+      );
+      expect(seed.errorSummary).not.toContain('A1b2C3d4E5');
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a replayed conversation’s failed turn does not offer Troubleshoot this', async () => {
+    const session = buildSession({
+      replay: { sourceThreadId: 'thread-replayed', tapeEventCount: 1 },
+      messages: [
+        {
+          role: 'user',
+          content: '[SYSTEM_EVENT] [CHAT_ERROR] Stream aborted by client',
+          timestamp: 2,
+        } as any,
+      ],
+    } as Partial<ChatSession>);
+    renderDock(session, vi.fn());
+    await screen.findByText(/aborted|stopped|interrupted/i, undefined, {
+      timeout: LAZY_TRANSCRIPT_TIMEOUT_MS,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Troubleshoot this' }),
+    ).toBeNull();
   });
 
   test('a rejected New chat surfaces its reason instead of dying silently', async () => {
@@ -955,6 +1027,33 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
     );
     return ACTIONS.filter((name) => screen.queryByRole('button', { name }));
   }
+
+  // #4470: Troubleshoot this starts a new chat, so it follows startChat.
+  test.each([
+    ['full', true],
+    ['noSend', true],
+    ['noNewChat', false],
+    ['readOnly', false],
+  ] as const)(
+    'Troubleshoot this is offered to %s caller: %s',
+    async (caller, offered) => {
+      renderDock(
+        sessionWith(
+          `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
+          CALLERS[caller],
+        ),
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        Boolean(screen.queryByRole('button', { name: 'Troubleshoot this' })),
+      ).toBe(offered);
+    },
+  );
 
   const ENDED =
     '[SYSTEM_EVENT] [CHAT_ERROR:session_ended] This session has already ended.';

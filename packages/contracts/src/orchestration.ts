@@ -1909,7 +1909,11 @@ export interface TerminalProcessSummary {
   sessionId: string;
   projectSlug: string;
   terminalId: string;
-  cwd: string;
+  /**
+   * The launch directory, or null when the caller may only observe this
+   * terminal: a host path needs operate authority.
+   */
+  cwd: string | null;
   status: 'starting' | 'running' | 'exited';
   pid: number | null;
   exitCode: number | null;

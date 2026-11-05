@@ -191,6 +191,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Agent terminal runs and package scripts as real command sessions, in
   // private homes; no ports or host state.
   'src-server/services/terminal/__tests__/terminal-runs.process.test.ts',
+  // Reads real journal ACLs through PowerShell and icacls (Windows), in
+  // private temp folders; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts',
+  // Command processes and the children they start, ended by pid or group
+  // (taskkill or POSIX group signals); no ports or host state.
+  'src-server/services/terminal/__tests__/command-process.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -314,8 +320,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4518: boots the source Station with an injected approval ceiling and
+  // drives its routes over HTTP; private homes, ephemeral port.
+  'src-server/__tests__/managed-approval-ceiling.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
+  // #4517: runs offline `station config set` and `station registry` as CLI
+  // children on private homes with an injected managed policy.
+  'packages/cli/src/__tests__/managed-settings-offline.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
   'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
@@ -483,6 +495,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
+  'packages/cli/src/__tests__/telemetry-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.
@@ -1299,6 +1312,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4003: runs the GitHub work-item observer against a fake `gh`
   // executable, through the real process-group runner.
   'src-server/services/work-item-providers/__tests__/github-work-item-observer.test.ts',
+  // #4508: the Task follow-up poller reads through a fake `gh api graphql`
+  // executable, through the real process-group runner.
+  'src-server/services/work-item-providers/__tests__/task-follow-ups.test.ts',
+  // #4508: the follow-up poller's runtime wiring reads through a fake `gh`
+  // on PATH, through the real process-group runner.
+  'src-server/runtime/routes/__tests__/runtime-route-support-task-follow-ups.test.ts',
   // #4003: get_task_brief's production route composition re-reads the
   // tracker through the real observer and a fake `gh` executable.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-task-brief.test.ts',
@@ -1427,8 +1446,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/chat-dock/__tests__/ChatDockFailureStack.geometry.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium to render the approval pickers under a managed ceiling (#4518).
+  'src-ui/src/__tests__/approval-ceiling-pickers.browser.test.tsx',
+  // Owns Chromium to render the composer approval sheet under a managed ceiling (#4518).
+  'src-ui/src/__tests__/composer-mode-sheet-managed.browser.test.tsx',
   // Mounted Coding tool navigation and sticky controls own a Chromium instance.
   'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
+  // Mounted local restart notice recovery owns a Chromium instance.
+  'src-ui/src/__tests__/local-restart-notice.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.

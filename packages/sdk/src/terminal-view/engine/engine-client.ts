@@ -29,6 +29,8 @@ const ENGINE_EVENT_TYPES = new Set<string>([
   'title',
   'result',
   'error',
+  'written',
+  'overflow',
 ]);
 
 /** Worker messages cross a thread boundary; accept only known event kinds. */
@@ -50,6 +52,10 @@ export interface EngineClientHandlers {
   bell(): void;
   title(title: string): void;
   error(message: string): void;
+  /** Every write through `id` is parsed. */
+  written?(id: number): void;
+  /** Writes through `id` were dropped before the engine started. */
+  overflow?(id: number): void;
 }
 
 /** SHA-256 of the vendored module, as recorded in its `REVISION` file. */
@@ -141,6 +147,12 @@ export class EngineClient {
       }
       case 'error':
         this.handlers.error(event.message);
+        break;
+      case 'written':
+        this.handlers.written?.(event.id);
+        break;
+      case 'overflow':
+        this.handlers.overflow?.(event.id);
         break;
     }
   }

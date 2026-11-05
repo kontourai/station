@@ -153,6 +153,7 @@ describe('e2e manifest', () => {
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/chat-inventory-drilldown-mobile.spec.ts',
+      'tests/terminal-mobile-keyboard.spec.ts',
       'tests/native-conversation-restart.spec.ts',
       'tests/chat-send-again-failed-turn.spec.ts',
       'tests/message-delivery-recovery.spec.ts',
@@ -326,6 +327,9 @@ describe('e2e manifest', () => {
       }),
       expect.objectContaining({
         path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      }),
+      expect.objectContaining({
+        path: 'tests/terminal-mobile-keyboard.spec.ts',
       }),
     ]);
     expect(getSpecsForSuite('pr-smoke')).toEqual(

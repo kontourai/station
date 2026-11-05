@@ -70,6 +70,7 @@ function finishedEntry(
 function renderSheet(view: {
   running: BackgroundTaskEntry[];
   finished: BackgroundTaskEntry[];
+  toolHistoryLimited?: true;
 }) {
   useChatBackgroundTasks.mockReturnValue(view);
   const anchorRef = createRef<HTMLElement>();
@@ -133,7 +134,10 @@ describe('BackgroundTasksSheet', () => {
 
   test('renders the empty state when there are no running or finished tasks', () => {
     renderSheet({ running: [], finished: [] });
-    expect(screen.getByText('Nothing here yet')).not.toBeNull();
+    expect(screen.getByText('Nothing to show')).not.toBeNull();
+    expect(screen.getByText(/Recent activity only/).textContent).toContain(
+      'closed-chat history may be missing.',
+    );
   });
 
   test('renders a Running section with a count and the Activity disclosure', () => {
@@ -143,7 +147,7 @@ describe('BackgroundTasksSheet', () => {
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
     expect(
-      screen.getByText('Remote delegations appear on the Activity page.'),
+      screen.getByText(/Find remote delegations in Activity\./),
     ).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
@@ -167,12 +171,12 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
   });
 
-  test('Finished section is collapsed by default and shows an outcome chip once expanded', () => {
+  test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    expect(screen.getByText('Finished (1)')).not.toBeNull();
+    expect(screen.getByText('Recent activity (1)')).not.toBeNull();
     expect(screen.queryByText('Investigate flaky test')).toBeNull();
 
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
     expect(screen.getByText('Completed')).not.toBeNull();
   });
@@ -185,7 +189,7 @@ describe('BackgroundTasksSheet', () => {
       running: [],
       finished: [finishedEntry({ state: 'unresolved' })],
     });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('No result')).not.toBeNull();
     expect(screen.queryByText('Stopped')).toBeNull();
     expect(screen.queryByText('Failed')).toBeNull();
@@ -193,7 +197,7 @@ describe('BackgroundTasksSheet', () => {
 
   test('Finished section collapse state persists to localStorage and is honored on remount', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
 
     const stored = JSON.parse(
@@ -288,7 +292,7 @@ describe('BackgroundTasksSheet', () => {
         finished: state === 'completed' ? [entry] : [],
       });
       if (state === 'completed')
-        fireEvent.click(screen.getByText('Finished (1)'));
+        fireEvent.click(screen.getByText('Recent activity (1)'));
       expect(
         screen
           .getByRole('img', { name: 'Owl · Codex' })
@@ -495,4 +499,18 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('35 tokens · 1 tool use')).not.toBeNull();
   });
+});
+
+test('omitted tool history is disclosed beside the retained running count', () => {
+  renderSheet({
+    running: [runningEntry()],
+    finished: [],
+    toolHistoryLimited: true,
+  });
+  expect(screen.getByRole('status').textContent).toContain(
+    'Older tool rows are omitted',
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Running (1 shown)' }),
+  ).toBeTruthy();
 });

@@ -133,10 +133,16 @@ function useChildWorkPartition(apiBase: string): GlobalChildWorkState {
 function useChildWorkInput(
   sessions: readonly OrchestrationSessionSummary[],
   global: GlobalChildWorkState,
+  apiBase: string,
 ): ChildWorkSelectorInput {
+  const readTasks = useCallback(
+    () => backgroundTasksStore.getSnapshot(apiBase),
+    [apiBase],
+  );
   const tasks = useSyncExternalStore(
     backgroundTasksStore.subscribe,
-    backgroundTasksStore.getSnapshot,
+    readTasks,
+    readTasks,
   );
   const chatSignature = useSyncExternalStore(
     activeChatsStore.subscribe,
@@ -181,13 +187,16 @@ export function AgentsWorkspacePane() {
   const [storedScope, setStoredScope] = useState(readScope);
   // No chat on screen: there is no "this conversation" to show.
   const scope: ChildWorkScope = chatKey ? (storedScope ?? 'chat') : 'all';
-  const tools = useChatBackgroundTasks(scope === 'chat' ? chatKey : null);
+  const { apiBase } = useApiBase();
+  const tools = useChatBackgroundTasks(
+    scope === 'chat' ? chatKey : null,
+    apiBase,
+  );
   const agents = useAgents();
   const sessionsQuery = useOrchestrationSessionsQuery();
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
-  const { apiBase } = useApiBase();
   const global = useChildWorkPartition(apiBase);
-  const input = useChildWorkInput(sessions, global);
+  const input = useChildWorkInput(sessions, global, apiBase);
   const showSurface = useShowSurface();
 
   // #2307, the mechanism ChatDock uses: register this authority's client
@@ -414,10 +423,16 @@ export function AgentsWorkspacePane() {
         {readModelPending && !readModelFailed && (
           <SkeletonBlock count={1} label="Loading delegated tasks" />
         )}
+        {tools.toolHistoryLimited && (
+          <p className="agents-pane__note" role="status">
+            Older tool rows are omitted. Running counts cover retained rows.
+          </p>
+        )}
         {runningCount > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
-              Running ({runningCount})
+              Running ({runningCount}
+              {scope === 'chat' && tools.toolHistoryLimited ? ' shown' : ''})
             </h3>
             <ul className="background-tasks-sheet__list">
               {taskRunning.map((entry) => (
@@ -444,7 +459,7 @@ export function AgentsWorkspacePane() {
               <span>Finished ({finishedCount})</span>
               {finishedHasSubagents && (
                 <span className="agents-pane__section-qualifier">
-                  subagents: since this window connected
+                  subagents: recent history
                 </span>
               )}
             </h3>
