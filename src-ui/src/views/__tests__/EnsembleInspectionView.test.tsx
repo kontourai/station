@@ -708,7 +708,7 @@ test('group inspection uses the launch draft and discards its facts when the dra
     screen.getByRole('button', { name: 'Inspect group configuration' }),
   );
   await screen.findByText(
-    'Configuration observation only. Saving and running resolve the current configuration again.',
+    'Saving and running check the current configuration again.',
   );
   expect(fetch).toHaveBeenCalledTimes(2);
   const [url, init] = fetch.mock.calls[1];
@@ -742,7 +742,7 @@ test('group inspection uses the launch draft and discards its facts when the dra
   await waitFor(() =>
     expect(
       screen.queryByText(
-        'Configuration observation only. Saving and running resolve the current configuration again.',
+        'Saving and running check the current configuration again.',
       ),
     ).toBeNull(),
   );
@@ -767,7 +767,7 @@ test('group inspection uses the launch draft and discards its facts when the dra
     screen.getByRole('button', { name: 'Inspect group configuration' }),
   );
   await screen.findByText(
-    'Configuration observation only. Saving and running resolve the current configuration again.',
+    'Saving and running check the current configuration again.',
   );
   expect(fetch).toHaveBeenCalledTimes(3);
   const inspected = JSON.parse(String(fetch.mock.calls[2][1]?.body));

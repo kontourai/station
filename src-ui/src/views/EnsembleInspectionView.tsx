@@ -27,8 +27,8 @@ export function EnsembleInspectionView() {
         Agents
       </Button>
       <p>
-        Read configuration from a preset on This Station. Inspection does not
-        authenticate, discover models or launch members.
+        Inspect preset configuration and receiver bindings before saving or
+        running a group.
       </p>
       {scope && (
         <EnsemblePresetUpload

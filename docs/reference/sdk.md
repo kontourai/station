@@ -6531,15 +6531,25 @@ Pass exactly one of `path` or `presetJson`; uploaded bytes require their exact
 engine connection and Project/directory workspace, never a model override.
 Host-file requests retain the stricter local-grant requirement; uploaded
 inspection is available to the current personal Station's in-person operator.
-The response is a configuration observation, not a retained launch capability.
+The response is an observation, not a retained launch capability.
+
+After an exact receiver draft has been inspected, a current host may offer
+`authenticationCheck: {state:'available'}`. An explicit
+`verifyAuthentication: true` repeats inspection with supported native engine
+sign-in checks under the local operator's current grant. A host browser may
+read uploaded configuration but cannot use that weaker grant for native checks.
+The SDK validates this optional cell and its bounded unavailable reason; a
+missing cell from an older host does not offer the action. No private native
+continuation, login file, credential or launch grant enters the response.
+Facts remain observations and running authenticates the roster again.
 
 Prerequisite facts may carry an optional `needs` list of declared member IDs.
 The configuration table and diagram consume the same facts; these references
 describe the draft, not Flow readiness or observed execution. Older responses
 without the list do not establish that the draft has no prerequisites.
 
-Inspection observes configuration only; unavailable facts and unknown effective
-capabilities are not readiness or permission to launch. See the
+Ordinary inspection observes configuration only. Optional sign-in observations,
+unavailable facts and unknown effective capabilities are not permission to launch. See the
 [API contract](api.md#ensemble-configuration-inspection). The
 [epic record](../plans/child-work-epic.md) retains scoped HTTP, mounted UI, browser
 and independent-review evidence with its source revisions and limits. Checkout

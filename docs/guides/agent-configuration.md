@@ -272,6 +272,14 @@ do not establish full supported-group acceptance. Group capability advertisement
 and the continuation finalizer remain disabled pending the required combined
 qualification.
 
+For a CLI session-group draft, inspect the exact receiver configuration first.
+When **Check engine sign-in** is offered, choose it to check the selected native
+engine profiles and directories. This requires current local operator access;
+a browser-only configuration grant does not allow it. Signed-out and unverified
+checks remain visible. Editing a receiver clears the offer and its observations.
+Checking sign-in neither saves nor starts the group; Run checks the roster again.
+Model entitlement, execution limits and backing API access remain separate.
+
 1. Enter the configured **Project ID** and optional **Resource ID** whose source
    should be inspected.
 2. Set the deadline (1–5 minutes), concurrent report count, and explicit aggregate

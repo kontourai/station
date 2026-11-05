@@ -331,7 +331,7 @@ export class EnsembleInspectionService {
           });
           workspace = {
             ...workspace,
-            value: `${resolved.workspace?.cwd ?? 'Unknown directory'}; ${binding ? 'expanded Project path configuration' : 'receiver workspace configuration'}, filesystem availability unverified`,
+            value: `${resolved.workspace?.cwd ?? 'Unknown directory'}; ${binding ? 'expanded Project path configuration' : 'receiver workspace configuration'}, execution access unverified`,
             origin: 'authored',
             state: 'configured',
             owner: {

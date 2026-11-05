@@ -2708,7 +2708,14 @@ Its [route](../../src-server/routes/orchestration/ensemble-inspection.ts) accept
 uploaded bytes under current personal-operator authority; reading a host path
 also requires a locally minted operator grant. Project tool defaults and bounded
 Knowledge root/namespace observations retain their existing owners. Inspection
-does not authenticate engines, read Knowledge content or start members.
+does not probe sign-in by default, read Knowledge content or start members.
+An explicit, locally authorized sign-in check reuses the same authentication
+owner as group startup. Its private observation witnesses survive the final
+await and are rechecked at response publication; they never enter the DTO.
+The runtime supplies the same authority wrapper to both paths, and inspection
+discards execution admission. Scalar login status without the native witness
+cannot produce an authenticated fact. The client offers the read only when the
+current response declares it available and clears that offer on draft edits.
 
 The [result component](../../src-ui/src/views/EnsembleInspectionResult.tsx) uses
 the same configuration facts for its provenance table and diagram. Optional

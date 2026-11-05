@@ -2964,21 +2964,37 @@ normal request authentication runs first. See the
 
 ## Ensemble configuration inspection
 
-`POST /api/orchestration/ensembles/inspect` observes receiver configuration without
-model discovery, login probes or provider turns. It uses `orchestration:operate`
+`POST /api/orchestration/ensembles/inspect` observes receiver configuration. By
+default it performs no model discovery, login probes or provider turns. It uses `orchestration:operate`
 and requires a current in-person operator on a personal Station. Hosted, Agent
 and paired-device callers are unsupported. Reading a host `path` additionally
 requires the locally minted operator grant; a host browser can instead send
 `presetJson` without gaining host-path read authority.
 
 The closed JSON body contains exactly one of `path` or `presetJson`, `bindings`
-and optional `expectedPresetHash` and `groupBindings`. Legacy `bindings` map exact
+and optional `expectedPresetHash`, `groupBindings` and `verifyAuthentication`. Legacy `bindings` map exact
 preset member IDs to `{agent, projectSlug}`. Alternatively, with empty `bindings`,
 `groupBindings` carries the group draft's `{target, needs}` per member: exact
 Agent ID, expected engine connection, current environment, and Project or directory
 workspace. Model overrides are refused here: models/options always come from the
 preset. A source hash is required for uploaded bytes or either nonempty binding
 form. Empty legacy bindings permit an initial host-file declaration inspection.
+
+Set `verifyAuthentication: true` only for an explicit engine sign-in check. It
+requires the current local operator grant even for uploaded presets, and the
+whole roster must have supported native receivers and shared workspaces.
+It uses the same authentication owner as group startup, in each selected
+profile, model and directory; it never starts a Session or makes a model call.
+Private executable/authentication witnesses remain server-side and are checked
+again after the final awaited read. Grant loss refuses publication; changed
+native witnesses return `409 ensemble_inspection_stale`.
+
+The optional `authenticationCheck` response cell offers `{state:'available'}`
+or explains `{state:'unavailable',detail}`. Older hosts omit it. Engine sign-in
+facts distinguish a bounded authenticated observation, a signed-out receiver
+and an unverified check. They do not prove backing API access, model entitlement,
+execution limits or permission to run. Running a group checks authentication
+again. The sign-in check does not begin an interactive login flow.
 
 The response envelope is `{success:true,data}` with version
 `station.ensemble.inspection/v1`, exact source hash, environment, observation time,

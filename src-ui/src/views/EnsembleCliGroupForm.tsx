@@ -334,10 +334,7 @@ export function EnsembleCliGroupForm({
           </form>
           {inspection.data && current && (
             <>
-              <p>
-                Configuration observation only. Saving and running resolve the
-                current configuration again.
-              </p>
+              <p>Saving and running check the current configuration again.</p>
               {inspection.data.authenticationCheck?.state === 'unavailable' && (
                 <p>{inspection.data.authenticationCheck.detail}</p>
               )}
