@@ -623,8 +623,9 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
   expect(maxInflight).toBe(1);
   // Back in touch with the host: the obligation is tried again at once.
   server.dropStreams();
+  // Well inside the 5 s pause the worker is now in: the reconnect woke it.
   await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
-    timeout: 5_000,
+    timeout: 2_000,
   });
   a.unmount();
 }, 30_000);
