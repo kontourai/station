@@ -884,9 +884,13 @@ export async function releaseHumanPressed(
         });
   // One attempt at a time: a caller arriving while one is in flight, or
   // while the server is already retrying, is answered at once.
-  const busy = own.cleanup.attempt !== null || own.cleanup.failures > 0;
+  const inFlight = own.cleanup.attempt !== null;
+  const busy = inFlight || own.cleanup.failures > 0;
   own.pressed.markForRelease({ ...human });
-  const released = busy ? !own.pressed.unresolved() : await runCleanup(entry);
+  // An attempt in flight has taken what it releases but not confirmed it.
+  const released = busy
+    ? !inFlight && !own.pressed.unresolved()
+    : await runCleanup(entry);
   const lease = own.lease.snapshot();
   return answer(
     released
