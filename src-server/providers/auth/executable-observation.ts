@@ -4,6 +4,7 @@ import { open, realpath, stat } from 'node:fs/promises';
 import { extname, isAbsolute } from 'node:path';
 
 const MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024;
+const EXECUTABLE_READ_BYTES = 1024 * 1024;
 
 function identity(value: BigIntStats): string {
   return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(
@@ -23,7 +24,7 @@ async function observeFile(path: string) {
     if (!before.isFile() || before.size > BigInt(MAX_EXECUTABLE_BYTES))
       return undefined;
     const digest = createHash('sha256');
-    const buffer = Buffer.alloc(64 * 1024);
+    const buffer = Buffer.alloc(EXECUTABLE_READ_BYTES);
     let length = 0;
     let shebang = false;
     for (;;) {
