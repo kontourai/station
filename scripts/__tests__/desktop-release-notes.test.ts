@@ -73,7 +73,10 @@ test('publication archives the exact updater notes as a versioned prerelease wit
   expect(request.mock.calls[0][0]).toBe(
     `https://api.github.com/repos/kontourai/station/releases/tags/${tag}`,
   );
-  expect(JSON.parse(request.mock.calls[2][1].body)).toEqual({
+  const body = request.mock.calls[2][1].body;
+  if (typeof body !== 'string')
+    throw new Error('Expected a serialized JSON release body');
+  expect(JSON.parse(body)).toEqual({
     tag_name: tag,
     target_commitish: source,
     name: `Station desktop ${version}`,
