@@ -1352,6 +1352,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // checkout that a test moves between checks.
   'src-server/services/execution-target/__tests__/execution-preparation.test.ts',
   'src-server/tools/__tests__/station-control-delegation-preparation.test.ts',
+  // #4507: Task worktrees over real repositories: provisioning, finalization
+  // (planted config, changes between checks and removal), recovery and the
+  // keep/close-on-merge route, each spawning real git. Their waits are
+  // liveness caps around git work, not deadlines under test.
+  'src-server/routes/orchestration/__tests__/task-dispatch-worktree-isolation.routes.test.ts',
+  'src-server/runtime/routes/__tests__/runtime-routes-declare-pull-request-engine.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-finalization.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-ownership.test.ts',
+  'src-server/services/projects/__tests__/task-worktree-removal-race.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

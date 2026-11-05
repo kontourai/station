@@ -299,7 +299,7 @@ discover every missing dependency. Follow the
 Start with a scoped read-only check:
 
 ```bash
-npm exec -- biome check <affected-paths>
+node scripts/run-biome.mjs check <affected-paths>
 ```
 
 Use `--write` for supported safe fixes, then inspect the diff and rerun the

@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/automation';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { automationConfigurationFingerprint } from '../automation-intent.js';
 import {
   AutomationPolicyUnavailableError,
   AutomationStore,
@@ -104,11 +105,17 @@ describe('AutomationStore', () => {
     expect(statSync(`${home}/security`).mode & 0o777).toBe(0o700);
   });
 
-  test('creates sources and rules disabled with server-issued ids', async () => {
+  test('creates sources disabled and rules in observe mode with server-issued ids', async () => {
     const { source } = await grantedSource();
     const rule = await store.createRule(ruleInput(source.id));
     expect(source.enabled).toBe(false);
-    expect(rule.enabled).toBe(false);
+    expect(rule.mode).toBe('observe');
+    expect(JSON.parse(readFileSync(store.path, 'utf8')).rules[0]).toEqual(
+      expect.objectContaining({ mode: 'observe' }),
+    );
+    expect(
+      JSON.parse(readFileSync(store.path, 'utf8')).rules[0],
+    ).not.toHaveProperty('enabled');
     expect(source.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(rule.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(rule.id).not.toBe(source.id);
@@ -375,7 +382,7 @@ describe('AutomationStore', () => {
           JSON.stringify({
             ...config,
             sources: [{ ...config.sources[0], ...sourceChange }],
-            rules: [{ ...config.rules[0], enabled: true }],
+            rules: [{ ...config.rules[0], mode: 'live' }],
           }),
           'utf8',
         );
@@ -394,6 +401,30 @@ describe('AutomationStore', () => {
       );
     });
 
+    test('observe and live rules are evaluated by intake; an off rule is not', async () => {
+      const { source } = await grantedSource();
+      const rule = await store.createRule(ruleInput(source.id));
+      const config = JSON.parse(readFileSync(store.path, 'utf8'));
+      const write = (mode: string) =>
+        writeFileSync(
+          store.path,
+          JSON.stringify({
+            ...config,
+            sources: [{ ...config.sources[0], enabled: true }],
+            rules: [{ ...config.rules[0], mode }],
+          }),
+          { mode: 0o600 },
+        );
+      for (const mode of ['observe', 'live'] as const) {
+        write(mode);
+        expect(store.actionableRules(source.id)).toEqual([
+          expect.objectContaining({ id: rule.id, mode }),
+        ]);
+      }
+      write('off');
+      expect(store.actionableRules(source.id)).toEqual([]);
+    });
+
     test('a rule naming an unknown source is refused', async () => {
       await expect(store.createRule(ruleInput('missing'))).rejects.toThrow(
         /does not name a source/,
@@ -410,5 +441,96 @@ describe('AutomationStore', () => {
         }),
       ),
     ).rejects.toThrow(/unknown key field/);
+  });
+
+  describe('pre-#4509 rule files', () => {
+    async function writeLegacy(ruleFields: Record<string, unknown>) {
+      const { source } = await grantedSource();
+      const rule = await store.createRule(ruleInput(source.id));
+      const config = JSON.parse(readFileSync(store.path, 'utf8'));
+      const { mode: _mode, ...legacyRule } = config.rules[0];
+      writeFileSync(
+        store.path,
+        JSON.stringify({
+          ...config,
+          sources: [{ ...config.sources[0], enabled: true }],
+          rules: [{ ...legacyRule, ...ruleFields }],
+        }),
+        { mode: 0o600 },
+      );
+      return { source, rule };
+    }
+
+    test('enabled: true reads as live and enabled: false as off', async () => {
+      const { source, rule } = await writeLegacy({ enabled: true });
+      expect(store.read().rules[0]).toEqual({ ...rule, mode: 'live' });
+      expect(store.read().rules[0]).not.toHaveProperty('enabled');
+      expect(store.actionableRules(source.id)).toEqual([
+        expect.objectContaining({ id: rule.id, mode: 'live' }),
+      ]);
+      const config = JSON.parse(readFileSync(store.path, 'utf8'));
+      writeFileSync(
+        store.path,
+        JSON.stringify({
+          ...config,
+          rules: [{ ...config.rules[0], enabled: false }],
+        }),
+        { mode: 0o600 },
+      );
+      expect(store.read().rules[0]?.mode).toBe('off');
+      expect(store.actionableRules(source.id)).toEqual([]);
+    });
+
+    test('the next write stores mode and drops the legacy flag', async () => {
+      const { rule } = await writeLegacy({ enabled: true });
+      await store.createRule(ruleInput(store.read().sources[0]!.id));
+      const written = JSON.parse(readFileSync(store.path, 'utf8')).rules;
+      expect(written[0]).toEqual(
+        expect.objectContaining({ id: rule.id, mode: 'live' }),
+      );
+      expect(written[0]).not.toHaveProperty('enabled');
+      expect(written[1]).toEqual(expect.objectContaining({ mode: 'observe' }));
+    });
+
+    test('a rule carrying both enabled and mode fails closed', async () => {
+      await writeLegacy({ enabled: false, mode: 'live' });
+      expect(() => store.read()).toThrow(AutomationPolicyUnavailableError);
+    });
+
+    test('a non-boolean enabled without mode fails closed', async () => {
+      await writeLegacy({ enabled: 'true' });
+      expect(() => store.read()).toThrow(AutomationPolicyUnavailableError);
+    });
+  });
+
+  test('setEnabled sets a rule mode at the expected fingerprint; enabled keeps its earlier meaning', async () => {
+    const { source } = await grantedSource();
+    const rule = await store.createRule(ruleInput(source.id));
+    const set = (
+      change: { mode: 'off' | 'observe' | 'live' } | { enabled: boolean },
+    ) =>
+      store.setEnabled({
+        kind: 'rule',
+        id: rule.id,
+        expectedFingerprint: automationConfigurationFingerprint(store.read()),
+        ...change,
+      } as Parameters<AutomationStore['setEnabled']>[0]);
+    await set({ mode: 'live' });
+    expect(store.read().rules[0]?.mode).toBe('live');
+    await set({ mode: 'observe' });
+    expect(store.read().rules[0]?.mode).toBe('observe');
+    await set({ enabled: false });
+    expect(store.read().rules[0]?.mode).toBe('off');
+    await set({ enabled: true });
+    expect(store.read().rules[0]?.mode).toBe('live');
+    await expect(
+      store.setEnabled({
+        kind: 'rule',
+        id: rule.id,
+        expectedFingerprint: 'stale',
+        mode: 'observe',
+      }),
+    ).rejects.toThrow(AutomationValidationError);
+    expect(store.read().rules[0]?.mode).toBe('live');
   });
 });

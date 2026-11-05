@@ -183,7 +183,24 @@ describe('protected release cohort verifier parsers', () => {
         },
       }),
     ).toMatchObject({ day: 2428, build: 7 });
+    expect(
+      assertNightlyVersionRelationship({
+        android: {
+          ...identity.android,
+          versionCode: 249901,
+          versionName: '0.1.3-nightly.20261104.1',
+        },
+        desktop: {
+          ...identity.desktop,
+          bundleVersion: '249901',
+          version: '0.1.3-nightly.20261104.1',
+        },
+      }),
+    ).toMatchObject({ day: 2499, build: 1 });
     for (const [versionName, versionCode] of [
+      ['0.1.3-nightly.20260230', 225100],
+      ['0.1.3-nightly.20261104.1', 249902],
+      ['0.1.3-nightly.20261104.0', 249900],
       ['0.1.3-nightly.2428.0', 242800],
       ['0.1.3-nightly.02428.7', 242807],
       ['0.1.3-nightly.2428.07', 242807],

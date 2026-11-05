@@ -9,6 +9,7 @@ import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-even
 import type {
   CanonicalRuntimeEvent,
   TokenUsageUpdatedEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -256,6 +257,12 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // #4512: an ordinary conversation's Session works for its person.
+    sessionDispatchFacts: vi.fn((_threadId: string) => ({
+      taskBound: false,
+      delegatedChild: false,
+      priorOrigin: (): TurnDispatchOrigin => 'interactive',
+    })),
     getProviderAdapter: vi.fn(() => ({
       metadata: {
         modelLaunch: {
@@ -950,6 +957,11 @@ describe('Station Control canonical Environment + Agent execution', () => {
       resourceAdmissionIntent: 'delegated_background',
     });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    // #4512: the delegated first turn is Station's, though a person asked
+    // for the delegation (their operator origin rides the same dispatch).
+    expect(service.dispatchWithReceipt.mock.calls[0][2]).toMatchObject({
+      dispatchOrigin: 'delegation',
+    });
     expect(service.sessionCommands.execute.mock.calls[0][0]).toMatchObject({
       type: 'start-session',
       input: {
@@ -2298,6 +2310,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
   test('derives delegated/background admission from server-carried delegation metadata', async () => {
     installCurrentStationFetch();
     const service = localService();
+    // The conversation is a delegated child Station derived.
+    service.sessionDispatchFacts.mockImplementation(() => ({
+      taskBound: false,
+      delegatedChild: true,
+      priorOrigin: (): TurnDispatchOrigin => 'delegation',
+    }));
     const { executeExecutionTargetMessage } = await import(
       '../station-control-delegation.js'
     );
@@ -2315,6 +2333,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
           parentAgentSlug: 'parent' as never,
           rootAgentSlug: 'root' as never,
         },
+        delegationProvenance: 'caller-derived',
         readAuthority: hostedAuthority('alpha'),
       },
       service as never,
@@ -2323,6 +2342,45 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'delegated_background',
     });
+    // #4512: the same server-carried fact classifies the send's turn.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test("#4512: a requester's own delegation claim does not classify the turn as delegation", async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'A person naming a delegation',
+        conversationId: 'conversation-claimed',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'direct-claim',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn).toBeDefined();
+    expect(
+      (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
+        ?.dispatchOrigin,
+    ).toBeUndefined();
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2347,6 +2405,15 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'queued_background',
     });
+    // #4512: no delegation context, so the send names no delegated origin.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn).toBeDefined();
+    expect(
+      (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
+        ?.dispatchOrigin,
+    ).toBeUndefined();
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {

@@ -622,9 +622,15 @@ describe('Nightly caller', () => {
 });
 
 describe('portable Nightly helpers', () => {
-  it('derives X.Y.Z-nightly.<version code> and refuses anything else', () => {
+  it('derives the UTC date and two-digit build from the reserved native code', () => {
     expect(portableNightlyVersion('0.1.11', '245600')).toBe(
-      '0.1.11-nightly.245600',
+      '0.1.11-nightly.2026092200',
+    );
+    expect(portableNightlyVersion('0.1.11', 249900)).toBe(
+      '0.1.11-nightly.2026110400',
+    );
+    expect(portableNightlyVersion('0.1.11', 249901)).toBe(
+      '0.1.11-nightly.2026110401',
     );
     for (const [marketing, code] of [
       ['0.1.11-nightly.1', '1'],
@@ -633,6 +639,7 @@ describe('portable Nightly helpers', () => {
       ['0.1.11', '01'],
       ['0.1.11', ''],
       ['0.1.11', '2.1'],
+      ['0.1.11', '2100000001'],
     ])
       expect(() => portableNightlyVersion(marketing, code)).toThrow();
   });

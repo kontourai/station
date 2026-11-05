@@ -36,6 +36,75 @@ describe('client origin propagation', () => {
     ).toEqual({ clientOrigin: origin });
   });
 
+  it('#4512: stamps a classified dispatch origin, holding an early start of a send with no client origin', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    const base = {
+      provider: 'test',
+      createdAt: '2026-11-04T00:00:00.000Z',
+      method: 'turn.started' as const,
+    };
+    // A delegated first turn carries no client origin or principal; its
+    // origin alone reserves the turn, so a start the engine reports before
+    // acceptance is held and stamped rather than published as unknown.
+    expect(
+      propagation.begin(
+        'thread-d',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'delegation',
+      ),
+    ).toBe(true);
+    expect(
+      propagation.apply({
+        ...base,
+        threadId: 'thread-d',
+        eventId: 'e-d1',
+        turnId: 'turn-d1',
+        // An adapter cannot name its own origin.
+        dispatchOrigin: 'interactive',
+      }),
+    ).toBeUndefined();
+    const settled = propagation.settle(
+      'thread-d',
+      'turn-d1',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'delegation',
+    );
+    expect(settled?.method === 'turn.started' && settled.dispatchOrigin).toBe(
+      'delegation',
+    );
+    // `unknown` reserves nothing and is stamped only on a late start.
+    expect(
+      propagation.begin(
+        'thread-u',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'unknown',
+      ),
+    ).toBe(false);
+    // With no attribution at all, an adapter-supplied origin is dropped.
+    const unattributed = propagation.apply({
+      ...base,
+      threadId: 'thread-x',
+      eventId: 'e-x1',
+      turnId: 'turn-x1',
+      dispatchOrigin: 'task-dispatch',
+    });
+    expect(unattributed).toBeDefined();
+    expect(
+      unattributed?.method === 'turn.started' &&
+        'dispatchOrigin' in unattributed,
+    ).toBe(false);
+  });
+
   it('stamps the send key on the turn that send started, and never believes an adapter-supplied key', () => {
     const propagation = new ClientOriginTurnPropagation();
     const base = {

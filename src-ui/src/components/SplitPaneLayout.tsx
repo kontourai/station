@@ -148,6 +148,7 @@ interface SplitPaneLayoutProps {
   onDeselect?: () => void;
   onSearch: (query: string) => void;
   searchValue?: string;
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
   searchPlaceholder?: string;
   onAdd?: () => void;
   addLabel?: string;
@@ -418,6 +419,7 @@ export function SplitPaneLayout({
   onDeselect,
   onSearch,
   searchValue,
+  searchInputRef,
   searchPlaceholder = 'Search...',
   onAdd,
   addLabel = 'New item',
@@ -1319,6 +1321,7 @@ export function SplitPaneLayout({
           )}
           <div className="split-pane__filter-row">
             <input
+              ref={searchInputRef}
               className="list-filter-input"
               type="text"
               placeholder={searchPlaceholder}

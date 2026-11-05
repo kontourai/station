@@ -10,7 +10,11 @@
  * mask a configuration the operator believes is in force. Only genuine
  * absence reads as empty.
  *
- * Sources and rules are always created disabled, with server-issued ids. A
+ * Sources are always created disabled and rules in `observe` mode, with
+ * server-issued ids. A rule written before #4509 stores `enabled: boolean`;
+ * {@link migrateLegacyRuleModes} reads it as `mode` (`false` -> `off`,
+ * `true` -> `live`) before validation, and every write stores `mode`. A rule
+ * carrying both fields is ambiguous and fails closed. A
  * rule is refused unless its source grants its action (the two-keys rule;
  * see `automation-config-validation.ts`). Mutations run under a cross-process
  * file lock with the read inside it, and a corrupt file is never overwritten.
@@ -28,11 +32,13 @@ import {
   type AutomationGrant,
   type AutomationMatcher,
   type AutomationRule,
+  type AutomationRuleMode,
   type AutomationSource,
   type AutomationSourceProjection,
 } from '@kontourai/station-contracts/automation';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import {
   automationConfigurationProblems,
@@ -109,6 +115,57 @@ export type CreateAutomationRuleInput = Readonly<{
   rateLimit: Readonly<{ maxStartsPerHour: number }>;
 }>;
 
+/**
+ * Mode changes and source enablement at an expected configuration
+ * fingerprint. A rule input with `enabled` keeps the pre-#4509 meaning:
+ * `true` sets `live`, `false` sets `off`.
+ */
+export type AutomationEnablementInput =
+  | Readonly<{
+      kind: 'source' | 'rule';
+      id: string;
+      expectedFingerprint: string;
+      enabled: boolean;
+    }>
+  | Readonly<{
+      kind: 'rule';
+      id: string;
+      expectedFingerprint: string;
+      mode: AutomationRuleMode;
+    }>;
+
+/** The rule mode an enablement input requests; undefined for a source. */
+export function requestedRuleMode(
+  input: AutomationEnablementInput,
+): AutomationRuleMode | undefined {
+  if (input.kind !== 'rule') return undefined;
+  if ('mode' in input) return input.mode;
+  return input.enabled ? 'live' : 'off';
+}
+
+/**
+ * Reads a pre-#4509 rule's `enabled: boolean` as `mode`. Only a rule with a
+ * boolean `enabled` and no `mode` is rewritten; anything else is left for
+ * validation to refuse, so a rule carrying both fields fails closed rather
+ * than one silently winning.
+ */
+function migrateLegacyRuleModes(parsed: unknown): unknown {
+  if (!isRecord(parsed) || !Array.isArray(parsed.rules)) return parsed;
+  return {
+    ...parsed,
+    rules: parsed.rules.map((rule: unknown) => {
+      if (
+        !isRecord(rule) ||
+        Object.hasOwn(rule, 'mode') ||
+        typeof rule.enabled !== 'boolean'
+      )
+        return rule;
+      const { enabled, ...rest } = rule;
+      return { ...rest, mode: enabled ? 'live' : 'off' };
+    }),
+  };
+}
+
 const EMPTY_CONFIGURATION: AutomationConfiguration = Object.freeze({
   schemaVersion: AUTOMATION_SCHEMA_VERSION,
   sources: [],
@@ -174,13 +231,14 @@ export class AutomationStore {
         cause: error,
       });
     }
-    const problems = automationConfigurationProblems(parsed);
+    const migrated = migrateLegacyRuleModes(parsed);
+    const problems = automationConfigurationProblems(migrated);
     if (problems.length > 0) {
       throw new AutomationPolicyUnavailableError(
         `invalid: ${problems.slice(0, 8).join('; ')}`,
       );
     }
-    return parsed as AutomationConfiguration;
+    return migrated as AutomationConfiguration;
   }
 
   listSources(): AutomationSourceProjection[] {
@@ -188,9 +246,9 @@ export class AutomationStore {
   }
 
   /**
-   * Rules that may act now for one source: the rule and its source are
-   * enabled, the source is not revoked, and the source still grants the
-   * rule's action.
+   * Rules intake evaluates for one source: the rule is not `off`, its source
+   * is enabled and not revoked, and the source still grants the rule's
+   * action. Each rule keeps its `mode`; intake lets only `live` rules act.
    */
   actionableRules(sourceId: string): AutomationRule[] {
     const configuration = this.read();
@@ -200,7 +258,7 @@ export class AutomationStore {
       configuration.rules.filter(
         (rule) =>
           rule.sourceId === sourceId &&
-          rule.enabled &&
+          rule.mode !== 'off' &&
           sourceGrantsRuleAction(source, rule),
       ),
     );
@@ -255,7 +313,7 @@ export class AutomationStore {
   }
 
   /**
-   * Creates a disabled rule with a server-issued id. Refused with
+   * Creates an `observe` rule with a server-issued id. Refused with
    * {@link AutomationValidationError} when its source does not grant the
    * rule's action.
    */
@@ -266,7 +324,7 @@ export class AutomationStore {
     const rule: AutomationRule = {
       id: this.newId(),
       name: input.name,
-      enabled: false,
+      mode: 'observe',
       sourceId: input.sourceId,
       match: input.match,
       ...(input.episode ? { episode: input.episode } : {}),
@@ -286,14 +344,10 @@ export class AutomationStore {
   }
 
   async setEnabled(
-    input: {
-      kind: 'source' | 'rule';
-      id: string;
-      expectedFingerprint: string;
-      enabled: boolean;
-    },
+    input: AutomationEnablementInput,
     assertCurrent?: () => Promise<void>,
   ): Promise<void> {
+    const mode = requestedRuleMode(input);
     await this.mutate((current) => {
       if (
         automationConfigurationFingerprint(current) !==
@@ -308,21 +362,23 @@ export class AutomationStore {
         throw new AutomationValidationError([
           'Automation identity unavailable.',
         ]);
-      return input.kind === 'source'
-        ? {
-            ...current,
-            sources: current.sources.map((source) =>
-              source.id === input.id
-                ? { ...source, enabled: input.enabled }
-                : source,
-            ),
-          }
-        : {
-            ...current,
-            rules: current.rules.map((rule) =>
-              rule.id === input.id ? { ...rule, enabled: input.enabled } : rule,
-            ),
-          };
+      if (input.kind === 'source' && 'enabled' in input)
+        return {
+          ...current,
+          sources: current.sources.map((source) =>
+            source.id === input.id
+              ? { ...source, enabled: input.enabled }
+              : source,
+          ),
+        };
+      if (mode === undefined)
+        throw new AutomationValidationError(['Automation mode unavailable.']);
+      return {
+        ...current,
+        rules: current.rules.map((rule) =>
+          rule.id === input.id ? { ...rule, mode } : rule,
+        ),
+      };
     }, assertCurrent);
   }
 
