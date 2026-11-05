@@ -743,9 +743,13 @@ Unverified cursors cannot occupy or evict a cached public page. There is no 10,0
 follows every page. It charts each week's `first_active_this_week=true`
 estimate and per-dimension bars for the latest week. It never adds cells
 together: each is clipped at zero, so a sum of empty cells would read as about
-+140 network-days apiece. It names a top harness or platform only when the
-value exceeds the 95% noise bound (`ln 20 / epsilonPerCount`, about 839) and
-leads its runner-up by that bound. It uses text nodes,
++140 network-days apiece. One rule decides every number it shows: a cell is
+shown only above the 95% single-cell noise bound (`ln 20 / epsilonPerCount`,
+about 839). A week at or below it is a muted column with no number, bars fold
+those values into "N other values within noise", and tables say "within
+noise". It names a top harness or platform only when the leader also beats its
+runner-up by the 95% bound for the difference of two independent noisy cells
+(about 1,151; derived in `src/public-dashboard.ts`). It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
 
 ### Finalization, migration and retention
