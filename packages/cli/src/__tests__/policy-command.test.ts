@@ -214,9 +214,10 @@ describe('station policy check', () => {
       JSON.stringify({
         schemaVersion: 1,
         organization: 'A',
-        limits: { updates: { mode: 'off' } },
+        // A key the plan reserves and no slice enforces yet.
+        limits: { engines: false },
       }),
-      'limits.updates: this limit is not supported by this version of Station',
+      'limits.engines: this limit is not supported by this version of Station',
     ],
     [
       'an unknown setting',
