@@ -892,7 +892,12 @@ export function readReviewFiles(root) {
 export function readReviewState(root, { history = true } = {}) {
   const { parsed, manifest } = readReviewFiles(root);
   const state = compileReviewState(parsed, manifest);
-  if (history && parsed.index.version === 3)
+  return history ? withReviewHistory(root, state) : state;
+}
+
+/** Add history to one freshly read state without loading its files again. */
+export function withReviewHistory(root, state) {
+  if (state.ledger.layoutVersion === 3)
     deriveReviewHistory(root, state, () =>
       listCommittedNoteFilesAt(root, 'HEAD'),
     );
