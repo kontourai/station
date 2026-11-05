@@ -39,17 +39,56 @@ with 12 controls passing; byte-exact restoration passes all 13 route cases. The
 independent delta review finds no blocking defect by source reasoning, not
 executed or whole-epic approval.
 
-The earlier basic three-seat native Claude/Codex pass remains tied to
-`89d2c02f6011c71f8e19cea0c3d4f12120b0661e`. Full streaming and exact elicitation
-acceptance remains open. One fresh attempt was refused as stale before group
-creation; a read-only profile attributed most sampled delay to ambient native
-transcript ingestion. A later attempt passed sign-in but did not reach the SSE
-catch-up marker within its existing bound, still before group creation. The
-isolated follow-up uses the existing setting to exclude attached sessions outside
-Projects; host samples at 99/100 percent refused its admission, so no runtime or
-model started. No deadline, freshness limit or production guard was relaxed.
-Final documentation/readiness and the remaining topology, portable lineage,
-context-sync and finalizer/recovery qualification remain open.
+At `f334f0b68fa4bfa1f9173edf53830692152d1f89`, the native three-seat
+streaming/elicitation journey passes on a real initialized runtime with a Codex
+lead and two Claude members. The live SSE is connected before group creation;
+the create response records zero dispatches. The run completes all three exact
+outputs, streams the actual MCP form, accepts its exact answer once and refuses
+the foreign-event and duplicate answers with HTTP 409. The owned tool audit
+records one call and one accepted answer. Each member has one canonical initial
+start and terminal; the join's durable global sequence follows both prerequisite
+terminals. Live output hashes match canonical SQLite output hashes. All fourteen
+checks, driver/source immutability, settled HTTP run and runtime shutdown pass.
+Root independently recomputed the member/event/tool joins from retained artifacts;
+a separate receipt review is recorded independently of this checkpoint. This is
+standard Station-group native acceptance, not portable envelope, hard physical
+budget, billing, native-shell, hosted or whole-epic qualification.
+
+Earlier native evidence remains separate. The basic three-seat pass belongs to
+`89d2c02f6011c71f8e19cea0c3d4f12120b0661e`. A later attempt was refused as stale
+before group creation; its read-only profile attributed most sampled delay to
+ambient transcript ingestion, without measuring native SQLite I/O separately.
+Another attempt passed sign-in but missed the existing SSE catch-up bound before
+creation. Two isolated attempts were not admitted under host CPU pressure and
+started no runtime or model. A subsequent native run reached the controlled MCP
+form but the harness incorrectly assumed a form must have request type `input`;
+Codex carried it as `approval`. That failed group was cancelled and retained.
+The passing driver uses the published canonical input-request reader, verified
+offline against the actual retained form, and preserves exact source/schema/token
+and event-ID checks. It uses the existing isolated-home setting to exclude
+attached sessions outside Projects. No product deadline, freshness limit or
+production guard was relaxed.
+
+Main through `b6c313500d51d189df6bf4e17bc103c04710a013` is merged normally.
+Conflict resolution preserves both lanes' documentation sources and all 95
+stored-path site records, including repeated call sites. A failed dependency
+guard blocked the first managed install; its receipt and dependency tree were
+preserved outside the checkout before an intentional fresh managed install.
+`dependencies:ci` passes, including root Flow Agents 9.12.0 and the example-local
+9.7.0. Post-merge cold-start, recorded-group and Task-worktree suites pass all 60
+cases; server-test types and the stored-path guard pass. Scoped documentation
+freshness reports zero advisory. The earlier readiness pass belongs to the
+pre-merge source; it is not silently transferred to this merge.
+
+The full #205 audit remains incomplete: ordinary delegation has no inherited
+published envelope carrier, the bounded preparation creates generation-1 leaves,
+and exact peer/SSH transport and general continuation/projection remain open.
+Native settings and pure Flow validation do not supply a pre-model reservation
+or complete effect-enforcement guarantee. Native budget, tool/resource and
+credential-scope primitives need real owner integration before claiming complete
+two-engine portable admission. Native no-tools context sync, remaining topology,
+finalizer/recovery, final documentation/readiness and combined delivery
+qualification remain open. Both production guards stay false.
 
 At `59821ae7e773`, the delayed attached-session follower start belongs to the
 existing runtime timer list. Shutdown cancels it before stopping the follower,
