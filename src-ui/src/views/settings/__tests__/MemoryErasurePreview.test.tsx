@@ -108,6 +108,9 @@ test('shows the Corpus proposal impact without inventing record effects', async 
     screen.getByText(/Claims affected \(from Surface\): unavailable/),
   ).toBeTruthy();
   expect(screen.getByText('Proposal to erase: proposal-1')).toBeTruthy();
+  expect(
+    screen.getByText('The pending proposal will be rejected.'),
+  ).toBeTruthy();
   expect(screen.queryByText(/survivors|referrers/i)).toBeNull();
   expect(screen.getByRole('button', { name: 'Erase memory' })).toBeTruthy();
 });

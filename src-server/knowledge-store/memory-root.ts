@@ -331,9 +331,37 @@ export class MemoryRootManager {
     authority: SessionReadAuthority,
     root: KnowledgeStoreRoot,
     assertCurrent: () => void,
-    operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+    operation: (
+      adapter: Pick<
+        KitDefaultStoreAdapter,
+        | 'rootBinding'
+        | 'get'
+        | 'getProposal'
+        | 'previewPurge'
+        | 'previewPurgeProposal'
+        | 'purge'
+        | 'purgeProposal'
+      >,
+    ) => Promise<T>,
   ): Promise<T> {
-    return this.withOwner(authority, root, assertCurrent, operation, 'erase');
+    return this.withOwner(
+      authority,
+      root,
+      assertCurrent,
+      (adapter) =>
+        operation({
+          rootBinding: () => adapter.rootBinding(),
+          get: (id) => adapter.get(id),
+          getProposal: (id) => adapter.getProposal(id),
+          previewPurge: (ids) => adapter.previewPurge(ids),
+          previewPurgeProposal: (id) => adapter.previewPurgeProposal(id),
+          purge: (ids, evidence, options) =>
+            adapter.purge(ids, evidence, options),
+          purgeProposal: (id, evidence, options) =>
+            adapter.purgeProposal(id, evidence, options),
+        }),
+      'erase',
+    );
   }
 
   private async withRecovery<T>(
