@@ -317,11 +317,15 @@ describe('SessionConversationReader source', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const view = render(
+    const tree = () => (
       <QueryClientProvider client={client}>
         <PreviewProvider>
           <ConversationConnectionContext.Provider
-            value={{ apiBase, requestScope: scope }}
+            value={{
+              apiBase,
+              requestScope: scope,
+              record: { readOnly: false },
+            }}
           >
             <SessionConversationReader
               apiBase={apiBase}
@@ -332,9 +336,13 @@ describe('SessionConversationReader source', () => {
             />
           </ConversationConnectionContext.Provider>
         </PreviewProvider>
-      </QueryClientProvider>,
+      </QueryClientProvider>
     );
+    const view = render(tree());
     expect(await screen.findByText('Receiver history')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledOnce();
+    view.rerender(tree());
+    expect(screen.getByText('Receiver history')).toBeTruthy();
     expect(fetch).toHaveBeenCalledOnce();
     view.unmount();
     client.clear();

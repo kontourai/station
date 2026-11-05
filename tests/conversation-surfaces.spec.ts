@@ -52,7 +52,9 @@ test('host and peer dock adopt the same writable conversation controls', async (
     'host-topics',
   );
   streams[0]!.stream.finish('tool_calls');
-  await page.getByRole('button', { name: '1 pending approval' }).click();
+  await expect(
+    transcript.getByRole('button', { name: 'Allow Once', exact: true }),
+  ).toBeEnabled();
   await captureConnectionState(page, testInfo, 'host-approval');
   await page.getByRole('button', { name: 'Allow Once', exact: true }).click();
   await expect.poll(() => streams.length).toBe(2);
@@ -586,6 +588,8 @@ for (const access of ['owner', 'member', 'guest'] as const) {
             }),
         );
         if (access === 'guest') {
+          // The guest entry must not retain the owner's Device cookie.
+          await page.context().clearCookies();
           await page.route('**/api/account-auth', (route) =>
             route.fulfill({
               json: {

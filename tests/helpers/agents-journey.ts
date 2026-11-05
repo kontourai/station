@@ -267,7 +267,7 @@ export async function ensureChatDockOpen(page: Page): Promise<void> {
     name: /^(?:Expand chat(?: dock)?|Full screen chat|Show Chat)$/,
   });
   const collapse = page.getByRole('button', {
-    name: /^(?:Collapse chat(?: dock)?|Hide Chat)$/,
+    name: /^(?:Collapse chat(?: dock)?|Hide Chat|Restore chat size)$/,
   });
   // One button whose name flips with the dock's state. The product can open
   // the dock itself (a chat start) after `expand` resolves and before the

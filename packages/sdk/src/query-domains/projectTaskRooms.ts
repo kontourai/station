@@ -182,6 +182,8 @@ export function useProjectTaskRoomDiscoveryQuery(
 }
 export function useProjectTaskRoomHistoryQuery(taskId: string) {
   return useInfiniteQuery({
+    // Keep an admitted page visible and let the owner retry the failed page.
+    retry: false,
     queryKey: projectTaskRoomQueries.history(taskId).queryKey,
     enabled: taskId.length > 0,
     initialPageParam: { cursor: undefined as string | undefined },

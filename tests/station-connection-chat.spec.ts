@@ -45,7 +45,6 @@ test('owner Device chats through a real Station delegation and keeps target refu
     'receiver-topics',
   );
   streams[0]!.stream.finish('tool_calls');
-  await page.getByRole('button', { name: '1 pending approval' }).click();
   await expect(
     page.getByRole('button', { name: 'Allow Once', exact: true }),
   ).toBeEnabled();

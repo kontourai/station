@@ -405,7 +405,11 @@ export async function startConnectionChat(
   text: string,
 ) {
   await ensureChatDockOpen(page);
-  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  const mobileHeader = page.getByTestId('chat-dock-mobile-header');
+  const startOwner = (await mobileHeader.isVisible())
+    ? mobileHeader
+    : page.getByRole('complementary', { name: 'Inbox chats' });
+  await startOwner.getByRole('button', { name: 'New chat', exact: true }).click();
   const form = page
     .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });

@@ -1,11 +1,13 @@
 /** @vitest-environment jsdom */
 
+import type { ProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const feedbackAppend = vi.hoisted(() => vi.fn());
+const historyRead = vi.hoisted(() => vi.fn());
 
 let resolveDocument: ((value: unknown) => void) | undefined;
 let documentSignal: AbortSignal | undefined;
@@ -67,7 +69,7 @@ vi.mock('../client/project-task-rooms', () => ({
   appendProjectTaskRoomOutputFeedback: feedbackAppend,
   commandProjectTaskRoomLive: vi.fn(),
   discoverProjectTaskRoom: vi.fn(),
-  fetchProjectTaskRoomHistory: vi.fn(),
+  fetchProjectTaskRoomHistory: historyRead,
   planProjectTaskRoomEdit: vi.fn(),
   submitProjectTaskRoomBatch: vi.fn(),
 }));
@@ -79,6 +81,7 @@ import {
   refetchAuthoritativeProjectTaskRoomDocument,
   useAppendProjectTaskRoomOutputFeedbackMutation,
   useProjectTaskRoomDocumentQuery,
+  useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
 } from '../query-domains/projectTaskRooms';
 
@@ -88,6 +91,69 @@ afterEach(() => {
   documentRequests.splice(0);
   callbacks = undefined;
   streamConnections.splice(0);
+});
+
+test('a failed history page retains admitted records until the owner explicitly retries', async () => {
+  const first: ProjectTaskRoomBrowserHistory = {
+    kind: 'available',
+    records: [
+      {
+        sequence: 1,
+        actor: { kind: 'human', label: 'Owner' },
+        body: { kind: 'human-message', text: 'Already admitted' },
+        integrity: 'L0',
+        digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+      },
+    ],
+    checkpoint: {
+      throughSeq: 1,
+      checkpointDigest: 'b'.repeat(64),
+      retainedAnchorSeq: 0,
+      retainedAnchorDigest: 'c'.repeat(64),
+    },
+    hasMore: true,
+    nextCursor: 'next-page',
+    integrity: 'L0',
+  };
+  const second: ProjectTaskRoomBrowserHistory = {
+    ...first,
+    records: [],
+    hasMore: false,
+  };
+  historyRead
+    .mockReset()
+    .mockResolvedValueOnce(first)
+    .mockRejectedValueOnce(new Error('History unavailable'))
+    .mockResolvedValueOnce(second);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: 2, retryDelay: 0 } },
+  });
+  const view = renderHook(() => useProjectTaskRoomHistoryQuery('paged-task'), {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  try {
+    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    await act(() => view.result.current.fetchNextPage());
+    await waitFor(() =>
+      expect(view.result.current.isFetchNextPageError).toBe(true),
+    );
+    expect(historyRead).toHaveBeenCalledTimes(2);
+    expect(view.result.current.data?.pages).toEqual([first]);
+    expect(
+      client.getQueryData(
+        projectTaskRoomQueries.history('paged-task').queryKey,
+      ),
+    ).toEqual(view.result.current.data);
+    await act(() => view.result.current.fetchNextPage());
+    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    expect(view.result.current.data?.pages).toEqual([first, second]);
+    expect(historyRead).toHaveBeenCalledTimes(3);
+  } finally {
+    view.unmount();
+    client.clear();
+  }
 });
 
 test('committed settlement replaces only its exact observed document object', () => {

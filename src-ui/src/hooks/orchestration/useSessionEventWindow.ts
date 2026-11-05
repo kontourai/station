@@ -249,6 +249,8 @@ export function useSessionEventWindow(
   const contextTarget = useOptionalConversationConnection();
   const target = explicitTarget ?? contextTarget;
   apiBase = target?.apiBase ?? apiBase;
+  // Delivery controls may change without changing the history reader.
+  const bound = target != null;
   const station = target?.station;
   const requestScope = target?.requestScope;
   const observationTarget =
@@ -403,7 +405,7 @@ export function useSessionEventWindow(
       read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
-      if (!target || station)
+      if (!bound || station)
         activeChatsStore.applyConversationActivity(
           page.session?.conversationActivity,
           station,
@@ -414,7 +416,7 @@ export function useSessionEventWindow(
       setContextBoundaries(page.contextBoundaries ?? []);
       setMemoryContinuation(page.memoryContinuation);
       const next = page.events;
-      if (namespace && (!target || station?.binding.affinity.kind === 'host')) {
+      if (namespace && (!bound || station?.binding.affinity.kind === 'host')) {
         void saveOfflineReading(
           namespace,
           threadId,
@@ -518,7 +520,7 @@ export function useSessionEventWindow(
     namespace,
     requestScope,
     station,
-    target,
+    bound,
   ]);
 
   /**
@@ -564,7 +566,7 @@ export function useSessionEventWindow(
         )
           return undefined;
         if (read?.current() === false) return undefined;
-        if (!target || station)
+        if (!bound || station)
           activeChatsStore.applyConversationActivity(
             page.session?.conversationActivity,
             station,
@@ -619,7 +621,7 @@ export function useSessionEventWindow(
       threadId,
       requestScope,
       station,
-      target,
+      bound,
     ],
   );
 
@@ -759,7 +761,7 @@ export function useSessionEventWindow(
     if (
       !threadId ||
       !currentReader ||
-      (target && station?.binding.affinity.kind !== 'host')
+      (bound && station?.binding.affinity.kind !== 'host')
     )
       return;
     publishHistoryForCapture(apiBase, threadId, {
@@ -778,7 +780,7 @@ export function useSessionEventWindow(
     apiBase,
     threadId,
     currentReader,
-    target,
+    bound,
     station,
     events,
     currentSessionId,
@@ -793,10 +795,10 @@ export function useSessionEventWindow(
   ]);
   useEffect(
     () => () => {
-      if (threadId && (!target || station?.binding.affinity.kind === 'host'))
+      if (threadId && (!bound || station?.binding.affinity.kind === 'host'))
         removeHistoryForCapture(apiBase, threadId);
     },
-    [apiBase, threadId, target, station],
+    [apiBase, threadId, bound, station],
   );
   return {
     events: currentReader ? events : [],

@@ -377,24 +377,25 @@ const agentChip = (root: HTMLElement) =>
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
+function HomeWithDockToggle() {
+  const [, update] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          state.dockOpen = !state.dockOpen;
+          update(state.dockOpen);
+        }}
+      >
+        Toggle dock
+      </button>
+      <HomeStartComposer />
+    </>
+  );
+}
+
 test('Home yields its start surface to the open dock and restores the held draft', () => {
-  function HomeWithDockToggle() {
-    const [, update] = useState(false);
-    return (
-      <>
-        <button
-          type="button"
-          onClick={() => {
-            state.dockOpen = !state.dockOpen;
-            update(state.dockOpen);
-          }}
-        >
-          Toggle dock
-        </button>
-        <HomeStartComposer />
-      </>
-    );
-  }
   render(<HomeWithDockToggle />);
   fireEvent.change(
     screen.getByRole('textbox', { name: 'What would you like done?' }),
