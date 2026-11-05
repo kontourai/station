@@ -7,6 +7,7 @@ import type {
   KnowledgeIndexEntry,
 } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { getLoadablePath } from 'sqlite-vec';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { knowledgeEmbeddingIdentity } from '../embedding-identity.js';
@@ -175,6 +176,28 @@ describe('SqliteVecIndexProvider', () => {
     await provider.removeErasedRecords('root:a', ['rec-1']);
     await provider.removeErasedRecords('root:a', ['rec-1']);
     expect((await provider.stats('root:a')).chunks).toBe(1);
+    const inspect = new DatabaseSync(dbPath, { allowExtension: true });
+    try {
+      inspect.enableLoadExtension(true);
+      inspect.loadExtension(getLoadablePath());
+      inspect.enableLoadExtension(false);
+      expect(
+        inspect
+          .prepare(
+            'SELECT count(*) AS n FROM vec_items WHERE store = ? AND recordId = ?',
+          )
+          .get('root:a', 'rec-1'),
+      ).toMatchObject({ n: 0 });
+      expect(
+        inspect
+          .prepare(
+            'SELECT count(*) AS n FROM vec_items_auxiliary WHERE value00 = ? OR value02 = ?',
+          )
+          .get('rec-1', secret),
+      ).toMatchObject({ n: 0 });
+    } finally {
+      inspect.close();
+    }
     for (const path of [dbPath, `${dbPath}-wal`]) {
       if (existsSync(path)) {
         const bytes = readFileSync(path);
