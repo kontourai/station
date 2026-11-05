@@ -177,6 +177,7 @@ vi.mock('../hooks/useActiveProject', () => ({
 }));
 
 vi.mock('../hooks/useBackgroundTasks', () => ({
+  useChatBackgroundTasksLimited: () => false,
   useChatBackgroundTasksRunningCount: () => fixture.backgroundRunning,
 }));
 

@@ -50,6 +50,7 @@ function writeSectionState(state: SectionState) {
 
 export interface BackgroundTasksSheetProps {
   chatThreadId: string;
+  apiBase?: string;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   onOpenTranscript: (threadId: string) => void;
@@ -58,13 +59,17 @@ export interface BackgroundTasksSheetProps {
 
 export function BackgroundTasksSheet({
   chatThreadId,
+  apiBase,
   anchorRef,
   returnFocusTarget,
   onOpenTranscript,
   onClose,
 }: BackgroundTasksSheetProps) {
   const agents = useAgents();
-  const { running, finished } = useChatBackgroundTasks(chatThreadId);
+  const { running, finished, toolHistoryLimited } = useChatBackgroundTasks(
+    chatThreadId,
+    apiBase,
+  );
   const [sections, setSections] = useState<SectionState>(readSectionState);
   // The shared elapsed clock for every Running row, only while this sheet is
   // mounted (it is only ever mounted while open; see the lazy Suspense gate in
@@ -101,11 +106,17 @@ export function BackgroundTasksSheet({
         />
       </header>
       <div className="background-tasks-sheet__body">
-        {isEmpty && <Empty variant="compact" label="Nothing here yet" />}
+        {toolHistoryLimited && (
+          <p className="background-tasks-sheet__meta" role="status">
+            Older tool rows are omitted. Running counts cover retained rows.
+          </p>
+        )}
+        {isEmpty && <Empty variant="compact" label="Nothing to show" />}
         {running.length > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
-              Running ({running.length})
+              Running ({running.length}
+              {toolHistoryLimited ? ' shown' : ''})
             </h3>
             <ul className="background-tasks-sheet__list">
               {running.map((entry) => (
@@ -131,7 +142,7 @@ export function BackgroundTasksSheet({
               <span aria-hidden="true">
                 {sections.finishedExpanded ? '−' : '+'}
               </span>
-              Finished ({finished.length})
+              Recent activity ({finished.length})
             </button>
             {sections.finishedExpanded && (
               <ul className="background-tasks-sheet__list">
@@ -151,7 +162,8 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Remote delegations appear on the Activity page.
+        Recent activity only; closed-chat history may be missing. Find remote
+        delegations in Activity.
       </footer>
     </ResponsiveDialogSurface>
   );

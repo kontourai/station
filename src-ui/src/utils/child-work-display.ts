@@ -1,7 +1,12 @@
 import type {
   ChildWorkDisplayStatus,
   ChildWorkModel,
+  ChildWorkSummarySource,
   ChildWorkUsage,
+} from '@kontourai/station-contracts/child-work';
+import {
+  type ChildWorkKey,
+  childWorkKey,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -97,4 +102,52 @@ export function latestChildTool(
     }
   }
   return undefined;
+}
+
+export function childWorkSummaryLabel(
+  source: ChildWorkSummarySource | undefined,
+): string {
+  switch (source) {
+    case 'tool-return':
+      return 'Returned result';
+    case 'provider-summary':
+      return 'Provider summary';
+    case 'child-message':
+      return 'Child message';
+    case 'provider-error':
+      return 'Provider error';
+    default:
+      return 'Summary · source not recorded';
+  }
+}
+
+const NOTICE_SCOPE = 'station-child-work-notice-v1';
+
+export function childWorkNoticeKey(
+  child: ChildWorkKey,
+  apiBase?: string,
+): string {
+  const key = childWorkKey(child);
+  return !apiBase ? key : JSON.stringify([NOTICE_SCOPE, apiBase, key]);
+}
+
+/** A foreign Station's notice is hidden; legacy identities keep their old behavior. */
+export function visibleChildWorkNoticeKey(
+  key: string,
+  apiBase: string,
+): string | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(key);
+  } catch {
+    return key;
+  }
+  if (!Array.isArray(value) || value[0] !== NOTICE_SCOPE) return key;
+  if (
+    value.length !== 3 ||
+    typeof value[1] !== 'string' ||
+    typeof value[2] !== 'string'
+  )
+    return null;
+  return value[1] === apiBase ? value[2] : null;
 }
