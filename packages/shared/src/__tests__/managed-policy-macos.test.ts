@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   loadManagedPolicyFromSources,
+  ManagedPolicyInvalidError,
   macosProfileSource,
   managedPolicyFileSource,
   systemManagedPolicySources,
@@ -14,6 +15,7 @@ import {
   MACOS_MANAGED_PREFERENCES_PATH,
   managedPreferencesDocument,
   type PlistConverter,
+  plistKeyScanProblem,
   plutilConverter,
 } from '../managed-policy-macos.js';
 import { managedPolicyMobileconfig } from '../managed-policy-templates.js';
@@ -320,6 +322,78 @@ describe('duplicatePlistKeyPath', () => {
     '<dict><key>s</key><string><![CDATA[<key>s</key>]]></string><!-- <key>s</key> --></dict>',
   ])('passes distinct keys %s', (body) => {
     expect(duplicatePlistKeyPath(plist(body))).toBeNull();
+  });
+
+  // #4515 fix round 1: a key tag in any form plutil reads as a key must be
+  // seen by the scan, and markup the scan cannot tokenize refuses the
+  // profile rather than being skipped.
+  test.each([
+    ['<dict><key >limits</key><true/><key>limits</key><true/></dict>', 'limits'],
+    ['<dict><key>limits</key><true/><key\n\t>limits</key ><true/></dict>', 'limits'],
+  ])('finds a repeat whatever the whitespace in the key tag: %s', (body, path) => {
+    expect(duplicatePlistKeyPath(plist(body))).toBe(path);
+  });
+
+  test.each([
+    ['an attribute on a key', '<dict><key id="x">limits</key><true/></dict>'],
+    ['an unknown element', '<dict><keys>limits</keys><true/></dict>'],
+    ['a namespaced key', '<dict><p:key>limits</p:key><true/></dict>'],
+    ['a stray <', '<dict><key>a</key><true/>< key>limits</key><true/></dict>'],
+    ['a tag inside a key', '<dict><key>li<string/>mits</key><true/></dict>'],
+    ['an unclosed key', '<dict><key>limits'],
+  ])('refuses %s instead of skipping it', (_name, body) => {
+    expect(plistKeyScanProblem(plist(body))).not.toBeNull();
+    expect(duplicatePlistKeyPath(plist(body))).toBeNull();
+  });
+
+  test('refuses a DOCTYPE internal subset, which could define entities', () => {
+    expect(
+      plistKeyScanProblem(
+        '<?xml version="1.0"?><!DOCTYPE plist [<!ENTITY l "limits">]><plist version="1.0"><dict/></plist>',
+      ),
+    ).not.toBeNull();
+  });
+
+  test.skipIf(!hasPlutil)(
+    'plutil reads <key > as a key and keeps the last one, which is why the scan must see it',
+    () => {
+      const path = join(makeTempDir('station-policy-plutil-key-'), 'p.plist');
+      writeFileSync(
+        path,
+        plist(
+          '<dict><key >limits</key><dict><key>telemetry</key><false/></dict><key>limits</key><dict/></dict>',
+        ),
+      );
+      const json = JSON.parse(
+        execFileSync(PLUTIL, ['-convert', 'json', '-o', '-', path], {
+          encoding: 'utf8',
+        }),
+      );
+      expect(json).toEqual({ limits: {} });
+    },
+  );
+
+  test('the reviewer\'s profile (<key > limits with telemetry off, then a second limits) is refused as invalid', () => {
+    const path = join(makeTempDir('station-policy-profile-'), 'p.plist');
+    writeFileSync(
+      path,
+      plist(
+        '<dict><key>schemaVersion</key><integer>1</integer><key>organization</key><string>Acme</string><key >limits</key><dict><key>telemetry</key><false/></dict><key>limits</key><dict/></dict>',
+      ),
+    );
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          // The conversion plutil would give: the second `limits` wins.
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({ schemaVersion: 1, organization: 'Acme', limits: {} }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('duplicate key limits');
   });
 
   test('a profile that repeats a key is refused before conversion', () => {

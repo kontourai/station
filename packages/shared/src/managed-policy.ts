@@ -40,7 +40,7 @@ import {
   WINDOWS_POLICY_SUBKEY,
 } from './managed-policy-controls.js';
 import {
-  duplicatePlistKeyPath,
+  plistKeyScanProblem,
   MACOS_MANAGED_PREFERENCES_PATH,
   managedPreferencesDocument,
   type PlistConverter,
@@ -496,12 +496,18 @@ export function macosProfileSource(
       const bytes = readManagedPolicyFileBytes(path, ownership ?? undefined);
       if (bytes === undefined) return undefined;
       if (!bytes.subarray(0, 8).equals(Buffer.from('bplist00'))) {
-        const duplicate = duplicatePlistKeyPath(bytes.toString('utf8'));
-        if (duplicate !== null)
+        // #4515: fails closed on markup the scan cannot read, so a key in a
+        // form it does not recognize cannot hide a duplicate.
+        const problem = plistKeyScanProblem(bytes.toString('utf8'));
+        if (problem !== null) {
+          const duplicate = problem.startsWith('it repeats the key ')
+            ? problem.slice('it repeats the key '.length)
+            : null;
           throw new ManagedPolicyInvalidError(
             path,
-            `duplicate key ${duplicate}`,
+            duplicate !== null ? `duplicate key ${duplicate}` : problem,
           );
+        }
       }
       const converted = convert(bytes);
       if (!converted.ok)

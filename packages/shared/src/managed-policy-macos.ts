@@ -95,49 +95,119 @@ function decodeXmlText(text: string): string {
   );
 }
 
+/** The element names an XML property list may hold. */
+const PLIST_ELEMENTS = new Set([
+  'plist',
+  'dict',
+  'array',
+  'key',
+  'string',
+  'integer',
+  'real',
+  'true',
+  'false',
+  'date',
+  'data',
+]);
+
 /**
- * The dotted path of the first key repeated within one `<dict>` of an XML
- * property list, or null. plutil keeps the last of two equal keys, so a
- * second `limits` would silently erase the first one's restrictions; the
- * policy file refuses that, and so does the profile. Binary property lists
- * are written by tools that cannot repeat a key and are not scanned.
+ * Markup Station can read in a property list: a comment, CDATA, a
+ * processing instruction, a DOCTYPE without an internal subset (which could
+ * define entities), or an element tag. Anything else that starts with `<`
+ * is not tokenized and refuses the profile.
  */
-export function duplicatePlistKeyPath(xml: string): string | null {
+const PLIST_MARKUP =
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[^>[]*>|<(\/?)([A-Za-z][\w.:-]*)([^<>]*)>/g;
+
+/**
+ * Why an XML property list cannot be trusted as a policy, or null: the
+ * dotted path of the first key repeated within one `<dict>` (plutil keeps
+ * the last of two equal keys, so a second `limits` would silently erase the
+ * first one's restrictions; the policy file refuses that, and so does the
+ * profile), or markup this scanner does not recognize. The scan fails
+ * closed: a `<key >` or `<key x="y">` plutil still reads as a key, so an
+ * element tag in any form but the plain one (only `<plist>` carries
+ * attributes) is refused rather than skipped. Binary property lists are
+ * written by tools that cannot repeat a key and are not scanned.
+ */
+export function plistKeyScanProblem(xml: string): string | null {
   // A frame per open container; `seen` is null for an array.
   const frames: Array<{ path: string; seen: Set<string> | null }> = [];
   let pendingKey: string | null = null;
-  const tokens =
-    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[^>]*>|<key>([\s\S]*?)<\/key>|<(\/?)(dict|array)\s*(\/?)>|<([a-zA-Z]+)\s*\/?>/g;
-  for (const [
-    ,
-    keyText,
-    closing,
-    container,
-    selfClosing,
-    valueTag,
-  ] of xml.matchAll(tokens)) {
-    const top = frames[frames.length - 1];
-    if (keyText !== undefined) {
+  /** The raw text of an open `<key>`, or null outside one. */
+  let keyRaw: string | null = null;
+  let offset = 0;
+  for (const match of xml.matchAll(PLIST_MARKUP)) {
+    const [token, closing, name, rest] = match;
+    const index = match.index ?? 0;
+    const between = xml.slice(offset, index);
+    offset = index + token.length;
+    if (between.includes('<'))
+      return 'it holds markup Station cannot read as a property list';
+    if (keyRaw !== null) keyRaw += between;
+    if (name === undefined) {
+      // A comment, CDATA, processing instruction or DOCTYPE. Inside a key
+      // its text is part of the key, as `plistKeyText` reads it.
+      if (keyRaw !== null) keyRaw += token;
+      continue;
+    }
+    // Whitespace is allowed where XML allows it (`<key >` is a key, and is
+    // read as one); attributes only on `<plist>`.
+    const shapeOk =
+      name === 'plist' ||
+      (closing ? /^\s*$/.test(rest) : /^\s*\/?$/.test(rest));
+    if (!PLIST_ELEMENTS.has(name) || !shapeOk)
+      return `it holds the tag ${JSON.stringify(token.slice(0, 64))}, which Station does not read as a property list element`;
+    const selfClosing = !closing && rest.trimEnd().endsWith('/');
+    if (keyRaw !== null) {
+      if (name !== 'key' || !closing)
+        return 'a <key> holds markup Station cannot read';
+      const top = frames[frames.length - 1];
+      const text = plistKeyText(keyRaw);
+      keyRaw = null;
       if (!top?.seen) continue;
-      const name = plistKeyText(keyText);
-      const path = top.path ? `${top.path}.${name}` : name;
-      if (top.seen.has(name)) return path;
-      top.seen.add(name);
+      const path = top.path ? `${top.path}.${text}` : text;
+      if (top.seen.has(text)) return `it repeats the key ${path}`;
+      top.seen.add(text);
       pendingKey = path;
-    } else if (container !== undefined) {
+      continue;
+    }
+    if (name === 'key') {
+      if (closing || selfClosing)
+        return 'it holds a <key> Station cannot read';
+      keyRaw = '';
+      continue;
+    }
+    const top = frames[frames.length - 1];
+    if (name === 'dict' || name === 'array') {
       if (closing) frames.pop();
       else if (!selfClosing)
         frames.push({
           path: top?.seen ? (pendingKey ?? top.path) : (top?.path ?? ''),
-          seen: container === 'dict' ? new Set() : null,
+          seen: name === 'dict' ? new Set() : null,
         });
       pendingKey = null;
-    } else if (valueTag !== undefined) {
+    } else if (name !== 'plist') {
       // A value (`<string>`, `<true/>`, …) consumes the pending key.
       pendingKey = null;
     }
   }
+  if (keyRaw !== null) return 'a <key> is not closed';
+  if (xml.slice(offset).includes('<'))
+    return 'it holds markup Station cannot read as a property list';
   return null;
+}
+
+/**
+ * The dotted path of the first key repeated within one `<dict>` of an XML
+ * property list, or null (see {@link plistKeyScanProblem}, which also
+ * refuses markup it cannot read).
+ */
+export function duplicatePlistKeyPath(xml: string): string | null {
+  const problem = plistKeyScanProblem(xml);
+  return problem?.startsWith('it repeats the key ')
+    ? problem.slice('it repeats the key '.length)
+    : null;
 }
 
 /** A `<key>`'s text: comments dropped, CDATA kept literally, entities decoded. */
