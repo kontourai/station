@@ -606,6 +606,25 @@ export async function captureConnectionState(
         await expect(
           page.getByRole('log', { name: 'Conversation transcript' }),
         ).toBeVisible();
+        await expect(
+          page.getByRole('status', {
+            name: "Reading this chat's record",
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        await expect(
+          page.getByText("Could not read this Station's chat records", {
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        const latest = page.getByRole('button', {
+          name: 'Scroll to bottom',
+          exact: true,
+        });
+        if (await latest.isVisible()) {
+          await latest.click();
+          await expect(latest).toHaveCount(0);
+        }
       }
       await expect
         .poll(() =>
