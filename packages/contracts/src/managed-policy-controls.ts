@@ -8,7 +8,6 @@ import {
 } from './provider.js';
 
 export * from './managed-policy-codes.js';
-export type { ManagedPolicySummary } from './managed-policy-status.js';
 
 /** "Managed by <organization>", the label beside a managed control. */
 export function managedByLabel(summary: ManagedPolicySummary): string {
