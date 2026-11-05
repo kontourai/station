@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import {
   initializeRootBinding,
@@ -13,7 +14,10 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
+import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
+import { FakeNeo4jDriver } from './fake-neo4j-driver.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
+import { syncRootToNeo4j } from '../neo4j-graph-sync.js';
 import { MemoryErasureCoordinator } from '../memory-erasure-coordinator.js';
 import { MemoryRootManager } from '../memory-root.js';
 
@@ -104,6 +108,24 @@ test('purges with the confirmed revision, cleans index bytes and returns Corpus 
     });
     expect(await (await f.store.adapterFor(f.root.id)).get(f.id)).toBeNull();
     expect((await f.index.stats(f.root.id)).chunks).toBe(0);
+    const journal = new DatabaseSync(
+      join(f.home, 'data', 'memory-erasure', 'intents.sqlite'),
+      { readOnly: true },
+    );
+    try {
+      const count = () =>
+        Number(
+          journal
+            .prepare('SELECT count(*) AS n FROM monument_inbox_entries')
+            .get()?.n,
+        );
+      const before = count();
+      await f.coordinator.reconcileRoot(f.root);
+      await f.coordinator.reconcileRoot(f.root);
+      expect(count()).toBe(before);
+    } finally {
+      journal.close();
+    }
     for (const path of [f.dbPath, `${f.dbPath}-wal`])
       if (existsSync(path))
         expect(readFileSync(path).includes('erasable-unique-text-7529')).toBe(
@@ -652,6 +674,49 @@ test('a purge between snapshot and publication prevents a stale rebuild', async 
         );
   } finally {
     release();
+    f.index.close();
+  }
+});
+
+test('a graph assembled before erasure does not deliver the erased title', async () => {
+  const f = await setup();
+  try {
+    const driver = new FakeNeo4jDriver();
+    await syncRootToNeo4j({ rootId: f.root.id, store: f.store, driver });
+    const app = createNeo4jGraphRoutes({
+      store: f.store,
+      getConnection: () => ({ uri: 'neo4j://localhost:7687' }),
+      resolveDriver: async () => ({ ok: true, driver }),
+      mayUseRoot: async () => true,
+    });
+    const response = await app.request(`/roots/${f.root.id}/graph/neo4j`);
+    expect(response.status).toBe(200);
+    const path = await app.request(
+      `/roots/${f.root.id}/graph/neo4j/shortest-path?fromId=${f.id}&toId=${f.id}`,
+    );
+    expect(path.status).toBe(200);
+    const preview = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    await f.coordinator.erase(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+      preview.impact.revision,
+      'graph-race',
+    );
+    await expect(response.text()).rejects.toThrow();
+    await expect(path.text()).rejects.toThrow();
+    const after = await app.request(`/roots/${f.root.id}/graph/neo4j`);
+    expect(await after.text()).not.toContain('Memory');
+  } finally {
     f.index.close();
   }
 });

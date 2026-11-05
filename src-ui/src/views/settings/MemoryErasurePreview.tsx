@@ -485,9 +485,9 @@ export function MemoryErasurePreview() {
                 ? 'Private memory is unavailable. Check access or update Station.'
                 : erase.error instanceof MemoryErasureRequestError &&
                     erase.error.kind === 'denied'
-                  ? 'Only the host operator can erase memories.'
+                  ? 'Sign in as the host operator to erase memories.'
                   : erase.error
-                    ? 'Erasure could not be confirmed. Retry in this dialog.'
+                    ? 'Erasure could not be confirmed. Retry here, or restart Station if it still fails.'
                     : null
             }
             onCancel={() => {

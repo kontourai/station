@@ -47,7 +47,7 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -3996,10 +3996,27 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         .spyOn(MemoryErasureCoordinator.prototype, 'recoverAll')
         .mockRejectedValueOnce(new Error('root changed'));
       try {
-        const { app, featurePreviews } = await principalSetup({
+        const { app, featurePreviews, roomHomeDir } = await principalSetup({
           knowledge: true,
         });
         await featurePreviews.setEnabled('private-memory', true);
+        const hash = createHash('sha256')
+          .update(LOCAL_OPERATOR_PRINCIPAL_ID)
+          .digest('hex');
+        const rootId = `root:memory:${hash}`;
+        await new FileStorageAdapter(roomHomeDir).saveKnowledgeStoreRoot({
+          id: rootId,
+          scope: { kind: 'personal' },
+          readPolicy: {
+            kind: 'author-private',
+            ownerId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          },
+          registrationId: randomUUID(),
+          adapterId: 'corpus-private-memory',
+          storeRoot: join(roomHomeDir, 'knowledge', 'memory', hash),
+          displayName: 'Private memory',
+          createdAt: new Date().toISOString(),
+        });
         const headers = { Authorization: `Bearer ${OPERATOR_SECRET}` };
         const roots = await app.request(
           '/api/knowledge/roots',
@@ -4007,6 +4024,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(roots.status).toBe(200);
+        expect(
+          ((await roots.json()) as { data: Array<{ id: string }> }).data.some(
+            (root) => root.id === rootId,
+          ),
+        ).toBe(false);
+        const records = await app.request(
+          `/api/knowledge/roots/${rootId}/records?type=raw`,
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(records.status).toBe(503);
         const memory = await app.request(
           '/api/knowledge/memory/root',
           { method: 'POST', headers },

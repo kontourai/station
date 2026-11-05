@@ -153,7 +153,7 @@ The lookup shows Corpus's preview of affected records and proposals. Records
 that survive or link to erased records may still contain the erased content.
 The host operator can confirm permanent erasure after reviewing these effects.
 Station returns a receipt after cleanup. If a request's outcome is unknown,
-check the target before trying again.
+retry in the same confirmation dialog. If it still fails, restart Station.
 
 If another tool writes to this store outside Station during a purge, a copy of
 the erased text can remain in the search index file until the next cleanup pass.
@@ -161,8 +161,9 @@ It is never shown in results. The separate atomic publication contract is tracke
 in [corpus#74](https://github.com/kontourai/corpus/issues/74). An interrupted
 Corpus erasure can leave its before-images in a transaction journal until recovery
 ([corpus#73](https://github.com/kontourai/corpus/issues/73)). Backups and filesystem
-snapshots have their own retention. Erasure does not remove titles or categories
-previously copied to a Neo4j graph; remove those copies separately.
+snapshots have their own retention. Erasure does not remove titles, categories,
+or link labels previously copied to a Neo4j graph; remove those copies separately.
+Briefs created outside Station before erasure may also retain the erased content.
 Agent-backed proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index

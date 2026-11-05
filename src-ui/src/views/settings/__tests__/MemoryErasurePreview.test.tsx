@@ -362,9 +362,12 @@ test('stale confirmation refreshes the preview and requires confirmation again',
 });
 
 test.each([
-  [403, 'Only the host operator can erase memories.'],
+  [403, 'Sign in as the host operator to erase memories.'],
   [404, 'Private memory is unavailable. Check access or update Station.'],
-  [503, 'Erasure could not be confirmed. Retry in this dialog.'],
+  [
+    503,
+    'Erasure could not be confirmed. Retry here, or restart Station if it still fails.',
+  ],
 ])('explains erasure failure %s', async (status, message) => {
   vi.stubGlobal(
     'fetch',
