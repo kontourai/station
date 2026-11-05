@@ -48,6 +48,7 @@ vi.mock('../../contexts/useOpenDeviceInRegion', () => ({
   useOpenDeviceInRegion: () => openDevice,
 }));
 
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import FloatOverChat from '../FloatOverChat';
 import { deviceFloatSourceKey } from '../floatSource';
 import {
@@ -310,6 +311,7 @@ beforeEach(() => {
     toJSON: () => ({}),
   } as DOMRect);
   window.localStorage.clear();
+  deviceSettingsStore.reset('deviceFoldBentView');
   resetFloatStoreForTests();
   calls = [];
   listed = [SESSION];
@@ -804,7 +806,7 @@ test('LOW-1: floating the same device again as a NEW session, while its old one 
 });
 
 test('a floated foldable is drawn bent at its hinge, from the fold its stream reports', async () => {
-  window.localStorage.setItem('station.device.foldView.bent', '1');
+  deviceSettingsStore.set('deviceFoldBentView', true);
   renderChat();
   await floatDevice();
   await screen.findByTestId('live-surface-canvas');
