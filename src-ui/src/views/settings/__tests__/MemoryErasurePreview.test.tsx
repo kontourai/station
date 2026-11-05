@@ -361,6 +361,50 @@ test('stale confirmation refreshes the preview and requires confirmation again',
   ).toHaveLength(1);
 });
 
+test.each([
+  [403, 'Only the host operator can erase memories.'],
+  [404, 'Private memory is unavailable. Check access or update Station.'],
+  [503, 'Erasure could not be confirmed. Retry in this dialog.'],
+])('explains erasure failure %s', async (status, message) => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/memory/erase') && init?.method === 'POST')
+        return reply({ success: false }, status);
+      if (String(input).includes('erasure-preview'))
+        return reply({
+          success: true,
+          data: {
+            kind: 'proposal',
+            id: 'proposal-1',
+            title: 'A memory',
+            impact: {
+              proposalId: 'proposal-1',
+              alreadyErased: false,
+              state: 'pending',
+              revision: 'revision-1',
+            },
+          },
+        });
+      return reply({
+        success: true,
+        data: [{ id: 'proposal-1', candidate: { title: 'A memory' } }],
+      });
+    }),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Look up proposal' }),
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Erase memory' }));
+  fireEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Erase permanently',
+    }),
+  );
+  expect(await screen.findByText(message)).toBeTruthy();
+});
+
 test('explains an unavailable store and a missing target without offering retry', async () => {
   vi.stubGlobal(
     'fetch',

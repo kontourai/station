@@ -66,7 +66,7 @@ class MemoryLookupError extends Error {
 }
 
 class MemoryErasureRequestError extends Error {
-  constructor(readonly kind: 'stale' | 'unsupported' | 'uncertain') {
+  constructor(readonly kind: 'stale' | 'unavailable' | 'denied' | 'uncertain') {
     super(kind);
   }
 }
@@ -262,7 +262,9 @@ export function MemoryErasurePreview() {
           throw new MemoryErasureRequestError('stale');
       }
       if (response.status === 404)
-        throw new MemoryErasureRequestError('unsupported');
+        throw new MemoryErasureRequestError('unavailable');
+      if (response.status === 403)
+        throw new MemoryErasureRequestError('denied');
       if (!response.ok) throw new MemoryErasureRequestError('uncertain');
       const body = z
         .object({
@@ -479,11 +481,14 @@ export function MemoryErasurePreview() {
             pending={erase.isPending}
             error={
               erase.error instanceof MemoryErasureRequestError &&
-              erase.error.kind === 'unsupported'
-                ? 'This Station cannot erase memories yet. Update it and try again.'
-                : erase.error
-                  ? 'Erasure could not be confirmed. Check before trying again.'
-                  : null
+              erase.error.kind === 'unavailable'
+                ? 'Private memory is unavailable. Check access or update Station.'
+                : erase.error instanceof MemoryErasureRequestError &&
+                    erase.error.kind === 'denied'
+                  ? 'Only the host operator can erase memories.'
+                  : erase.error
+                    ? 'Erasure could not be confirmed. Retry in this dialog.'
+                    : null
             }
             onCancel={() => {
               if (!erase.isPending) setConfirmation(null);
