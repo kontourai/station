@@ -428,12 +428,12 @@ describe('#4515: the Windows CLI is held to the owner and ACL rule', () => {
 
   test.each([
     [
-      'its folder lets Users change it',
+      'folder lets Users change it',
       { ...INSTALLED, [FOLDER]: `${INSTALLED[FOLDER]}(A;;0x1301bf;;;BU)` },
       'C:\\Program Files\\Tailscale lets Users',
     ],
     [
-      'the CLI is owned by a user',
+      'owner is a user',
       {
         ...INSTALLED,
         [CLI]:
@@ -442,7 +442,7 @@ describe('#4515: the Windows CLI is held to the owner and ACL rule', () => {
       `${CLI} must be owned by Administrators, SYSTEM or TrustedInstaller`,
     ],
     [
-      'the CLI grants Everyone write',
+      'access list grants Everyone write',
       { ...INSTALLED, [CLI]: `${INSTALLED[CLI]}(A;;FW;;;WD)` },
       `${CLI} lets`,
     ],
