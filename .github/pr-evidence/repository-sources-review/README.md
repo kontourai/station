@@ -14,7 +14,7 @@ waivers. This is a partial gallery capture, not whole-application qualification.
 All eight saved PNG hashes were checked against their capture receipt, and
 this contact sheet was inspected. The parent integration at `61fa66afe0f4`
 only adds review notes and cross-runtime browser navigation updates; the
-production UI remains byte-identical to the captured revision.
+production UI at that integration remained byte-identical to the captured revision.
 
 The earlier captures in [PR #4619](https://github.com/kontourai/station/pull/4619)
 remain dated before views. They are not relabelled as current proof. Scroll
@@ -37,3 +37,25 @@ Installed shells and physical-device input remain unverified.
 
 The capture and audit runner stopped its instance. Independent source and
 behavior review is still required before promoting the draft PR.
+
+
+## Legacy authentication certainty
+
+Captured at `686d79d4879451ff65eebf41a8a23806210be328` from an isolated
+Station CLI `--watch` runtime. Named identity/resolution and valid legacy
+integration-status GET fixtures supply an `unverified` action without an
+`authentication` object; Project creation/deletion and preview selection use
+the real isolated service. The browser and runtime were stopped after capture.
+
+![Older-host sign-in stays Not confirmed in both widths and themes](legacy-auth.png)
+
+All four observations at 390/1440 pixels in light/dark themes passed and were
+inspected. Sign-in stays **Not confirmed**, account/scopes stay **Not reported**,
+and no error or false **Signed in** state appears. Explicit signed-in metadata
+still passes the mounted consumer's existing positive case.
+
+The consumer regression first failed for legacy `unverified` and `failed`
+action responses on the reviewed code. After repair, all 13 focused UI/SDK
+cases pass. The `works` action is also covered as an unknown authentication
+control. These checks qualify displayed certainty; they do not perform a real
+provider sign-in or grant repository permission.
