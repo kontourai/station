@@ -36,6 +36,7 @@ import {
   DEVICE_SETTINGS_REGISTRY,
   type DeviceSettingDefinition,
   type DeviceSettings,
+  INBOX_SECTION_IDS,
   NOTIFICATION_SOUND_CATEGORIES,
   NOTIFICATION_SOUND_VALUES,
   type NotificationSound,
@@ -544,6 +545,19 @@ function validateImportedValue<K extends keyof DeviceSettings>(
           : { valid: true, value: parsed };
       }
 
+      if (
+        definition.key === 'inboxSections' &&
+        Object.hasOwn(candidate, 'order')
+      ) {
+        const order = candidate.order;
+        if (
+          !Array.isArray(order) ||
+          order.length > INBOX_SECTION_IDS.length ||
+          new Set(order).size !== order.length ||
+          order.some((id) => !INBOX_SECTION_IDS.some((known) => known === id))
+        )
+          return { valid: false };
+      }
       const fields = COMPOSITE_BOOLEAN_FIELDS[definition.key as string];
       const structurallyValid =
         !fields ||

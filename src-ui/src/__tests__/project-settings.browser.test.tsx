@@ -11,7 +11,7 @@ const fixtures: Plugin = {
   setup(builder) {
     const modules: Record<string, string> = {
       '@kontourai/station-sdk': `
-        export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
+        export const useManagedPolicyStatusQuery=()=>({data:undefined}); export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
         const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'};
         const agents=[{slug:'builder',name:'Builder'},{slug:'reviewer',name:'Reviewer'}];
         const query=data=>({data,isLoading:false,isError:false,refetch:()=>{}});
@@ -32,10 +32,12 @@ const fixtures: Plugin = {
       ConfigContext:
         'export const useConfig=()=>({defaultApprovalMode:"ask"});',
       ApiBaseContext:
-        'export const useHostRequestAuthorityScope=()=>({apiBase:"http://station.test",authorityKey:"fixture"});',
+        'export const useApiBase=()=>({apiBase:"http://station.test"}); export const useHostRequestAuthorityScope=()=>({apiBase:"http://station.test",authorityKey:"fixture"});',
       ProjectsContext: `const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'}; export const useScopedProjectQuery=()=>({data:project}); export const useScopedProjectChatDefaultsQuery=()=>({data:undefined}); export const useScopedProjectCheckoutFreshnessQuery=()=>({data:{version:'station.project-checkout-freshness/v1',status:'stale',staleBecause:['commits'],thresholds:{commits:50,days:3},branch:'main',upstream:'origin/main',behind:183,ahead:0,upstreamFetchedAt:new Date(Date.now()-2*86400000).toISOString(),updateCommand:'git -C /home/developer/projects/station pull --ff-only',checkedAt:new Date().toISOString()},error:null,isFetching:false,refetch:async()=>{}});`,
       AgentsContext: 'export const useAgents=()=>[];',
       useShowSurface: 'export const useShowSurface=()=>()=>{};',
+      useDevicePresentation:
+        'export const useDevicePresentation=()=>({hostName:"Kontour",deviceClass:"desktop"});',
       useKeyboardShortcut: 'export const useKeyboardShortcut=()=>{};',
       PathAutocomplete: `import React from 'react';export const PathAutocomplete=({id,value,onChange,className})=><input id={id} className={className} value={value} onChange={e=>onChange(e.target.value)}/>;`,
       ModelSelector: `import React from 'react';export const ModelSelector=({value,disabled})=><input aria-label="Default model" value={value} disabled={disabled} readOnly/>;`,
@@ -96,18 +98,29 @@ test('project settings remain usable above the dock at phone and desktop widths 
       );
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 900 });
-        await page
-          .getByRole('link', { name: 'Workspace', exact: true })
-          .click();
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('workspace');
+        else
+          await page
+            .getByRole('link', { name: 'Workspace', exact: true })
+            .click();
         await page
           .locator('#section-workspace')
           .evaluate((element) => element.focus({ preventScroll: true }));
-        await page.getByRole('textbox', { name: 'Name *' }).waitFor();
+        expect(
+          await page.getByRole('textbox', { name: 'Name *' }).count(),
+        ).toBe(0);
         // Before any animation settles: the previous pass ended on Danger
         // zone, and a fading fill read as a second selected tab.
         expect(
           await page
-            .getByRole('link', { name: 'Danger zone', exact: true })
+            .getByRole('link', {
+              name: 'Danger zone',
+              exact: true,
+              includeHidden: true,
+            })
             .evaluate((element) => getComputedStyle(element).backgroundColor),
         ).toBe('rgba(0, 0, 0, 0)');
         // The stale checkout warning renders in the Workspace section.
@@ -138,15 +151,20 @@ test('project settings remain usable above the dock at phone and desktop widths 
         );
         const nav = page.getByRole('navigation', {
           name: 'Project settings sections',
+          includeHidden: true,
         });
         expect(await nav.locator('[aria-current="location"]').count()).toBe(1);
         expect(
           await nav
-            .getByRole('link', { name: 'Workspace', exact: true })
+            .getByRole('link', {
+              name: 'Workspace',
+              exact: true,
+              includeHidden: true,
+            })
             .getAttribute('aria-current'),
         ).toBe('location');
         const leafLines = await page
-          .locator('.project-settings__path-pill code')
+          .locator('.project-settings__identity-path .station-path__value')
           .last()
           .evaluate((element) => {
             const walker = document.createTreeWalker(
@@ -170,12 +188,48 @@ test('project settings remain usable above the dock at phone and desktop widths 
             () => document.documentElement.scrollWidth <= innerWidth,
           ),
         ).toBe(true);
+        const windowScroll = await page.evaluate(() => window.scrollY);
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('basic-info');
+        else
+          await page
+            .getByRole('link', { name: 'Basic info', exact: true })
+            .click();
+        expect(await page.evaluate(() => window.scrollY)).toBe(windowScroll);
+        expect(await page.locator('#section-workspace').isVisible()).toBe(
+          false,
+        );
+        const name = page.getByRole('textbox', { name: 'Name *' });
+        await name.fill('Unsaved project title');
         const icon = await page
           .getByRole('button', { name: 'Choose project icon' })
           .boundingBox();
         expect(icon!.width).toBeGreaterThanOrEqual(44);
         expect(icon!.height).toBeGreaterThanOrEqual(44);
-        await page.getByRole('link', { name: 'Agents', exact: true }).click();
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('agents');
+        else
+          await page.getByRole('link', { name: 'Agents', exact: true }).click();
+        expect(await name.isVisible()).toBe(false);
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('basic-info');
+        else
+          await page
+            .getByRole('link', { name: 'Basic info', exact: true })
+            .click();
+        expect(await name.inputValue()).toBe('Unsaved project title');
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('agents');
+        else
+          await page.getByRole('link', { name: 'Agents', exact: true }).click();
         const agent = page.getByRole('checkbox', {
           name: /Make Builder available/,
         });
@@ -184,9 +238,14 @@ test('project settings remain usable above the dock at phone and desktop widths 
         await page.locator('label[for="project-agent-builder"]').click();
         await page.getByRole('button', { name: 'Save', exact: true }).click();
         await page.screenshot({ path: `${out}/agents-${width}-${theme}.png` });
-        await page
-          .getByRole('link', { name: 'Danger zone', exact: true })
-          .click();
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('danger');
+        else
+          await page
+            .getByRole('link', { name: 'Danger zone', exact: true })
+            .click();
         const remove = page.getByRole('button', {
           name: 'Delete Project',
           exact: true,

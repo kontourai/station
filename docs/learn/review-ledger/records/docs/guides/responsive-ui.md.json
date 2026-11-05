@@ -146,7 +146,15 @@
 
     "src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx",
 
-    "src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx"
+    "src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.css",
+
+    "src-ui/src/hooks/useCoarsePointer.ts"
   ],
 
   "checks": [

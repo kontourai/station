@@ -21,16 +21,23 @@ import './ProjectSourcesSection.css';
 export function ProjectSourcesSection({
   slug,
   projectId,
+  stationName: suppliedStationName,
+  onNavigateToSection,
+  hrefForSection,
 }: {
   slug: string;
   projectId?: string;
+  stationName?: string;
+  onNavigateToSection?: (section: string) => void;
+  hrefForSection?: (section: string) => string;
 }) {
   const [repairOpen, setRepairOpen] = useState(false);
   const repairSummary = useRef<HTMLElement>(null);
   const authority = useHostRequestAuthorityScope();
   const { navigate } = useNavigation();
   const station = useActiveStationName();
-  const host = useCachedStationStatus()?.devicePresentation?.hostName;
+  const reportedHost = useCachedStationStatus()?.devicePresentation?.hostName;
+  const host = suppliedStationName ?? reportedHost;
   const stationName =
     [station, host && host !== station ? host : undefined]
       .filter(Boolean)
@@ -83,7 +90,18 @@ export function ProjectSourcesSection({
               <p className="project-sources__hint">
                 Filesystem paths below belong to {stationName}.
               </p>
-              <ResourcesSection slug={slug} requestScope={authority} embedded />
+              <ResourcesSection
+                slug={slug}
+                requestScope={authority}
+                stationName={stationName}
+                workspaceHref={hrefForSection?.('workspace')}
+                onNavigateToWorkspace={
+                  onNavigateToSection
+                    ? () => onNavigateToSection('workspace')
+                    : undefined
+                }
+                embedded
+              />
             </details>
           </section>
           <ProjectKnowledgeSources
@@ -91,6 +109,7 @@ export function ProjectSourcesSection({
             projectId={projectId}
             authority={authority}
           />
+
           <section
             className="project-sources__group"
             aria-label="Connected services"
@@ -102,9 +121,11 @@ export function ProjectSourcesSection({
             </p>
             <Button
               onClick={() =>
-                navigate(`/projects/${encodeURIComponent(slug)}/edit`, {
-                  section: 'tools',
-                })
+                onNavigateToSection
+                  ? onNavigateToSection('tools')
+                  : navigate(`/projects/${encodeURIComponent(slug)}/edit`, {
+                      section: 'tools',
+                    })
               }
             >
               Manage connections

@@ -12,6 +12,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ForgeMark, forgeForHost } from '../../components/icons/ForgeMark';
+import { StationPath } from '../../components/StationPath';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import { ProjectRepositoryAccess } from './ProjectRepositoryAccess';
@@ -213,7 +214,7 @@ function RepositorySourceCard({
         >
           <h4>{stationName}</h4>
           <dl className="project-repositories__details">
-            <ResourceLocation resource={resource} />
+            <ResourceLocation resource={resource} stationName={stationName} />
             {startingDirectory !== undefined && (
               <>
                 <dt>New chats start in</dt>
@@ -292,8 +293,10 @@ function RepositorySourceIdentity({ repo }: { repo: ProjectRepoResource }) {
 
 function ResourceLocation({
   resource,
+  stationName,
 }: {
   resource: ResourceResolutionResult | undefined;
+  stationName: string;
 }) {
   if (!resource)
     return (
@@ -308,7 +311,7 @@ function ResourceLocation({
         <>
           <dt>Checkout folder</dt>
           <dd>
-            <code>{resource.path}</code>
+            <StationPath path={resource.path} stationName={stationName} />
           </dd>
         </>
       );
@@ -318,7 +321,10 @@ function ResourceLocation({
         <>
           <dt>Folder to check</dt>
           <dd>
-            <code>{resource.unverifiedPath}</code>
+            <StationPath
+              path={resource.unverifiedPath}
+              stationName={stationName}
+            />
           </dd>
         </>
       );
@@ -327,7 +333,10 @@ function ResourceLocation({
         <>
           <dt>Last saved folder</dt>
           <dd>
-            <code>{resource.declaredPath}</code>
+            <StationPath
+              path={resource.declaredPath}
+              stationName={stationName}
+            />
           </dd>
         </>
       );

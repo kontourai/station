@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { NewProjectRepositorySource } from '../../components/modals/NewProjectRepositorySource';
+import { StationPath } from '../../components/StationPath';
 import { SkeletonBlock } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 
@@ -89,8 +90,8 @@ export function ProjectRepositoryAttachment({
       {selection && (
         <>
           <p>
-            Selected working copy via {stationName}:{' '}
-            <code>{selection.path}</code>
+            Selected checkout:{' '}
+            <StationPath path={selection.path} stationName={stationName} />
           </p>
           <label className="project-sources__consent" htmlFor={checkboxId}>
             <input

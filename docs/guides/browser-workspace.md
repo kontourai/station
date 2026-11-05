@@ -19,10 +19,9 @@ Limits, refusal codes, network rules and evidence live in the
 
 ## Open a page
 
-1. Open a **Browser** pane for the Project. An empty pane says **Enter a URL
-   or pick a local server**.
+1. Open a **Browser** pane for the Project.
 2. Type a URL, or plain words to search with DuckDuckGo, or pick a local
-   server. The operator shares local servers with a Project in **Settings →
+   server. Press Enter or the arrow button to open it. The operator shares local servers with a Project in **Settings →
    Advanced → Browser & devices**.
 3. Use back, forward and reload beside the address bar. **New tab** opens
    another session; closing a tab closes its session, and **Reopen tab**

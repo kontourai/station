@@ -1,3 +1,7 @@
+import {
+  INBOX_SECTION_IDS,
+  type InboxSectionId,
+} from '@kontourai/station-contracts/device-settings';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
   useCallback,
@@ -18,14 +22,13 @@ import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
   draftDiscardThreadId,
   draftSessionIds,
-  olderDraftsLabel,
-  splitDraftsByAge,
 } from '../../views/home/draft-lane';
 import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { workStatusText } from '../../views/home/work-status';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
@@ -850,7 +853,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, read only` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -882,6 +885,7 @@ export function InboxRow({
             >
               {item.title}
             </strong>
+            {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
             {item.environmentLabel && (
@@ -1091,10 +1095,105 @@ export function InboxRow({
   );
 }
 
-export type CollapsibleInboxSectionId = Exclude<
-  MobileActivityGroup['id'],
-  'dismissed'
->;
+function InboxTaskRow({
+  item,
+  now,
+  facts,
+  onActivate,
+  onSnoozeWake,
+  onDismiss,
+  onRestore,
+  isSnoozed,
+  isDismissed,
+}: Pick<
+  InboxRowProps,
+  | 'item'
+  | 'now'
+  | 'facts'
+  | 'onActivate'
+  | 'onSnoozeWake'
+  | 'onDismiss'
+  | 'onRestore'
+  | 'isSnoozed'
+  | 'isDismissed'
+>) {
+  const id = useId();
+  const status = useObservedWorkStatus(item, now, facts);
+  return (
+    <div
+      className="chat-dock-inbox__row inbox-row inbox-row--task"
+      data-row-key={item.id}
+    >
+      <span className="inbox-row__task-label">Task · {item.projectLabel}</span>
+      <strong className="inbox-row__title" title={item.title}>
+        {item.title}
+      </strong>
+      <InboxRowStatusLine id={id} status={status} now={now} />
+      <div className="inbox-row__task-actions">
+        <Button
+          variant="ghost"
+          className="chat-dock-inbox__item inbox-row__task-open"
+          aria-label={`Open task ${item.title}`}
+          onClick={() => onActivate(item)}
+        >
+          Open task
+        </Button>
+        <ActionOverflowMenu
+          label={`Actions for task ${item.title}`}
+          actions={[
+            ...(onSnoozeWake
+              ? isSnoozed
+                ? [
+                    {
+                      key: 'wake',
+                      label: 'Unsnooze',
+                      onSelect: (trigger: HTMLElement) => {
+                        if (trigger instanceof HTMLButtonElement)
+                          onSnoozeWake(item, null, trigger);
+                      },
+                    },
+                  ]
+                : SNOOZE_OPTIONS.map((option) => ({
+                    key: option.label,
+                    label: `Snooze ${option.label}`,
+                    onSelect: (trigger: HTMLElement) => {
+                      if (trigger instanceof HTMLButtonElement)
+                        onSnoozeWake(item, snoozeWakeAt(option, now), trigger);
+                    },
+                  }))
+              : []),
+            ...(!isDismissed && onDismiss
+              ? [
+                  {
+                    key: 'dismiss',
+                    label: 'Dismiss from inbox',
+                    onSelect: (trigger: HTMLElement) => {
+                      if (trigger instanceof HTMLButtonElement)
+                        onDismiss(item, trigger);
+                    },
+                  },
+                ]
+              : []),
+            ...(isDismissed && onRestore
+              ? [
+                  {
+                    key: 'restore',
+                    label: 'Restore to inbox',
+                    onSelect: (trigger: HTMLElement) => {
+                      if (trigger instanceof HTMLButtonElement)
+                        onRestore(item, trigger);
+                    },
+                  },
+                ]
+              : []),
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
+export type CollapsibleInboxSectionId = InboxSectionId;
 
 export interface InboxGroupListProps {
   groups: MobileActivityGroup[];
@@ -1110,6 +1209,8 @@ export interface InboxGroupListProps {
   collapsible?: {
     sections: Partial<Record<CollapsibleInboxSectionId, boolean>>;
     onToggle: (id: CollapsibleInboxSectionId) => void;
+    order?: readonly InboxSectionId[];
+    onReorder?: (order: InboxSectionId[]) => void;
   };
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
@@ -1180,9 +1281,7 @@ export function InboxGroupList({
   const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
     new Set(),
   );
-  const [dismissedOpen, setDismissedOpen] = useState(false);
   const resolutionState = useConversationWorkState();
-  const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
   // Owned here, by item id, so the sheet outlives the row's remount when
@@ -1191,14 +1290,13 @@ export function InboxGroupList({
   const isCurrent = (item: HomeWorkItem) =>
     item.chatSessionId === activeChatSessionId ||
     item.orchestrationThreadId === activeChatSessionId;
-  /** The rows a group actually renders: none while its section is
-   *  collapsed, and older drafts only once their disclosure is open. */
+  /** The rows a group actually renders, including the current row beyond page one. */
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
       collapsible &&
       group.id !== 'dismissed' &&
       collapsible.sections[group.id] === false;
-    if (collapsed || (group.id === 'dismissed' && !dismissedOpen)) return [];
+    if (collapsed) return [];
     if (group.id === 'earlier' || group.id === 'settled')
       return group.items.filter(
         (item, index) =>
@@ -1206,9 +1304,7 @@ export function InboxGroupList({
           isCurrent(item) ||
           Boolean(group.childrenById?.get(item.id)?.some(isCurrent)),
       );
-    if (group.id !== 'drafts') return group.items;
-    const { recent, older } = splitDraftsByAge(group.items, now);
-    return olderDraftsOpen ? [...recent, ...older] : recent;
+    return group.items;
   };
   // A sheet belongs to a row that is on screen. Once its row is gone
   // (collapsed, folded away, discarded, snoozed) the open state is cleared,
@@ -1227,63 +1323,76 @@ export function InboxGroupList({
   useEffect(() => {
     if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
   }, [detailsFor, detailsRowRendered]);
-  const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) => (
-    <InboxRow
-      key={item.id}
-      item={item}
-      isCurrent={isCurrent(item)}
-      isSnoozed={group.id === 'snoozed'}
-      isOpenChat={Boolean(
-        item.chatSessionId && openChatIds.has(item.chatSessionId),
-      )}
-      now={now}
-      onActivate={onActivate}
-      onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
-      onCloseChat={onCloseChat}
-      onDismiss={onDismiss}
-      onRestore={onRestore}
-      isDismissed={group.id === 'dismissed'}
-      resolution={
-        resolutionState.supported &&
-        item.kind !== 'task' &&
-        item.kind !== 'remote-session' &&
-        item.controlMode !== 'read-only-attached' &&
-        item.conversationId &&
-        !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
-          ? {
-              settled: Object.hasOwn(
-                resolutionState.settled,
-                item.conversationId,
-              ),
-              pending: resolutionState.change.isPending,
-              onChange: () =>
-                resolutionState.change.mutate({
-                  conversationId: item.conversationId!,
-                  settled: !Object.hasOwn(
-                    resolutionState.settled,
-                    item.conversationId!,
-                  ),
-                }),
-            }
-          : undefined
-      }
-      swipeActions={swipeActions}
-      onDraftDiscarded={onDraftDiscarded}
-      agents={agents}
-      chrome={chrome}
-      actionsInDetails={actionsInDetails}
-      facts={workFacts?.get(item.id)}
-      detailsOpen={detailsFor === item.id}
-      onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
-      size={!actionsInDetails && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
-      gitLocation={
-        gitLocationByThreadId?.get(
-          item.orchestrationThreadId ?? item.chatSessionId ?? '',
-        ) ?? undefined
-      }
-      {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
-    />
-  );
+  const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) =>
+    item.kind === 'task' ? (
+      <InboxTaskRow
+        item={item}
+        now={now}
+        facts={workFacts?.get(item.id)}
+        onActivate={onActivate}
+        onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
+        isSnoozed={group.id === 'snoozed'}
+        isDismissed={group.id === 'dismissed'}
+        onDismiss={onDismiss}
+        onRestore={onRestore}
+      />
+    ) : (
+      <InboxRow
+        key={item.id}
+        item={item}
+        isCurrent={isCurrent(item)}
+        isSnoozed={group.id === 'snoozed'}
+        isOpenChat={Boolean(
+          item.chatSessionId && openChatIds.has(item.chatSessionId),
+        )}
+        now={now}
+        onActivate={onActivate}
+        onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
+        onCloseChat={onCloseChat}
+        onDismiss={onDismiss}
+        onRestore={onRestore}
+        isDismissed={group.id === 'dismissed'}
+        resolution={
+          resolutionState.supported &&
+          item.kind !== 'task' &&
+          item.kind !== 'remote-session' &&
+          item.controlMode !== 'read-only-attached' &&
+          item.conversationId &&
+          !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
+            ? {
+                settled: Object.hasOwn(
+                  resolutionState.settled,
+                  item.conversationId,
+                ),
+                pending: resolutionState.change.isPending,
+                onChange: () =>
+                  resolutionState.change.mutate({
+                    conversationId: item.conversationId!,
+                    settled: !Object.hasOwn(
+                      resolutionState.settled,
+                      item.conversationId!,
+                    ),
+                  }),
+              }
+            : undefined
+        }
+        swipeActions={swipeActions}
+        onDraftDiscarded={onDraftDiscarded}
+        agents={agents}
+        chrome={chrome}
+        actionsInDetails={actionsInDetails}
+        facts={workFacts?.get(item.id)}
+        detailsOpen={detailsFor === item.id}
+        onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
+        size={!actionsInDetails && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
+        gitLocation={
+          gitLocationByThreadId?.get(
+            item.orchestrationThreadId ?? item.chatSessionId ?? '',
+          ) ?? undefined
+        }
+        {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
+      />
+    );
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
     <WorkItemFamily
       key={item.id}
@@ -1311,26 +1420,57 @@ export function InboxGroupList({
       renderRow={(member) => renderItem(group, member)}
     />
   );
-  // #2312: Drafts untouched for a day fold under one disclosure. Nothing is
-  // deleted; the rows are a click away and still discardable.
-  const renderDraftRows = (group: MobileActivityGroup) => {
-    const { recent, older } = splitDraftsByAge(group.items, now);
-    return (
-      <>
-        {recent.map((item) => renderRow(group, item))}
-        {older.length > 0 && (
-          <DisclosureToggle
-            className="chat-dock-inbox__section-toggle chat-dock-inbox__older-drafts"
-            expanded={olderDraftsOpen}
-            onToggle={() => setOlderDraftsOpen((open) => !open)}
-          >
-            {olderDraftsLabel(older.length)}
-          </DisclosureToggle>
-        )}
-        {olderDraftsOpen && older.map((item) => renderRow(group, item))}
-      </>
+  const isGroupExpanded = (group: MobileActivityGroup) =>
+    group.id === 'dismissed' ||
+    !collapsible ||
+    collapsible.sections[group.id] !== false;
+  const sectionOrder = [
+    ...new Set([
+      ...(collapsible?.order ?? []),
+      ...groups.flatMap((group) =>
+        group.id === 'dismissed' ? [] : [group.id],
+      ),
+      ...INBOX_SECTION_IDS,
+    ]),
+  ];
+  const shelfRank = (group: MobileActivityGroup) =>
+    !collapsible?.order?.length &&
+    (group.id === 'earlier' ||
+      (group.id === 'settled' && resolutionState.supported))
+      ? 2
+      : isGroupExpanded(group)
+        ? 0
+        : 1;
+  const visibleGroups = groups
+    .filter((group) => group.items.length > 0)
+    .sort(
+      (left, right) =>
+        shelfRank(left) - shelfRank(right) ||
+        (left.id === 'dismissed'
+          ? sectionOrder.length
+          : sectionOrder.indexOf(left.id)) -
+          (right.id === 'dismissed'
+            ? sectionOrder.length
+            : sectionOrder.indexOf(right.id)),
     );
+  const peersOf = (group: MobileActivityGroup) =>
+    visibleGroups.filter(
+      (peer) =>
+        peer.id !== 'dismissed' &&
+        isGroupExpanded(peer) === isGroupExpanded(group),
+    );
+  const moveSection = (group: MobileActivityGroup, offset: -1 | 1) => {
+    if (group.id === 'dismissed') return;
+    const peers = peersOf(group);
+    const adjacent = peers[peers.indexOf(group) + offset];
+    if (!adjacent || adjacent.id === 'dismissed') return;
+    const order = [...sectionOrder];
+    const from = order.indexOf(group.id);
+    const to = order.indexOf(adjacent.id);
+    [order[from], order[to]] = [order[to], order[from]];
+    collapsible?.onReorder?.(order);
   };
+  const firstCollapsed = visibleGroups.find((group) => !isGroupExpanded(group));
   return (
     <>
       {resolutionState.query.isError && (
@@ -1347,19 +1487,15 @@ export function InboxGroupList({
           }
         />
       )}
-      {groups.map((group) => {
+      {visibleGroups.map((group) => {
         const collapsibleId: CollapsibleInboxSectionId | null =
           collapsible && group.id !== 'dismissed' ? group.id : null;
-        const isExpanded =
-          group.id === 'dismissed'
-            ? dismissedOpen
-            : collapsibleId
-              ? collapsible!.sections[collapsibleId] !== false
-              : true;
+        const isExpanded = isGroupExpanded(group);
         // Whether a count shows is this host's choice (`showGroupCounts`, and
         // a collapsed Snoozed always says how many it hides); how it reads is
         // the shared label's: "Snoozed · 2", visible text, never a badge.
         const count =
+          !isExpanded ||
           group.id === 'dismissed' ||
           resolutionState.supported ||
           (collapsible && group.id === 'snoozed') ||
@@ -1374,22 +1510,39 @@ export function InboxGroupList({
         return (
           <section
             key={group.id}
-            className="chat-dock-inbox__group"
+            className={`chat-dock-inbox__group${!isExpanded ? ' chat-dock-inbox__group--collapsed' : ''}${group === firstCollapsed ? ' chat-dock-inbox__group--shelf-start' : ''}`}
             aria-labelledby={labelId}
           >
-            {collapsibleId || group.id === 'dismissed' ? (
-              <DisclosureToggle
-                id={labelId}
-                className="chat-dock-inbox__section-toggle"
-                expanded={isExpanded}
-                onToggle={() =>
-                  group.id === 'dismissed'
-                    ? setDismissedOpen((open) => !open)
-                    : collapsibleId && collapsible!.onToggle(collapsibleId)
-                }
-              >
-                {label}
-              </DisclosureToggle>
+            {collapsibleId ? (
+              <div className="chat-dock-inbox__section-header">
+                <DisclosureToggle
+                  id={labelId}
+                  className="chat-dock-inbox__section-toggle"
+                  expanded={isExpanded}
+                  onToggle={() => collapsible!.onToggle(collapsibleId)}
+                >
+                  {label}
+                </DisclosureToggle>
+                {collapsible?.onReorder && peersOf(group).length > 1 && (
+                  <ActionOverflowMenu
+                    label={`Arrange ${group.label} section`}
+                    actions={[
+                      {
+                        key: 'up',
+                        label: 'Move up',
+                        disabled: peersOf(group).indexOf(group) === 0,
+                        onSelect: () => moveSection(group, -1),
+                      },
+                      {
+                        key: 'down',
+                        label: 'Move down',
+                        disabled: peersOf(group).at(-1) === group,
+                        onSelect: () => moveSection(group, 1),
+                      },
+                    ]}
+                  />
+                )}
+              </div>
             ) : (
               <h3 id={labelId} className="chat-dock-inbox__group-label">
                 {label}
@@ -1397,9 +1550,7 @@ export function InboxGroupList({
             )}
 
             {isExpanded &&
-              (group.id === 'drafts'
-                ? renderDraftRows(group)
-                : renderedItems(group).map((item) => renderRow(group, item)))}
+              renderedItems(group).map((item) => renderRow(group, item))}
             {isExpanded &&
               (group.id === 'earlier' || group.id === 'settled') &&
               settledVisibleCount < group.items.length && (
@@ -1410,7 +1561,7 @@ export function InboxGroupList({
                   onClick={(event) => {
                     const container = event.currentTarget.closest('section');
                     const previous = new Set(
-                      container?.querySelectorAll('.inbox-row__open'),
+                      container?.querySelectorAll('.chat-dock-inbox__item'),
                     );
                     const lastPage =
                       settledVisibleCount + SETTLED_PAGE_SIZE >=
@@ -1424,7 +1575,7 @@ export function InboxGroupList({
                       requestAnimationFrame(() => {
                         Array.from(
                           container?.querySelectorAll<HTMLButtonElement>(
-                            '.inbox-row__open',
+                            '.chat-dock-inbox__item',
                           ) ?? [],
                         )
                           .find((row) => !previous.has(row))
