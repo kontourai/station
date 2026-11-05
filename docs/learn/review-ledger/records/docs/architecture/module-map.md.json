@@ -1624,7 +1624,11 @@
 
     "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
 
-    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx",
+
+    "src-ui/src/views/apps/AppsLibrary.tsx",
+
+    "src-ui/src/views/apps/AppDetailsDialog.tsx"
   ],
 
   "checks": [
