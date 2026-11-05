@@ -6,9 +6,15 @@
  * through the supported source entry with an isolated home and free ports,
  * and probes the server and UI ports, on loopback and on a non-loopback
  * address of this machine, for as long as the CLI runs.
+ *
+ * Fix round 3: the probe alone missed a start that printed the marker and
+ * carried on, because its UI came up later than this test's case finished.
+ * So the test also asserts that nothing was started at all: the CLI opens
+ * the instance's server log (`logs/station-<instance>.log`) for the server
+ * child it starts, and a running server writes `logs/server/`.
  */
 import { spawn } from 'node:child_process';
-import { symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -59,6 +65,21 @@ function accepts(host: string, port: number): Promise<boolean> {
     socket.once('connect', () => done(true));
     socket.once('error', () => done(false));
   });
+}
+
+/**
+ * The environment a person's shell gives `station start`: the test runner's
+ * own settings (`NODE_ENV=test`, `VITEST*`) are left out. With them the
+ * start's UI build is not the production one, fails its bundle budget, and
+ * stops the start for a reason that has nothing to do with the policy, so a
+ * start that carried on past the refusal would still pass.
+ */
+function userEnvironment(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => name !== 'NODE_ENV' && !name.startsWith('VITEST'),
+    ),
+  );
 }
 
 /** A non-loopback IPv4 address of this machine, as a LAN peer would use. */
@@ -153,7 +174,7 @@ describe.skipIf(!posix)(
             windowsHide: true,
             stdio: ['ignore', 'pipe', 'pipe'],
             env: {
-              ...process.env,
+              ...userEnvironment(),
               HOME: osHome,
               USERPROFILE: osHome,
               STATION_ROOT: join(root, 'station-root'),
@@ -205,6 +226,17 @@ describe.skipIf(!posix)(
         ).toBe(true);
         expect(stderr).toContain(policyPath);
         expect(seen).toEqual([]);
+        // No server or UI child was ever started for this instance.
+        expect(
+          existsSync(
+            join(home, 'logs', 'station-managed-invalid-policy-test.log'),
+          ),
+          'the CLI opened a server log: it started the server child',
+        ).toBe(false);
+        expect(
+          existsSync(join(home, 'logs', 'server')),
+          'a server ran and wrote its log',
+        ).toBe(false);
       },
       180_000,
     );
