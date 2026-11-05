@@ -362,18 +362,25 @@ export function HeaderActions({
       ? `Manage Stations — ${connStateLabel}`
       : connectionIndicatorLabel(connState);
   const compactConn = connState === 'connected';
+  // With no Station there is no name to show: a "Station" label would
+  // contradict the "No Station" state, so the chip label names the state.
+  const connChipLabel = isIdle ? connStateLabel : connDisplayLabel;
   const connAccessibleName = [
     connState === 'connected'
       ? `Choose Station — ${connStateLabel}`
       : connTitle,
-    compactConn ? connDisplayLabel : connIdentity,
+    // The phone chip shows this label in every state, so the accessible name
+    // carries it (WCAG 2.5.3). Idle's label is the state already named above.
+    isIdle ? undefined : connChipLabel,
   ]
     .filter(Boolean)
     .join(' · ');
-  // The healthy state needs a compact, visible Station name. The status stays
-  // in the dot and accessible name; every state that needs action retains its
-  // visible state/remedy text. The connection manager gives the full chooser
-  // and distinguishes the saved display label from host identity.
+  // The Station name label renders in every state. On phones it is the only
+  // text, in a fixed-width slot, so a state change never reflows the toolbar
+  // (#4474); the state stays in the dot and accessible name. On desktop the
+  // healthy state shows the compact name, and every state that needs action
+  // shows its state/remedy text instead. The connection manager gives the full
+  // chooser and distinguishes the saved display label from host identity.
 
   const [connectionNameAnchor, setConnectionNameAnchor] =
     useState<HTMLElement | null>(null);
@@ -456,9 +463,8 @@ export function HeaderActions({
             !
           </span>
         )}
-        {compactConn ? (
-          <span className="app-toolbar__conn-label">{connDisplayLabel}</span>
-        ) : (
+        <span className="app-toolbar__conn-label">{connChipLabel}</span>
+        {compactConn ? null : (
           <>
             <span
               className={`app-toolbar__conn-state${

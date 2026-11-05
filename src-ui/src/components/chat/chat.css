@@ -362,6 +362,13 @@
   font-weight: 600;
 }
 
+/* On desktop a state that needs action shows its state/remedy text and the
+   identity instead of the compact name; the phone block below shows the name
+   in every state. */
+.app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
+  display: none;
+}
+
 /* archive#3311: the connection surface is self-describing — the state is
    visible text beside the dot, with the identity after it.
    station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
@@ -3163,24 +3170,29 @@
        `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
-  /* A state that needs action stays a touchable dot (its remedy is in the
-     accessible name and the chooser). The healthy chip keeps a short visible
-     Station name: a bare green dot told a phone user nothing about which
-     Station it was. The name truncates before the row would grow; holding the
-     chip still reveals it whole. */
-  .app-toolbar__conn {
-    box-sizing: border-box;
-    width: 44px;
-    min-width: 44px;
-    flex: 0 0 44px;
-  }
+  /* Every state shows the dot and a short Station name: a bare dot told a
+     phone user nothing about which Station it was. The state lives in the
+     dot, the accessible name and the chooser. The name sits in a fixed-width
+     slot, so a state change never moves the controls after it (#4474); it
+     truncates before the row would grow, and holding the chip reveals it
+     whole. */
+  .app-toolbar__conn,
   .app-toolbar__conn.app-toolbar__conn--compact {
+    box-sizing: border-box;
     width: auto;
-    flex: 0 1 auto;
+    min-width: 44px;
+    flex: 0 0 auto;
+    gap: var(--space-2);
+    justify-content: center;
     padding-inline: var(--k-space-2);
   }
-  .app-toolbar__conn-label {
+  .app-toolbar__conn .app-toolbar__conn-label,
+  .app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
+    display: inline-block;
+    width: min(28vw, 120px);
     max-width: min(28vw, 120px);
+    /* Beside its dot, not centred in the reserved slot. */
+    text-align: start;
   }
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
