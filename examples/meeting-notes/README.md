@@ -41,7 +41,9 @@ Agent/model. See the [plugin guide](../../docs/guides/plugins.md).
 ## Capture, compile, and recall
 
 1. **Capture:** choose a writable root, paste a transcript or upload a `.txt`
-   file, then choose **Save transcript**. The
+   file. A loaded-file notice names the file and asks you to review the
+   transcript before saving; loading a file does not save a record.
+   Choose **Save transcript** when ready. The
    [Capture component](src/CaptureModal.tsx) calls the public
    [`createKnowledgeRecord`](../../packages/sdk/src/client/knowledge.ts)
    client. It writes a `raw` record with category `meeting-transcript` and a
