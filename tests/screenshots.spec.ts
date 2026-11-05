@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
+import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';

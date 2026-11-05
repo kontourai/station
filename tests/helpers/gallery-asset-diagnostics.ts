@@ -8,8 +8,8 @@ import {
   readdirSync,
   readFileSync,
   readSync,
-  writeFileSync,
   type Stats,
+  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { Request, Response } from '@playwright/test';
