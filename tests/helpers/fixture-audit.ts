@@ -1,6 +1,8 @@
 import { FOCUS_PRESENCE_REPORT_PATH } from '@kontourai/station-contracts/presence';
 import { test as base, expect, type Page, type Route } from '@playwright/test';
 
+const MANAGED_POLICY_STATUS_PATH = '/api/settings/managed-policy';
+
 const unexpected = new WeakMap<Page, Set<string>>();
 
 /** An omitted fixture response is a test defect, never an authoritative empty inventory. */
@@ -16,6 +18,21 @@ export async function rejectUnexpectedFixtureRequest(
     url.pathname === FOCUS_PRESENCE_REPORT_PATH
   ) {
     await route.fulfill({ status: 204 });
+    return;
+  }
+  // Every mounted App also reads the machine's managed policy once (#4518).
+  // With no policy installed the route answers `{ state: 'none' }`, so that
+  // is its declared model; journeys that assert on a policy route it
+  // themselves.
+  if (
+    route.request().method() === 'GET' &&
+    url.pathname === MANAGED_POLICY_STATUS_PATH
+  ) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: { state: 'none' } }),
+    });
     return;
   }
   const page = route.request().frame().page();

@@ -57,6 +57,31 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+test('document import refuses an author-private root before creating any receipt or record', async () => {
+  root = {
+    ...root,
+    readPolicy: { kind: 'author-private', ownerId: 'human:someone-else' },
+  };
+  await new FileStorageAdapter(home).saveKnowledgeStoreRoot(root);
+  const input = request();
+  await expect(service.import(input, authority)).rejects.toThrow(
+    'Select a current Project registration',
+  );
+  expect(
+    existsSync(
+      join(
+        home,
+        'knowledge-document-imports',
+        input.requestId,
+        'operation.json',
+      ),
+    ),
+  ).toBe(false);
+  expect(await (await provider.adapterFor(root.id)).listByType('raw')).toEqual(
+    [],
+  );
+});
+
 test('a real import retains exact original bytes and provenance and resumes the same records after restart', async () => {
   const input = request();
   const result = await service.import(input, authority);

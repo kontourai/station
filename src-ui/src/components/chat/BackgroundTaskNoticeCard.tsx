@@ -1,5 +1,6 @@
 import type { ChildWorkTerminalDisplayStatus } from '@kontourai/station-contracts/child-work';
 import type { BackgroundTaskNotice } from '../../contexts/active-chats-state';
+import { childWorkSummaryLabel } from '../../utils/child-work-display';
 import { STATUS_GLYPH_BY_STATE } from '../status/StatusGlyph';
 import { LazyMarkdown } from './LazyMarkdown';
 import './BackgroundTaskNoticeCard.css';
@@ -104,10 +105,20 @@ export function BackgroundTaskNoticeCard({
         (summaryRestatesTitle ? (
           <details className="task-notice__details">
             <summary>Details</summary>
-            <p className="task-notice__summary">{summary}</p>
+            <p className="task-notice__summary">
+              <span>
+                {childWorkSummaryLabel(notice.summarySource)}
+                {' · '}
+              </span>
+              <span>{summary}</span>
+            </p>
           </details>
         ) : (
           <div className="task-notice__summary">
+            <span>
+              {childWorkSummaryLabel(notice.summarySource)}
+              {' · '}
+            </span>
             <LazyMarkdown loadingProjection={summary}>{summary}</LazyMarkdown>
           </div>
         ))}

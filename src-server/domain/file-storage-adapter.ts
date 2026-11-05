@@ -23,9 +23,11 @@ import {
   readObservationFile,
 } from '../knowledge-store/adapters/shared/observation-file.js';
 import type { KnowledgeRootObservation } from '../knowledge-store/knowledge-record-observation.js';
+import { assertNoPrivateRootOverlap } from '../knowledge-store/root-path-privacy.js';
 import {
   FileWriteConflictError,
   mutateJsonFile,
+  mutateJsonFileWithGuardedRead,
   readJsonFile,
   writeJsonFile,
 } from './file-storage-helpers.js';
@@ -54,6 +56,7 @@ import {
   layoutOwnerDirectory,
   normalizeProjectLayoutRecord,
 } from './layout-owner-storage.js';
+import { withoutLockedProjectOverrides } from './managed-settings.js';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -153,7 +156,8 @@ export class FileStorageAdapter implements IStorageAdapter {
           hasKnowledge: pathExists(
             join(dir, name, 'documents', 'metadata.json'),
           ),
-          defaultProviderId: config.defaultProviderId,
+          defaultProviderId:
+            withoutLockedProjectOverrides(config).defaultProviderId,
           ...(config.position !== undefined
             ? { position: config.position }
             : {}),
@@ -166,8 +170,14 @@ export class FileStorageAdapter implements IStorageAdapter {
     return projects.sort(compareProjectListOrder);
   }
 
+  /**
+   * The project as readers see it: a setting the managed policy locks drops
+   * its override field (#4517). Writes go through {@link projectRevision},
+   * which keeps the stored record, so the override returns when the policy
+   * is removed.
+   */
   getProject(slug: string): ProjectConfig {
-    return this.projectRevision(slug).value;
+    return withoutLockedProjectOverrides(this.projectRevision(slug).value);
   }
 
   projectRevision(slug: string): ProjectStoredFileRevision<ProjectConfig> {
@@ -801,31 +811,51 @@ export class FileStorageAdapter implements IStorageAdapter {
 
   async saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
+    options?: {
+      createOnly?: boolean;
+      expectedRoot?: KnowledgeStoreRoot;
+      assertCurrent?: () => void;
+    },
   ): Promise<void> {
-    const captured = { ...root, scope: { ...root.scope } };
-    parseKnowledgeStoreRoots([captured]);
+    const captured = parseKnowledgeStoreRoots([root])[0];
     const expected = options?.expectedRoot
       ? parseKnowledgeStoreRoots([options.expectedRoot])[0]
       : undefined;
     const createOnly = options?.createOnly;
-    await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
-      const roots = parseKnowledgeStoreRoots(value);
-      const index = roots.findIndex(
-        (candidate) => candidate.id === captured.id,
-      );
-      if (createOnly && index >= 0)
-        throw new FileStorageConflictError(
-          'Knowledge source ID is already registered.',
+    await mutateJsonFileWithGuardedRead<unknown>(
+      this.knowledgeStoreRootsPath,
+      [],
+      async () => readJsonFile<unknown>(this.knowledgeStoreRootsPath, []),
+      (value) => {
+        options?.assertCurrent?.();
+        const roots = parseKnowledgeStoreRoots(value);
+        const index = roots.findIndex(
+          (candidate) => candidate.id === captured.id,
         );
-      if (expected && (index < 0 || !isDeepStrictEqual(roots[index], expected)))
-        throw new FileStorageConflictError(
-          'Knowledge source changed before attachment.',
-        );
-      if (index >= 0) roots[index] = captured;
-      else roots.push(captured);
-      return roots;
-    });
+        if (createOnly && index >= 0)
+          throw new FileStorageConflictError(
+            'Knowledge source ID is already registered.',
+          );
+        if (
+          expected &&
+          (index < 0 || !isDeepStrictEqual(roots[index], expected))
+        )
+          throw new FileStorageConflictError(
+            'Knowledge source changed before attachment.',
+          );
+        try {
+          assertNoPrivateRootOverlap(captured, roots);
+        } catch {
+          throw new FileStorageConflictError(
+            'Knowledge source paths overlap or cannot be resolved.',
+          );
+        }
+        if (index >= 0) roots[index] = captured;
+        else roots.push(captured);
+        return roots;
+      },
+      { beforeCommit: options?.assertCurrent },
+    );
   }
 
   async removeKnowledgeStoreRoot(

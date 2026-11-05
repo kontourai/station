@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import { Hono } from 'hono';
+import { managedApprovalCeilingFailureBody } from '../../security/managed-approval-ceiling.js';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import { InboundWebhookAuthorizationService } from '../../services/webhooks/inbound-webhook-authorization.js';
 import {
@@ -426,7 +427,15 @@ export function createInboundWebhookRoutes(options: {
         },
         202,
       );
-    } catch (_error) {
+    } catch (error) {
+      // #4518: a start the managed approval ceiling refused is settled and
+      // will be refused again as sent: a definitive 403 with the managed
+      // code and sentence, never a retryable 503.
+      const ceilingRefusal = managedApprovalCeilingFailureBody(error);
+      if (ceilingRefusal) {
+        options.logger.warn('Inbound webhook turn refused by managed policy');
+        return c.json({ ...ceilingRefusal, retryable: false }, 403);
+      }
       options.logger.warn('Inbound webhook turn start failed');
       return c.json(
         { success: false, code: 'turn_start_failed', retryable: true },

@@ -383,6 +383,12 @@ import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapt
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import {
+  MEMORY_ADAPTER_ID,
+  MemoryRootManager,
+} from '../../knowledge-store/memory-root.js';
+import { assertNoPrivateRootOverlap } from '../../knowledge-store/root-path-privacy.js';
+import { classifyKnowledgeRoot } from '../../knowledge-store/session-backed-roots.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
 import { createOtlpReceiverRoutes } from '../../monitoring/otlp-receiver.js';
@@ -460,6 +466,11 @@ import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-ind
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
+import {
+  createMemoryRoutes,
+  isMemoryRootId,
+  MEMORY_PREVIEW_DISABLED,
+} from '../../routes/knowledge/memory-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import { createStationControlExternalClientRoutes } from '../../routes/mcp/station-control-external-client-routes.js';
@@ -658,6 +669,7 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import { AGENT_TERMINAL_UNBOUND_PROJECT } from '../../services/acp/acp-session-terminals.js';
 import {
   ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
@@ -934,7 +946,11 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
-import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalJournalPrivacy } from '../../services/terminal/terminal-journal-privacy.js';
+import {
+  defaultTerminalJournalDirectory,
+  resolveTerminalRetention,
+} from '../../services/terminal/terminal-retention.js';
 import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
   confineTerminalDirectory,
@@ -950,6 +966,8 @@ import {
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import type { TaskFollowUpWake } from '../../services/work-item-providers/task-follow-up-wake.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1244,6 +1262,11 @@ export interface ConfigureRuntimeRoutesContext {
    * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /**
+   * The runtime's Task follow-up store (#4508): the poller writes it and the
+   * Task brief reads it. Absent: no follow-ups are polled or shown.
+   */
+  taskFollowUps?: TaskFollowUpStoreHolder;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1656,6 +1679,10 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
   let durableTaskQuestionWake: TaskQuestionWake | undefined;
+  /** #4508: assigned once the support services compose the follow-up wake. */
+  let durableTaskFollowUpWake:
+    | Pick<TaskFollowUpWake, 'placementRefusal'>
+    | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -3399,6 +3426,7 @@ export function configureRuntimeRoutes(
       localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
+    ...(context.taskFollowUps ? { followUps: context.taskFollowUps } : {}),
     logger: context.logger,
   });
   context.orchestrationService.bindMandatoryTaskContextVerifier(
@@ -6811,6 +6839,11 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
+        }) ??
+        durableTaskFollowUpWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -7255,7 +7288,8 @@ export function configureRuntimeRoutes(
   const scopedTerminalSummary = (record: {
     terminalId: string;
     projectId: string;
-    cwd: string;
+    /** Absent when the caller may only observe the terminal. */
+    cwd?: string;
     status: string;
     pid: number | null;
     exitCode?: number | null;
@@ -7270,7 +7304,7 @@ export function configureRuntimeRoutes(
         .find((project) => project.id === record.projectId)?.slug ??
       record.projectId,
     terminalId: record.terminalId,
-    cwd: record.cwd,
+    cwd: record.cwd ?? null,
     status:
       record.status === 'starting' || record.status === 'running'
         ? record.status
@@ -9561,6 +9595,13 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // A chat's directory read as its recorded owner: for a server-side read
+  // with no request (an agent's terminal run, a restore after restart).
+  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
+    projects: context.projectService,
+  });
   // Commands agents ask to run (#3994); absent on a host with no terminals.
   let terminalRuns: TerminalRunRequests | undefined;
   /**
@@ -9665,12 +9706,40 @@ export function configureRuntimeRoutes(
             env: { PATH: await resolveAugmentedPath() },
           };
         },
-        // A shell that ended because its host restarted reopens only while
-        // its Project still exists; the session re-checks its directory.
-        restorable: async (scope) =>
-          context.storageAdapter
-            .listProjects()
-            .some((item) => item.id === scope.projectId),
+        // #492: a shell that ended because its host restarted reopens only
+        // inside its binding as it resolves now: the Project's directory, or
+        // a chat's directory read as that chat's recorded owner (no request
+        // exists at startup). The session refuses a directory outside it.
+        restoreRoot: (scope) =>
+          terminalBindingRoot(scope, async (slug, thread) => {
+            const ownerId =
+              context.orchestrationService.sessionRecordedOwnerId(thread);
+            if (!ownerId)
+              throw new TerminalSessionRefusal(
+                'its chat has no recorded owner',
+              );
+            return ownerSessionDirectory(ownerId, slug, thread);
+          }).catch((error: unknown) => {
+            if (!(error instanceof TerminalSessionRefusal)) throw error;
+            throw new TerminalSessionRefusal(
+              error.message === 'Project not found'
+                ? 'its Project no longer exists'
+                : error.message === 'Terminal binding unavailable'
+                  ? "its chat's directory is no longer available"
+                  : error.message,
+            );
+          }),
+        // #2497: the service has required a host-confined session in its
+        // own thread binding; its Project must also still exist.
+        authorizeAgentCommand: async (_execution, scope) => {
+          if (
+            scope.projectId !== AGENT_TERMINAL_UNBOUND_PROJECT &&
+            !context.storageAdapter
+              .listProjects()
+              .some((item) => item.id === scope.projectId)
+          )
+            throw new TerminalSessionRefusal('Project not found');
+        },
         // A package script by name or an approved agent command; the
         // executable is found here, never taken from a request.
         resolveCommand: async (_request, _scope, program, cwd) =>
@@ -9785,11 +9854,6 @@ export function configureRuntimeRoutes(
       }),
     );
   }
-  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
-    sessions: context.orchestrationService,
-    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
-    projects: context.projectService,
-  });
   context.app.route(
     '/api/orchestration/station-control/terminal-runs',
     createAgentTerminalRunRoutes({
@@ -10765,6 +10829,41 @@ export function configureRuntimeRoutes(
     await next();
   });
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
+  const knowledgeReadAuthorities = new WeakMap<Request, SessionReadAuthority>();
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    const authority = currentRequestReadAuthority();
+    if (authority) knowledgeReadAuthorities.set(c.req.raw, authority);
+    await next();
+  });
+  const privateMemoryPreview = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'private-memory',
+        label: 'Private memory',
+        description:
+          'Use a private memory store. It can contain personal information. Create it through the API; review and erasure are not available yet.',
+      })
+    : undefined;
+  const memoryEnabled = () =>
+    privateMemoryPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
+  const memoryRootManager = new MemoryRootManager(
+    context.knowledgeStoreProvider,
+    context.storageAdapter,
+    context.configLoader.getProjectHomeDir(),
+    memoryEnabled,
+  );
+  const memoryRootPreviewGuard = async (
+    c: import('hono').Context,
+    next: () => Promise<void>,
+  ) => {
+    if (!memoryEnabled() && isMemoryRootId(c.req.param('rootId')))
+      return c.json(MEMORY_PREVIEW_DISABLED, 404);
+    await next();
+  };
+  context.app.use('/api/knowledge/roots/:rootId', memoryRootPreviewGuard);
+  context.app.use('/api/knowledge/roots/:rootId/*', memoryRootPreviewGuard);
   const mayUseProjectKnowledge = async (
     request: Request,
     root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
@@ -10806,12 +10905,65 @@ export function configureRuntimeRoutes(
       return false;
     }
   };
+  const knowledgeRootSnapshots = new WeakMap<
+    Request,
+    Promise<Awaited<ReturnType<KnowledgeStoreProvider['listRoots']>>>
+  >();
+  const knowledgeRootsForRequest = (request: Request) => {
+    let roots = knowledgeRootSnapshots.get(request);
+    if (!roots) {
+      roots = context.knowledgeStoreProvider.listRoots();
+      knowledgeRootSnapshots.set(request, roots);
+    }
+    return roots;
+  };
   const mayUseKnowledgeRoot = async (
     request: Request,
     root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
     action: 'view' | 'edit',
+    snapshot?: Awaited<ReturnType<KnowledgeStoreProvider['listRoots']>>,
   ): Promise<boolean> => {
     if (!root) return false;
+    if (
+      root.adapterId === MEMORY_ADAPTER_ID &&
+      (!memoryEnabled() || !memoryRootManager.isMemoryRoot(root))
+    )
+      return false;
+    try {
+      const roots =
+        snapshot ??
+        (action === 'edit'
+          ? await context.knowledgeStoreProvider.listRoots()
+          : await knowledgeRootsForRequest(request));
+      assertNoPrivateRootOverlap(root, roots);
+    } catch {
+      return false;
+    }
+    if (classifyKnowledgeRoot(root) === 'author-private') {
+      const authority = knowledgeReadAuthorities.get(request);
+      const ownerId = root.readPolicy?.ownerId;
+      if (
+        !authority ||
+        authority.mode !== 'personal' ||
+        !ownerId ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        resolveInboundDeviceKindForRequest(request, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
+        ) === 'delegation'
+      )
+        return false;
+      if (action === 'edit' && !isOperatorAtHostNotAgent(request)) return false;
+      return (
+        authority.userId === ownerId ||
+        context.environmentSecurityService.canSharePersonalConversation(
+          authority.userId,
+          ownerId,
+        )
+      );
+    }
     if (root.scope.kind === 'project')
       return mayUseProjectKnowledge(request, root, action);
     try {
@@ -10836,20 +10988,61 @@ export function configureRuntimeRoutes(
     response: Response,
   ) =>
     guardProjectResponse(response, async () => {
+      const currentRoots = await context.knowledgeStoreProvider.listRoots();
       for (const expected of roots) {
-        const current = await context.knowledgeStoreProvider.getRoot(
-          expected.id,
-        );
+        const current = currentRoots.find((root) => root.id === expected.id);
         if (
           !current ||
           knowledgeRootIncarnationKey(current) !==
             knowledgeRootIncarnationKey(expected) ||
-          !(await mayUseKnowledgeRoot(request, current, 'view'))
+          !(await mayUseKnowledgeRoot(request, current, 'view', currentRoots))
         )
           return false;
       }
       return true;
     });
+  context.app.route(
+    '/api/knowledge',
+    createMemoryRoutes({
+      manager: memoryRootManager,
+      enabled: memoryEnabled,
+      authority: (request, action) => {
+        const scope = currentRequestReadAuthority();
+        if (
+          !scope ||
+          scope.mode !== 'personal' ||
+          !scope.userId ||
+          !isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          ) ||
+          (action === 'create' && !isOperatorAtHostNotAgent(request))
+        )
+          return undefined;
+        const assertCurrent = () => {
+          const current = currentRequestReadAuthority();
+          if (
+            !memoryEnabled() ||
+            request.signal.aborted ||
+            !current ||
+            current.mode !== 'personal' ||
+            current.userId !== scope.userId ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            ) ||
+            (action === 'create' && !isOperatorAtHostNotAgent(request))
+          )
+            throw new Error('Private memory authority ended.');
+        };
+        return { scope, assertCurrent };
+      },
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+    }),
+  );
+
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -10883,12 +11076,16 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeIndexRoutes({
       store: context.knowledgeStoreProvider,
+      previewDisabledForRoot: (id) => !memoryEnabled() && isMemoryRootId(id),
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
+      mayBuildPrivateRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'edit'),
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
       mayReadHitRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -11182,6 +11379,12 @@ export function configureRuntimeRoutes(
       },
       async () =>
         (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
+      (directory) =>
+        new TerminalJournalPrivacy(
+          defaultTerminalJournalDirectory(
+            context.configLoader.getProjectHomeDir(),
+          ),
+        ).problem(directory),
     ),
   );
   context.app.route(
@@ -11586,6 +11789,7 @@ export function configureRuntimeRoutes(
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
+    taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
     focus: focusPresence,
@@ -11605,6 +11809,7 @@ export function configureRuntimeRoutes(
       ),
   });
   automationActions = runtimeAutomationActions;
+  durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
   const nativeInvocationRunReader =

@@ -67,6 +67,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -79,6 +80,7 @@ import {
   entryPointSpecifiers,
   excludeMatcher,
   inspectWorkspace,
+  sourceFiles,
 } from '../lib/package-dist-freshness.mjs';
 import { PINNED_SCOPE_INVENTORY as NOUN_PINNED_SCOPE_INVENTORY } from '../noun-consistency-gate.mjs';
 import {
@@ -166,6 +168,16 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
   const LIBS = ['gate-scope.mjs', 'ratchet-utils.mjs'];
   const GATE = 'state-primitives';
 
+  function runStatePrimitives(dir: string) {
+    mkdirSync(join(dir, 'node_modules'), { recursive: true });
+    symlinkSync(
+      realpathSync(resolve('node_modules/typescript-api')),
+      join(dir, 'node_modules/typescript-api'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    return runGuardrail(dir, SCRIPT);
+  }
+
   /**
    * Stand-ins for the guardrail's own hardcoded exclusion lists.
    *
@@ -224,7 +236,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
       libs: LIBS,
       files: cleanFiles(),
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.output).not.toContain('FAIL:');
     expect(result.status).toBe(0);
   });
@@ -241,7 +253,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
         ),
       },
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).toBe(1);
     expect(result.output).toContain(
       'FAIL: 1 untriaged file(s) with a live bespoke *__empty className',
@@ -261,7 +273,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
         ),
       },
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).toBe(1);
     expect(result.output).toContain(
       'ad-hoc "No X" occurrence(s) exceed the recorded ceiling 0',
@@ -282,7 +294,7 @@ describe('state-primitives:ratchet rejects its known-bad tree', {
     const files = cleanFiles();
     delete (files as Record<string, string>)['src-ui/src/App.tsx'];
     const dir = scratchRepo({ script: SCRIPT, libs: LIBS, files });
-    const result = runGuardrail(dir, SCRIPT);
+    const result = runStatePrimitives(dir);
     expect(result.status).not.toBe(0);
     expect(result.output).toContain('src-ui/src/App.tsx');
   });
@@ -940,6 +952,45 @@ describe('dist:freshness rejects a build output that no longer matches its sourc
     expect(result.status).toBe(1);
     expect(result.output).toContain('has no current freshness stamp');
     expect(result.output).toContain('Fix: npm run build:thing');
+  });
+
+  it('rejects a dist left stale by a change to a JSON file outside the package that it bundles (#4517)', () => {
+    // `packages/cli` bundles the root `schemas/app.schema.json`; the server
+    // reads that file from disk. A schema change with no rebuild left the
+    // CLI validating against the old schema under a fresh stamp.
+    const dir = repo();
+    mkdirSync(join(dir, 'schemas'), { recursive: true });
+    writeFileSync(
+      join(dir, 'schemas', 'app.schema.json'),
+      '{ "type": "object" }\n',
+    );
+    writeFileSync(
+      join(dir, 'packages', 'thing', 'src', 'index.ts'),
+      "import schema from '../../../schemas/app.schema.json' with { type: 'json' };\nexport const bundled = schema;\n",
+    );
+    build(dir);
+    expect(runGuardrail(dir, SCRIPT).status).toBe(0);
+
+    writeFileSync(
+      join(dir, 'schemas', 'app.schema.json'),
+      '{ "type": "object", "required": ["id"] }\n',
+    );
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(
+      'FAIL: packages/thing/dist is STALE relative to packages/thing/src, including schemas/app.schema.json it bundles.',
+    );
+
+    build(dir);
+    expect(runGuardrail(dir, SCRIPT).status).toBe(0);
+  });
+
+  it('covers the root settings schema the real CLI bundles (#4517)', () => {
+    // Pinned literal: the CLI's offline validation must be stale-checked
+    // against the schema the server validates with.
+    const cli = sourceFiles(resolve(import.meta.dirname, '../../packages/cli'));
+    expect(cli.externals).toContain('../../schemas/app.schema.json');
+    expect(cli.all).toContain('../../schemas/app.schema.json');
   });
 
   it('ignores changes the package excludes from its own build, so the gate is not noise', () => {

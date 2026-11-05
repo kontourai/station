@@ -57,4 +57,9 @@ test('native Project delivery discovers only stores bound to its durable identit
   ];
   expect(await resolve('reader', project.slug)).toBeUndefined();
   expect(load).not.toHaveBeenCalled();
+  roots = [
+    { ...root, readPolicy: { kind: 'author-private', ownerId: 'human:owner' } },
+  ];
+  expect(await resolve('reader', project.slug)).toBeUndefined();
+  expect(load).not.toHaveBeenCalled();
 });

@@ -481,6 +481,128 @@ describe('applyChildWorkDelta', () => {
     expect(short?.result).toEqual({ summary: 'ok' });
   });
 
+  test('summary origin survives settlement and bounded normalization', () => {
+    const item = get(
+      fold(
+        settle('reported', 'completed', {
+          result: {
+            summary: 'I will investigate next.',
+            source: 'provider-summary',
+          },
+        }),
+      ),
+      'reported',
+    );
+    expect(item?.result).toEqual({
+      summary: 'I will investigate next.',
+      source: 'provider-summary',
+    });
+  });
+
+  test('a returned result replaces a truncated report, preserves recovery, and cannot be overwritten by later summaries', () => {
+    const report = fold(
+      settle('reported', 'completed', {
+        result: {
+          summary: 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS + 1),
+          source: 'provider-summary',
+          handle: { kind: 'session', threadId: 'child-session' },
+        },
+      }),
+    );
+    const returned = applyChildWorkDelta(
+      report,
+      settle('reported', 'completed', {
+        result: { summary: 'Actual report', source: 'tool-return' },
+      }),
+    );
+    expect(get(returned, 'reported')?.result).toEqual({
+      summary: 'Actual report',
+      source: 'tool-return',
+      handle: { kind: 'session', threadId: 'child-session' },
+    });
+    const later = applyChildWorkDelta(
+      returned,
+      settle('reported', 'completed', {
+        result: { summary: 'Last utterance', source: 'child-message' },
+      }),
+    );
+    expect(get(later, 'reported')?.result).toEqual(
+      get(returned, 'reported')?.result,
+    );
+  });
+
+  test('late result origin cannot relabel a different retained summary', () => {
+    const first = fold(
+      settle('reported', 'completed', { result: { summary: 'first report' } }),
+    );
+    const different = applyChildWorkDelta(
+      first,
+      settle('reported', 'completed', {
+        result: { summary: 'different message', source: 'child-message' },
+      }),
+    );
+    expect(get(different, 'reported')?.result).toEqual({
+      summary: 'first report',
+    });
+    const matching = applyChildWorkDelta(
+      first,
+      settle('reported', 'completed', {
+        result: { summary: 'first report', source: 'provider-summary' },
+      }),
+    );
+    expect(get(matching, 'reported')?.result).toEqual({
+      summary: 'first report',
+      source: 'provider-summary',
+    });
+  });
+
+  test('a handle-only return preserves recovery without claiming returned text or replacing an earlier report', () => {
+    const handleOnly = settle('reported', 'completed', {
+      result: {
+        source: 'tool-return',
+        handle: { kind: 'transcript-file', path: '/reports/child.jsonl' },
+      },
+    });
+    const withoutReport = fold(handleOnly);
+    expect(get(withoutReport, 'reported')?.result).toEqual({
+      handle: { kind: 'transcript-file', path: '/reports/child.jsonl' },
+    });
+
+    const report = settle('reported', 'completed', {
+      result: {
+        summary: 'Provider report',
+        source: 'provider-summary',
+        handle: { kind: 'session', threadId: 'child-session' },
+      },
+    });
+    expect(get(fold(report, handleOnly), 'reported')?.result).toEqual({
+      summary: 'Provider report',
+      source: 'provider-summary',
+      handle: { kind: 'session', threadId: 'child-session' },
+    });
+  });
+
+  test('truncated matching prefixes cannot establish report identity or truncation', () => {
+    const prefix = 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS);
+    for (const original of [prefix, `${prefix} first suffix`]) {
+      const first = fold(
+        settle('reported', 'completed', { result: { summary: original } }),
+      );
+      const after = applyChildWorkDelta(
+        first,
+        settle('reported', 'completed', {
+          result: {
+            summary: `${prefix} different suffix`,
+            source: 'child-message',
+          },
+        }),
+      );
+      expect(get(after, 'reported')?.result).toEqual(
+        get(first, 'reported')?.result,
+      );
+    }
+  });
+
   test('absent usage stays absent; invalid figures are dropped, not zeroed', () => {
     const none = get(fold(settle('a', 'completed')), 'a');
     expect(none).not.toHaveProperty('usage');

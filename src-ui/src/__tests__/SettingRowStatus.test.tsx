@@ -38,8 +38,11 @@ const definition = {
   defaultValue: 'shared',
 } as unknown as SettingDefinition;
 
-/** The four shapes `GET /config/app` can report for one key. */
+/** The shapes `GET /config/app` can report for one key. */
 const PROVENANCE_SHAPES: Record<string, SettingProvenanceEntry | undefined> = {
+  // #4517: the managed policy's lock and its default.
+  managed: { source: 'managed', locked: true, organization: 'Acme' },
+  'managed-default': { source: 'managed', locked: false, organization: 'Acme' },
   project: { source: 'file', scope: 'project' },
   station: { source: 'file', scope: 'station' },
   env: { source: 'env', envVar: 'STATION_WORKSPACE' },
@@ -60,6 +63,27 @@ describe('inheritance layers', () => {
       expect(layers.find((layer) => layer.inEffect)?.id).toBe(shape);
     });
   }
+
+  test('a managed layer names the organization and outranks the rest', () => {
+    const locked = inheritanceLayers({
+      definition,
+      provenance: PROVENANCE_SHAPES.managed,
+      stationValue: 'worktree',
+    });
+    expect(locked[0]).toMatchObject({
+      id: 'managed',
+      label: 'Managed by Acme',
+      value: 'worktree',
+      inEffect: true,
+    });
+    expect(
+      inheritanceLayers({
+        definition,
+        provenance: PROVENANCE_SHAPES['managed-default'],
+        stationValue: 'worktree',
+      }).map((layer) => layer.label),
+    ).toEqual(['Default from Acme', 'Built-in default']);
+  });
 
   // An unscoped read emits no `scope`, and a key absent from the loaded
   // config gets no entry at all. Both already have an answer above, but only

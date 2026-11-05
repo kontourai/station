@@ -143,6 +143,19 @@ describe('privacy inventory', () => {
     expect(policy).not.toContain('this repository is private');
   });
 
+  test('declares the owner-linked private-memory preview and its pending exclusion', () => {
+    const policy = renderPrivacyPolicy();
+    expect(policy).toContain(
+      '| `private-memory` | Other User Content | true | false | App Functionality |',
+    );
+    expect(policy).toContain(
+      'Pending proposals are excluded from ordinary record lists and index rebuilds.',
+    );
+    expect(renderPlayDataSafety()).toContain(
+      'Does this inventory declare any data as linked to a user identity?** Yes.',
+    );
+  });
+
   test('covers the real telemetry inventory', () => {
     expect(() => assertPrivacyInventoryCoversUsageTelemetry()).not.toThrow();
   });
@@ -243,3 +256,42 @@ describe('privacy inventory', () => {
     );
   });
 });
+
+test('privacy disclosure scopes throughput to Station conversations and states the cumulative-reset undercount', () => {
+  const policy = renderPrivacyPolicy();
+  expect(policy).toContain('conversations run in Station');
+  expect(policy).toContain('outside CLI use is excluded');
+});
+
+test('privacy disclosure retains the conservative dated-usage limit on cumulative resets', () => {
+  expect(renderPrivacyPolicy()).toContain(
+    'Cumulative resets or corrections can undercount daily tokens',
+  );
+});
+
+test.each([
+  ['privacy policy', renderPrivacyPolicy],
+  ['Play data safety', renderPlayDataSafety],
+])(
+  '%s discloses repeated-start and adoption baselines without understating the undercount',
+  (_name, render) => {
+    const disclosure = render();
+    expect(disclosure).toContain(
+      'Every repeated cumulative-engine session start',
+    );
+    expect(disclosure).toContain(
+      'including a fresh start after a lost native session',
+    );
+    expect(disclosure).toContain(
+      'native resume withholds the whole first reported figure of each token component',
+    );
+    // Adopted outside Codex sessions never report usage, so they add nothing.
+    expect(disclosure).toContain(
+      'Conversations taken over from an outside Codex CLI session currently contribute no tokens',
+    );
+    expect(disclosure).not.toContain('resume or adoption withholds');
+    expect(disclosure).toContain(
+      'the whole first turn when the engine reports once per turn, or part of it when it reports more often',
+    );
+  },
+);

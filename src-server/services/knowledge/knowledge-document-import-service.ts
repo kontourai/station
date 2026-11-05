@@ -136,6 +136,7 @@ function parseRoot(value: unknown): KnowledgeStoreRoot {
     root?.scope.kind !== 'project' ||
     !root.projectId ||
     !root.registrationId ||
+    root.readPolicy !== undefined ||
     root.adapterId !== 'kit-default-store'
   )
     throw new KnowledgeDocumentImportError(

@@ -51,7 +51,7 @@ export interface SettingInheritanceLayersProps {
 }
 
 interface Layer {
-  id: 'project' | 'station' | 'env' | 'default';
+  id: 'managed' | 'project' | 'station' | 'env' | 'managed-default' | 'default';
   label: string;
   value: string;
   inEffect: boolean;
@@ -106,9 +106,13 @@ function describeValue(value: unknown): string {
 }
 
 /**
- * The four provenance shapes this surface can be handed, and the layer each
- * one puts in effect:
+ * The provenance shapes this surface can be handed, and the layer each one
+ * puts in effect:
  *
+ * - `{ source: 'managed', locked: true }` -> the managed policy's lock, which
+ *   outranks every other layer (#4517)
+ * - `{ source: 'managed', locked: false }` -> the managed policy's default,
+ *   just above the built-in one
  * - `{ source: 'file', scope: 'project' }` -> the project override
  * - `{ source: 'file' }` / `{ source: 'file', scope: 'station' }` -> this Station
  * - `{ source: 'env' }` -> the environment (`envVar` names it)
@@ -130,8 +134,22 @@ export function inheritanceLayers({
   const fromProject = source === 'file' && provenance?.scope === 'project';
   const fromStation = source === 'file' && !fromProject;
   const fromEnv = source === 'env';
+  const managedLock = source === 'managed' && provenance?.locked === true;
+  const managedDefault = source === 'managed' && !managedLock;
+  const organization = provenance?.organization ?? 'your organization';
 
   const layers: Layer[] = [];
+  if (managedLock) {
+    // The value shown is what every reader gets; what the layers below
+    // would hold is not reported while the lock applies, so they are not
+    // listed as if they were known.
+    layers.push({
+      id: 'managed',
+      label: `Managed by ${organization}`,
+      value: describeValue(stationValue),
+      inEffect: true,
+    });
+  }
   if (fromProject) {
     layers.push({
       id: 'project',
@@ -174,6 +192,14 @@ export function inheritanceLayers({
       label: provenance?.envVar
         ? `Environment: ${provenance.envVar}`
         : 'Environment',
+      value: describeValue(stationValue),
+      inEffect: true,
+    });
+  }
+  if (managedDefault) {
+    layers.push({
+      id: 'managed-default',
+      label: `Default from ${organization}`,
       value: describeValue(stationValue),
       inEffect: true,
     });

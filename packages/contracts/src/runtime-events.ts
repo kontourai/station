@@ -614,6 +614,14 @@ export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
     deviceId: string;
     cause: 'scope-removed' | 'device-revoked';
   };
+  /**
+   * #4518: set when the decision records a person's saved personal default
+   * for a new chat (`recordPersonalApprovalDefault`), not a pick anyone made.
+   * The server applies such a decision as a default: under a managed approval
+   * ceiling it is lowered to the ceiling in force at each start and turn,
+   * never refused. Absent on every pick, and on events from before it existed.
+   */
+  source?: 'personal-default';
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {

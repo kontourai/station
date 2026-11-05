@@ -27,6 +27,7 @@ import { InProcessShellHost, type ShellHost } from '../shell-host.js';
 import type { TerminalRetention } from '../terminal-retention.js';
 import {
   TERMINAL_RESTORED_DIVIDER,
+  TerminalSessionRefusal,
   TerminalSessions,
 } from '../terminal-sessions.js';
 
@@ -67,7 +68,13 @@ describe.skipIf(process.platform === 'win32')(
           resolveRoot: async (_principal, target) =>
             target.projectId === 'project-a' ? root : join(home, 'b'),
           ...(options.restorable !== false && {
-            restorable: async (target) => projects.has(target.projectId),
+            restoreRoot: async (target) => {
+              if (!projects.has(target.projectId))
+                throw new TerminalSessionRefusal(
+                  'its Project no longer exists',
+                );
+              return target.projectId === 'project-a' ? root : join(home, 'b');
+            },
           }),
         },
         {},
@@ -178,9 +185,9 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         (await sessions.read(request(), scope, kept.terminalId)).status,
       ).toBe('running');
-      expect(
-        (await sessions.read(request(), other, removed.terminalId)).status,
-      ).toBe('exited');
+      const gone = await sessions.read(request(), other, removed.terminalId);
+      expect(gone.status).toBe('exited');
+      expect(gone.restoreRefused?.reason).toBe('its Project no longer exists');
       expect(
         (await sessions.read(request(), scope, finished.terminalId)).status,
       ).toBe('exited');

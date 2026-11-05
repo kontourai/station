@@ -19,9 +19,11 @@ import {
   type WaitForTerminalExitResponse,
   type WriteTextFileRequest,
 } from '@agentclientprotocol/sdk/unstable';
+import type { StationConfinement } from '@kontourai/station-contracts/provider';
 import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { ApprovalRegistry } from '../approvals/approval-registry.js';
+import { agentHostCommandRefusal } from '../terminal/terminal-sessions.js';
 import type {
   ACPClientCallbacks,
   ExtendedCreateTerminalRequest,
@@ -94,6 +96,14 @@ interface ACPBridgeClientContext {
    * holds plain child processes instead.
    */
   sessionTerminals?: AcpSessionTerminals;
+  /**
+   * #2497: the agent session's current server-derived confinement (#2493),
+   * read at each `terminal/create`. A plain child process runs on the host
+   * unconfined, so it starts only for a `host` session
+   * (`agentHostCommandRefusal`). `sessionTerminals` apply the same rule
+   * through `TerminalSessions.openAgentCommand`.
+   */
+  terminalConfinement: () => StationConfinement | undefined;
   approvalRegistry: ApprovalRegistry;
   getActiveWriter: () => ACPStreamWriter | null;
   nextTerminalId: () => string;
@@ -209,6 +219,7 @@ export function createACPBridgeClient(
           cwd: context.cwd,
           terminals: context.terminals,
           nextTerminalId: context.nextTerminalId,
+          terminalConfinement: context.terminalConfinement,
           ...(context.sessionTerminals && {
             sessionTerminals: context.sessionTerminals,
           }),
@@ -378,6 +389,7 @@ interface ACPBridgeTerminalContext {
   terminals: Map<string, ManagedTerminal>;
   nextTerminalId: () => string;
   sessionTerminals?: AcpSessionTerminals;
+  terminalConfinement: () => StationConfinement | undefined;
 }
 
 /**
@@ -500,6 +512,12 @@ export async function handleACPBridgeCreateTerminal(
     });
     return { terminalId: id };
   }
+  const refusal = agentHostCommandRefusal(context.terminalConfinement());
+  if (refusal)
+    throw RequestError.invalidRequest(
+      { command, refused: 'execution-authority' },
+      refusal,
+    );
   const proc = spawn(command, args, {
     cwd: params.cwd || context.cwd,
     env: childProcessEnvironment(env),

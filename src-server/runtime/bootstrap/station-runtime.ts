@@ -78,6 +78,10 @@ import {
   GitHubWorkItemObserver,
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
+import {
+  TaskFollowUpStoreHolder,
+  taskFollowUpStorePath,
+} from '../../services/work-item-providers/task-follow-up-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { recordManagedModelContext } from '../context-efficiency-runtime.js';
@@ -150,6 +154,7 @@ import {
 } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
+import { installManagedAppSettings } from '../../domain/managed-settings.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
@@ -1186,6 +1191,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private failedInitializationOrchestration?: OrchestrationService;
   private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -1238,6 +1244,10 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
+  /** #4508: Task follow-ups; the scheduler's poller writes, briefs read. */
+  private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
+    taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
+  );
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -1554,6 +1564,9 @@ export class StationRuntime {
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
       this.managedPolicy = options.managedPolicy ?? null;
+      // #4517: before any config is loaded, so every reader (this runtime's
+      // loader and the ones plugin routes build) sees the managed values.
+      installManagedAppSettings(this.managedPolicy);
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
@@ -3638,6 +3651,11 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
+        dailyUsage: (day) =>
+          this.orchestrationService.listDailyUsage(
+            day,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
         dailyFacts: async () => {
           const homeDir = this.configLoader.getProjectHomeDir();
           const pluginsDir = `${homeDir}/plugins`;
@@ -4004,6 +4022,12 @@ export class StationRuntime {
         });
       }
       await retire(() => this.retireSelfHostedBroker());
+      if (
+        this.failedInitializationOrchestration !== this.orchestrationService
+      ) {
+        this.failedInitializationOrchestration = this.orchestrationService;
+        await retire(() => this.orchestrationService?.shutdown());
+      }
       if (cleanupErrors.length)
         throw new AggregateError(
           [error, ...cleanupErrors],
@@ -4439,6 +4463,10 @@ export class StationRuntime {
               | StrandsFramework;
             this.modelCatalog = core.modelCatalog;
           },
+          onOrchestrationServiceCreated: (service) => {
+            this.failedInitializationOrchestration = undefined;
+            this.orchestrationService = service;
+          },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
             this.nativeForkStoredReadBinder =
@@ -4642,6 +4670,7 @@ export class StationRuntime {
                   // the route context), so dispatch and get_task_brief
                   // read the tracker one way.
                   workItemObserver: this.workItemObserver,
+                  followUps: this.taskFollowUps,
                   logger: this.logger,
                 }),
                 // #4005: an engine-started Task Session runs as the Task's
@@ -4816,6 +4845,8 @@ export class StationRuntime {
       }
     };
 
+    this.failedInitializationOrchestration = this.orchestrationService;
+    await attempt(() => this.orchestrationService?.shutdown());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
@@ -5226,6 +5257,7 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
+      taskFollowUps: this.taskFollowUps,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,

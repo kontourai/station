@@ -594,6 +594,13 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        if (
+          streamModes.get(apiBase) &&
+          response.headers.get('X-Station-General-Stream') !== '1'
+        ) {
+          streamModes.set(apiBase, false);
+          if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
+        }
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {

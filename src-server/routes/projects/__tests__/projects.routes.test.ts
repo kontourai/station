@@ -40,6 +40,7 @@ import {
   loadAgentConfig,
   saveAgentConfig,
 } from '../../../domain/config-loader-agents.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
@@ -797,6 +798,58 @@ describe('Project Routes', () => {
         });
         expect(refused.status).toBe(403);
         expect(service.createProject).not.toHaveBeenCalled();
+      });
+
+      // #4518: under a managed ceiling below full access no grant could
+      // help, so the operator in person is refused with the managed message.
+      test('POST / refuses a full-access new-chat mode under a managed ceiling with the managed message', async () => {
+        installManagedApprovalCeiling({
+          summary: {
+            organization: 'Acme',
+            supportUrl: null,
+            lockedSettings: [],
+            limits: { maxApprovalMode: 'auto' },
+          },
+        });
+        try {
+          const service = createMockProjectService();
+          const app = new Hono();
+          app.use('*', async (c, next) => {
+            setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+              credential: 'operator-credential',
+              authority: 'operator-credential',
+              source: 'bearer',
+            });
+            await next();
+          });
+          app.route(
+            '/',
+            createProjectRoutes(
+              service as any,
+              createMockStorageAdapter() as any,
+              '/tmp',
+            ),
+          );
+          const refused = await app.request('/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'Atlas',
+              slug: 'atlas',
+              defaultApprovalMode: 'never',
+            }),
+          });
+          expect(refused.status).toBe(403);
+          expect(await json(refused)).toEqual({
+            success: false,
+            code: 'managed-policy-approval-ceiling',
+            error:
+              "Acme's policy manages approval modes: the broadest allowed is Auto. Contact your administrator for help.",
+          });
+          expect(service.createProject).not.toHaveBeenCalled();
+        } finally {
+          installManagedApprovalCeiling(null);
+        }
       });
 
       test('GET /:slug/chat-defaults answers the composed view for the caller', async () => {

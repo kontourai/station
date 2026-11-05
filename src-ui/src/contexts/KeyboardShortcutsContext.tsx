@@ -202,6 +202,7 @@ interface ShortcutRegistryStore {
   }) => { id: string } | null;
   getDisplay: (id: string) => string;
   getAllShortcuts: () => KeyboardShortcut[];
+  getDefaultBinding: (id: string) => ShortcutBinding | null;
   setBinding: (id: string, binding: ShortcutBinding | null) => void;
   restoreBinding: (id: string) => void;
   isMac: boolean;
@@ -555,6 +556,15 @@ export function KeyboardShortcutsProvider({
     [resolveShortcut],
   );
 
+  const getDefaultBinding = useCallback(
+    (id: string): ShortcutBinding | null => {
+      const registered = shortcutsRef.current.get(id);
+      if (!registered || registered.disabled || !registered.key) return null;
+      return { key: registered.key, modifiers: [...registered.modifiers] };
+    },
+    [],
+  );
+
   /** Signatures of every reserved chord: defaults plus live resolved bindings. */
   const reservedChords = useCallback(() => {
     const chords = new Map<string, string>();
@@ -699,6 +709,7 @@ export function KeyboardShortcutsProvider({
       findReservedConflict,
       getDisplay,
       getAllShortcuts,
+      getDefaultBinding,
       setBinding,
       restoreBinding,
       isMac,
@@ -710,6 +721,7 @@ export function KeyboardShortcutsProvider({
       findReservedConflict,
       getDisplay,
       getAllShortcuts,
+      getDefaultBinding,
       setBinding,
       restoreBinding,
       subscribe,
@@ -751,7 +763,11 @@ export function useOptionalKeyboardShortcuts():
  */
 export function useKeyboardShortcuts(): Omit<
   ShortcutRegistryStore,
-  'getDisplay' | 'getAllShortcuts' | 'subscribe' | 'getSignature'
+  | 'getDisplay'
+  | 'getAllShortcuts'
+  | 'getDefaultBinding'
+  | 'subscribe'
+  | 'getSignature'
 > {
   return useShortcutStore();
 }

@@ -92,6 +92,124 @@ describe('runtime resource diagnostics', () => {
     });
   });
 
+  test('aborted and expired waiters cannot acquire a later lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = createRuntimeResourcePostureController();
+      const held = controller.reserveEngineStart();
+      const abort = new AbortController();
+      const cancelled = admitEngineStartForIntent(
+        controller,
+        undefined,
+        'interactive_user',
+        {
+          binding: 'cancelled',
+          signal: abort.signal,
+        },
+      );
+      const expired = admitEngineStartForIntent(
+        controller,
+        undefined,
+        'interactive_user',
+        {
+          binding: 'expired',
+        },
+      );
+      const cancelledResult = expect(cancelled).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      const expiredResult = expect(expired).rejects.toThrow(
+        ConcurrentEngineStartCapacityError,
+      );
+      abort.abort();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await cancelledResult;
+      await expiredResult;
+      held.release();
+      const next = controller.reserveEngineStart();
+      next.release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('normalizes non-Error abort reasons for pending and already-aborted starts', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const abort = new AbortController();
+    const pending = controller.waitForEngineStart(abort.signal);
+    abort.abort('person left');
+    await expect(pending).rejects.toEqual(new Error('Operation aborted.'));
+    await expect(controller.waitForEngineStart(abort.signal)).rejects.toEqual(
+      new Error('Operation aborted.'),
+    );
+    const reason = new Error('cancelled by caller');
+    const errorAbort = new AbortController();
+    const errorPending = controller.waitForEngineStart(errorAbort.signal);
+    errorAbort.abort(reason);
+    await expect(errorPending).rejects.toBe(reason);
+    held.release();
+  });
+
+  test('grants waiting interactive starts in arrival order', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const first = controller.waitForEngineStart();
+    const second = controller.waitForEngineStart();
+    held.release();
+    const admitted = await Promise.race([
+      first.then((lease) => ({ name: 'first', lease })),
+      second.then((lease) => ({ name: 'second', lease })),
+    ]);
+    admitted.lease.release();
+    const remaining = await (admitted.name === 'first' ? second : first);
+    remaining.release();
+    expect(admitted.name).toBe('first');
+  });
+
+  test('refuses the 33rd interactive waiter without waiting for timeout', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const held = controller.reserveEngineStart();
+    const abort = new AbortController();
+    const waiters = Array.from({ length: 32 }, () =>
+      controller.waitForEngineStart(abort.signal),
+    );
+    const settledWaiters = Promise.allSettled(waiters);
+    // All 32 must still be queued before the 33rd arrives; a lower cap would
+    // refuse one of them here.
+    let refusedWithinCap = 0;
+    for (const waiter of waiters)
+      waiter.catch(() => {
+        refusedWithinCap += 1;
+      });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(refusedWithinCap).toBe(0);
+    const extra = controller.waitForEngineStart(abort.signal);
+    const outcome = extra.then(
+      () => 'admitted',
+      (error: unknown) =>
+        error instanceof ConcurrentEngineStartCapacityError
+          ? 'refused'
+          : 'aborted',
+    );
+    try {
+      expect(waiters).toHaveLength(32);
+      expect(
+        await Promise.race([
+          outcome,
+          new Promise<'pending'>((resolve) =>
+            setImmediate(() => resolve('pending')),
+          ),
+        ]),
+      ).toBe('refused');
+    } finally {
+      abort.abort();
+      await settledWaiters;
+      await outcome;
+      held.release();
+    }
+  });
+
   test('production server modules never import verification scripts', () => {
     const serverRoot = join(process.cwd(), 'src-server');
     const violations: string[] = [];

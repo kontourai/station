@@ -14,6 +14,7 @@ const registryOffered = [
   'integration-content-trust',
   'task-review',
   'continue-interrupted-turn',
+  'task-capabilities',
   'task-collaboration',
   'chat-apps',
   'visual-skills',

@@ -8,6 +8,22 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "task-capabilities-dark-desktop": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
+    "task-capabilities-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "task-capabilities-light-desktop": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
+    "task-capabilities-light-mobile": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
+    "personal-board-projects-unavailable-desktop": [
+      "src-ui/src/views/PersonalBoardView.tsx"
+    ],
+    "personal-board-projects-unavailable-mobile": [
+      "src-ui/src/views/PersonalBoardView.tsx"
+    ],
     "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],
