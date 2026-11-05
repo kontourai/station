@@ -180,7 +180,10 @@ type TaskAnswerNarrativePinCapture = {
 export interface TaskReferenceCommitAuthorization {
   expectedProjectId: string;
   isAuthorized(
-    task: Pick<TaskRecord, 'id' | 'projectId' | 'workspaceBinding'>,
+    task: Pick<
+      TaskRecord,
+      'id' | 'projectId' | 'createdAt' | 'workspaceBinding'
+    >,
   ): boolean;
 }
 
@@ -203,7 +206,7 @@ export class TaskDeclaredOutputKeepDeletedError extends Error {}
 
 function taskReferenceAuthorizationCurrent(
   authorization: TaskReferenceCommitAuthorization,
-  task: Pick<TaskRecord, 'id' | 'projectId' | 'workspaceBinding'>,
+  task: Pick<TaskRecord, 'id' | 'projectId' | 'createdAt' | 'workspaceBinding'>,
 ): boolean {
   if (task.projectId !== authorization.expectedProjectId) return false;
   try {
