@@ -875,6 +875,7 @@ for (const width of [390, 1440]) {
         await page.screenshot({
           path: testInfo.outputPath('apps-board-host.png'),
           fullPage: true,
+          animations: 'disabled',
         });
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
