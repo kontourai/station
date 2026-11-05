@@ -587,7 +587,12 @@ test('R6-3: a release the producer failed to perform is not confirmed; the viewe
 test('R6-4: many release calls make one request at a time, and an obligation still unconfirmed after many failures resumes on reconnect', async () => {
   // No heartbeat: nothing from the host prompts a retry, so every try below
   // is the worker's own.
-  server = await realLiveSurfaceServer({ heartbeatMs: 60_000 });
+  // ...and a long server grace, so the dropped stream below is not what
+  // releases the key.
+  server = await realLiveSurfaceServer({
+    heartbeatMs: 60_000,
+    viewerGraceMs: 10_000,
+  });
   let inflight = 0;
   let maxInflight = 0;
   // One more failure than the old six-try limit allowed.
@@ -627,6 +632,7 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
   await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
     timeout: 2_000,
   });
+  expect(releaseRequests(server)).toBe(8);
   a.unmount();
 }, 30_000);
 
