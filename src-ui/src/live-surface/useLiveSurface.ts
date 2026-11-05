@@ -23,6 +23,7 @@ import {
   parseLiveSurfaceEpochCause,
 } from '@kontourai/station-contracts/live-surface';
 import { authenticatedFetch, hasCapability } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type RefObject,
   useCallback,
@@ -334,9 +335,13 @@ function epochCauseCapability(
 /** Bound on one input, claim or lease request (#90 C). */
 export const LIVE_SURFACE_REQUEST_TIMEOUT_MS = 10_000;
 
-/** A fresh id for one of this viewer's own requests (contract shape). */
+/**
+ * A fresh id for one of this viewer's own requests (contract shape). Not a
+ * secret: the server still authorizes the caller. The shared helper works in
+ * an insecure context, where `crypto.randomUUID` is undefined.
+ */
 function newRequestId(): string {
-  return crypto.randomUUID().replaceAll('-', '');
+  return randomCorrelationId().replaceAll('-', '');
 }
 
 /** A queued release that may go in whichever lineage is current. */
