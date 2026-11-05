@@ -999,6 +999,72 @@ for (const width of [390, 1440]) {
           ).status(),
         ).toBe(404);
         slug = undefined;
+
+        const raceSlug = `response-race-${width}-${colorScheme}-${Date.now()}`;
+        const raceName = `Response race ${width} ${colorScheme}`;
+        slug = raceSlug;
+        expect(
+          (
+            await authenticatedRequest.post(`${API}/api/me/layouts`, {
+              data: { slug: raceSlug, name: raceName },
+            })
+          ).status(),
+        ).toBe(201);
+        await page.goto('/activity');
+        await openLibrary();
+        await library
+          .getByRole('button', { name: `Open ${raceName}`, exact: true })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${raceSlug}$`));
+        await openLibrary();
+        await library
+          .getByRole('button', { name: `Delete ${raceName}`, exact: true })
+          .click();
+        let release!: () => void;
+        let responseStatus: number | undefined;
+        const deliverResponse = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        await page.route(`**/api/me/layouts/${raceSlug}`, async (route) => {
+          if (route.request().method() !== 'DELETE') {
+            await route.continue();
+            return;
+          }
+          const response = await route.fetch();
+          const body = await response.body();
+          responseStatus = response.status();
+          await deliverResponse;
+          await route.fulfill({ response, body });
+        });
+        try {
+          await confirm
+            .getByRole('button', { name: 'Delete Board', exact: true })
+            .click();
+          await expect.poll(() => responseStatus).toBe(200);
+          expect(
+            (
+              await authenticatedRequest.get(
+                `${API}/api/me/layouts/${raceSlug}`,
+              )
+            ).status(),
+          ).toBe(404);
+          await page.goBack();
+          await expect(page).toHaveURL(/\/activity$/);
+          release();
+          await expect(confirm).toBeHidden();
+          await expect(library).toBeVisible();
+          await expect(page).toHaveURL(/\/activity$/);
+          await expect(
+            library.getByRole('button', {
+              name: `Open ${raceName}`,
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          slug = undefined;
+        } finally {
+          release();
+          await page.unrouteAll({ behavior: 'wait' });
+        }
       } finally {
         if (slug) {
           const cleanup = await authenticatedRequest.delete(

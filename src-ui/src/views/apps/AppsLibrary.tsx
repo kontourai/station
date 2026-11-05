@@ -75,8 +75,10 @@ function Library({
   const busy = editor !== null || deleting !== null;
   const confirmDelete = async () => {
     if (!deleting) return;
-    const slug = deleting.slug;
+    const target = deleting;
+    const slug = target.slug;
     const location = navigationStore.captureLocation();
+    let deleted = false;
     try {
       if (parseBoardPath(location.pathname) === slug) {
         const controller = new AbortController();
@@ -85,15 +87,17 @@ function Library({
           current: () => navigationStore.isCurrentLocation(location),
           prepare: async () => {
             await remove.mutateAsync(slug);
+            deleted = true;
             return true;
           },
           signal: controller.signal,
         });
-        if (!committed) return;
+        // Back can supersede navigation after DELETE succeeds.
+        if (!committed && !deleted) return;
       } else {
         await remove.mutateAsync(slug);
       }
-      setDeleting(null);
+      setDeleting((current) => (current === target ? null : current));
     } catch {
       // The mutation keeps its error in the confirmation for retry.
     }

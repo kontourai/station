@@ -24,6 +24,8 @@ returns keyboard focus to its launcher.
 **Delete** asks for confirmation. If the open Board has unsaved edits, Station
 asks whether to discard them before deleting it. Cancel keeps the Board and draft;
 confirming the discard deletes the Board and returns the underlying page to Home.
+If you go Back while deletion finishes, Station keeps that newer page and closes
+the confirmation after the delete succeeds.
 
 **New Board** asks for a name before creation, then opens the existing editor
 with the starter choices below. A refused save keeps the form and its error.

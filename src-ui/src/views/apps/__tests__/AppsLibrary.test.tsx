@@ -20,6 +20,7 @@ let boards: LayoutMetadata[];
 let enabled: boolean;
 let denied: boolean;
 let readFailed: boolean;
+let deleteResponse: Promise<void> | undefined;
 let requests: { method: string; path: string; body: unknown }[];
 const open = vi.fn();
 const clients: QueryClient[] = [];
@@ -28,6 +29,7 @@ beforeEach(() => {
   enabled = true;
   denied = false;
   readFailed = false;
+  deleteResponse = undefined;
   requests = [];
   boards = [
     {
@@ -82,6 +84,7 @@ beforeEach(() => {
       if (method === 'DELETE') {
         if (denied) return reply(null, 403);
         boards = boards.filter((entry) => entry.slug !== slug);
+        if (deleteResponse) await deleteResponse;
         return reply(null);
       }
       throw new Error(`Unexpected request: ${method} ${path}`);
@@ -205,11 +208,51 @@ test('requires deletion confirmation and retains the Board when authority refuse
   fireEvent.click(
     screen.getByRole('button', { name: 'Delete Board', exact: true }),
   );
+  await screen.findByRole('dialog', { name: 'Apps', exact: true });
   await waitFor(() =>
     expect(
       screen.queryByRole('button', { name: 'Open Daily brief' }),
     ).toBeNull(),
   );
+});
+
+test('successful deletion closes its confirmation after newer navigation supersedes the return', async () => {
+  let release!: () => void;
+  deleteResponse = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  act(() => navigationStore.navigate('/boards/daily'));
+  mount();
+  try {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete Daily brief' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete Board', exact: true }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.filter((entry) => entry.method === 'DELETE'),
+      ).toHaveLength(1),
+    );
+    expect(boards.some((board) => board.slug === 'daily')).toBe(false);
+    act(() => navigationStore.navigate('/newer-destination'));
+    await act(async () => {
+      release();
+      await deleteResponse;
+    });
+    await screen.findByRole('dialog', { name: 'Apps', exact: true });
+    expect(screen.queryByRole('dialog', { name: 'Delete Board?' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Open Daily brief' }),
+    ).toBeNull();
+    expect(window.location.pathname).toBe('/newer-destination');
+    expect(requests.filter((entry) => entry.method === 'DELETE')).toHaveLength(
+      1,
+    );
+  } finally {
+    release();
+  }
 });
 
 test('a failed list cannot create and recovers through Retry apps', async () => {
