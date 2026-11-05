@@ -1626,7 +1626,11 @@
 
     "src-ui/src/views/__tests__/EnsembleRecordedGroupInspection.test.tsx",
 
-    "src-server/services/orchestration/ensemble-presets.ts"
+    "src-server/services/orchestration/ensemble-presets.ts",
+
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
+
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
   ],
 
   "checks": [

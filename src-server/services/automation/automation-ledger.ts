@@ -25,6 +25,19 @@
  * A rule without an episode policy is expected to use a per-delivery episode
  * (its semantic key, one attempt), so every action goes through a claim.
  *
+ * Per-rule decisions (#4509): one delivery row can match several rules, so
+ * each matched rule's decision is a row of its own in
+ * `automation_rule_decisions`, keyed by `(delivery_key, rule_id)`. A row per
+ * rule (rather than an array on the delivery row) lets an `observe` rule's
+ * hourly start limit be counted with an indexed query, and stays bounded:
+ * at most `maxRules` rows per accepted delivery, pruned by the same
+ * retention window. An `observe` rule never opens an episode, takes a claim
+ * or retains an intent (its `closeOn` may close an episode, which starts
+ * nothing); it keeps its own open-episode marker in
+ * `automation_observe_episodes`, so a recurring failure is recorded as
+ * `episode-active` after its first `would-start`, and that marker can never
+ * fence or admit a `live` action.
+ *
  * Retention: rows that take part in semantic dedupe
  * (`AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES`) require an authenticated delivery,
  * so they are bounded only by the retention window. The row ceiling applies
@@ -66,6 +79,8 @@ import {
   type AutomationPollOutcome,
   type AutomationPollRecord,
   type AutomationRefusalReason,
+  type AutomationRuleDecision,
+  type AutomationRuleDecisionOutcome,
   type AutomationSuppressionReason,
 } from '@kontourai/station-contracts/automation';
 import {
@@ -161,6 +176,31 @@ CREATE TABLE IF NOT EXISTS automation_action_intents (
 );
 CREATE INDEX IF NOT EXISTS automation_action_intents_rule ON automation_action_intents(rule_id, invoked_ms);
 CREATE UNIQUE INDEX IF NOT EXISTS automation_action_intents_episode ON automation_action_intents(rule_id, episode_id);
+CREATE TABLE IF NOT EXISTS automation_rule_decisions (
+  delivery_key TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  rule_name TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('observe', 'live')),
+  outcome TEXT NOT NULL
+    CHECK (outcome IN ('would-start', 'suppressed', 'intent-retained')),
+  reason TEXT,
+  action_kind TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
+  decided_ms INTEGER NOT NULL,
+  PRIMARY KEY (delivery_key, rule_id)
+);
+CREATE INDEX IF NOT EXISTS automation_rule_decisions_rule
+  ON automation_rule_decisions(rule_id, decided_ms);
+CREATE INDEX IF NOT EXISTS automation_rule_decisions_age
+  ON automation_rule_decisions(decided_ms);
+CREATE TABLE IF NOT EXISTS automation_observe_episodes (
+  episode_key TEXT PRIMARY KEY,
+  rule_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
+  opened_ms INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS automation_poll_state (
   source_id TEXT PRIMARY KEY,
   last_polled_ms INTEGER NOT NULL,
@@ -238,6 +278,29 @@ export type ActionSettlement = Readonly<{
 
 export type ReceiptTransition = 'applied' | 'stale';
 
+/**
+ * One matched rule intake records a decision for (#4509). A `live`
+ * candidate's decision follows from whether its intent was retained in the
+ * same transaction; an `observe` candidate is evaluated against the ledger
+ * without writing an episode, claim or intent.
+ */
+export type RuleDecisionCandidate = Readonly<{
+  ruleId: string;
+  ruleName: string;
+  mode: 'observe' | 'live';
+  actionKind: AutomationRuleDecision['actionKind'];
+  projectId: string;
+  agentId: string;
+  episodeKey: string;
+  episodeId: string;
+  /**
+   * The rule has an episode policy. Without one each delivery is its own
+   * episode, so an `observe` rule keeps no open-episode marker for it.
+   */
+  keyedEpisode: boolean;
+  maxStartsPerHour: number;
+}>;
+
 /** The capability to act for one episode. Only its holder may settle it. */
 export interface AutomationActionReceipt {
   readonly claimId: string;
@@ -270,6 +333,7 @@ export interface AutomationLedger {
       AutomationActionIntent,
       'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
     >[];
+    decisions?: readonly RuleDecisionCandidate[];
     now: number;
   }): {
     recorded: RecordDeliveryOutcome;
@@ -519,6 +583,50 @@ function deliveryFromRow(row: DeliveryRow): AutomationDeliveryRecord {
   };
 }
 
+type RuleDecision = Readonly<{
+  outcome: AutomationRuleDecisionOutcome;
+  reason?: AutomationSuppressionReason;
+}>;
+
+interface RuleDecisionRow {
+  delivery_key: string;
+  rule_id: string;
+  rule_name: string;
+  mode: AutomationRuleDecision['mode'];
+  outcome: AutomationRuleDecisionOutcome;
+  reason: string | null;
+  action_kind: AutomationRuleDecision['actionKind'];
+  project_id: string;
+  agent_id: string;
+  episode_id: string;
+  decided_ms: number;
+}
+
+function ruleDecisionFromRow(row: RuleDecisionRow): AutomationRuleDecision {
+  return {
+    ruleId: row.rule_id,
+    ruleName: row.rule_name,
+    mode: row.mode,
+    outcome: row.outcome,
+    ...(row.reason
+      ? { reason: row.reason as AutomationSuppressionReason }
+      : {}),
+    actionKind: row.action_kind,
+    projectId: row.project_id,
+    agentId: row.agent_id,
+    episodeId: row.episode_id,
+    decidedAt: iso(row.decided_ms),
+  };
+}
+
+/** Why an existing unclosed episode keeps a new event from starting. */
+function episodeSuppression(row: EpisodeRow): AutomationSuppressionReason {
+  if (row.state === 'indeterminate') return 'episode-indeterminate';
+  if (row.state === 'exhausted' || row.attempt_count >= row.max_attempts)
+    return 'episode-exhausted';
+  return 'episode-active';
+}
+
 /** Settled action state -> the delivery outcome that caused it. */
 const SETTLED_DELIVERY_OUTCOME = {
   completed: 'started',
@@ -629,6 +737,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       AutomationActionIntent,
       'deliveryKey' | 'state' | 'createdAt' | 'updatedAt'
     >[];
+    decisions?: readonly RuleDecisionCandidate[];
     now: number;
   }) {
     return this.transaction(() => {
@@ -638,6 +747,12 @@ class SqliteAutomationLedger implements AutomationLedger {
       if (recorded.kind === 'duplicate')
         return { recorded, openedEpisodeIds, closedEpisodeIds };
       let closedForRow: { ruleId: string; episodeId: string } | undefined;
+      for (const closing of input.closings)
+        this.db
+          .prepare(
+            'DELETE FROM automation_observe_episodes WHERE episode_key = ?',
+          )
+          .run(closing.episodeKey);
       for (const closing of input.closings) {
         const closed = this.closeEpisode({
           episodeKey: closing.episodeKey,
@@ -714,8 +829,129 @@ class SqliteAutomationLedger implements AutomationLedger {
             JSON.stringify(intent),
           );
       }
+      for (const candidate of input.decisions ?? []) {
+        const decision =
+          candidate.mode === 'live'
+            ? this.liveDecision(candidate, recorded.deliveryKey)
+            : this.observeDecision(candidate, input.now);
+        this.db
+          .prepare(
+            `INSERT INTO automation_rule_decisions
+               (delivery_key, rule_id, rule_name, mode, outcome, reason,
+                action_kind, project_id, agent_id, episode_id, decided_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            recorded.deliveryKey,
+            candidate.ruleId,
+            candidate.ruleName,
+            candidate.mode,
+            decision.outcome,
+            decision.reason ?? null,
+            candidate.actionKind,
+            candidate.projectId,
+            candidate.agentId,
+            candidate.episodeId,
+            input.now,
+          );
+      }
       return { recorded, openedEpisodeIds, closedEpisodeIds };
     });
+  }
+
+  /** A live rule's decision is whether this delivery retained its intent. */
+  private liveDecision(
+    candidate: RuleDecisionCandidate,
+    deliveryKey: string,
+  ): RuleDecision {
+    const intent = this.db
+      .prepare(
+        'SELECT delivery_key FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+      )
+      .get(candidate.ruleId, candidate.episodeId) as
+      | { delivery_key: string }
+      | undefined;
+    if (intent?.delivery_key === deliveryKey)
+      return { outcome: 'intent-retained' };
+    const episode = this.unclosedEpisode(candidate.episodeKey);
+    return {
+      outcome: 'suppressed',
+      reason: episode ? episodeSuppression(episode) : 'episode-active',
+    };
+  }
+
+  /**
+   * Evaluates an observe rule against current ledger state, writing nothing
+   * but its own open-episode marker. The episode is checked first, unlike
+   * `claimAction` (concurrency, the rule's active limit, hourly starts, then
+   * episode state). A live event in an already-open episode never retains an
+   * intent at intake, so that is the first thing that would stop it.
+   *
+   * Concurrency and the active limit read live claims and intents only. The
+   * rule's would-starts never count as active, so this does not model what
+   * the rule itself would be running had it been live. Hourly starts count
+   * the rule's invoked live intents plus its earlier `would-start` decisions.
+   */
+  private observeDecision(
+    candidate: RuleDecisionCandidate,
+    now: number,
+  ): RuleDecision {
+    const limits = AUTOMATION_EXECUTION_LIMITS;
+    const episode = this.unclosedEpisode(candidate.episodeKey);
+    if (episode)
+      return { outcome: 'suppressed', reason: episodeSuppression(episode) };
+    if (
+      candidate.keyedEpisode &&
+      this.db
+        .prepare(
+          'SELECT 1 FROM automation_observe_episodes WHERE episode_key = ?',
+        )
+        .get(candidate.episodeKey)
+    )
+      return { outcome: 'suppressed', reason: 'episode-active' };
+    const count = (sql: string, ...args: unknown[]) =>
+      (this.db.prepare(sql).get(...args) as { count: number }).count;
+    const claims = count(
+      'SELECT COUNT(*) AS count FROM automation_action_claims',
+    );
+    const active = count(
+      "SELECT COUNT(*) AS count FROM automation_action_intents WHERE state IN ('queued', 'running', 'indeterminate')",
+    );
+    if (claims + active >= limits.maxConcurrentActions)
+      return { outcome: 'suppressed', reason: 'concurrency-limit' };
+    const ruleActive =
+      count(
+        "SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = ? AND state IN ('queued', 'running', 'indeterminate')",
+        candidate.ruleId,
+      ) +
+      count(
+        'SELECT COUNT(*) AS count FROM automation_action_claims WHERE rule_id = ?',
+        candidate.ruleId,
+      );
+    if (ruleActive >= limits.maxActivePerRule)
+      return { outcome: 'suppressed', reason: 'rule-active-limit' };
+    const since = now - 3_600_000;
+    const starts =
+      count(
+        'SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = ? AND invoked_ms >= ?',
+        candidate.ruleId,
+        since,
+      ) +
+      count(
+        "SELECT COUNT(*) AS count FROM automation_rule_decisions WHERE rule_id = ? AND mode = 'observe' AND outcome = 'would-start' AND decided_ms >= ?",
+        candidate.ruleId,
+        since,
+      );
+    if (starts >= candidate.maxStartsPerHour)
+      return { outcome: 'suppressed', reason: 'rate-limited' };
+    if (candidate.keyedEpisode)
+      this.db
+        .prepare(
+          `INSERT INTO automation_observe_episodes
+             (episode_key, rule_id, episode_id, opened_ms) VALUES (?, ?, ?, ?)`,
+        )
+        .run(candidate.episodeKey, candidate.ruleId, candidate.episodeId, now);
+    return { outcome: 'would-start' };
   }
 
   readIntent(intentId: string): AutomationActionIntent | undefined {
@@ -908,6 +1144,26 @@ class SqliteAutomationLedger implements AutomationLedger {
             WHERE state = 'closed' AND updated_ms < ? LIMIT ?)`,
       )
       .run(now - limits.closedEpisodeRetentionMs, PRUNE_BATCH);
+    // One accepted delivery can add a decision for each of up to `maxRules`
+    // rules, so each pass may delete that many: expiry keeps pace with the
+    // largest insert a single write can make.
+    this.db
+      .prepare(
+        `DELETE FROM automation_rule_decisions WHERE rowid IN (
+           SELECT rowid FROM automation_rule_decisions
+            WHERE decided_ms < ? ORDER BY decided_ms LIMIT ?)`,
+      )
+      .run(now - limits.deliveryRetentionMs, limits.maxRules);
+    // A live episode stays open until `closeOn`; an observe marker is also
+    // dropped after the closed-episode retention, so it cannot outlive the
+    // decisions that explain it indefinitely.
+    this.db
+      .prepare(
+        `DELETE FROM automation_observe_episodes WHERE rowid IN (
+           SELECT rowid FROM automation_observe_episodes
+            WHERE opened_ms < ? LIMIT ?)`,
+      )
+      .run(now - limits.closedEpisodeRetentionMs, PRUNE_BATCH);
   }
 
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean {
@@ -938,15 +1194,31 @@ class SqliteAutomationLedger implements AutomationLedger {
   }
 
   listDeliveries(limit = 100): AutomationDeliveryRecord[] {
-    return this.read(() =>
-      (
-        this.db
+    return this.read(() => {
+      const rows = this.db
+        .prepare(
+          'SELECT * FROM automation_deliveries ORDER BY received_ms DESC, rowid DESC LIMIT ?',
+        )
+        .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as DeliveryRow[];
+      const decisions = new Map<string, AutomationRuleDecision[]>();
+      if (rows.length > 0)
+        for (const row of this.db
           .prepare(
-            'SELECT * FROM automation_deliveries ORDER BY received_ms DESC, rowid DESC LIMIT ?',
+            `SELECT * FROM automation_rule_decisions
+              WHERE delivery_key IN (${rows.map(() => '?').join(', ')})
+              ORDER BY rule_id`,
           )
-          .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as DeliveryRow[]
-      ).map(deliveryFromRow),
-    );
+          .all(...rows.map((row) => row.dedupe_key)) as RuleDecisionRow[]) {
+          const list = decisions.get(row.delivery_key) ?? [];
+          list.push(ruleDecisionFromRow(row));
+          decisions.set(row.delivery_key, list);
+        }
+      return rows.map((row) => {
+        const delivery = deliveryFromRow(row);
+        const recorded = decisions.get(row.dedupe_key);
+        return recorded ? { ...delivery, decisions: recorded } : delivery;
+      });
+    });
   }
 
   openEpisode(input: OpenEpisodeInput): OpenEpisodeOutcome {

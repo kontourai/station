@@ -20,7 +20,10 @@ import {
   automationIntentId,
   automationPolicyFingerprint,
 } from './automation-intent.js';
-import type { AutomationLedger } from './automation-ledger.js';
+import type {
+  AutomationLedger,
+  RuleDecisionCandidate,
+} from './automation-ledger.js';
 
 /** Every `where` entry holds; an array matches any member; empty never matches. */
 export function automationMatcherMatches(
@@ -84,12 +87,20 @@ export type AutomationIntakeResult = Readonly<{
 
 /**
  * Records one accepted event. `rules` must be the source's actionable rules
- * (`AutomationStore.actionableRules`), read for this delivery.
+ * (`AutomationStore.actionableRules`), read for this delivery; an `off` rule
+ * passed anyway is ignored.
  *
  * The delivery row and episode changes commit atomically. The dedupe gate ensures a duplicate
  * never reaches the episode effects, so re-observing a run cannot reopen or
- * re-close an episode. The row records the first matching rule; the ledger
- * holds one rule per delivery, and every matching rule's episode is opened.
+ * re-close an episode. The row records the first matching `live` rule (or
+ * the first matching rule when none is live); every matching `live` rule's
+ * episode is opened.
+ *
+ * Only `live` rules open episodes or retain intents (#4509); a matching
+ * `closeOn` closes the rule's episode in either mode. When a source is given, every matched non-notify rule also gets a
+ * per-rule decision: `observe` rules are evaluated by the ledger without
+ * writing anything a consumer could claim, so neither action consumer can
+ * start work for them, now or after the rule is switched to `live`.
  */
 export function recordAutomationEvent(input: {
   ledger: AutomationLedger;
@@ -100,15 +111,18 @@ export function recordAutomationEvent(input: {
   transportId: string;
   now: number;
 }): AutomationIntakeResult {
-  const { ledger, rules, event, now } = input;
+  const { ledger, event, now } = input;
+  const rules = input.rules.filter((rule) => rule.mode !== 'off');
   const matched = rules.filter((rule) =>
     automationMatcherMatches(rule.match, event),
   );
+  const acting = matched.filter((rule) => rule.mode === 'live');
   const closing = rules.filter(
     (rule) =>
       rule.episode?.closeOn !== undefined &&
       automationMatcherMatches(rule.episode.closeOn, event),
   );
+  const rowRule = acting[0] ?? matched[0];
   const outcome =
     rules.length === 0
       ? 'ignored'
@@ -123,9 +137,9 @@ export function recordAutomationEvent(input: {
       eventType: event.type,
       receivedAt: now,
       outcome,
-      ...(matched[0] ? { ruleId: matched[0].id } : {}),
+      ...(rowRule ? { ruleId: rowRule.id } : {}),
     },
-    openings: matched.flatMap((rule) => {
+    openings: acting.flatMap((rule) => {
       const episodeKey =
         automationEpisodeKey(rule, event) ??
         (input.source && rule.action.kind !== 'notify'
@@ -145,7 +159,7 @@ export function recordAutomationEvent(input: {
         : [];
     }),
     intents: input.source
-      ? matched.flatMap((rule) => {
+      ? acting.flatMap((rule) => {
           if (rule.action.kind === 'notify') return [];
           const episodeKey =
             automationEpisodeKey(rule, event) ??
@@ -168,10 +182,35 @@ export function recordAutomationEvent(input: {
           ];
         })
       : [],
+    // Closing follows the rule in either mode: `closeOn` records that the
+    // failure resolved, starts nothing and consumes no attempt, and an
+    // episode left open while observing would suppress the rule's next
+    // failure once it is live again.
     closings: closing.flatMap((rule) => {
       const episodeKey = automationEpisodeKey(rule, event);
       return episodeKey ? [{ ruleId: rule.id, episodeKey }] : [];
     }),
+    decisions: input.source
+      ? matched.flatMap((rule): RuleDecisionCandidate[] => {
+          if (rule.action.kind === 'notify' || rule.mode === 'off') return [];
+          return [
+            {
+              ruleId: rule.id,
+              ruleName: rule.name,
+              mode: rule.mode,
+              actionKind: rule.action.kind,
+              projectId: rule.action.projectId,
+              agentId: rule.action.agentId,
+              episodeKey:
+                automationEpisodeKey(rule, event) ??
+                JSON.stringify([rule.id, event.semanticKey]),
+              episodeId: automationEpisodeId(event),
+              keyedEpisode: rule.episode !== undefined,
+              maxStartsPerHour: rule.rateLimit.maxStartsPerHour,
+            },
+          ];
+        })
+      : [],
     now,
   });
   if (recorded.kind === 'duplicate')

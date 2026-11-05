@@ -717,6 +717,17 @@ assistant turn in the same Project (or a conversation without a Project), parses
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
+## A Task's worktree
+
+`GET /api/tasks/:taskId` answers the opened Task. When its Project isolates
+Sessions in worktrees and the Task has one, the response adds
+`taskWorktree: {path, branch, kept?}`, and `workspaceBinding.worktreePath`
+and `branch` name that worktree; `workspaceBinding.workingDirectory` stays the
+Project checkout. `kept: {reason, at, detail?}` says why a finished Task's
+worktree was not removed (`policy`, `uncommitted`, `unpushed`,
+`session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
+(#4507).
+
 ## Start a Task from a tracker item
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
@@ -5920,7 +5931,11 @@ operator operations. SSE and webhook retain their separate HTTP transport roles.
 deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
 projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
 times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
-No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+A delivery that matched `observe` or `live` rules also carries `decisions`, one
+per rule ordered by rule id: `ruleId`, `ruleName`, `mode`, `outcome`
+(`would-start`, `suppressed`, `intent-retained`), optional suppression `reason`,
+`actionKind`, `projectId`, `agentId`, `episodeId` and `decidedAt`.
+No payload, instructions, secret or delivery GUID is returned. A `limit` outside 1–200 is
 refused with 400 rather than clamped, an unavailable ledger answers 503 with
 `code: "policy_unavailable"`, and hosted mode answers 404. The route
 ([source](../../src-server/routes/operations/automations.ts)) needs the
@@ -7996,8 +8011,8 @@ inside their mutation authority. Responses are private/no-store.
 | Method | Suffix under `/api/isolated-repairs` | Behavior |
 | --- | --- | --- |
 | GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
-| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
-| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and `observe`-mode isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source at expected configuration fingerprint, or set a rule's `mode` (`off`, `observe`, `live`). For a rule, `enabled:true` still means `live` and `enabled:false` means `off`. |
 | POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
 | GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
 | POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |

@@ -15,6 +15,7 @@ import {
   AUTOMATION_ACTION_KINDS,
   AUTOMATION_EVENT_FIELDS,
   AUTOMATION_EXECUTION_LIMITS,
+  AUTOMATION_RULE_MODES,
   AUTOMATION_SCHEMA_VERSION,
   type AutomationAction,
   type AutomationEventType,
@@ -46,7 +47,7 @@ const GRANT_KEYS = ['projectId', 'agentId', 'actions'] as const;
 const RULE_KEYS = [
   'id',
   'name',
-  'enabled',
+  'mode',
   'sourceId',
   'match',
   'episode',
@@ -436,8 +437,13 @@ function validateRule(
   unknownKeys(value, RULE_KEYS, where, problems);
   if (!boundedId(value.id)) problems.push(`${where}: id invalid`);
   if (!boundedName(value.name)) problems.push(`${where}: name invalid`);
-  if (typeof value.enabled !== 'boolean') {
-    problems.push(`${where}: enabled must be a boolean`);
+  // The pre-#4509 `enabled` flag is migrated by the store before this runs,
+  // so a stored rule reaching validation must carry `mode`.
+  if (
+    typeof value.mode !== 'string' ||
+    !(AUTOMATION_RULE_MODES as readonly string[]).includes(value.mode)
+  ) {
+    problems.push(`${where}: mode must be one of off, observe, live`);
   }
   const type = validateMatcher(value.match, `${where}.match`, problems);
   if (value.episode !== undefined) {

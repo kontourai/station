@@ -464,6 +464,16 @@
       "entry": "src-server/services/orchestration/delegation-group-source-admission.ts :: workingDirectory :: if (!isDeepStrictEqual(project, revision.value) || !project.workingDirectory)",
       "category": 1,
       "reason": "captureSource checks exact Project revision equality and presence before resource resolution. This condition performs no filesystem access; the later main-checkout filesystem lookup uses realpathSync(resolve(expandTilde(project.workingDirectory))). Normalizing this metadata check would change its stored-byte currentness contract."
+    },
+    {
+      "entry": "packages/contracts/src/task-graph.ts :: workingDirectory :: return task.taskWorktree?.path ?? task.workspaceBinding?.workingDirectory;",
+      "category": 2,
+      "reason": "#4507 taskWorkingDirectory: a Node-free contract helper that returns the stored value unexpanded. The callers that read files with it (task-browser-capture, task-output-module) apply resolve(expandTilde(...)); the declared-output keep route compares it with a value of the same provenance and resolves both sides before the session-workspace comparison."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: policy.worktreeBaseDir,",
+      "category": 2,
+      "reason": "#4507 Task worktree adoption (registeredTaskWorktree) passes the policy value into resolveWorktreeBaseDir, which does resolve(expandTilde(...)), exactly as creation does."
     }
   ]
 }

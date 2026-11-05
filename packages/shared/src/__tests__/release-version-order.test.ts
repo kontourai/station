@@ -41,6 +41,21 @@ describe('clientVersionInHostOrder', () => {
     },
   );
 
+  test('maps a dated native release to the portable date and build suffix', () => {
+    expect(clientVersionInHostOrder('0.1.11-nightly.20261104')).toBe(
+      '0.1.11-nightly.2026110400',
+    );
+    expect(clientVersionInHostOrder('0.1.11-nightly.20261104.2')).toBe(
+      '0.1.11-nightly.2026110402',
+    );
+    expect(
+      compareStationReleaseVersions(
+        '0.1.11-nightly.2026110400',
+        '0.1.11-nightly.249899',
+      ),
+    ).toBe(1);
+  });
+
   test('literal shapes, independent of the allocators above', () => {
     // Day 2463, build 2 is version code 246302 (the issue's observed pair).
     expect(clientVersionInHostOrder('0.1.11-nightly.2463.2')).toBe(
@@ -74,6 +89,8 @@ describe('clientVersionInHostOrder', () => {
     '0.1.11-nightly.2463.100',
     '0.1.11-nightly.0',
     '0.1.11-nightly.2463.0',
+    '0.1.11-nightly.20260230',
+    '0.1.11-nightly.20261104.100',
     '',
   ])('refuses %j', (version) => {
     expect(clientVersionInHostOrder(version)).toBeNull();
@@ -102,12 +119,17 @@ describe('hostNightlyAllocation', () => {
       date: new Date('2026-10-11T00:00:00Z'),
       build: 2,
     });
+    expect(hostNightlyAllocation('0.1.11-nightly.2026110401')).toEqual({
+      date: new Date('2026-11-04T00:00:00Z'),
+      build: 1,
+    });
   });
 
   test.each([
     '0.1.11',
     '0.1.11-preview.3',
     '0.1.11-nightly.20260230.1',
+    '0.1.11-nightly.2026023001',
     // A dated Nightly missing its build is not a version code (year 2574).
     '0.1.11-nightly.20261001',
     'x',

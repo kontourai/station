@@ -6,11 +6,12 @@
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Run Station on a computer you control, connect a supported coding agent,
-and open your project. Direct a Task from your desk or
-a paired phone. The plan, Session history, changed files, and check results stay
-with the Task so you can review the work before continuing. Station is open
-source, stores its data under `~/.station`, and has a public SDK for plugins.
+Agent work shouldn’t be trapped in one terminal or provider. Pick up where you
+left off, bring your team into the work, and make what your agents produce
+something you can build on together.
+
+Station is open source, runs on a computer you control, and has a public SDK
+for plugins.
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
@@ -20,17 +21,17 @@ source, stores its data under `~/.station`, and has a public SDK for plugins.
 
 > **Status:** open source (Apache-2.0) and in active development. Install
 > the Nightly with one command, use a Nightly desktop build, or run from source.
-> There is no stable release yet. See [Get Station](#get-station).
+> v1 is coming soon; no stable release is published yet. See [Get Station](#get-station).
 
 ## Why Station
 
-- **Choose an engine for the work.** Run a Station agent on a local or hosted
-  model, or connect supported agent CLIs and compatible custom engines. Each
+- **Bring the coding agents you already use.** Run a Station agent on a local
+  or hosted model, or connect supported agent CLIs and compatible custom engines. Each
   engine keeps its own behavior and tool loop. Station supplies Project context,
   records its activity, and connects configured workflows.
-- **Return to the Task between Sessions.** Its plan, conversations, files,
-  artifacts, and results stay linked. When you reopen a Task, check that its
-  recorded workspace is still available.
+- **Pick up where you left off.** Keep the plan, conversations, files,
+  artifacts, and results linked to the work. When you reopen a Task, check that
+  its recorded workspace is still available.
 - **Direct work from another device.** Pair a phone, tablet, or laptop with
   scoped, revocable access. You can also send work to another computer you own
   over SSH, using that computer’s agents and credentials.
@@ -43,12 +44,15 @@ source, stores its data under `~/.station`, and has a public SDK for plugins.
 - **Add a tool or work surface.** Plugins built on the public SDK can add
   layouts, agents, MCP tools, model providers, knowledge, and skills.
 
-## Work in a Task room
+## From your first idea to what you ship
 
-Station’s team experience is being built around interactive Task rooms. People
-and agents work from shared Task and project knowledge, talk through the work,
-and see what the agents are doing. Room permissions will control who can join
-and which agents they can direct.
+Plan, build, and ship with your coding agents. Start on your own, then bring
+in teammates who can make decisions with you and take the work forward
+themselves. See progress as it happens, share what you learn, and build on
+work already done.
+
+The following team experience is product direction. Current sharing limits
+are described below.
 
 ### Current sharing limits
 

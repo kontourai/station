@@ -343,6 +343,43 @@ describe('CaptureModal', () => {
       ).toBe('Recovered transcript'),
     );
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('meeting.txt');
+    expect(screen.getByRole('status').textContent).toContain(
+      'Review the transcript before saving.',
+    );
+
+    let finishOlderRead!: (text: string) => void;
+    const olderFile = new File(['older'], 'older.txt', { type: 'text/plain' });
+    Object.defineProperty(olderFile, 'text', {
+      value: () =>
+        new Promise<string>((resolve) => {
+          finishOlderRead = resolve;
+        }),
+    });
+    fireEvent.change(screen.getByLabelText('Upload transcript'), {
+      target: { files: [olderFile] },
+    });
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Newer draft' },
+    });
+    const currentFile = new File(['current'], 'current.txt', {
+      type: 'text/plain',
+    });
+    Object.defineProperty(currentFile, 'text', {
+      value: () => Promise.resolve('Current uploaded draft'),
+    });
+    fireEvent.change(screen.getByLabelText('Upload transcript'), {
+      target: { files: [currentFile] },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('current.txt'),
+    );
+    await act(async () => finishOlderRead('Stale uploaded draft'));
+    expect(
+      (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+    ).toBe('Current uploaded draft');
+    expect(screen.getByRole('status').textContent).toContain('current.txt');
+    expect(screen.getByRole('status').textContent).not.toContain('older.txt');
   });
 
   test('a compiled note still displays its submitted source after the same draft is saved again', async () => {

@@ -27,6 +27,7 @@ import {
   readGitObjects,
   readReviewState,
   readReviewStateAt,
+  withReviewHistory,
 } from './review-ledger-store.mjs';
 import { redactReviewNoteHosts } from './review-note-privacy.mjs';
 
@@ -725,7 +726,8 @@ export async function checkDocumentationFreshness({
   let { ledger, media } = readReviewState(root, { history: false });
   const resolved =
     policy ?? resolveDocumentationFreshness({ root, env, ledger, media });
-  if (resolved.mode !== 'scoped') ({ ledger, media } = readReviewState(root));
+  if (resolved.mode !== 'scoped')
+    ({ ledger, media } = withReviewHistory(root, { ledger, media }));
   if (resolved.mode === 'strict' && ledger.historyUnavailable)
     throw new Error(
       `Strict documentation freshness cannot judge freshness. ${ledger.historyUnavailable}`,

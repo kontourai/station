@@ -64,6 +64,10 @@
 
     "src-server/runtime/conversation/stream-orchestrator.ts",
 
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
+
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx",
+
     "src-ui/src/components/updates/ChangelogPreference.tsx",
 
     "src-ui/src/components/updates/ReleaseNotes.tsx",

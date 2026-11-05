@@ -31,7 +31,7 @@ on:
         description: Immutable authority tag binding the reserved native version.
         value: ${{ jobs.plan-cohort.outputs.reservation_tag }}
       web_build_version:
-        description: The cohort's full Nightly version (X.Y.Z-nightly.<day>[.<build>]) for the iOS web bundle's build identity.
+        description: The cohort's full Nightly version (X.Y.Z-nightly.<YYYYMMDD>[.<build>]) for the iOS web bundle's build identity.
         value: ${{ jobs.plan-cohort.outputs.web_build_version }}
 
 permissions:

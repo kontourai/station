@@ -457,8 +457,14 @@ probe limits and the current lack of outbound producers.
 `apiBase`, optional principal pin, and request authority options. It provides
 `useOwnToolAccess`, `useToolLibrary`, `useToolRequests`,
 `useProjectAuthoredAgents`, and `useToolLibraryChange`. Hosts supply a React Query
-client; account-bound hosts pin the current principal. Queries are authority
-scoped and refetched while mounted. Callers must include `expectedActor` and, for
+client; account-bound hosts pin the current principal. Queries partition the
+request authority and supplied principal independently. Updating the principal
+pin retires the previous person's cached results and keeps a late response in
+its original partition. These readers disable inherited previous-data
+placeholders, including a host's global `keepPreviousData` default. Hosts must
+update the pin when the account changes; unpinned readers remain
+authority-scoped. Queries refetch while mounted.
+Callers must include `expectedActor` and, for
 Project changes, the exact `projectId`; server authority remains decisive.
 
 The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
@@ -7044,7 +7050,10 @@ for expiry, source/Device revalidation and remaining qualification limits.
 `listAutomationDeliveries(apiBase, { limit? }, options?)` from
 `@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
 management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. The server requires
+`polls`, including partial coverage and source failures. Each delivery may
+carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
+rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
+`intent-retained`) and a bounded action snapshot. The server requires
 **GitHub automation observations** in Feature previews. A `StationHttpError`
 preserves the preview refusal's code and Settings link; a 404 from an older
 host reports the unsupported capability. No mutation or agent invocation is

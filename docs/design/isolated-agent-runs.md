@@ -29,6 +29,10 @@ both the configured `baseRef` and its resolved `baseCommit`. The
 passes those facts with the owned worktree at Session start. `baseCommit` is
 optional for older records: absence means the starting commit was not recorded,
 not that the current value of `baseRef` reconstructs it.
+A Task dispatch on a worktree-isolated Project passes the Task's owned worktree
+the same way ([Task dispatch](task-dispatcher.md#workspace-isolation)); a Task
+worktree adopted from a checkout the Task had not recorded yet has no
+`baseCommit`, for the same reason.
 
 This records the selected starting source. It does not freeze the checkout,
 prevent agent edits, certify subsequent output, prepare tools or grant setup

@@ -878,7 +878,9 @@
 
     "packages/sdk/src/client/ensembles.ts",
 
-    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx"
+    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx",
+
+    "packages/sdk/src/__tests__/tool-library-query.test.tsx"
   ],
 
   "checks": [
