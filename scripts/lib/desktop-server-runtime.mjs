@@ -208,6 +208,10 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   entries the package's own `dist/` is read only by `workflow doctor`, a
  *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
  *   project checkout, not the package). ~102 MB.
+ * - OTLP transformer's Node entry is build/src/index.js for both import and
+ *   require. Its build/esm and build/esnext trees are alternate bundler
+ *   distributions, including duplicate generated protobuf code. Keep the
+ *   Node implementation, package metadata and license; omit those variants.
  */
 export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
@@ -235,6 +239,12 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
       segments[0] === 'src' ||
       (segments[0] === 'dist' &&
         ['esm', 'esm5', 'bundles'].includes(segments[1])),
+  }),
+  Object.freeze({
+    id: 'otlp-transformer-node-runtime-only',
+    package: '@opentelemetry/otlp-transformer',
+    excludes: (segments) =>
+      segments[0] === 'build' && ['esm', 'esnext'].includes(segments[1]),
   }),
   Object.freeze({
     id: 'node-pty-foreign-prebuilds',

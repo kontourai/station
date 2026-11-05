@@ -942,6 +942,7 @@ describe('server build package portability', () => {
       'compiled-sdk-development-sources',
       'cedar-node-runtime-only',
       'rxjs-node-runtime-only',
+      'otlp-transformer-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'flow-agents-harness-bundles',
     ]);
