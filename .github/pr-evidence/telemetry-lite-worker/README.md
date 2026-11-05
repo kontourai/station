@@ -1,10 +1,10 @@
 # Lite Worker dashboards captures
 
 Before: `8f2f68267f0d694fe283ae323d017a7c8fb410f3` (the public page served by the
-Node receiver). After: `fdbeafe9947e` (one `station` source; the public page
-shows no number at or below the noise bound, folds those values into
-"N other values within noise", and names a leader only above the
-difference bound).
+Node receiver). After: `38dcdd70ce8f` (one `station` source; channel cells
+are the provisioned channels; each public card shows a value only above its
+Bonferroni threshold, folds the rest into "N other values within noise", and
+names a leader only above the difference bound).
 
 Every capture uses synthetic data. `deploy/telemetry-worker/test/preview-server.ts --with-tokens`
 seeds about four months of generated pings through the real `LiteReceiver`
