@@ -1,10 +1,10 @@
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
-import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
-import { KnowledgeStoreProvider } from '../../knowledge-store-provider.js';
-import { MemoryErasureCoordinator } from '../../memory-erasure-coordinator.js';
-import { MemoryRootManager } from '../../memory-root.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
+import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
+import { MemoryErasureCoordinator } from '../memory-erasure-coordinator.js';
+import { MemoryRootManager } from '../memory-root.js';
 
 const [home, id, revision] = process.argv.slice(2);
 if (!home || !id || !revision) throw new Error('Missing fixture arguments.');

@@ -620,7 +620,7 @@ test.skipIf(process.platform === 'win32')(
           '--import',
           'tsx',
           fileURLToPath(
-            new URL('./fixtures/memory-erasure-crash.ts', import.meta.url),
+            new URL('./memory-erasure-crash-fixture.ts', import.meta.url),
           ),
           f.home,
           f.id,
