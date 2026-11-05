@@ -542,12 +542,12 @@ delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
   decision whatever the retry asked for. `hold` leaves the item in the queue.
 - `GET /api/knowledge/memory/recall?q=&limit=` returns `{ entries, withheld, notes }`.
   Entries carry the Kit's display `text`, `review.label`
-  (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing`, the source
+  (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing` (`not-evaluated`, `uncontested` or `routed`), the source
   excerpt, and `replaces`, `replacedBy` and `conflictsWith`.
-- `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the bounded
-  background block (`text` is `null` when nothing qualifies). Default budget 6,144 bytes.
+- `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the
+  brief new chats get (`text` is `null` when nothing qualifies; at most 6,144 bytes).
 - `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
-  figures for the whole root, `runs` with one entry per producer run (sitting),
+  figures for the whole root, `runs` with one entry per distillation run,
   and `lineages` with one row per change, each naming its run.
 
 Unknown identity, hosted access, Project membership and delegation do not grant

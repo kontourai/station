@@ -182,7 +182,7 @@ test('shows the conflict with both pieces of evidence and records a decision wit
   expect(
     await screen.findByText('Which version should Station remember?'),
   ).toBeTruthy();
-  expect(screen.getByText(/3 more memories weren’t flagged\./)).toBeTruthy();
+  expect(screen.getByText(/3 more memories didn’t need checking/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Review' }));
   expect(
     await screen.findByText(/We moved the widget service to MySQL/),
@@ -193,9 +193,7 @@ test('shows the conflict with both pieces of evidence and records a decision wit
   );
   fireEvent.click(screen.getByRole('button', { name: 'Remember the new one' }));
   expect(
-    await screen.findByText(
-      /Only you can decide this, signed in at this Station/,
-    ),
+    await screen.findByText(/Saved as a note\. Decide this directly/),
   ).toBeTruthy();
   const posted = calls.find((call) => call.url.endsWith('/decision'));
   expect(posted?.method).toBe('POST');

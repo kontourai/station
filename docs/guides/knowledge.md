@@ -192,12 +192,11 @@ How it works, for integrators:
 | Measurement | `GET /measurement` | Knowledge Kit `deriveMemoryRunMetrics` |
 
 Claims arrive as Corpus create proposals whose body is the Knowledge Kit's
-distilled-claim envelope (category `memory.claim`). Station reads that envelope,
-checks the claim against its own content-addressed id, and checks it again
-against the claims proposed before it, so the first version of a fact stays
-searchable and the one that challenges it is what you decide. A distillation
-sitting is one run. Station does not distil sessions or schedule distillation in
-this preview.
+distilled-claim envelope (category `memory.claim`). Station reads that claim,
+checks it against its own content-addressed id, and compares it with the claims
+proposed before it. When two disagree, the earlier one stays searchable and the
+later one goes to you. Station does not distil sessions or schedule distillation
+in this preview.
 
 Known limits:
 
@@ -211,7 +210,6 @@ Known limits:
 - **Other people's sessions.** The brief follows the person a session belongs
   to. A session another person started on this Station gets no brief from your
   memory, and Station does not yet brief them from theirs.
-
 - **Surface accumulation.** Station does not run Surface's projection (it needs
   custody records Station does not hold), so a conflict is found by comparing
   claims in the same subject and property. The Kit reports these as
@@ -222,8 +220,8 @@ Known limits:
   several people could see is therefore queued too: you decide it, and it still
   shows in search meanwhile. The envelope's own record of its source is ignored,
   because it cannot be checked. Real source custody is the Surface work above.
-- **Claims that name a replacement** show their supersession history, but
-  Station does not yet verify a succession edge with Survey support checks.
+- **Replacements aren't checked.** Search shows what a memory replaces, but
+  Station doesn't yet confirm that the replacement is valid.
 - **External engines.** The brief reaches Station-engine chats. Claude Code and
   Codex sessions build their own context; Station does not write their brief
   files.
@@ -231,16 +229,12 @@ Known limits:
   brief applies a smaller version of the Kit's rules. The Kit's question-answering
   recall, brief compiler, envelope decoder and marker are not yet published
   ([flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)).
-- **The queue uses Console's owner-verb wording** (a short question per item,
-  evidence beside it), built with the shared UI components, because Console does
-  not yet publish its queue derivation
-  ([console#312](https://github.com/kontourai/console/issues/312)).
 
 ### Measuring whether review is worth it
 
 `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
 the figures for the whole memory root, plus one entry in `runs` for each run
-that produced claims (a distillation sitting): claims proposed, claims no rule flagged,
+that produced claims: claims proposed, claims no rule flagged,
 claims routed (and the share), routed claims by rule, decisions by outcome
 (confirmed, corrected, rejected, held, annotated, pending), and review time. A
 review is timed from opening the item to submitting the decision, only from the

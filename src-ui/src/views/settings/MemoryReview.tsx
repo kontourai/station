@@ -247,11 +247,12 @@ export function MemoryReview() {
     },
     {
       onSuccess: (result) => {
+        // "Not sure" already shows its own badge, so it needs no message.
         const message = result.promoted
           ? 'Saved.'
           : result.reviewerKind === 'agent'
-            ? 'Noted. Only you can decide this, signed in at this Station.'
-            : 'Left open.';
+            ? 'Saved as a note. Decide this directly on your Station to change your memory.'
+            : null;
         setLastNote(message);
       },
       invalidateKeys: [['memory']],
@@ -285,8 +286,8 @@ export function MemoryReview() {
           {queue.isFetching && !queue.data && <SkeletonList count={2} />}
           {refused && (
             <Empty
-              label="Nothing to review here yet"
-              description="Collected memory shows up here."
+              label="Nothing saved yet"
+              description="Memory your agents save shows up here."
             />
           )}
           {queue.isError && !refused && (
@@ -331,9 +332,8 @@ export function MemoryReview() {
           {queue.data && (
             <p className="memory-review__count">
               {queue.data.recallableWithoutReview === 1
-                ? '1 more memory wasn’t flagged.'
-                : `${queue.data.recallableWithoutReview} more memories weren’t flagged.`}{' '}
-              Confirm them in search to add them to new chats.
+                ? '1 more memory didn’t need checking. Confirm it in search to add it to new chats.'
+                : `${queue.data.recallableWithoutReview} more memories didn’t need checking. Confirm them in search to add them to new chats.`}
             </p>
           )}
           {decidedItems && decidedItems.length > 0 && (
@@ -453,8 +453,8 @@ export function MemoryReview() {
           {recall.data && recall.data.notes.length > 0 && (
             <p className="memory-review__count">
               {recall.data.notes.length === 1
-                ? '1 more note matched but can’t be shown here yet.'
-                : `${recall.data.notes.length} more notes matched but can’t be shown here yet.`}
+                ? '1 more saved item matched but isn’t a memory, so it isn’t shown.'
+                : `${recall.data.notes.length} more saved items matched but aren’t memories, so they aren’t shown.`}
             </p>
           )}
         </>
