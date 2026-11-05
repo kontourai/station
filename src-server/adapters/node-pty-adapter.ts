@@ -68,6 +68,11 @@ function getNodePty(): Promise<typeof import('node-pty')> {
   return nodePtyPromise;
 }
 
+/** The part of node-pty 1.1's Windows terminal that {@link releaseConpty} uses. */
+interface ConptyInternals {
+  _agent?: { _getConsoleProcessList?: () => Promise<number[]> };
+}
+
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
@@ -83,6 +88,7 @@ class NodePtyProcess implements IPtyProcess {
       if (this.paused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
+      if (process.platform === 'win32') this.releaseConpty();
     });
     this.terminate =
       process.platform === 'win32'
@@ -91,18 +97,36 @@ class NodePtyProcess implements IPtyProcess {
   }
 
   /**
+   * Windows, once the shell has exited (its exit event follows the output
+   * socket's flush and close): node-pty 1.1 releases a ConPTY, its
+   * pseudoconsole and conout worker thread, only in `kill()`, so after a
+   * natural or taskkill exit both stayed open, one thread and console host
+   * per shell. `kill()` first lists the console's processes through a helper
+   * that cannot attach to a console whose shell has gone, and five seconds
+   * later signals the old shell pid, which Windows may have given to another
+   * process (#3994). After the exit there is nothing to list, so that step is
+   * answered empty for this terminal before `kill()` releases the rest.
+   */
+  private releaseConpty(): void {
+    const agent = (this.pty as unknown as ConptyInternals)._agent;
+    if (typeof agent?._getConsoleProcessList === 'function')
+      agent._getConsoleProcessList = () => Promise.resolve([]);
+    try {
+      this.pty.kill();
+    } catch (error) {
+      logger.debug('ConPTY release after exit failed', { error });
+    }
+  }
+
+  /**
    * Windows: closing a ConPTY ends only the processes attached to its
    * console, so a descendant with no console (one started detached) would
    * outlive the shell. End the shell's process tree with `taskkill /T /F`
    * while its parent links still hold, as the supervisor's workload host
-   * does, then wait for its exit as after a natural one.
-   *
-   * node-pty's `kill()` is only the fallback for a tree taskkill could not
-   * end. After the shell has gone it lists the console's processes through a
-   * helper that cannot attach, and five seconds later signals the old shell
-   * pid, which Windows may have given to another process by then (a later
-   * shell's console host, #3994). A tree taskkill could not end is reported,
-   * never a clean close.
+   * does, then wait for its exit; the exit releases the ConPTY
+   * ({@link releaseConpty}). node-pty's own `kill()` before the exit is only
+   * the fallback for a tree taskkill could not end, which is reported, never
+   * a clean close.
    */
   private terminateTree(): Promise<void> {
     this.termination ??= (async () => {

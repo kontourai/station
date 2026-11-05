@@ -1,4 +1,5 @@
-import { ChildProcess, execFile, spawn } from 'node:child_process';
+import { ChildProcess, execFile } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
@@ -88,49 +89,46 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
   });
 });
 
-describe.skipIf(process.platform !== 'win32')('Windows tree close', () => {
-  test('a shell taskkill ended is never killed through node-pty while its exit is late', async () => {
-    // A real process stands in for the shell, so taskkill really ends it;
-    // the PTY's exit event arrives 1.5 s later, as on a loaded host. node-pty's
-    // kill() then would signal the old pid five seconds on (#3994).
-    const shell = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    await new Promise((resolve) => shell.once('spawn', resolve));
-    const exits = new Set<(event: { exitCode: number }) => void>();
-    shell.once('exit', () =>
-      setTimeout(() => {
-        for (const listener of [...exits]) listener({ exitCode: 1 });
-      }, 1_500),
-    );
-    const kill = vi.fn();
-    const pty = {
-      pid: shell.pid,
-      onData: () => ({ dispose() {} }),
-      onExit: (listener: (event: { exitCode: number }) => void) => {
-        exits.add(listener);
-        return { dispose: () => exits.delete(listener) };
-      },
-      write() {},
-      resize() {},
-      kill,
-    };
-    const adapter = new NodePtyAdapter(
-      () =>
-        Promise.resolve({ spawn: () => pty }) as unknown as Promise<
-          typeof import('node-pty')
-        >,
-    );
-    const proc = await adapter.spawn({ ...SPAWN_INPUT, shell: 'cmd.exe' });
-    try {
-      await proc.terminate!();
-      expect(shell.exitCode !== null || shell.signalCode !== null).toBe(true);
-      expect(kill).not.toHaveBeenCalled();
-    } finally {
-      if (shell.exitCode === null && shell.signalCode === null) shell.kill();
-    }
-  }, 15_000);
+describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
+  /** node-pty runs each ConPTY's output reader on a worker thread. */
+  const workerThreads = () =>
+    process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')
+      .length;
+
+  test.each(['taskkill close', 'natural exit'] as const)(
+    'a %s releases the ConPTY and never signals the old shell pid later',
+    async (ending) => {
+      const before = workerThreads();
+      const signalled: number[] = [];
+      const signal = process.kill.bind(process);
+      const kill = vi.spyOn(process, 'kill').mockImplementation((pid, name) => {
+        signalled.push(Number(pid));
+        return signal(pid, name);
+      });
+      try {
+        const proc = await new NodePtyAdapter().spawn({
+          shell: process.env.COMSPEC ?? 'cmd.exe',
+          cwd: tmpdir(),
+          cols: 80,
+          rows: 24,
+          env: process.env,
+        });
+        const exited = new Promise((resolve) => proc.onExit(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (ending === 'taskkill close') await proc.terminate!();
+        else proc.write('exit\r');
+        await exited;
+        // node-pty's console-list fallback signals five seconds after kill();
+        // its output reader thread is released a second after the release.
+        await new Promise((resolve) => setTimeout(resolve, 6_500));
+        expect(signalled).not.toContain(proc.pid);
+        expect(workerThreads()).toBe(before);
+      } finally {
+        kill.mockRestore();
+      }
+    },
+    30_000,
+  );
 });
 
 describe.skipIf(process.platform === 'win32')(

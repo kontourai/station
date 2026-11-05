@@ -173,7 +173,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
   // Loads node-pty with a fake PTY and mocked child-process observations;
-  // on Windows one real idle Node child stands in for the shell taskkill ends.
+  // on Windows two real ConPTY shells, one at a time, in the OS temp directory.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
