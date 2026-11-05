@@ -113,6 +113,10 @@ for failure and withdrawal semantics.
 
 ### telemetry destinations
 
+Publisher keys include legacy `publisher:<id>` and signed plugin
+`publisher:<24 lowercase hex digest>/<registry item id>`. Config loading, the
+config route and CLI use the same bounded [publisher ID grammar](usage-telemetry.md#plugin-publishers).
+
 These settings belong to the Station instance. They keep disclosed product
 observations separate from operator metrics/traces and from personal usage
 accounting. No destination is configured by default.

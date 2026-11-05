@@ -1,0 +1,17 @@
+{
+  "path": "docs/decisions/telemetry-tiers.md",
+  "kind": "current",
+  "state": "source-reviewed",
+  "summary": "Reviewed publisher ID syntax and saved tier authority against signed registry identities, config validation, CLI persistence and receiver feedback. Wider program direction remains a decision rather than deployment evidence.",
+  "sources": [
+    "packages/contracts/src/product-telemetry.ts",
+    "packages/contracts/src/registry-trust.ts",
+    "packages/shared/src/plugin-telemetry.ts",
+    "schemas/app.schema.json",
+    "src-server/services/plugins/registry-supply-chain.ts",
+    "src-server/routes/system/__tests__/config.routes.test.ts",
+    "packages/cli/src/__tests__/telemetry-command.test.ts"
+  ],
+  "checks": [],
+  "limits": "Bounded source and local route/CLI regression review for #4616. No installed signed-plugin UI journey, deployed receiver, native shell, provider or release qualification."
+}
