@@ -6623,7 +6623,8 @@ other terminal service or listener remains. An ACP engine's terminals are
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
 (pipes, an output cap, and termination that ends what the command started, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
-on personal hosts only. `restart` keeps a session's id and starts a new
+on personal hosts only, through `openAgentCommand`: only for a host-confined
+session in its own thread binding (#2497). `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
 `endProject`, wired into the Project routes as `endProjectTerminals`.
 A person's command sessions run a Project package script by
@@ -6639,7 +6640,9 @@ are read before each open and usage read: history on or off, the journal
 directory (ended journals move there), maximum age and the per-terminal and
 total sizes; agent command sessions are retained in a separate 16-record pool
 that never expires a user shell. On start, a shell that ended only because its host went away
-reopens under the same id below a "restored after restart" divider; one the
+reopens under the same id below a "restored after restart" divider, only
+inside its binding as it resolves then (#492; otherwise it stays ended with a
+recorded `restoreRefused` reason); one the
 supervisor reattached, or that ended by itself, is not restored. Shell records
 carry a stable `ordinal`, and an `adopt` open answers with the binding's
 running shell, so concurrent opens of an empty binding share one. The

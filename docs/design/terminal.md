@@ -565,10 +565,17 @@ output stays above the divider and nothing is re-run. A shell the supervisor
 still runs is reattached, never restored over (#4412); one that ended by
 itself while its host kept running (`attach` answers `'ended'`) stays ended.
 Only shells restore: agent and server-owned launches are programs, so they
-stay ended. A shell restores only while its Project exists and its directory
-still resolves to the same path. There is no group or split record (owner
-decision, 2026-10-31); tabs come back because the binding's session list
-does.
+stay ended. A shell restores only inside its binding as it resolves at that
+start (#492): the Project's directory, or a chat's directory read as the
+chat's recorded owner, since no request exists then. Its recorded directory
+must still exist, resolve to the same path and lie inside that root, so a
+Project or chat that moved from one directory to another never reopens a
+shell where it used to be. A shell that is not reopened stays ended with the
+reason recorded on it (`restoreRefused`) and written below its earlier
+output ("not restored after restart: its directory is no longer inside its
+Project or chat", or "its Project no longer exists"), and it is not tried
+again. There is no group or split record (owner decision, 2026-10-31); tabs
+come back because the binding's session list does.
 
 #### Session kinds
 
@@ -614,6 +621,26 @@ Under the supervisor the command survives a core handoff and is reattached as
 a session; reattaching the engine that started it is not implemented, so its
 ACP connection does not survive. Hosted hosts have no terminal sessions and
 keep plain child processes for agent terminals.
+
+**Implemented (#2497, agent command authority).** The engine chooses an ACP
+command's program, so it runs only under its session's execution authority,
+never as a server-owned launch. That authority is the session's
+server-derived confinement (#2493): the start's, then the one each turn
+carries, so a revoked full-access grant also covers the session's next
+command. Station has no confinement provider for agent terminal commands (an
+ACP engine has no process sandbox), so a command runs on this computer only
+in a `host` session, one started by a caller who may grant full access (the
+operator in person, or a device holding `approval:full-access`). A
+`workspace` session's `terminal/create` is answered with `-32600` and the
+reason, and nothing is recorded or started. Where Station's terminal tools
+are offered, the agent can ask through `terminal_run` instead, which the
+operator approves per run. On a personal host
+[`TerminalSessions.openAgentCommand`](../../src-server/services/terminal/terminal-sessions.ts)
+enforces this: the session must be host-confined, the scope must be its own
+`thread:<id>` binding, and the host's agent-command check (its Project still
+exists) must allow it, before the record is written and again at the spawn.
+A host without terminal sessions applies the same confinement rule before it
+starts a plain child process. Owner-run sessions keep working as before.
 
 ### Sessions
 
@@ -1003,6 +1030,19 @@ verification.
   self-ended shell, age expiry, location migration, history off, the total
   budget, usage and clearing, stable ordinals, and a two-client race on a
   real loopback server that yields one shell. ConPTY is not qualified there.
+- Execution authority (#2497, #492): the
+  [authority suite](../../src-server/services/terminal/__tests__/terminal-execution-authority.test.ts)
+  runs on every platform with a fake shell host. It covers a shell kept ended,
+  with its recorded and journaled reason, when its binding moved, moved
+  beneath a subdirectory, or no longer resolves, and one reopened when the
+  binding still resolves where it was. It also covers an agent command
+  refused for a `workspace` or unstamped session, for another binding, for a
+  session re-confined before the spawn, and without the host's check. The
+  [adapter suite](../../src-server/providers/__tests__/acp-adapter-terminal-authority.test.ts)
+  drives `terminal/create` through the callbacks `AcpAdapter` builds for a
+  live session, with and without terminal sessions: a `host` session runs,
+  a `workspace` one gets `-32600`, and a turn that re-confines the session
+  refuses its next command.
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
   subscribers and output never enters React state; the
@@ -1062,6 +1102,15 @@ screen reader mode has not been used with real assistive technology
 (VoiceOver, NVDA, TalkBack); Windows/ConPTY is not qualified. The manual
 screen reader pass listed above has not happened. The browser broker
 (DataChannel) route is unsupported by design, not untested.
+
+Still open after the execution-authority work: a `workspace` session's
+agent command is refused, not run confined. A confined terminal for Project
+members and shared agents, with its receipt, remains #2497's. Hosted terminal,
+file and artifact authority across tenants, revocation and restart races
+remains #492's; restore is bound to the current binding, but terminal records
+still carry no tenant or principal ownership. Restore against a moved binding
+is proved with a fake host; real PTYs cover only a removed Project, on POSIX,
+and not ConPTY.
 
 ## Open questions
 

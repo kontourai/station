@@ -5773,7 +5773,9 @@ with the same pid and its whole journal, by the next core generation after a
 restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
 that ended because its host restarted reopens on start under the same id, in its
 directory, after a "restored after restart" divider, without re-running anything
-(`restoredAt` is set). History persistence, location, maximum age and the
+(`restoredAt` is set). It reopens only while that directory lies inside its
+binding as the binding resolves then; otherwise it stays ended and its record
+carries `restoreRefused: { reason, at }`, with the reason also in its output. History persistence, location, maximum age and the
 per-terminal and total sizes are the `terminalHistory*`
 [settings](config.md); see [Journal](../design/terminal.md#journal).
 
