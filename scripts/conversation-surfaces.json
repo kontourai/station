@@ -36,8 +36,7 @@
       "concern": "history",
       "file": "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
       "symbol": "SharedTaskHistoryList",
-      "reason": "P2.3 will adopt owner/guest/member record pagination.",
-      "planned": "P2.3"
+      "reason": "Owner, guest and member record pagination and access projection."
     },
     {
       "concern": "inbox",

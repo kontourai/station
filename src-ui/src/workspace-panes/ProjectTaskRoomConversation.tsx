@@ -16,11 +16,18 @@ import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
 import { ConversationStopControl } from '../components/conversation/ConversationStopControl';
+import {
+  projectTaskHistory,
+  SharedTaskHistoryList,
+  SharedTaskHistoryRecord,
+  SharedTaskHistoryText,
+  taskHistoryReadDenied,
+} from '../components/conversation/SharedTaskHistoryList';
 import { createTaskConversationActions } from '../components/conversation/task-conversation-actions';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
-import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
+import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useElapsedClock } from '../hooks/useElapsedClock';
@@ -28,7 +35,6 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
-import { RoomAvatar } from './ProjectTaskRoomPresence';
 import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomAttachmentImages } from './TaskRoomAttachmentImages';
 import { TaskRoomComposer } from './TaskRoomComposer';
@@ -131,14 +137,17 @@ export function ProjectTaskRoomConversation({
   const shared = useProjectTaskRoomContext(taskId);
   const history = useProjectTaskRoomHistoryQuery(taskId);
   const room = shared?.discovery ?? discover;
-  const pages = history.data?.pages ?? [];
-  const records = pages
-    .flatMap((page) => (page.kind === 'available' ? page.records : []))
-    .sort((a, b) => a.sequence - b.sequence);
   const capabilities =
     room.data?.kind === 'opened' || room.data?.kind === 'existing'
       ? room.data.capabilities
       : undefined;
+  const readable =
+    scope?.isCurrent() === true &&
+    capabilities?.historyRead === true &&
+    !taskHistoryReadDenied(history.error);
+  const pages = history.data?.pages ?? [];
+  const historyProjection = projectTaskHistory(pages);
+  const records = readable ? historyProjection.records : [];
   const writable =
     capabilities?.messageWrite === true && shared?.stream !== 'terminal';
   const requests = useTaskRoomAgentRequestsQuery(
@@ -216,13 +225,19 @@ export function ProjectTaskRoomConversation({
   // The history contract pages forward through a fixed checkpoint. Read to that
   // checkpoint before presenting its newest messages; reveal older rows locally.
   useEffect(() => {
-    if (history.hasNextPage && !history.isFetching && !history.isError)
+    if (
+      readable &&
+      history.hasNextPage &&
+      !history.isFetching &&
+      !history.isError
+    )
       void history.fetchNextPage({ cancelRefetch: false });
   }, [
     history.hasNextPage,
     history.isFetching,
     history.isError,
     history.fetchNextPage,
+    readable,
   ]);
   const loadEarlier = () => {
     previousHeight.current = messages.current?.scrollHeight;
@@ -442,7 +457,6 @@ export function ProjectTaskRoomConversation({
         (record.actor.id ?? record.actor.label) &&
       previous.actor.kind === record.actor.kind;
     const execution = record.execution;
-    const mention = /^\*\*@(.+?)\*\*\s+/.exec(record.body.text);
     const replies = execution
       ? records.filter(
           (item) =>
@@ -452,64 +466,21 @@ export function ProjectTaskRoomConversation({
         ).length
       : 0;
     return (
-      <li
-        className={`task-room-message${grouped ? ' task-room-message--grouped' : ''}`}
+      <SharedTaskHistoryRecord
         key={record.sequence}
-      >
-        {!grouped && (
-          <RoomAvatar
-            name={authorLabel}
-            agent={record.actor.kind === 'agent'}
-          />
-        )}
-        <article>
-          <header>
-            {!grouped && (
-              <>
-                <strong>{authorLabel}</strong>
-                {record.actor.kind === 'agent' && (
-                  <span className="task-room-agent-badge">Agent</span>
-                )}
-              </>
-            )}
-            <Time at={record.occurredAt} compact={grouped} />
-          </header>
+        record={record}
+        previous={previous?.system ? undefined : previous}
+        authorLabel={authorLabel}
+        header={<Time at={record.occurredAt} compact={grouped} />}
+        attachments={
           <TaskRoomAttachmentImages
             attachments={record.body.attachments}
             taskId={taskId}
             taskCreatedAt={taskCreatedAt ?? ''}
           />
-          <div className="task-room-message-content">
-            {execution ? (
-              <RoomAnswer
-                text={record.body.text}
-                expanded={expanded.has(record.sequence)}
-                onToggle={() => {
-                  anchored.current = false;
-                  setExpanded((current) => {
-                    const next = new Set(current);
-                    if (next.has(record.sequence)) next.delete(record.sequence);
-                    else next.add(record.sequence);
-                    return next;
-                  });
-                }}
-              />
-            ) : (
-              <div className="task-room-message-text">
-                {mention ? (
-                  <>
-                    <span className="task-room-mention">@{mention[1]}</span>
-                    <LazyMarkdown>
-                      {record.body.text.slice(mention[0].length)}
-                    </LazyMarkdown>
-                  </>
-                ) : (
-                  <LazyMarkdown>{record.body.text}</LazyMarkdown>
-                )}
-              </div>
-            )}
-          </div>
-          {execution && (
+        }
+        actions={
+          execution && (
             <ActionRow
               className="task-room-message-actions"
               primary={
@@ -584,9 +555,27 @@ export function ProjectTaskRoomConversation({
                 },
               ]}
             />
-          )}
-        </article>
-      </li>
+          )
+        }
+      >
+        {execution ? (
+          <RoomAnswer
+            text={record.body.text}
+            expanded={expanded.has(record.sequence)}
+            onToggle={() => {
+              anchored.current = false;
+              setExpanded((current) => {
+                const next = new Set(current);
+                if (next.has(record.sequence)) next.delete(record.sequence);
+                else next.add(record.sequence);
+                return next;
+              });
+            }}
+          />
+        ) : (
+          <SharedTaskHistoryText text={record.body.text} />
+        )}
+      </SharedTaskHistoryRecord>
     );
   };
   const changeThread = (next?: string) => {
@@ -743,39 +732,30 @@ export function ProjectTaskRoomConversation({
               loadEarlier();
           }}
         >
-          {allVisible.length > historyWindow && (
-            <Button variant="ghost" onClick={loadEarlier}>
-              Load earlier messages
-            </Button>
-          )}
-          {history.isLoading && (
-            <SkeletonList count={2} label="Loading messages" />
-          )}
-          {history.isError && (
-            <p role="alert">
-              Room history is unavailable.{' '}
-              <Button onClick={() => void history.refetch()}>Retry</Button>
-            </p>
-          )}
-          {capabilities && !capabilities.historyRead && (
-            <p role="status">History is not shared with this connection.</p>
-          )}
-          {!visible.length &&
-            !history.isLoading &&
-            !history.hasNextPage &&
-            !history.isError &&
-            capabilities?.historyRead && (
-              <Empty
-                variant="compact"
-                label="Start the conversation"
-                description="Share a thought, shape the brief, or ask an agent to work on this Task."
-              />
-            )}
-          <ol aria-live="polite" aria-label="Task room history">
-            {visible.map((record, index) =>
-              message(record, visible[index - 1]),
-            )}
-          </ol>
+          <SharedTaskHistoryList
+            records={visible}
+            readable={readable}
+            pending={history.isLoading}
+            failed={history.isError}
+            outcome={historyProjection.outcome}
+            hasEarlier={
+              allVisible.length > historyWindow || history.hasNextPage
+            }
+            loadingEarlier={history.isFetchingNextPage}
+            onLoadEarlier={() =>
+              allVisible.length > historyWindow
+                ? loadEarlier()
+                : void history.fetchNextPage()
+            }
+            onRetry={() =>
+              void (history.isFetchNextPageError
+                ? history.fetchNextPage()
+                : history.refetch())
+            }
+            renderRecord={(record, previous) => message(record, previous)}
+            label="Task room history"
+            emptyLabel="Start the conversation"
+          />
           {running.map((participant) => (
             <div
               className="task-room-running"
@@ -832,9 +812,6 @@ export function ProjectTaskRoomConversation({
               )}
             </div>
           ))}
-          {pages.some((page) => page.kind === 'gap') && (
-            <p role="alert">Earlier room history is unavailable.</p>
-          )}
         </div>
         {jumpToLatest && (
           <Button variant="ghost" className="task-room-jump" onClick={goLatest}>

@@ -930,14 +930,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/views/account/GuestSharedTaskView.tsx",
-      "fingerprint": "bdc98873556008918cdf",
-      "syntax": "adopt history",
-      "count": 1,
-      "migrate": "P2.3"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx",
       "fingerprint": "a5032273832f11d0f12c",
@@ -1168,14 +1160,6 @@
       "syntax": "raw failure sink: setError( cause instanceof Error ? cause.message : 'Could not open a Home role request', )",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/views/project-page/MemberProjectPage.tsx",
-      "fingerprint": "bdc98873556008918cdf",
-      "syntax": "adopt history",
-      "count": 1,
-      "migrate": "P2.3"
     },
     {
       "rule": "G3",
@@ -1584,22 +1568,6 @@
       "syntax": "historyRead: capabilities?.historyRead",
       "count": 3,
       "migrate": "P2.6"
-    },
-    {
-      "rule": "G4",
-      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-      "fingerprint": "c6487d8e3b0cab87f918",
-      "syntax": "historyRead: capabilities.historyRead",
-      "count": 1,
-      "migrate": "P2.6"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-      "fingerprint": "bdc98873556008918cdf",
-      "syntax": "adopt history",
-      "count": 1,
-      "migrate": "P2.2"
     },
     {
       "rule": "G3",

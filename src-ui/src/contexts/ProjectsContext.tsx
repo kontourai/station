@@ -30,9 +30,14 @@ import {
   useProjectRunLocationsQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import { taskHistoryReadDenied } from '../components/conversation/SharedTaskHistoryList';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
@@ -399,6 +404,7 @@ export function useScopedMemberProjectSharedTaskDetails(
   sharedTask: ProjectSharedTaskSummary,
   requestScope: ReturnType<typeof useHostRequestAuthorityScope>,
 ) {
+  const client = useQueryClient();
   const apiBase = requestScope?.apiBase ?? 'unavailable';
   const authorityKey = requestScope?.authorityKey ?? 'unavailable';
   const key = useMemo(
@@ -484,9 +490,27 @@ export function useScopedMemberProjectSharedTaskDetails(
       sameSharedProjectTask(publication.data.publication, sharedTask),
   );
   const sharedDetailsEnabled = requestEnabled && publicationIsCurrent;
-  const history = useQuery<ProjectSharedTaskHistory>({
+  const requirePublication = () => {
+    const state = client.getQueryState<ProjectSharedTaskPublication>([
+      ...key,
+      'publication',
+    ]);
+    if (
+      !requestScope?.isCurrent() ||
+      state?.status !== 'success' ||
+      state.fetchStatus !== 'idle' ||
+      state.data?.kind !== 'shared' ||
+      !sameSharedProjectTask(state.data.publication, sharedTask)
+    )
+      throw new Error('The shared publication is no longer current.');
+  };
+  const history = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectSharedTaskHistory) =>
+      page.kind === 'available' && page.hasMore ? page.nextCursor : undefined,
     queryKey: [...key, 'history'],
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, pageParam }) => {
+      requirePublication();
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
@@ -501,6 +525,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         project.slug,
         sharedTask.task.id,
         {
+          ...(pageParam ? { cursor: pageParam } : {}),
           requestScope: captured,
           requireCredential: captured.requiresEnrolledCredential ?? true,
           signal,
@@ -510,6 +535,7 @@ export function useScopedMemberProjectSharedTaskDetails(
       );
       if (!captured.isCurrent())
         throw new Error('The selected Station authority changed.');
+      requirePublication();
       return value;
     },
     enabled: sharedDetailsEnabled,
@@ -559,7 +585,19 @@ export function useScopedMemberProjectSharedTaskDetails(
     gcTime: 0,
   });
 
-  return { publication, publicationIsCurrent, history, document };
+  const readDenied = taskHistoryReadDenied(history.error);
+  useEffect(() => {
+    if (publicationIsCurrent && !readDenied) return;
+    const queryKey = [...key, 'history'];
+    void client.cancelQueries({ queryKey });
+    client.removeQueries({ queryKey });
+  }, [client, key, publicationIsCurrent, readDenied]);
+  return {
+    publication,
+    publicationIsCurrent,
+    history: { ...history, readDenied },
+    document,
+  };
 }
 
 export interface ProjectMetadata {

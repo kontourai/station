@@ -3,6 +3,11 @@ import type {
   AdoptedSessionResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import type {
+  ProjectSharedTaskHistory,
+  ProjectSharedTaskSummary,
+} from '@kontourai/station-contracts/project-shared-task';
+import type { ProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { expect } from '@playwright/test';
 import {
@@ -401,3 +406,266 @@ test('attached record fixture requires consent and opens the owned child in the 
       .filter({ hasText: 'The owned child is open.' }),
   ).toBeVisible();
 });
+
+// Consumer fixtures prove shared rendering and paging. The real guest access
+// boundary remains in project-guest-shared-task-live.spec.ts (smoke-live).
+for (const access of ['owner', 'member', 'guest'] as const) {
+  test(
+    access + ' history keeps admitted records through a failed page and Retry',
+    async ({ page, stations }, testInfo) => {
+      const created = await stationJson<{ data: { id: string; slug: string } }>(
+        stations.source,
+        '/api/projects',
+        'POST',
+        { name: 'History ' + access, slug: 'history-' + access },
+      );
+      const project = created.data;
+      const task = (
+        await stationJson<{ data: { id: string; createdAt: string } }>(
+          stations.source,
+          '/api/tasks',
+          'POST',
+          { projectId: project.slug, title: 'Shared connection history' },
+        )
+      ).data;
+      const summary: ProjectSharedTaskSummary = {
+        version: 'station.shared-project-task/v1',
+        project: {
+          stationId: 'history-station',
+          localProjectId: project.id,
+          localProjectSlug: project.slug,
+          portableProjectId: 'portable-history',
+        },
+        task: {
+          ...task,
+          title: 'Shared connection history',
+          status: 'in_progress',
+        },
+        shareId: '11111111-1111-4111-8111-111111111111',
+        sharedAt: '2026-11-05T00:00:00Z',
+      };
+      const checkpoint = {
+        throughSeq: 2,
+        checkpointDigest: 'b'.repeat(64),
+        retainedAnchorSeq: 0,
+        retainedAnchorDigest: 'c'.repeat(64),
+      };
+      const first: ProjectSharedTaskHistory & { kind: 'available' } = {
+        kind: 'available',
+        records: [
+          {
+            sequence: 1,
+            actor: { kind: 'human', label: 'Brian' },
+            body: { kind: 'human-message', text: 'A **published decision**' },
+            integrity: 'L0',
+            digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+          },
+        ],
+        checkpoint,
+        hasMore: true,
+        nextCursor: 'fixed-history-two',
+      };
+      const second: ProjectSharedTaskHistory & { kind: 'available' } = {
+        ...first,
+        records: [
+          {
+            ...first.records[0]!,
+            sequence: 2,
+            body: {
+              kind: 'human-message',
+              text: 'The next published decision',
+            },
+          },
+        ],
+        hasMore: false,
+        nextCursor: undefined,
+      };
+      let pageAttempts = 0;
+      const historyPath =
+        access === 'owner'
+          ? '/api/tasks/' + encodeURIComponent(task.id) + '/room/history'
+          : '/api/projects/' +
+            project.slug +
+            '/shared-work/' +
+            encodeURIComponent(task.id) +
+            '/history';
+      await page.route('**' + historyPath + '**', async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const cursor = new URL(route.request().url()).searchParams.get(
+          'cursor',
+        );
+        if (cursor) {
+          expect(cursor).toBe('fixed-history-two');
+          if (++pageAttempts === 1)
+            return route.fulfill({
+              status: 503,
+              json: {
+                success: false,
+                error: 'History temporarily unavailable',
+              },
+            });
+        }
+        const data = cursor ? second : first;
+        const ownerPage: ProjectTaskRoomBrowserHistory = {
+          ...data,
+          integrity: 'L0',
+        };
+        return route.fulfill({
+          json: { success: true, data: access === 'owner' ? ownerPage : data },
+        });
+      });
+      if (access === 'owner') {
+        await stationJson(
+          stations.source,
+          '/api/tasks/' + encodeURIComponent(task.id) + '/room',
+        );
+        await page.goto(
+          stations.source.ui + '/tasks/' + encodeURIComponent(task.id),
+        );
+      } else {
+        const memberProject = {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          id: project.id,
+          slug: project.slug,
+          name: 'Shared history Project',
+          actions: ['view'],
+        };
+        await page.route('**/api/projects/' + project.slug, (route) =>
+          route.request().method() === 'GET'
+            ? route.fulfill({ json: { success: true, data: memberProject } })
+            : rejectUnexpectedFixtureRequest(route),
+        );
+        await page.route(
+          '**/api/projects/' + project.slug + '/shared-work',
+          (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ json: { success: true, data: [summary] } })
+              : rejectUnexpectedFixtureRequest(route),
+        );
+        await page.route(
+          '**/api/projects/' +
+            project.slug +
+            '/shared-work/' +
+            encodeURIComponent(task.id) +
+            '/publication',
+          (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: { kind: 'shared', publication: summary },
+              },
+            }),
+        );
+        await page.route(
+          '**/api/projects/' +
+            project.slug +
+            '/shared-work/' +
+            encodeURIComponent(task.id) +
+            '/document',
+          (route) =>
+            route.fulfill({
+              json: { success: true, data: { kind: 'unavailable' } },
+            }),
+        );
+        if (access === 'guest') {
+          await page.route('**/api/account-auth', (route) =>
+            route.fulfill({
+              json: {
+                version: 'station.authentication/v1',
+                issuer: 'station:test',
+                displayName: 'Shared Station',
+                sessionCookies: ['account_session'],
+                endpoints: [],
+              },
+            }),
+          );
+          await page.route('**/api/account-auth/session', (route) =>
+            route.fulfill({
+              json: {
+                data: {
+                  principal: {
+                    id: 'human:deployment:' + 'a'.repeat(64),
+                    kind: 'human',
+                    display: 'Guest',
+                  },
+                  issuer: 'station:test',
+                  expiresAt: '2099-01-01T00:00:00Z',
+                  contacts: [],
+                },
+              },
+            }),
+          );
+          await page.route('**/api/projects', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({
+                  json: { success: true, data: [memberProject] },
+                })
+              : rejectUnexpectedFixtureRequest(route),
+          );
+          await page.goto(stations.source.ui + '/account');
+          await page
+            .getByRole('button', { name: 'Read Project details' })
+            .click();
+          await page.getByRole('button', { name: 'Read shared Task' }).click();
+        } else {
+          await page.goto(
+            stations.source.ui + '/projects/' + project.slug + '?section=tasks',
+          );
+          await page
+            .getByRole('button', {
+              name: 'Read shared item: Shared connection history',
+            })
+            .click();
+        }
+      }
+      const list = page.getByRole('list', {
+        name:
+          access === 'owner' ? 'Task room history' : 'Shared history records',
+      });
+      await expect(
+        list.getByText('published decision', { exact: true }),
+      ).toBeVisible();
+      if (access !== 'owner')
+        await page
+          .getByRole('button', { name: 'Load earlier messages' })
+          .click();
+      await expect(
+        page.getByRole('button', { name: 'Retry', exact: true }),
+      ).toBeVisible();
+      await expect(list).toContainText('A published decision');
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expect(list).toContainText('The next published decision');
+      expect(pageAttempts).toBe(2);
+      await captureConnectionState(page, testInfo, access + '-paged-history');
+      if (access === 'member') {
+        await page.route(
+          '**/api/projects/' +
+            project.slug +
+            '/shared-work/' +
+            encodeURIComponent(task.id) +
+            '/publication',
+          (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: {
+                  kind: 'unshared',
+                  project: summary.project,
+                  task: summary.task,
+                },
+              },
+            }),
+        );
+        await page
+          .getByRole('button', { name: 'Refresh publication status' })
+          .click();
+        await expect(list).toHaveCount(0);
+        await expect(
+          page.getByText('A published decision', { exact: true }),
+        ).toHaveCount(0);
+      }
+    },
+  );
+}
