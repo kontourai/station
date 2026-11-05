@@ -171,11 +171,21 @@ export interface EngineLaunch<Env> {
  *   unlocked `binaryPath` never replaces it).
  *
  * Environment, for both: a locked variable overrides every other layer; an
- * unlocked one fills only a variable the launch does not already set.
+ * unlocked one fills only a variable the launch does not already set. On
+ * Windows a variable's name is case-insensitive and a child gets only one of
+ * `HTTPS_PROXY` and `https_proxy` (Node keeps the first in its sorted,
+ * case-insensitive order), so there a locked variable removes every
+ * case-variant before it sets its own, and an unlocked one fills only when
+ * no case-variant is set. `platform` is injectable for tests.
  */
 export function managedEngineLaunch<
   Env extends Record<string, string | undefined>,
->(engine: string, launch: EngineLaunch<Env>, owner: 'station' | 'user') {
+>(
+  engine: string,
+  launch: EngineLaunch<Env>,
+  owner: 'station' | 'user',
+  platform: NodeJS.Platform = process.platform,
+) {
   const pin = managedEnginePin(engine);
   if (!pin) return launch;
   let { command, args } = launch;
@@ -187,10 +197,23 @@ export function managedEngineLaunch<
   }
   let env = launch.env;
   if (pin.environment !== undefined) {
-    const fill: Record<string, string> = {};
-    for (const [name, value] of Object.entries(pin.environment))
-      if (pin.locked || launch.env[name] === undefined) fill[name] = value;
-    env = { ...launch.env, ...fill };
+    const fold =
+      platform === 'win32'
+        ? (name: string) => name.toUpperCase()
+        : (name: string) => name;
+    const next: Record<string, string | undefined> = { ...launch.env };
+    for (const [name, value] of Object.entries(pin.environment)) {
+      const variants = Object.keys(next).filter(
+        (key) => fold(key) === fold(name),
+      );
+      if (pin.locked) {
+        for (const key of variants) delete next[key];
+        next[name] = value;
+      } else if (variants.every((key) => next[key] === undefined)) {
+        next[name] = value;
+      }
+    }
+    env = next as Env;
   }
   return { command, args, env };
 }

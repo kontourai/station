@@ -265,6 +265,60 @@ describe('merge rules', () => {
   test('without a pin the launch is unchanged', () => {
     expect(managedEngineLaunch('codex', launch, 'station')).toBe(launch);
   });
+
+  // #4515 fix round 1: on Windows a child gets one of `HTTPS_PROXY` and
+  // `https_proxy` (Node keeps the first in its sorted, case-insensitive
+  // order), so an inherited `HTTPS_PROXY` would beat a locked `https_proxy`.
+  const inherited = {
+    command: '/usr/bin/user-agent',
+    args: [],
+    env: { HTTPS_PROXY: 'http://inherited:1', Path: 'C:\\Windows' } as Record<
+      string,
+      string | undefined
+    >,
+  };
+
+  test('on Windows a locked variable removes every case-variant, then sets its own', () => {
+    install({
+      instances: {
+        acp: { locked: true, environment: { https_proxy: 'http://pinned:2' } },
+      },
+    });
+    expect(managedEngineLaunch('acp', inherited, 'user', 'win32').env).toEqual({
+      https_proxy: 'http://pinned:2',
+      Path: 'C:\\Windows',
+    });
+  });
+
+  test('on Windows an unlocked variable fills only when no case-variant is set', () => {
+    install({
+      instances: {
+        acp: {
+          locked: false,
+          environment: { https_proxy: 'http://pinned:2', PATH: 'C:\\Other' },
+        },
+      },
+    });
+    expect(managedEngineLaunch('acp', inherited, 'user', 'win32').env).toEqual(
+      inherited.env,
+    );
+    expect(
+      managedEngineLaunch('acp', { ...inherited, env: {} }, 'user', 'win32')
+        .env,
+    ).toEqual({ https_proxy: 'http://pinned:2', PATH: 'C:\\Other' });
+  });
+
+  test('elsewhere names stay case-sensitive, as the platform treats them', () => {
+    install({
+      instances: {
+        acp: { locked: true, environment: { https_proxy: 'http://pinned:2' } },
+      },
+    });
+    expect(managedEngineLaunch('acp', inherited, 'user', 'linux').env).toEqual({
+      ...inherited.env,
+      https_proxy: 'http://pinned:2',
+    });
+  });
 });
 
 describe("a locked environment owns the connection's launch configuration", () => {
