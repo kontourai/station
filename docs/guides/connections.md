@@ -278,7 +278,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code** and **Find nearby Stations**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** under **More connection
+options**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.

@@ -133,7 +133,7 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app. Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
