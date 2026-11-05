@@ -97,9 +97,15 @@ export async function publishDesktopReleaseNotes({
     throw new Error('Desktop changelog differs from the published update');
   const api = github(repository, token);
   const existing = await api(`/releases/tags/${tag}`);
-  const tagSource = await api(`/commits/${tag}`);
-  if (tagSource && tagSource.sha !== source)
-    throw new Error('Desktop changelog tag names a different source');
+  // Resolving a missing tag through /commits returns 422, not 404.
+  const tagRef = await api(`/git/ref/tags/${tag}`);
+  if (existing && !tagRef)
+    throw new Error('Archived desktop changelog tag is unavailable');
+  if (tagRef) {
+    const tagSource = await api(`/commits/${tag}`);
+    if (tagSource?.sha !== source)
+      throw new Error('Desktop changelog tag names a different source');
+  }
   const expected = {
     tag_name: tag,
     target_commitish: source,

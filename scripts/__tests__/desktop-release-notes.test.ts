@@ -46,13 +46,25 @@ test('a moving previous desktop marker refuses ambiguous generated notes', async
 });
 
 test('publication archives the exact updater notes as a versioned prerelease without changing latest', async () => {
-  const request = vi
-    .fn()
-    .mockResolvedValueOnce(new Response('', { status: 404 }))
-    .mockResolvedValueOnce(new Response('', { status: 404 }))
-    .mockResolvedValueOnce(
-      Response.json({ tag_name: tag, body: '- New features', draft: false }),
-    );
+  const request = vi.fn(async (url: string, init: RequestInit) => {
+    if (
+      url.endsWith(`/releases/tags/${tag}`) ||
+      url.endsWith(`/git/ref/tags/${tag}`)
+    )
+      return new Response('', { status: 404 });
+    if (url.endsWith(`/commits/${tag}`))
+      return Response.json(
+        { message: `No commit found for SHA: ${tag}` },
+        { status: 422 },
+      );
+    if (url.endsWith('/releases') && init.method === 'POST')
+      return Response.json({
+        tag_name: tag,
+        body: '- New features',
+        draft: false,
+      });
+    throw new Error(`Unexpected request: ${url}`);
+  });
   vi.stubGlobal('fetch', request);
   await publishDesktopReleaseNotes({
     ...options,
@@ -176,14 +188,20 @@ test('an existing archive is reused only for identical source and notes', async 
     prerelease: true,
   };
   const request = vi.fn(async (url: string) =>
-    Response.json(url.includes('/commits/') ? { sha: source } : existing),
+    Response.json(
+      url.includes('/commits/')
+        ? { sha: source }
+        : url.includes('/git/ref/')
+          ? { ref: `refs/tags/${tag}`, object: { type: 'commit', sha: source } }
+          : existing,
+    ),
   );
   vi.stubGlobal('fetch', request);
   await publishDesktopReleaseNotes({
     ...options,
     manifest: { version, notes: '- Notes' },
   });
-  expect(request).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenCalledTimes(3);
   request.mockClear();
   await expect(
     publishDesktopReleaseNotes({
@@ -191,13 +209,19 @@ test('an existing archive is reused only for identical source and notes', async 
       manifest: { version, notes: '- Different notes' },
     }),
   ).rejects.toThrow('already differs');
-  expect(request).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenCalledTimes(3);
 });
 
 test('an existing tag at another source cannot acquire a misleading changelog', async () => {
   const request = vi
     .fn()
     .mockResolvedValueOnce(new Response('', { status: 404 }))
+    .mockResolvedValueOnce(
+      Response.json({
+        ref: `refs/tags/${tag}`,
+        object: { type: 'commit', sha: previous },
+      }),
+    )
     .mockResolvedValueOnce(Response.json({ sha: previous }));
   vi.stubGlobal('fetch', request);
   await expect(
@@ -206,5 +230,45 @@ test('an existing tag at another source cannot acquire a misleading changelog', 
       manifest: { version, notes: '- Notes' },
     }),
   ).rejects.toThrow('different source');
+  expect(request).toHaveBeenCalledTimes(3);
+});
+
+test('an archived release without its tag cannot be adopted as exact-source proof', async () => {
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({
+        tag_name: tag,
+        target_commitish: source,
+        body: '- Notes',
+        draft: false,
+        prerelease: true,
+      }),
+    )
+    .mockResolvedValueOnce(new Response('', { status: 404 }));
+  vi.stubGlobal('fetch', request);
+  await expect(
+    publishDesktopReleaseNotes({
+      ...options,
+      manifest: { version, notes: '- Notes' },
+    }),
+  ).rejects.toThrow('tag is unavailable');
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test('a tag lookup validation error never authorizes a release creation', async () => {
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(new Response('', { status: 404 }))
+    .mockResolvedValueOnce(
+      Response.json({ message: 'Validation Failed' }, { status: 422 }),
+    );
+  vi.stubGlobal('fetch', request);
+  await expect(
+    publishDesktopReleaseNotes({
+      ...options,
+      manifest: { version, notes: '- Notes' },
+    }),
+  ).rejects.toThrow('HTTP 422 GET /git/ref/tags/');
   expect(request).toHaveBeenCalledTimes(2);
 });
