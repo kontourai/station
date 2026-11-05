@@ -60,7 +60,7 @@ const CLOSED_TASK_STATUSES: ReadonlySet<TaskStatus> = new Set([
 ]);
 
 /** Station's own continuation: not a person's words. */
-export const RESTART_CONTINUATION_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
+const RESTART_CONTINUATION_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
   version: CLIENT_ORIGIN_VERSION,
   actor: Object.freeze({ kind: 'internal' as const }),
   reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
