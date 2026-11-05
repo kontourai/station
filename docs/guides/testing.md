@@ -243,7 +243,7 @@ It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises, owned-delegation ordering and activity, and repeated adapter stops. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
+`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 
@@ -327,8 +327,8 @@ The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
 
 The sidebar names below describe the primary trigger or delivery family.
-`PR:` checks can also run on main pushes; `Main:` qualification runs every six
-hours or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
+`PR:` checks can also run on main pushes; `Main:` qualification runs after main
+pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -679,8 +679,8 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge
-or rebase `main` (a new head starts a new run), or, when `main` has since cleared
+A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+(a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
@@ -696,9 +696,9 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and two affected-test shard jobs run across all PRs. Both families split
-work into two buckets; one-shard PRs can use both shard buckets, and larger
-plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and three affected-test shard jobs run across all PRs. Statics use two
+buckets. Shards use two shared buckets plus a third for odd-numbered shards of
+PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
@@ -707,7 +707,7 @@ one force-cancel after revalidating the PR and run identities and confirming
 that no unfinished job has an assigned runner. Missing terminal confirmation
 fails the controller; cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These four PR computation
+diagnostic jobs use separate source-specific groups. These five PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
@@ -1351,8 +1351,8 @@ fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
 merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
-the product assertions below fail the job. Gallery is not a required status
-check in the `main` ruleset, so a red Gallery job does not hold a PR on its own.
+the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
+a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
 intentional pixel changes alone do not open a main incident. Skipping the
 optional API image review does not hide the comparison report.
