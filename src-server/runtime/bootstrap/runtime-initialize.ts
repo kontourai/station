@@ -1376,9 +1376,11 @@ export async function initializeRuntime(
   // identity/readiness probes. Immediate start() + bulk INSERT OR IGNORE of
   // large attached histories was wedging launchd health checks (port bound,
   // HTTP hung). Follow still runs; first poll is delayed slightly.
-  setTimeout(() => {
+  const attachedFollowStartTimer = setTimeout(() => {
     attachedSessionFollowService.start();
-  }, 2_500).unref?.();
+  }, 2_500);
+  attachedFollowStartTimer.unref?.();
+  timers.push(attachedFollowStartTimer);
   logger.info('Voice WebSocket listening', { port: port + 2 });
   logger.debug('Station Runtime initialized', { port });
 
