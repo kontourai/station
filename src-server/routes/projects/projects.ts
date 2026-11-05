@@ -58,6 +58,10 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
+  ManagedSettingLockedError,
+  managedSettingRefusalBody,
+} from '../../domain/managed-settings.js';
+import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -414,7 +418,9 @@ const logger = createLogger({ name: 'projects-routes' });
 function projectMutationStatus(
   error: unknown,
   fallback: 400 | 404 = 400,
-): 400 | 404 | 409 | 503 {
+): 400 | 403 | 404 | 409 | 503 {
+  // #4517: the managed policy locks a setting this write overrides.
+  if (error instanceof ManagedSettingLockedError) return 403;
   if (error instanceof FileStorageConflictError) return 409;
   if (error instanceof FileStorageNotFoundError) return 404;
   if (error instanceof FileStorageUnavailableError) return 503;
@@ -1278,6 +1284,10 @@ export function createProjectRoutes(
           409,
         );
       }
+      // #4517: the policy's own sentence, code and key, as `/config/app`
+      // sends them; `projectMutationMessage` would redact the support link.
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
@@ -1490,6 +1500,8 @@ export function createProjectRoutes(
           { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
           403,
         );
+      if (error instanceof ManagedSettingLockedError)
+        return c.json(managedSettingRefusalBody(error), 403);
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),

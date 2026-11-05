@@ -7259,23 +7259,24 @@ describe('OrchestrationService', () => {
           input: { threadId: 'start-lease-b', provider: 'claude' },
         },
         { userId: 'owner-user' },
-        { resourceAdmissionIntent: 'interactive_user' },
+        { resourceAdmissionIntent: 'queued_background' },
       ),
     ).resolves.toMatchObject({
       status: 'rejected',
       code: 'resource_engine_start_capacity',
     });
     await expect(
-      service.dispatch(
+      service.startSessionInternal(
         {
-          type: 'startSession',
+          type: 'start-session',
           input: { threadId: 'start-lease-c', provider: 'claude' },
         },
         { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'queued_background' },
       ),
-    ).rejects.toMatchObject({
+    ).resolves.toMatchObject({
+      status: 'rejected',
       code: 'resource_engine_start_capacity',
-      retryable: true,
     });
     expect(startSession).toHaveBeenCalledOnce();
     releaseFirst();

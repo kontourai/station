@@ -36,6 +36,7 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '@kontourai/station-shared/tool-server-credential-store';
 import { PROJECT_HOME } from './helpers.js';
+import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
 
 export interface PortabilitySnapshot {
   appConfig: AppConfig;
@@ -66,7 +67,8 @@ export function writeAppConfigGuidance(
 ): AppConfig {
   const next = {
     ...readAppConfig(projectHome),
-    ...guidance,
+    // #4517: an import may not change a setting the managed policy locks.
+    ...withoutManagedNoOpsOffline(guidance as Record<string, unknown>),
   };
   mkdirSync(join(projectHome, 'config'), { recursive: true });
   writeFileSync(

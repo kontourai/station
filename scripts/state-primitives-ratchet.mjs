@@ -64,7 +64,9 @@
 //     copy into a single-line JSX attribute value, which the attribute-value
 //     half of this check catches directly.
 import { readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript-api';
 import {
   assertScopeIsHonest,
   describeScope,
@@ -354,7 +356,7 @@ export function scanAdHocNoX(files, readFile) {
 //      constant is later rendered. Skeleton labels never carry an ellipsis
 //      ("Loading notifications"), so channel B does not collide with them.
 //
-// Two things are deliberately NOT counted, and each is a rule rather than an
+// Three things are deliberately NOT counted, and each is a rule rather than an
 // exemption:
 //
 //   - COMMENTS. This file's own prose quotes every string it bans; so do the
@@ -367,6 +369,12 @@ export function scanAdHocNoX(files, readFile) {
 //     `Button`'s `pendingLabel` contract (SHELL-02), not a treatment that
 //     replaces content. `{loading ? 'Loading…' : null}` has no second label
 //     and is still counted.
+//
+//   - A DIRECT CANONICAL BUTTON PENDING LABEL. A runtime named import resolved
+//     to src-ui/src/components/Button identifies the control by binding, so a
+//     shadowed name is not canonical. Only the direct or JSX-expression string
+//     literal span in its pendingLabel attribute is excluded; nearby text,
+//     arbitrary props and hoisted constants remain counted.
 
 const LOADING_VERBS_EXTRA = 'Fetching|Opening|Checking|Negotiating|Please wait';
 const LOADING_ELLIPSIS = '(?:…|\\.\\.\\.)';
@@ -436,12 +444,85 @@ export function isTestFile(file) {
   return file.includes('__tests__/') || file.endsWith('.test.tsx');
 }
 
+function canonicalPendingLabelSpans(file, content) {
+  if (!content.includes('pendingLabel')) return [];
+  const source = ts.createSourceFile(
+    file,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  if (source.parseDiagnostics.length) return [];
+  const imports = [];
+  for (const statement of source.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.importClause?.isTypeOnly
+    )
+      continue;
+    const specifier = statement.moduleSpecifier.text;
+    if (
+      !specifier.startsWith('.') ||
+      posix
+        .normalize(posix.join(posix.dirname(file), specifier))
+        .replace(/\.tsx?$/, '') !== 'src-ui/src/components/Button'
+    )
+      continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const binding of bindings.elements) {
+      if (
+        !binding.isTypeOnly &&
+        (binding.propertyName ?? binding.name).text === 'Button'
+      )
+        imports.push(binding);
+    }
+  }
+  if (!imports.length) return [];
+  const options = { noResolve: true, noLib: true, jsx: ts.JsxEmit.Preserve };
+  const host = ts.createCompilerHost(options);
+  host.getSourceFile = (name) => (name === file ? source : undefined);
+  const checker = ts.createProgram([file], options, host).getTypeChecker();
+  const symbols = new Set(
+    imports
+      .map((binding) => checker.getSymbolAtLocation(binding.name))
+      .filter((symbol) => symbol !== undefined),
+  );
+  const spans = [];
+  const visit = (node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ts.isIdentifier(node.tagName) &&
+      symbols.has(checker.getSymbolAtLocation(node.tagName))
+    ) {
+      for (const attribute of node.attributes.properties) {
+        if (
+          !ts.isJsxAttribute(attribute) ||
+          attribute.name.text !== 'pendingLabel'
+        )
+          continue;
+        const value = attribute.initializer;
+        const literal =
+          value && ts.isJsxExpression(value) ? value.expression : value;
+        if (literal && ts.isStringLiteral(literal))
+          spans.push([literal.getStart(source), literal.end]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return spans;
+}
+
 /**
  * Scans a single file's content for bespoke loading strings. Returns findings
  * deduped by line, sorted by line.
  */
 export function scanLoadingStringsFile(file, content) {
   const code = blankComments(content);
+  const pendingLabels = canonicalPendingLabelSpans(file, content);
 
   const byLine = new Map();
   for (const pattern of [LOADING_TEXT_NODE_PATTERN, LOADING_LITERAL_PATTERN]) {
@@ -450,7 +531,15 @@ export function scanLoadingStringsFile(file, content) {
     // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic RegExp.exec loop
     while ((match = pattern.exec(code)) !== null) {
       if (
-        isConditionalLabelArm(code, match.index, match.index + match[0].length)
+        isConditionalLabelArm(
+          code,
+          match.index,
+          match.index + match[0].length,
+        ) ||
+        pendingLabels.some(
+          ([start, end]) =>
+            match.index >= start && match.index + match[0].length <= end,
+        )
       ) {
         continue;
       }
