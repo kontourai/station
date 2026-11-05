@@ -23,14 +23,24 @@ The owner approved the following behavior in [#4508](https://github.com/kontoura
 
 ## Implementation status
 
-The first slice ([#4556](https://github.com/kontourai/station/pull/4556))
-implements decisions 1, 3, 4 and 5 for recording and showing: polling behind
-the `task-tracker-follow-ups` preview, durable per-Task observations, and the
-Task brief's "Tracker follow-ups" section. Decision 2's waking of the lead
-Session is not implemented; it is the next slice. Two choices the decision
-left open: an ended Task's end time is its `updatedAt`, since a Task record
-keeps no end time, and hosted mode does not offer the preview, since hosted
-tenants have no host `gh` login of their own. See
+[#4556](https://github.com/kontourai/station/pull/4556) implements all five
+decisions behind the `task-tracker-follow-ups` preview: polling, durable
+per-Task observations, the Task brief's "Tracker follow-ups" section, and the
+lead wake. Choices the decision left open:
+
+- An ended Task's end time is its `updatedAt`, since a Task record keeps no
+  end time.
+- Hosted mode does not offer the preview, since hosted tenants have no host
+  `gh` login of their own.
+- One wake per poll carries every new waking item of the Task (at most eight
+  written out, the rest counted), deduplicated by GitHub kind and id.
+- Comments and reviews by the `gh` login the poll runs as never wake the
+  lead: agents post their tracker updates with that login, so waking on them
+  would let a lead wake itself.
+- Failing conclusions are `FAILURE`, `TIMED_OUT` and `STARTUP_FAILURE`.
+- A wake the lead's owner may no longer read, or that finds no inbox or no
+  owner, waits for the next poll; a Task that is done, canceled or has a
+  stopped lead records the items without waking. See
 [Tracker follow-ups](../design/tracker-backed-tasks.md#tracker-follow-ups).
 
 Two-way status sync remains outside Station's scope under [work-plane Decision 4](../design/work-plane-composition.md#decisions-owner-ratified-2026-07-20). This decision does not authorize arbitrary GitHub mentions to start work or interrupt an active turn.

@@ -28,9 +28,10 @@ Nothing mirrors status between the two. Station re-reads the linked item when
 a person opens the Task, when a Session is dispatched, and when a Session asks
 for its brief with `get_task_brief`. The owner approved
 [bounded, preview-gated follow-up polling](../decisions/task-tracker-followups.md).
-Its first slice records follow-ups and shows them in the Task brief (see
-[Tracker follow-ups](#tracker-follow-ups)); waking the lead Session on them
-is not built yet. With the preview off, nothing polls.
+With it on, Station records follow-ups, shows them in the Task brief and
+wakes the lead Session on members' comments and failing checks (see
+[Tracker follow-ups](#tracker-follow-ups)). With the preview off, nothing
+polls and nothing wakes.
 
 ## Tracker follow-ups
 
@@ -88,7 +89,29 @@ and backs off for 15 minutes (a restart tries again).
   time, so a poll that records nothing new leaves the digest unchanged.
 - **Bounds.** Five pages of 50 per item per poll (a longer history resumes
   next poll), the first 100 inline comments of a review (the rest are
-  counted in the review's excerpt), and 20 check suites of 50 runs.
+  counted in the review's excerpt), and 20 check suites of 50 runs. A poll
+  the 60-second deadline cuts short still counts as the Task's poll
+  (outcome `deadline`), so a slow Task cannot starve the others; it resumes
+  from its cursors five minutes later. Kept pull requests past the ten
+  followed per Task are listed in the brief as not followed.
+- **Lead wake.** A newly recorded comment, review or inline review comment by
+  a `member`, or a failing check run (`FAILURE`, `TIMED_OUT`,
+  `STARTUP_FAILURE`), is marked to wake in the same transaction that
+  records it, so a re-poll never wakes again. After each Task's poll, every
+  pending item goes to the lead Session as one conversation-inbox entry, the
+  durable path the [lead wake](#lead-wake) for Task questions uses: queued
+  behind a running turn, a new turn when idle, never a steer. Its text is a
+  fixed line saying the quoted lines were written on GitHub and are data,
+  then each item's kind, GitHub id, ref, login, class and time, then its
+  text quoted and cut to about 1,000 characters.
+  - Bots, other authors, passing checks and the `gh` login's own comments
+    (agents post with it) never wake.
+  - A done or canceled Task, a Task with no lead, or a stopped lead records
+    the items and wakes no one; a blocked Task is not woken by failing
+    checks.
+  - The lead's owner's access to the Task is re-checked before the entry is
+    written and again when the inbox places it, as are the preview, the
+    Task incarnation and the lead conversation.
 
 ## Task ↔ tracker item cardinality
 
