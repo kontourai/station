@@ -680,112 +680,151 @@ describe('every enforced key at a real server (#4515)', () => {
   }, 300_000);
 });
 
-describe('#4515: a disallowed engine answers the managed refusal on the real chat and delegation routes', () => {
-  // No injected refusal: the real server, the real connection inspector
-  // (which reads a disallowed engine as disabled), the real Agent catalog
-  // and the real execution-target resolver. The verifier saw these answer
-  // 400 "Codex is turned off." under a policy that does not allow codex.
-  const send = async (
-    apiBase: string,
-    credential: string,
-    route: 'chat' | 'delegations',
-    agent: string,
-  ) => {
-    const target = { environment: { kind: 'current' }, agent };
-    const body =
-      route === 'chat'
-        ? {
-            target,
-            conversationId: `chat:${randomUUID()}`,
-            clientTurnId: randomUUID(),
-            message: 'hello',
-          }
-        : { target, prompt: 'hello', clientTurnId: randomUUID() };
-    const response = await fetch(`${apiBase}/api/orchestration/${route}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${credential}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+// Engine programs installed on the test's own PATH, so the engine-default
+// Agents are listed whether or not the host has the real CLIs. Each one only
+// reports a version.
+function installedEngines(root: string): Record<string, string> {
+  const bin = join(root, 'installed-engines');
+  mkdirSync(bin, { recursive: true });
+  for (const name of ['claude', 'codex', 'muse'])
+    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} 1.0.0"\n`, {
+      mode: 0o755,
     });
-    return {
-      status: response.status,
-      body: (await response.json()) as { error?: string; code?: string },
-    };
+  return {
+    PATH: `${bin}:${process.env.PATH ?? ''}`,
+    STATION_DISABLE_LOGIN_PATH_RESOLVE: '1',
   };
+}
 
-  // The engine-default Agents are listed once the connections are
-  // inspected; wait for codex as a person opening the picker would.
-  const waitForAgent = async (
-    apiBase: string,
-    credential: string,
-    slug: string,
-  ) => {
-    const deadline = Date.now() + 120_000;
-    let last = 0;
-    while (Date.now() < deadline) {
-      const response = await fetch(`${apiBase}/api/agents/${slug}`, {
-        headers: { Authorization: `Bearer ${credential}` },
+describe.skipIf(process.platform === 'win32')(
+  '#4515: a disallowed engine answers the managed refusal on the real chat and delegation routes',
+  () => {
+    // No injected refusal: the real server, the real connection inspector
+    // (which reads a disallowed engine as disabled), the real Agent catalog
+    // and the real execution-target resolver. The verifier saw these answer
+    // 400 "Codex is turned off." under a policy that does not allow codex.
+    const send = async (
+      apiBase: string,
+      credential: string,
+      route: 'chat' | 'delegations',
+      agent: string,
+    ) => {
+      const target = { environment: { kind: 'current' }, agent };
+      const body =
+        route === 'chat'
+          ? {
+              target,
+              conversationId: `chat:${randomUUID()}`,
+              clientTurnId: randomUUID(),
+              message: 'hello',
+            }
+          : { target, prompt: 'hello', clientTurnId: randomUUID() };
+      const response = await fetch(`${apiBase}/api/orchestration/${route}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
       });
-      last = response.status;
-      await response.body?.cancel();
-      if (response.ok) return;
-      await new Promise((wait) => setTimeout(wait, 500));
-    }
-    throw new Error(`the ${slug} Agent was never listed (last ${last})`);
-  };
+      return {
+        status: response.status,
+        body: (await response.json()) as { error?: string; code?: string },
+      };
+    };
 
-  test('with codex not allowed, chat and delegation answer 403 with the code and the organization', async () => {
-    const root = fixtureRoot();
-    const policyPath = join(root, 'policy.json');
-    writeFileSync(
-      policyPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        organization: 'Acme',
-        limits: { engines: { allowed: ['claude', 'station-agent'] } },
-      }),
-    );
-    const { apiBase, credential } = await bootWithGrant(root, policyPath);
-    await waitForAgent(apiBase, credential, 'codex');
-    for (const route of ['chat', 'delegations'] as const) {
-      const { status, body } = await send(apiBase, credential, route, 'codex');
-      expect(status, `${route}: ${JSON.stringify(body)}`).toBe(403);
-      expect(body.code, route).toBe('managed-policy-engine-refused');
-      expect(body.error, route).toContain(
-        "Acme's policy manages which engines run on this computer: codex is not allowed",
+    // The engine-default Agents are listed once the connections are
+    // inspected; wait for codex as a person opening the picker would.
+    const waitForAgent = async (
+      apiBase: string,
+      credential: string,
+      slug: string,
+    ) => {
+      const deadline = Date.now() + 120_000;
+      let last = 0;
+      while (Date.now() < deadline) {
+        const response = await fetch(`${apiBase}/api/agents/${slug}`, {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        last = response.status;
+        await response.body?.cancel();
+        if (response.ok) return;
+        await new Promise((wait) => setTimeout(wait, 500));
+      }
+      throw new Error(`the ${slug} Agent was never listed (last ${last})`);
+    };
+
+    test('with codex not allowed, chat and delegation answer 403 with the code and the organization', async () => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { engines: { allowed: ['claude', 'station-agent'] } },
+        }),
       );
-    }
-  }, 300_000);
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        installedEngines(root),
+      );
+      await waitForAgent(apiBase, credential, 'codex');
+      for (const route of ['chat', 'delegations'] as const) {
+        const { status, body } = await send(
+          apiBase,
+          credential,
+          route,
+          'codex',
+        );
+        expect(status, `${route}: ${JSON.stringify(body)}`).toBe(403);
+        expect(body.code, route).toBe('managed-policy-engine-refused');
+        expect(body.error, route).toContain(
+          "Acme's policy manages which engines run on this computer: codex is not allowed",
+        );
+      }
+    }, 300_000);
 
-  test('control: an engine the user turned off keeps the plain message', async () => {
-    const root = fixtureRoot();
-    const policyPath = join(root, 'policy.json');
-    // A policy that limits nothing about engines.
-    writeFileSync(
-      policyPath,
-      JSON.stringify({ schemaVersion: 1, organization: 'Acme' }),
-    );
-    const { apiBase, credential } = await bootWithGrant(root, policyPath);
-    const off = await fetch(`${apiBase}/config/app`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${credential}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ agentConnections: { codex: { enabled: false } } }),
-    });
-    expect(off.status).toBe(200);
-    await waitForAgent(apiBase, credential, 'codex');
-    for (const route of ['chat', 'delegations'] as const) {
-      const { status, body } = await send(apiBase, credential, route, 'codex');
-      expect(status, `${route}: ${JSON.stringify(body)}`).toBe(400);
-      expect(body.error, route).toBe('Codex is turned off.');
-      expect(body.code, route).toBeUndefined();
-    }
-  }, 300_000);
-});
+    test('control: an engine the user turned off keeps the plain message', async () => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      // A policy that limits nothing about engines.
+      writeFileSync(
+        policyPath,
+        JSON.stringify({ schemaVersion: 1, organization: 'Acme' }),
+      );
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        installedEngines(root),
+      );
+      const off = await fetch(`${apiBase}/config/app`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentConnections: { codex: { enabled: false } },
+        }),
+      });
+      expect(off.status).toBe(200);
+      await waitForAgent(apiBase, credential, 'codex');
+      for (const route of ['chat', 'delegations'] as const) {
+        const { status, body } = await send(
+          apiBase,
+          credential,
+          route,
+          'codex',
+        );
+        expect(status, `${route}: ${JSON.stringify(body)}`).toBe(400);
+        expect(body.error, route).toBe('Codex is turned off.');
+        expect(body.code, route).toBeUndefined();
+      }
+    }, 300_000);
+  },
+);
 
 describe.skipIf(process.platform === 'win32')(
   '#4515: a disallowed engine program is never run, at boot, for Accounts or for system status',
