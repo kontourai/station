@@ -16,9 +16,11 @@ const state = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   update: { mutate: vi.fn(), isPending: false, isError: false },
+  provenance: {} as Record<string, unknown>,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useConfigQuery: () => state.query,
+  useConfigProvenanceQuery: () => ({ data: state.provenance }),
   useUpdateConfigMutation: () => state.update,
 }));
 
@@ -27,6 +29,7 @@ import { LanDiscoveryControl } from '../LanDiscoveryControl';
 beforeEach(() => {
   vi.clearAllMocks();
   state.query.isPending = false;
+  state.provenance = {};
 });
 it('shows saved opt-in separately from loopback-only runtime status and sends only the intended setting', () => {
   render(<LanDiscoveryControl />);
@@ -53,5 +56,27 @@ it('keeps discovery disabled while reading the host status', () => {
   expect(
     screen.getByRole('switch', { name: 'Discover this Station nearby' }),
   ).toHaveProperty('disabled', true);
+  expect(state.update.mutate).not.toHaveBeenCalled();
+});
+
+it('#4517: a managed lock disables the toggle and names the organization', () => {
+  state.provenance = {
+    lanDiscoveryEnabled: {
+      source: 'managed',
+      locked: true,
+      organization: 'Acme',
+      supportUrl: 'https://help.example/station',
+    },
+  };
+  render(<LanDiscoveryControl />);
+  const toggle = screen.getByRole('switch', {
+    name: 'Discover this Station nearby',
+  });
+  expect(toggle).toHaveProperty('disabled', true);
+  expect(screen.getByText('Managed by Acme')).toBeTruthy();
+  expect(
+    screen.getByRole('link', { name: 'Get help' }).closest('button'),
+  ).toBeNull();
+  fireEvent.click(toggle);
   expect(state.update.mutate).not.toHaveBeenCalled();
 });

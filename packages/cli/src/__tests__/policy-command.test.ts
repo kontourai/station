@@ -83,6 +83,93 @@ describe('station policy check', () => {
     });
   }, 120_000);
 
+  test('prints what each managed setting does; the summary lists locked paths only', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          workspaceCheckpoints: { value: true, locked: false },
+          approvalGuardian: { value: { enabled: false }, locked: true },
+          defaultApprovalMode: { value: 'ask', locked: true },
+          region: { value: 'eu-west-1', locked: true },
+        },
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Managed settings: 5');
+    expect(result.stdout).toMatch(
+      /defaultMaxTurns \([^)]+\): locked to 40; the Station value and project overrides cannot be changed/,
+    );
+    // #4517 round 2: a lock states what it does not cover, under the key.
+    const notCovered = (key: string) => {
+      const lines = result.stdout.split('\n');
+      const at = lines.findIndex((line) => line.trim().startsWith(`${key} (`));
+      const next = lines[at + 1]?.trim() ?? '';
+      return next.startsWith('Not covered: ') ? next : undefined;
+    };
+    expect(notCovered('defaultApprovalMode')).toBe(
+      "Not covered: A mode a person picks for a conversation, an Agent's own approval default and a person's per-engine default still apply. The hard approval bound is `limits.maxApprovalMode` (#4518).",
+    );
+    expect(notCovered('region')).toBe(
+      "Not covered: An Agent's own region, then a model connection's region, still apply before this one.",
+    );
+    expect(notCovered('defaultMaxTurns')).toContain('maxSteps');
+    expect(notCovered('approvalGuardian')).toBeUndefined();
+    // A default is changeable anyway, so it carries no such line.
+    expect(notCovered('workspaceCheckpoints')).toBeUndefined();
+    expect(result.stdout).toMatch(
+      /workspaceCheckpoints \([^)]+\): defaults to true where nothing closer is set; users can change it/,
+    );
+
+    const json = check(path, '--json');
+    expect(json.status).toBe(0);
+    const report = JSON.parse(json.stdout);
+    expect(report.summary.lockedSettings).toEqual([
+      'approvalGuardian',
+      'defaultApprovalMode',
+      'defaultMaxTurns',
+      'region',
+    ]);
+    // Paths only: no managed value reaches the summary.
+    expect(JSON.stringify(report.summary)).not.toContain('40');
+  }, 120_000);
+
+  // #4517: the composite structure startup checks (`schemas/app.schema.json`
+  // and `appConfigSemanticError`) is checked here too, with the same schema.
+  test.each([
+    [
+      'a composite field of the wrong type',
+      { approvalGuardian: { value: { enabled: 'false' }, locked: true } },
+      /\(\/approvalGuardian\/enabled: must be boolean\)/,
+    ],
+    [
+      'a composite with an unknown field',
+      { approvalGuardian: { value: { mode: 'sometimes' }, locked: true } },
+      /a managed setting does not match the settings schema/,
+    ],
+  ])(
+    'exits 1 for %s, as startup would refuse it',
+    (_label, settings, reason) => {
+      const path = write(
+        JSON.stringify({ schemaVersion: 1, organization: 'Acme', settings }),
+      );
+      const result = check(path);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Station would refuse to start.');
+      expect(result.stderr).toContain(
+        'a managed setting does not match the settings schema',
+      );
+      expect(result.stderr).toMatch(reason);
+      const json = check(path, '--json');
+      expect(json.status).toBe(1);
+      expect(JSON.parse(json.stdout)).toMatchObject({ valid: false, path });
+    },
+    120_000,
+  );
+
   test.each([
     ['invalid JSON', '{"schemaVersion":', 'it is not valid JSON'],
     [
@@ -105,13 +192,22 @@ describe('station policy check', () => {
       'limits.updates: this limit is not supported by this version of Station',
     ],
     [
-      'a managed setting',
+      'an unknown setting',
       JSON.stringify({
         schemaVersion: 1,
         organization: 'A',
         settings: { x: { value: 1, locked: true } },
       }),
-      'settings.x: managed settings are not supported',
+      'settings.x: unknown setting',
+    ],
+    [
+      'a setting value of the wrong type',
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'A',
+        settings: { defaultMaxTurns: { value: 'many', locked: true } },
+      }),
+      'settings.defaultMaxTurns.value: defaultMaxTurns: expected a number',
     ],
     [
       'a duplicate key (the second limits would erase the first)',
