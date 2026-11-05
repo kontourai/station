@@ -306,6 +306,12 @@ test('the public page never sums clipped cells and names a top value only above 
     'Weekly active networks, week of Oct 26',
   );
   expect(hero?.querySelector('.value')?.textContent).toBe('Too few to show');
+  // The only week is within noise: placeholders, no scale and no numbers.
+  const trendText = [...document.querySelectorAll('.card')]
+    .find((card) => card.querySelector('h2')?.textContent === 'Weekly active networks')
+    ?.querySelector('svg.chart')?.textContent;
+  // Only the week's date label and the note: no tick values.
+  expect(trendText).toBe('Oct 26Every period is within noise');
   const tiles = [...document.querySelectorAll('.tile')].map(
     (tile) => tile.querySelector('.label')?.textContent,
   );

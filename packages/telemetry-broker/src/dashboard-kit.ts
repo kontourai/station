@@ -38,7 +38,7 @@ h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:650}
 .tile .note{color:var(--muted);font-size:.8rem;margin-top:.2rem}
 svg.chart{display:block;width:100%;overflow:visible}
 svg.chart text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
-svg.chart text.end{fill:var(--ink2);font-weight:600}
+svg.chart text.end{fill:var(--ink2);font-weight:600}svg.chart text.note{fill:var(--ink2);font-size:13px}
 .gridline{stroke:var(--grid);stroke-width:1}.baseline{stroke:var(--axis);stroke-width:1}
 .line{fill:none!important;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .line.partial{stroke-dasharray:4 4}
@@ -264,7 +264,12 @@ export const DASHBOARD_KIT_JS = String.raw`
     var masked = opts.masked || [];
     var isMasked = function (i) { return masked.indexOf(i) >= 0; };
     var n = opts.values.length, max = Math.max.apply(null, opts.values.filter(function (v, i) { return !isMasked(i); }).concat([0]));
-    var top = yAxis(f, max), band = f.plotW / Math.max(1, n), w = Math.min(24, Math.max(2, band - 2));
+    // With every column masked there is no scale to show: only the baseline.
+    var allMasked = n > 0 && masked.length >= n;
+    if (allMasked) {
+      svgEl('line', { class: 'baseline', x1: M.left, x2: M.left + f.plotW, y1: M.top + f.plotH, y2: M.top + f.plotH }, f.svg);
+    }
+    var top = allMasked ? 1 : yAxis(f, max), band = f.plotW / Math.max(1, n), w = Math.min(24, Math.max(2, band - 2));
     var xAt = function (i) { return M.left + band * i + band / 2; };
     var yAt = function (v) { return M.top + f.plotH - (v / top) * f.plotH; };
     xLabels(f, opts.labels.map(opts.labelFormat || shortDay), xAt, opts.labelCount || 6);
@@ -296,6 +301,10 @@ export const DASHBOARD_KIT_JS = String.raw`
       });
       col.addEventListener('focus', function () { show(); }); col.addEventListener('blur', hideTip);
     });
+    if (allMasked) {
+      var note = svgEl('text', { class: 'note', x: M.left + f.plotW / 2, y: M.top + f.plotH / 2, 'text-anchor': 'middle' }, f.svg);
+      note.textContent = 'Every period is within noise';
+    }
     // Only label the last cap where columns leave room for its text.
     if (n && band >= 18 && !isMasked(n - 1)) {
       var lastV = opts.values[n - 1], label = svgEl('text', { class: 'end', x: xAt(n - 1), y: yAt(lastV) - 6, 'text-anchor': 'middle' }, f.svg);
