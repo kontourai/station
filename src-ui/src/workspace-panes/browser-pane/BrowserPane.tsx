@@ -753,7 +753,7 @@ function BrowserNewSession({
           ) : (
             <Empty
               variant="compact"
-              label="No local servers are shared with this Project"
+              label="Local servers appear here once shared"
               description="The operator shares them in Settings › Advanced › Browser & devices."
             />
           )}

@@ -23,7 +23,7 @@ Limits, refusal codes, network rules and evidence live in the
    or pick a local server**.
 2. Type a URL, or plain words to search with DuckDuckGo, or pick a local
    server. The operator shares local servers with a Project in **Settings →
-   Advanced → Browser & devices**; until then the pane says none are shared.
+   Advanced → Browser & devices**; until then the pane says where to share them.
    A page opened from a narrow pane, such as a phone, opens at that pane's
    size; otherwise it opens at 1280 × 800.
 3. Use back, forward and reload beside the address bar. **New tab** opens

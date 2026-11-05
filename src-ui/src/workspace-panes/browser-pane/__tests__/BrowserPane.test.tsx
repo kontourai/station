@@ -2149,7 +2149,7 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
       await screen.findByRole('heading', { level: 2, name: 'Browser' }),
     ).toBeTruthy();
     expect(
-      await screen.findByText('No local servers are shared with this Project'),
+      await screen.findByText('Local servers appear here once shared'),
     ).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Local servers' })).toBeNull();
   });
@@ -2174,7 +2174,7 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      await screen.findByText('No local servers are shared with this Project'),
+      await screen.findByText('Local servers appear here once shared'),
     ).toBeTruthy();
     expect(reads).toBe(2);
   });
