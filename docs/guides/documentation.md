@@ -86,6 +86,46 @@ machinery:
 A note records which inputs a reviewer checked. Neither a note nor a passing
 gate proves the prose is accurate.
 
+## Keep external product content current
+
+Corpus, formerly Docs Kit, owns the shared related-content contract.
+Station's `corpus-content.json` maps product paths to the
+[product site](https://station.kontourai.io/), the company site's Station
+pages, and the [public app privacy policy](https://kontourai.io/privacy/station/).
+`gate:for` and `docs:impact` use the published `@kontourai/corpus/content`
+interface to show affected targets. These are portable URLs, not sibling
+checkout paths. The mappings are conservative review leads; they do not
+discover every new dependency or establish that a claim needs changing.
+
+The websites dogfood `corpus content check` through
+`npm run station:sync:check`. Their review manifests bind selected Station
+input bytes and public output bytes to SHA-256 values, with review dates,
+notes, exact reviewed revisions and limits. GitHub URLs track `main`; Corpus
+resolves each repository/ref once and reads every file at that observed commit.
+No sibling checkout is required. Local `--checkout owner/repo=directory`
+mappings are an optional working-copy convenience, not remote-head evidence.
+
+Website validation and daily scheduled workflows detect changed inputs even
+when no website commit occurs. Changed bytes fail; missing or inaccessible
+inputs report `NOT_VERIFIED`. Inspect the changed claims and their real callers,
+update or justify the public copy, then record the reviewed hashes and note.
+There is no automatic hash-refresh command. Keep the site's existing claim
+inventory, generated copy and rendered tests consistent with the review.
+
+The generated [privacy working copy](../privacy-policy.md) and its inventory
+remain Station's source declarations. Review the public summary against them
+and their implementation; byte equality does not establish legal/store
+classification, inventory completeness or provider practices. The website's
+own analytics, signup and hosting notice has separate inputs. Keep screenshots
+bound to their dated capture manifests: re-reviewing source does not recapture
+an image. Verify deployment separately from source merges and passing builds.
+
+See [Corpus's related-content guide](https://github.com/kontourai/corpus/blob/dfadba4e64883e6187fb42e32911ca9f091e0fa7/docs/related-content.md)
+for the manifest, commands, exit codes and authentication limits. Veritas can
+require the evidence check; it does not own the dependency matcher. Existing
+Station ledger reviews and the generated Pages/Corpus publishing route retain
+their separate responsibilities.
+
 ## Make the application learnable
 
 The reading path is product purpose → system overview → subsystem or user
