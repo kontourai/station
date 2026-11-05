@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { IntegrationActionState } from '@kontourai/station-contracts/integration-status';
 import type {
   ProjectIdentityView,
   ProjectResolutionView,
@@ -28,6 +29,7 @@ afterEach(() => {
 function mount(
   identity: ProjectIdentityView,
   resolution: ProjectResolutionView,
+  options: { legacyActionState?: IntegrationActionState } = {},
 ) {
   const authority = {
     apiBase: 'http://station.test',
@@ -72,13 +74,28 @@ function mount(
                     {
                       connectionId: 'github',
                       provider: 'github',
-                      actions: [],
-                      authentication: {
-                        state: 'signed-in',
-                        observedAt: 1_000,
-                        account: 'checkout-owner',
-                        scopes: ['repo', 'read:org'],
-                      },
+                      actions:
+                        options.legacyActionState === undefined
+                          ? []
+                          : [
+                              {
+                                action: 'read',
+                                computedBy: 'github.gh-auth-status',
+                                state: options.legacyActionState,
+                                reason:
+                                  'Legacy action outcome without authentication metadata.',
+                              },
+                            ],
+                      ...(options.legacyActionState === undefined
+                        ? {
+                            authentication: {
+                              state: 'signed-in',
+                              observedAt: 1_000,
+                              account: 'checkout-owner',
+                              scopes: ['repo', 'read:org'],
+                            },
+                          }
+                        : {}),
                     },
                   ],
                 },
@@ -193,6 +210,7 @@ test('repository links lead the cards, chat placement is plain, and access belon
   ).toBeTruthy();
   fireEvent.click(within(station).getByText('Checkout and access details'));
   await within(station).findByText('checkout-owner');
+  expect(within(station).getByText('Signed in')).toBeTruthy();
   expect(
     within(station).getByRole('region', {
       name: 'Checkout on Kontour Station · build-host',
@@ -241,6 +259,42 @@ test('repository links lead the cards, chat placement is plain, and access belon
   expect(within(station).queryByText('checkout-owner')).toBeNull();
   expect(within(station).queryByText('repo, read:org')).toBeNull();
 });
+
+test.each(['unverified', 'failed', 'works'] as const)(
+  'a legacy %s action does not establish GitHub authentication',
+  async (legacyActionState) => {
+    const view = project();
+    view.identity.repos = [view.identity.repos[0]];
+    delete view.identity.executionRoot;
+    mount(
+      view,
+      {
+        posture: 'backing',
+        primary: { named: true, resourceId: view.identity.repos[0].id },
+        resources: [
+          {
+            state: 'bound',
+            resourceId: view.identity.repos[0].id,
+            path: '/srv/code/station',
+          },
+        ],
+      },
+      { legacyActionState },
+    );
+    const link = await screen.findByRole('link', { name: 'example/station' });
+    const card = within(link.closest('li')!);
+    fireEvent.click(card.getByText('Checkout and access details'));
+    const check = await card.findByRole<HTMLButtonElement>('button', {
+      name: 'Check sign-in',
+    });
+    await waitFor(() => expect(check.disabled).toBe(false));
+    expect(card.queryByText('GitHub sign-in details unavailable')).toBeNull();
+    expect(card.getByText('Not confirmed')).toBeTruthy();
+    expect(card.getAllByText('Not reported')).toHaveLength(2);
+    expect(card.queryByText('Signed in')).toBeNull();
+    expect(card.queryByText('Needs attention')).toBeNull();
+  },
+);
 
 test('failed refresh retains source identity but withdraws cached verified paths, and retry restores the current mapping', async () => {
   const view = project();

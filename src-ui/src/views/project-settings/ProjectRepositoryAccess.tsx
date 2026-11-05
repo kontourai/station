@@ -81,20 +81,7 @@ function useRepositoryAuthentication(
           (connection) => connection.provider === 'github',
         )?.authentication
       : undefined;
-  const read = status.data?.connections
-    .find((connection) => connection.provider === 'github')
-    ?.actions.find(
-      (action) =>
-        action.action === 'read' &&
-        action.computedBy === 'github.gh-auth-status',
-    );
-  const signIn =
-    authentication?.state ??
-    (!status.isError && read?.state === 'unverified'
-      ? 'signed-in'
-      : !status.isError && read?.state === 'failed'
-        ? 'failed'
-        : 'unknown');
+  const signIn = authentication?.state ?? 'unknown';
   return {
     previews,
     preview,

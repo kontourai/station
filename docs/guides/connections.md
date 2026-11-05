@@ -1506,7 +1506,8 @@ Enable **Repository sign-in details** in **Settings → Advanced → Feature pre
 to read the owning Station’s GitHub CLI health, active account and reported scopes.
 This operator-only observation runs `gh auth status --hostname github.com --json
 hosts --no-refresh`, bounded to five seconds and 8 KiB, with a ten-second cache.
-It returns no token, credential source path or inactive account. Missing account
+It returns no token, credential source path or inactive account. On hosts that do
+not report authentication details, sign-in stays **Not confirmed**. Missing account
 or scope fields remain **Not reported**; malformed or unsupported CLI output is
 unavailable, even if its JSON-mode process exited zero. Turning the preview off
 prevents new metadata probes and withholds waiting responses; an already launched
