@@ -463,8 +463,9 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   not shown; and, as for card alerts, nothing is posted while the app is in
   the foreground.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
-  lifecycle events (never streamed content), coalesces per Station, and reads
-  the session read model once per reading principal: each phone reads with
+  lifecycle events (never streamed content) without reading storage. The worker
+  coalesces per Station, checks current registrations and retired activities,
+  and reads the session read model once per reading principal: each phone reads with
   the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
   operator for a credential minted with home-possession or a device holding

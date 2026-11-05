@@ -419,15 +419,44 @@ function openCard(sealed: string, registration: NativePushRegistration) {
 }
 
 describe('agent-activity publisher', () => {
-  test('does nothing at all while no phone is registered', async () => {
+  test('coalesces empty registration checks without session reads or sends', async () => {
     const h = await harness();
     h.sessions.set('s1', sessionEvents('s1', 'running', START));
-    h.emit('turn.started');
-    await h.settle();
-    // The boot timer finds no registration either.
     await h.fireNextTimer();
+    const registrations = vi.spyOn(
+      h.pairing,
+      'listNativePushRegistrationsByPlatform',
+    );
+    const tombstones = vi.spyOn(h.pairing, 'listNativePushTombstones');
+    for (let index = 0; index < 32; index++) h.emit('turn.started');
+    expect(registrations).not.toHaveBeenCalled();
+    expect(tombstones).not.toHaveBeenCalled();
+    await h.settle();
+    expect(registrations).toHaveBeenCalledTimes(1);
+    expect(tombstones).toHaveBeenCalledTimes(1);
+    expect(h.liveTimers()).toHaveLength(0);
     expect(h.listSessions).not.toHaveBeenCalled();
     expect(h.fetchImpl).not.toHaveBeenCalled();
+    await h.publisher.stop();
+  });
+
+  test('a lifecycle burst defers registration reads and sends the latest card', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    const registrations = vi.spyOn(
+      h.pairing,
+      'listNativePushRegistrationsByPlatform',
+    );
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    for (let index = 0; index < 32; index++) h.emit('turn.started');
+    h.sessions.set('s1', sessionEvents('s1', 'completed', START));
+    h.emit('turn.completed');
+    expect(registrations).not.toHaveBeenCalled();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    await h.settle();
+    expect(h.listSessions).toHaveBeenCalledTimes(1);
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0].card.activity_phase).toBe('completed');
     await h.publisher.stop();
   });
 

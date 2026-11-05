@@ -7,8 +7,9 @@
  * Shape, following the pre-#2586 Web Push listener and the console bridge:
  * - an EventBus subscriber that only marks the card dirty, and only for
  *   events that can change a session's lifecycle or title (never streamed
- *   content), and only while at least one phone is registered — a Station
- *   with no registration makes no reads and no gateway traffic;
+ *   content); registration checks happen in the coalesced worker, so the
+ *   subscriber performs no storage reads. A Station with no registration
+ *   makes no session reads and no gateway traffic;
  * - a `KeyedCoalescingWorker` that coalesces bursts (~1 s) into one read of
  *   the session read model per reading principal — each phone sees exactly
  *   the sessions its own paired device may read — builds that card, and
@@ -1882,7 +1883,6 @@ export function wireAgentActivityPublisher(
         ?.method;
       if (typeof method !== 'string' || !CARD_RELEVANT_METHODS.has(method))
         return;
-      if (!hasWork()) return;
       requestFlush();
     } catch (error) {
       logger.warn('agent-activity: listener failed', {
