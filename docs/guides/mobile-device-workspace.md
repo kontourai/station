@@ -102,17 +102,27 @@ infers one from a frame's shape.
   outside Station (the emulator's own controls) is not observed until the
   input channel reconnects.
 
-The Device pane draws the lit inner display bent at its crease, which
-splits the frame's longer side. Each half turns about the crease under a
-perspective, and a touch on the bent drawing is mapped back to the flat
-display point under it. Touches outside the drawn halves send nothing. The
-fold controls (stands, a hinge slider and table mode) send `fold` input
-through the surface's control lease like any other input. The slider bends
-the drawing while it moves, settles on a stand's angle within six degrees,
-and sends one angle when released. The drawing is a 2D projection, not a
-model of the device body; it is shrunk just enough to stay inside its box.
-The Device pane's **Full screen** view and the float over chat draw the same
-bent display, and the full-screen bar carries the same fold controls.
+The Device pane draws the lit inner display flat with a line at its crease,
+which splits the frame's longer side. **3D view** instead bends each half
+about the crease under a perspective (shrunk to stay inside its box), and
+**Rotate picture to fit** turns a landscape display a quarter to fill a
+portrait screen. Both are this viewer's preferences, kept on this device and
+never sent to the device. A touch is mapped back through either to the flat
+display point under it; touches outside the drawn display send nothing.
+
+The fold controls (stands, a hinge slider, table mode and face up/down) send
+`fold` input through the surface's control lease like any other input. The
+selected stand is the one the device reports, or the shut or flat state its
+hinge plainly reports. The slider moves the drawing while it is dragged,
+settles on a stand's angle within six degrees, and sends one angle when
+released. The pane's **Full screen** view and the float over chat draw the
+same display. Below 480 pixels wide, the full-screen bar is one row (who is
+in control, Take or Release, the stand picker, More controls and Exit), and
+the other controls are behind More controls.
+
+With no chat open, as on a phone where the dock shows one pane at a time,
+**Float in the next chat you open** floats the device in the next chat
+opened within two minutes.
 
 `fold` input is also available to bound agents through `device_input`,
 under the same lease and authority checks as other input.
