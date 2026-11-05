@@ -57,6 +57,16 @@ vi.mock('../lib/compatibilityLoader', () => ({
 }));
 vi.mock('../lib/serverHealth', () => ({ checkServerHealthDetailed: vi.fn() }));
 
+// #4519: the managed limit, set per test.
+const managed = vi.hoisted(() => ({
+  limit: undefined as
+    | import('@kontourai/station-contracts/managed-policy').ManagedPolicySummary
+    | undefined,
+}));
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsLimit: () => managed.limit,
+}));
+
 import { AddMachineModal } from '../views/connections-hub/AddMachineModal';
 
 describe('AddMachineModal', () => {
@@ -99,6 +109,42 @@ describe('AddMachineModal', () => {
     // owner flips `isOpen`; here `onClose` is a stub, so the chooser itself
     // is still rendered — assert the handoff, not the owner's close).
     expect(onClose).toHaveBeenCalled();
+  });
+
+  test('#4519: under the managed limit the control choice cannot be chosen and says why, with a Get help link', async () => {
+    const { consumePendingConnectionsModal } = await import(
+      '../lib/connectionModalEvents'
+    );
+    managed.limit = {
+      organization: 'Acme',
+      supportUrl: 'https://help.acme.example/station',
+      lockedSettings: [],
+      limits: { clients: ['desktop', 'local-browser'] },
+    };
+    try {
+      render(<AddMachineModal isOpen onClose={vi.fn()} />);
+      const title = screen.getByText(
+        'Control this Station from another device',
+      );
+      expect(title.closest('button')).toBeNull();
+      const card = title.closest('[aria-disabled="true"]') as HTMLElement;
+      expect(card.textContent).toContain(
+        "Acme's policy manages remote access: only this computer can connect to Station.",
+      );
+      expect(card.textContent).not.toContain('That device can control');
+      expect(
+        screen.getByRole('link', { name: 'Get help' }).getAttribute('href'),
+      ).toBe('https://help.acme.example/station');
+      fireEvent.click(card);
+      expect(consumePendingConnectionsModal()).toBeNull();
+      // The other choices are unaffected.
+      fireEvent.click(screen.getByText('Connect a Station'));
+      expect(consumePendingConnectionsModal()).toEqual({
+        mode: 'connect-station',
+      });
+    } finally {
+      managed.limit = undefined;
+    }
   });
 
   test('Station setup hands off to the stable shell without adding or selecting an address', async () => {

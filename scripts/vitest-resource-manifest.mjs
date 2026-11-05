@@ -317,6 +317,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4521: boots the source Station with every capability switch off and
   // drives its routes over HTTP; private homes, ephemeral ports.
   'src-server/__tests__/managed-capability-switches.process.test.ts',
+  // #4519: boots the source Station under a local-only managed policy with a
+  // stand-in Tailscale CLI in a private temp dir; private homes.
+  'src-server/__tests__/managed-remote-clients.process.test.ts',
+  // #4519: runs the real `vite dev` CLI on this repo's config with a
+  // private policy file and ephemeral loopback ports.
+  'scripts/__tests__/vite-managed-host.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
   // #4517: runs offline `station config set` and `station registry` as CLI

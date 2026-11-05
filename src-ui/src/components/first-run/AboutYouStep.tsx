@@ -25,6 +25,7 @@
  * only ever open inside a chapter the person is already in.
  */
 
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 import {
   buildUserProfileContextBlock,
   USER_PROFILE_COMFORT_LABELS,
@@ -37,6 +38,7 @@ import {
   type UserProfileSettings,
 } from '@kontourai/station-contracts/user-profile';
 import { useId, useState } from 'react';
+import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './AboutYouStep.css';
 
@@ -56,6 +58,11 @@ interface AboutYouStepProps {
    * the write did not land
    */
   error?: string | null;
+  /**
+   * #4519: the policy that keeps this Station from pairing another device;
+   * disables that exit and shows its sentence and Get help link.
+   */
+  pairingLimit?: ManagedPolicySummary;
 }
 
 export function AboutYouStep({
@@ -63,6 +70,7 @@ export function AboutYouStep({
   onComplete,
   saving,
   error,
+  pairingLimit,
 }: AboutYouStepProps) {
   const roleGroupId = useId();
   const comfortGroupId = useId();
@@ -163,11 +171,19 @@ export function AboutYouStep({
         you write and send a message.
       </p>
       {saving ? <p role="status">Saving your answers…</p> : null}
-      <p className="first-run-chapter__lede">
-        Want to use this Station on your phone too? Connect another device with
-        a QR invitation. Both devices use the same Station server. This is
-        optional—you can also do it later from Connections.
-      </p>
+      {pairingLimit ? (
+        <ManagedRemoteClientsNote
+          summary={pairingLimit}
+          className="first-run-chapter__lede"
+          id="first-run-pairing-refusal"
+        />
+      ) : (
+        <p className="first-run-chapter__lede">
+          Want to use this Station on your phone too? Connect another device
+          with a QR invitation. Both devices use the same Station server. This
+          is optional—you can also do it later from Connections.
+        </p>
+      )}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         {(['devices', 'tour', 'chat'] as const).map((destination) => (
           <button
@@ -178,7 +194,15 @@ export function AboutYouStep({
                 ? 'editor-btn editor-btn--primary'
                 : 'editor-btn'
             }
-            disabled={saving}
+            disabled={
+              saving ||
+              (destination === 'devices' && pairingLimit !== undefined)
+            }
+            aria-describedby={
+              destination === 'devices' && pairingLimit
+                ? 'first-run-pairing-refusal'
+                : undefined
+            }
             onClick={() => {
               if (saving) return;
               void onComplete(

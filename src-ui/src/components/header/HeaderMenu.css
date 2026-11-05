@@ -18,3 +18,23 @@
   background: transparent;
   border-color: transparent;
 }
+
+/* #4519: "Pair phone" under a managed policy without remote clients. Drawn
+   like a refused row (muted, no hover fill); the policy's sentence and Get
+   help link show below the footer (`.station-switcher__managed-note`). */
+.menu-row.station-switcher__row--refused,
+.menu-row.station-switcher__row--refused:hover {
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: default;
+  /* The footer rows are already muted text; this keeps the refused one
+     visibly apart from Details and Manage. */
+  opacity: 0.55;
+}
+
+.station-switcher__managed-note > p {
+  margin: var(--k-space-1) var(--k-space-2) 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+  line-height: 1.4;
+}

@@ -300,6 +300,9 @@ OTel collector settings, and `limits.registries` narrows `registryTrust` and
 the default skill registries without changing what is stored. See
 [capability switches](../guides/managed-policy.md#capability-switches).
 
+`limits.clients` (#4519) sits outside settings too: it governs network
+exposure, not a setting value.
+
 ## 3. Target model: five scopes
 
 Every setting is declared with exactly one scope. The scope determines storage,

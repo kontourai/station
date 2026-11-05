@@ -2947,7 +2947,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
@@ -3209,6 +3209,9 @@ station environment peers remove <environment-id>
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
   `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
+  Under a [managed policy](../guides/managed-policy.md#network-exposure)
+  without `remote` clients, `--tailscale` is refused before any `tailscale`
+  command runs, and the server refuses the offer itself.
   `--tailscale` reads the active machine's MagicDNS name and HTTPS Serve status,
   refuses a foreign or unrecognized HTTPS mapping, and then publishes only
   the already-validated loopback listener origin as `https://<magicdns>`.

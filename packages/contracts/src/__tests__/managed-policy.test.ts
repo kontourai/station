@@ -4,8 +4,11 @@ import {
   duplicateJsonMemberPath,
   MANAGED_POLICY_INVALID_MARKER,
   MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
+  MANAGED_POLICY_REMOTE_CLIENTS_CODE,
   managedByLabel,
+  managedPolicyAllowsRemoteClients,
   managedPolicyDenial,
+  managedRemoteClientsDenial,
   managedSettingsProblems,
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
@@ -81,7 +84,7 @@ describe('parseManagedPolicyDocument', () => {
   });
 
   test('refuses every reserved limit key until enforcement lands', () => {
-    for (const key of ['maxApprovalMode', 'clients', 'engines', 'updates']) {
+    for (const key of ['maxApprovalMode', 'engines', 'updates']) {
       expect(
         problemsOf({
           schemaVersion: 1,
@@ -561,6 +564,115 @@ describe('MANAGED_SETTING_NARROWER_SCOPES', () => {
     // Pinned independently: the two scopes the product decision names.
     expect(Object.keys(MANAGED_SETTING_NARROWER_SCOPES)).toEqual(
       expect.arrayContaining(['defaultApprovalMode', 'region']),
+    );
+  });
+});
+
+describe('limits.clients (#4519)', () => {
+  const policy = (clients: unknown) => ({
+    schemaVersion: 1,
+    organization: 'Acme',
+    limits: { clients },
+  });
+
+  test('accepts the local kinds with or without remote, in canonical order', () => {
+    expect(
+      parseManagedPolicyDocument(policy(['local-browser', 'desktop'])),
+    ).toEqual({
+      ok: true,
+      document: {
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { clients: ['desktop', 'local-browser'] },
+      },
+    });
+    const all = parseManagedPolicyDocument(
+      policy(['remote', 'desktop', 'local-browser']),
+    );
+    expect(all.ok && all.document.limits).toEqual({
+      clients: ['desktop', 'local-browser', 'remote'],
+    });
+  });
+
+  test('refuses a list this build cannot enforce, naming why', () => {
+    expect(problemsOf(policy(['desktop']))).toEqual([
+      {
+        path: 'limits.clients',
+        message:
+          'must include "local-browser"; this version of Station can only leave out "remote"',
+      },
+    ]);
+    expect(problemsOf(policy([]))[0]?.message).toContain(
+      'must include "desktop" and "local-browser"',
+    );
+    for (const bad of [
+      'desktop',
+      false,
+      ['desktop', 'local-browser', 'phone'],
+      ['desktop', 'local-browser', 1],
+    ])
+      expect(problemsOf(policy(bad))).toEqual([
+        {
+          path: 'limits.clients',
+          message: 'must be a list of "desktop", "local-browser" and "remote"',
+        },
+      ]);
+    expect(
+      problemsOf(policy(['desktop', 'local-browser', 'desktop']))[0]?.message,
+    ).toBe('must not list a client kind twice');
+  });
+
+  test('the summary and status carry the list; remote is allowed only when listed or unset', () => {
+    const summary = summarizeManagedPolicy({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { clients: ['desktop', 'local-browser'] },
+    });
+    expect(summary.limits).toEqual({ clients: ['desktop', 'local-browser'] });
+    expect(managedPolicyAllowsRemoteClients(summary)).toBe(false);
+    expect(
+      managedPolicyAllowsRemoteClients({
+        limits: { clients: ['desktop', 'local-browser', 'remote'] },
+      }),
+    ).toBe(true);
+    expect(managedPolicyAllowsRemoteClients({ limits: {} })).toBe(true);
+    expect(managedPolicyAllowsRemoteClients(null)).toBe(true);
+
+    const status = {
+      state: 'loaded',
+      source: { kind: 'file', location: '/etc/station/policy.json' },
+      digest: `sha256:${'a'.repeat(64)}`,
+      summary,
+    };
+    expect(parseManagedPolicyStatus(status)).toEqual(status);
+    // A newer server may enforce a list this build refuses in a document.
+    expect(
+      parseManagedPolicyStatus({
+        ...status,
+        summary: { ...summary, limits: { clients: ['desktop'] } },
+      }),
+    ).not.toBeNull();
+    expect(
+      parseManagedPolicyStatus({
+        ...status,
+        summary: { ...summary, limits: { clients: 'remote' } },
+      }),
+    ).toBeNull();
+  });
+
+  test('the denial names the organization and the refusal code is stable', () => {
+    expect(
+      managedRemoteClientsDenial({
+        organization: 'Acme',
+        supportUrl: null,
+        lockedSettings: [],
+        limits: { clients: ['desktop', 'local-browser'] },
+      }),
+    ).toBe(
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.",
+    );
+    expect(MANAGED_POLICY_REMOTE_CLIENTS_CODE).toBe(
+      'managed-policy-remote-clients',
     );
   });
 });

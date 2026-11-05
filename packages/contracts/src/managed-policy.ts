@@ -16,7 +16,8 @@
  * key is a registered Station setting and each value is checked against
  * that setting's registry definition (see {@link managedSettingsProblems}).
  * The capability switches (`telemetry`, `webhookAutomations`, `registries`;
- * #4521) are enforced.
+ * #4521) and `clients` (#4519) are enforced; each enforced limit is one entry
+ * in `MANAGED_POLICY_LIMIT_SLICES`.
  */
 import { APP_CONFIG_SEED } from './config.js';
 import { boundaryText, isRecord } from './contract-validation.js';
@@ -55,6 +56,8 @@ export interface ManagedPolicyLimits {
   webhookAutomations?: false;
   /** #4521: narrows where plugins and skills may be acquired from. */
   registries?: ManagedPolicyRegistryLimits;
+  /** #4519: the client kinds that may reach this machine's servers. */
+  clients?: ManagedPolicyClientKind[];
 }
 
 export interface ManagedPolicyDocument {
@@ -107,6 +110,7 @@ export interface ManagedPolicyRegistryLimits {
 /** Limit keys this build enforces. */
 export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
   ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
+  'clients',
 ];
 
 /**
@@ -116,7 +120,6 @@ export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
  */
 export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'maxApprovalMode',
-  'clients',
   'engines',
   'updates',
 ];
@@ -661,7 +664,7 @@ export function parseManagedPolicyDocument(
   problems.push(
     ...managedSettingsProblems(settings),
     ...reservedMapProblems('limits', limits, limitProblem),
-    ...managedPolicyLimitProblems(limits),
+    ...managedPolicyLimitProblems(limits, 'document'),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -673,7 +676,7 @@ export function parseManagedPolicyDocument(
   if (settings !== undefined)
     document.settings = managedSettingsOf(settings as Record<string, unknown>);
   if (limits !== undefined)
-    document.limits = acceptedManagedPolicyLimits(limits);
+    document.limits = acceptedManagedPolicyLimits(limits, 'document');
   return { ok: true, document };
 }
 
@@ -741,7 +744,7 @@ export function summarizeManagedPolicy(
       .filter(([, entry]) => entry.locked)
       .map(([path]) => path)
       .sort(),
-    limits: acceptedManagedPolicyLimits(document.limits),
+    limits: acceptedManagedPolicyLimits(document.limits, 'document'),
   };
 }
 
@@ -796,7 +799,7 @@ export function parseManagedPolicyStatus(
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
     !isRecord(summary.limits) ||
-    managedPolicyLimitProblems(summary.limits).length > 0
+    managedPolicyLimitProblems(summary.limits, 'summary').length > 0
   ) {
     return null;
   }
@@ -808,7 +811,7 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: acceptedManagedPolicyLimits(summary.limits),
+      limits: acceptedManagedPolicyLimits(summary.limits, 'summary'),
     },
   };
 }
@@ -1019,13 +1022,29 @@ export function capabilityLimitsOf(limits: unknown): ManagedPolicyLimits {
 }
 
 /**
+ * Which `limits` a slice reads: a policy document's, or the client summary's
+ * projection of them (the status decode re-checks a summary read from a
+ * server). Most slices read both alike; a slice whose summary differs from
+ * its document shape, or that is lenient toward a newer server's summary,
+ * branches on it.
+ */
+export type ManagedPolicyLimitsShape = 'document' | 'summary';
+
+/**
  * One limit slice: the problems with its keys in a `limits` object, and its
- * accepted value copied out of one that passed. Every slice is listed in
+ * accepted value copied out of one that passed (in the same shape). Each
+ * returns only its own keys; the readers merge them. Every slice is listed in
  * {@link MANAGED_POLICY_LIMIT_SLICES}.
  */
 interface ManagedPolicyLimitSlice {
-  problems(limits: Record<string, unknown>): ManagedPolicyProblem[];
-  accepted(limits: Record<string, unknown>): ManagedPolicyLimits;
+  problems(
+    limits: Record<string, unknown>,
+    shape: ManagedPolicyLimitsShape,
+  ): ManagedPolicyProblem[];
+  accepted(
+    limits: Record<string, unknown>,
+    shape: ManagedPolicyLimitsShape,
+  ): ManagedPolicyLimits;
 }
 
 /**
@@ -1036,27 +1055,33 @@ interface ManagedPolicyLimitSlice {
  */
 const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
   { problems: capabilityLimitProblems, accepted: capabilityLimitsOf },
+  { problems: clientsLimitProblems, accepted: acceptedClientsLimit },
 ];
 
 /** Problems with every enforced limit in `limits`, from every slice. */
 export function managedPolicyLimitProblems(
   limits: unknown,
+  shape: ManagedPolicyLimitsShape,
 ): ManagedPolicyProblem[] {
   if (!isRecord(limits)) return [];
-  return MANAGED_POLICY_LIMIT_SLICES.flatMap((slice) => slice.problems(limits));
+  return MANAGED_POLICY_LIMIT_SLICES.flatMap((slice) =>
+    slice.problems(limits, shape),
+  );
 }
 
 /**
  * The accepted limits of a value that passed
- * {@link managedPolicyLimitProblems}: every slice's result, merged.
+ * {@link managedPolicyLimitProblems} in the same shape: every slice's
+ * result, merged.
  */
 export function acceptedManagedPolicyLimits(
   limits: unknown,
+  shape: ManagedPolicyLimitsShape,
 ): ManagedPolicyLimits {
   if (!isRecord(limits)) return {};
   let result: ManagedPolicyLimits = {};
   for (const slice of MANAGED_POLICY_LIMIT_SLICES)
-    result = { ...result, ...slice.accepted(limits) };
+    result = { ...result, ...slice.accepted(limits, shape) };
   return result;
 }
 
@@ -1097,4 +1122,123 @@ export function managedRegistryLocationAllowed(
 function hasOwnKey(value: object, key: string): boolean {
   // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers target ES2020, which lacks Object.hasOwn.
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+/**
+ * #4519: how a client reaches the server. `desktop` is the desktop app's own
+ * server, `local-browser` a browser on this machine, and `remote` anything
+ * off the machine: paired phones and computers, the relay, LAN discovery and
+ * Tailscale Serve.
+ */
+export type ManagedPolicyClientKind = 'desktop' | 'local-browser' | 'remote';
+
+export const MANAGED_POLICY_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+  'remote',
+];
+
+/**
+ * The kinds every accepted `limits.clients` must keep. This build enforces
+ * only the absence of `remote`; it cannot keep the desktop app or a local
+ * browser out, so a list without one of them is refused rather than accepted
+ * and ignored.
+ */
+const REQUIRED_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+];
+
+/**
+ * Why `value` is not an accepted `limits.clients`, or null. A status read
+ * from a server skips the required-kinds rule (`shape: 'summary'`): a newer
+ * server may enforce lists this build refuses in a policy.
+ */
+function clientsValueProblem(
+  value: unknown,
+  shape: ManagedPolicyLimitsShape,
+): string | null {
+  if (value === undefined) return null;
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (kind) =>
+        typeof kind === 'string' &&
+        (MANAGED_POLICY_CLIENT_KINDS as readonly string[]).includes(kind),
+    )
+  )
+    return 'must be a list of "desktop", "local-browser" and "remote"';
+  if (new Set(value).size !== value.length)
+    return 'must not list a client kind twice';
+  if (shape === 'summary') return null;
+  const missing = REQUIRED_CLIENT_KINDS.filter((kind) => !value.includes(kind));
+  return missing.length > 0
+    ? `must include ${missing.map((kind) => `"${kind}"`).join(' and ')}; this version of Station can only leave out "remote"`
+    : null;
+}
+
+/** #4519: problems with `limits.clients`. */
+function clientsLimitProblems(
+  limits: Record<string, unknown>,
+  shape: ManagedPolicyLimitsShape,
+): ManagedPolicyProblem[] {
+  const message = clientsValueProblem(ownLimitValue(limits, 'clients'), shape);
+  return message ? [{ path: 'limits.clients', message }] : [];
+}
+
+/**
+ * #4519: `{ clients }` from limits that passed {@link clientsLimitProblems},
+ * else `{}`. The kinds are put in canonical order; the summary is the same.
+ */
+function acceptedClientsLimit(
+  limits: Record<string, unknown>,
+): ManagedPolicyLimits {
+  const clients = ownLimitValue(limits, 'clients');
+  return Array.isArray(clients)
+    ? {
+        clients: MANAGED_POLICY_CLIENT_KINDS.filter((kind) =>
+          clients.includes(kind),
+        ),
+      }
+    : {};
+}
+
+/**
+ * #4519: whether clients off this machine may reach the server. True without
+ * a policy, without `limits.clients`, or when it lists `remote`.
+ */
+export function managedPolicyAllowsRemoteClients(
+  summary: Pick<ManagedPolicySummary, 'limits'> | null | undefined,
+): boolean {
+  const clients = summary?.limits.clients;
+  return clients === undefined || clients.includes('remote');
+}
+
+/**
+ * #4519: the refusal code for remote access the managed policy forbids: a
+ * pairing offer, a relay invitation, LAN discovery, or a credential of a
+ * device paired before the policy. Clients key on it to show the managed
+ * message instead of offering a retry.
+ */
+export const MANAGED_POLICY_REMOTE_CLIENTS_CODE =
+  'managed-policy-remote-clients' as const;
+
+/**
+ * #4519: the refusal without its help tail, for a surface that renders the
+ * policy's support link itself ("Get help").
+ */
+export function managedRemoteClientsStatement(
+  summary: ManagedPolicySummary,
+): string {
+  return `${summary.organization}'s policy manages remote access: only this computer can connect to Station.`;
+}
+
+/** The sentence every surface uses to refuse remote access under the limit. */
+export function managedRemoteClientsDenial(
+  summary: ManagedPolicySummary,
+): string {
+  return managedPolicyDenial(
+    summary,
+    'remote access: only this computer can connect to Station',
+  );
 }

@@ -272,6 +272,7 @@ describe('limits from every slice survive each reconstruction', () => {
       defaultSkillRegistries: false,
       acpRegistryInstalls: false,
     },
+    clients: ['desktop', 'local-browser'],
   };
 
   test('the fixture sets every enforced limit key', () => {

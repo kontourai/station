@@ -590,6 +590,9 @@ export function configureRuntimeSupportServices(
             (agent) => agent.slug === id,
           ),
         logger: context.logger,
+        ...(context.listenerAdmission
+          ? { listenerAdmission: context.listenerAdmission }
+          : {}),
       });
   const schedulerService = new SchedulerService({
     logger: context.logger,

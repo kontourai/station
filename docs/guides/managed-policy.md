@@ -17,8 +17,9 @@ The current release supports the policy document, the file source, the
 fail-closed startup check, `station policy check` and `station policy show`,
 a value-free summary that clients can read,
 [managed settings](#settings) (defaults and fixed values for Station
-settings), and three [capability switches](#capability-switches) in `limits`:
-`telemetry`, `webhookAutomations` and `registries`. It does **not** yet enforce
+settings), and these limits: three [capability switches](#capability-switches)
+(`telemetry`, `webhookAutomations` and `registries`) and
+[network exposure](#network-exposure) (`clients`). It does **not** yet enforce
 any other limit. A policy that contains another limit key is refused with "not
 supported by this version of Station". Station never accepts a key it does not
 yet enforce, so a machine never looks managed when it is not.
@@ -44,7 +45,8 @@ manage settings:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Managed settings, keyed by setting. See [Settings](#settings). |
-| `limits` | no | Only the [capability switches](#capability-switches) in this release. |
+| `limits` | no | Only the [capability switches](#capability-switches) and `clients` in this release. |
+| `limits.clients` | no | A list of `"desktop"`, `"local-browser"` and `"remote"`. See [Network exposure](#network-exposure). |
 
 Station refuses any other key, at any level. An unknown key may be a
 restriction from a newer release, and Station will not run while it cannot
@@ -218,6 +220,143 @@ paths keep their own settings:
   command-line tool, for example) follows its own telemetry settings and
   environment variables, not this policy, and may report to its own vendor.
   Turn that off in the engine's configuration.
+
+## Network exposure
+
+`limits.clients` lists how clients may reach Station on the machine:
+
+- `desktop`: the desktop app.
+- `local-browser`: a browser on the same machine, signed in with a
+  `station open` link.
+- `remote`: anything off the machine, such as paired phones and computers,
+  the relay, nearby (LAN) discovery and Tailscale Serve.
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "limits": { "clients": ["desktop", "local-browser"] }
+}
+```
+
+`remote` is the kind you can leave out. This release cannot keep the desktop
+app or a local browser out, so a list without `desktop` or `local-browser` is
+refused. A policy without `limits.clients`, or with `remote` in it, leaves
+network access as it is.
+
+Without `remote`:
+
+- **Station listens only on this computer.** With `STATION_HOST` unset or
+  set to `localhost`, it binds `127.0.0.1`. Station never hands the name
+  `localhost` to the listener, because a hosts file or resolver could map it
+  to another interface. With `STATION_HOST` set to anything other than a
+  loopback address or `localhost`, Station does not start. `station start`
+  defaults to `127.0.0.1` and refuses another `--host` or such a
+  `STATION_HOST`. The UI development server (`npm run dev:ui`) refuses a
+  `--host` that is not a loopback address. The desktop app already binds
+  `127.0.0.1`.
+- **Every other listener stays on this computer too.** Each listener Station
+  opens later binds a loopback address and is checked against Tailscale
+  Serve as it starts (see below). It serves nothing until that check passes,
+  and a refused one closes every connection it accepted. That covers the MCP
+  Apps frame origin, the browser egress proxy, SSH forwards, the isolated
+  repair relay and the UI development server (`vite dev` and `vite
+  preview`). The telemetry companion's ports are checked at every Start, and
+  at Station's startup too, since a running companion outlives Station. On Linux the repair worker container reaches
+  Station through Docker's bridge rather than loopback, so isolated repairs
+  are refused there (`repair-network-local-only`).
+- **Nothing new can pair.** Pairing codes, access requests, relay setup and
+  invitations, personal access tokens and Tailscale Serve setup
+  (`station environment offer --tailscale`) are refused. Nearby discovery
+  stays off and cannot be turned on. **Pair device** in Settings, **Pair
+  phone** in the header, **Connect another device** in Connections and in
+  first-run setup, and **Control this Station from another device** under
+  Add a computer are disabled and show the policy's message, with a **Get
+  help** link when the policy has a support link.
+- **Devices paired earlier are suspended, not revoked.** Their credentials,
+  relay links and personal access tokens stop working, and they get no
+  notifications. Paired devices lists each one as, for example,
+  "Suspended by Example Corp’s policy", and Station logs at startup how many devices,
+  relay links and tokens are suspended. Nothing is deleted or revoked, so
+  **removing the policy re-enables every one of them** at the next start.
+  The policy is not a way to cut off a lost or compromised device: revoke
+  that device under Paired devices, before or after installing the policy.
+  Station keeps no record of earlier runs, so it does not log when lifting
+  the policy restores them.
+- **Discord commands are refused.** The Discord integration connects out to
+  Discord, but the messages it receives are commands from people elsewhere.
+  Under the limit its gateway does not connect, and its status shows the
+  policy's message. Its configuration is kept, and it reconnects once the
+  policy allows remote clients.
+- **Station refuses to start while it could be reached from elsewhere.** It
+  does not start when the relay connector is configured
+  (`STATION_BROKER_CONFIG_FILE`), or when a supervisor still holds a listener
+  bound to another address (quit Station completely and start it again).
+
+### Tailscale Serve
+
+At startup Station asks Tailscale whether Tailscale Serve forwards to any of
+its ports (the server, voice, consent and UI ports, and each listener opened
+later as it starts). It does not start while a route does, and the error
+names the port and the command that turns routes off (`tailscale serve
+status` lists them, `tailscale serve reset` turns all of them off). A route
+that names a host, such as `localhost`, counts, since the name can lead to
+this server. Station does not change Tailscale's configuration itself.
+
+Station asks only a Tailscale command it can trust, never whatever
+`tailscale` comes first on `PATH`, since any user can put a program there:
+
+| OS | Station runs | Requirement |
+| --- | --- | --- |
+| macOS | `/Applications/Tailscale.app/Contents/MacOS/Tailscale` (Mac App Store or tailscale.com) | Owned by root and signed by Tailscale Inc. (team `W5364U7YZB`). |
+| Linux | `tailscale` in `/usr/bin`, `/usr/sbin`, `/usr/local/bin`, `/usr/local/sbin`, `/bin` or `/sbin` | The file and every folder above it owned by root and not writable by group or others. Distribution and Tailscale repository packages qualify. |
+| Windows | `C:\Program Files\Tailscale\tailscale.exe` (Tailscale's installer) | Its owner and ACLs are not checked yet (#4524). |
+
+Station runs it with a fixed, minimal environment. A Homebrew install on macOS
+does not qualify: its files belong to the Homebrew user. Before each run
+Station checks that the file is the one it verified (same file, size and
+times, and on macOS the same code-signing manifest); if it changed, Station
+checks it again in full, signature included, before it runs it.
+
+The trusted command answers for the system's Tailscale daemon only. A second
+`tailscaled`, such as a userspace one a user starts with its own socket,
+could forward while the system daemon reports stopped. So Station does not
+start while any `tailscaled` other than the system daemon is running, and
+names it: on macOS, where the app runs its daemon as a system extension, any
+`tailscaled`; on Linux, one that is not owned by root or not in a system bin
+folder. Windows is not checked for this yet.
+
+Station starts when the trusted command says Tailscale is not running or is
+signed out, or when nothing on the machine looks like Tailscale: no trusted
+command, no `tailscale` or `tailscaled` on `PATH`, no daemon socket, no
+`/Applications/Tailscale.app` and no Tailscale process. If there are signs of
+Tailscale but no trusted command, Station does not start, names what it found,
+and says what to install or stop. On macOS that means installing Tailscale
+from the Mac App Store or tailscale.com, or stopping it (Homebrew: `sudo brew
+services stop tailscale`). On Linux, install Tailscale's package or run `sudo
+systemctl stop tailscaled`. If Tailscale is installed but does not answer, or
+answers in a way Station cannot read, Station does not start until Tailscale
+is set up, stopped or removed.
+
+Station checks only when each listener starts: a route added later, or one
+Tailscale restores when it starts again, is not seen until the next start.
+Devices still cannot pair or sign in through such a route.
+
+### What the limit does not cover
+
+- **Inbound webhooks.** `POST /api/webhooks/inbound` is authorized by its own
+  HMAC secret and grant, not by device pairing. It needs some way in, such as
+  a tunnel, to be reached from elsewhere. Turning webhooks off is a separate
+  switch (#4521).
+- **Port forwarding with other tools**, such as `ssh -L` or `ssh -R`, a
+  reverse proxy or a tunnel service. They connect to Station from this
+  computer, so Station sees them as local. Devices paired earlier stay
+  suspended and nothing new can pair through them, but a person who has this
+  computer's sign-in link or desktop credentials could still use them.
+  Control those tools separately. A userspace `tailscaled` that a user
+  runs under their own account is in the same group: Station refuses to
+  start while one runs under that name, but a renamed copy, or any other
+  forwarder, is not detected.
 
 ## Where to install it
 
