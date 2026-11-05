@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
@@ -55,12 +55,14 @@ function Harness({
   openConversation,
   failures,
   acknowledge,
+  closeDuringOpen = false,
 }: {
   layout: 'desktop' | 'mobile';
   loadError: boolean;
   openConversation: Open;
   failures: (message: string) => void;
   acknowledge: (item: HomeWorkItem) => void;
+  closeDuringOpen?: boolean;
 }) {
   const [open, setOpen] = useState(true),
     [station, setStation] = useState('station-a'),
@@ -76,7 +78,11 @@ function Harness({
     openChatSessionIds: [],
     onFocusChat: (id: string) =>
       navigationStore.navigate('/projects/workshop', { chat: id }),
-    onOpenConversation: openConversation,
+    onOpenConversation: (...args: Parameters<Open>) => {
+      const outcome = openConversation(...args);
+      if (closeDuringOpen) setOpen(false);
+      return outcome;
+    },
     onOpenSession: (id: string) =>
       navigationStore.navigate('/', { surface: 'activity', session: id }),
     onOpenFailed: failures,
@@ -86,9 +92,12 @@ function Harness({
     onAcknowledgeConversation: acknowledge,
     now: NOW,
   };
-  const triggerRef = createRef<HTMLButtonElement>();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
     <>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
+        Inbox
+      </button>
       <button
         type="button"
         onClick={() => {
@@ -141,6 +150,7 @@ function mount(
   openConversation: Open,
   namespace = 'principal-a',
   loadError = false,
+  closeDuringOpen = false,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -159,12 +169,31 @@ function mount(
           openConversation={openConversation}
           failures={failures}
           acknowledge={acknowledge}
+          closeDuringOpen={closeDuringOpen}
         />
       </AuthorityPersistenceContext.Provider>
     </QueryClientProvider>,
   );
   return { failures, acknowledge, unmount: rendered.unmount };
 }
+
+test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
+  mount(
+    'mobile',
+    vi.fn<Open>(async () => true),
+    'principal-a',
+    false,
+    true,
+  );
+  const trigger = screen.getByRole('button', { name: 'Inbox' });
+  trigger.focus();
+  const user = userEvent.setup();
+  await user.click(
+    screen.getByRole('button', { name: 'Second selection, Workshop' }),
+  );
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+});
 
 for (const layout of ['desktop', 'mobile'] as const) {
   test(

@@ -2,13 +2,7 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -98,14 +92,6 @@ export function MobileInboxPanel({
   const swipeActions = useSheetGesturesPreview();
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   const returnFocusRef = useRef<HTMLElement[]>([]);
-  // Selecting a chat may replace the trigger; restore through surviving ancestors.
-  const closeAndRestoreFocus = useCallback(() => {
-    const chain = returnFocusRef.current;
-    const panel = panelRef.current;
-    returnFocusRef.current = [];
-    onClose();
-    restoreReturnFocus(chain, panel);
-  }, [onClose]);
 
   const controller = useInboxPanelController({
     items: tasks,
@@ -122,7 +108,7 @@ export function MobileInboxPanel({
     onOpenFailed,
     onCloseChat,
     onAcknowledgeConversation,
-    onActivated: closeAndRestoreFocus,
+    onActivated: onClose,
   });
   const {
     now,
@@ -135,7 +121,17 @@ export function MobileInboxPanel({
   } = controller;
 
   useLayoutEffect(() => {
-    if (!open) return;
+    // Opening a reader can close Inbox before its activation lease settles.
+    // Restore from the committed close, including a replacement header trigger.
+    if (!open) {
+      if (returnFocusRef.current.length === 0) return;
+      const chain = triggerRef.current
+        ? [...captureReturnFocus(triggerRef.current), ...returnFocusRef.current]
+        : returnFocusRef.current;
+      returnFocusRef.current = [];
+      const frame = restoreReturnFocus(chain, panelRef.current);
+      return () => cancelAnimationFrame(frame);
+    }
     // Capture before moving focus into the panel, while the trigger and every
     // ancestor are still attached.
     returnFocusRef.current = captureReturnFocus(triggerRef.current);
@@ -154,13 +150,13 @@ export function MobileInboxPanel({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        closeAndRestoreFocus();
+        onClose();
         return;
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [closeAndRestoreFocus, open]);
+  }, [onClose, open]);
 
   return (
     <section
