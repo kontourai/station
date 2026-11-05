@@ -409,6 +409,15 @@ test('the brief leaves out sealed memory and unreviewed memory unless asked', as
       visibility: null,
     }),
   );
+  await h.seed(
+    claim({
+      subject: 'Roster',
+      property: 'lead',
+      value: 'Sam',
+      excerpt: 'Sam leads the roster.',
+      visibility: { kind: 'restricted', audiences: ['human:someone-else'] },
+    }),
+  );
   await h.seed(region());
   const withUnreviewed = await h.json(
     await h.get('/memory/brief?includeUnreviewed=1'),
@@ -416,6 +425,8 @@ test('the brief leaves out sealed memory and unreviewed memory unless asked', as
   expect(withUnreviewed.entries).toHaveLength(1);
   expect(withUnreviewed.entries[0]).toContain('[stated · unreviewed] Billing');
   expect(withUnreviewed.text).not.toContain('weekly');
+  // Memory shared only with someone else is not briefed to this person.
+  expect(withUnreviewed.text).not.toContain('Sam');
 });
 
 test('review time and routed share are measured per run', async () => {
